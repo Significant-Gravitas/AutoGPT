@@ -14,32 +14,34 @@ We have to be somewhat selective in order to keep making progress, but this does
 mean you can't contribute. Check out the contribution guide on our wiki:
 https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing
 
-# 🚀 v0.3.1 Release 🚀
-Over a week and 47 pull requests have passed since v0.3.0, and we are happy to announce
-the release of v0.3.1!
+# 🚀 v0.4.0 Release 🚀
+Two weeks and 76 pull requests have passed since v0.3.1, and we are happy to announce
+the release of v0.4.0!
 
-Highlights and notable changes since v0.2.2:
+Highlights and notable changes since v0.3.0:
 
-## Changes to Docker configuration 🐋
- * The workdir has been changed from */home/appuser* to */app*.
-    Be sure to update any volume mounts accordingly!
- * Docker-compose 1.29.0 is now required.
+## ⚠️ Command `send_tweet` is REMOVED
+Twitter functionality (and more) is now covered by plugins.
 
-## Logging 🧾
- * Log functionality has been improved for better understanding
-    and easier summarization.
- * All LLM interactions are now logged to logs/DEBUG, to help with
-    debugging and development.
+## ⚠️ Memory backend deprecation 💾
+The Milvus, Pinecone and Weaviate memory backends were rendered incompatible
+by work on the memory system, and have been removed in `master`. The Redis
+memory store was also temporarily removed; we will merge a new implementation ASAP.
+Whether built-in support for the others will be added back in the future is subject to
+discussion, feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
-## Other
- * Edge browser is now supported by the `browse_website` command.
- * Sets of commands can now be disabled using DISABLED_COMMAND_CATEGORIES in .env.
+## Document support in `read_file` 📄
+Auto-GPT can now read text from document files, with support added for PDF, DOCX, CSV,
+HTML, TeX and more!
 
-# ⚠️ Command `send_tweet` is DEPRECATED, and will be removed in v0.4.0 ⚠️
-Twitter functionality (and more) is now covered by plugins, see [Plugin support 🔌]
+## Managing Auto-GPT's access to commands ❌🔧
+You can now disable set of built-in commands through the *DISABLED_COMMAND_CATEGORIES*
+variable in .env. Specific shell commands can also be disabled using *DENY_COMMANDS*,
+or selectively enabled using *ALLOW_COMMANDS*.
 
-## Plugin support 🔌
-Auto-GPT now has support for plugins! With plugins, you can extend Auto-GPT's abilities,
-adding support for third-party services and more.
-See https://github.com/Significant-Gravitas/Auto-GPT-Plugins for instructions and
-available plugins. Specific plugins can be allowlisted/denylisted in .env.
+## Further fixes and changes 🛠️
+Other highlights include improvements to self-feedback mode and continuous mode,
+documentation, docker and devcontainer setups, and much more. Most of the improvements
+that were made are not yet visible to users, but will pay off in the long term.
+Take a look at the Release Notes on Github for the full changelog!
+https://github.com/Significant-Gravitas/Auto-GPT/releases
