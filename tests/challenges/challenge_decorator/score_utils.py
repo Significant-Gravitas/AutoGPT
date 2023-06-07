@@ -2,7 +2,7 @@ import json
 import os
 from typing import Any, Dict, Optional, Tuple
 
-from tests.integration.challenges.challenge_decorator.challenge import Challenge
+from tests.challenges.challenge_decorator.challenge import Challenge
 
 CURRENT_SCORE_LOCATION = "../current_score"
 NEW_SCORE_LOCATION = "../new_score"

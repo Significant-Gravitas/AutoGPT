@@ -1,14 +1,13 @@
 import contextlib
 
 import pytest
+from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from autogpt.config import Config
-from tests.integration.challenges.challenge_decorator.challenge_decorator import (
-    challenge,
-)
-from tests.integration.challenges.utils import run_interaction_loop
+from tests.challenges.challenge_decorator.challenge_decorator import challenge
+from tests.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
 
 CYCLE_COUNT = 3
@@ -20,7 +19,7 @@ CYCLE_COUNT = 3
 def test_information_retrieval_challenge_b(
     get_nobel_prize_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
-    patched_api_requestor: None,
+    patched_api_requestor: MockerFixture,
     level_to_run: int,
     config: Config,
 ) -> None:
