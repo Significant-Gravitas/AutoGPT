@@ -57,13 +57,12 @@ class Config(metaclass=Singleton):
         )
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
+
         self.risk_evaluation_model = os.getenv("RISK_EVALUATION_MODEL", "gpt-4")
-        self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
-        self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
-        
         self.risk_threshold = float(os.getenv("RISK_THRESHOLD", 0.5))
-        
+
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
+
         self.browse_spacy_language_model = os.getenv(
             "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
         )
@@ -221,14 +220,6 @@ class Config(metaclass=Singleton):
     def set_smart_llm_model(self, value: str) -> None:
         """Set the smart LLM model value."""
         self.smart_llm_model = value
-
-    def set_fast_token_limit(self, value: int) -> None:
-        """Set the fast token limit value."""
-        self.fast_token_limit = value
-
-    def set_smart_token_limit(self, value: int) -> None:
-        """Set the smart token limit value."""
-        self.smart_token_limit = value
 
     def set_embedding_model(self, value: str) -> None:
         """Set the model to use for creating embeddings."""

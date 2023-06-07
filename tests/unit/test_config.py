@@ -21,8 +21,6 @@ def test_initial_values(config: Config):
     assert config.speak_mode == False
     assert config.fast_llm_model == "gpt-3.5-turbo"
     assert config.smart_llm_model == "gpt-4"
-    assert config.fast_token_limit == 4000
-    assert config.smart_token_limit == 8000
 
 
 def test_set_continuous_mode(config: Config):
@@ -79,34 +77,6 @@ def test_set_smart_llm_model(config: Config):
 
     # Reset model name
     config.set_smart_llm_model(smart_llm_model)
-
-
-def test_set_fast_token_limit(config: Config):
-    """
-    Test if the set_fast_token_limit() method updates the fast_token_limit attribute.
-    """
-    # Store token limit to reset it after the test
-    fast_token_limit = config.fast_token_limit
-
-    config.set_fast_token_limit(5000)
-    assert config.fast_token_limit == 5000
-
-    # Reset token limit
-    config.set_fast_token_limit(fast_token_limit)
-
-
-def test_set_smart_token_limit(config: Config):
-    """
-    Test if the set_smart_token_limit() method updates the smart_token_limit attribute.
-    """
-    # Store token limit to reset it after the test
-    smart_token_limit = config.smart_token_limit
-
-    config.set_smart_token_limit(9000)
-    assert config.smart_token_limit == 9000
-
-    # Reset token limit
-    config.set_smart_token_limit(smart_token_limit)
 
 
 def test_set_debug_mode(config: Config):
