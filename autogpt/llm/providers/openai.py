@@ -197,10 +197,13 @@ def create_chat_completion(
         OpenAIObject: The ChatCompletion response from OpenAI
 
     """
-    return openai.ChatCompletion.create(
+    completion: OpenAIObject = openai.ChatCompletion.create(
         messages=messages,
         **kwargs,
     )
+    if not hasattr(completion, "error"):
+        logger.debug(f"Response: {completion}")
+    return completion
 
 
 @meter_api
