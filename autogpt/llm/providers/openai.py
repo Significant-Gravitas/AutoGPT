@@ -9,6 +9,13 @@ OPEN_AI_CHAT_MODELS = {
             completion_token_cost=0.002,
             max_tokens=4096,
         ),
+        # add azure gpt3.5 turbo model'name,(gpt-35-trubo is the name of azure gpt3.5 trubo)
+        ChatModelInfo(
+            name="gpt-35-turbo",    
+            prompt_token_cost=0.002,
+            completion_token_cost=0.002,
+            max_tokens=4096,
+        ),
         ChatModelInfo(
             name="gpt-3.5-turbo-0301",
             prompt_token_cost=0.002,
