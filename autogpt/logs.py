@@ -9,6 +9,7 @@ from typing import Any
 
 from colorama import Fore, Style
 
+from autogpt.config import Config
 from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
 from autogpt.speech import say_text
@@ -85,7 +86,7 @@ class Logger(metaclass=Singleton):
         self.chat_plugins = []
 
     def typewriter_log(
-        self, title="", title_color="", content="", speak_text=False, level=logging.INFO
+        self, config: Config, title="", title_color="", content="", speak_text=False, level=logging.INFO
     ):
         if speak_text and self.speak_mode:
             say_text(f"{title}. {content}")
@@ -98,7 +99,9 @@ class Logger(metaclass=Singleton):
                 content = " ".join(content)
         else:
             content = ""
-
+        if config.plain_output:
+            self.info(content, title, title_color)
+            return
         self.typing_logger.log(
             level, content, extra={"title": title, "color": title_color}
         )
@@ -254,7 +257,8 @@ logger = Logger()
 def print_assistant_thoughts(
     ai_name: object,
     assistant_reply_json_valid: object,
-    speak_mode: bool = False,
+    config: Config,
+    speak_mode: bool = False
 ) -> None:
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
@@ -269,7 +273,7 @@ def print_assistant_thoughts(
         assistant_thoughts_criticism = assistant_thoughts.get("criticism")
         assistant_thoughts_speak = assistant_thoughts.get("speak")
     logger.typewriter_log(
-        f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
+        config, f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
     )
     logger.typewriter_log("REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}")
     if assistant_thoughts_plan:

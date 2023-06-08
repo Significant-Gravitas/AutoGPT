@@ -124,7 +124,7 @@ class Agent:
                 and self.cycle_count > cfg.continuous_limit
             ):
                 logger.typewriter_log(
-                    "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
+                    "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}", cfg
                 )
                 break
             # Send message to AI, get response
@@ -150,7 +150,7 @@ class Agent:
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, cfg.speak_mode
+                        self.ai_name, assistant_reply_json, cfg, cfg.speak_mode
                     )
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
