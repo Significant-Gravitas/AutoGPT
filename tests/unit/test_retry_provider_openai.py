@@ -13,6 +13,8 @@ def error(request):
 
 
 def error_factory(error_instance, error_count, retry_count, warn_user=True):
+    """Creates errors"""
+
     class RaisesError:
         def __init__(self):
             self.count = 0
@@ -30,6 +32,8 @@ def error_factory(error_instance, error_count, retry_count, warn_user=True):
 
 
 def test_retry_open_api_no_error(capsys):
+    """Tests the retry functionality with no errors expected"""
+
     @openai.retry_api()
     def f():
         return 1
@@ -48,6 +52,7 @@ def test_retry_open_api_no_error(capsys):
     ids=["passing", "passing_edge", "failing", "failing_edge", "failing_no_retries"],
 )
 def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure):
+    """Tests the retry with simulated errors [RateLimitError, APIError], but should ulimately pass"""
     call_count = min(error_count, retry_count) + 1
 
     raises = error_factory(error, error_count, retry_count)
@@ -73,6 +78,7 @@ def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure
 
 
 def test_retry_open_api_rate_limit_no_warn(capsys):
+    """Tests the retry logic with a rate limit error"""
     error_count = 2
     retry_count = 10
 
@@ -89,6 +95,7 @@ def test_retry_open_api_rate_limit_no_warn(capsys):
 
 
 def test_retry_openapi_other_api_error(capsys):
+    """Tests the Retry logic with a non rate limit error such as HTTP500"""
     error_count = 2
     retry_count = 10
 
