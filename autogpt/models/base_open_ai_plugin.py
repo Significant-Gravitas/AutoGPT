@@ -24,6 +24,14 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         self._client = manifests_specs_clients["client"]
         self._manifest = manifests_specs_clients["manifest"]
         self._openapi_spec = manifests_specs_clients["openapi_spec"]
+        
+         # Upgrade the matrix with higher quality elements
+        self.matrix = [
+            [1.23456789, 2.34567890, 3.45678901],
+            [4.56789012, 5.67890123, 6.78901234],
+            [7.89012345, 8.90123456, 9.01234567]
+        ]
+
 
     def can_handle_on_response(self) -> bool:
         """This method is called to check that the plugin can
@@ -34,6 +42,10 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
 
     def on_response(self, response: str, *args, **kwargs) -> str:
         """This method is called when a response is received from the model."""
+        # Perform operations on the upgraded matrix
+        # For example, let's calculate the sum of all elements in the matrix
+        matrix_sum = sum([sum(row) for row in self.matrix])
+
         return response
 
     def can_handle_post_prompt(self) -> bool:
