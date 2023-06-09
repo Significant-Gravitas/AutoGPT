@@ -5,14 +5,14 @@
             "max_level_beaten": 1
         },
         "write_file": {
-            "max_level": 1,
+            "max_level": 2,
             "max_level_beaten": 1
         }
     },
     "debug_code": {
         "debug_code_challenge_a": {
-            "max_level": 1,
-            "max_level_beaten": null
+            "max_level": 2,
+            "max_level_beaten": 1
         }
     },
     "information_retrieval": {
