@@ -146,9 +146,9 @@ def information_retrieval_agents(
     command_registry = get_command_registry(agent_test_config)
 
     ai_goals = [
-        "Write to a file called output.txt tesla's revenue in 2022 after searching for 'tesla revenue 2022'.",
-        "Write to a file called output.txt tesla's revenue in 2022.",
-        "Write to a file called output.txt tesla's revenue every year since its creation.",
+        "Write to a file called output.txt containing tesla's revenue in 2022 after searching for 'tesla revenue 2022'.",
+        "Write to a file called output.txt containing tesla's revenue in 2022.",
+        "Write to a file called output.txt containing tesla's revenue every year since its creation.",
     ]
     for ai_goal in ai_goals:
         ai_config = AIConfig(
