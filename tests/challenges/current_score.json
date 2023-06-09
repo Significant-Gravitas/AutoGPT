@@ -43,6 +43,10 @@
         "memory_challenge_c": {
             "max_level": 5,
             "max_level_beaten": 1
+        },
+        "memory_challenge_d": {
+            "max_level": 5,
+            "max_level_beaten": null
         }
     }
 }
