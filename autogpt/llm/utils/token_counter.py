@@ -34,7 +34,7 @@ def count_message_tokens(
         # Returning num tokens assuming gpt-3.5-turbo-0301.")
         return count_message_tokens(messages, model="gpt-3.5-turbo-0301")
     # add azure gpt3.5 turbo model'name,(gpt-35-trubo is the name of azure gpt3.5 trubo)
-    if model == "gpt-35-turbo":
+    elif model == "gpt-35-turbo":
         # !Note: azure gpt-35-turbo may change over time.
         # Returning num tokens assuming gpt-35-turbo-0301.")
         return count_message_tokens(messages, model="gpt-35-turbo-0301")
