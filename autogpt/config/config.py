@@ -38,17 +38,21 @@ class Config(metaclass=Singleton):
         else:
             self.disabled_command_categories = []
 
-        deny_commands = os.getenv("DENY_COMMANDS")
-        if deny_commands:
-            self.deny_commands = deny_commands.split(",")
-        else:
-            self.deny_commands = []
+        self.shell_command_control = os.getenv("SHELL_COMMAND_CONTROL", "denylist")
 
-        allow_commands = os.getenv("ALLOW_COMMANDS")
-        if allow_commands:
-            self.allow_commands = allow_commands.split(",")
+        # DENY_COMMANDS is deprecated and included for backwards-compatibility
+        shell_denylist = os.getenv("SHELL_DENYLIST", os.getenv("DENY_COMMANDS"))
+        if shell_denylist:
+            self.shell_denylist = shell_denylist.split(",")
         else:
-            self.allow_commands = []
+            self.shell_denylist = ["sudo", "su"]
+
+        # ALLOW_COMMANDS is deprecated and included for backwards-compatibility
+        shell_allowlist = os.getenv("SHELL_ALLOWLIST", os.getenv("ALLOW_COMMANDS"))
+        if shell_allowlist:
+            self.shell_allowlist = shell_allowlist.split(",")
+        else:
+            self.shell_allowlist = []
 
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.prompt_settings_file = os.getenv(
