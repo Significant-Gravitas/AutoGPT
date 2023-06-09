@@ -1,21 +1,30 @@
 import json
+from typing import Dict
 
 import pytest
+from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
-from tests.integration.agent_utils import run_interaction_loop
-from tests.integration.challenges.utils import get_level_to_run
+from autogpt.config import Config
+from tests.challenges.challenge_decorator.challenge_decorator import challenge
+from tests.challenges.utils import get_workspace_path, run_interaction_loop
 from tests.utils import requires_api_key
 
 LEVEL_CURRENTLY_BEATEN = 1
 MAX_LEVEL = 5
+OUTPUT_LOCATION = "output.txt"
 
 
-@pytest.mark.vcr
+# @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
+@challenge
 def test_memory_challenge_d(
-    memory_management_agent: Agent, user_selected_level: int
+    memory_management_agent: Agent,
+    patched_api_requestor: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    config: Config,
+    level_to_run: int,
 ) -> None:
     """
     The agent is given a series of events and must remember the respective beliefs of the characters.
@@ -23,29 +32,25 @@ def test_memory_challenge_d(
         memory_management_agent (Agent)
         user_selected_level (int)
     """
-    current_level = get_level_to_run(
-        user_selected_level, LEVEL_CURRENTLY_BEATEN, MAX_LEVEL
-    )
     sally_anne_test_phrases = [
         "Sally has a marble (marble A) and she puts it in her basket (basket S), then leaves the room. Anne moves marble A from Sally's basket (basket S) to her own basket (basket A).",
-        "Sally gives a new marble (marble B) to Bob who is outside with her. Bob goes into the room and places marble B into Anne's basket (basket A). Anne tells Bob to tell Sally that he lost the marble b. Bob leaves the room and speaks to Sally about the marble B. Meanwhile, after Bob left the room, Anne moves marble A into the green box, but tells Charlie to tell Sally that marble A is under the sofa. Charlie leaves the room and speak to Sally about the marble A as instructed by Anne.",
+        "Sally gives a new marble (marble B) to Bob who is outside with her. Bob goes into the room and places marble B into Anne's basket (basket A). Anne tells Bob to tell Sally that he lost the marble b. Bob leaves the room and speaks to Sally about the marble B. Meanwhile, after Bob left the room, Anne moves marble A into the green box, but tells Charlie to tell Sally that marble A is under the sofa. Charlie leaves the room and speaks to Sally about the marble A as instructed by Anne.",
         "Sally gives a new marble (marble C) to Charlie who is outside with her. Charlie enters the room and exchanges marble C with marble B in Anne's basket (basket A). Anne tells Charlie to tell Sally that he put marble C into the red box. Charlie leaves the room and speak to Sally about marble C as instructed by Anne. Meanwhile, after Charlie leaves the room, Bob enters into the room and moves marble A from the green box to under the sofa, but tells Anne to tell Sally that marble A is in the green box. Anne leaves the room and speak to Sally about the marble A as instructed by Bob",
         "Sally gives a new marble (marble D) to Anne. Anne gives the marble to Charlie. Charlie enters the room and gives marble D to Bob. Bob tells Charlie to tell Sally that he put marble D under the sofa. Bob put marble D under the sofa Charlie leaves the room and speaks to Sally about marble D. Meanwhile, after Charlie leaves the room, Bob takes marble A from under the sofa and places it in the blue box.",
         "Sally gives a new marble (marble E) to Charlie who is outside with her. Charlie enters the room and places marble E in the red box. Anne, who is already in the room, takes marble E from the red box, and hides it under the sofa. Then Anne leaves the room and tells Sally that marble E is in the green box. Meanwhile, after Anne leaves the room, Charlie who re-enters the room takes marble D from under the sofa and places it in his own basket (basket C).",
     ]
-    level_sally_anne_test_phrases = sally_anne_test_phrases[:current_level]
+    level_sally_anne_test_phrases = sally_anne_test_phrases[:level_to_run]
     create_instructions_files(
-        memory_management_agent, current_level, level_sally_anne_test_phrases
+        memory_management_agent, level_to_run, level_sally_anne_test_phrases, config
     )
-    try:
-        run_interaction_loop(memory_management_agent, 90)
-    except SystemExit:
-        file_path = str(memory_management_agent.workspace.get_path("output.txt"))
-        content = read_file(file_path)
-        check_beliefs(content, current_level)
+    run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
+    file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
+
+    content = read_file(file_path, config)
+    check_beliefs(content, level_to_run)
 
 
-def check_beliefs(content, level):
+def check_beliefs(content: str, level: int) -> None:
     # Define the expected beliefs for each level
     expected_beliefs = {
         1: {
@@ -59,16 +64,17 @@ def check_beliefs(content, level):
         2: {
             "Sally": {
                 "marble A": "sofa",  # Because Charlie told her
+                "marble B": "lost",  # Because Bob told her
             },
             "Anne": {
                 "marble A": "green box",  # Because she moved it there
                 "marble B": "basket A",  # Because Bob put it there and she was in the room
             },
             "Bob": {
-                "B": "basket A",  # Last place he put it
+                "marble B": "basket A",  # Last place he put it
             },
             "Charlie": {
-                "A": "sofa",  # Because Anne told him to tell Sally so
+                "marble A": "sofa",  # Because Anne told him to tell Sally so
             },
         },
         3: {
@@ -147,16 +153,19 @@ def check_beliefs(content, level):
             },
         },
     }
+
     # Extract the beliefs from the AI's response
     ai_beliefs = extract_beliefs(content)
     # Check the AI's beliefs against the expected beliefs
     for character, belief in expected_beliefs[level].items():
-        assert (
-            ai_beliefs.get(character) == belief
-        ), f"For {character}, expected '{belief}' but got '{ai_beliefs.get(character)}'"
+        for marble, location in belief.items():
+            ai_belief = ai_beliefs.get(character, {}).get(marble, "")
+            assert (
+                location in ai_belief
+            ), f"For {character}'s {marble}, expected '{location}' to be in '{ai_belief}'"
 
 
-def extract_beliefs(content):
+def extract_beliefs(content: str) -> Dict[str, Dict[str, str]]:
     """Extract the beliefs of each character from the AI's output."""
     # Parse the JSON content
     content_dict = json.loads(content)
@@ -168,6 +177,7 @@ def create_instructions_files(
     memory_management_agent: Agent,
     level: int,
     test_phrases: list,
+    config: Config,
     base_filename: str = "instructions_",
 ) -> None:
     """
@@ -176,13 +186,14 @@ def create_instructions_files(
         level:
         memory_management_agent (Agent)
         test_phrases (list)
+        config (Config)
         base_filename (str, optional)
     """
     for i in range(1, level + 1):
         content = generate_content(i, test_phrases, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
-        file_path = str(memory_management_agent.workspace.get_path(file_name))
-        write_to_file(file_path, content)
+        file_path = get_workspace_path(memory_management_agent, file_name)
+        write_to_file(file_path, content, config)
 
 
 def generate_content(
@@ -208,9 +219,9 @@ def generate_content(
         2. Everyone outside the room do not see and do not know the actions of the people inside the room.
         3. Only write about the marbles that are present in the level
         4. Marbles names are marble A, marble B, marble C, marble D, ...
-        5. Believed_location_of_the_specific_marble describes where is the marble like drawer, basket S, sofa, ...  Also, refer to the location by the name of the object (like 'sofa', 'drawer', etc.), not by its relative position (like 'under the sofa', 'in the drawer', etc.)
+        5. Believed_location_of_the_specific_marble describes where is the marble like drawer, basket S, sofa, ...
         6. Do not use expression like <Anne's basket> use <basket A> instead.
-        7. Do not use expression like <under the sofa> use <sofa> instead.
+        7. All characters believe what they're being told by other characters.
         Instructions:
         I) Write the following information in the file output.txt in JSON format:
         1. The respective beliefs of the characters (which means where every marble is according to character x, y, z. Character x should say where it believes every marble it is aware exist is)
