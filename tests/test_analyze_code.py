@@ -3,6 +3,7 @@
 import pytest
 
 from autogpt.commands.analyze_code import analyze_code
+from autogpt.config import Config
 
 
 @pytest.fixture
@@ -15,46 +16,59 @@ class TestAnalyzeCode:
         # Positive Test
         mock_call_ai_function.return_value = ["Suggestion 1", "Suggestion 2"]
         code = "def example_function():\n    pass"
-        result = analyze_code(code)
+        config = Config()
+        result = analyze_code(code, config)
         assert result == ["Suggestion 1", "Suggestion 2"]
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
             "Analyzes the given code and returns a list of suggestions for improvements.",
+            config=config,
         )
 
-    def test_negative_analyze_code(self, mock_call_ai_function):
+    def test_negative_analyze_code(
+        self,
+        mock_call_ai_function,
+        config: Config,
+    ):
         # Negative Test
         mock_call_ai_function.return_value = []
         code = "def example_function():\n    pass"
-        result = analyze_code(code)
+        result = analyze_code(code, config)
         assert result == []
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
             "Analyzes the given code and returns a list of suggestions for improvements.",
+            config=config,
         )
 
-    def test_error_analyze_code(self, mock_call_ai_function):
+    def test_error_analyze_code(self, mock_call_ai_function, config: Config):
         # Error Test
         mock_call_ai_function.side_effect = Exception("Error occurred")
         code = "def example_function():\n    pass"
         with pytest.raises(Exception):
-            analyze_code(code)
+            result = analyze_code(code, config)
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
             "Analyzes the given code and returns a list of suggestions for improvements.",
+            config=config,
         )
 
-    def test_edge_analyze_code_empty_code(self, mock_call_ai_function):
+    def test_edge_analyze_code_empty_code(
+        self,
+        mock_call_ai_function,
+        config: Config,
+    ):
         # Edge Test
         mock_call_ai_function.return_value = ["Suggestion 1", "Suggestion 2"]
         code = ""
-        result = analyze_code(code)
+        result = analyze_code(code, config)
         assert result == ["Suggestion 1", "Suggestion 2"]
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
             "Analyzes the given code and returns a list of suggestions for improvements.",
+            config=config,
         )
