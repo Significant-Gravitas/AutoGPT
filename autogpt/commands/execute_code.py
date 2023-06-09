@@ -13,6 +13,9 @@ from autogpt.logs import logger
 from autogpt.setup import CFG
 from autogpt.workspace.workspace import Workspace
 
+ALLOWLIST_CONTROL = "allowlist"
+DENYLIST_CONTROL = "denylist"
+
 
 @command(
     "execute_python_code",
@@ -152,21 +155,15 @@ def validate_command(command: str, config: Config) -> bool:
     Returns:
         bool: True if the command is allowed, False otherwise
     """
-    tokens = command.split()
-
-    if not tokens:
+    if not command:
         return False
 
-    if config.deny_commands and tokens[0] in config.deny_commands:
-        return False
+    command_name = command.split()[0]
 
-    for keyword in config.allow_commands:
-        if keyword in tokens:
-            return True
-    if config.allow_commands:
-        return False
-
-    return True
+    if config.shell_command_control == ALLOWLIST_CONTROL:
+        return command_name in config.shell_allowlist
+    else:
+        return command_name not in config.shell_denylist
 
 
 @command(
