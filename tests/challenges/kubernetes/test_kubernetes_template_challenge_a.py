@@ -6,10 +6,11 @@ from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from autogpt.config import Config
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import run_interaction_loop
+from tests.challenges.utils import get_workspace_path, run_interaction_loop
 from tests.utils import requires_api_key
 
 CYCLE_COUNT = 3
+OUTPUT_LOCATION = "kube.yaml"
 
 
 @pytest.mark.vcr
@@ -34,7 +35,7 @@ def test_kubernetes_template_challenge_a(
     """
     run_interaction_loop(monkeypatch, kubernetes_agent, CYCLE_COUNT)
 
-    file_path = str(kubernetes_agent.workspace.get_path("kube.yaml"))
+    file_path = get_workspace_path(kubernetes_agent, OUTPUT_LOCATION)
     content = read_file(file_path, config)
 
     for word in ["apiVersion", "kind", "metadata", "spec"]:

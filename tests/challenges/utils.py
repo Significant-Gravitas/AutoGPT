@@ -1,5 +1,7 @@
 import contextlib
 import random
+import shutil
+from pathlib import Path
 from typing import Generator
 
 import pytest
@@ -42,3 +44,15 @@ def run_interaction_loop(
     setup_mock_input(monkeypatch, cycle_count)
     with contextlib.suppress(SystemExit):
         agent.start_interaction_loop()
+
+
+def get_workspace_path(agent: Agent, file_name: str) -> str:
+    return str(agent.workspace.get_path(file_name))
+
+
+def copy_file_into_workspace(
+    agent: Agent, directory_path: Path, file_path: str
+) -> None:
+    workspace_code_file_path = get_workspace_path(agent, file_path)
+    code_file_path = directory_path / file_path
+    shutil.copy(code_file_path, workspace_code_file_path)
