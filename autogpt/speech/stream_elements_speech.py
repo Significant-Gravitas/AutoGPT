@@ -7,23 +7,24 @@ from playsound import playsound
 from autogpt.speech.base import VoiceBase
 
 
-class BrianSpeech(VoiceBase):
-    """Brian speech module for autogpt"""
+class StreamElementsSpeech(VoiceBase):
+    """Streamelements speech module for autogpt"""
 
     def _setup(self) -> None:
         """Setup the voices, API key, etc."""
 
-    def _speech(self, text: str, _: int = 0) -> bool:
-        """Speak text using Brian with the streamelements API
+    def _speech(self, text: str, voice: str, _: int = 0) -> bool:
+        """Speak text using the streamelements API
 
         Args:
             text (str): The text to speak
+            voice (str): The voice to use
 
         Returns:
             bool: True if the request was successful, False otherwise
         """
         tts_url = (
-            f"https://api.streamelements.com/kappa/v2/speech?voice=Brian&text={text}"
+            f"https://api.streamelements.com/kappa/v2/speech?voice={voice}&text={text}"
         )
         response = requests.get(tts_url)
 
