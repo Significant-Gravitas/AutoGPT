@@ -154,8 +154,8 @@ jobs:
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
-          AGENT_MODE: ${{ vars.AGENT_MODE }}
-          AGENT_TYPE: ${{ vars.AGENT_TYPE }}
+          AGENT_MODE: ${{ secrets.AGENT_MODE }}
+          AGENT_TYPE: ${{ secrets.AGENT_TYPE }}
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
