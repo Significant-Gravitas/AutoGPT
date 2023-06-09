@@ -135,7 +135,7 @@ def run_auto_gpt(
     cfg.ai_settings_filepath = str(
         Path(__file__).resolve().parent.parent / cfg.ai_settings_file
     )
-    
+
     # HACK: doing this here to collect some globals that depend on the workspace.
     file_logger_path = workspace_directory / "file_logger.txt"
     if not file_logger_path.exists():

@@ -1,4 +1,5 @@
 from colorama import Fore, Style
+
 from autogpt import utils
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
@@ -62,11 +63,13 @@ def get_valid_input(num_options):
 def select_config_action(all_configs, task):
     cfg_count = len(all_configs)
 
-    logger.typewriter_log(f"Please select a configuration to {task}:", Fore.GREEN, speak_text=True)
+    logger.typewriter_log(
+        f"Please select a configuration to {task}:", Fore.GREEN, speak_text=True
+    )
     for i, cfg_name in enumerate(all_configs.keys(), start=1):
         logger.typewriter_log(f"{i}. {cfg_name}")
     logger.typewriter_log(f"{cfg_count+1}. Go back to main menu")
-    
+
     selection = get_valid_input(cfg_count + 1)
     if selection == cfg_count + 1:
         return None
@@ -235,7 +238,9 @@ def start_prompt(config, sad=None):
 def display_main_menu(all_configs, menu_options):
     cfg_count = len(all_configs)
 
-    logger.typewriter_log("Please select configuration/option:", Fore.GREEN, speak_text=True)
+    logger.typewriter_log(
+        "Please select configuration/option:", Fore.GREEN, speak_text=True
+    )
     for i, cfg_name in enumerate(all_configs.keys(), start=1):
         logger.typewriter_log(f"{i}. {cfg_name}")
     for i, (option_text, _) in enumerate(menu_options, start=cfg_count + 1):
