@@ -7,10 +7,11 @@ from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from autogpt.config import Config
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import run_interaction_loop
+from tests.challenges.utils import get_workspace_path, run_interaction_loop
 from tests.utils import requires_api_key
 
 CYCLE_COUNT = 3
+OUTPUT_LOCATION = "2010_nobel_prize_winners.txt"
 
 
 @pytest.mark.vcr
@@ -35,10 +36,8 @@ def test_information_retrieval_challenge_b(
 
     with contextlib.suppress(SystemExit):
         run_interaction_loop(monkeypatch, get_nobel_prize_agent, CYCLE_COUNT)
+    file_path = get_workspace_path(get_nobel_prize_agent, OUTPUT_LOCATION)
 
-    file_path = str(
-        get_nobel_prize_agent.workspace.get_path("2010_nobel_prize_winners.txt")
-    )
     content = read_file(file_path, config)
     assert "Andre Geim" in content, "Expected the file to contain Andre Geim"
     assert (

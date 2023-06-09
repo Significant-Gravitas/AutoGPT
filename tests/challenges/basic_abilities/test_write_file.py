@@ -6,7 +6,7 @@ from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from autogpt.config import Config
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import run_interaction_loop
+from tests.challenges.utils import get_workspace_path, run_interaction_loop
 from tests.utils import requires_api_key
 
 CYCLE_COUNT_PER_LEVEL = [1, 1]
@@ -34,7 +34,7 @@ def test_write_file(
     expected_outputs = EXPECTED_OUTPUTS_PER_LEVEL[level_to_run - 1]
 
     for file_name, expected_lines in expected_outputs.items():
-        file_path = str(file_system_agent.workspace.get_path(file_name))
+        file_path = get_workspace_path(file_system_agent, file_name)
         content = read_file(file_path, config)
         for expected_line in expected_lines:
             assert (
