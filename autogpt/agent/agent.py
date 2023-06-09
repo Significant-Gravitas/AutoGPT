@@ -45,7 +45,7 @@ class Agent:
 
         triggering_prompt: The last sentence the AI will see before answering.
             For Auto-GPT, this prompt is:
-            Determine which next command to use, and respond using the format specified
+            Determine exactly one command to use, and respond using the format specified
               above:
             The triggering prompt is not part of the system prompt because between the
               system prompt and the triggering
