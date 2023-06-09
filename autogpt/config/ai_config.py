@@ -6,8 +6,7 @@ from __future__ import annotations
 
 import os
 import platform
-from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import distro
 import yaml
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
     from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
-SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 
 
 class AIConfig:
@@ -29,6 +27,7 @@ class AIConfig:
         ai_role (str): The description of the AI's role.
         ai_goals (list): The list of objectives the AI is supposed to complete.
         api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+        plugins (list): The list of objectives the AI is supposed to complete.
     """
 
     def __init__(
@@ -37,6 +36,7 @@ class AIConfig:
         ai_role: str = "",
         ai_goals: list | None = None,
         api_budget: float = 0.0,
+        plugins: Optional[List] = None,
     ) -> None:
         """
         Initialize a class instance
@@ -46,71 +46,152 @@ class AIConfig:
             ai_role (str): The description of the AI's role.
             ai_goals (list): The list of objectives the AI is supposed to complete.
             api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+            plugins (list): The list of objectives the AI is supposed to complete.
         Returns:
             None
         """
-        if ai_goals is None:
-            ai_goals = []
         self.ai_name = ai_name
         self.ai_role = ai_role
-        self.ai_goals = ai_goals
+        self.ai_goals = ai_goals or []
         self.api_budget = api_budget
+        self.plugins = plugins or []
         self.prompt_generator: PromptGenerator | None = None
         self.command_registry: CommandRegistry | None = None
 
     @staticmethod
-    def load(config_file: str = SAVE_FILE) -> "AIConfig":
+    def load(ai_name: str, config_file: str) -> Optional["AIConfig"]:
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
-          yaml file if yaml file exists,
-        else returns class with no parameters.
+        Load a specific AI configuration from the config file.
 
-        Parameters:
-           config_file (int): The path to the config yaml file.
-             DEFAULT: "../ai_settings.yaml"
+        Args:
+            ai_name (str): The name of the AI configuration to load.
+            config_file (str): The path to the configuration file.
 
         Returns:
-            cls (object): An instance of given cls object
+            AIConfig: The loaded AI configuration, or None if no such configuration exists.
         """
+        all_configs = AIConfig.load_all(config_file)  # type: ignore
 
+        if ai_name in all_configs:
+            return all_configs[ai_name]
+        else:
+            return None
+
+    @staticmethod
+    def load_all(config_file: str) -> Dict[str, "AIConfig"]:
         try:
             with open(config_file, encoding="utf-8") as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
+                all_configs: Dict[str, Any] = yaml.safe_load(file) or {}
         except FileNotFoundError:
-            config_params = {}
+            all_configs = {}
 
-        ai_name = config_params.get("ai_name", "")
-        ai_role = config_params.get("ai_role", "")
-        ai_goals = [
-            str(goal).strip("{}").replace("'", "").replace('"', "")
-            if isinstance(goal, dict)
-            else str(goal)
-            for goal in config_params.get("ai_goals", [])
-        ]
-        api_budget = config_params.get("api_budget", 0.0)
-        # type: Type[AIConfig]
-        return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+        configs = all_configs.get("configs", {}) or {}
 
-    def save(self, config_file: str = SAVE_FILE) -> None:
+        ai_configs = {}
+        for ai_name, config_params in configs.items():
+            ai_role = config_params.get("ai_role", "")
+            ai_goals = [
+                str(goal).strip("{}").replace("'", "").replace('"', "")
+                if isinstance(goal, dict)
+                else str(goal)
+                for goal in config_params.get("ai_goals", [])
+            ]
+            api_budget = config_params.get("api_budget", 0.0)
+            plugins = [
+                str(plugin).strip("{}").replace("'", "").replace('"', "")
+                if isinstance(plugin, dict)
+                else str(plugin)
+                for plugin in config_params.get("plugins", [])
+            ]
+            ai_configs[ai_name] = AIConfig(
+                ai_name, ai_role, ai_goals, api_budget, plugins
+            )
+
+        return ai_configs
+
+    def save(
+        self,
+        config_file: str,
+        append: bool = False,
+        old_ai_name: Optional[str] = None,
+    ) -> None:
         """
-        Saves the class parameters to the specified file yaml file path as a yaml file.
+        Saves the class parameters to the specified file YAML file path as a YAML file.
 
         Parameters:
-            config_file(str): The path to the config yaml file.
-              DEFAULT: "../ai_settings.yaml"
+            config_file(str): The path to the config YAML file.
+                DEFAULT: "../ai_settings.yaml"
+            append(bool): Whether to append the new configuration to the existing file.
+                If False, the file will be overwritten. If True, the new configuration will be appended.
+                DEFAULT: False
+            old_ai_name(str, optional): The old AI name. If provided, the function will remove the existing
+                configuration for old_ai_name before adding the new configuration.
 
         Returns:
             None
         """
+        # Prevent saving if the ai_name is an empty string
+        if not self.ai_name:
+            return "The AI name cannot be empty. The configuration was not saved."
 
-        config = {
-            "ai_name": self.ai_name,
-            "ai_role": self.ai_role,
-            "ai_goals": self.ai_goals,
-            "api_budget": self.api_budget,
+        new_config = {
+            self.ai_name: {
+                "ai_role": self.ai_role,
+                "ai_goals": self.ai_goals,
+                "api_budget": self.api_budget,
+                "plugins": self.plugins,
+            }
         }
+
+        if not append or not os.path.exists(config_file):
+            all_configs: Dict[str, Dict[str, Any]] = {"configs": {}}
+        else:
+            with open(config_file, "r", encoding="utf-8") as file:
+                all_configs = yaml.safe_load(file)
+
+        # Remove old configuration if old_ai_name is provided
+        if old_ai_name and old_ai_name in all_configs["configs"]:
+            del all_configs["configs"][old_ai_name]
+
+        # Append the new config
+        all_configs["configs"].update(new_config)
+
         with open(config_file, "w", encoding="utf-8") as file:
-            yaml.dump(config, file, allow_unicode=True)
+            file.write(yaml.dump(all_configs, allow_unicode=True))
+
+    def delete(self, config_file: str, ai_name: str = "") -> str:
+        """
+        Deletes a configuration from the specified YAML file.
+
+        Parameters:
+            config_file(str): The path to the config YAML file.
+                DEFAULT: "../ai_settings.yaml"
+            ai_name(str): The name of the AI whose configuration is to be deleted.
+
+        Returns:
+            str: Message indicating the result of the operation.
+        """
+
+        # If no AI name is provided, exit
+        if ai_name == "":
+            return "No AI name provided. Please provide an AI name to delete its configuration."
+
+        # Load existing configurations
+        if not os.path.exists(config_file):
+            return "No configurations to delete."
+        else:
+            with open(config_file, "r", encoding="utf-8") as file:
+                all_configs = yaml.safe_load(file)
+
+        # Check if AI configuration exists
+        if ai_name in all_configs["configs"]:
+            del all_configs["configs"][ai_name]
+        else:
+            return "No configuration found for AI '{}'.".format(ai_name)
+
+        # Save configurations back to file
+        with open(config_file, "w", encoding="utf-8") as file:
+            file.write(yaml.dump(all_configs, allow_unicode=True))
 
     def construct_full_prompt(
         self, prompt_generator: Optional[PromptGenerator] = None
@@ -136,19 +217,19 @@ class AIConfig:
         from autogpt.config import Config
         from autogpt.prompts.prompt import build_default_prompt_generator
 
-        cfg = Config()
+        CFG = Config()
         if prompt_generator is None:
             prompt_generator = build_default_prompt_generator()
         prompt_generator.goals = self.ai_goals
         prompt_generator.name = self.ai_name
         prompt_generator.role = self.ai_role
         prompt_generator.command_registry = self.command_registry
-        for plugin in cfg.plugins:
+        for plugin in CFG.plugins:
             if not plugin.can_handle_post_prompt():
                 continue
             prompt_generator = plugin.post_prompt(prompt_generator)
 
-        if cfg.execute_local_commands:
+        if CFG.execute_local_commands:
             # add OS info to prompt
             os_name = platform.system()
             os_info = (
