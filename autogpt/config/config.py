@@ -22,6 +22,7 @@ class Config(metaclass=Singleton):
 
         self.debug_mode = False
         self.continuous_mode = False
+        self.risk_avoidance_mode = False
         self.continuous_limit = 0
         self.speak_mode = False
         self.skip_reprompt = False
@@ -60,6 +61,10 @@ class Config(metaclass=Singleton):
         )
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
+
+        self.risk_evaluation_model = os.getenv("RISK_EVALUATION_MODEL", "gpt-4")
+        self.risk_threshold = float(os.getenv("RISK_THRESHOLD", 0.5))
+
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
 
         self.browse_spacy_language_model = os.getenv(
@@ -251,6 +256,10 @@ class Config(metaclass=Singleton):
     def set_debug_mode(self, value: bool) -> None:
         """Set the debug mode value."""
         self.debug_mode = value
+
+    def set_risk_avoidance_mode(self, value: bool):
+        """Set the risk avoidance mode value."""
+        self.risk_avoidance_mode = value
 
     def set_plugins(self, value: list) -> None:
         """Set the plugins value."""

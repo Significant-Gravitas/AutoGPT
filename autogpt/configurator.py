@@ -22,6 +22,7 @@ def create_config(
     config: Config,
     continuous: bool,
     continuous_limit: int,
+    risk_avoidance: bool,
     ai_settings_file: str,
     prompt_settings_file: str,
     skip_reprompt: bool,
@@ -52,8 +53,12 @@ def create_config(
         skips_news (bool): Whether to suppress the output of latest news on startup
     """
     config.set_debug_mode(False)
+    config.set_risk_avoidance_mode(False)
     config.set_continuous_mode(False)
     config.set_speak_mode(False)
+    config.set_fast_llm_model(check_model(CFG.fast_llm_model, "fast_llm_model"))
+    config.set_smart_llm_model(check_model(CFG.smart_llm_model, "smart_llm_model"))
+
 
     if debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
@@ -76,6 +81,19 @@ def create_config(
             )
             config.set_continuous_limit(continuous_limit)
 
+    elif risk_avoidance:
+        logger.typewriter_log("Risk Avoidance Mode: ", Fore.RED, "ENABLED")
+        logger.typewriter_log(
+            "Risk evaluation settings: ",
+            Fore.RED,
+            f"Model: {CFG.risk_evaluation_model}, Threshold: {CFG.risk_threshold}",
+        )
+        logger.typewriter_log(
+            "WARNING: ",
+            Fore.RED,
+            "Risk Avoidance mode is expected to be safer than continuous mode, but it is still potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Exercise proper caution.",
+        )
+        CFG.set_risk_avoidance_mode(True)
     # Check if continuous limit is used without continuous mode
     if continuous_limit and not continuous:
         raise click.UsageError("--continuous-limit can only be used with --continuous")

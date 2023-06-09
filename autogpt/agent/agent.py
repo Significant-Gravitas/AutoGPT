@@ -23,6 +23,7 @@ from autogpt.log_cycle.log_cycle import (
     LogCycleHandler,
 )
 from autogpt.logs import logger, print_assistant_thoughts
+from autogpt.risk_evaluation import evaluate_risk
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
 from autogpt.speech import say_text
@@ -177,8 +178,11 @@ class Agent:
                 f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
             )
 
-            if not cfg.continuous_mode and self.next_action_count == 0:
-                # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+            if (
+                not cfg.continuous_mode
+                and self.next_action_count == 0
+                and not cfg.risk_avoidance_mode
+            ):  # default mode
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 self.user_input = ""
@@ -255,6 +259,62 @@ class Agent:
                 elif user_input == "EXIT":
                     logger.info("Exiting...")
                     break
+            if cfg.risk_avoidance_mode:
+                logger.typewriter_log(
+                    "NEXT ACTION: ",
+                    Fore.CYAN,
+                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+                    f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                )
+
+                risk_value, risk_reason = evaluate_risk(command_name, arguments)
+
+                if risk_value > cfg.risk_threshold:
+                    logger.typewriter_log(
+                        "Risk evaluation: ",
+                        Fore.RED,
+                        f"Command not authorised. Calculated risk value: {Fore.RED}{risk_value}{Style.RESET_ALL},"
+                        f" reason: {Fore.RED}{risk_reason}{Style.RESET_ALL}",
+                    )
+
+                    while True:
+                        logger.typewriter_log(
+                            "Awaiting user authorisation (y/n)...", Fore.RED
+                        )
+                        console_input = clean_input(
+                            Fore.MAGENTA + "Input: " + Style.RESET_ALL
+                        )
+                        if console_input.lower().strip() == "y":
+                            user_input = "GENERATE NEXT COMMAND JSON"
+                            break
+                        elif console_input.lower().strip() == "":
+                            print("Invalid input format.")
+                            continue
+                        elif console_input.lower() == "n":
+                            user_input = "EXIT"
+                            break
+                        else:
+                            user_input = console_input
+                            command_name = "human_feedback"
+                            break
+
+                    if user_input == "GENERATE NEXT COMMAND JSON":
+                        logger.typewriter_log(
+                            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                            Fore.MAGENTA,
+                            "",
+                        )
+                    elif user_input == "EXIT":
+                        print("Exiting...", flush=True)
+                        break
+                else:
+                    logger.typewriter_log(
+                        "Risk evaluation: ",
+                        Fore.GREEN,
+                        f"Command authorised. Calculated risk value: {Fore.GREEN}{risk_value}{Style.RESET_ALL},"
+                        f" reason: {Fore.GREEN}{risk_reason}{Style.RESET_ALL}",
+                    )
+                    user_input = "GENERATE NEXT COMMAND JSON"
             else:
                 # First log new-line so user can differentiate sections better in console
                 logger.typewriter_log("\n")
