@@ -5,7 +5,6 @@ import tempfile
 from typing import Callable
 
 import pytest
-from pytest_mock import MockerFixture
 
 import autogpt.commands.execute_code as sut  # system under testing
 from autogpt.config import Config
