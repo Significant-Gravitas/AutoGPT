@@ -3,6 +3,7 @@ import json
 import pytest
 from googleapiclient.errors import HttpError
 
+from autogpt.agent.agent import Agent
 from autogpt.commands.google_search import (
     google_official_search,
     google_search,
@@ -39,13 +40,13 @@ def test_safe_google_results_invalid_input():
     ],
 )
 def test_google_search(
-    query, num_results, expected_output, return_value, mocker, config
+    query, num_results, expected_output, return_value, mocker, agent: Agent
 ):
     mock_ddg = mocker.Mock()
     mock_ddg.return_value = return_value
 
     mocker.patch("autogpt.commands.google_search.DDGS.text", mock_ddg)
-    actual_output = google_search(query, config, num_results=num_results)
+    actual_output = google_search(query, agent=agent, num_results=num_results)
     expected_output = safe_google_results(expected_output)
     assert actual_output == expected_output
 
@@ -79,10 +80,15 @@ def mock_googleapiclient(mocker):
     ],
 )
 def test_google_official_search(
-    query, num_results, expected_output, search_results, mock_googleapiclient, config
+    query,
+    num_results,
+    expected_output,
+    search_results,
+    mock_googleapiclient,
+    agent: Agent,
 ):
     mock_googleapiclient.return_value = search_results
-    actual_output = google_official_search(query, config, num_results=num_results)
+    actual_output = google_official_search(query, agent=agent, num_results=num_results)
     assert actual_output == safe_google_results(expected_output)
 
 
@@ -113,7 +119,7 @@ def test_google_official_search_errors(
     mock_googleapiclient,
     http_code,
     error_msg,
-    config,
+    agent: Agent,
 ):
     class resp:
         def __init__(self, _status, _reason):
@@ -130,5 +136,5 @@ def test_google_official_search_errors(
     )
 
     mock_googleapiclient.side_effect = error
-    actual_output = google_official_search(query, config, num_results=num_results)
+    actual_output = google_official_search(query, agent=agent, num_results=num_results)
     assert actual_output == safe_google_results(expected_output)

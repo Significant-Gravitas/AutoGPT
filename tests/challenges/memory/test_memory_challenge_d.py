@@ -6,7 +6,6 @@ from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
-from autogpt.config import Config
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_interaction_loop
 from tests.utils import requires_api_key
@@ -23,7 +22,6 @@ def test_memory_challenge_d(
     memory_management_agent: Agent,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
-    config: Config,
     level_to_run: int,
 ) -> None:
     """
@@ -41,12 +39,12 @@ def test_memory_challenge_d(
     ]
     level_sally_anne_test_phrases = sally_anne_test_phrases[:level_to_run]
     create_instructions_files(
-        memory_management_agent, level_to_run, level_sally_anne_test_phrases, config
+        memory_management_agent, level_to_run, level_sally_anne_test_phrases
     )
     run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
     file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
 
-    content = read_file(file_path, config)
+    content = read_file(file_path, memory_management_agent)
     check_beliefs(content, level_to_run)
 
 
@@ -177,7 +175,6 @@ def create_instructions_files(
     memory_management_agent: Agent,
     level: int,
     test_phrases: list,
-    config: Config,
     base_filename: str = "instructions_",
 ) -> None:
     """
@@ -186,14 +183,13 @@ def create_instructions_files(
         level:
         memory_management_agent (Agent)
         test_phrases (list)
-        config (Config)
         base_filename (str, optional)
     """
     for i in range(1, level + 1):
         content = generate_content(i, test_phrases, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
         file_path = get_workspace_path(memory_management_agent, file_name)
-        write_to_file(file_path, content, config)
+        write_to_file(file_path, content, memory_management_agent)
 
 
 def generate_content(

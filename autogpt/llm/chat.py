@@ -181,7 +181,7 @@ def chat_with_ai(
         logger.debug("")
     logger.debug("----------- END OF CONTEXT ----------------")
     agent.log_cycle_handler.log_cycle(
-        agent.ai_config.ai_name,
+        agent.ai_name,
         agent.created_at,
         agent.cycle_count,
         message_sequence.raw(),
