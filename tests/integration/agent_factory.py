@@ -59,7 +59,8 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
         ai_name="",
         memory=memory_none,
         command_registry=command_registry,
-        config=ai_config,
+        ai_config=ai_config,
+        config=agent_test_config,
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -95,7 +96,8 @@ def file_system_agents(
                 ai_name="Information Retrieval Agent",
                 memory=memory_json_file,
                 command_registry=command_registry,
-                config=ai_config,
+                ai_config=ai_config,
+                config=agent_test_config,
                 next_action_count=0,
                 system_prompt=system_prompt,
                 triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -125,7 +127,8 @@ def memory_management_agent(agent_test_config, memory_json_file, workspace: Work
         ai_name="Follow-Instructions-GPT",
         memory=memory_json_file,
         command_registry=command_registry,
-        config=ai_config,
+        ai_config=ai_config,
+        config=agent_test_config,
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -161,7 +164,8 @@ def information_retrieval_agents(
                 ai_name="Information Retrieval Agent",
                 memory=memory_json_file,
                 command_registry=command_registry,
-                config=ai_config,
+                ai_config=ai_config,
+                config=agent_test_config,
                 next_action_count=0,
                 system_prompt=system_prompt,
                 triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -172,7 +176,9 @@ def information_retrieval_agents(
 
 
 @pytest.fixture
-def kubernetes_agent(memory_json_file, workspace: Workspace):
+def kubernetes_agent(
+    agent_test_config: Config, memory_json_file: NoMemory, workspace: Workspace
+) -> Agent:
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -193,7 +199,8 @@ def kubernetes_agent(memory_json_file, workspace: Workspace):
         ai_name="Kubernetes-Demo",
         memory=memory_json_file,
         command_registry=command_registry,
-        config=ai_config,
+        ai_config=ai_config,
+        config=agent_test_config,
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -226,7 +233,8 @@ def get_nobel_prize_agent(agent_test_config, memory_json_file, workspace: Worksp
         ai_name="Get-PhysicsNobelPrize",
         memory=memory_json_file,
         command_registry=command_registry,
-        config=ai_config,
+        ai_config=ai_config,
+        config=agent_test_config,
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -270,7 +278,8 @@ def debug_code_agents(agent_test_config, memory_json_file, workspace: Workspace)
                 ai_name="Debug Code Agent",
                 memory=memory_json_file,
                 command_registry=command_registry,
-                config=ai_config,
+                ai_config=ai_config,
+                config=agent_test_config,
                 next_action_count=0,
                 system_prompt=system_prompt,
                 triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
