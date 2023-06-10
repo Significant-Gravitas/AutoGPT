@@ -4,7 +4,6 @@ from datetime import datetime
 
 from colorama import Fore, Style
 
-from autogpt.app import execute_command, get_command
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
@@ -89,6 +88,9 @@ class Agent:
         ).max_tokens
 
     def start_interaction_loop(self):
+        # Avoid circular imports
+        from autogpt.app import execute_command, get_command
+
         # Interaction Loop
         self.cycle_count = 0
         command_name = None
@@ -287,8 +289,7 @@ class Agent:
                     self.command_registry,
                     command_name,
                     arguments,
-                    self.ai_config.prompt_generator,
-                    config=self.config,
+                    agent=self,
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
 

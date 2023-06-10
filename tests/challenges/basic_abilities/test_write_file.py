@@ -4,7 +4,6 @@ import pytest
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
-from autogpt.config import Config
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_interaction_loop
 from tests.utils import requires_api_key
@@ -23,7 +22,6 @@ def test_write_file(
     file_system_agents: List[Agent],
     patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
-    config: Config,
     level_to_run: int,
 ) -> None:
     file_system_agent = file_system_agents[level_to_run - 1]
@@ -35,7 +33,7 @@ def test_write_file(
 
     for file_name, expected_lines in expected_outputs.items():
         file_path = get_workspace_path(file_system_agent, file_name)
-        content = read_file(file_path, config)
+        content = read_file(file_path, file_system_agent)
         for expected_line in expected_lines:
             assert (
                 expected_line in content
