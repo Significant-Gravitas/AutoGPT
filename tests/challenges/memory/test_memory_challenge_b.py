@@ -35,9 +35,7 @@ def test_memory_challenge_b(
         level_to_run (int)
     """
     task_ids = [str(i * 1111) for i in range(1, level_to_run + 1)]
-    create_instructions_files(
-        memory_management_agent, level_to_run, task_ids, memory_management_agent
-    )
+    create_instructions_files(memory_management_agent, level_to_run, task_ids)
 
     run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
 

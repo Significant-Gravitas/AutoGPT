@@ -39,10 +39,7 @@ def test_memory_challenge_d(
     ]
     level_sally_anne_test_phrases = sally_anne_test_phrases[:level_to_run]
     create_instructions_files(
-        memory_management_agent,
-        level_to_run,
-        level_sally_anne_test_phrases,
-        memory_management_agent,
+        memory_management_agent, level_to_run, level_sally_anne_test_phrases
     )
     run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
     file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)

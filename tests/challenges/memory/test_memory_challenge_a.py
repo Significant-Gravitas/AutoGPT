@@ -30,9 +30,7 @@ def test_memory_challenge_a(
     """
 
     task_id = "2314"
-    create_instructions_files(
-        memory_management_agent, level_to_run, task_id, memory_management_agent
-    )
+    create_instructions_files(memory_management_agent, level_to_run, task_id)
 
     run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
 
