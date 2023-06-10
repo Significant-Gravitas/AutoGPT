@@ -69,7 +69,7 @@ jobs:
 
       - name: Check for unused imports and pass statements
         run: |
-          cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports autogpt tests"
+          cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests"
           $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
 
   test:
@@ -245,3 +245,10 @@ jobs:
             echo $TOKEN | gh auth login --with-token
             gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
+
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-logs
+          path: logs/
