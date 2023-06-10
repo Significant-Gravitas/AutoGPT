@@ -82,6 +82,8 @@ class Config(metaclass=Singleton):
             openai.api_type = self.openai_api_type
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
+        elif os.getenv("OPENAI_API_BASE_URL", None):
+            openai.api_base = os.getenv("OPENAI_API_BASE_URL")
 
         if self.openai_organization is not None:
             openai.organization = self.openai_organization
