@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from typing import List, Optional
+
 import openai
+from openai import Model
 
 from autogpt.config import Config
+from autogpt.llm.base import MessageDict
 from autogpt.llm.modelsinfo import COSTS
 from autogpt.logs import logger
 from autogpt.singleton import Singleton
@@ -14,16 +18,18 @@ class ApiManager(metaclass=Singleton):
         self.total_completion_tokens = 0
         self.total_cost = 0
         self.total_budget = 0
+        self.models: Optional[list[Model]] = None
 
     def reset(self):
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
         self.total_cost = 0
         self.total_budget = 0.0
+        self.models = None
 
     def create_chat_completion(
         self,
-        messages: list,  # type: ignore
+        messages: list[MessageDict],
         model: str | None = None,
         temperature: float = None,
         max_tokens: int | None = None,
@@ -59,13 +65,14 @@ class ApiManager(metaclass=Singleton):
                 max_tokens=max_tokens,
                 api_key=cfg.openai_api_key,
             )
-        logger.debug(f"Response: {response}")
-        prompt_tokens = response.usage.prompt_tokens
-        completion_tokens = response.usage.completion_tokens
-        self.update_cost(prompt_tokens, completion_tokens, model)
+        if not hasattr(response, "error"):
+            logger.debug(f"Response: {response}")
+            prompt_tokens = response.usage.prompt_tokens
+            completion_tokens = response.usage.completion_tokens
+            self.update_cost(prompt_tokens, completion_tokens, model)
         return response
 
-    def update_cost(self, prompt_tokens, completion_tokens, model):
+    def update_cost(self, prompt_tokens, completion_tokens, model: str):
         """
         Update the total cost, prompt tokens, and completion tokens.
 
@@ -74,6 +81,9 @@ class ApiManager(metaclass=Singleton):
         completion_tokens (int): The number of tokens used in the completion.
         model (str): The model used for the API call.
         """
+        # the .model property in API responses can contain version suffixes like -v2
+        model = model[:-3] if model.endswith("-v2") else model
+
         self.total_prompt_tokens += prompt_tokens
         self.total_completion_tokens += completion_tokens
         self.total_cost += (
@@ -126,3 +136,17 @@ class ApiManager(metaclass=Singleton):
         float: The total budget for API calls.
         """
         return self.total_budget
+
+    def get_models(self) -> List[Model]:
+        """
+        Get list of available GPT models.
+
+        Returns:
+        list: List of available GPT models.
+
+        """
+        if self.models is None:
+            all_models = openai.Model.list()["data"]
+            self.models = [model for model in all_models if "gpt" in model["id"]]
+
+        return self.models

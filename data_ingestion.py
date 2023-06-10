@@ -1,37 +1,36 @@
 import argparse
 import logging
 
-from autogpt.commands.file_operations import ingest_file, search_files
+from autogpt.commands.file_operations import ingest_file, list_files
 from autogpt.config import Config
-from autogpt.memory import get_memory
+from autogpt.memory.vector import VectorMemory, get_memory
 
 cfg = Config()
 
 
 def configure_logging():
     logging.basicConfig(
-        filemode="a",
         format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
         datefmt="%H:%M:%S",
         level=logging.DEBUG,
         handlers=[
-            logging.FileHandler(filename="log-ingestion.txt"),
+            logging.FileHandler(filename="log-ingestion.txt", mode="a"),
             logging.StreamHandler(),
         ],
     )
     return logging.getLogger("AutoGPT-Ingestion")
 
 
-def ingest_directory(directory, memory, args):
+def ingest_directory(directory: str, memory: VectorMemory, args):
     """
     Ingest all files in a directory by calling the ingest_file function for each file.
 
     :param directory: The directory containing the files to ingest
     :param memory: An object with an add() method to store the chunks in memory
     """
-    global logger
+    logger = logging.getLogger("AutoGPT-Ingestion")
     try:
-        files = search_files(directory)
+        files = list_files(directory)
         for file in files:
             ingest_file(file, memory, args.max_length, args.overlap)
     except Exception as e:
@@ -68,7 +67,6 @@ def main() -> None:
         help="The max_length of each chunk when ingesting files (default: 4000)",
         default=4000,
     )
-
     args = parser.parse_args()
 
     # Initialize memory

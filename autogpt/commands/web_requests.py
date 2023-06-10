@@ -9,15 +9,12 @@ from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
 
-CFG = Config()
-
 session = requests.Session()
-session.headers.update({"User-Agent": CFG.user_agent})
 
 
 @validate_url
 def get_response(
-    url: str, timeout: int = 10
+    url: str, config: Config, timeout: int = 10
 ) -> tuple[None, str] | tuple[Response, None]:
     """Get the response from a URL
 
@@ -33,6 +30,7 @@ def get_response(
         requests.exceptions.RequestException: If the HTTP request fails
     """
     try:
+        session.headers.update({"User-Agent": config.user_agent})
         response = session.get(url, timeout=timeout)
 
         # Check if the response contains an HTTP error
@@ -50,7 +48,7 @@ def get_response(
         return None, f"Error: {str(re)}"
 
 
-def scrape_text(url: str) -> str:
+def scrape_text(url: str, config: Config) -> str:
     """Scrape text from a webpage
 
     Args:
@@ -59,7 +57,7 @@ def scrape_text(url: str) -> str:
     Returns:
         str: The scraped text
     """
-    response, error_message = get_response(url)
+    response, error_message = get_response(url, config)
     if error_message:
         return error_message
     if not response:
@@ -78,7 +76,7 @@ def scrape_text(url: str) -> str:
     return text
 
 
-def scrape_links(url: str) -> str | list[str]:
+def scrape_links(url: str, config: Config) -> str | list[str]:
     """Scrape links from a webpage
 
     Args:
@@ -87,7 +85,7 @@ def scrape_links(url: str) -> str | list[str]:
     Returns:
        str | list[str]: The scraped links
     """
-    response, error_message = get_response(url)
+    response, error_message = get_response(url, config)
     if error_message:
         return error_message
     if not response:
@@ -100,13 +98,3 @@ def scrape_links(url: str) -> str | list[str]:
     hyperlinks = extract_hyperlinks(soup, url)
 
     return format_hyperlinks(hyperlinks)
-
-
-def create_message(chunk, question):
-    """Create a message for the user to summarize a chunk of text"""
-    return {
-        "role": "user",
-        "content": f'"""{chunk}""" Using the above text, answer the following'
-        f' question: "{question}" -- if the question cannot be answered using the'
-        " text, summarize the text.",
-    }
