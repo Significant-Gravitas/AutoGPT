@@ -3,6 +3,7 @@
 import pytest
 import requests
 
+from autogpt.agent.agent import Agent
 from autogpt.commands.web_requests import scrape_text
 
 """
@@ -42,7 +43,7 @@ Additional aspects:
 
 
 class TestScrapeText:
-    def test_scrape_text_with_valid_url(self, mocker, config):
+    def test_scrape_text_with_valid_url(self, mocker, agent: Agent):
         """Tests that scrape_text() returns the expected text when given a valid URL."""
         # Mock the requests.get() method to return a response with expected text
         expected_text = "This is some sample text"
@@ -57,14 +58,14 @@ class TestScrapeText:
         # Call the function with a valid URL and assert that it returns the
         #  expected text
         url = "http://www.example.com"
-        assert scrape_text(url, config) == expected_text
+        assert scrape_text(url, agent) == expected_text
 
-    def test_invalid_url(self, config):
+    def test_invalid_url(self, agent: Agent):
         """Tests that an error is raised when an invalid url is provided."""
         url = "invalidurl.com"
-        pytest.raises(ValueError, scrape_text, url, config)
+        pytest.raises(ValueError, scrape_text, url, agent)
 
-    def test_unreachable_url(self, mocker, config):
+    def test_unreachable_url(self, mocker, agent: Agent):
         """Test that scrape_text returns an error message when an invalid or unreachable url is provided."""
         # Mock the requests.get() method to raise an exception
         mocker.patch(
@@ -74,10 +75,10 @@ class TestScrapeText:
         # Call the function with an invalid URL and assert that it returns an error
         #  message
         url = "http://thiswebsitedoesnotexist.net/"
-        error_message = scrape_text(url, config)
+        error_message = scrape_text(url, agent)
         assert "Error:" in error_message
 
-    def test_no_text(self, mocker, config):
+    def test_no_text(self, mocker, agent: Agent):
         """Test that scrape_text returns an empty string when the html page contains no text to be scraped."""
         # Mock the requests.get() method to return a response with no text
         mock_response = mocker.Mock()
@@ -87,20 +88,20 @@ class TestScrapeText:
 
         # Call the function with a valid URL and assert that it returns an empty string
         url = "http://www.example.com"
-        assert scrape_text(url, config) == ""
+        assert scrape_text(url, agent) == ""
 
-    def test_http_error(self, mocker, config):
+    def test_http_error(self, mocker, agent: Agent):
         """Test that scrape_text returns an error message when the response status code is an http error (>=400)."""
         # Mock the requests.get() method to return a response with a 404 status code
         mocker.patch("requests.Session.get", return_value=mocker.Mock(status_code=404))
 
         # Call the function with a URL
-        result = scrape_text("https://www.example.com", config)
+        result = scrape_text("https://www.example.com", agent)
 
         # Check that the function returns an error message
         assert result == "Error: HTTP 404 error"
 
-    def test_scrape_text_with_html_tags(self, mocker, config):
+    def test_scrape_text_with_html_tags(self, mocker, agent: Agent):
         """Test that scrape_text() properly handles HTML tags."""
         # Create a mock response object with HTML containing tags
         html = "<html><body><p>This is <b>bold</b> text.</p></body></html>"
@@ -110,7 +111,7 @@ class TestScrapeText:
         mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function with a URL
-        result = scrape_text("https://www.example.com", config)
+        result = scrape_text("https://www.example.com", agent)
 
         # Check that the function properly handles HTML tags
         assert result == "This is bold text."

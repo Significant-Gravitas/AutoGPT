@@ -4,7 +4,6 @@ from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
-from autogpt.config import Config
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_interaction_loop
 from tests.utils import requires_api_key
@@ -20,7 +19,6 @@ def test_kubernetes_template_challenge_a(
     kubernetes_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
-    config: Config,
     level_to_run: int,
 ) -> None:
     """
@@ -30,13 +28,12 @@ def test_kubernetes_template_challenge_a(
     Args:
         kubernetes_agent (Agent)
         monkeypatch (pytest.MonkeyPatch)
-        config (Config)
         level_to_run (int)
     """
     run_interaction_loop(monkeypatch, kubernetes_agent, CYCLE_COUNT)
 
     file_path = get_workspace_path(kubernetes_agent, OUTPUT_LOCATION)
-    content = read_file(file_path, config)
+    content = read_file(file_path, kubernetes_agent)
 
     for word in ["apiVersion", "kind", "metadata", "spec"]:
         assert word in content, f"Expected the file to contain {word}"

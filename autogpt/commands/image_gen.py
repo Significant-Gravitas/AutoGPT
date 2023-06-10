@@ -4,18 +4,14 @@ import json
 import time
 import uuid
 from base64 import b64decode
-from typing import TYPE_CHECKING
 
 import openai
 import requests
 from PIL import Image
 
+from autogpt.agent.agent import Agent
 from autogpt.commands.command import command
-from autogpt.config import Config
 from autogpt.logs import logger
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
 
 
 @command(
@@ -25,7 +21,7 @@ if TYPE_CHECKING:
     lambda config: config.image_provider,
     "Requires a image provider to be set.",
 )
-def generate_image(prompt: str, config: Config, size: int = 256) -> str:
+def generate_image(prompt: str, agent: Agent, size: int = 256) -> str:
     """Generate an image from a prompt.
 
     Args:
@@ -35,21 +31,21 @@ def generate_image(prompt: str, config: Config, size: int = 256) -> str:
     Returns:
         str: The filename of the image
     """
-    filename = f"{config.workspace_path}/{str(uuid.uuid4())}.jpg"
+    filename = f"{agent.config.workspace_path}/{str(uuid.uuid4())}.jpg"
 
     # DALL-E
-    if config.image_provider == "dalle":
-        return generate_image_with_dalle(prompt, filename, size, config)
+    if agent.config.image_provider == "dalle":
+        return generate_image_with_dalle(prompt, filename, size, agent)
     # HuggingFace
-    elif config.image_provider == "huggingface":
-        return generate_image_with_hf(prompt, filename, config)
+    elif agent.config.image_provider == "huggingface":
+        return generate_image_with_hf(prompt, filename, agent)
     # SD WebUI
-    elif config.image_provider == "sdwebui":
-        return generate_image_with_sd_webui(prompt, filename, config, size)
+    elif agent.config.image_provider == "sdwebui":
+        return generate_image_with_sd_webui(prompt, filename, agent, size)
     return "No Image Provider Set"
 
 
-def generate_image_with_hf(prompt: str, filename: str, config: Config) -> str:
+def generate_image_with_hf(prompt: str, filename: str, agent: Agent) -> str:
     """Generate an image with HuggingFace's API.
 
     Args:
@@ -59,15 +55,13 @@ def generate_image_with_hf(prompt: str, filename: str, config: Config) -> str:
     Returns:
         str: The filename of the image
     """
-    API_URL = (
-        f"https://api-inference.huggingface.co/models/{config.huggingface_image_model}"
-    )
-    if config.huggingface_api_token is None:
+    API_URL = f"https://api-inference.huggingface.co/models/{agent.config.huggingface_image_model}"
+    if agent.config.huggingface_api_token is None:
         raise ValueError(
             "You need to set your Hugging Face API token in the config file."
         )
     headers = {
-        "Authorization": f"Bearer {config.huggingface_api_token}",
+        "Authorization": f"Bearer {agent.config.huggingface_api_token}",
         "X-Use-Cache": "false",
     }
 
@@ -110,7 +104,7 @@ def generate_image_with_hf(prompt: str, filename: str, config: Config) -> str:
 
 
 def generate_image_with_dalle(
-    prompt: str, filename: str, size: int, config: Config
+    prompt: str, filename: str, size: int, agent: Agent
 ) -> str:
     """Generate an image with DALL-E.
 
@@ -136,7 +130,7 @@ def generate_image_with_dalle(
         n=1,
         size=f"{size}x{size}",
         response_format="b64_json",
-        api_key=config.openai_api_key,
+        api_key=agent.config.openai_api_key,
     )
 
     logger.info(f"Image Generated for prompt:{prompt}")
@@ -152,7 +146,7 @@ def generate_image_with_dalle(
 def generate_image_with_sd_webui(
     prompt: str,
     filename: str,
-    config: Config,
+    agent: Agent,
     size: int = 512,
     negative_prompt: str = "",
     extra: dict = {},
@@ -169,13 +163,13 @@ def generate_image_with_sd_webui(
     """
     # Create a session and set the basic auth if needed
     s = requests.Session()
-    if config.sd_webui_auth:
-        username, password = config.sd_webui_auth.split(":")
+    if agent.config.sd_webui_auth:
+        username, password = agent.config.sd_webui_auth.split(":")
         s.auth = (username, password or "")
 
     # Generate the images
     response = requests.post(
-        f"{config.sd_webui_url}/sdapi/v1/txt2img",
+        f"{agent.config.sd_webui_url}/sdapi/v1/txt2img",
         json={
             "prompt": prompt,
             "negative_prompt": negative_prompt,

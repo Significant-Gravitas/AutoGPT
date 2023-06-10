@@ -5,7 +5,6 @@ from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.execute_code import execute_python_file
-from autogpt.config import Config
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import (
     copy_file_into_workspace,
@@ -28,7 +27,6 @@ def test_debug_code_challenge_a(
     debug_code_agents: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
-    config: Config,
     level_to_run: int,
 ) -> None:
     """
@@ -37,7 +35,6 @@ def test_debug_code_challenge_a(
     :param debug_code_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
     :patched_api_requestor: Sends api requests to our API CI pipeline
-    :config: The config object for the agent.
     :level_to_run: The level to run.
     """
     debug_code_agent = debug_code_agents[level_to_run - 1]
@@ -48,7 +45,7 @@ def test_debug_code_challenge_a(
     run_interaction_loop(monkeypatch, debug_code_agent, CYCLE_COUNT)
 
     output = execute_python_file(
-        get_workspace_path(debug_code_agent, TEST_FILE_PATH), config
+        get_workspace_path(debug_code_agent, TEST_FILE_PATH), debug_code_agent
     )
 
     assert "error" not in output.lower(), f"Errors found in output: {output}!"
