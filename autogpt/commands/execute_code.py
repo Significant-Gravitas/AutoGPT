@@ -8,9 +8,47 @@ from docker.errors import ImageNotFound
 
 from autogpt.commands.command import command
 from autogpt.config import Config
+from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
 from autogpt.setup import CFG
 from autogpt.workspace.workspace import Workspace
+
+ALLOWLIST_CONTROL = "allowlist"
+DENYLIST_CONTROL = "denylist"
+
+
+@command(
+    "execute_python_code",
+    "Create a Python file and execute it",
+    '"code": "<code>", "basename": "<basename>"',
+)
+def execute_python_code(code: str, basename: str, config: Config) -> str:
+    """Create and execute a Python file in a Docker container and return the STDOUT of the
+    executed code. If there is any data that needs to be captured use a print statement
+
+    Args:
+        code (str): The Python code to run
+        basename (str): A name to be given to the Python file
+
+    Returns:
+        str: The STDOUT captured from the code when it ran
+    """
+    ai_name = AIConfig.load(config.ai_settings_file).ai_name
+    directory = os.path.join(config.workspace_path, ai_name, "executed_code")
+    os.makedirs(directory, exist_ok=True)
+
+    if not basename.endswith(".py"):
+        basename = basename + ".py"
+
+    path = os.path.join(directory, basename)
+
+    try:
+        with open(path, "w+", encoding="utf-8") as f:
+            f.write(code)
+
+        return execute_python_file(f.name, config)
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 @command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
@@ -117,21 +155,15 @@ def validate_command(command: str, config: Config) -> bool:
     Returns:
         bool: True if the command is allowed, False otherwise
     """
-    tokens = command.split()
-
-    if not tokens:
+    if not command:
         return False
 
-    if config.deny_commands and tokens[0] in config.deny_commands:
-        return False
+    command_name = command.split()[0]
 
-    for keyword in config.allow_commands:
-        if keyword in tokens:
-            return True
-    if config.allow_commands:
-        return False
-
-    return True
+    if config.shell_command_control == ALLOWLIST_CONTROL:
+        return command_name in config.shell_allowlist
+    else:
+        return command_name not in config.shell_denylist
 
 
 @command(
