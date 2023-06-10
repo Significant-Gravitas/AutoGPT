@@ -9,6 +9,9 @@ from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import generate_aiconfig_automatic
 from autogpt.utils import clean_input
+from autogpt.prompts.default_prompts import (
+    DEFAULT_USER_DESIRE_PROMPT,
+)
 
 cfg = Config()
 
@@ -581,6 +584,8 @@ def handle_configs(config, task):
 
 
 def handle_config(config, task):
+    if config is None:
+        config = AIConfig()
     try:
         original_ai_name = None
 
@@ -614,11 +619,14 @@ def handle_config(config, task):
         )
 
         if user_choice.lower() == "e" or user_choice.lower() == "":
-            return start_prompt(new_config, sad=True)
+            start_prompt(new_config, sad=True)
 
     except ValueError as e:
         logger.typewriter_log(
             f"Something went wrong: {e}\nReturning to main menu.",
             Fore.RED,
         )
-        return main_menu()
+        main_menu()
+
+    # Always return the new_config
+    return new_config
