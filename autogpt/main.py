@@ -192,6 +192,7 @@ def run_auto_gpt(
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
+        ai_config=ai_config,
         config=cfg,
     )
     agent.start_interaction_loop()
