@@ -54,7 +54,6 @@ def test_memory_challenge_c(
         memory_management_agent,
         level_to_run,
         level_silly_phrases,
-        agent=memory_management_agent,
     )
 
     run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
