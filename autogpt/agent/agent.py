@@ -65,9 +65,11 @@ class Agent:
         next_action_count: int,
         command_registry: CommandRegistry,
         ai_config: AIConfig,
+        ai_config: AIConfig,
         system_prompt: str,
         triggering_prompt: str,
         workspace_directory: str,
+        config: Config,
         config: Config,
     ):
         self.ai_name = ai_name
