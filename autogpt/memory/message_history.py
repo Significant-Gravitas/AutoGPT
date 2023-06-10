@@ -184,7 +184,7 @@ Latest Development:
 
         prompt = ChatSequence.for_model(cfg.fast_llm_model, [Message("user", prompt)])
         self.agent.log_cycle_handler.log_cycle(
-            self.agent.ai_config.ai_name,
+            self.agent.ai_name,
             self.agent.created_at,
             self.agent.cycle_count,
             prompt.raw(),
@@ -194,7 +194,7 @@ Latest Development:
         self.summary = create_chat_completion(prompt)
 
         self.agent.log_cycle_handler.log_cycle(
-            self.agent.ai_config.ai_name,
+            self.agent.ai_name,
             self.agent.created_at,
             self.agent.cycle_count,
             self.summary,
