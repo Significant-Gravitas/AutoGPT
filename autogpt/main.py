@@ -189,9 +189,9 @@ def run_auto_gpt(
         memory=memory,
         next_action_count=next_action_count,
         command_registry=command_registry,
-        config=ai_config,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
+        config=cfg,
     )
     agent.start_interaction_loop()
