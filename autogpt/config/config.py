@@ -59,7 +59,7 @@ class Config(metaclass=Singleton):
             "PROMPT_SETTINGS_FILE", "prompt_settings.yaml"
         )
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
-        self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
+        self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-3.5-turbo")
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
 
         self.browse_spacy_language_model = os.getenv(
@@ -87,22 +87,34 @@ class Config(metaclass=Singleton):
             openai.organization = self.openai_organization
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
-        self.elevenlabs_voice_2_id = os.getenv("ELEVENLABS_VOICE_2_ID")
+        # ELEVENLABS_VOICE_1_ID is deprecated and included for backwards-compatibility
+        self.elevenlabs_voice_id = os.getenv(
+            "ELEVENLABS_VOICE_ID", os.getenv("ELEVENLABS_VOICE_1_ID")
+        )
+        self.streamelements_voice = os.getenv("STREAMELEMENTS_VOICE", "Brian")
 
-        self.use_mac_os_tts = False
-        self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
+        # Backwards-compatibility shim for deprecated env variables
+        if os.getenv("USE_MAC_OS_TTS"):
+            default_tts_provider = "macos"
+        elif self.elevenlabs_api_key:
+            default_tts_provider = "elevenlabs"
+        elif os.getenv("USE_BRIAN_TTS"):
+            default_tts_provider = "streamelements"
+        else:
+            default_tts_provider = "gtts"
 
-        self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
-
-        self.use_brian_tts = False
-        self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
+        self.text_to_speech_provider = os.getenv(
+            "TEXT_TO_SPEECH_PROVIDER", default_tts_provider
+        )
 
         self.github_api_key = os.getenv("GITHUB_API_KEY")
         self.github_username = os.getenv("GITHUB_USERNAME")
 
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
-        self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
+        # CUSTOM_SEARCH_ENGINE_ID is deprecated and included for backwards-compatibility
+        self.google_custom_search_engine_id = os.getenv(
+            "GOOGLE_CUSTOM_SEARCH_ENGINE_ID", os.getenv("CUSTOM_SEARCH_ENGINE_ID")
+        )
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
@@ -110,6 +122,7 @@ class Config(metaclass=Singleton):
         self.huggingface_image_model = os.getenv(
             "HUGGINGFACE_IMAGE_MODEL", "CompVis/stable-diffusion-v1-4"
         )
+        self.audio_to_text_provider = os.getenv("AUDIO_TO_TEXT_PROVIDER", "huggingface")
         self.huggingface_audio_to_text_model = os.getenv(
             "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
         )
@@ -152,6 +165,8 @@ class Config(metaclass=Singleton):
             self.plugins_denylist = plugins_denylist.split(",")
         else:
             self.plugins_denylist = []
+
+        self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
@@ -234,7 +249,7 @@ class Config(metaclass=Singleton):
 
     def set_elevenlabs_voice_1_id(self, value: str) -> None:
         """Set the ElevenLabs Voice 1 ID value."""
-        self.elevenlabs_voice_1_id = value
+        self.elevenlabs_voice_id = value
 
     def set_elevenlabs_voice_2_id(self, value: str) -> None:
         """Set the ElevenLabs Voice 2 ID value."""
@@ -246,7 +261,7 @@ class Config(metaclass=Singleton):
 
     def set_custom_search_engine_id(self, value: str) -> None:
         """Set the custom search engine id value."""
-        self.custom_search_engine_id = value
+        self.google_custom_search_engine_id = value
 
     def set_debug_mode(self, value: bool) -> None:
         """Set the debug mode value."""
