@@ -44,6 +44,17 @@ def read_audio(audio: bytes, config: Config) -> str:
     Returns:
         str: The text from the audio
     """
+    if config.audio_to_text_provider == "huggingface":
+        text = read_huggingface_audio(audio, config)
+        if text:
+            return f"The audio says: {text}"
+        else:
+            return f"Error, couldn't convert audio to text"
+
+    return "Error: No audio to text provider given"
+
+
+def read_huggingface_audio(audio: bytes, config: Config) -> str:
     model = config.huggingface_audio_to_text_model
     api_url = f"https://api-inference.huggingface.co/models/{model}"
     api_token = config.huggingface_api_token
@@ -60,5 +71,5 @@ def read_audio(audio: bytes, config: Config) -> str:
         data=audio,
     )
 
-    text = json.loads(response.content.decode("utf-8"))["text"]
-    return f"The audio says: {text}"
+    response_json = json.loads(response.content.decode("utf-8"))
+    return response_json.get("text")

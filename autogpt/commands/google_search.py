@@ -56,7 +56,8 @@ def google_search(query: str, config: Config, num_results: int = 8) -> str:
     "google",
     "Google Search",
     '"query": "<query>"',
-    lambda config: bool(config.google_api_key) and bool(config.custom_search_engine_id),
+    lambda config: bool(config.google_api_key)
+    and bool(config.google_custom_search_engine_id),
     "Configure google_api_key and custom_search_engine_id.",
 )
 def google_official_search(
@@ -78,7 +79,7 @@ def google_official_search(
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
         api_key = config.google_api_key
-        custom_search_engine_id = config.custom_search_engine_id
+        custom_search_engine_id = config.google_custom_search_engine_id
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)
