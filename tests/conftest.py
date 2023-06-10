@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -5,6 +6,7 @@ from pytest_mock import MockerFixture
 
 from autogpt.config.config import Config
 from autogpt.llm.api_manager import ApiManager
+from autogpt.logs import TypingConsoleHandler
 from autogpt.workspace import Workspace
 
 pytest_plugins = [
@@ -43,3 +45,15 @@ def api_manager() -> ApiManager:
     if ApiManager in ApiManager._instances:
         del ApiManager._instances[ApiManager]
     return ApiManager()
+
+
+@pytest.fixture(autouse=True)
+def patch_emit(monkeypatch):
+    # convert plain_output to a boolean
+
+    if bool(os.environ.get("PLAIN_OUTPUT")):
+
+        def quick_emit(self, record: str):
+            print(self.format(record))
+
+        monkeypatch.setattr(TypingConsoleHandler, "emit", quick_emit)

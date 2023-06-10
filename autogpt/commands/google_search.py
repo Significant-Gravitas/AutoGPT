@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from itertools import islice
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,8 @@ from autogpt.commands.command import command
 
 if TYPE_CHECKING:
     from autogpt.config import Config
+
+DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 
 @command(
@@ -30,15 +33,20 @@ def google_search(query: str, config: Config, num_results: int = 8) -> str:
         str: The results of the search.
     """
     search_results = []
-    if not query:
-        return json.dumps(search_results)
+    attempts = 0
 
-    results = DDGS().text(query)
-    if not results:
-        return json.dumps(search_results)
+    while attempts < DUCKDUCKGO_MAX_ATTEMPTS:
+        if not query:
+            return json.dumps(search_results)
 
-    for item in islice(results, num_results):
-        search_results.append(item)
+        results = DDGS().text(query)
+        search_results = list(islice(results, num_results))
+
+        if search_results:
+            break
+
+        time.sleep(1)
+        attempts += 1
 
     results = json.dumps(search_results, ensure_ascii=False, indent=4)
     return safe_google_results(results)
@@ -48,7 +56,8 @@ def google_search(query: str, config: Config, num_results: int = 8) -> str:
     "google",
     "Google Search",
     '"query": "<query>"',
-    lambda config: bool(config.google_api_key) and bool(config.custom_search_engine_id),
+    lambda config: bool(config.google_api_key)
+    and bool(config.google_custom_search_engine_id),
     "Configure google_api_key and custom_search_engine_id.",
 )
 def google_official_search(
@@ -70,7 +79,7 @@ def google_official_search(
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
         api_key = config.google_api_key
-        custom_search_engine_id = config.custom_search_engine_id
+        custom_search_engine_id = config.google_custom_search_engine_id
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)
