@@ -187,6 +187,9 @@ def start_agent(name: str, task: str, prompt: str, config: Config, model=None) -
     first_message = f"""You are {name}.  Respond with: "Acknowledged"."""
     agent_intro = f"{voice_name} here, Reporting for duty!"
 
+    if model is None:
+        model = config.smart_llm_model
+
     # Create agent
     if config.speak_mode:
         say_text(agent_intro, 1)
