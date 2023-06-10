@@ -245,3 +245,10 @@ jobs:
             echo $TOKEN | gh auth login --with-token
             gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
+
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-logs
+          path: logs/
