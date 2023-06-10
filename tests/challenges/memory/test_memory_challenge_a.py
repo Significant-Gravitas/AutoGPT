@@ -5,8 +5,10 @@ from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
 from autogpt.config import Config
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import run_interaction_loop
+from tests.challenges.utils import get_workspace_path, run_interaction_loop
 from tests.utils import requires_api_key
+
+OUTPUT_LOCATION = "output.txt"
 
 
 @pytest.mark.vcr
@@ -35,7 +37,7 @@ def test_memory_challenge_a(
 
     run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
 
-    file_path = str(memory_management_agent.workspace.get_path("output.txt"))
+    file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
     content = read_file(file_path, config)
     assert task_id in content, f"Expected the file to contain {task_id}"
 
@@ -58,7 +60,7 @@ def create_instructions_files(
     for i in range(1, num_files + 1):
         content = generate_content(i, task_id, base_filename, num_files)
         file_name = f"{base_filename}{i}.txt"
-        file_path = str(memory_management_agent.workspace.get_path(file_name))
+        file_path = get_workspace_path(memory_management_agent, file_name)
         write_to_file(file_path, content, config)
 
 
