@@ -1,8 +1,10 @@
 """Handles loading of plugins."""
 
 import importlib.util
+import inspect
 import json
 import os
+import sys
 import zipfile
 from pathlib import Path
 from typing import List
@@ -217,6 +219,28 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
     logger.debug(f"Allowlisted Plugins: {cfg.plugins_allowlist}")
     logger.debug(f"Denylisted Plugins: {cfg.plugins_denylist}")
 
+    # Directory-based plugins
+    for plugin_path in [f.path for f in os.scandir(cfg.plugins_dir) if f.is_dir()]:
+        # Avoid going into __pycache__ or other hidden directories
+        if plugin_path.startswith("__"):
+            continue
+
+        plugin_module_path = plugin_path.split(os.path.sep)
+        plugin_module_name = plugin_module_path[-1]
+        qualified_module_name = ".".join(plugin_module_path)
+
+        __import__(qualified_module_name)
+        plugin = sys.modules[qualified_module_name]
+
+        for _, class_obj in inspect.getmembers(plugin):
+            if (
+                hasattr(class_obj, "_abc_impl")
+                and AutoGPTPluginTemplate in class_obj.__bases__
+                and denylist_allowlist_check(plugin_module_name, cfg)
+            ):
+                loaded_plugins.append(class_obj())
+
+    # Zip-based plugins
     for plugin in plugins_path_path.glob("*.zip"):
         if moduleList := inspect_zip_for_modules(str(plugin), debug):
             for module in moduleList:
@@ -236,6 +260,7 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                         and denylist_allowlist_check(a_module.__name__, cfg)
                     ):
                         loaded_plugins.append(a_module())
+
     # OpenAI plugins
     if cfg.plugins_openai:
         manifests_specs = fetch_openai_plugins_manifest_and_spec(cfg)
