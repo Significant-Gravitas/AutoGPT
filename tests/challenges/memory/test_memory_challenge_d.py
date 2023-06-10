@@ -16,7 +16,7 @@ MAX_LEVEL = 5
 OUTPUT_LOCATION = "output.txt"
 
 
-# @pytest.mark.vcr
+@pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @challenge
 def test_memory_challenge_d(
