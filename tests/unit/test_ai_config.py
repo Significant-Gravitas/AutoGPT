@@ -123,7 +123,7 @@ def test_special_character_config(tmp_path):
     """
 
     config_file = tmp_path / "ai_settings.yaml"
-    config_file.write_text(yaml_content, encoding='utf-8')
+    config_file.write_text(yaml_content, encoding="utf-8")
 
     ai_config = AIConfig.load("SpécialAI", config_file)
 
@@ -206,7 +206,14 @@ def test_saving_large_configuration(tmp_path):
 
     saved_yaml = yaml.safe_load(config_file.read_text())
     expected_yaml = {
-        "configs": {"AI1": {"ai_goals": ["Goal 1"], "ai_role": "", "api_budget": 0.0, "plugins": []}}
+        "configs": {
+            "AI1": {
+                "ai_goals": ["Goal 1"],
+                "ai_role": "",
+                "api_budget": 0.0,
+                "plugins": [],
+            }
+        }
     }
 
     assert saved_yaml == expected_yaml

@@ -6,12 +6,10 @@ from autogpt.config.config import Config
 from autogpt.config.prompt_config import PromptConfig
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import logger
+from autogpt.prompts.default_prompts import DEFAULT_USER_DESIRE_PROMPT
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import generate_aiconfig_automatic
 from autogpt.utils import clean_input
-from autogpt.prompts.default_prompts import (
-    DEFAULT_USER_DESIRE_PROMPT,
-)
 
 cfg = Config()
 

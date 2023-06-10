@@ -2,29 +2,22 @@ from unittest.mock import patch
 
 import pytest
 
-from pathlib import Path
 from autogpt.config.ai_config import AIConfig
+from autogpt.prompts.prompt import cfg, main_menu, welcome_prompt
 from autogpt.setup import generate_aiconfig_automatic
-from autogpt.prompts.prompt import welcome_prompt, cfg, main_menu
 from tests.utils import requires_api_key
-from autogpt.prompts.default_prompts import (
-    DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
-    DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC,
-    DEFAULT_USER_DESIRE_PROMPT,
-)
 
 
 @pytest.fixture(autouse=True)
 def setup(tmp_path):
-
     cfg.ai_settings_filepath = tmp_path / "ai_settings.yaml"
-    
+
     yield
-    
+
     if cfg.ai_settings_filepath.exists():
         cfg.ai_settings_filepath.unlink()
 
-        
+
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_automatic_default(patched_api_requestor):
@@ -53,7 +46,6 @@ def test_generate_aiconfig_automatic_typical(patched_api_requestor):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
-
     user_inputs = [
         "T&GF£OIBECC()!*",
         "Chef-GPT",
@@ -65,7 +57,7 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
         "",
         "",
         "2.00",
-        "r"
+        "r",
     ]
     with patch("builtins.input", side_effect=user_inputs):
         ai_config = welcome_prompt()
@@ -203,7 +195,7 @@ def test_generate_aiconfig_change_and_select():
 
     # Patch function to use the user_inputs list
     with patch("builtins.input", side_effect=user_inputs):
-        ai_config =main_menu()
+        ai_config = main_menu()
 
     # Asserts
     assert ai_config.ai_name == "change-GPT"
