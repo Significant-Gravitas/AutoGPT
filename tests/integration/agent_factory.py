@@ -107,10 +107,7 @@ def file_system_agents(
 
 @pytest.fixture
 def memory_management_agent(agent_test_config, memory_json_file, workspace: Workspace):
-    command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.app")
-    command_registry.import_commands("autogpt.commands.task_statuses")
+    command_registry = get_command_registry(agent_test_config)
 
     ai_config = AIConfig(
         ai_name="Follow-Instructions-GPT",
@@ -125,7 +122,7 @@ def memory_management_agent(agent_test_config, memory_json_file, workspace: Work
     system_prompt = ai_config.construct_full_prompt()
 
     agent = Agent(
-        ai_name="",
+        ai_name="Follow-Instructions-GPT",
         memory=memory_json_file,
         command_registry=command_registry,
         config=ai_config,
@@ -146,9 +143,9 @@ def information_retrieval_agents(
     command_registry = get_command_registry(agent_test_config)
 
     ai_goals = [
-        "Write to a file called output.txt tesla's revenue in 2022 after searching for 'tesla revenue 2022'.",
-        "Write to a file called output.txt tesla's revenue in 2022.",
-        "Write to a file called output.txt tesla's revenue every year since its creation.",
+        "Write to a file called output.txt containing tesla's revenue in 2022 after searching for 'tesla revenue 2022'.",
+        "Write to a file called output.txt containing tesla's revenue in 2022.",
+        "Write to a file called output.txt containing tesla's revenue every year since its creation.",
     ]
     for ai_goal in ai_goals:
         ai_config = AIConfig(
