@@ -22,7 +22,7 @@ def challenge(func: Callable[..., Any]) -> Callable[..., None]:
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> None:
         run_remaining = MAX_LEVEL_TO_IMPROVE_ON if Challenge.BEAT_CHALLENGES else 1
-        original_error = None
+        original_error: Optional[Exception] = None
 
         while run_remaining > 0:
             current_score, new_score, new_score_location = get_scores()
@@ -40,6 +40,9 @@ def challenge(func: Callable[..., Any]) -> Callable[..., None]:
                         f"{CHALLENGE_FAILED_MESSAGE}\n{err}"
                     )
                     challenge.succeeded = False
+                except Exception as err:
+                    original_error = err
+                    challenge.succeeded = False
             else:
                 challenge.skipped = True
             if os.environ.get("CI") == "true":
@@ -55,7 +58,7 @@ def challenge(func: Callable[..., Any]) -> Callable[..., None]:
             if not challenge.succeeded:
                 if Challenge.BEAT_CHALLENGES or challenge.is_new_challenge:
                     # xfail
-                    pytest.xfail("Challenge failed")
+                    pytest.xfail(str(original_error))
                 if original_error:
                     raise original_error
             run_remaining -= 1
