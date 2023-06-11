@@ -69,7 +69,7 @@ class ApiManager(metaclass=Singleton):
             logger.debug(f"Response: {response}")
             prompt_tokens = response.usage.prompt_tokens
             completion_tokens = response.usage.completion_tokens
-            self.update_cost(prompt_tokens, completion_tokens, response["model"])
+            self.update_cost(prompt_tokens, completion_tokens, model)
         return response
 
     def update_cost(self, prompt_tokens, completion_tokens, model: str):
