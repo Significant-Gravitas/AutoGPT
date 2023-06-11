@@ -31,9 +31,9 @@ class ApiManager(metaclass=Singleton):
         self,
         messages: list[MessageDict],
         model: str | None = None,
-        temperature: float | None = None,
+        temperature: float = None,
         max_tokens: int | None = None,
-        deployment_id: str | None = None,
+        deployment_id: str = None,
     ) -> str:
         """
         Create a chat completion and update the cost.
