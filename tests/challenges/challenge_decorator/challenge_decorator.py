@@ -15,12 +15,14 @@ MAX_LEVEL_TO_IMPROVE_ON = (
     1  # we will attempt to beat 1 level above the current level for now.
 )
 
+CHALLENGE_FAILED_MESSAGE = "Challenges can sometimes fail randomly, please run this test again and if it fails reach out to us on https://discord.gg/autogpt and reach out to us on the 'challenges' channel to let us know the challenge you're struggling with."
+
 
 def challenge(func: Callable[..., Any]) -> Callable[..., None]:
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> None:
         run_remaining = MAX_LEVEL_TO_IMPROVE_ON if Challenge.BEAT_CHALLENGES else 1
-        original_error = None
+        original_error: Optional[Exception] = None
 
         while run_remaining > 0:
             current_score, new_score, new_score_location = get_scores()
@@ -34,6 +36,11 @@ def challenge(func: Callable[..., Any]) -> Callable[..., None]:
                     func(*args, **kwargs)
                     challenge.succeeded = True
                 except AssertionError as err:
+                    original_error = AssertionError(
+                        f"{CHALLENGE_FAILED_MESSAGE}\n{err}"
+                    )
+                    challenge.succeeded = False
+                except Exception as err:
                     original_error = err
                     challenge.succeeded = False
             else:
@@ -51,10 +58,9 @@ def challenge(func: Callable[..., Any]) -> Callable[..., None]:
             if not challenge.succeeded:
                 if Challenge.BEAT_CHALLENGES or challenge.is_new_challenge:
                     # xfail
-                    pytest.xfail("Challenge failed")
+                    pytest.xfail(str(original_error))
                 if original_error:
                     raise original_error
-                raise AssertionError("Challenge failed")
             run_remaining -= 1
 
     return wrapper
