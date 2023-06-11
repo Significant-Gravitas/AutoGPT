@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
+from autogpt.agent.agent import Agent
 from autogpt.commands.image_gen import generate_image, generate_image_with_sd_webui
 from tests.utils import requires_api_key
 
@@ -18,10 +19,10 @@ def image_size(request):
 
 @requires_api_key("OPENAI_API_KEY")
 @pytest.mark.vcr
-def test_dalle(config, workspace, image_size, patched_api_requestor):
+def test_dalle(agent: Agent, workspace, image_size, patched_api_requestor):
     """Test DALL-E image generation."""
     generate_and_validate(
-        config,
+        agent,
         workspace,
         image_provider="dalle",
         image_size=image_size,
@@ -36,10 +37,10 @@ def test_dalle(config, workspace, image_size, patched_api_requestor):
     "image_model",
     ["CompVis/stable-diffusion-v1-4", "stabilityai/stable-diffusion-2-1"],
 )
-def test_huggingface(config, workspace, image_size, image_model):
+def test_huggingface(agent: Agent, workspace, image_size, image_model):
     """Test HuggingFace image generation."""
     generate_and_validate(
-        config,
+        agent,
         workspace,
         image_provider="huggingface",
         image_size=image_size,
@@ -48,10 +49,10 @@ def test_huggingface(config, workspace, image_size, image_model):
 
 
 @pytest.mark.xfail(reason="SD WebUI call does not work.")
-def test_sd_webui(config, workspace, image_size):
+def test_sd_webui(agent: Agent, workspace, image_size):
     """Test SD WebUI image generation."""
     generate_and_validate(
-        config,
+        agent,
         workspace,
         image_provider="sd_webui",
         image_size=image_size,
@@ -59,11 +60,11 @@ def test_sd_webui(config, workspace, image_size):
 
 
 @pytest.mark.xfail(reason="SD WebUI call does not work.")
-def test_sd_webui_negative_prompt(config, workspace, image_size):
+def test_sd_webui_negative_prompt(agent: Agent, workspace, image_size):
     gen_image = functools.partial(
         generate_image_with_sd_webui,
         prompt="astronaut riding a horse",
-        config=config,
+        agent=agent,
         size=image_size,
         extra={"seed": 123},
     )
@@ -87,7 +88,7 @@ def lst(txt):
 
 
 def generate_and_validate(
-    config,
+    agent: Agent,
     workspace,
     image_size,
     image_provider,
@@ -95,11 +96,11 @@ def generate_and_validate(
     **kwargs,
 ):
     """Generate an image and validate the output."""
-    config.image_provider = image_provider
-    config.huggingface_image_model = hugging_face_image_model
+    agent.config.image_provider = image_provider
+    agent.config.huggingface_image_model = hugging_face_image_model
     prompt = "astronaut riding a horse"
 
-    image_path = lst(generate_image(prompt, config, image_size, **kwargs))
+    image_path = lst(generate_image(prompt, agent, image_size, **kwargs))
     assert image_path.exists()
     with Image.open(image_path) as img:
         assert img.size == (image_size, image_size)
@@ -120,7 +121,7 @@ def generate_and_validate(
 )
 @pytest.mark.parametrize("delay", [10, 0])
 def test_huggingface_fail_request_with_delay(
-    config, workspace, image_size, image_model, return_text, delay
+    agent: Agent, workspace, image_size, image_model, return_text, delay
 ):
     return_text = return_text.replace("[model]", image_model).replace(
         "[delay]", str(delay)
@@ -138,13 +139,13 @@ def test_huggingface_fail_request_with_delay(
             mock_post.return_value.ok = False
             mock_post.return_value.text = return_text
 
-        config.image_provider = "huggingface"
-        config.huggingface_image_model = image_model
+        agent.config.image_provider = "huggingface"
+        agent.config.huggingface_image_model = image_model
         prompt = "astronaut riding a horse"
 
         with patch("time.sleep") as mock_sleep:
             # Verify request fails.
-            result = generate_image(prompt, config, image_size)
+            result = generate_image(prompt, agent, image_size)
             assert result == "Error creating image."
 
             # Verify retry was called with delay if delay is in return_text
@@ -154,8 +155,8 @@ def test_huggingface_fail_request_with_delay(
                 mock_sleep.assert_not_called()
 
 
-def test_huggingface_fail_request_with_delay(mocker, config):
-    config.huggingface_api_token = "1"
+def test_huggingface_fail_request_with_delay(mocker, agent: Agent):
+    agent.config.huggingface_api_token = "1"
 
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
@@ -166,10 +167,10 @@ def test_huggingface_fail_request_with_delay(mocker, config):
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
 
-    config.image_provider = "huggingface"
-    config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+    agent.config.image_provider = "huggingface"
+    agent.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
-    result = generate_image("astronaut riding a horse", config, 512)
+    result = generate_image("astronaut riding a horse", agent, 512)
 
     assert result == "Error creating image."
 
@@ -177,8 +178,8 @@ def test_huggingface_fail_request_with_delay(mocker, config):
     mock_sleep.assert_called_with(0)
 
 
-def test_huggingface_fail_request_no_delay(mocker, config):
-    config.huggingface_api_token = "1"
+def test_huggingface_fail_request_no_delay(mocker, agent: Agent):
+    agent.config.huggingface_api_token = "1"
 
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
@@ -191,10 +192,10 @@ def test_huggingface_fail_request_no_delay(mocker, config):
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
 
-    config.image_provider = "huggingface"
-    config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+    agent.config.image_provider = "huggingface"
+    agent.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
-    result = generate_image("astronaut riding a horse", config, 512)
+    result = generate_image("astronaut riding a horse", agent, 512)
 
     assert result == "Error creating image."
 
@@ -202,8 +203,8 @@ def test_huggingface_fail_request_no_delay(mocker, config):
     mock_sleep.assert_not_called()
 
 
-def test_huggingface_fail_request_bad_json(mocker, config):
-    config.huggingface_api_token = "1"
+def test_huggingface_fail_request_bad_json(mocker, agent: Agent):
+    agent.config.huggingface_api_token = "1"
 
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
@@ -214,10 +215,10 @@ def test_huggingface_fail_request_bad_json(mocker, config):
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
 
-    config.image_provider = "huggingface"
-    config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+    agent.config.image_provider = "huggingface"
+    agent.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
-    result = generate_image("astronaut riding a horse", config, 512)
+    result = generate_image("astronaut riding a horse", agent, 512)
 
     assert result == "Error creating image."
 
@@ -225,28 +226,28 @@ def test_huggingface_fail_request_bad_json(mocker, config):
     mock_sleep.assert_not_called()
 
 
-def test_huggingface_fail_request_bad_image(mocker, config):
-    config.huggingface_api_token = "1"
+def test_huggingface_fail_request_bad_image(mocker, agent: Agent):
+    agent.config.huggingface_api_token = "1"
 
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
     mock_post.return_value.status_code = 200
 
-    config.image_provider = "huggingface"
-    config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+    agent.config.image_provider = "huggingface"
+    agent.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
-    result = generate_image("astronaut riding a horse", config, 512)
+    result = generate_image("astronaut riding a horse", agent, 512)
 
     assert result == "Error creating image."
 
 
-def test_huggingface_fail_missing_api_token(mocker, config):
-    config.image_provider = "huggingface"
-    config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+def test_huggingface_fail_missing_api_token(mocker, agent: Agent):
+    agent.config.image_provider = "huggingface"
+    agent.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
     # Mock requests.post to raise ValueError
     mock_post = mocker.patch("requests.post", side_effect=ValueError)
 
     # Verify request raises an error.
     with pytest.raises(ValueError):
-        generate_image("astronaut riding a horse", config, 512)
+        generate_image("astronaut riding a horse", agent, 512)
