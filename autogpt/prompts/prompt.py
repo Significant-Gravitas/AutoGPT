@@ -78,22 +78,22 @@ def select_config_action(all_configs, task):
 
 def prompt_for_num_goals(task, current_goal_count=None):
     num_goals = -1
-    prompt_message = {
+    prompts = {
         "create": f"{Fore.GREEN}Set number of goals (0-20): {Style.RESET_ALL}",
         "edit": f"{Fore.GREEN}AI has {current_goal_count} goals. Change? (0-20): {Style.RESET_ALL}",
     }[task]
 
-    fallback_message = {
+    fallback_msg = {
         "create": f"{Fore.LIGHTBLUE_EX}No input, defaulting to 5 goals.{Style.RESET_ALL}",
         "edit": f"{Fore.LIGHTBLUE_EX}No change, {current_goal_count} goals.{Style.RESET_ALL}",
     }[task]
 
     while not 0 <= num_goals <= 20:
-        num_goals_input = clean_input(prompt_message)
+        num_goals_input = clean_input(prompts)
 
         if num_goals_input == "":
             num_goals = current_goal_count if task == "edit" else 5
-            logger.typewriter_log(fallback_message)
+            logger.typewriter_log(fallback_msg)
         elif num_goals_input.isdigit():
             num_goals = int(num_goals_input)
             if num_goals > 20:
@@ -312,6 +312,7 @@ def manage_ai_name(configs, task):
             f"(current: '{configs.ai_name if configs else None}'), leave empty to keep current name.",
         ),
     }
+    # Display prompt
     logger.typewriter_log(
         prompts[task][0],
         Fore.GREEN,
@@ -321,8 +322,11 @@ def manage_ai_name(configs, task):
 
     prompt_text = "AI Name: "
 
+    # Get name: user input
     input_name = utils.clean_input(prompt_text)
     ai_name = input_name if input_name or task == "create" else configs.ai_name
+
+    # Check if name already exists, prompt until unique name provided
     while check_ai_name_exists(ai_name) and (input_name or task == "create"):
         logger.typewriter_log(
             f"{Fore.RED}This AI name already exists. Please choose a different name.{Style.RESET_ALL}",
@@ -336,30 +340,31 @@ def manage_ai_name(configs, task):
 
 def manage_ai_role(config, task):
     default_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
-
-    if task == "create":
-        logger.typewriter_log(
+    prompts = {
+        "create": ("Describe your AI's role:", f"For example, '{default_role}'"),
+        "edit": (
             "Describe your AI's role:",
-            Fore.GREEN,
-            f"{Fore.YELLOW}For example, '{default_role}'{Style.RESET_ALL}",
-            speak_text=True,
-        )
-        current_role = ""
-    else:
-        current_role = config.ai_role
-        logger.typewriter_log(
-            "Describe your AI's role:",
-            Fore.GREEN,
-            f"{Fore.YELLOW}Current: '{current_role}', use [Enter] to keep the current role / save the input.{Style.RESET_ALL}",
-            speak_text=True,
-        )
+            f"Current: '{config.ai_role if config else None}', use [Enter] to keep the current role / save the input.",
+        ),
+    }
 
-    ai_role = (
-        utils.clean_input(f"{config.ai_name if config else None} is: ")
-        or current_role
-        or default_role
+    # Display prompt
+    logger.typewriter_log(
+        prompts[task][0],
+        Fore.GREEN,
+        f"{Fore.YELLOW}{prompts[task][1]}{Style.RESET_ALL}",
+        speak_text=True,
     )
 
+    # Get role: user input
+    ai_role = (
+        utils.clean_input(f"{config.ai_name if config else None} is: ")
+        or config.ai_role
+        if config
+        else default_role
+    )
+
+    # fallback message
     if ai_role == default_role:
         logger.typewriter_log(
             f"{Fore.LIGHTBLUE_EX}No input, defaulting to AI role: '{default_role}'",
@@ -373,13 +378,15 @@ def manage_ai_role(config, task):
 
 
 def manage_ai_goals(config, task):
-    default_goals = config.ai_goals if config else []
-    max_goals = prompt_for_num_goals(task, len(default_goals))
+    # Store current_goals and max_goals
+    current_goals = config.ai_goals if config else []
+    max_goals = prompt_for_num_goals(task, len(current_goals))
 
     ai_goals = []
-    num_default_goals = len(default_goals)
+    num_default_goals = len(current_goals)
 
     if task == "create":
+        # Create goals: new AI
         logger.typewriter_log(
             f"Enter up to {max_goals} goals for your AI: ", Fore.GREEN
         )
@@ -392,12 +399,13 @@ def manage_ai_goals(config, task):
             ai_goals.append(ai_goal)
 
     else:
+        # Edit or delete goals: existing AI
         logger.typewriter_log(f"Enter up to {max_goals} goals for your AI:", Fore.GREEN)
         kept_goals = []
 
         for i in range(num_default_goals):
             logger.typewriter_log(
-                f"{Fore.GREEN}Current Goal {i+1}: {Fore.YELLOW}'{default_goals[i]}'{Style.RESET_ALL}"
+                f"{Fore.GREEN}Current Goal {i+1}: {Fore.YELLOW}'{current_goals[i]}'{Style.RESET_ALL}"
             )
             action = utils.clean_input(
                 "Do you want to [E]dit, [D]elete, or [K]eep this goal? "
@@ -409,11 +417,11 @@ def manage_ai_goals(config, task):
                 if ai_goal != "":
                     kept_goals.append(ai_goal)
                 else:
-                    kept_goals.append(default_goals[i])
+                    kept_goals.append(current_goals[i])
             elif action.lower() == "d":
                 continue
             else:
-                kept_goals.append(default_goals[i])
+                kept_goals.append(current_goals[i])
 
         ai_goals = kept_goals
         num_ai_goals = len(ai_goals)
@@ -422,6 +430,7 @@ def manage_ai_goals(config, task):
             logger.typewriter_log(
                 f"You can add up to {max_goals - num_ai_goals} new goals.", Fore.GREEN
             )
+            # Add new goals if max_goals not reached
             for i in range(num_ai_goals, max_goals):
                 ai_goal = utils.clean_input(
                     f"{Fore.GREEN}New Goal {i+1}:{Style.RESET_ALL} "
@@ -454,7 +463,7 @@ def manage_plugins(config, task):
         else:
             # Edit existing plugins
             plugins = config.plugins
-            deleted_plugins = []  # To keep track of deleted plugins
+            deleted_plugins = []
             i = 0
             while i < len(plugins):
                 logger.typewriter_log(
@@ -466,17 +475,15 @@ def manage_plugins(config, task):
                     f"{Fore.WHITE}Do you want to [D]elete or [K]eep this plugin?{Style.RESET_ALL} "
                 )
                 if action.lower() == "d":
-                    deleted_plugins.append(plugins[i])  # Keep track of deleted plugin
+                    deleted_plugins.append(plugins[i])
                     del plugins[i]
                 else:
                     i += 1
 
-            # Offer to add plugins from allowlist
+            # Offer plugins from allowlist
             env_plugins = default_plugins
             for plugin in env_plugins:
-                if (
-                    plugin not in plugins and plugin not in deleted_plugins
-                ):  # Check if the plugin was not deleted
+                if plugin not in plugins and plugin not in deleted_plugins:
                     logger.typewriter_log(
                         f"{Fore.GREEN}New plugin available: {Fore.YELLOW}'{plugin}'{Style.RESET_ALL}",
                         Fore.LIGHTBLUE_EX,
@@ -494,22 +501,30 @@ def manage_plugins(config, task):
 
 def manage_api_budget(config, task):
     default_budget = config.api_budget if config else 0.0
-    if task == "create":
-        logger.typewriter_log(
-            f"{Fore.GREEN}Enter your budget for API calls: {Fore.YELLOW}For example: $1.50, leave empty for unlimited budget.{Style.RESET_ALL}",
-            speak_text=True,
-        )
-    else:
-        logger.typewriter_log(
-            f"{Fore.GREEN}Enter your budget for API calls:\n{Fore.YELLOW}Current: '${default_budget}'. For example: $1.50, leave empty to keep current budget.{Style.RESET_ALL}",
-            speak_text=True,
-        )
 
-    logger.info("Use [Enter] to save the input.")
+    prompts = {
+        "create": (
+            f"Enter your budget for API calls: ",
+            "For example: $1.50, leave empty for unlimited budget.",
+        ),
+        "edit": (
+            f"Enter your budget for API calls:",
+            f"Current: '${default_budget}'. For example: $1.50, leave empty to keep current budget.",
+        ),
+    }
+
+    # Display prompt
+    logger.typewriter_log(
+        f"{Fore.GREEN}{prompts[task][0]}\n{Fore.YELLOW}{prompts[task][1]}{Style.RESET_ALL}",
+        speak_text=True,
+    )
+
+    # Get budget: user input
     api_budget_input = utils.clean_input(f"{Fore.WHITE}Budget: ${Style.RESET_ALL}")
-    if api_budget_input == "":
-        api_budget = default_budget
-    else:
+    api_budget = default_budget
+
+    # Attempt to convert to float
+    if api_budget_input:
         try:
             api_budget = float(api_budget_input.replace("$", ""))
         except ValueError:
@@ -599,7 +614,6 @@ def handle_config(config, task):
             config = all_configs[all_configs.keys()[selection - 1]]
             original_ai_name = config.ai_name
 
-        # For create, config is None, so the config will be created from scratch in handle_configs
         ai_name, ai_role, ai_goals, plugins, api_budget = handle_configs(config, task)
 
         new_config = AIConfig(ai_name, ai_role, ai_goals, api_budget, plugins)
@@ -611,7 +625,7 @@ def handle_config(config, task):
 
         logger.typewriter_log("Configuration saved.", Fore.GREEN)
 
-        # Ask user to start up this agent or return to main menu
+        # Start up this agent or return to main menu
         user_choice = input(
             f"[E]nter to startup agent: {ai_name} or [R]eturn to main menu: "
         )
@@ -619,12 +633,13 @@ def handle_config(config, task):
         if user_choice.lower() == "e" or user_choice.lower() == "":
             start_prompt(new_config, sad=True)
 
+        if user_choice.lower() == "r":
+            return main_menu()
+
     except ValueError as e:
         logger.typewriter_log(
             f"Something went wrong: {e}\nReturning to main menu.",
             Fore.RED,
         )
-        main_menu()
 
-    # Always return the new_config
     return new_config
