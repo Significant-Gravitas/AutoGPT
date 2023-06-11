@@ -146,6 +146,7 @@ class Agent:
                 )
 
             try:
+                # assistant_reply comes from OpenAI as a Python `str(reply_dict)`, literal_eval reverses this
                 assistant_reply_json = ast.literal_eval(assistant_reply)
                 validate_json(assistant_reply_json)
             except json.JSONDecodeError as e:

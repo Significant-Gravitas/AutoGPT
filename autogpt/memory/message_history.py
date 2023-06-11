@@ -154,6 +154,7 @@ class MessageHistory:
 
                 # Remove "thoughts" dictionary from "content"
                 try:
+                    # event.content comes from OpenAI as a Python `str(content_dict)`, literal_eval reverses this
                     content_dict = ast.literal_eval(event.content)
                     if "thoughts" in content_dict:
                         del content_dict["thoughts"]
