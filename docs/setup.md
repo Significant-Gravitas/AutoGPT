@@ -47,13 +47,8 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
         services:
           auto-gpt:
             image: significantgravitas/auto-gpt
-            depends_on:
-              - redis
             env_file:
               - .env
-            environment:
-              MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
-              REDIS_HOST: ${REDIS_HOST:-redis}
             profiles: ["exclude-from-up"]
             volumes:
               - ./auto_gpt_workspace:/app/autogpt/auto_gpt_workspace
@@ -68,8 +63,6 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
               #- type: bind
               #  source: ./ai_settings.yaml
               #  target: /app/ai_settings.yaml
-          redis:
-            image: "redis/redis-stack-server:latest"
 
 4. Create the necessary [configuration](#configuration) files. If needed, you can find
     templates in the [repository].
