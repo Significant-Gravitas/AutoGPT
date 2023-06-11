@@ -5,14 +5,11 @@ from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_interaction_loop
-from tests.utils import requires_api_key
 
 OUTPUT_LOCATION = "output.txt"
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-@challenge
+@challenge()
 def test_memory_challenge_a(
     memory_management_agent: Agent,
     patched_api_requestor: MockerFixture,
@@ -28,7 +25,6 @@ def test_memory_challenge_a(
         monkeypatch (pytest.MonkeyPatch)
         level_to_run (int)
     """
-
     task_id = "2314"
     create_instructions_files(memory_management_agent, level_to_run, task_id)
 
