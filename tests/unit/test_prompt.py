@@ -1,7 +1,6 @@
 import builtins
 from unittest.mock import patch
 
-
 from autogpt.prompts.prompt import manage_ai_name, validate_input
 
 
