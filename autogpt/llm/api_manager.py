@@ -33,7 +33,7 @@ class ApiManager(metaclass=Singleton):
         model: str | None = None,
         temperature: float = None,
         max_tokens: int | None = None,
-        deployment_id: str = None,
+        deployment_id=None,
     ) -> str:
         """
         Create a chat completion and update the cost.
@@ -69,7 +69,7 @@ class ApiManager(metaclass=Singleton):
             logger.debug(f"Response: {response}")
             prompt_tokens = response.usage.prompt_tokens
             completion_tokens = response.usage.completion_tokens
-            self.update_cost(prompt_tokens, completion_tokens, model)
+            self.update_cost(prompt_tokens, completion_tokens, response["model"])
         return response
 
     def update_cost(self, prompt_tokens, completion_tokens, model: str):
