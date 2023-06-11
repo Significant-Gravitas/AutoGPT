@@ -202,7 +202,7 @@ def test_create_config_gpt3only(config: Config) -> None:
 def test_create_config_azure_gpt3only(config: Config) -> None:
     fast_llm_model = config.fast_llm_model
     smart_llm_model = config.smart_llm_model
-    config.use_azure == "True"
+    config.use_azure == True
     with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
         mock_get_models.return_value = [{"id": GPT_3_MODEL}]
         create_config(
