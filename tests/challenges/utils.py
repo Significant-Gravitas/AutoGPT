@@ -35,7 +35,7 @@ def setup_mock_input(monkeypatch: pytest.MonkeyPatch, cycle_count: int) -> None:
         yield from input_sequence
 
     gen = input_generator()
-    monkeypatch.setattr("builtins.input", lambda _: next(gen))
+    monkeypatch.setattr("autogpt.utils.session.prompt", lambda _: next(gen))
 
 
 def run_interaction_loop(
