@@ -93,7 +93,7 @@ def file_system_agents(
         Config().set_continuous_mode(False)
         agents.append(
             Agent(
-                ai_name="Information Retrieval Agent",
+                ai_name="File System Agent",
                 memory=memory_json_file,
                 command_registry=command_registry,
                 ai_config=ai_config,
