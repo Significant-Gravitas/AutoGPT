@@ -7,7 +7,7 @@ on:
 
 jobs:
   Benchmark:
-    name: Benchmark - ${{ matrix.config.task-name }}
+    name: ${{ matrix.config.task-name }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -30,7 +30,7 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.config.python-version }}
 
       - id: get_date
         name: Get date
@@ -50,7 +50,7 @@ jobs:
       - name: Run pytest with coverage
         run: |
           rm -rf tests/Auto-GPT-test-cassettes
-          pytest -n auto ${{ matrix.task }}
+          pytest -n auto ${{ matrix.config.task }}
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
