@@ -14,10 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - python-version: ["3.10"]
+          - python-version: "3.10"
             task: "tests/challenges"
             task-name: "Mandatory Tasks"
-          - python-version: ["3.10"]
+          - python-version: "3.10"
             task: "--beat-challenges -ra tests/challenges"
             task-name: "Challenging Tasks"
 
