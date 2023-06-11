@@ -27,6 +27,7 @@ click
 charset-normalizer>=3.1.0
 spacy>=3.0.0,<4.0.0
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl
+prompt_toolkit>=3.0.38
 
 ##Dev
 coverage
@@ -61,3 +62,4 @@ pytest-mock
 vcrpy @ git+https://github.com/Significant-Gravitas/vcrpy.git@master
 pytest-recording
 pytest-xdist
+flaky
