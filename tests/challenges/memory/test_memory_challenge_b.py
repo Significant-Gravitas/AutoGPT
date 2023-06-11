@@ -9,15 +9,12 @@ from tests.challenges.utils import (
     get_workspace_path,
     run_interaction_loop,
 )
-from tests.utils import requires_api_key
 
 NOISE = 1000
 OUTPUT_LOCATION = "output.txt"
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-@challenge
+@challenge()
 def test_memory_challenge_b(
     memory_management_agent: Agent,
     patched_api_requestor: MockerFixture,
