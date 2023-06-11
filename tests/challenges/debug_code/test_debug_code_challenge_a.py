@@ -11,7 +11,6 @@ from tests.challenges.utils import (
     get_workspace_path,
     run_interaction_loop,
 )
-from tests.utils import requires_api_key
 
 CYCLE_COUNT = 5
 EXPECTED_VALUES = ["[0, 1]", "[2, 5]", "[0, 3]"]
@@ -20,9 +19,7 @@ CODE_FILE_PATH = "code.py"
 TEST_FILE_PATH = "test.py"
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-@challenge
+@challenge()
 def test_debug_code_challenge_a(
     debug_code_agents: Agent,
     monkeypatch: pytest.MonkeyPatch,

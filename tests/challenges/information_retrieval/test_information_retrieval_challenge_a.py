@@ -4,7 +4,6 @@ from pytest_mock import MockerFixture
 from autogpt.commands.file_operations import read_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_interaction_loop
-from tests.utils import requires_api_key
 
 CYCLE_COUNT = 3
 EXPECTED_REVENUES = [["81"], ["81"], ["81", "53", "24", "21", "11", "7", "4", "3", "2"]]
@@ -13,9 +12,7 @@ from autogpt.agent import Agent
 OUTPUT_LOCATION = "output.txt"
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-@challenge
+@challenge()
 def test_information_retrieval_challenge_a(
     information_retrieval_agents: Agent,
     monkeypatch: pytest.MonkeyPatch,
