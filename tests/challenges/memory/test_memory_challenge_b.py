@@ -3,22 +3,22 @@ from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
-from autogpt.config import Config
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import generate_noise, run_interaction_loop
-from tests.utils import requires_api_key
+from tests.challenges.utils import (
+    generate_noise,
+    get_workspace_path,
+    run_interaction_loop,
+)
 
 NOISE = 1000
+OUTPUT_LOCATION = "output.txt"
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-@challenge
+@challenge()
 def test_memory_challenge_b(
     memory_management_agent: Agent,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
-    config: Config,
     level_to_run: int,
 ) -> None:
     """
@@ -32,12 +32,12 @@ def test_memory_challenge_b(
         level_to_run (int)
     """
     task_ids = [str(i * 1111) for i in range(1, level_to_run + 1)]
-    create_instructions_files(memory_management_agent, level_to_run, task_ids, config)
+    create_instructions_files(memory_management_agent, level_to_run, task_ids)
 
     run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
 
-    file_path = str(memory_management_agent.workspace.get_path("output.txt"))
-    content = read_file(file_path, config)
+    file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
+    content = read_file(file_path, memory_management_agent)
     for task_id in task_ids:
         assert task_id in content, f"Expected the file to contain {task_id}"
 
@@ -46,7 +46,6 @@ def create_instructions_files(
     memory_management_agent: Agent,
     level: int,
     task_ids: list,
-    config: Config,
     base_filename: str = "instructions_",
 ) -> None:
     """
@@ -61,8 +60,9 @@ def create_instructions_files(
     for i in range(1, level + 1):
         content = generate_content(i, task_ids, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
-        file_path = str(memory_management_agent.workspace.get_path(file_name))
-        write_to_file(file_path, content, config)
+        file_path = get_workspace_path(memory_management_agent, file_name)
+
+        write_to_file(file_path, content, memory_management_agent)
 
 
 def generate_content(index: int, task_ids: list, base_filename: str, level: int) -> str:

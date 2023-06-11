@@ -12,7 +12,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 import autogpt.commands.file_operations as file_ops
-from autogpt.config import Config
+from autogpt.agent.agent import Agent
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
 from autogpt.utils import readable_file_size
@@ -42,7 +42,7 @@ def mock_MemoryItem_from_text(mocker: MockerFixture, mock_embedding: Embedding):
 
 
 @pytest.fixture()
-def test_file_path(config, workspace: Workspace):
+def test_file_path(workspace: Workspace):
     return workspace.get_path("test_file.txt")
 
 
@@ -55,22 +55,22 @@ def test_file(test_file_path: Path):
 
 
 @pytest.fixture()
-def test_file_with_content_path(test_file: TextIOWrapper, file_content, config):
+def test_file_with_content_path(test_file: TextIOWrapper, file_content, agent: Agent):
     test_file.write(file_content)
     test_file.close()
     file_ops.log_operation(
-        "write", test_file.name, config, file_ops.text_checksum(file_content)
+        "write", test_file.name, agent, file_ops.text_checksum(file_content)
     )
     return Path(test_file.name)
 
 
 @pytest.fixture()
-def test_directory(config, workspace: Workspace):
+def test_directory(workspace: Workspace):
     return workspace.get_path("test_directory")
 
 
 @pytest.fixture()
-def test_nested_file(config, workspace: Workspace):
+def test_nested_file(workspace: Workspace):
     return workspace.get_path("nested/test_file.txt")
 
 
@@ -117,7 +117,7 @@ def test_file_operations_state(test_file: TextIOWrapper):
     assert file_ops.file_operations_state(test_file.name) == expected_state
 
 
-def test_is_duplicate_operation(config: Config, mocker: MockerFixture):
+def test_is_duplicate_operation(agent: Agent, mocker: MockerFixture):
     # Prepare a fake state dictionary for the function to use
     state = {
         "path/to/file1.txt": "checksum1",
@@ -128,42 +128,48 @@ def test_is_duplicate_operation(config: Config, mocker: MockerFixture):
     # Test cases with write operations
     assert (
         file_ops.is_duplicate_operation(
-            "write", "path/to/file1.txt", config, "checksum1"
+            "write", "path/to/file1.txt", agent.config, "checksum1"
         )
         is True
     )
     assert (
         file_ops.is_duplicate_operation(
-            "write", "path/to/file1.txt", config, "checksum2"
+            "write", "path/to/file1.txt", agent.config, "checksum2"
         )
         is False
     )
     assert (
         file_ops.is_duplicate_operation(
-            "write", "path/to/file3.txt", config, "checksum3"
+            "write", "path/to/file3.txt", agent.config, "checksum3"
         )
         is False
     )
     # Test cases with append operations
     assert (
         file_ops.is_duplicate_operation(
-            "append", "path/to/file1.txt", config, "checksum1"
+            "append", "path/to/file1.txt", agent.config, "checksum1"
         )
         is False
     )
     # Test cases with delete operations
     assert (
-        file_ops.is_duplicate_operation("delete", "path/to/file1.txt", config) is False
+        file_ops.is_duplicate_operation(
+            "delete", "path/to/file1.txt", config=agent.config
+        )
+        is False
     )
     assert (
-        file_ops.is_duplicate_operation("delete", "path/to/file3.txt", config) is True
+        file_ops.is_duplicate_operation(
+            "delete", "path/to/file3.txt", config=agent.config
+        )
+        is True
     )
 
 
 # Test logging a file operation
-def test_log_operation(config: Config):
-    file_ops.log_operation("log_test", "path/to/test", config)
-    with open(config.file_logger_path, "r", encoding="utf-8") as f:
+def test_log_operation(agent: Agent):
+    file_ops.log_operation("log_test", "path/to/test", agent=agent)
+    with open(agent.config.file_logger_path, "r", encoding="utf-8") as f:
         content = f.read()
     assert f"log_test: path/to/test\n" in content
 
@@ -175,9 +181,9 @@ def test_text_checksum(file_content: str):
     assert checksum != different_checksum
 
 
-def test_log_operation_with_checksum(config: Config):
-    file_ops.log_operation("log_test", "path/to/test", config, checksum="ABCDEF")
-    with open(config.file_logger_path, "r", encoding="utf-8") as f:
+def test_log_operation_with_checksum(agent: Agent):
+    file_ops.log_operation("log_test", "path/to/test", agent=agent, checksum="ABCDEF")
+    with open(agent.config.file_logger_path, "r", encoding="utf-8") as f:
         content = f.read()
     assert f"log_test: path/to/test #ABCDEF\n" in content
 
@@ -223,66 +229,66 @@ def test_read_file(
     mock_MemoryItem_from_text,
     test_file_with_content_path: Path,
     file_content,
-    config: Config,
+    agent: Agent,
 ):
-    content = file_ops.read_file(test_file_with_content_path, config)
+    content = file_ops.read_file(test_file_with_content_path, agent=agent)
     assert content.replace("\r", "") == file_content
 
 
-def test_read_file_not_found(config: Config):
+def test_read_file_not_found(agent: Agent):
     filename = "does_not_exist.txt"
-    content = file_ops.read_file(filename, config)
+    content = file_ops.read_file(filename, agent=agent)
     assert "Error:" in content and filename in content and "no such file" in content
 
 
-def test_write_to_file(test_file_path: Path, config):
+def test_write_to_file(test_file_path: Path, agent: Agent):
     new_content = "This is new content.\n"
-    file_ops.write_to_file(str(test_file_path), new_content, config)
+    file_ops.write_to_file(str(test_file_path), new_content, agent=agent)
     with open(test_file_path, "r", encoding="utf-8") as f:
         content = f.read()
     assert content == new_content
 
 
-def test_write_file_logs_checksum(test_file_path: Path, config):
+def test_write_file_logs_checksum(test_file_path: Path, agent: Agent):
     new_content = "This is new content.\n"
     new_checksum = file_ops.text_checksum(new_content)
-    file_ops.write_to_file(str(test_file_path), new_content, config)
-    with open(config.file_logger_path, "r", encoding="utf-8") as f:
+    file_ops.write_to_file(str(test_file_path), new_content, agent=agent)
+    with open(agent.config.file_logger_path, "r", encoding="utf-8") as f:
         log_entry = f.read()
     assert log_entry == f"write: {test_file_path} #{new_checksum}\n"
 
 
-def test_write_file_fails_if_content_exists(test_file_path: Path, config):
+def test_write_file_fails_if_content_exists(test_file_path: Path, agent: Agent):
     new_content = "This is new content.\n"
     file_ops.log_operation(
         "write",
         str(test_file_path),
-        config,
+        agent=agent,
         checksum=file_ops.text_checksum(new_content),
     )
-    result = file_ops.write_to_file(str(test_file_path), new_content, config)
+    result = file_ops.write_to_file(str(test_file_path), new_content, agent=agent)
     assert result == "Error: File has already been updated."
 
 
 def test_write_file_succeeds_if_content_different(
-    test_file_with_content_path: Path, config
+    test_file_with_content_path: Path, agent: Agent
 ):
     new_content = "This is different content.\n"
     result = file_ops.write_to_file(
-        str(test_file_with_content_path), new_content, config
+        str(test_file_with_content_path), new_content, agent=agent
     )
     assert result == "File written to successfully."
 
 
 # Update file testing
-def test_replace_in_file_all_occurrences(test_file, test_file_path, config):
+def test_replace_in_file_all_occurrences(test_file, test_file_path, agent: Agent):
     old_content = "This is a test file.\n we test file here\na test is needed"
     expected_content = (
         "This is a update file.\n we update file here\na update is needed"
     )
     test_file.write(old_content)
     test_file.close()
-    file_ops.replace_in_file(test_file_path, "test", "update", config)
+    file_ops.replace_in_file(test_file_path, "test", "update", agent=agent)
     with open(test_file_path) as f:
         new_content = f.read()
     print(new_content)
@@ -290,13 +296,13 @@ def test_replace_in_file_all_occurrences(test_file, test_file_path, config):
     assert new_content == expected_content
 
 
-def test_replace_in_file_one_occurrence(test_file, test_file_path, config):
+def test_replace_in_file_one_occurrence(test_file, test_file_path, agent: Agent):
     old_content = "This is a test file.\n we test file here\na test is needed"
     expected_content = "This is a test file.\n we update file here\na test is needed"
     test_file.write(old_content)
     test_file.close()
     file_ops.replace_in_file(
-        test_file_path, "test", "update", config, occurrence_index=1
+        test_file_path, "test", "update", agent=agent, occurrence_index=1
     )
     with open(test_file_path) as f:
         new_content = f.read()
@@ -304,7 +310,7 @@ def test_replace_in_file_one_occurrence(test_file, test_file_path, config):
     assert new_content == expected_content
 
 
-def test_replace_in_file_multiline_old_text(test_file, test_file_path, config):
+def test_replace_in_file_multiline_old_text(test_file, test_file_path, agent: Agent):
     old_content = "This is a multi_line\ntest for testing\nhow well this function\nworks when the input\nis multi-lined"
     expected_content = "This is a multi_line\nfile. succeeded test\nis multi-lined"
     test_file.write(old_content)
@@ -313,7 +319,7 @@ def test_replace_in_file_multiline_old_text(test_file, test_file_path, config):
         test_file_path,
         "\ntest for testing\nhow well this function\nworks when the input\n",
         "\nfile. succeeded test\n",
-        config,
+        agent=agent,
     )
     with open(test_file_path) as f:
         new_content = f.read()
@@ -321,11 +327,11 @@ def test_replace_in_file_multiline_old_text(test_file, test_file_path, config):
     assert new_content == expected_content
 
 
-def test_append_to_file(test_nested_file: Path, config):
+def test_append_to_file(test_nested_file: Path, agent: Agent):
     append_text = "This is appended text.\n"
-    file_ops.write_to_file(test_nested_file, append_text, config)
+    file_ops.write_to_file(test_nested_file, append_text, agent=agent)
 
-    file_ops.append_to_file(test_nested_file, append_text, config)
+    file_ops.append_to_file(test_nested_file, append_text, agent=agent)
 
     with open(test_nested_file, "r") as f:
         content_after = f.read()
@@ -333,11 +339,13 @@ def test_append_to_file(test_nested_file: Path, config):
     assert content_after == append_text + append_text
 
 
-def test_append_to_file_uses_checksum_from_appended_file(test_file_path: Path, config):
+def test_append_to_file_uses_checksum_from_appended_file(
+    test_file_path: Path, agent: Agent
+):
     append_text = "This is appended text.\n"
-    file_ops.append_to_file(test_file_path, append_text, config)
-    file_ops.append_to_file(test_file_path, append_text, config)
-    with open(config.file_logger_path, "r", encoding="utf-8") as f:
+    file_ops.append_to_file(test_file_path, append_text, agent=agent)
+    file_ops.append_to_file(test_file_path, append_text, agent=agent)
+    with open(agent.config.file_logger_path, "r", encoding="utf-8") as f:
         log_contents = f.read()
 
     digest = hashlib.md5()
@@ -351,25 +359,25 @@ def test_append_to_file_uses_checksum_from_appended_file(test_file_path: Path, c
     )
 
 
-def test_delete_file(test_file_with_content_path: Path, config):
-    result = file_ops.delete_file(str(test_file_with_content_path), config)
+def test_delete_file(test_file_with_content_path: Path, agent: Agent):
+    result = file_ops.delete_file(str(test_file_with_content_path), agent=agent)
     assert result == "File deleted successfully."
     assert os.path.exists(test_file_with_content_path) is False
 
 
-def test_delete_missing_file(config):
+def test_delete_missing_file(agent: Agent):
     filename = "path/to/file/which/does/not/exist"
     # confuse the log
-    file_ops.log_operation("write", filename, config, checksum="fake")
+    file_ops.log_operation("write", filename, agent=agent, checksum="fake")
     try:
         os.remove(filename)
     except FileNotFoundError as err:
-        assert str(err) in file_ops.delete_file(filename, config)
+        assert str(err) in file_ops.delete_file(filename, agent=agent)
         return
     assert False, f"Failed to test delete_file; {filename} not expected to exist"
 
 
-def test_list_files(workspace: Workspace, test_directory: Path, config):
+def test_list_files(workspace: Workspace, test_directory: Path, agent: Agent):
     # Case 1: Create files A and B, search for A, and ensure we don't return A and B
     file_a = workspace.get_path("file_a.txt")
     file_b = workspace.get_path("file_b.txt")
@@ -387,7 +395,7 @@ def test_list_files(workspace: Workspace, test_directory: Path, config):
     with open(os.path.join(test_directory, file_a.name), "w") as f:
         f.write("This is file A in the subdirectory.")
 
-    files = file_ops.list_files(str(workspace.root), config)
+    files = file_ops.list_files(str(workspace.root), agent=agent)
     assert file_a.name in files
     assert file_b.name in files
     assert os.path.join(Path(test_directory).name, file_a.name) in files
@@ -400,17 +408,17 @@ def test_list_files(workspace: Workspace, test_directory: Path, config):
 
     # Case 2: Search for a file that does not exist and make sure we don't throw
     non_existent_file = "non_existent_file.txt"
-    files = file_ops.list_files("", config)
+    files = file_ops.list_files("", agent=agent)
     assert non_existent_file not in files
 
 
-def test_download_file(workspace: Workspace, config):
+def test_download_file(workspace: Workspace, agent: Agent):
     url = "https://github.com/Significant-Gravitas/Auto-GPT/archive/refs/tags/v0.2.2.tar.gz"
     local_name = workspace.get_path("auto-gpt.tar.gz")
     size = 365023
     readable_size = readable_file_size(size)
     assert (
-        file_ops.download_file(url, local_name, config)
+        file_ops.download_file(url, local_name, agent=agent)
         == f'Successfully downloaded and locally stored file: "{local_name}"! (Size: {readable_size})'
     )
     assert os.path.isfile(local_name) is True
@@ -418,10 +426,10 @@ def test_download_file(workspace: Workspace, config):
 
     url = "https://github.com/Significant-Gravitas/Auto-GPT/archive/refs/tags/v0.0.0.tar.gz"
     assert "Got an HTTP Error whilst trying to download file" in file_ops.download_file(
-        url, local_name, config
+        url, local_name, agent=agent
     )
 
     url = "https://thiswebsiteiswrong.hmm/v0.0.0.tar.gz"
     assert "Failed to establish a new connection:" in file_ops.download_file(
-        url, local_name, config
+        url, local_name, agent=agent
     )

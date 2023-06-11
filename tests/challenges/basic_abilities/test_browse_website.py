@@ -3,14 +3,11 @@ import pytest
 from autogpt.agent import Agent
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import run_interaction_loop
-from tests.utils import requires_api_key
 
 CYCLE_COUNT = 2
 
 
-@requires_api_key("OPENAI_API_KEY")
-@pytest.mark.vcr
-@challenge
+@challenge()
 def test_browse_website(
     browser_agent: Agent,
     patched_api_requestor: None,
