@@ -474,3 +474,41 @@ def test_generate_aiconfig_view_config():
 
     # Asserts
     assert ai_config.ai_name == "normal-GPT"
+
+
+@pytest.mark.vcr
+@requires_api_key("OPENAI_API_KEY")
+def test_generate_aiconfig_empty_config():
+    """Test change configuration and select."""
+
+    # Temporary path / file
+    temp_config_file = cfg.ai_settings_filepath
+
+    # Temporary config
+    config_content = """ """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "--manual",
+        "chef-GPT",
+        "an AI designed to browse bake a cake.",
+        "2",
+        "Purchase ingredients",
+        "Bake a cake",
+        "",
+        "",
+        "",
+        "3.00",
+        "n",
+    ]
+
+    # Patch function to use the user_inputs list
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = main_menu()
+
+    # Asserts
+    assert ai_config.ai_name == "chef-GPT"
