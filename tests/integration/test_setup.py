@@ -473,7 +473,7 @@ def test_generate_aiconfig_view_config():
         ai_config = main_menu()
 
     # Asserts
-    assert ai_config.ai_name == "simple-GPT"
+    assert ai_config.ai_name == "normal-GPT"
 
 
 @pytest.mark.vcr
