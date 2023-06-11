@@ -20,7 +20,7 @@ def test_initial_values(config: Config):
     assert config.continuous_mode == False
     assert config.speak_mode == False
     assert config.fast_llm_model == "gpt-3.5-turbo"
-    assert config.smart_llm_model == "gpt-3.5-turbo"    
+    assert config.smart_llm_model == "gpt-3.5-turbo"
 
 
 def test_set_continuous_mode(config: Config):
@@ -198,6 +198,7 @@ def test_create_config_gpt3only(config: Config) -> None:
         assert config.fast_llm_model == GPT_3_MODEL
         assert config.smart_llm_model == GPT_3_MODEL
 
+
 def test_create_config_azure_gpt3only(config: Config) -> None:
     fast_llm_model = config.fast_llm_model
     smart_llm_model = config.smart_llm_model
@@ -222,7 +223,6 @@ def test_create_config_azure_gpt3only(config: Config) -> None:
         )
         assert config.fast_llm_model == GPT_3_MODEL
         assert config.smart_llm_model == GPT_3_MODEL
-
 
     # Reset config
     config.set_fast_llm_model(fast_llm_model)
