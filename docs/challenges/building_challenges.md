@@ -111,7 +111,7 @@ def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> Non
     """
     input_sequence = ["s", "s", "s", "s", "s", "EXIT"]
     gen = input_generator(input_sequence)
-    monkeypatch.setattr("builtins.input", lambda _: next(gen))
+    monkeypatch.setattr("autogpt.utils.session.prompt", lambda _: next(gen))
 
     with contextlib.suppress(SystemExit):
         run_interaction_loop(kubernetes_agent, None)
