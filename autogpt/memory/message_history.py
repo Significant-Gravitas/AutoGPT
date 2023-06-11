@@ -1,6 +1,6 @@
 from __future__ import annotations
-import ast
 
+import ast
 import copy
 import json
 from dataclasses import dataclass, field
