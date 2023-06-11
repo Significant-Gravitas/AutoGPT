@@ -38,7 +38,7 @@ def agent(config: Config):
     return agent
 
 
-def test_message_history(mocker, agent):
+def test_message_history_batch_summary(mocker, agent):
     config = Config()
     history = MessageHistory(agent)
     model = config.fast_llm_model
