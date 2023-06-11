@@ -157,9 +157,10 @@ class MessageHistory:
                     if "thoughts" in content_dict:
                         del content_dict["thoughts"]
                     event.content = json.dumps(content_dict)
-                except json.decoder.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error: Invalid JSON: {e}")
                     if cfg.debug_mode:
-                        logger.error(f"Error: Invalid JSON: {event.content}\n")
+                        logger.error(f"{event.content}")
 
             elif event.role.lower() == "system":
                 event.role = "your computer"
