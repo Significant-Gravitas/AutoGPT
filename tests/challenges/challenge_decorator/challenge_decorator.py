@@ -17,7 +17,7 @@ MAX_LEVEL_TO_IMPROVE_ON = (
     1  # we will attempt to beat 1 level above the current level for now.
 )
 
-CHALLENGE_FAILED_MESSAGE = "Challenges can sometimes fail randomly, please run this test again and if it fails reach out to us on https://discord.gg/autogpt and reach out to us on the 'challenges' channel to let us know the challenge you're struggling with."
+CHALLENGE_FAILED_MESSAGE = "Challenges can sometimes fail randomly, please run this test again and if it fails reach out to us on https://discord.gg/autogpt in the 'challenges' channel to let us know the challenge you're struggling with."
 
 
 def challenge(
