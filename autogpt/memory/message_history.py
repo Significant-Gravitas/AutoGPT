@@ -1,4 +1,5 @@
 from __future__ import annotations
+import ast
 
 import copy
 import json
@@ -153,7 +154,7 @@ class MessageHistory:
 
                 # Remove "thoughts" dictionary from "content"
                 try:
-                    content_dict = json.loads(event.content)
+                    content_dict = ast.literal_eval(event.content)
                     if "thoughts" in content_dict:
                         del content_dict["thoughts"]
                     event.content = json.dumps(content_dict)
