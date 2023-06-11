@@ -20,8 +20,7 @@ def test_initial_values(config: Config):
     assert config.continuous_mode == False
     assert config.speak_mode == False
     assert config.fast_llm_model == "gpt-3.5-turbo"
-    assert config.smart_llm_model == "gpt-3.5-turbo"
-    assert config.use_azure == "True"
+    assert config.smart_llm_model == "gpt-3.5-turbo"    
 
 
 def test_set_continuous_mode(config: Config):
@@ -198,6 +197,32 @@ def test_create_config_gpt3only(config: Config) -> None:
         )
         assert config.fast_llm_model == GPT_3_MODEL
         assert config.smart_llm_model == GPT_3_MODEL
+
+def test_create_config_azure_gpt3only(config: Config) -> None:
+    fast_llm_model = config.fast_llm_model
+    smart_llm_model = config.smart_llm_model
+    config.use_azure == "True"
+    with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
+        mock_get_models.return_value = [{"id": GPT_3_MODEL}]
+        create_config(
+            config=config,
+            continuous=False,
+            continuous_limit=None,
+            ai_settings_file=None,
+            prompt_settings_file=None,
+            skip_reprompt=False,
+            speak=False,
+            debug=False,
+            gpt3only=True,
+            gpt4only=False,
+            memory_type=None,
+            browser_name=None,
+            allow_downloads=False,
+            skip_news=False,
+        )
+        assert config.fast_llm_model == GPT_3_MODEL
+        assert config.smart_llm_model == GPT_3_MODEL
+
 
     # Reset config
     config.set_fast_llm_model(fast_llm_model)
