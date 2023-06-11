@@ -42,6 +42,7 @@ def challenge(
                 )
                 if challenge.level_to_run is not None:
                     kwargs["level_to_run"] = challenge.level_to_run
+                    kwargs["challenge_name"] = challenge.name
                     try:
                         func(*args, **kwargs)
                         challenge.succeeded = True
