@@ -4,28 +4,30 @@ import pytest
 
 from autogpt.agent import Agent
 from autogpt.config import AIConfig
+from autogpt.config.config import Config
 
 
 @pytest.fixture
-def agent():
+def agent(config: Config):
     ai_name = "Test AI"
     memory = MagicMock()
     next_action_count = 0
     command_registry = MagicMock()
-    config = AIConfig()
+    ai_config = AIConfig(ai_name=ai_name)
     system_prompt = "System prompt"
     triggering_prompt = "Triggering prompt"
     workspace_directory = "workspace_directory"
 
     agent = Agent(
-        ai_name,
-        memory,
-        next_action_count,
-        command_registry,
-        config,
-        system_prompt,
-        triggering_prompt,
-        workspace_directory,
+        ai_name=ai_name,
+        memory=memory,
+        next_action_count=next_action_count,
+        command_registry=command_registry,
+        ai_config=ai_config,
+        config=config,
+        system_prompt=system_prompt,
+        triggering_prompt=triggering_prompt,
+        workspace_directory=workspace_directory,
     )
     return agent
 
@@ -36,7 +38,7 @@ def test_agent_initialization(agent: Agent):
     assert agent.history.messages == []
     assert agent.next_action_count == 0
     assert agent.command_registry == agent.command_registry
-    assert agent.config == agent.config
+    assert agent.ai_config == agent.ai_config
     assert agent.system_prompt == "System prompt"
     assert agent.triggering_prompt == "Triggering prompt"
 
