@@ -21,6 +21,7 @@ def test_initial_values(config: Config):
     assert config.speak_mode == False
     assert config.fast_llm_model == "gpt-3.5-turbo"
     assert config.smart_llm_model == "gpt-3.5-turbo"
+    assert config.use_azure == "True"
 
 
 def test_set_continuous_mode(config: Config):
