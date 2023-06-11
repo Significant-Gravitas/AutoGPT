@@ -6,15 +6,12 @@ from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_interaction_loop
-from tests.utils import requires_api_key
 
 CYCLE_COUNT = 3
 OUTPUT_LOCATION = "kube.yaml"
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-@challenge
+@challenge()
 def test_kubernetes_template_challenge_a(
     kubernetes_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
