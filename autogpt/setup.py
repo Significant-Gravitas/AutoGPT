@@ -77,6 +77,9 @@ def generate_aiconfig_automatic(user_prompt: str) -> AIConfig:
     # Save the new configuration
     try:
         new_config.save(CFG.ai_settings_filepath, append=True)
+
+        logger.typewriter_log("Configuration saved.", Fore.GREEN)
+
     except Exception as e:
         logger.error(f"Exception when trying to save config: {e}")
 

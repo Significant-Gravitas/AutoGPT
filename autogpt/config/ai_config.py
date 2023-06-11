@@ -72,6 +72,10 @@ class AIConfig:
         """
         all_configs = AIConfig.load_all(config_file)  # type: ignore
 
+        # Handle the case when the file is empty and `load_all` returns None
+        if all_configs is None:
+            return None
+
         if ai_name in all_configs:
             return all_configs[ai_name]
         else:
@@ -84,6 +88,10 @@ class AIConfig:
                 all_configs: Dict[str, Any] = yaml.safe_load(file) or {}
         except FileNotFoundError:
             all_configs = {}
+
+        # Handle the case when the file is empty and yaml.safe_load returns None
+        if all_configs is None:
+            return {}
 
         configs = all_configs.get("configs", {}) or {}
 
@@ -149,6 +157,10 @@ class AIConfig:
             with open(config_file, "r", encoding="utf-8") as file:
                 all_configs = yaml.safe_load(file)
 
+                # Handle the case when the file exists but is empty
+                if all_configs is None:
+                    all_configs = {"configs": {}}
+
         # Remove old configuration if old_ai_name is provided
         if old_ai_name and old_ai_name in all_configs["configs"]:
             del all_configs["configs"][old_ai_name]
@@ -182,6 +194,10 @@ class AIConfig:
         else:
             with open(config_file, "r", encoding="utf-8") as file:
                 all_configs = yaml.safe_load(file)
+
+                # Handle the case when the file exists but is empty
+                if all_configs is None:
+                    return "No configurations to delete."
 
         # Check if AI configuration exists
         if ai_name in all_configs["configs"]:
