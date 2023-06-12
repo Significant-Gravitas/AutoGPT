@@ -20,10 +20,15 @@ def test_write_file(
     patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
+    challenge_name: str,
 ) -> None:
     file_system_agent = file_system_agents[level_to_run - 1]
     run_interaction_loop(
-        monkeypatch, file_system_agent, CYCLE_COUNT_PER_LEVEL[level_to_run - 1]
+        monkeypatch,
+        file_system_agent,
+        CYCLE_COUNT_PER_LEVEL[level_to_run - 1],
+        challenge_name,
+        level_to_run,
     )
 
     expected_outputs = EXPECTED_OUTPUTS_PER_LEVEL[level_to_run - 1]
