@@ -15,6 +15,7 @@ def test_memory_challenge_a(
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
+    challenge_name: str,
 ) -> None:
     """
     The agent reads a file containing a task_id. Then, it reads a series of other files.
@@ -28,7 +29,13 @@ def test_memory_challenge_a(
     task_id = "2314"
     create_instructions_files(memory_management_agent, level_to_run, task_id)
 
-    run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
+    run_interaction_loop(
+        monkeypatch,
+        memory_management_agent,
+        level_to_run + 2,
+        challenge_name,
+        level_to_run,
+    )
 
     file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
     content = read_file(file_path, memory_management_agent)

@@ -2,11 +2,12 @@ import contextlib
 import random
 import shutil
 from pathlib import Path
-from typing import Generator
+from typing import Any, Generator
 
 import pytest
 
 from autogpt.agent import Agent
+from autogpt.log_cycle.log_cycle import LogCycleHandler
 
 
 def generate_noise(noise_size: int) -> str:
@@ -39,11 +40,28 @@ def setup_mock_input(monkeypatch: pytest.MonkeyPatch, cycle_count: int) -> None:
 
 
 def run_interaction_loop(
-    monkeypatch: pytest.MonkeyPatch, agent: Agent, cycle_count: int
+    monkeypatch: pytest.MonkeyPatch,
+    agent: Agent,
+    cycle_count: int,
+    challenge_name: str,
+    level_to_run: int,
 ) -> None:
     setup_mock_input(monkeypatch, cycle_count)
+
+    setup_mock_log_cycle_agent_name(monkeypatch, challenge_name, level_to_run)
     with contextlib.suppress(SystemExit):
         agent.start_interaction_loop()
+
+
+def setup_mock_log_cycle_agent_name(
+    monkeypatch: pytest.MonkeyPatch, challenge_name: str, level_to_run: int
+) -> None:
+    def mock_get_agent_short_name(*args: Any, **kwargs: Any) -> str:
+        return f"{challenge_name}_level_{level_to_run}"
+
+    monkeypatch.setattr(
+        LogCycleHandler, "get_agent_short_name", mock_get_agent_short_name
+    )
 
 
 def get_workspace_path(agent: Agent, file_name: str) -> str:
