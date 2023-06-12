@@ -146,7 +146,9 @@ def is_file_binary_fn(file_path: str):
 
 def read_textual_file(file_path: str, logger: logs.Logger) -> str:
     if not os.path.isfile(file_path):
-        raise FileNotFoundError(f"{file_path} not found!")
+        raise FileNotFoundError(
+            f"read_file {file_path} failed: no such file or directory"
+        )
     is_binary = is_file_binary_fn(file_path)
     file_extension = os.path.splitext(file_path)[1].lower()
     parser = extension_to_parser.get(file_extension)
