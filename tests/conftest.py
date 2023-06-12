@@ -1,7 +1,9 @@
 import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
+import yaml
 from pytest_mock import MockerFixture
 
 from autogpt.agent.agent import Agent
@@ -32,9 +34,25 @@ def workspace(workspace_root: Path) -> Workspace:
     return Workspace(workspace_root, restrict_to_workspace=True)
 
 
+@pytest.fixture
+def temp_plugins_config_file():
+    """Create a plugins_config.yaml file in a temp directory so that it doesn't mess with existing ones"""
+    config_directory = TemporaryDirectory()
+    config_file = os.path.join(config_directory.name, "plugins_config.yaml")
+    with open(config_file, "w+") as f:
+        f.write(yaml.dump({}))
+
+    yield config_file
+
+
 @pytest.fixture()
-def config(mocker: MockerFixture, workspace: Workspace) -> Config:
+def config(
+    temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace
+) -> Config:
     config = Config()
+    config.plugins_dir = "tests/unit/data/test_plugins"
+    config.plugins_config_file = temp_plugins_config_file
+    config.load_plugins_config()
 
     # Do a little setup and teardown since the config object is a singleton
     mocker.patch.multiple(
