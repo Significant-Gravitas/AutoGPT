@@ -146,7 +146,7 @@ def create_chat_completion(
         resp = response.choices[0].message["content"]
     else:
         logger.error(response.error)
-        raise
+        raise RuntimeError(response.error)
 
     for plugin in cfg.plugins:
         if not plugin.can_handle_on_response():
