@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import NoReturn
 
+from autogpt.agent.agent import Agent
 from autogpt.commands.command import command
 from autogpt.logs import logger
 
@@ -12,7 +13,7 @@ from autogpt.logs import logger
     "Task Complete (Shutdown)",
     '"reason": "<reason>"',
 )
-def task_complete(reason: str) -> NoReturn:
+def task_complete(reason: str, agent: Agent) -> NoReturn:
     """
     A function that takes in a string and exits the program
 

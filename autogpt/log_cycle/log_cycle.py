@@ -10,6 +10,8 @@ CURRENT_CONTEXT_FILE_NAME = "current_context.json"
 NEXT_ACTION_FILE_NAME = "next_action.json"
 PROMPT_SUMMARY_FILE_NAME = "prompt_summary.json"
 SUMMARY_FILE_NAME = "summary.txt"
+SUPERVISOR_FEEDBACK_FILE_NAME = "supervisor_feedback.txt"
+PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME = "prompt_supervisor_feedback.json"
 USER_INPUT_FILE_NAME = "user_input.txt"
 
 
@@ -32,13 +34,16 @@ class LogCycleHandler:
         if os.environ.get("OVERWRITE_DEBUG") == "1":
             outer_folder_name = "auto_gpt"
         else:
-            ai_name_short = ai_name[:15] if ai_name else DEFAULT_PREFIX
+            ai_name_short = self.get_agent_short_name(ai_name)
             outer_folder_name = f"{created_at}_{ai_name_short}"
 
         outer_folder_path = os.path.join(log_directory, "DEBUG", outer_folder_name)
         self.create_directory_if_not_exists(outer_folder_path)
 
         return outer_folder_path
+
+    def get_agent_short_name(self, ai_name):
+        return ai_name[:15] if ai_name else DEFAULT_PREFIX
 
     def create_inner_directory(self, outer_folder_path: str, cycle_count: int) -> str:
         nested_folder_name = str(cycle_count).zfill(3)

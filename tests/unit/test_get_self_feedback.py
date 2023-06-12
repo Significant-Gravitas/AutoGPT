@@ -1,9 +1,15 @@
+from datetime import datetime
+
+from pytest_mock import MockerFixture
+
 from autogpt.agent.agent import Agent
 from autogpt.config import AIConfig
-from autogpt.llm import create_chat_completion
+from autogpt.config.config import Config
+from autogpt.llm.chat import create_chat_completion
+from autogpt.log_cycle.log_cycle import LogCycleHandler
 
 
-def test_get_self_feedback(mocker):
+def test_get_self_feedback(config: Config, mocker: MockerFixture):
     # Define a sample thoughts dictionary
     thoughts = {
         "reasoning": "Sample reasoning.",
@@ -29,7 +35,17 @@ def test_get_self_feedback(mocker):
     agent_mock = mocker.MagicMock(spec=Agent)
 
     # Mock the config attribute of the Agent instance
-    agent_mock.config = AIConfig()
+    agent_mock.config = config
+    agent_mock.ai_config = AIConfig()
+
+    # Mock the log_cycle_handler attribute of the Agent instance
+    agent_mock.log_cycle_handler = LogCycleHandler()
+
+    # Mock the create_nested_directory method of the LogCycleHandler instance
+    agent_mock.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Mock the cycle_count attribute of the Agent instance
+    agent_mock.cycle_count = 0
 
     # Call the get_self_feedback method
     feedback = Agent.get_self_feedback(
