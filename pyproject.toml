@@ -21,6 +21,10 @@ description = "An open-source attempt to make GPT-4 autonomous"
 "Homepage" = "https://github.com/Significant-Gravitas/Auto-GPT"
 "Bug Tracker" = "https://github.com/Significant-Gravitas/Auto-GPT"
 
+[options.entry_points]
+console_scripts =
+    autogpt = autogpt.cli:main
+
 [tool.black]
 line-length = 88
 target-version = ['py310']
