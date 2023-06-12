@@ -199,18 +199,18 @@ class MessageHistory:
     def summarize_batch(self, new_events_batch, cfg):
         prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
 
-        You will receive the current summary and your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
+You will receive the current summary and your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
 
-        Summary So Far:
-        """
-        {self.summary}
-        """
+Summary So Far:
+"""
+{self.summary}
+"""
 
-        Latest Development:
-        """
-        {new_events_batch or "Nothing new happened."}
-        """
-        '''
+Latest Development:
+"""
+{new_events_batch or "Nothing new happened."}
+"""
+'''
 
         prompt = ChatSequence.for_model(cfg.fast_llm_model, [Message("user", prompt)])
         self.agent.log_cycle_handler.log_cycle(
