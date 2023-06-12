@@ -4,10 +4,10 @@ from threading import Semaphore
 
 from autogpt.config.config import Config
 from autogpt.speech.base import VoiceBase
-from autogpt.speech.brian import BrianSpeech
 from autogpt.speech.eleven_labs import ElevenLabsSpeech
 from autogpt.speech.gtts import GTTSVoice
 from autogpt.speech.macos_tts import MacOSTTS
+from autogpt.speech.stream_elements_speech import StreamElementsSpeech
 
 _QUEUE_SEMAPHORE = Semaphore(
     1
@@ -33,14 +33,14 @@ def say_text(text: str, voice_index: int = 0) -> None:
 
 def _get_voice_engine(config: Config) -> tuple[VoiceBase, VoiceBase]:
     """Get the voice engine to use for the given configuration"""
-    default_voice_engine = GTTSVoice()
-    if config.elevenlabs_api_key:
+    tts_provider = config.text_to_speech_provider
+    if tts_provider == "elevenlabs":
         voice_engine = ElevenLabsSpeech()
-    elif config.use_mac_os_tts == "True":
+    elif tts_provider == "macos":
         voice_engine = MacOSTTS()
-    elif config.use_brian_tts == "True":
-        voice_engine = BrianSpeech()
+    elif tts_provider == "streamelements":
+        voice_engine = StreamElementsSpeech()
     else:
         voice_engine = GTTSVoice()
 
-    return default_voice_engine, voice_engine
+    return GTTSVoice(), voice_engine

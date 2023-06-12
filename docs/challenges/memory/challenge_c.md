@@ -4,7 +4,7 @@
 
 **Command to try**: 
 ```
-pytest -s tests/integration/challenges/memory/test_memory_challenge_c.py --level=2
+pytest -s tests/challenges/memory/test_memory_challenge_c.py --level=2
 ``
 
 ## Description

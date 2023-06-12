@@ -47,13 +47,8 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
         services:
           auto-gpt:
             image: significantgravitas/auto-gpt
-            depends_on:
-              - redis
             env_file:
               - .env
-            environment:
-              MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
-              REDIS_HOST: ${REDIS_HOST:-redis}
             profiles: ["exclude-from-up"]
             volumes:
               - ./auto_gpt_workspace:/app/autogpt/auto_gpt_workspace
@@ -68,8 +63,6 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
               #- type: bind
               #  source: ./ai_settings.yaml
               #  target: /app/ai_settings.yaml
-          redis:
-            image: "redis/redis-stack-server:latest"
 
 4. Create the necessary [configuration](#configuration) files. If needed, you can find
     templates in the [repository].
@@ -179,7 +172,7 @@ If you need to upgrade Docker Compose to a newer version, you can follow the ins
 
 Once you have a recent version of docker-compose, run the commands below in your Auto-GPT folder.
 
-1. Build the image. If you have pulled the image from Docker Hub, skip this step (NOTE: You *will* need to do this if you are modifying requirements.txt to add/remove depedencies like Python libs/frameworks) 
+1. Build the image. If you have pulled the image from Docker Hub, skip this step (NOTE: You *will* need to do this if you are modifying requirements.txt to add/remove dependencies like Python libs/frameworks) 
 
         :::shell
         docker-compose build auto-gpt
