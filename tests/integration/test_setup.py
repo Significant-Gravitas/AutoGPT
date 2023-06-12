@@ -512,3 +512,126 @@ def test_generate_aiconfig_empty_config():
 
     # Asserts
     assert ai_config.ai_name == "chef-GPT"
+
+
+@pytest.mark.vcr
+@requires_api_key("OPENAI_API_KEY")
+def test_generate_aiconfig_edit_num_goals_25():
+    """Test change configuration and select."""
+
+    # Temporary path / file
+    temp_config_file = cfg.ai_settings_filepath
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+    normal-GPT:
+        ai_goals:
+        -  save a text file test2.txt with the text "hello space".
+        -  use read_file to confirm the file test2.txt contains the words "hello space".
+        -  rename file test2.txt to test-4.txt.
+        -  delete file test-2.txt.
+        -  shutdown.
+        ai_role: do a normal file task
+        api_budget: 0.0
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "3",
+        "new-GPT",
+        "an agent that looks for the newest python code",
+        "25",
+        "0",
+        "go online and search for new python code",
+        "grab it, save it in a file and shutdown",
+        "",
+        "",
+        "",
+        "",
+        "a",
+        "r",
+        "1",
+    ]
+
+    # Patch function to use the user_inputs list
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = main_menu()
+
+    # Asserts
+    assert ai_config.ai_name == "new-GPT"
+    assert ai_config.ai_role == "an agent that looks for the newest python code"
+    assert ai_config.ai_goals == [
+        "go online and search for new python code",
+        "grab it, save it in a file and shutdown",
+    ]
+
+
+@pytest.mark.vcr
+@requires_api_key("OPENAI_API_KEY")
+def test_generate_aiconfig_edit_num_goals_none():
+    """Test change configuration and select."""
+
+    # Temporary path / file
+    temp_config_file = cfg.ai_settings_filepath
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+    normal-GPT:
+        ai_goals:
+        -  save a text file test2.txt with the text "hello space".
+        -  use read_file to confirm the file test2.txt contains the words "hello space".
+        -  rename file test2.txt to test-4.txt.
+        -  delete file test-2.txt.
+        -  shutdown.
+        ai_role: do a normal file task
+        api_budget: 0.0
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "3",
+        "new-GPT",
+        "an agent that looks for the newest python code",
+        "",
+        "go online and search for new python code",
+        "grab it, save it in a file and shutdown",
+        "",
+        "",
+        "",
+        "",
+        "a",
+        "r",
+        "1",
+    ]
+
+    # Patch function to use the user_inputs list
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = main_menu()
+
+    # Asserts
+    assert ai_config.ai_name == "new-GPT"
+    assert ai_config.ai_role == "an agent that looks for the newest python code"
+    assert ai_config.ai_goals == [
+        "go online and search for new python code",
+        "grab it, save it in a file and shutdown",
+    ]
