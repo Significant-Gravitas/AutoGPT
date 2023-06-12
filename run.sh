@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 function find_python_command() {
     if command -v python &> /dev/null

@@ -150,7 +150,7 @@ def chat_with_ai(
         if not plugin.can_handle_on_planning():
             continue
         plugin_response = plugin.on_planning(
-            agent.config.prompt_generator, message_sequence.raw()
+            agent.ai_config.prompt_generator, message_sequence.raw()
         )
         if not plugin_response or plugin_response == "":
             continue
@@ -181,7 +181,7 @@ def chat_with_ai(
         logger.debug("")
     logger.debug("----------- END OF CONTEXT ----------------")
     agent.log_cycle_handler.log_cycle(
-        agent.config.ai_name,
+        agent.ai_name,
         agent.created_at,
         agent.cycle_count,
         message_sequence.raw(),
