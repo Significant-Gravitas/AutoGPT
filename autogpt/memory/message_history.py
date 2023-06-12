@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import copy
 import json
 from dataclasses import dataclass, field
@@ -12,6 +11,7 @@ if TYPE_CHECKING:
 from autogpt.config import Config
 from autogpt.json_utils.utilities import (
     LLM_DEFAULT_RESPONSE_FORMAT,
+    extract_json_from_response,
     is_string_valid_json,
 )
 from autogpt.llm.base import ChatSequence, Message, MessageRole, MessageType
@@ -154,8 +154,7 @@ class MessageHistory:
 
                 # Remove "thoughts" dictionary from "content"
                 try:
-                    # event.content comes from OpenAI as a Python `str(content_dict)`, literal_eval reverses this
-                    content_dict = ast.literal_eval(event.content)
+                    content_dict = extract_json_from_response(event.content)
                     if "thoughts" in content_dict:
                         del content_dict["thoughts"]
                     event.content = json.dumps(content_dict)

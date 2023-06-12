@@ -1,4 +1,5 @@
 """Utilities for the json_fixes package."""
+import ast
 import json
 import os.path
 
@@ -10,6 +11,15 @@ from autogpt.logs import logger
 
 CFG = Config()
 LLM_DEFAULT_RESPONSE_FORMAT = "llm_response_format_1"
+
+
+def extract_json_from_response(response_content: str) -> dict:
+    # Sometimes the response includes the JSON in a code block with ```
+    if "```" in response_content:
+        response_content = response_content.split("```")[1]
+
+    # response content comes from OpenAI as a Python `str(content_dict)`, literal_eval reverses this
+    return ast.literal_eval(response_content)
 
 
 def llm_response_schema(

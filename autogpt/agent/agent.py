@@ -1,4 +1,3 @@
-import ast
 import json
 import signal
 import sys
@@ -9,7 +8,7 @@ from colorama import Fore, Style
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
-from autogpt.json_utils.utilities import validate_json
+from autogpt.json_utils.utilities import extract_json_from_response, validate_json
 from autogpt.llm.base import ChatSequence
 from autogpt.llm.chat import chat_with_ai, create_chat_completion
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
@@ -146,8 +145,7 @@ class Agent:
                 )
 
             try:
-                # assistant_reply comes from OpenAI as a Python `str(reply_dict)`, literal_eval reverses this
-                assistant_reply_json = ast.literal_eval(assistant_reply)
+                assistant_reply_json = extract_json_from_response(assistant_reply)
                 validate_json(assistant_reply_json)
             except json.JSONDecodeError as e:
                 logger.error(f"Exception while validating assistant reply JSON: {e}")
