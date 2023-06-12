@@ -174,6 +174,7 @@ class MessageHistory:
         # TODO make this default dynamic
         prompt_template_length = 100
         max_tokens = OPEN_AI_CHAT_MODELS.get(cfg.fast_llm_model).max_tokens
+        summary_tlength = count_string_tokens(str(self.summary), cfg.fast_llm_model)
         batch = []
         batch_tlength = 0
 
@@ -181,9 +182,15 @@ class MessageHistory:
         for event in new_events:
             event_tlength = count_string_tokens(str(event), cfg.fast_llm_model)
 
-            if batch_tlength + event_tlength > max_tokens - prompt_template_length:
+            if (
+                batch_tlength + event_tlength
+                > max_tokens - prompt_template_length - summary_tlength
+            ):
                 # The batch is full. Summarize it and start a new one.
                 self.summarize_batch(batch, cfg)
+                summary_tlength = count_string_tokens(
+                    str(self.summary), cfg.fast_llm_model
+                )
                 batch = [event]
                 batch_tlength = event_tlength
             else:
