@@ -142,6 +142,6 @@ class PromptGenerator:
             f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             "Performance Evaluation:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
-            "Respond with only valid JSON conforming to the following schema: \n"
+            "Your response MUST be a compliant machine-readable JSON document conforming to the following schema:\n"
             f"{llm_response_schema()}\n"
         )
