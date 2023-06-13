@@ -12,14 +12,10 @@ from colorama import Back, Fore
 from confection import Config
 from requests.adapters import HTTPAdapter, Retry
 
-<<<<<<< HEAD
-from autogpt.commands.command import command, ignore_unexpected_kwargs
-from autogpt.config import Config
-=======
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import command
+from autogpt.commands.command import command, ignore_unexpected_kwargs
 from autogpt.commands.file_operations_utils import read_textual_file
->>>>>>> 7bf39cbb72a838fae5fc2ac70f6b8a5cf421e6ca
+from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
 from autogpt.spinner import Spinner
