@@ -3,6 +3,7 @@ from typing import Optional
 
 class Challenge:
     BEAT_CHALLENGES = False
+    DEFAULT_CHALLENGE_NAME = "default_challenge_name"
 
     def __init__(
         self,
@@ -10,7 +11,7 @@ class Challenge:
         category: str,
         max_level: int,
         is_new_challenge: bool,
-        max_level_beaten: Optional[int],
+        max_level_beaten: Optional[int] = None,
         level_to_run: Optional[int] = None,
     ) -> None:
         self.name = name

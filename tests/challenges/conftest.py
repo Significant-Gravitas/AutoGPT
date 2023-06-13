@@ -51,6 +51,11 @@ def level_to_run(request: FixtureRequest) -> int:
     return request.config.option.level
 
 
+@pytest.fixture
+def challenge_name() -> str:
+    return Challenge.DEFAULT_CHALLENGE_NAME
+
+
 @pytest.fixture(autouse=True)
 def check_beat_challenges(request: FixtureRequest) -> None:
     Challenge.BEAT_CHALLENGES = request.config.getoption("--beat-challenges")

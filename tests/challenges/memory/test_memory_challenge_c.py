@@ -10,7 +10,7 @@ from tests.challenges.utils import (
     run_interaction_loop,
 )
 
-NOISE = 1000
+NOISE = 1200
 OUTPUT_LOCATION = "output.txt"
 
 
@@ -20,6 +20,7 @@ def test_memory_challenge_c(
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
+    challenge_name: str,
 ) -> None:
     """
     Instead of reading task Ids from files as with the previous challenges, the agent now must remember
@@ -33,16 +34,16 @@ def test_memory_challenge_c(
         level_to_run (int)
     """
     silly_phrases = [
-        "The purple elephant danced on a rainbow while eating a taco.",
-        "The sneaky toaster stole my socks and ran away to Hawaii.",
-        "My pet rock sings better than Beyoncé on Tuesdays.",
-        "The giant hamster rode a unicycle through the crowded mall.",
-        "The talking tree gave me a high-five and then flew away.",
-        "I have a collection of invisible hats that I wear on special occasions.",
-        "The flying spaghetti monster stole my sandwich and left a note saying 'thanks for the snack!'",
-        "My imaginary friend is a dragon who loves to play video games.",
-        "I once saw a cloud shaped like a giant chicken eating a pizza.",
-        "The ninja unicorn disguised itself as a potted plant and infiltrated the office.",
+        "The purple elephant danced on a rainbow while eating a taco",
+        "The sneaky toaster stole my socks and ran away to Hawaii",
+        "My pet rock sings better than Beyoncé on Tuesdays",
+        "The giant hamster rode a unicycle through the crowded mall",
+        "The talking tree gave me a high-five and then flew away",
+        "I have a collection of invisible hats that I wear on special occasions",
+        "The flying spaghetti monster stole my sandwich and left a note saying 'thanks for the snack'",
+        "My imaginary friend is a dragon who loves to play video games",
+        "I once saw a cloud shaped like a giant chicken eating a pizza",
+        "The ninja unicorn disguised itself as a potted plant and infiltrated the office",
     ]
 
     level_silly_phrases = silly_phrases[:level_to_run]
@@ -52,7 +53,13 @@ def test_memory_challenge_c(
         level_silly_phrases,
     )
 
-    run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
+    run_interaction_loop(
+        monkeypatch,
+        memory_management_agent,
+        level_to_run + 2,
+        challenge_name,
+        level_to_run,
+    )
     file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
     content = read_file(file_path, agent=memory_management_agent)
     for phrase in level_silly_phrases:

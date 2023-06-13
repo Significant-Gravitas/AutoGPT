@@ -13,9 +13,12 @@ def test_browse_website(
     patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
+    challenge_name: str,
 ) -> None:
     file_path = browser_agent.workspace.get_path("browse_website.txt")
-    run_interaction_loop(monkeypatch, browser_agent, CYCLE_COUNT)
+    run_interaction_loop(
+        monkeypatch, browser_agent, CYCLE_COUNT, challenge_name, level_to_run
+    )
 
     # content = read_file(file_path, config)
     content = open(file_path, encoding="utf-8").read()

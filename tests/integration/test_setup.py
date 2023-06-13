@@ -25,6 +25,7 @@ def setup(tmp_path):
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_automatic_default(patched_api_requestor):
     user_inputs = [""]
+
     with patch("builtins.input", side_effect=user_inputs):
         ai_config = welcome_prompt()
 
