@@ -2,9 +2,9 @@
 import ast
 import json
 import os.path
+from typing import Any
 
 from jsonschema import Draft7Validator
-from pyparsing import Any
 
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -15,11 +15,17 @@ LLM_DEFAULT_RESPONSE_FORMAT = "llm_response_format_1"
 
 def extract_json_from_response(response_content: str) -> dict:
     # Sometimes the response includes the JSON in a code block with ```
-    if "```" in response_content:
-        response_content = response_content.split("```")[1]
+    if response_content.startswith("```") and response_content.endswith("```"):
+        # Discard the first and last ```, then re-join in case the response naturally included ```
+        response_content = "```".join(response_content.split("```")[1:-1])
 
     # response content comes from OpenAI as a Python `str(content_dict)`, literal_eval reverses this
-    return ast.literal_eval(response_content)
+    try:
+        return ast.literal_eval(response_content)
+    except BaseException as e:
+        logger.error(f"Error parsing JSON response with literal_eval {e}")
+        # TODO: How to raise an error here without causing the program to exit?
+        return {}
 
 
 def llm_response_schema(
