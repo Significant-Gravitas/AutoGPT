@@ -1,6 +1,7 @@
 """ A module for generating custom prompt strings."""
-import json
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+
+from autogpt.json_utils.utilities import llm_response_schema
 
 if TYPE_CHECKING:
     from autogpt.commands.command import CommandRegistry
@@ -25,16 +26,6 @@ class PromptGenerator:
         self.command_registry: CommandRegistry | None = None
         self.name = "Bob"
         self.role = "AI"
-        self.response_format = {
-            "thoughts": {
-                "text": "thought",
-                "reasoning": "reasoning",
-                "plan": "- short bulleted\n- list that conveys\n- long-term plan",
-                "criticism": "constructive self-criticism",
-                "speak": "thoughts summary to say to user",
-            },
-            "command": {"name": "command name", "args": {"arg name": "value"}},
-        }
 
     def add_constraint(self, constraint: str) -> None:
         """
@@ -144,7 +135,6 @@ class PromptGenerator:
         Returns:
             str: The generated prompt string.
         """
-        formatted_response_format = json.dumps(self.response_format, indent=4)
         return (
             f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
             "Commands:\n"
@@ -152,7 +142,6 @@ class PromptGenerator:
             f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             "Performance Evaluation:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
-            "You should only respond in JSON format as described below \nResponse"
-            f" Format: \n{formatted_response_format} \nEnsure the response can be"
-            " parsed by Python json.loads"
+            "Respond with only valid JSON conforming to the following schema: \n"
+            f"{llm_response_schema()}\n"
         )
