@@ -1,20 +1,13 @@
 import builtins
-from itertools import cycle
-from unittest.mock import MagicMock, Mock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from colorama import Fore, Style
 
-from autogpt.config.ai_config import AIConfig
 from autogpt.prompts.prompt import (
     cfg,
     generate_unique_name,
-    handle_config,
-    handle_configs,
     manage_ai_name,
-    start_prompt,
     validate_input,
-    welcome_prompt,
 )
 
 
@@ -108,6 +101,7 @@ def test_manage_ai_name_edit_change_current(
     assert configs.ai_name == "new_name"
     mock_input.assert_called_once_with("AI Name: ")
     mock_check_name.assert_called_once_with("new_name")
+
 
 if __name__ == "__main__":
     pytest.main()
