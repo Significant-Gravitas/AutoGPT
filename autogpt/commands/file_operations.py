@@ -119,38 +119,6 @@ def log_operation(
     )
 
 
-def split_file(
-    content: str, max_length: int = 4000, overlap: int = 0
-) -> Generator[str, None, None]:
-    """
-    Split text into chunks of a specified maximum length with a specified overlap
-    between chunks.
-
-    :param content: The input text to be split into chunks
-    :param max_length: The maximum length of each chunk,
-        default is 4000 (about 1k token)
-    :param overlap: The number of overlapping characters between chunks,
-        default is no overlap
-    :return: A generator yielding chunks of text
-    """
-    start = 0
-    content_length = len(content)
-
-    while start < content_length:
-        end = start + max_length
-        if end + overlap < content_length:
-            chunk = content[start : end + max(overlap - 1, 0)]
-        else:
-            chunk = content[start:content_length]
-
-            # Account for the case where the last chunk is shorter than the overlap, so it has already been consumed
-            if len(chunk) <= overlap:
-                break
-
-        yield chunk
-        start += max_length - overlap
-
-
 @command("read_file", "Read a file", '"filename": "<filename>"')
 def read_file(filename: str, agent: Agent) -> str:
     """Read a file and return the contents

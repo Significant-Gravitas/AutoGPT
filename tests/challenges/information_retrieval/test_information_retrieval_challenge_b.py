@@ -18,6 +18,7 @@ def test_information_retrieval_challenge_b(
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
     level_to_run: int,
+    challenge_name: str,
 ) -> None:
     """
     Test the challenge_b function in a given agent by mocking user inputs and checking the output file content.
@@ -29,7 +30,13 @@ def test_information_retrieval_challenge_b(
     """
 
     with contextlib.suppress(SystemExit):
-        run_interaction_loop(monkeypatch, get_nobel_prize_agent, CYCLE_COUNT)
+        run_interaction_loop(
+            monkeypatch,
+            get_nobel_prize_agent,
+            CYCLE_COUNT,
+            challenge_name,
+            level_to_run,
+        )
     file_path = get_workspace_path(get_nobel_prize_agent, OUTPUT_LOCATION)
 
     content = read_file(file_path, get_nobel_prize_agent)
