@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 from autogpt.config import Config
 from autogpt.json_utils.utilities import (
     LLM_DEFAULT_RESPONSE_FORMAT,
+    extract_json_from_response,
     is_string_valid_json,
 )
 from autogpt.llm.base import ChatSequence, Message, MessageRole, MessageType
@@ -153,13 +154,14 @@ class MessageHistory:
 
                 # Remove "thoughts" dictionary from "content"
                 try:
-                    content_dict = json.loads(event.content)
+                    content_dict = extract_json_from_response(event.content)
                     if "thoughts" in content_dict:
                         del content_dict["thoughts"]
                     event.content = json.dumps(content_dict)
-                except json.decoder.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error: Invalid JSON: {e}")
                     if cfg.debug_mode:
-                        logger.error(f"Error: Invalid JSON: {event.content}\n")
+                        logger.error(f"{event.content}")
 
             elif event.role.lower() == "system":
                 event.role = "your computer"

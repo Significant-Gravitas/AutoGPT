@@ -11,7 +11,7 @@ from autogpt.utils import clean_input
 
 CFG = Config()
 
-DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond using the format specified above:"
+DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond using the JSON schema specified previously:"
 
 
 def build_default_prompt_generator() -> PromptGenerator:
