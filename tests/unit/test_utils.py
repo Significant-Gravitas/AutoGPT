@@ -1,8 +1,10 @@
 import os
 from unittest.mock import patch
 
+import pytest
 import requests
 
+from autogpt.json_utils.utilities import extract_json_from_response, validate_json
 from autogpt.utils import (
     get_bulletin_from_web,
     get_current_git_branch,
@@ -11,6 +13,37 @@ from autogpt.utils import (
     validate_yaml_file,
 )
 from tests.utils import skip_in_ci
+
+
+@pytest.fixture
+def valid_json_response() -> dict:
+    return {
+        "thoughts": {
+            "text": "My task is complete. I will use the 'task_complete' command to shut down.",
+            "reasoning": "I will use the 'task_complete' command because it allows me to shut down and signal that my task is complete.",
+            "plan": "I will use the 'task_complete' command with the reason 'Task complete: retrieved Tesla's revenue in 2022.' to shut down.",
+            "criticism": "I need to ensure that I have completed all necessary tasks before shutting down.",
+            "speak": "",
+        },
+        "command": {
+            "name": "task_complete",
+            "args": {"reason": "Task complete: retrieved Tesla's revenue in 2022."},
+        },
+    }
+
+
+@pytest.fixture
+def invalid_json_response() -> dict:
+    return {
+        "thoughts": {
+            "text": "My task is complete. I will use the 'task_complete' command to shut down.",
+            "reasoning": "I will use the 'task_complete' command because it allows me to shut down and signal that my task is complete.",
+            "plan": "I will use the 'task_complete' command with the reason 'Task complete: retrieved Tesla's revenue in 2022.' to shut down.",
+            "criticism": "I need to ensure that I have completed all necessary tasks before shutting down.",
+            "speak": "",
+        },
+        "command": {"name": "", "args": {}},
+    }
 
 
 def test_validate_yaml_file_valid():
@@ -150,3 +183,25 @@ def test_get_current_git_branch_failure(mock_repo):
     branch_name = get_current_git_branch()
 
     assert branch_name == ""
+
+
+def test_validate_json_valid(valid_json_response):
+    assert validate_json(valid_json_response)
+
+
+def test_validate_json_invalid(invalid_json_response):
+    assert not validate_json(valid_json_response)
+
+
+def test_extract_json_from_response(valid_json_response: dict):
+    emulated_response_from_openai = str(valid_json_response)
+    assert (
+        extract_json_from_response(emulated_response_from_openai) == valid_json_response
+    )
+
+
+def test_extract_json_from_response_wrapped_in_code_block(valid_json_response: dict):
+    emulated_response_from_openai = "```" + str(valid_json_response) + "```"
+    assert (
+        extract_json_from_response(emulated_response_from_openai) == valid_json_response
+    )
