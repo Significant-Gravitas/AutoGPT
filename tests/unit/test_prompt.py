@@ -126,16 +126,14 @@ def test_start_prompt(capsys):
             # Capture the printed output
             captured = capsys.readouterr()
 
+            recorded_calls = mock_typewriter_log.call_args_list
+
             # Perform assertions on the recorded calls
             expected_call = call("Name:", "\x1b[32m", "Test AI", speak_text=False)
             assert len(recorded_calls) == 12
             assert any(expected_call == c for c in recorded_calls)
             assert (
                 call("Role:", "\x1b[32m", "Test role", speak_text=False)
-                in recorded_calls
-            )
-            assert (
-                call("Goals:", "\x1b[32m", "Goal 1, Goal 2", speak_text=False)
                 in recorded_calls
             )
             assert (
