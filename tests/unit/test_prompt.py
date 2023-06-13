@@ -1,5 +1,5 @@
 import builtins
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, call, patch
 
 import pytest
 
@@ -7,6 +7,7 @@ from autogpt.prompts.prompt import (
     cfg,
     generate_unique_name,
     manage_ai_name,
+    start_prompt,
     validate_input,
 )
 
@@ -100,6 +101,52 @@ def test_manage_ai_name_edit_change_current(
     assert result == "new_name"
     assert configs.ai_name == "new_name"
     mock_check_name.assert_called_once_with("new_name")
+
+
+def test_start_prompt(capsys):
+    # Mock the necessary dependencies and set up the initial config
+    config = Mock()
+    config.ai_name = "Test AI"
+    config.ai_role = "Test role"
+    config.ai_goals = ["Goal 1", "Goal 2"]
+    config.api_budget = 100.0
+    config.plugins = [
+        "Plugin 1",
+        "Plugin 2",
+    ]  # Provide a valid iterable value for plugins
+
+    with patch("autogpt.prompts.prompt.logger.typewriter_log") as mock_typewriter_log:
+        with patch("autogpt.prompts.prompt.ApiManager") as mock_api_manager:
+            # Set up the mock return value for the total budget
+            mock_api_manager.return_value.set_total_budget.return_value = None
+
+            # Call the start_prompt function
+            start_prompt(config)
+
+            # Capture the printed output
+            captured = capsys.readouterr()
+
+            # Perform assertions on the recorded calls
+            expected_call = call("Name:", "\x1b[32m", "Test AI", speak_text=False)
+            assert len(recorded_calls) == 12
+            assert any(expected_call == c for c in recorded_calls)
+            assert (
+                call("Role:", "\x1b[32m", "Test role", speak_text=False)
+                in recorded_calls
+            )
+            assert (
+                call("Goals:", "\x1b[32m", "Goal 1, Goal 2", speak_text=False)
+                in recorded_calls
+            )
+            assert (
+                call("Budget:", "\x1b[32m", "$100.0", speak_text=False)
+                in recorded_calls
+            )
+
+            # Perform assertions on the order of recorded calls
+            assert recorded_calls.index(expected_call) < recorded_calls.index(
+                call("Role:", "\x1b[32m", "Test role", speak_text=False)
+            )
 
 
 if __name__ == "__main__":
