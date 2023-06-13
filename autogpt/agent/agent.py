@@ -1,3 +1,4 @@
+import json
 import signal
 import sys
 from datetime import datetime
@@ -7,8 +8,7 @@ from colorama import Fore, Style
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
-from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
-from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
+from autogpt.json_utils.utilities import extract_json_from_response, validate_json
 from autogpt.llm.base import ChatSequence
 from autogpt.llm.chat import chat_with_ai, create_chat_completion
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
@@ -144,7 +144,13 @@ class Agent:
                     self.config.fast_llm_model,
                 )
 
-            assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
+            try:
+                assistant_reply_json = extract_json_from_response(assistant_reply)
+                validate_json(assistant_reply_json)
+            except json.JSONDecodeError as e:
+                logger.error(f"Exception while validating assistant reply JSON: {e}")
+                assistant_reply_json = {}
+
             for plugin in self.config.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
@@ -152,7 +158,6 @@ class Agent:
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
-                validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
