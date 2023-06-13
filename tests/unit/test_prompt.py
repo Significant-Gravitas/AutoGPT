@@ -60,22 +60,23 @@ def test_generate_unique_name():
 
 @patch("autogpt.prompts.prompt.check_ai_name_exists", return_value=False)
 @patch("autogpt.prompts.prompt.validate_input", side_effect=lambda x: x)
-@patch.object(builtins, "input", return_value="test_name")
-def test_manage_ai_name_create(mock_input, mock_validate_input, mock_check_name):
+@patch("autogpt.utils.session.prompt", return_value="test_name")
+def test_manage_ai_name_create(
+    mock_session_prompt, mock_validate_input, mock_check_name
+):
     configs = ConfigsMock()
     task = "create"
     result = manage_ai_name(configs, task)
     assert result == "test_name"
     assert configs.ai_name == "test_name"
-    mock_input.assert_called_once_with("AI Name: ")
     mock_check_name.assert_called_once_with("test_name")
 
 
 @patch("autogpt.prompts.prompt.check_ai_name_exists", return_value=False)
 @patch("autogpt.prompts.prompt.validate_input", side_effect=lambda x: x)
-@patch.object(builtins, "input", return_value="")
+@patch("autogpt.utils.session.prompt", side_effect=["", "Y"])
 def test_manage_ai_name_edit_keep_current(
-    mock_input, mock_validate_input, mock_check_name
+    mock_session_prompt, mock_validate_input, mock_check_name
 ):
     configs = ConfigsMock()
     configs.ai_name = "current_name"
@@ -83,15 +84,14 @@ def test_manage_ai_name_edit_keep_current(
     result = manage_ai_name(configs, task)
     assert result == "current_name"
     assert configs.ai_name == "current_name"
-    mock_input.assert_called_once_with("AI Name: ")
     mock_check_name.assert_called_once_with("current_name")
 
 
 @patch("autogpt.prompts.prompt.check_ai_name_exists", return_value=False)
 @patch("autogpt.prompts.prompt.validate_input", side_effect=lambda x: x)
-@patch.object(builtins, "input", return_value="new_name")
+@patch("autogpt.utils.session.prompt", side_effect=["new_name"])
 def test_manage_ai_name_edit_change_current(
-    mock_input, mock_validate_input, mock_check_name
+    mock_session_prompt, mock_validate_input, mock_check_name
 ):
     configs = ConfigsMock()
     configs.ai_name = "current_name"
@@ -99,7 +99,6 @@ def test_manage_ai_name_edit_change_current(
     result = manage_ai_name(configs, task)
     assert result == "new_name"
     assert configs.ai_name == "new_name"
-    mock_input.assert_called_once_with("AI Name: ")
     mock_check_name.assert_called_once_with("new_name")
 
 

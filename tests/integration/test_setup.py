@@ -1,4 +1,3 @@
-from unittest import mock
 from unittest.mock import patch
 
 import pytest
@@ -23,10 +22,10 @@ def setup(tmp_path):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_default(patched_api_requestor):
+def test_generate_aiconfig_automatic_default(patched_api_requestor: Mock) -> None:
     user_inputs = [""]
 
-    with patch("builtins.input", side_effect=user_inputs):
+    with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
         ai_config = welcome_prompt()
 
     assert isinstance(ai_config, AIConfig)
@@ -37,7 +36,7 @@ def test_generate_aiconfig_automatic_default(patched_api_requestor):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_typical(patched_api_requestor):
+def test_generate_aiconfig_automatic_typical(patched_api_requestor: Mock) -> None:
     user_prompt = "Help me create a rock opera about cybernetic giraffes"
     ai_config = generate_aiconfig_automatic(user_prompt)
 
@@ -49,7 +48,7 @@ def test_generate_aiconfig_automatic_typical(patched_api_requestor):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
+def test_generate_aiconfig_automatic_fallback(patched_api_requestor: Mock) -> None:
     user_inputs = [
         "T&GF£OIBECC()!*",
         "Chef-GPT",
@@ -65,8 +64,16 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
         "1",
     ]
 
-    # Patch function to use the user_inputs list
-    with patch("builtins.input", side_effect=user_inputs):
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
         ai_config = main_menu()
 
     # Asserts
@@ -80,7 +87,7 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_prompt_user_manual_mode_r_input(patched_api_requestor):
+def test_prompt_user_manual_mode_r_input(patched_api_requestor: Mock) -> None:
     user_inputs = [
         "--manual",
         "Chef-GPT",
@@ -95,9 +102,15 @@ def test_prompt_user_manual_mode_r_input(patched_api_requestor):
         "r",
     ]
 
-    with mock.patch("builtins.input", side_effect=user_inputs), mock.patch(
-        "autogpt.prompts.prompt.main_menu", return_value=None
-    ) as mock_main_menu:
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ), patch("autogpt.prompts.prompt.main_menu", return_value=None) as mock_main_menu:
         ai_config = welcome_prompt()
         mock_main_menu.assert_called_once()
 
@@ -106,7 +119,7 @@ def test_prompt_user_manual_mode_r_input(patched_api_requestor):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_prompt_user_manual_mode(patched_api_requestor):
+def test_prompt_user_manual_mode(patched_api_requestor: Mock) -> None:
     user_inputs = [
         "--manual",
         "Chef-GPT",
@@ -121,8 +134,16 @@ def test_prompt_user_manual_mode(patched_api_requestor):
         "n",
     ]
 
-    with mock.patch("builtins.input", side_effect=user_inputs):
-        with mock.patch("autogpt.logs.logger.typewriter_log") as mock_logger:
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace autogpt.utils.session.prompt and built-in input
+    def mock_prompt_input(_prompt):
+        return next(user_inputs_iterator)
+
+    with patch("autogpt.utils.session.prompt", new=mock_prompt_input), patch(
+        "builtins.input", new=mock_prompt_input
+    ):
+        with patch("autogpt.logs.logger.typewriter_log") as mock_logger:
             ai_config = welcome_prompt()
             mock_logger.assert_called_with("Configuration saved.", "\x1b[32m")
 
@@ -164,8 +185,16 @@ def test_generate_aiconfig_delete_and_select():
     # Sequence of user inputs:
     user_inputs = ["6", "", "1", "", "1", ""]
 
-    # Patch function to use the user_inputs list
-    with patch("builtins.input", side_effect=user_inputs):
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
         ai_config = main_menu()
 
     # Asserts
@@ -227,8 +256,16 @@ def test_generate_aiconfig_change_and_select():
         "1",
     ]
 
-    # Patch function to use the user_inputs list
-    with patch("builtins.input", side_effect=user_inputs):
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
         ai_config = main_menu()
 
     # Asserts
@@ -288,8 +325,16 @@ def test_generate_aiconfig_change_and_start():
         "1",
     ]
 
-    # Patch function to use the user_inputs list
-    with patch("builtins.input", side_effect=user_inputs):
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
         ai_config = main_menu()
 
     # Asserts
@@ -347,8 +392,16 @@ def test_generate_aiconfig_create_and_select():
         "3",
     ]
 
-    # Patch function to use the user_inputs list
-    with patch("builtins.input", side_effect=user_inputs):
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
         ai_config = main_menu()
 
     # Asserts
@@ -407,8 +460,16 @@ def test_generate_aiconfig_edit_wrong_budget():
         "1",
     ]
 
-    # Patch function to use the user_inputs list
-    with patch("builtins.input", side_effect=user_inputs):
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
         ai_config = main_menu()
 
     # Asserts
@@ -469,8 +530,16 @@ def test_generate_aiconfig_view_config():
         "1",
     ]
 
-    # Patch function to use the user_inputs list
-    with patch("builtins.input", side_effect=user_inputs):
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
         ai_config = main_menu()
 
     # Asserts
@@ -507,8 +576,16 @@ def test_generate_aiconfig_empty_config():
         "n",
     ]
 
-    # Patch function to use the user_inputs list
-    with patch("builtins.input", side_effect=user_inputs):
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
         ai_config = main_menu()
 
     # Asserts
@@ -564,8 +641,16 @@ def test_generate_aiconfig_edit_num_goals_25():
         "1",
     ]
 
-    # Patch function to use the user_inputs list
-    with patch("builtins.input", side_effect=user_inputs):
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
         ai_config = main_menu()
 
     # Asserts
@@ -625,8 +710,16 @@ def test_generate_aiconfig_edit_num_goals_none():
         "1",
     ]
 
-    # Patch function to use the user_inputs list
-    with patch("builtins.input", side_effect=user_inputs):
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt):
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
         ai_config = main_menu()
 
     # Asserts
