@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from autogpt.json_utils.utilities import validate_json, extract_json_from_response
+from autogpt.json_utils.utilities import extract_json_from_response, validate_json
 from autogpt.utils import (
     get_bulletin_from_web,
     get_current_git_branch,
@@ -195,9 +195,13 @@ def test_validate_json_invalid(invalid_json_response):
 
 def test_extract_json_from_response(valid_json_response: dict):
     emulated_response_from_openai = str(valid_json_response)
-    assert extract_json_from_response(emulated_response_from_openai) == valid_json_response
+    assert (
+        extract_json_from_response(emulated_response_from_openai) == valid_json_response
+    )
 
 
 def test_extract_json_from_response_wrapped_in_code_block(valid_json_response: dict):
     emulated_response_from_openai = "```" + str(valid_json_response) + "```"
-    assert extract_json_from_response(emulated_response_from_openai) == valid_json_response
+    assert (
+        extract_json_from_response(emulated_response_from_openai) == valid_json_response
+    )
