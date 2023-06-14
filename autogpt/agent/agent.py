@@ -140,7 +140,7 @@ class Agent:
                     config=self.config,
                     agent=self,
                     system_prompt=self.system_prompt,
-                    user_input=self.triggering_prompt,
+                    triggering_prompt=self.triggering_prompt,
                     token_limit=self.fast_token_limit,
                     model=self.config.fast_llm_model,
                     functions=self.get_functions_from_commands(),
@@ -163,6 +163,14 @@ class Agent:
                     print_assistant_thoughts(
                         self.ai_name, reply_content_json, self.config.speak_mode
                     )
+                    self.log_cycle_handler.log_cycle(
+                        self.ai_config.ai_name,
+                        self.created_at,
+                        self.cycle_count,
+                        reply_content_json,
+                        NEXT_ACTION_FILE_NAME,
+                    )
+
                     # TODO: Validate
                 except json.JSONDecodeError as e:
                     logger.error(f"Could not decode response JSON")
@@ -185,14 +193,6 @@ class Agent:
 
             if self.config.speak_mode:
                 say_text(f"I want to execute {command_name}")
-
-            self.log_cycle_handler.log_cycle(
-                self.ai_config.ai_name,
-                self.created_at,
-                self.cycle_count,
-                reply_content,
-                NEXT_ACTION_FILE_NAME,
-            )
 
             # First log new-line so user can differentiate sections better in console
             logger.typewriter_log("\n")
@@ -222,24 +222,6 @@ class Agent:
                         )
                     if console_input.lower().strip() == self.config.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
-                        break
-                    elif console_input.lower().strip() == "s":
-                        logger.typewriter_log(
-                            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
-                            Fore.GREEN,
-                            "",
-                        )
-                        thoughts = reply_content_json.get("thoughts", {})
-                        self_feedback_resp = self.get_self_feedback(
-                            thoughts, self.config.fast_llm_model
-                        )
-                        logger.typewriter_log(
-                            f"SELF FEEDBACK: {self_feedback_resp}",
-                            Fore.YELLOW,
-                            "",
-                        )
-                        user_input = self_feedback_resp
-                        command_name = "self_feedback"
                         break
                     elif console_input.lower().strip() == "":
                         logger.warn("Invalid input format.")
@@ -296,8 +278,6 @@ class Agent:
                 result = f"Could not execute command: {command_name}"
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
-            elif command_name == "self_feedback":
-                result = f"Self feedback: {user_input}"
             else:
                 for plugin in self.config.plugins:
                     if not plugin.can_handle_pre_command():
@@ -358,47 +338,6 @@ class Agent:
                     )
         return command_args
 
-    def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
-        """Generates a feedback response based on the provided thoughts dictionary.
-        This method takes in a dictionary of thoughts containing keys such as 'reasoning',
-        'plan', 'thoughts', and 'criticism'. It combines these elements into a single
-        feedback message and uses the create_chat_completion() function to generate a
-        response based on the input message.
-        Args:
-            thoughts (dict): A dictionary containing thought elements like reasoning,
-            plan, thoughts, and criticism.
-        Returns:
-            str: A feedback response generated using the provided thoughts dictionary.
-        """
-        ai_role = self.ai_config.ai_role
-
-        feedback_prompt = f"Below is a message from me, an AI Agent, assuming the role of {ai_role}. whilst keeping knowledge of my slight limitations as an AI Agent Please evaluate my thought process, reasoning, and plan, and provide a concise paragraph outlining potential improvements. Consider adding or removing ideas that do not align with my role and explaining why, prioritizing thoughts based on their significance, or simply refining my overall thought process."
-        reasoning = thoughts.get("reasoning", "")
-        plan = thoughts.get("plan", "")
-        thought = thoughts.get("thoughts", "")
-        feedback_thoughts = thought + reasoning + plan
-
-        prompt = ChatSequence.for_model(llm_model)
-        prompt.add("user", feedback_prompt + feedback_thoughts)
-
-        self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            prompt.raw(),
-            PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
-        )
-
-        feedback = create_chat_completion(prompt).content
-
-        self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            feedback,
-            SUPERVISOR_FEEDBACK_FILE_NAME,
-        )
-        return feedback
 
     def get_functions_from_commands(self) -> list[CommandFunction]:
         """Get functions from the commands. "functions" in this context refers to OpenAI functions

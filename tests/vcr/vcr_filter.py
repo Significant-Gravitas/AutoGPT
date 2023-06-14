@@ -9,11 +9,7 @@ REPLACEMENTS: List[Dict[str, str]] = [
     {
         "regex": r"\w{3} \w{3} {1,2}\d{1,2} \d{2}:\d{2}:\d{2} \d{4}",
         "replacement": "Tue Jan  1 00:00:00 2000",
-    },
-    {
-        "regex": r"<selenium.webdriver.chrome.webdriver.WebDriver[^>]*>",
-        "replacement": "",
-    },
+    }
 ]
 
 ALLOWED_HOSTNAMES: List[str] = [
@@ -32,9 +28,12 @@ NEW_URL = "api.openai.com"
 
 
 def replace_message_content(content: str, replacements: List[Dict[str, str]]) -> str:
-    for replacement in replacements:
-        pattern = re.compile(replacement["regex"])
-        content = pattern.sub(replacement["replacement"], content)
+    try:
+        for replacement in replacements:
+            pattern = re.compile(replacement["regex"])
+            content = pattern.sub(replacement["replacement"], content)
+    except Exception:
+        test = "ok"
 
     return content
 
