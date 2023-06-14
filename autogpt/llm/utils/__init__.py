@@ -170,7 +170,7 @@ def create_chat_completion(
 def check_model(
     model_name: str, model_type: Literal["smart_llm_model", "fast_llm_model"]
 ) -> str:
-    """Check if model is available for use. If not, return gpt-3.5-turbo-0613."""
+    """Check if model is available for use. If not, return gpt-3.5-turbo-16k-0613."""
     api_manager = ApiManager()
     models = api_manager.get_models()
 
@@ -181,6 +181,6 @@ def check_model(
         "WARNING: ",
         Fore.YELLOW,
         f"You do not have access to {model_name}. Setting {model_type} to "
-        f"gpt-3.5-turbo-0613.",
+        f"gpt-3.5-turbo-16k-0613.",
     )
-    return "gpt-3.5-turbo-0613"
+    return "gpt-3.5-turbo-16k-0613"

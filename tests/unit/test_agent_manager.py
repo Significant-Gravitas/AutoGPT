@@ -23,7 +23,7 @@ def prompt():
 
 @pytest.fixture
 def model():
-    return "gpt-3.5-turbo-0613"
+    return "gpt-3.5-turbo-16k-0613"
 
 
 @pytest.fixture(autouse=True)

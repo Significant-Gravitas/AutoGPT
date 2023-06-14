@@ -18,7 +18,7 @@ def mock_costs():
     with patch.dict(
         COSTS,
         {
-            "gpt-3.5-turbo-0613": {"prompt": 0.002, "completion": 0.002},
+            "gpt-3.5-turbo-16k-0613": {"prompt": 0.002, "completion": 0.002},
             "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0},
         },
         clear=True,
@@ -29,7 +29,7 @@ def mock_costs():
 class TestApiManager:
     def test_getter_methods(self):
         """Test the getter methods for total tokens, cost, and budget."""
-        api_manager.update_cost(60, 120, "gpt-3.5-turbo-0613")
+        api_manager.update_cost(60, 120, "gpt-3.5-turbo-16k-0613")
         api_manager.set_total_budget(10.0)
         assert api_manager.get_total_prompt_tokens() == 60
         assert api_manager.get_total_completion_tokens() == 120
@@ -49,7 +49,7 @@ class TestApiManager:
         """Test if updating the cost works correctly."""
         prompt_tokens = 50
         completion_tokens = 100
-        model = "gpt-3.5-turbo-0613"
+        model = "gpt-3.5-turbo-16k-0613"
 
         api_manager.update_cost(prompt_tokens, completion_tokens, model)
 
@@ -61,8 +61,8 @@ class TestApiManager:
     def test_get_models():
         """Test if getting models works correctly."""
         with patch("openai.Model.list") as mock_list_models:
-            mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo-0613"}]}
+            mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo-16k-0613"}]}
             result = api_manager.get_models()
 
-            assert result[0]["id"] == "gpt-3.5-turbo-0613"
-            assert api_manager.models[0]["id"] == "gpt-3.5-turbo-0613"
+            assert result[0]["id"] == "gpt-3.5-turbo-16k-0613"
+            assert api_manager.models[0]["id"] == "gpt-3.5-turbo-16k-0613"
