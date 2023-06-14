@@ -3,8 +3,6 @@ COSTS = {
     "gpt-3.5-turbo-0301": {"prompt": 0.002, "completion": 0.002},
     # gpt-35-turbo is the model name of Azure, different from openai
     "gpt-35-turbo": {"prompt": 0.002, "completion": 0.002},
-    # reserved for the model name of Azure may be changed to gpt-35-turbo-0301
-    "gpt-35-turbo-0301": {"prompt": 0.002, "completion": 0.002},
     "gpt-4-0314": {"prompt": 0.03, "completion": 0.06},
     "gpt-4": {"prompt": 0.03, "completion": 0.06},
     "gpt-4-0314": {"prompt": 0.03, "completion": 0.06},
