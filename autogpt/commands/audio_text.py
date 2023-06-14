@@ -3,20 +3,19 @@ import json
 
 import requests
 
+from autogpt.agent.agent import Agent
 from autogpt.commands.command import command
-from autogpt.config import Config
-
-CFG = Config()
 
 
 @command(
     "read_audio_from_file",
     "Convert Audio to text",
     '"filename": "<filename>"',
-    CFG.huggingface_audio_to_text_model,
-    "Configure huggingface_audio_to_text_model.",
+    lambda config: config.huggingface_audio_to_text_model
+    and config.huggingface_api_token,
+    "Configure huggingface_audio_to_text_model and Hugging Face api token.",
 )
-def read_audio_from_file(filename: str) -> str:
+def read_audio_from_file(filename: str, agent: Agent) -> str:
     """
     Convert audio to text.
 
@@ -28,10 +27,10 @@ def read_audio_from_file(filename: str) -> str:
     """
     with open(filename, "rb") as audio_file:
         audio = audio_file.read()
-    return read_audio(audio)
+    return read_audio(audio, agent.config)
 
 
-def read_audio(audio: bytes) -> str:
+def read_audio(audio: bytes, agent: Agent) -> str:
     """
     Convert audio to text.
 
@@ -41,9 +40,20 @@ def read_audio(audio: bytes) -> str:
     Returns:
         str: The text from the audio
     """
-    model = CFG.huggingface_audio_to_text_model
+    if agent.config.audio_to_text_provider == "huggingface":
+        text = read_huggingface_audio(audio, agent.config)
+        if text:
+            return f"The audio says: {text}"
+        else:
+            return f"Error, couldn't convert audio to text"
+
+    return "Error: No audio to text provider given"
+
+
+def read_huggingface_audio(audio: bytes, agent: Agent) -> str:
+    model = agent.config.huggingface_audio_to_text_model
     api_url = f"https://api-inference.huggingface.co/models/{model}"
-    api_token = CFG.huggingface_api_token
+    api_token = agent.config.huggingface_api_token
     headers = {"Authorization": f"Bearer {api_token}"}
 
     if api_token is None:
@@ -57,5 +67,5 @@ def read_audio(audio: bytes) -> str:
         data=audio,
     )
 
-    text = json.loads(response.content.decode("utf-8"))["text"]
-    return f"The audio says: {text}"
+    response_json = json.loads(response.content.decode("utf-8"))
+    return response_json.get("text")

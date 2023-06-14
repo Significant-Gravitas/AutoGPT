@@ -3,19 +3,15 @@ from unittest.mock import patch
 import pytest
 
 from autogpt.config.ai_config import AIConfig
-from autogpt.setup import (
-    generate_aiconfig_automatic,
-    generate_aiconfig_manual,
-    prompt_user,
-)
+from autogpt.setup import generate_aiconfig_automatic, prompt_user
 from tests.utils import requires_api_key
 
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_default():
+def test_generate_aiconfig_automatic_default(patched_api_requestor):
     user_inputs = [""]
-    with patch("builtins.input", side_effect=user_inputs):
+    with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
         ai_config = prompt_user()
 
     assert isinstance(ai_config, AIConfig)
@@ -26,7 +22,7 @@ def test_generate_aiconfig_automatic_default():
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_typical():
+def test_generate_aiconfig_automatic_typical(patched_api_requestor):
     user_prompt = "Help me create a rock opera about cybernetic giraffes"
     ai_config = generate_aiconfig_automatic(user_prompt)
 
@@ -38,7 +34,7 @@ def test_generate_aiconfig_automatic_typical():
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_fallback():
+def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
     user_inputs = [
         "T&GF£OIBECC()!*",
         "Chef-GPT",
@@ -48,7 +44,7 @@ def test_generate_aiconfig_automatic_fallback():
         "",
         "",
     ]
-    with patch("builtins.input", side_effect=user_inputs):
+    with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
         ai_config = prompt_user()
 
     assert isinstance(ai_config, AIConfig)
@@ -59,7 +55,7 @@ def test_generate_aiconfig_automatic_fallback():
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_prompt_user_manual_mode():
+def test_prompt_user_manual_mode(patched_api_requestor):
     user_inputs = [
         "--manual",
         "Chef-GPT",
@@ -69,7 +65,7 @@ def test_prompt_user_manual_mode():
         "",
         "",
     ]
-    with patch("builtins.input", side_effect=user_inputs):
+    with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
         ai_config = prompt_user()
 
     assert isinstance(ai_config, AIConfig)

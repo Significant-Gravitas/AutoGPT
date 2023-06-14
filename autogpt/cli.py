@@ -16,6 +16,11 @@ import click
     help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
 )
 @click.option(
+    "--prompt-settings",
+    "-P",
+    help="Specifies which prompt_settings.yaml file to use.",
+)
+@click.option(
     "-l",
     "--continuous-limit",
     type=int,
@@ -81,6 +86,7 @@ def main(
     continuous: bool,
     continuous_limit: int,
     ai_settings: str,
+    prompt_settings: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -109,6 +115,7 @@ def main(
             continuous,
             continuous_limit,
             ai_settings,
+            prompt_settings,
             skip_reprompt,
             speak,
             debug,
