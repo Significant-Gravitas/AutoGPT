@@ -187,7 +187,7 @@ class Agent:
                 # TODO: What should happen when there's no function call? The AI does this sometimes. Maybe when it
                 #  thinks it's done
                 command_name = function_call.get("name")
-                # FIXME: Some call is sending a string
+                # FIXME: Some call is sending a string, some arent?
                 arguments = function_call.get("arguments")
                 if type(arguments) == str:
                     try:
