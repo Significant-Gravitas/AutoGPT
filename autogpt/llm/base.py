@@ -75,8 +75,16 @@ class MessageCycle:
         return cls(
             triggering_prompt=Message(role=MessageRole.USER, content=triggering_prompt),
             ai_response=Message(role=MessageRole.USER, content=ai_response),
-            user_input=Message(role=MessageRole.USER, content=user_input) if user_input else None,
-            result=Message(role=MessageRole.FUNCTION, content=command_result, function_name=command_name ) if command_result else None,
+            user_input=Message(role=MessageRole.USER, content=user_input)
+            if user_input
+            else None,
+            result=Message(
+                role=MessageRole.FUNCTION,
+                content=command_result,
+                function_name=command_name,
+            )
+            if command_result
+            else None,
         )
 
 
@@ -127,7 +135,7 @@ class Message:
         if self.function_name:
             raw_message["function_call"] = {
                 "name": self.function_name,
-                "arguments": self.function_arguments or {},
+                "arguments": self.function_arguments or "{}",
             }
 
         return raw_message
