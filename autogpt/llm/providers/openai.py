@@ -29,40 +29,16 @@ OPEN_AI_CHAT_MODELS = {
             max_tokens=4096,
         ),
         ChatModelInfo(
-            name="gpt-4",
+            name="gpt-4-0613",
             prompt_token_cost=0.03,
             completion_token_cost=0.06,
             max_tokens=8192,
         ),
         ChatModelInfo(
-            name="gpt-4-0314",
-            prompt_token_cost=0.03,
-            completion_token_cost=0.06,
-            max_tokens=8192,
-        ),
-        ChatModelInfo(
-            name="gpt-4-32k",
+            name="gpt-4-32k-0613",
             prompt_token_cost=0.06,
             completion_token_cost=0.12,
             max_tokens=32768,
-        ),
-        ChatModelInfo(
-            name="gpt-4-32k-0314",
-            prompt_token_cost=0.06,
-            completion_token_cost=0.12,
-            max_tokens=32768,
-        ),
-    ]
-}
-
-OPEN_AI_TEXT_MODELS = {
-    info.name: info
-    for info in [
-        TextModelInfo(
-            name="text-davinci-003",
-            prompt_token_cost=0.02,
-            completion_token_cost=0.02,
-            max_tokens=4097,
         ),
     ]
 }
@@ -82,7 +58,6 @@ OPEN_AI_EMBEDDING_MODELS = {
 
 OPEN_AI_MODELS: dict[str, ChatModelInfo | EmbeddingModelInfo | TextModelInfo] = {
     **OPEN_AI_CHAT_MODELS,
-    **OPEN_AI_TEXT_MODELS,
     **OPEN_AI_EMBEDDING_MODELS,
 }
 
