@@ -5,11 +5,25 @@
         "thoughts": {
             "type": "object",
             "properties": {
-                "text": {"type": "string"},
-                "reasoning": {"type": "string"},
-                "plan": {"type": "string"},
-                "criticism": {"type": "string"},
-                "speak": {"type": "string"}
+                "text": {
+                    "type": "string",
+                    "description": "thoughts"
+                },
+                "reasoning": {
+                    "type": "string"
+                },
+                "plan": {
+                    "type": "string",
+                    "description": "- short bulleted\n- list that conveys\n- long-term plan"
+                },
+                "criticism": {
+                    "type": "string",
+                    "description": "constructive self-criticism"
+                },
+                "speak": {
+                    "type": "string",
+                    "description": "thoughts summary to say to user"
+                }
             },
             "required": ["text", "reasoning", "plan", "criticism", "speak"],
             "additionalProperties": false

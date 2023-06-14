@@ -11,7 +11,6 @@ from tests.challenges.utils import (
     get_workspace_path,
     run_interaction_loop,
 )
-from tests.utils import requires_api_key
 
 CYCLE_COUNT = 5
 EXPECTED_VALUES = ["[0, 1]", "[2, 5]", "[0, 3]"]
@@ -20,14 +19,13 @@ CODE_FILE_PATH = "code.py"
 TEST_FILE_PATH = "test.py"
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-@challenge
+@challenge()
 def test_debug_code_challenge_a(
     debug_code_agents: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
     level_to_run: int,
+    challenge_name: str,
 ) -> None:
     """
     Test whether the agent can debug a simple code snippet.
@@ -42,7 +40,9 @@ def test_debug_code_challenge_a(
     copy_file_into_workspace(debug_code_agent, DIRECTORY_PATH, CODE_FILE_PATH)
     copy_file_into_workspace(debug_code_agent, DIRECTORY_PATH, TEST_FILE_PATH)
 
-    run_interaction_loop(monkeypatch, debug_code_agent, CYCLE_COUNT)
+    run_interaction_loop(
+        monkeypatch, debug_code_agent, CYCLE_COUNT, challenge_name, level_to_run
+    )
 
     output = execute_python_file(
         get_workspace_path(debug_code_agent, TEST_FILE_PATH), debug_code_agent

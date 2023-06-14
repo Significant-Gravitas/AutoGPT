@@ -6,7 +6,6 @@ from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_interaction_loop
-from tests.utils import requires_api_key
 
 CYCLE_COUNT_PER_LEVEL = [1, 1]
 EXPECTED_OUTPUTS_PER_LEVEL = [
@@ -15,18 +14,21 @@ EXPECTED_OUTPUTS_PER_LEVEL = [
 ]
 
 
-@requires_api_key("OPENAI_API_KEY")
-@pytest.mark.vcr
-@challenge
+@challenge()
 def test_write_file(
     file_system_agents: List[Agent],
     patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
+    challenge_name: str,
 ) -> None:
     file_system_agent = file_system_agents[level_to_run - 1]
     run_interaction_loop(
-        monkeypatch, file_system_agent, CYCLE_COUNT_PER_LEVEL[level_to_run - 1]
+        monkeypatch,
+        file_system_agent,
+        CYCLE_COUNT_PER_LEVEL[level_to_run - 1],
+        challenge_name,
+        level_to_run,
     )
 
     expected_outputs = EXPECTED_OUTPUTS_PER_LEVEL[level_to_run - 1]
