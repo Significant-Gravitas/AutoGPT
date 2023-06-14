@@ -14,8 +14,6 @@ from autogpt.llm.utils import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
-    PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
-    SUPERVISOR_FEEDBACK_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
@@ -28,6 +26,8 @@ from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
+
+CONTINUE_STRING = "GENERATE NEXT COMMAND JSON"
 
 
 class Agent:
@@ -134,7 +134,7 @@ class Agent:
                 )
                 break
 
-            # Send message to AI, get response
+            # STEP 1: Get AI Response
             with Spinner("Thinking... ", plain_output=self.config.plain_output):
                 assistant_reply = chat_with_ai(
                     config=self.config,
@@ -208,6 +208,7 @@ class Agent:
                 f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
             )
 
+            # Step 2: Gather user input
             if not self.config.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
@@ -218,6 +219,7 @@ class Agent:
                     "'n' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
+                # User input loop, continue until the authorise key ('y') is pressed
                 while True:
                     if self.config.chat_messages_enabled:
                         console_input = clean_input("Waiting for your response...")
@@ -225,20 +227,24 @@ class Agent:
                         console_input = clean_input(
                             Fore.MAGENTA + "Input:" + Style.RESET_ALL
                         )
+
                     if console_input.lower().strip() == self.config.authorise_key:
-                        user_input = "GENERATE NEXT COMMAND JSON"
+                        user_input = CONTINUE_STRING
                         break
-                    elif console_input.lower().strip() == "":
+
+                    # We didn't get the authorise key
+                    if console_input.lower().strip() == "":
                         logger.warn("Invalid input format.")
                         continue
-                    elif console_input.lower().startswith(
+
+                    if console_input.lower().startswith(
                         f"{self.config.authorise_key} -"
                     ):
                         try:
                             self.next_action_count = abs(
                                 int(console_input.split(" ")[1])
                             )
-                            user_input = "GENERATE NEXT COMMAND JSON"
+                            user_input = CONTINUE_STRING
                         except ValueError:
                             logger.warn(
                                 "Invalid input format. Please enter 'y -n' where n is"
@@ -246,22 +252,23 @@ class Agent:
                             )
                             continue
                         break
-                    elif console_input.lower() == self.config.exit_key:
+
+                    if console_input.lower() == self.config.exit_key:
                         user_input = "EXIT"
                         break
-                    else:
-                        user_input = console_input
-                        command_name = "human_feedback"
-                        self.log_cycle_handler.log_cycle(
-                            self.ai_config.ai_name,
-                            self.created_at,
-                            self.cycle_count,
-                            user_input,
-                            USER_INPUT_FILE_NAME,
-                        )
-                        break
 
-                if user_input == "GENERATE NEXT COMMAND JSON":
+                    user_input = console_input
+                    command_name = "human_feedback"
+                    self.log_cycle_handler.log_cycle(
+                        self.ai_config.ai_name,
+                        self.created_at,
+                        self.cycle_count,
+                        user_input,
+                        USER_INPUT_FILE_NAME,
+                    )
+                    break
+
+                if user_input == CONTINUE_STRING:
                     logger.typewriter_log(
                         "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
                         Fore.MAGENTA,
@@ -278,11 +285,14 @@ class Agent:
                     f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
                 )
 
-            # Execute command
+            # Step 2: Execute command
             if command_name is not None and command_name.lower().startswith("error"):
-                result = f"Could not execute command: {command_name}"
+                (
+                    command_result,
+                    text_result,
+                ) = f"Could not execute command: {command_name}"
             elif command_name == "human_feedback":
-                result = f"Human feedback: {user_input}"
+                command_result, text_result = f"Human feedback: {user_input}"
             else:
                 for plugin in self.config.plugins:
                     if not plugin.can_handle_pre_command():
@@ -297,35 +307,37 @@ class Agent:
                     arguments,
                     agent=self,
                 )
-                result = f"Command {command_name} returned: " f"{command_result}"
+                # TODO: Something should change here
+                text_result = f"Command {command_name} returned: " f"{command_result}"
 
-                result_tlength = count_string_tokens(
-                    str(command_result), self.config.fast_llm_model
-                )
-                memory_tlength = count_string_tokens(
-                    str(self.history.summary_message()), self.config.fast_llm_model
-                )
-                if result_tlength + memory_tlength + 600 > self.fast_token_limit:
-                    result = f"Failure: command {command_name} returned too much output. \
-                        Do not execute this command again with the same arguments."
+            result_tlength = count_string_tokens(
+                str(command_result), self.config.fast_llm_model
+            )
+            memory_tlength = count_string_tokens(
+                str(self.history.summary_message()), self.config.fast_llm_model
+            )
+            if result_tlength + memory_tlength + 600 > self.fast_token_limit:
+                text_result = f"Failure: command {command_name} returned too much output. \
+                    Do not execute this command again with the same arguments."
 
-                for plugin in self.config.plugins:
-                    if not plugin.can_handle_post_command():
-                        continue
-                    result = plugin.post_command(command_name, result)
-                if self.next_action_count > 0:
-                    self.next_action_count -= 1
+            for plugin in self.config.plugins:
+                if not plugin.can_handle_post_command():
+                    continue
+                text_result = plugin.post_command(command_name, text_result)
+            if self.next_action_count > 0:
+                self.next_action_count -= 1
 
             # Check if there's a result from the command append it to the message
             # history
-            if not result:
-                result = "Unable to execute command"
+            if not text_result:
+                text_result = "Unable to execute command"
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
 
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
+            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, text_result)
 
+            # Step 4: Push results to history
             message_cycle = MessageCycle.construct(
                 user_input=self.triggering_prompt,
                 ai_response=assistant_reply.content,
@@ -343,7 +355,6 @@ class Agent:
                         self.workspace.get_path(command_args[pathlike])
                     )
         return command_args
-
 
     def get_functions_from_commands(self) -> list[CommandFunction]:
         """Get functions from the commands. "functions" in this context refers to OpenAI functions

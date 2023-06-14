@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from typing import TYPE_CHECKING
+
 from autogpt.models.chat_completion_response import ChatCompletionResponse
 from autogpt.models.command_function import CommandFunction
 

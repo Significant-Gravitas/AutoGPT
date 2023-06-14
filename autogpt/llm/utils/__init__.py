@@ -1,18 +1,18 @@
 from __future__ import annotations
-import json
 
+import json
 from typing import Literal, Optional
 
 from colorama import Fore
 
 from autogpt.config import Config
 
+from ...models.chat_completion_response import ChatCompletionResponse
+from ...models.command_function import CommandFunction
 from ..api_manager import ApiManager
 from ..base import ChatSequence
 from ..providers import openai as iopenai
 from .token_counter import *
-from ...models.chat_completion_response import ChatCompletionResponse
-from ...models.command_function import CommandFunction
 
 
 def call_ai_function(
