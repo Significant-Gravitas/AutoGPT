@@ -13,8 +13,9 @@ from confection import Config
 from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import command
+from autogpt.commands.command import command, ignore_unexpected_kwargs
 from autogpt.commands.file_operations_utils import read_textual_file
+from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
 from autogpt.spinner import Spinner
@@ -308,6 +309,7 @@ def delete_file(filename: str, agent: Agent) -> str:
 
 
 @command("list_files", "List Files in Directory", '"directory": "<directory>"')
+@ignore_unexpected_kwargs
 def list_files(directory: str, agent: Agent) -> list[str]:
     """lists files in a directory recursively
 
