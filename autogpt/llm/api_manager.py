@@ -5,8 +5,6 @@ from typing import List, Optional
 import openai
 from openai import Model
 
-from autogpt.config import Config
-from autogpt.llm.base import MessageDict
 from autogpt.llm.modelsinfo import COSTS
 from autogpt.logs import logger
 from autogpt.singleton import Singleton
@@ -27,52 +25,7 @@ class ApiManager(metaclass=Singleton):
         self.total_budget = 0.0
         self.models = None
 
-    def create_chat_completion(
-        self,
-        messages: list[MessageDict],
-        model: str | None = None,
-        temperature: float = None,
-        max_tokens: int | None = None,
-        deployment_id=None,
-    ) -> str:
-        """
-        Create a chat completion and update the cost.
-        Args:
-        messages (list): The list of messages to send to the API.
-        model (str): The model to use for the API call.
-        temperature (float): The temperature to use for the API call.
-        max_tokens (int): The maximum number of tokens for the API call.
-        Returns:
-        str: The AI's response.
-        """
-        cfg = Config()
-        if temperature is None:
-            temperature = cfg.temperature
-        if deployment_id is not None:
-            response = openai.ChatCompletion.create(
-                deployment_id=deployment_id,
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                api_key=cfg.openai_api_key,
-            )
-        else:
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                api_key=cfg.openai_api_key,
-            )
-        if not hasattr(response, "error"):
-            logger.debug(f"Response: {response}")
-            prompt_tokens = response.usage.prompt_tokens
-            completion_tokens = response.usage.completion_tokens
-            self.update_cost(prompt_tokens, completion_tokens, model)
-        return response
-
-    def update_cost(self, prompt_tokens, completion_tokens, model: str):
+    def update_cost(self, prompt_tokens, completion_tokens, model):
         """
         Update the total cost, prompt tokens, and completion tokens.
 
