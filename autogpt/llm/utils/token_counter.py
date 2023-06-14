@@ -10,7 +10,7 @@ from autogpt.logs import logger
 
 
 def count_message_tokens(
-    messages: List[Message], model: str = "gpt-3.5-turbo-0301"
+    messages: List[Message], model: str = "gpt-3.5-turbo-0613"
 ) -> int:
     """
     Returns the number of tokens used by a list of messages.
@@ -19,7 +19,7 @@ def count_message_tokens(
         messages (list): A list of messages, each of which is a dictionary
             containing the role and content of the message.
         model (str): The name of the model to use for tokenization.
-            Defaults to "gpt-3.5-turbo-0301".
+            Defaults to "gpt-3.5-turbo-0613".
 
     Returns:
         int: The number of tokens used by the list of messages.
@@ -29,14 +29,14 @@ def count_message_tokens(
     except KeyError:
         logger.warn("Warning: model not found. Using cl100k_base encoding.")
         encoding = tiktoken.get_encoding("cl100k_base")
-    if model == "gpt-3.5-turbo":
-        # !Note: gpt-3.5-turbo may change over time.
-        # Returning num tokens assuming gpt-3.5-turbo-0301.")
-        return count_message_tokens(messages, model="gpt-3.5-turbo-0301")
+    if model == "gpt-3.5-turbo-0613":
+        # !Note: gpt-3.5-turbo-0613 may change over time.
+        # Returning num tokens assuming gpt-3.5-turbo-0613.")
+        return count_message_tokens(messages, model="gpt-3.5-turbo-0613")
     elif model == "gpt-4":
         # !Note: gpt-4 may change over time. Returning num tokens assuming gpt-4-0314.")
         return count_message_tokens(messages, model="gpt-4-0314")
-    elif model in ["gpt-3.5-turbo-0301", "gpt-3.5-turbo-16k-0613"]:
+    elif model == "gpt-3.5-turbo-0613":
         tokens_per_message = (
             4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
         )
@@ -67,7 +67,7 @@ def count_string_tokens(string: str, model_name: str) -> int:
 
     Args:
         string (str): The text string.
-        model_name (str): The name of the encoding to use. (e.g., "gpt-3.5-turbo")
+        model_name (str): The name of the encoding to use. (e.g., "gpt-3.5-turbo-0613")
 
     Returns:
         int: The number of tokens in the text string.

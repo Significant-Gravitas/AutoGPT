@@ -19,8 +19,8 @@ def test_initial_values(config: Config):
     assert config.debug_mode == False
     assert config.continuous_mode == False
     assert config.speak_mode == False
-    assert config.fast_llm_model == "gpt-3.5-turbo"
-    assert config.smart_llm_model == "gpt-3.5-turbo"
+    assert config.fast_llm_model == "gpt-3.5-turbo-0613"
+    assert config.smart_llm_model == "gpt-3.5-turbo-0613"
 
 
 def test_set_continuous_mode(config: Config):
@@ -58,8 +58,8 @@ def test_set_fast_llm_model(config: Config):
     # Store model name to reset it after the test
     fast_llm_model = config.fast_llm_model
 
-    config.set_fast_llm_model("gpt-3.5-turbo-test")
-    assert config.fast_llm_model == "gpt-3.5-turbo-test"
+    config.set_fast_llm_model("gpt-3.5-turbo-0613-test")
+    assert config.fast_llm_model == "gpt-3.5-turbo-0613-test"
 
     # Reset model name
     config.set_fast_llm_model(fast_llm_model)
@@ -96,7 +96,7 @@ def test_set_debug_mode(config: Config):
 @patch("openai.Model.list")
 def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config: Config):
     """
-    Test if models update to gpt-3.5-turbo if both are set to gpt-4.
+    Test if models update to gpt-3.5-turbo-0613 if both are set to gpt-4.
     """
     fast_llm_model = config.fast_llm_model
     smart_llm_model = config.smart_llm_model
@@ -104,7 +104,7 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config: Config)
     config.fast_llm_model = "gpt-4"
     config.smart_llm_model = "gpt-4"
 
-    mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
+    mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo-0613"}]}
 
     create_config(
         config=config,
@@ -123,8 +123,8 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config: Config)
         skip_news=False,
     )
 
-    assert config.fast_llm_model == "gpt-3.5-turbo"
-    assert config.smart_llm_model == "gpt-3.5-turbo"
+    assert config.fast_llm_model == "gpt-3.5-turbo-0613"
+    assert config.smart_llm_model == "gpt-3.5-turbo-0613"
 
     # Reset config
     config.set_fast_llm_model(fast_llm_model)

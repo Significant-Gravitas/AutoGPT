@@ -59,8 +59,8 @@ class Config(metaclass=Singleton):
         self.prompt_settings_file = os.getenv(
             "PROMPT_SETTINGS_FILE", "prompt_settings.yaml"
         )
-        self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
-        self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-3.5-turbo")
+        self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo-0613")
+        self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-3.5-turbo-0613")
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
 
         self.browse_spacy_language_model = os.getenv(
