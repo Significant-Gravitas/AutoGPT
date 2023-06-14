@@ -6,8 +6,8 @@ from pytest_mock import MockerFixture
 
 from .vcr_filter import PROXY, before_record_request, before_record_response
 
+DEFAULT_RECORD_MODE = "new_episodes"
 BASE_VCR_CONFIG = {
-    "record_mode": "new_episodes",
     "before_record_request": before_record_request,
     "before_record_response": before_record_response,
     "filter_headers": [
@@ -20,9 +20,19 @@ BASE_VCR_CONFIG = {
 
 
 @pytest.fixture(scope="session")
-def vcr_config():
-    # this fixture is called by the pytest-recording vcr decorator.
-    return BASE_VCR_CONFIG
+def vcr_config(get_base_vcr_config):
+    return get_base_vcr_config
+
+
+@pytest.fixture(scope="session")
+def get_base_vcr_config(request):
+    record_mode = request.config.getoption("--record-mode", default="new_episodes")
+    config = BASE_VCR_CONFIG
+
+    if record_mode is None:
+        config["record_mode"] = DEFAULT_RECORD_MODE
+
+    return config
 
 
 @pytest.fixture()

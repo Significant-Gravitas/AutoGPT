@@ -1,20 +1,24 @@
 """Browse a webpage and summarize it using the LLM model"""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import requests
 from bs4 import BeautifulSoup
 from requests import Response
 
-from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
 
 session = requests.Session()
 
+if TYPE_CHECKING:
+    from autogpt.agent.agent import Agent
+
 
 @validate_url
 def get_response(
-    url: str, config: Config, timeout: int = 10
+    url: str, agent: Agent, timeout: int = 10
 ) -> tuple[None, str] | tuple[Response, None]:
     """Get the response from a URL
 
@@ -30,7 +34,7 @@ def get_response(
         requests.exceptions.RequestException: If the HTTP request fails
     """
     try:
-        session.headers.update({"User-Agent": config.user_agent})
+        session.headers.update({"User-Agent": agent.config.user_agent})
         response = session.get(url, timeout=timeout)
 
         # Check if the response contains an HTTP error
@@ -48,7 +52,7 @@ def get_response(
         return None, f"Error: {str(re)}"
 
 
-def scrape_text(url: str, config: Config) -> str:
+def scrape_text(url: str, agent: Agent) -> str:
     """Scrape text from a webpage
 
     Args:
@@ -57,7 +61,7 @@ def scrape_text(url: str, config: Config) -> str:
     Returns:
         str: The scraped text
     """
-    response, error_message = get_response(url, config)
+    response, error_message = get_response(url, agent)
     if error_message:
         return error_message
     if not response:
@@ -76,7 +80,7 @@ def scrape_text(url: str, config: Config) -> str:
     return text
 
 
-def scrape_links(url: str, config: Config) -> str | list[str]:
+def scrape_links(url: str, agent: Agent) -> str | list[str]:
     """Scrape links from a webpage
 
     Args:
@@ -85,7 +89,7 @@ def scrape_links(url: str, config: Config) -> str | list[str]:
     Returns:
        str | list[str]: The scraped links
     """
-    response, error_message = get_response(url, config)
+    response, error_message = get_response(url, agent)
     if error_message:
         return error_message
     if not response:
