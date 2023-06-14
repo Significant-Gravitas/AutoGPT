@@ -7,9 +7,6 @@ from typing import List, Literal, TypedDict
 MessageRole = Literal["system", "user", "assistant"]
 MessageType = Literal["ai_response", "action_result"]
 
-TText = list[int]
-"""Token array representing tokenized text"""
-
 
 class MessageDict(TypedDict):
     role: MessageRole
