@@ -341,9 +341,11 @@ class Agent:
 
             # Step 4: Push results to history
             message_cycle = MessageCycle.construct(
-                user_input=self.triggering_prompt,
-                ai_response=assistant_reply.content,
-                result=command_result,
+                triggering_prompt=self.triggering_prompt,
+                ai_response=reply_content,
+                user_input=user_input,
+                command_result=command_result,
+                command_name=command_name
             )
             self.history.add(message_cycle)
 

@@ -199,13 +199,4 @@ def chat_with_ai(
         prompt=message_sequence, max_tokens=tokens_remaining, functions=functions
     )
 
-    # Update full message history
-    message_cycle = MessageCycle.construct(
-        user_input=triggering_prompt_msg.content,
-        ai_response=assistant_reply.content,
-        result=assistant_reply.content,
-        ai_function_call=assistant_reply.function_call,
-    )
-    agent.history.add(message_cycle)
-
     return assistant_reply
