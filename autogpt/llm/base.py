@@ -41,10 +41,12 @@ class MessageCycle:
         self,
         user_input: Message,
         ai_response: Message,
+        triggering_prompt: Message,
         result: Message,
         ai_function_response: Optional[Message] = None,
     ):
         self.user_input = user_input
+        self.triggering_prompt = user_input
         self.ai_response = ai_response
         self.ai_function_response = ai_function_response
         self.result = result
@@ -64,25 +66,17 @@ class MessageCycle:
     @classmethod
     def construct(
         cls,
-        user_input: str,
-        result: Any,
-        ai_function_call: Optional[dict] = None,
-        ai_function_response: Optional[str] = None,
-        ai_response: Optional[str] = None,
-    ) -> "MessageCycle":
-        ai_response_message = Message(role=MessageRole.ASSISTANT, content=result)
-        if ai_function_call:
-            ai_response_message.function_name = ai_function_call.get("name")
-            ai_response_message.function_arguments = ai_function_call.get("arguments")
-
+        triggering_prompt: str,
+        ai_response: str,
+        user_input: Optional[str] = None,
+        command_result: Optional[str] = None,
+        command_name: Optional[str] = None,
+    ) -> MessageCycle:
         return cls(
-            user_input=Message(role=MessageRole.USER, content=user_input),
-            ai_response=ai_response_message,
-            result=Message(role=MessageRole.SYSTEM, content=result),
-            # TODO: How do messages with the function role look? The docs are sparse
-            # ai_function_response=Message(
-            #    role=MessageRole.FUNCTION, content=ai_function_response
-            # ),
+            triggering_prompt=Message(role=MessageRole.USER, content=triggering_prompt),
+            ai_response=Message(role=MessageRole.USER, content=ai_response),
+            user_input=Message(role=MessageRole.USER, content=user_input) if user_input else None,
+            result=Message(role=MessageRole.FUNCTION, content=command_result, function_name=command_name ) if command_result else None,
         )
 
 
