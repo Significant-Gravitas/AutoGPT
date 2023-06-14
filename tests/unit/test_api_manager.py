@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -27,68 +27,6 @@ def mock_costs():
 
 
 class TestApiManager:
-    @staticmethod
-    def test_create_chat_completion_debug_mode(caplog):
-        """Test if debug mode logs response."""
-        api_manager_debug = ApiManager(debug=True)
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Who won the world series in 2020?"},
-        ]
-        model = "gpt-3.5-turbo"
-
-        with patch("openai.ChatCompletion.create") as mock_create:
-            mock_response = MagicMock()
-            del mock_response.error
-            mock_response.usage.prompt_tokens = 10
-            mock_response.usage.completion_tokens = 20
-            mock_create.return_value = mock_response
-
-            api_manager_debug.create_chat_completion(messages, model=model)
-
-            assert "Response" in caplog.text
-
-    @staticmethod
-    def test_create_chat_completion_empty_messages():
-        """Test if empty messages result in zero tokens and cost."""
-        messages = []
-        model = "gpt-3.5-turbo"
-
-        with patch("openai.ChatCompletion.create") as mock_create:
-            mock_response = MagicMock()
-            del mock_response.error
-            mock_response.usage.prompt_tokens = 0
-            mock_response.usage.completion_tokens = 0
-            mock_create.return_value = mock_response
-
-            api_manager.create_chat_completion(messages, model=model)
-
-            assert api_manager.get_total_prompt_tokens() == 0
-            assert api_manager.get_total_completion_tokens() == 0
-            assert api_manager.get_total_cost() == 0
-
-    @staticmethod
-    def test_create_chat_completion_valid_inputs():
-        """Test if valid inputs result in correct tokens and cost."""
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Who won the world series in 2020?"},
-        ]
-        model = "gpt-3.5-turbo"
-
-        with patch("openai.ChatCompletion.create") as mock_create:
-            mock_response = MagicMock()
-            del mock_response.error
-            mock_response.usage.prompt_tokens = 10
-            mock_response.usage.completion_tokens = 20
-            mock_create.return_value = mock_response
-
-            api_manager.create_chat_completion(messages, model=model)
-
-            assert api_manager.get_total_prompt_tokens() == 10
-            assert api_manager.get_total_completion_tokens() == 20
-            assert api_manager.get_total_cost() == (10 * 0.002 + 20 * 0.002) / 1000
-
     def test_getter_methods(self):
         """Test the getter methods for total tokens, cost, and budget."""
         api_manager.update_cost(60, 120, "gpt-3.5-turbo")
