@@ -13,7 +13,7 @@ from autogpt.utils import clean_input
 
 cfg = Config()
 
-DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond using the format specified above:"
+DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond using the JSON schema specified previously:"
 
 
 # Helper functions
