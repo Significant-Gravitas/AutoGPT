@@ -13,7 +13,7 @@ from confection import Config
 from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import command
+from autogpt.command_decorator import command
 from autogpt.commands.file_operations_utils import read_textual_file
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory

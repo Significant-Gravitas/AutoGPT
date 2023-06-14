@@ -7,7 +7,7 @@ import yaml
 from pytest_mock import MockerFixture
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import CommandRegistry
+from autogpt.models.command_registry import CommandRegistry
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.llm.api_manager import ApiManager

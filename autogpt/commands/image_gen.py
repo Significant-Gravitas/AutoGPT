@@ -10,7 +10,7 @@ import requests
 from PIL import Image
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import command
+from autogpt.command_decorator import command
 from autogpt.logs import logger
 
 

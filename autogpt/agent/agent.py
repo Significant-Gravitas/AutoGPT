@@ -5,7 +5,7 @@ from datetime import datetime
 
 from colorama import Fore, Style
 
-from autogpt.commands.command import CommandRegistry
+from autogpt.models.command_registry import CommandRegistry
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.utilities import extract_json_from_response, validate_json
