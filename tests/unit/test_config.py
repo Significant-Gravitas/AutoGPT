@@ -269,7 +269,7 @@ def test_command_line_ai_params(config):
         skip_news=False,
         ai_name="testGPT2",
         ai_role="testRole1",
-        ai_goals="testGoal1,testGoal2",
+        ai_goals=["testGoal1", "testGoal2"],
     )
 
     assert config.ai_name == "testGPT2"

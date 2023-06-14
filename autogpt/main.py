@@ -56,7 +56,7 @@ def run_auto_gpt(
     install_plugin_deps: bool,
     ai_name: str,
     ai_role: str,
-    ai_goals: str,
+    ai_goals: list[str],
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)

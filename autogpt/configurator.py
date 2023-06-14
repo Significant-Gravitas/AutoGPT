@@ -35,7 +35,7 @@ def create_config(
     skip_news: bool,
     ai_name: Optional[str] = None,
     ai_role: Optional[str] = None,
-    ai_goals: Optional[str] = None,
+    ai_goals: Optional[list[str]] = None,
 ) -> None:
     """Updates the config object with the given arguments.
 
@@ -140,7 +140,7 @@ def create_config(
 
         if ai_goals:
             logger.typewriter_log(f"AI goals provided by command line arg: {ai_goals}")
-            config.ai_goals = ai_goals.split(",")
+            config.ai_goals = ai_goals
 
     elif ai_settings_file:
         file = ai_settings_file

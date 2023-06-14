@@ -68,17 +68,18 @@ import click
 @click.option(
     "--ai-name",
     type=str,
-    help="AI name override passed through command line.",
+    help="AI name override",
 )
 @click.option(
     "--ai-role",
     type=str,
-    help="AI role override passed through command line.",
+    help="AI role override",
 )
 @click.option(
-    "--ai-goals",
+    "--ai-goal",
     type=str,
-    help="Comma separated list of AI goals passed through command line.",
+    multiple=True,
+    help="AI goal override; may be used multiple times to pass multiple goals",
 )
 @click.pass_context
 def main(
@@ -100,7 +101,7 @@ def main(
     install_plugin_deps: bool,
     ai_name: str,
     ai_role: str,
-    ai_goals: str,
+    ai_goal: list[str],
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -129,7 +130,7 @@ def main(
             install_plugin_deps,
             ai_name,
             ai_role,
-            ai_goals,
+            ai_goal,
         )
 
 

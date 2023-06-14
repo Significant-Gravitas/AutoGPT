@@ -35,7 +35,7 @@ class AIConfig:
         self,
         ai_name: str = "",
         ai_role: str = "",
-        ai_goals: list | None = None,
+        ai_goals: list[str] = [],
         api_budget: float = 0.0,
     ) -> None:
         """
@@ -49,8 +49,6 @@ class AIConfig:
         Returns:
             None
         """
-        if ai_goals is None:
-            ai_goals = []
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
@@ -63,7 +61,7 @@ class AIConfig:
         config_file: str = SAVE_FILE,
         ai_name: str = None,
         ai_role: str = None,
-        ai_goals: list[str] = None,
+        ai_goals: list[str] = [],
     ) -> "AIConfig":
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
