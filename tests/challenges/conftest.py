@@ -6,7 +6,7 @@ from _pytest.config.argparsing import Parser
 from _pytest.fixtures import FixtureRequest
 
 from tests.challenges.challenge_decorator.challenge import Challenge
-from tests.vcr import BASE_VCR_CONFIG, before_record_response
+from tests.vcr import before_record_response
 
 
 def before_record_response_filter_errors(
@@ -20,9 +20,9 @@ def before_record_response_filter_errors(
 
 
 @pytest.fixture(scope="module")
-def vcr_config() -> Dict[str, Any]:
+def vcr_config(get_base_vcr_config: Dict[str, Any]) -> Dict[str, Any]:
     # this fixture is called by the pytest-recording vcr decorator.
-    return BASE_VCR_CONFIG | {
+    return get_base_vcr_config | {
         "before_record_response": before_record_response_filter_errors,
     }
 
