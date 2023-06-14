@@ -21,7 +21,7 @@ def chat_with_ai(
     config: Config,
     agent: Agent,
     system_prompt: str,
-    user_input: str,
+    triggering_prompt: str,
     token_limit: int,
     functions: list[CommandFunction],
     model: str | None = None,
@@ -34,7 +34,7 @@ def chat_with_ai(
         config (Config): The config to use.
         agent (Agent): The agent to use.
         system_prompt (str): The prompt explaining the rules to the AI.
-        user_input (str): The input from the user.
+        triggering_prompt (str): The input from the user.
         token_limit (int): The maximum number of tokens allowed in the API call.
         functions (list[CommandFunction]): The callable functions to be passed to the AI
         model (str, optional): The model to use. If None, the config.fast_llm_model will be used. Defaults to None.
@@ -94,8 +94,8 @@ def chat_with_ai(
     #     )
 
     # Account for user input (appended later)
-    user_input_msg = Message("user", user_input)
-    current_tokens_used += count_message_tokens([user_input_msg], model)
+    triggering_prompt_msg = Message("user", triggering_prompt)
+    current_tokens_used += count_message_tokens([triggering_prompt_msg], model)
 
     current_tokens_used += 500  # Reserve space for new_summary_message
 
@@ -147,7 +147,7 @@ def chat_with_ai(
         current_tokens_used += count_message_tokens([message_sequence[-1]], model)
 
     # Append user input, the length of this is accounted for above
-    message_sequence.append(user_input_msg)
+    message_sequence.append(triggering_prompt_msg)
 
     plugin_count = len(config.plugins)
     for i, plugin in enumerate(config.plugins):
@@ -200,7 +200,7 @@ def chat_with_ai(
 
     # Update full message history
     message_cycle = MessageCycle.construct(
-        user_input=user_input_msg.content,
+        user_input=triggering_prompt_msg.content,
         ai_response=assistant_reply.content,
         result=assistant_reply.content,
         ai_function_call=assistant_reply.function_call,
