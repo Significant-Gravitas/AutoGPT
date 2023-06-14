@@ -27,7 +27,7 @@ from autogpt.logs import logger
 class MessageHistory:
     agent: Agent
 
-    message_cycles: list[Message] = field(default_factory=list)
+    message_cycles: list[MessageCycle] = field(default_factory=list)
     summary: str = "I was created"
 
     last_trimmed_index: int = 0
@@ -70,26 +70,17 @@ class MessageHistory:
             Message: A message with the new running summary after adding the trimmed messages.
             list[Message]: A list of messages that are in full_message_history with an index higher than last_trimmed_index and absent from current_message_chain.
         """
-        # Select messages in full_message_history with an index higher than last_trimmed_index
-        new_messages = [
-            msg for i, msg in enumerate(self.messages) if i > self.last_trimmed_index
-        ]
-
-        # Remove messages that are already present in current_message_chain
+        cycles_not_in_chain = self.message_cycles[: self.last_trimmed_index]
         new_messages_not_in_chain = [
-            msg for msg in new_messages if msg not in current_message_chain
+            message for cycle in cycles_not_in_chain for message in cycle.messages
         ]
 
         if not new_messages_not_in_chain:
             return self.summary_message(), []
-
         new_summary_message = self.update_running_summary(
             new_events=new_messages_not_in_chain
         )
-
-        # Find the index of the last message processed
-        last_message = new_messages_not_in_chain[-1]
-        self.last_trimmed_index = self.messages.index(last_message)
+        self.last_trimmed_index = len(self.message_cycles) - 1
 
         return new_summary_message, new_messages_not_in_chain
 

@@ -229,7 +229,7 @@ class Agent:
                             Fore.GREEN,
                             "",
                         )
-                        thoughts = assistant_reply_json.get("thoughts", {})
+                        thoughts = reply_content_json.get("thoughts", {})
                         self_feedback_resp = self.get_self_feedback(
                             thoughts, self.config.fast_llm_model
                         )
@@ -293,7 +293,7 @@ class Agent:
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
-                result = f"Could not execute command: {arguments}"
+                result = f"Could not execute command: {command_name}"
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
             elif command_name == "self_feedback":
