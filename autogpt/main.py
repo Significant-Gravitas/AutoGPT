@@ -7,6 +7,7 @@ from colorama import Fore, Style
 
 from autogpt.agent import Agent
 from autogpt.config import Config, check_openai_api_key
+from autogpt.config.config import check_openai_model
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
@@ -56,6 +57,7 @@ def run_auto_gpt(
     cfg = Config()
     # TODO: fill in llm values here
     check_openai_api_key()
+    check_openai_model(cfg)
 
     create_config(
         cfg,
