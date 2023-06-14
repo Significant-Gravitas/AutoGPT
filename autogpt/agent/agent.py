@@ -184,12 +184,17 @@ class Agent:
                 # TODO: What should happen when there's no function call? The AI does this sometimes. Maybe when it
                 #  thinks it's done
                 command_name = function_call.get("name")
-                if function_call.get("arguments"):
-                    arguments = json.loads(
-                        assistant_reply.function_call.get("arguments")
-                    )
-                else:
-                    arguments = {}
+                # FIXME: Some call is sending a string
+                arguments = function_call.get("arguments")
+                if type(arguments) == str:
+                    try:
+                        arguments = json.loads(function_call.get("arguments"))
+                    except json.JSONDecodeError as e:
+                        logger.error(
+                            f"Error: Could not parse arguments (probably due to improper escaping)"
+                        )
+                        logger.debug(str(function_call.get(arguments)))
+                        arguments = {}
 
             if self.config.speak_mode:
                 say_text(f"I want to execute {command_name}")
@@ -285,6 +290,7 @@ class Agent:
                     command_name, arguments = plugin.pre_command(
                         command_name, arguments
                     )
+
                 command_result = execute_command(
                     self.command_registry,
                     command_name,

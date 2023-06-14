@@ -81,14 +81,14 @@ def map_command_synonyms(command_name: str):
 def execute_command(
     command_registry: CommandRegistry,
     command_name: str,
-    arguments: dict[str, str],
+    arguments: str,
     agent: Agent,
 ):
     """Execute the command and return the result
 
     Args:
         command_name (str): The name of the command to execute
-        arguments (dict): The arguments for the command
+        arguments (str): The arguments for the command
 
     Returns:
         str: The result of the command
