@@ -220,28 +220,6 @@ def test_write_file_logs_checksum(test_file_path: Path, agent: Agent):
     assert log_entry == f"write: {test_file_path} #{new_checksum}\n"
 
 
-def test_write_file_fails_if_content_exists(test_file_path: Path, agent: Agent):
-    new_content = "This is new content.\n"
-    file_ops.log_operation(
-        "write",
-        str(test_file_path),
-        agent=agent,
-        checksum=file_ops.text_checksum(new_content),
-    )
-    result = file_ops.write_to_file(str(test_file_path), new_content, agent=agent)
-    assert result == "Error: File has already been updated."
-
-
-def test_write_file_succeeds_if_content_different(
-    test_file_with_content_path: Path, agent: Agent
-):
-    new_content = "This is different content.\n"
-    result = file_ops.write_to_file(
-        str(test_file_with_content_path), new_content, agent=agent
-    )
-    assert result == "File written to successfully."
-
-
 def test_append_to_file(test_nested_file: Path, agent: Agent):
     append_text = "This is appended text.\n"
     file_ops.write_to_file(test_nested_file, append_text, agent=agent)
@@ -310,7 +288,7 @@ def test_list_files(workspace: Workspace, test_directory: Path, agent: Agent):
     with open(os.path.join(test_directory, file_a.name), "w") as f:
         f.write("This is file A in the subdirectory.")
 
-    files = file_ops.list_files(str(workspace.root), agent=agent)
+    files = file_ops.list_files(agent=agent)
     assert file_a.name in files
     assert file_b.name in files
     assert os.path.join(Path(test_directory).name, file_a.name) in files
@@ -323,5 +301,5 @@ def test_list_files(workspace: Workspace, test_directory: Path, agent: Agent):
 
     # Case 2: Search for a file that does not exist and make sure we don't throw
     non_existent_file = "non_existent_file.txt"
-    files = file_ops.list_files("", agent=agent)
+    files = file_ops.list_files(agent=agent)
     assert non_existent_file not in files

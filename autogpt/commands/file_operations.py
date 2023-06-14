@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import os.path
+from pathlib import Path
 from typing import Generator, Literal
 
 from autogpt.agent.agent import Agent
@@ -226,18 +227,25 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    checksum = text_checksum(text)
-    if is_duplicate_operation("write", filename, agent.config, checksum):
-        return "Error: File has already been updated."
     try:
-        directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
-        with open(filename, "w", encoding="utf-8") as f:
+        workspace_root = agent.workspace.root
+        file_path = os.path.join(workspace_root, filename)
+        file_dir = os.path.dirname(os.path.abspath(file_path))
+
+        if not file_dir.startswith(str(workspace_root)):
+            return "Error: Attempting to write to a file outside of the workspace directory is not allowed"
+
+        if file_dir != workspace_root and not os.path.exists(file_dir):
+            Path(file_dir).mkdir(exist_ok=True)
+
+        with open(file_path, "w+") as f:
             f.write(text)
-        log_operation("write", filename, agent, checksum)
-        return "File written to successfully."
-    except Exception as err:
-        return f"Error: {err}"
+
+        log_operation("write", filename, agent, text_checksum(text))
+    except BaseException as e:
+        return f"Error: {e}"
+
+    return "File written to successfully."
 
 
 @command(
