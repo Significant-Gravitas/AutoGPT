@@ -1,6 +1,5 @@
 """ MacOS TTS Voice. """
 import os
-import re
 
 from autogpt.speech.base import VoiceBase
 
@@ -13,11 +12,6 @@ class MacOSTTS(VoiceBase):
 
     def _speech(self, text: str, voice_index: int = 0) -> bool:
         """Play the given text."""
-        text = re.sub(
-            r"\b(?:https?://[-\w_.]+/?\w[-\w_.]*\.(?:[-\w_.]+/?\w[-\w_.]*\.)?[a-z]+(?:/[-\w_.%]+)*\b(?!\.))",
-            "",
-            text,
-        )
         if voice_index == 0:
             os.system(f'say "{text}"')
         elif voice_index == 1:
