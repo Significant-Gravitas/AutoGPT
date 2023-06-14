@@ -51,7 +51,7 @@ def test_get_self_feedback(config: Config, mocker: MockerFixture):
     feedback = Agent.get_self_feedback(
         agent_mock,
         thoughts,
-        "gpt-3.5-turbo-0613",
+        "gpt-3.5-turbo-16k-0613",
     )
 
     # Check if the response is a non-empty string
