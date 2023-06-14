@@ -311,3 +311,20 @@ def check_openai_api_key() -> None:
         )
         print("You can get your key from https://platform.openai.com/account/api-keys")
         exit(1)
+
+def check_openai_model(config: Config) -> None:
+    """Check if the OpenAI model is supported"""
+    # prevent circular import
+    from autogpt.llm.providers.openai import MODELS_MAPPING
+
+    model_types = ['fast_llm_model', 'smart_llm_model']
+
+    for model_type in model_types:
+        current_model = getattr(config, model_type, None)
+        if current_model in MODELS_MAPPING:
+            print(
+                Fore.RED
+                + f"Please update the {model_type} value from '{current_model}' to '{MODELS_MAPPING[current_model]}' in your .env file"
+                + Fore.RESET
+            )
+            exit(1)
