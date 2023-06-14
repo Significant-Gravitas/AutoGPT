@@ -102,6 +102,7 @@ jobs:
       - id: test
         name: Run tests
         env:
+          PLAIN_OUTPUT: True
           CI: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
