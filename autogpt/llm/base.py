@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 
 from dataclasses import dataclass, field
 from enum import Enum
@@ -44,12 +45,14 @@ class MessageCycle:
         triggering_prompt: Message,
         result: Message,
         ai_function_response: Optional[Message] = None,
+        ai_function_arguments: Optional[str] = None,
     ):
         self.user_input = user_input
-        self.triggering_prompt = user_input
         self.ai_response = ai_response
-        self.ai_function_response = ai_function_response
+        self.triggering_prompt = triggering_prompt
         self.result = result
+        self.ai_function_response = ai_function_response
+        self.ai_function_arguments = ai_function_arguments
 
     @property
     def messages(self) -> list[Message]:
@@ -58,6 +61,7 @@ class MessageCycle:
             self.ai_response,
             self.result,
         ]
+
         if self.ai_function_response:
             messages.append(self.ai_function_response)
 
@@ -71,10 +75,13 @@ class MessageCycle:
         user_input: Optional[str] = None,
         command_result: Optional[str] = None,
         command_name: Optional[str] = None,
+        command_arguments: Optional[dict] = None,
     ) -> MessageCycle:
         return cls(
-            triggering_prompt=Message(role=MessageRole.USER, content=triggering_prompt),
-            ai_response=Message(role=MessageRole.USER, content=ai_response),
+            triggering_prompt=Message(
+                role=MessageRole.SYSTEM, content=triggering_prompt
+            ),
+            ai_response=Message(role=MessageRole.ASSISTANT, content=ai_response),
             user_input=Message(role=MessageRole.USER, content=user_input)
             if user_input
             else None,
@@ -82,6 +89,7 @@ class MessageCycle:
                 role=MessageRole.FUNCTION,
                 content=command_result,
                 function_name=command_name,
+                function_arguments=json.dumps(command_arguments),
             )
             if command_result
             else None,
@@ -132,7 +140,7 @@ class Message:
         if self.role == MessageRole.FUNCTION.value:
             raw_message["name"] = self.function_name
 
-        if self.function_name:
+        if self.function_name and self.role == MessageRole.ASSISTANT.value:
             raw_message["function_call"] = {
                 "name": self.function_name,
                 "arguments": self.function_arguments or "{}",
