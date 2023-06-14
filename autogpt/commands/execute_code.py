@@ -7,7 +7,7 @@ import docker
 from docker.errors import ImageNotFound
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import command
+from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.setup import CFG

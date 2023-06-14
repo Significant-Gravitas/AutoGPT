@@ -7,12 +7,12 @@ import yaml
 from pytest_mock import MockerFixture
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import CommandRegistry
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import TypingConsoleHandler
 from autogpt.memory.vector import get_memory
+from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 
