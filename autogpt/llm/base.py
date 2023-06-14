@@ -1,31 +1,142 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from math import ceil, floor
-from typing import List, Literal, TypedDict
+from typing import List, Literal, TypedDict, Optional, Union, Any
 
-MessageRole = Literal["system", "user", "assistant"]
-MessageType = Literal["ai_response", "action_result"]
+
+class MessageType(Enum):
+    AI_RESPONSE = "ai_response"
+    AI_FUNCTION_CALL = "ai_function_call"
+    ACTION_RESULT = "action_result"
+
+
+class MessageRole(Enum):
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+    FUNCTION = "function"
+
 
 TText = list[int]
 """Token array representing tokenized text"""
 
 
 class MessageDict(TypedDict):
-    role: MessageRole
-    content: str
+    role: str
+    content: Optional[str]
+    name: Optional[str]
+
+    function_call: Optional[dict]
 
 
-@dataclass
+class MessageCycle:
+    user_input: Message
+    ai_response: Message
+    ai_function_response: Message
+    result: Message
+
+    def __init__(
+        self,
+        user_input: Message,
+        ai_response: Message,
+        result: Message,
+        ai_function_response: Optional[Message] = None,
+    ):
+        self.user_input = user_input
+        self.ai_response = ai_response
+        self.ai_function_response = ai_function_response
+        self.result = result
+
+    @property
+    def messages(self) -> list[Message]:
+        messages = [
+            self.user_input,
+            self.ai_response,
+            self.result,
+        ]
+        if self.ai_function_response:
+            messages.append(self.ai_function_response)
+
+        return messages
+
+    @classmethod
+    def construct(
+        cls,
+        user_input: str,
+        result: Any,
+        ai_function_call: Optional[dict] = None,
+        ai_function_response: Optional[str] = None,
+        ai_response: Optional[str] = None,
+    ) -> "MessageCycle":
+        ai_response_message = Message(role=MessageRole.ASSISTANT, content=result)
+        if ai_function_call:
+            ai_response_message.function_name = ai_function_call.get("name")
+            ai_response_message.function_arguments = ai_function_call.get("arguments")
+
+        return cls(
+            user_input=Message(role=MessageRole.USER, content=user_input),
+            ai_response=ai_response_message,
+            result=Message(role=MessageRole.SYSTEM, content=result),
+            # TODO: How do messages with the function role look? The docs are sparse
+            # ai_function_response=Message(
+            #    role=MessageRole.FUNCTION, content=ai_function_response
+            # ),
+        )
+
+
 class Message:
     """OpenAI Message object containing a role and the message content"""
 
-    role: MessageRole
-    content: str
-    type: MessageType | None = None
+    def __init__(
+        self,
+        role: Union[MessageRole, str],
+        content: Optional[str] = None,
+        function_name: Optional[str] = None,
+        function_arguments: Optional[str] = None,
+        message_type: Optional[MessageType] = None,
+    ):
+        if type(role) == MessageRole:
+            self.role = role.value
+        else:
+            self.role: str = role
+
+        self.function_name = function_name
+        # This is a JSON-encoded string
+        self.function_arguments = function_arguments
+        self.message_type = message_type
+
+        # Docs say:
+        #   content string Optional
+        #   The contents of the message. content is required for all messages except assistant messages
+        #   with function calls.
+        # This is an assistant message with a function call, but it will error out if we don't include content.
+        if not content:
+            if function_name and self.role == MessageRole.ASSISTANT.value:
+                self.content = ""
+            else:
+                raise ValueError(
+                    "Content is required for all messages except assistant messages with function calls."
+                )
+        self.content = content
 
     def raw(self) -> MessageDict:
-        return {"role": self.role, "content": self.content}
+        raw_message = {"role": self.role}
+
+        if self.content:
+            raw_message["content"] = self.content
+
+        if self.role == MessageRole.FUNCTION.value:
+            raw_message["name"] = self.function_name
+
+        if self.function_name:
+            raw_message["function_call"] = {
+                "name": self.function_name,
+                "arguments": self.function_arguments or {},
+            }
+
+        return raw_message
 
 
 @dataclass

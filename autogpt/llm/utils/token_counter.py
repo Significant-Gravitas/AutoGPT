@@ -1,5 +1,6 @@
 """Functions for counting the number of tokens in a message or string."""
 from __future__ import annotations
+import json
 
 from typing import List
 
@@ -54,6 +55,10 @@ def count_message_tokens(
     for message in messages:
         num_tokens += tokens_per_message
         for key, value in message.raw().items():
+            # FIXME? Use json dumped version of function call dict for guesstimation
+            if type(value) is not str:
+                value = json.dumps(value)
+
             num_tokens += len(encoding.encode(value))
             if key == "name":
                 num_tokens += tokens_per_name

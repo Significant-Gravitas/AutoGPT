@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import ChatSequence, Message
+from autogpt.llm.base import ChatSequence, Message, MessageCycle
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
@@ -101,7 +101,7 @@ def chat_with_ai(
 
     # Add Messages until the token limit is reached or there are no more messages to add.
     for cycle in reversed(list(agent.history.per_cycle())):
-        messages_to_add = [msg for msg in cycle if msg is not None]
+        messages_to_add = cycle.messages
         tokens_to_add = count_message_tokens(messages_to_add, model)
         if current_tokens_used + tokens_to_add > send_token_limit:
             break
@@ -199,8 +199,12 @@ def chat_with_ai(
     )
 
     # Update full message history
-    agent.history.append(user_input_msg)
-    # TODO: Does this work if we just put function calls in history?
-    agent.history.add("assistant", assistant_reply.content, "ai_response")
+    message_cycle = MessageCycle.construct(
+        user_input=user_input_msg.content,
+        ai_response=assistant_reply.content,
+        result=assistant_reply.content,
+        ai_function_call=assistant_reply.function_call,
+    )
+    agent.history.add(message_cycle)
 
     return assistant_reply

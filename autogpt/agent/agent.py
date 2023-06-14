@@ -7,7 +7,7 @@ from colorama import Fore, Style
 
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
-from autogpt.llm.base import ChatSequence
+from autogpt.llm.base import ChatSequence, MessageCycle
 from autogpt.llm.chat import chat_with_ai, create_chat_completion
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens
@@ -119,7 +119,7 @@ class Agent:
                 self.ai_config.ai_name,
                 self.created_at,
                 self.cycle_count,
-                [m.raw() for m in self.history],
+                [m.raw() for m in self.history.messages],
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
             if (
@@ -133,6 +133,7 @@ class Agent:
                     f"{self.config.continuous_limit}",
                 )
                 break
+
             # Send message to AI, get response
             with Spinner("Thinking... ", plain_output=self.config.plain_output):
                 assistant_reply = chat_with_ai(
@@ -146,30 +147,41 @@ class Agent:
                 )
 
             reply_content = assistant_reply.content
+            reply_content_json = {}
+            if reply_content:
+                # Sometimes the content can be duplicated, and this will contain 2 objects in one string
+                # TODO: Why is this?
+                reply_content = reply_content.split("}\n{")[0]
 
-            for plugin in self.config.plugins:
-                if not plugin.can_handle_post_planning():
-                    continue
-                reply_content = plugin.post_planning(reply_content)
+                for plugin in self.config.plugins:
+                    if not plugin.can_handle_post_planning():
+                        continue
+                    reply_content = plugin.post_planning(reply_content)
 
-            try:
-                reply_content_json = json.loads(reply_content)
-                # TODO: Validate
-            except json.JSONDecodeError as e:
-                logger.error(f"Could not decode response JSON")
-                logger.debug(f"Invalid response JSON: {reply_content_json}")
-                import pdb
+                try:
+                    reply_content_json = json.loads(reply_content)
+                    print_assistant_thoughts(
+                        self.ai_name, reply_content_json, self.config.speak_mode
+                    )
+                    # TODO: Validate
+                except json.JSONDecodeError as e:
+                    logger.error(f"Could not decode response JSON")
+                    logger.debug(f"Invalid response JSON: {reply_content_json}")
+                    reply_content = ""
+            else:
+                logger.warn("AI Response did not include content")
 
-                pdb.set_trace()
-                # TODO: Not this
-                reply_content_json = {}
-
-            print_assistant_thoughts(
-                self.ai_name, reply_content_json, self.config.speak_mode
-            )
-
-            command_name = assistant_reply.function_call["name"]
-            arguments = json.loads(assistant_reply.function_call.get("arguments", "{}"))
+            function_call = assistant_reply.function_call
+            if function_call:
+                # TODO: What should happen when there's no function call? The AI does this sometimes. Maybe when it
+                #  thinks it's done
+                command_name = function_call.get("name")
+                if function_call.get("arguments"):
+                    arguments = json.loads(
+                        assistant_reply.function_call.get("arguments")
+                    )
+                else:
+                    arguments = {}
 
             if self.config.speak_mode:
                 say_text(f"I want to execute {command_name}")
@@ -320,14 +332,20 @@ class Agent:
 
             # Check if there's a result from the command append it to the message
             # history
-            if result is not None:
-                self.history.add("system", result, "action_result")
-                logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
-            else:
-                self.history.add("system", "Unable to execute command", "action_result")
+            if not result:
+                result = "Unable to execute command"
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
+
+            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
+
+            message_cycle = MessageCycle.construct(
+                user_input=self.triggering_prompt,
+                ai_response=assistant_reply.content,
+                result=command_result,
+            )
+            self.history.add(message_cycle)
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:

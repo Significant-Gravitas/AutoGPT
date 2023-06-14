@@ -35,7 +35,7 @@ def agent(config: Config):
 def test_agent_initialization(agent: Agent):
     assert agent.ai_name == "Test AI"
     assert agent.memory == agent.memory
-    assert agent.history.messages == []
+    assert agent.history.message_cycles == []
     assert agent.next_action_count == 0
     assert agent.command_registry == agent.command_registry
     assert agent.ai_config == agent.ai_config

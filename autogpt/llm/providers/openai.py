@@ -168,17 +168,14 @@ def create_chat_completion(
     """
     try:
         completion: OpenAIObject = openai.ChatCompletion.create(
-            messages=messages,
-            **kwargs,
+            messages=messages, **kwargs
         )
         if not hasattr(completion, "error"):
             logger.debug(f"Response: {completion}")
         return completion
     except Exception as e:
-        import pdb
-
-        pdb.set_trace()
         logger.error(f"Error response from OpenAI: {e}")
+        raise e
 
 
 @meter_api
