@@ -68,7 +68,10 @@ def create_text_completion(
         temperature = cfg.temperature
 
     if cfg.use_azure:
-        kwargs = {"deployment_id": cfg.get_azure_deployment_id_for_model(model), "model": model}
+        kwargs = {
+            "deployment_id": cfg.get_azure_deployment_id_for_model(model),
+            "model": model,
+        }
     else:
         kwargs = {"model": model}
 
@@ -134,6 +137,7 @@ def create_chat_completion(
         chat_completion_kwargs["deployment_id"] = cfg.get_azure_deployment_id_for_model(
             model
         )
+        chat_completion_kwargs["model"] = model
 
     response = iopenai.create_chat_completion(
         messages=prompt.raw(),
