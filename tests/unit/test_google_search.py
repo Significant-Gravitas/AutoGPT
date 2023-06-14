@@ -4,7 +4,7 @@ import pytest
 from googleapiclient.errors import HttpError
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.google_search import (
+from autogpt.commands.web_search import (
     google_official_search,
     google_search,
     safe_google_results,

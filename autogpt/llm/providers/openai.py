@@ -29,10 +29,10 @@ OPEN_AI_CHAT_MODELS = {
             max_tokens=4096,
         ),
         ChatModelInfo(
-            name="gpt-3.5-turbo-16k-061",
+            name="gpt-3.5-turbo-16k-0613",
             prompt_token_cost=0.004,
             completion_token_cost=0.003,
-            max_tokens=4096,
+            max_tokens=16000,
         ),
         ChatModelInfo(
             name="gpt-3.5-turbo-0301",
@@ -203,13 +203,19 @@ def create_chat_completion(
         OpenAIObject: The ChatCompletion response from OpenAI
 
     """
-    completion: OpenAIObject = openai.ChatCompletion.create(
-        messages=messages,
-        **kwargs,
-    )
-    if not hasattr(completion, "error"):
-        logger.debug(f"Response: {completion}")
-    return completion
+    try:
+        completion: OpenAIObject = openai.ChatCompletion.create(
+            messages=messages,
+            **kwargs,
+        )
+        if not hasattr(completion, "error"):
+            logger.debug(f"Response: {completion}")
+        return completion
+    except Exception as e:
+        import pdb
+
+        pdb.set_trace()
+        logger.error(f"Error response from OpenAI: {e}")
 
 
 @meter_api

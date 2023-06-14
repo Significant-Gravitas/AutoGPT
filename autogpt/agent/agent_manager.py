@@ -41,7 +41,7 @@ class AgentManager(metaclass=Singleton):
             if plugin_messages := plugin.pre_instruction(messages.raw()):
                 messages.extend([Message(**raw_msg) for raw_msg in plugin_messages])
         # Start GPT instance
-        agent_reply = create_chat_completion(prompt=messages)
+        agent_reply = create_chat_completion(prompt=messages).content
 
         messages.add("assistant", agent_reply)
 
@@ -92,7 +92,7 @@ class AgentManager(metaclass=Singleton):
                 messages.extend([Message(**raw_msg) for raw_msg in plugin_messages])
 
         # Start GPT instance
-        agent_reply = create_chat_completion(prompt=messages)
+        agent_reply = create_chat_completion(prompt=messages).content
 
         messages.add("assistant", agent_reply)
 

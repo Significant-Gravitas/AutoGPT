@@ -32,7 +32,7 @@ class TestCommand:
         assert cmd.name == "example"
         assert cmd.description == "Example command"
         assert cmd.method == self.example_command_method
-        assert cmd.signature == "(arg1: int, arg2: str) -> str"
+        assert cmd.arguments == "(arg1: int, arg2: str) -> str"
 
     def test_command_call(self):
         """Test that Command(*args) calls and returns the result of method(*args)."""
@@ -65,7 +65,7 @@ class TestCommand:
             signature=custom_signature,
         )
 
-        assert cmd.signature == custom_signature
+        assert cmd.arguments == custom_signature
 
 
 class TestCommandRegistry:

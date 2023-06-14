@@ -1,16 +1,18 @@
 from __future__ import annotations
+import json
 
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 from colorama import Fore
 
 from autogpt.config import Config
-from autogpt.logs import logger
 
 from ..api_manager import ApiManager
-from ..base import ChatSequence, Message
+from ..base import ChatSequence
 from ..providers import openai as iopenai
 from .token_counter import *
+from ...models.chat_completion_response import ChatCompletionResponse
+from ...models.command_function import CommandFunction
 
 
 def call_ai_function(
@@ -87,14 +89,16 @@ def create_text_completion(
 # Overly simple abstraction until we create something better
 def create_chat_completion(
     prompt: ChatSequence,
+    functions: Optional[list[CommandFunction]] = None,
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-) -> str:
+) -> ChatCompletionResponse:
     """Create a chat completion using the OpenAI API
 
     Args:
-        messages (List[Message]): The messages to send to the chat completion
+        prompt (ChatSequence): The messages to send to the chat completion
+        functions (list[CommandFunction]): The callable functions to be passed to the AI
         model (str, optional): The model to use. Defaults to None.
         temperature (float, optional): The temperature to use. Defaults to 0.9.
         max_tokens (int, optional): The max tokens to use. Defaults to None.
@@ -103,6 +107,7 @@ def create_chat_completion(
         str: The response from the chat completion
     """
     cfg = Config()
+    functions = functions or []
     if model is None:
         model = prompt.model.name
     if temperature is None:
@@ -135,25 +140,31 @@ def create_chat_completion(
             model
         )
 
+    if functions:
+        chat_completion_kwargs["functions"] = [
+            function.__dict__ for function in functions
+        ]
+
     response = iopenai.create_chat_completion(
         messages=prompt.raw(),
         **chat_completion_kwargs,
     )
     logger.debug(f"Response: {response}")
 
-    resp = ""
-    if not hasattr(response, "error"):
-        resp = response.choices[0].message["content"]
-    else:
+    if hasattr(response, "error"):
         logger.error(response.error)
         raise RuntimeError(response.error)
+
+    first_message = response.choices[0].message
+    content = first_message["content"]
+    function_call = first_message.get("function_call", {})
 
     for plugin in cfg.plugins:
         if not plugin.can_handle_on_response():
             continue
-        resp = plugin.on_response(resp)
+        content = plugin.on_response(content)
 
-    return resp
+    return ChatCompletionResponse(content=content, function_call=function_call)
 
 
 def check_model(

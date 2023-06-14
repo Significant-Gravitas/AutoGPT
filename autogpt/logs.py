@@ -187,8 +187,8 @@ Output stream to console using simulated typing
 
 class TypingConsoleHandler(logging.StreamHandler):
     def emit(self, record):
-        min_typing_speed = 0.05
-        max_typing_speed = 0.01
+        min_typing_speed = 0.005
+        max_typing_speed = 0.001
 
         msg = self.format(record)
         try:
@@ -252,22 +252,16 @@ logger = Logger()
 
 
 def print_assistant_thoughts(
-    ai_name: object,
-    assistant_reply_json_valid: object,
+    ai_name: str,
+    thoughts: dict,
     speak_mode: bool = False,
 ) -> None:
-    assistant_thoughts_reasoning = None
-    assistant_thoughts_plan = None
-    assistant_thoughts_speak = None
-    assistant_thoughts_criticism = None
+    assistant_thoughts_text = thoughts.get("text")
+    assistant_thoughts_reasoning = thoughts.get("reasoning")
+    assistant_thoughts_plan = thoughts.get("plan")
+    assistant_thoughts_criticism = thoughts.get("criticism")
+    assistant_thoughts_speak = thoughts.get("speak")
 
-    assistant_thoughts = assistant_reply_json_valid.get("thoughts", {})
-    assistant_thoughts_text = assistant_thoughts.get("text")
-    if assistant_thoughts:
-        assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
-        assistant_thoughts_plan = assistant_thoughts.get("plan")
-        assistant_thoughts_criticism = assistant_thoughts.get("criticism")
-        assistant_thoughts_speak = assistant_thoughts.get("speak")
     logger.typewriter_log(
         f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
     )

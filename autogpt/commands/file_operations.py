@@ -141,7 +141,13 @@ def append_to_file(
         return f"Error: {err}"
 
 
-@command("read_file", "Read a file", '"filename": "<filename>"')
+@command(
+    "read_file",
+    "Read an existing file",
+    arguments={
+        "filename": {"type": "string", "description": "The path of the file to read"}
+    },
+)
 def read_file(filename: str, agent: Agent) -> str:
     """Read a file and return the contents
 
@@ -190,7 +196,17 @@ def ingest_file(
         logger.warn(f"Error while ingesting file '{filename}': {err}")
 
 
-@command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
+@command(
+    "write_to_file",
+    "Write to file",
+    arguments={
+        "filename": {
+            "type": "string",
+            "description": "The name of the file to write to",
+        },
+        "text": {"type": "string", "description": "The text to write to the file"},
+    },
+)
 def write_to_file(filename: str, text: str, agent: Agent) -> str:
     """Write text to a file
 
@@ -215,7 +231,13 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
         return f"Error: {err}"
 
 
-@command("delete_file", "Delete file", '"filename": "<filename>"')
+@command(
+    "delete_file",
+    "Delete file",
+    arguments={
+        "filename": {"type": "string", "description": "The path of the file to delete"}
+    },
+)
 def delete_file(filename: str, agent: Agent) -> str:
     """Delete a file
 
@@ -235,19 +257,20 @@ def delete_file(filename: str, agent: Agent) -> str:
         return f"Error: {err}"
 
 
-@command("list_files", "List Files in Directory", '"directory": "<directory>"')
-def list_files(directory: str, agent: Agent) -> list[str]:
+@command(
+    "list_files",
+    "List files in the workspace",
+    arguments={},
+)
+def list_files(agent: Agent) -> list[str]:
     """lists files in a directory recursively
-
-    Args:
-        directory (str): The directory to search in
 
     Returns:
         list[str]: A list of files found in the directory
     """
     found_files = []
 
-    for root, _, files in os.walk(directory):
+    for root, _, files in os.walk(agent.workspace.root):
         for file in files:
             if file.startswith("."):
                 continue

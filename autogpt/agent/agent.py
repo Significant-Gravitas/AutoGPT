@@ -7,7 +7,6 @@ from colorama import Fore, Style
 
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
-from autogpt.json_utils.utilities import extract_json_from_response, validate_json
 from autogpt.llm.base import ChatSequence
 from autogpt.llm.chat import chat_with_ai, create_chat_completion
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
@@ -23,6 +22,7 @@ from autogpt.log_cycle.log_cycle import (
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
+from autogpt.models.command_function import CommandFunction
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
@@ -136,46 +136,49 @@ class Agent:
             # Send message to AI, get response
             with Spinner("Thinking... ", plain_output=self.config.plain_output):
                 assistant_reply = chat_with_ai(
-                    self.config,
-                    self,
-                    self.system_prompt,
-                    self.triggering_prompt,
-                    self.fast_token_limit,
-                    self.config.fast_llm_model,
+                    config=self.config,
+                    agent=self,
+                    system_prompt=self.system_prompt,
+                    user_input=self.triggering_prompt,
+                    token_limit=self.fast_token_limit,
+                    model=self.config.fast_llm_model,
+                    functions=self.get_functions_from_commands(),
                 )
 
-            try:
-                assistant_reply_json = extract_json_from_response(assistant_reply)
-                validate_json(assistant_reply_json)
-            except json.JSONDecodeError as e:
-                logger.error(f"Exception while validating assistant reply JSON: {e}")
-                assistant_reply_json = {}
+            reply_content = assistant_reply.content
 
             for plugin in self.config.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
-                assistant_reply_json = plugin.post_planning(assistant_reply_json)
+                reply_content = plugin.post_planning(reply_content)
 
-            # Print Assistant thoughts
-            if assistant_reply_json != {}:
-                # Get command name and arguments
-                try:
-                    print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, self.config.speak_mode
-                    )
-                    command_name, arguments = get_command(assistant_reply_json)
-                    if self.config.speak_mode:
-                        say_text(f"I want to execute {command_name}")
+            try:
+                reply_content_json = json.loads(reply_content)
+                # TODO: Validate
+            except json.JSONDecodeError as e:
+                logger.error(f"Could not decode response JSON")
+                logger.debug(f"Invalid response JSON: {reply_content_json}")
+                import pdb
 
-                    arguments = self._resolve_pathlike_command_args(arguments)
+                pdb.set_trace()
+                # TODO: Not this
+                reply_content_json = {}
 
-                except Exception as e:
-                    logger.error("Error: \n", str(e))
+            print_assistant_thoughts(
+                self.ai_name, reply_content_json, self.config.speak_mode
+            )
+
+            command_name = assistant_reply.function_call["name"]
+            arguments = json.loads(assistant_reply.function_call.get("arguments", "{}"))
+
+            if self.config.speak_mode:
+                say_text(f"I want to execute {command_name}")
+
             self.log_cycle_handler.log_cycle(
                 self.ai_config.ai_name,
                 self.created_at,
                 self.cycle_count,
-                assistant_reply_json,
+                reply_content,
                 NEXT_ACTION_FILE_NAME,
             )
 
@@ -368,7 +371,7 @@ class Agent:
             PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
         )
 
-        feedback = create_chat_completion(prompt)
+        feedback = create_chat_completion(prompt).content
 
         self.log_cycle_handler.log_cycle(
             self.ai_config.ai_name,
@@ -378,3 +381,36 @@ class Agent:
             SUPERVISOR_FEEDBACK_FILE_NAME,
         )
         return feedback
+
+    def get_functions_from_commands(self) -> list[CommandFunction]:
+        """Get functions from the commands. "functions" in this context refers to OpenAI functions
+
+        see https://platform.openai.com/docs/guides/gpt/function-calling
+        """
+        functions = []
+        for command in self.command_registry.commands.values():
+            properties = {}
+            required = []
+
+            for argument in command.arguments:
+                properties[argument.name] = {
+                    "type": argument.type,
+                    "description": argument.description,
+                }
+                if argument.required:
+                    required.append(argument.name)
+
+            parameters = {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            }
+            functions.append(
+                CommandFunction(
+                    name=command.name,
+                    description=command.description,
+                    parameters=parameters,
+                )
+            )
+
+        return functions

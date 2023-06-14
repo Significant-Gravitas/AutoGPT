@@ -42,7 +42,13 @@ FILE_DIR = Path(__file__).parent.parent
 @command(
     "browse_website",
     "Browse Website",
-    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+    arguments={
+        "url": {"type": "string", "description": "The URL to visit"},
+        "question": {
+            "type": "string",
+            "description": "What you want to find on the website",
+        },
+    },
 )
 @validate_url
 def browse_website(url: str, question: str, agent: Agent) -> str:

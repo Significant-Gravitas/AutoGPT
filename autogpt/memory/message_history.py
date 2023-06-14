@@ -230,7 +230,7 @@ Latest Development:
             PROMPT_SUMMARY_FILE_NAME,
         )
 
-        self.summary = create_chat_completion(prompt)
+        self.summary = create_chat_completion(prompt).content
 
         self.agent.log_cycle_handler.log_cycle(
             self.agent.ai_name,

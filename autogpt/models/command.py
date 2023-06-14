@@ -1,6 +1,7 @@
 from typing import Any, Callable, Optional
 
 from autogpt.config import Config
+from autogpt.models.command_argument import CommandArgument
 
 
 class Command:
@@ -9,7 +10,7 @@ class Command:
     Attributes:
         name (str): The name of the command.
         description (str): A brief description of what the command does.
-        signature (str): The signature of the function that the command executes. Defaults to None.
+        arguments (str): The signature of the function that the command executes. Defaults to None.
     """
 
     def __init__(
@@ -17,14 +18,14 @@ class Command:
         name: str,
         description: str,
         method: Callable[..., Any],
-        signature: str = "",
+        arguments: list[CommandArgument],
         enabled: bool | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
     ):
         self.name = name
         self.description = description
         self.method = method
-        self.signature = signature
+        self.arguments = arguments
         self.enabled = enabled
         self.disabled_reason = disabled_reason
 
@@ -38,4 +39,4 @@ class Command:
         return self.method(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f"{self.name}: {self.description}, args: {self.signature}"
+        return f"{self.name}: {self.description}, args: {self.arguments}"

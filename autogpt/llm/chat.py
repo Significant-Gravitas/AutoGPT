@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import time
 from typing import TYPE_CHECKING
+from autogpt.models.chat_completion_response import ChatCompletionResponse
+from autogpt.models.command_function import CommandFunction
 
 if TYPE_CHECKING:
     from autogpt.agent.agent import Agent
@@ -21,8 +23,9 @@ def chat_with_ai(
     system_prompt: str,
     user_input: str,
     token_limit: int,
+    functions: list[CommandFunction],
     model: str | None = None,
-):
+) -> ChatCompletionResponse:
     """
     Interact with the OpenAI API, sending the prompt, user input,
         message history, and permanent memory.
@@ -33,6 +36,7 @@ def chat_with_ai(
         system_prompt (str): The prompt explaining the rules to the AI.
         user_input (str): The input from the user.
         token_limit (int): The maximum number of tokens allowed in the API call.
+        functions (list[CommandFunction]): The callable functions to be passed to the AI
         model (str, optional): The model to use. If None, the config.fast_llm_model will be used. Defaults to None.
 
     Returns:
@@ -191,12 +195,12 @@ def chat_with_ai(
     # TODO: use a model defined elsewhere, so that model can contain
     # temperature and other settings we care about
     assistant_reply = create_chat_completion(
-        prompt=message_sequence,
-        max_tokens=tokens_remaining,
+        prompt=message_sequence, max_tokens=tokens_remaining, functions=functions
     )
 
     # Update full message history
     agent.history.append(user_input_msg)
-    agent.history.add("assistant", assistant_reply, "ai_response")
+    # TODO: Does this work if we just put function calls in history?
+    agent.history.add("assistant", assistant_reply.content, "ai_response")
 
     return assistant_reply

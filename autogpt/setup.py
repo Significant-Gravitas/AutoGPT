@@ -184,7 +184,7 @@ def generate_aiconfig_automatic(user_prompt) -> AIConfig:
                 Message("user", prompt_ai_config_automatic),
             ],
         )
-    )
+    ).content
 
     # Debug LLM Output
     logger.debug(f"AI Config Generator Raw Output: {output}")
