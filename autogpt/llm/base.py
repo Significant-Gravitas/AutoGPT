@@ -77,11 +77,17 @@ class MessageCycle:
         command_name: Optional[str] = None,
         command_arguments: Optional[dict] = None,
     ) -> MessageCycle:
+        function_arguments = json.dumps(command_arguments)
         return cls(
             triggering_prompt=Message(
                 role=MessageRole.SYSTEM, content=triggering_prompt
             ),
-            ai_response=Message(role=MessageRole.ASSISTANT, content=ai_response),
+            ai_response=Message(
+                role=MessageRole.ASSISTANT,
+                content=ai_response,
+                function_name=command_name,
+                function_arguments=function_arguments,
+            ),
             user_input=Message(role=MessageRole.USER, content=user_input)
             if user_input
             else None,
@@ -89,7 +95,7 @@ class MessageCycle:
                 role=MessageRole.FUNCTION,
                 content=command_result,
                 function_name=command_name,
-                function_arguments=json.dumps(command_arguments),
+                function_arguments=function_arguments,
             )
             if command_result
             else None,
