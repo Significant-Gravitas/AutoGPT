@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from autogpt.models.command_registry import CommandRegistry
 from autogpt.models.command import Command
+from autogpt.models.command_registry import CommandRegistry
 
 SIGNATURE = "(arg1: int, arg2: str) -> str"
 

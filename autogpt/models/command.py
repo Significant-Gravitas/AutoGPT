@@ -1,4 +1,5 @@
-from typing import Callable, Any, Optional
+from typing import Any, Callable, Optional
+
 from autogpt.config import Config
 
 

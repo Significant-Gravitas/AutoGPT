@@ -4,21 +4,14 @@ from __future__ import annotations
 import hashlib
 import os
 import os.path
-import re
 from typing import Generator, Literal
-
-import requests
-from colorama import Back, Fore
-from confection import Config
-from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.agent.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.commands.file_operations_utils import read_textual_file
+from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
-from autogpt.spinner import Spinner
-from autogpt.utils import readable_file_size
 
 Operation = Literal["write", "append", "delete"]
 
@@ -119,6 +112,35 @@ def log_operation(
     )
 
 
+def append_to_file(
+    filename: str, text: str, agent: Agent, should_log: bool = True
+) -> str:
+    """Append text to a file
+
+    Args:
+        filename (str): The name of the file to append to
+        text (str): The text to append to the file
+        should_log (bool): Should log output
+
+    Returns:
+        str: A message indicating success or failure
+    """
+    try:
+        directory = os.path.dirname(filename)
+        os.makedirs(directory, exist_ok=True)
+        with open(filename, "a", encoding="utf-8") as f:
+            f.write(text)
+
+        if should_log:
+            with open(filename, "r", encoding="utf-8") as f:
+                checksum = text_checksum(f.read())
+            log_operation("append", filename, agent, checksum=checksum)
+
+        return "Text appended successfully."
+    except Exception as err:
+        return f"Error: {err}"
+
+
 @command("read_file", "Read a file", '"filename": "<filename>"')
 def read_file(filename: str, agent: Agent) -> str:
     """Read a file and return the contents
@@ -193,100 +215,6 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
         return f"Error: {err}"
 
 
-@command(
-    "replace_in_file",
-    "Replace text or code in a file",
-    '"filename": "<filename>", '
-    '"old_text": "<old_text>", "new_text": "<new_text>", '
-    '"occurrence_index": "<occurrence_index>"',
-)
-def replace_in_file(
-    filename: str, old_text: str, new_text: str, agent: Agent, occurrence_index=None
-):
-    """Update a file by replacing one or all occurrences of old_text with new_text using Python's built-in string
-    manipulation and regular expression modules for cross-platform file editing similar to sed and awk.
-
-    Args:
-        filename (str): The name of the file
-        old_text (str): String to be replaced. \n will be stripped from the end.
-        new_text (str): New string. \n will be stripped from the end.
-        occurrence_index (int): Optional index of the occurrence to replace. If None, all occurrences will be replaced.
-
-    Returns:
-        str: A message indicating whether the file was updated successfully or if there were no matches found for old_text
-        in the file.
-
-    Raises:
-        Exception: If there was an error updating the file.
-    """
-    try:
-        with open(filename, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        old_text = old_text.rstrip("\n")
-        new_text = new_text.rstrip("\n")
-
-        if occurrence_index is None:
-            new_content = content.replace(old_text, new_text)
-        else:
-            matches = list(re.finditer(re.escape(old_text), content))
-            if not matches:
-                return f"No matches found for {old_text} in {filename}"
-
-            if int(occurrence_index) >= len(matches):
-                return f"Occurrence index {occurrence_index} is out of range for {old_text} in {filename}"
-
-            match = matches[int(occurrence_index)]
-            start, end = match.start(), match.end()
-            new_content = content[:start] + new_text + content[end:]
-
-        if content == new_content:
-            return f"No matches found for {old_text} in {filename}"
-
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(new_content)
-
-        with open(filename, "r", encoding="utf-8") as f:
-            checksum = text_checksum(f.read())
-        log_operation("update", filename, agent, checksum=checksum)
-
-        return f"File {filename} updated successfully."
-    except Exception as e:
-        return "Error: " + str(e)
-
-
-@command(
-    "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
-)
-def append_to_file(
-    filename: str, text: str, agent: Agent, should_log: bool = True
-) -> str:
-    """Append text to a file
-
-    Args:
-        filename (str): The name of the file to append to
-        text (str): The text to append to the file
-        should_log (bool): Should log output
-
-    Returns:
-        str: A message indicating success or failure
-    """
-    try:
-        directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
-        with open(filename, "a", encoding="utf-8") as f:
-            f.write(text)
-
-        if should_log:
-            with open(filename, "r", encoding="utf-8") as f:
-                checksum = text_checksum(f.read())
-            log_operation("append", filename, agent, checksum=checksum)
-
-        return "Text appended successfully."
-    except Exception as err:
-        return f"Error: {err}"
-
-
 @command("delete_file", "Delete file", '"filename": "<filename>"')
 def delete_file(filename: str, agent: Agent) -> str:
     """Delete a file
@@ -329,51 +257,3 @@ def list_files(directory: str, agent: Agent) -> list[str]:
             found_files.append(relative_path)
 
     return found_files
-
-
-@command(
-    "download_file",
-    "Download File",
-    '"url": "<url>", "filename": "<filename>"',
-    lambda config: config.allow_downloads,
-    "Error: You do not have user authorization to download files locally.",
-)
-def download_file(url, filename, agent: Agent):
-    """Downloads a file
-    Args:
-        url (str): URL of the file to download
-        filename (str): Filename to save the file as
-    """
-    try:
-        directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
-        message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
-        with Spinner(message, plain_output=agent.config.plain_output) as spinner:
-            session = requests.Session()
-            retry = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
-            adapter = HTTPAdapter(max_retries=retry)
-            session.mount("http://", adapter)
-            session.mount("https://", adapter)
-
-            total_size = 0
-            downloaded_size = 0
-
-            with session.get(url, allow_redirects=True, stream=True) as r:
-                r.raise_for_status()
-                total_size = int(r.headers.get("Content-Length", 0))
-                downloaded_size = 0
-
-                with open(filename, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                        downloaded_size += len(chunk)
-
-                        # Update the progress message
-                        progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
-                        spinner.update_message(f"{message} {progress}")
-
-            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(downloaded_size)})'
-    except requests.HTTPError as err:
-        return f"Got an HTTP Error whilst trying to download file: {err}"
-    except Exception as err:
-        return f"Error: {err}"
