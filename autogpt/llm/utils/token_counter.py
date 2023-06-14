@@ -25,24 +25,23 @@ def count_message_tokens(
     Returns:
         int: The number of tokens used by the list of messages.
     """
+    # TODO: Will tiktoken eventually have this?
+    if model == "gpt-3.5-turbo-16k-0613":
+        encoding_model = "gpt-3.5-turbo"
+    elif model == "gpt-4-0613":
+        encoding_model = "gpt-4"
     try:
-        encoding = tiktoken.encoding_for_model(model)
+        encoding = tiktoken.encoding_for_model(encoding_model)
     except KeyError:
         logger.warn("Warning: model not found. Using cl100k_base encoding.")
         encoding = tiktoken.get_encoding("cl100k_base")
-    if model == "gpt-3.5-turbo-16k-0613":
-        # !Note: gpt-3.5-turbo-16k-0613 may change over time.
-        # Returning num tokens assuming gpt-3.5-turbo-16k-0613.")
-        return count_message_tokens(messages, model="gpt-3.5-turbo-16k-0613")
-    elif model == "gpt-4-0613":
-        # !Note: gpt-4-0613 may change over time. Returning num tokens assuming gpt-4-0613.")
-        return count_message_tokens(messages, model="gpt-4-0613")
-    elif model == "gpt-3.5-turbo-16k-0613":
+
+    if model.startswith("gpt-3.5"):
         tokens_per_message = (
             4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
         )
         tokens_per_name = -1  # if there's a name, the role is omitted
-    elif model == "gpt-4-0613":
+    elif model.startswith("gpt-4"):
         tokens_per_message = 3
         tokens_per_name = 1
     else:
@@ -51,6 +50,7 @@ def count_message_tokens(
             " See https://github.com/openai/openai-python/blob/main/chatml.md for"
             " information on how messages are converted to tokens."
         )
+
     num_tokens = 0
     for message in messages:
         num_tokens += tokens_per_message

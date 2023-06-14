@@ -89,7 +89,7 @@ class MessageHistory:
 
         # Find the index of the last message processed
         last_message = new_messages_not_in_chain[-1]
-        self.last_trimmed_index = self.message_cycles.index(last_message)
+        self.last_trimmed_index = self.messages.index(last_message)
 
         return new_summary_message, new_messages_not_in_chain
 
