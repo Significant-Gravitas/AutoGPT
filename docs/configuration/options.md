@@ -5,13 +5,11 @@ Configuration is controlled through the `Config` object. You can set configurati
 ## Environment Variables
 
 - `AI_SETTINGS_FILE`: Location of AI Settings file. Default: ai_settings.yaml
-- `ALLOWLISTED_PLUGINS`: List of plugins allowed. Optional.
 - `AUDIO_TO_TEXT_PROVIDER`: Audio To Text Provider. Only option currently is `huggingface`. Default: huggingface
 - `AUTHORISE_COMMAND_KEY`: Key response accepted when authorising commands. Default: y
 - `BROWSE_CHUNK_MAX_LENGTH`: When browsing website, define the length of chunks to summarize. Default: 3000
 - `BROWSE_SPACY_LANGUAGE_MODEL`: [spaCy language model](https://spacy.io/usage/models) to use when creating chunks. Default: en_core_web_sm
 - `CHAT_MESSAGES_ENABLED`: Enable chat messages. Optional
-- `DENYLISTED_PLUGINS`: List of plugins not allowed. Optional.
 - `DISABLED_COMMAND_CATEGORIES`: Command categories to disable. Command categories are Python module names, e.g. autogpt.commands.analyze_code. See the directory `autogpt/commands` in the source for all command modules. Default: None
 - `ELEVENLABS_API_KEY`: ElevenLabs API Key. Optional.
 - `ELEVENLABS_VOICE_ID`: ElevenLabs Voice ID. Optional.
@@ -34,6 +32,7 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `OPENAI_API_KEY`: *REQUIRED*- Your [OpenAI API Key](https://platform.openai.com/account/api-keys).
 - `OPENAI_ORGANIZATION`: Organization ID in OpenAI. Optional.
 - `PLAIN_OUTPUT`: Plain output, which disables the spinner. Default: False
+- `PLUGINS_CONFIG_FILE`: Path of plugins_config.yaml file. Default: plugins_config.yaml
 - `PROMPT_SETTINGS_FILE`: Location of Prompt Settings file. Default: prompt_settings.yaml
 - `REDIS_HOST`: Redis Host. Default: localhost
 - `REDIS_PASSWORD`: Redis Password. Optional. Default:
