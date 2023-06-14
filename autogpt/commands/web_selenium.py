@@ -43,10 +43,11 @@ FILE_DIR = Path(__file__).parent.parent
     "browse_website",
     "Browse Website",
     arguments={
-        "url": {"type": "string", "description": "The URL to visit"},
+        "url": {"type": "string", "description": "The URL to visit", "required": True},
         "question": {
             "type": "string",
             "description": "What you want to find on the website",
+            "required": True,
         },
     },
 )

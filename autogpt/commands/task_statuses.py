@@ -15,6 +15,7 @@ from autogpt.logs import logger
         "reason": {
             "type": "string",
             "description": "Explanation to user of why the task is considered complete",
+            "required": True,
         }
     },
 )

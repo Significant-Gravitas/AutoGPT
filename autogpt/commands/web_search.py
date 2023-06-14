@@ -16,7 +16,13 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
 @command(
     "web_search",
     "Web Search",
-    arguments={"query": {"type": "string", "description": "The search query"}},
+    arguments={
+        "query": {
+            "type": "string",
+            "description": "The search query",
+            "required": True,
+        }
+    },
 )
 def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     """Return the results of a Web search

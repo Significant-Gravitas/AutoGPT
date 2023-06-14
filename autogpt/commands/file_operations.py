@@ -145,7 +145,11 @@ def append_to_file(
     "read_file",
     "Read an existing file",
     arguments={
-        "filename": {"type": "string", "description": "The path of the file to read"}
+        "filename": {
+            "type": "string",
+            "description": "The path of the file to read",
+            "required": True,
+        }
     },
 )
 def read_file(filename: str, agent: Agent) -> str:
@@ -203,8 +207,13 @@ def ingest_file(
         "filename": {
             "type": "string",
             "description": "The name of the file to write to",
+            "required": True,
         },
-        "text": {"type": "string", "description": "The text to write to the file"},
+        "text": {
+            "type": "string",
+            "description": "The text to write to the file",
+            "required": True,
+        },
     },
 )
 def write_to_file(filename: str, text: str, agent: Agent) -> str:
@@ -235,7 +244,11 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
     "delete_file",
     "Delete file",
     arguments={
-        "filename": {"type": "string", "description": "The path of the file to delete"}
+        "filename": {
+            "type": "string",
+            "description": "The path of the file to delete",
+            "required": True,
+        }
     },
 )
 def delete_file(filename: str, agent: Agent) -> str:
