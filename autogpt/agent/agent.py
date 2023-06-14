@@ -153,6 +153,10 @@ class Agent:
                 # TODO: Why is this?
                 reply_content = reply_content.split("}\n{")[0]
 
+                # TODO: Sometimes the content doesn't close the last bracket. Why?
+                if not reply_content.endswith("}"):
+                    reply_content += "}"
+
                 for plugin in self.config.plugins:
                     if not plugin.can_handle_post_planning():
                         continue
@@ -175,7 +179,6 @@ class Agent:
                 except json.JSONDecodeError as e:
                     logger.error(f"Could not decode response JSON")
                     logger.debug(f"Invalid response JSON: {reply_content_json}")
-                    reply_content = ""
             else:
                 logger.warn("AI Response did not include content")
 
@@ -287,12 +290,11 @@ class Agent:
 
             # Step 2: Execute command
             if command_name is not None and command_name.lower().startswith("error"):
-                (
-                    command_result,
-                    text_result,
+                command_result = (
+                    text_result
                 ) = f"Could not execute command: {command_name}"
             elif command_name == "human_feedback":
-                command_result, text_result = f"Human feedback: {user_input}"
+                command_result = text_result = f"Human feedback: {user_input}"
             else:
                 for plugin in self.config.plugins:
                     if not plugin.can_handle_pre_command():
