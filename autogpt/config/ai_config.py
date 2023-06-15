@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 import platform
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import distro
 import yaml
@@ -83,6 +83,15 @@ class AIConfig:
 
     @staticmethod
     def load_all(config_file: str) -> Dict[str, "AIConfig"]:
+        """
+        Load all AI configurations from the specified config file.
+
+        Parameters:
+            config_file (str): The path to the configuration file.
+
+        Returns:
+            Dict[str, AIConfig]: A dictionary containing all the loaded AI configurations.
+        """
         try:
             with open(config_file, encoding="utf-8") as file:
                 all_configs: Dict[str, Any] = yaml.safe_load(file) or {}
@@ -137,10 +146,15 @@ class AIConfig:
 
         Returns:
             None
+
+        Raises:
+            ValueError: If the AI name is an empty string.
         """
         # Prevent saving if the ai_name is an empty string
         if not self.ai_name:
-            return "The AI name cannot be empty. The configuration was not saved."
+            raise ValueError(
+                "The AI name cannot be empty. The configuration was not saved."
+            )
 
         new_config = {
             self.ai_name: {
@@ -171,7 +185,7 @@ class AIConfig:
         with open(config_file, "w", encoding="utf-8") as file:
             file.write(yaml.dump(all_configs, allow_unicode=True))
 
-    def delete(self, config_file: str, ai_name: str = "") -> str:
+    def delete(self, config_file: str, ai_name: str = "") -> None:
         """
         Deletes a configuration from the specified YAML file.
 
@@ -180,30 +194,33 @@ class AIConfig:
                 DEFAULT: "../ai_settings.yaml"
             ai_name(str): The name of the AI whose configuration is to be deleted.
 
-        Returns:
-            str: Message indicating the result of the operation.
+        Raises:
+            ValueError: If no AI name is provided, the configuration file does not exist, the file is empty,
+                or no configuration is found for the specified AI.
         """
 
         # If no AI name is provided, exit
         if ai_name == "":
-            return "No AI name provided. Please provide an AI name to delete its configuration."
+            raise ValueError(
+                "No AI name provided. Please provide an AI name to delete its configuration."
+            )
 
         # Load existing configurations
         if not os.path.exists(config_file):
-            return "No configurations to delete."
+            raise ValueError("No configurations to delete.")
         else:
             with open(config_file, "r", encoding="utf-8") as file:
                 all_configs = yaml.safe_load(file)
 
                 # Handle the case when the file exists but is empty
                 if all_configs is None:
-                    return "No configurations to delete."
+                    raise ValueError("No configurations to delete.")
 
         # Check if AI configuration exists
         if ai_name in all_configs["configs"]:
             del all_configs["configs"][ai_name]
         else:
-            return "No configuration found for AI '{}'.".format(ai_name)
+            raise ValueError(f"No configuration found for AI '{ai_name}'.")
 
         # Save configurations back to file
         with open(config_file, "w", encoding="utf-8") as file:

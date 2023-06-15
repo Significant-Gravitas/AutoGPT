@@ -1,3 +1,5 @@
+from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
@@ -9,7 +11,7 @@ from tests.utils import requires_api_key
 
 
 @pytest.fixture(autouse=True)
-def setup(tmp_path):
+def setup(tmp_path: Path) -> Any:
     cfg.ai_settings_filepath = tmp_path / "ai_settings.yaml"
     cfg.workspace_path = tmp_path / "auto_gpt_workspace"
     (cfg.workspace_path).mkdir(parents=True, exist_ok=True)
@@ -66,17 +68,15 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor: Mock) -> No
 
     user_inputs_iterator = iter(user_inputs)
 
-    # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
-    # Patch functions to use the user_inputs list
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
         ai_config = main_menu()
 
-    # Asserts
+    assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "Chef-GPT"
     assert ai_config.ai_role == "an AI designed to browse bake a cake."
     assert ai_config.ai_goals == [
@@ -104,8 +104,7 @@ def test_prompt_user_manual_mode_r_input(patched_api_requestor: Mock) -> None:
 
     user_inputs_iterator = iter(user_inputs)
 
-    # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     with patch("builtins.input", new=mock_input), patch(
@@ -136,8 +135,7 @@ def test_prompt_user_manual_mode(patched_api_requestor: Mock) -> None:
 
     user_inputs_iterator = iter(user_inputs)
 
-    # Function to replace autogpt.utils.session.prompt and built-in input
-    def mock_prompt_input(_prompt):
+    def mock_prompt_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     with patch("autogpt.utils.session.prompt", new=mock_prompt_input), patch(
@@ -150,7 +148,7 @@ def test_prompt_user_manual_mode(patched_api_requestor: Mock) -> None:
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_delete_and_select():
+def test_generate_aiconfig_delete_and_select() -> None:
     """Test delete configuration and select."""
 
     # Temporary path / file
@@ -188,7 +186,7 @@ def test_generate_aiconfig_delete_and_select():
     user_inputs_iterator = iter(user_inputs)
 
     # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     # Patch functions to use the user_inputs list
@@ -197,7 +195,7 @@ def test_generate_aiconfig_delete_and_select():
     ):
         ai_config = main_menu()
 
-    # Asserts
+    assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "normal-GPT"
     assert ai_config.ai_role == "do a normal file task"
     assert ai_config.ai_goals == [
@@ -211,7 +209,7 @@ def test_generate_aiconfig_delete_and_select():
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_change_and_select():
+def test_generate_aiconfig_change_and_select() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
@@ -259,7 +257,7 @@ def test_generate_aiconfig_change_and_select():
     user_inputs_iterator = iter(user_inputs)
 
     # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     # Patch functions to use the user_inputs list
@@ -268,7 +266,7 @@ def test_generate_aiconfig_change_and_select():
     ):
         ai_config = main_menu()
 
-    # Asserts
+    assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "change-GPT"
     assert ai_config.ai_role == "do a changed file task"
     assert ai_config.ai_goals == [
@@ -279,7 +277,79 @@ def test_generate_aiconfig_change_and_select():
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_change_and_start():
+def test_generate_aiconfig_change_add_more_goals() -> None:
+    """Test change configuration and select."""
+
+    # Temporary path / file
+    temp_config_file = cfg.ai_settings_filepath
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+    normal-GPT:
+        ai_goals:
+        -  save a text file test2.txt with the text "hello space".
+        -  use read_file to confirm the file test2.txt contains the words "hello space".
+        -  rename file test2.txt to test-4.txt.
+        -  delete file test-2.txt.
+        -  shutdown.
+        ai_role: do a normal file task
+        api_budget: 0.0
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "4",
+        "1",
+        "change-GPT",
+        "do a changed file task",
+        "4",
+        "",
+        "",
+        "new goal 3",
+        "new goal 4",
+        "",
+        "",
+        "",
+        "",
+        "1",
+    ]
+
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt: str) -> str:
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
+        ai_config = main_menu()
+
+    assert ai_config is not None, "ai_config is None"
+    assert ai_config.ai_name == "change-GPT"
+    assert ai_config.ai_role == "do a changed file task"
+    assert ai_config.ai_goals == [
+        'save a text file test1.txt with the text "hello world"',
+        "shutdown",
+        "new goal 3",
+        "new goal 4",
+    ]
+
+
+@pytest.mark.vcr
+@requires_api_key("OPENAI_API_KEY")
+def test_generate_aiconfig_change_and_start() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
@@ -328,7 +398,7 @@ def test_generate_aiconfig_change_and_start():
     user_inputs_iterator = iter(user_inputs)
 
     # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     # Patch functions to use the user_inputs list
@@ -337,7 +407,7 @@ def test_generate_aiconfig_change_and_start():
     ):
         ai_config = main_menu()
 
-    # Asserts
+    assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "change-GPT"
     assert ai_config.ai_role == "do a changed file task"
     assert ai_config.ai_goals == [
@@ -348,7 +418,7 @@ def test_generate_aiconfig_change_and_start():
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_create_and_select():
+def test_generate_aiconfig_create_and_select() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
@@ -395,7 +465,7 @@ def test_generate_aiconfig_create_and_select():
     user_inputs_iterator = iter(user_inputs)
 
     # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     # Patch functions to use the user_inputs list
@@ -404,7 +474,7 @@ def test_generate_aiconfig_create_and_select():
     ):
         ai_config = main_menu()
 
-    # Asserts
+    assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "new-GPT"
     assert ai_config.ai_role == "an agent that looks for the newest python code"
     assert ai_config.ai_goals == [
@@ -415,7 +485,7 @@ def test_generate_aiconfig_create_and_select():
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_edit_wrong_budget():
+def test_generate_aiconfig_edit_wrong_budget() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
@@ -463,7 +533,7 @@ def test_generate_aiconfig_edit_wrong_budget():
     user_inputs_iterator = iter(user_inputs)
 
     # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     # Patch functions to use the user_inputs list
@@ -472,7 +542,7 @@ def test_generate_aiconfig_edit_wrong_budget():
     ):
         ai_config = main_menu()
 
-    # Asserts
+    assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "new-GPT"
     assert ai_config.ai_role == "an agent that looks for the newest python code"
     assert ai_config.ai_goals == [
@@ -483,7 +553,7 @@ def test_generate_aiconfig_edit_wrong_budget():
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_view_config():
+def test_generate_aiconfig_view_config() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
@@ -533,7 +603,7 @@ def test_generate_aiconfig_view_config():
     user_inputs_iterator = iter(user_inputs)
 
     # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     # Patch functions to use the user_inputs list
@@ -542,13 +612,13 @@ def test_generate_aiconfig_view_config():
     ):
         ai_config = main_menu()
 
-    # Asserts
+    assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "normal-GPT"
 
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_empty_config():
+def test_generate_aiconfig_empty_config() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
@@ -579,7 +649,7 @@ def test_generate_aiconfig_empty_config():
     user_inputs_iterator = iter(user_inputs)
 
     # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     # Patch functions to use the user_inputs list
@@ -588,13 +658,13 @@ def test_generate_aiconfig_empty_config():
     ):
         ai_config = main_menu()
 
-    # Asserts
+    assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "chef-GPT"
 
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_edit_num_goals_25():
+def test_generate_aiconfig_edit_num_goals_25() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
@@ -644,7 +714,7 @@ def test_generate_aiconfig_edit_num_goals_25():
     user_inputs_iterator = iter(user_inputs)
 
     # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     # Patch functions to use the user_inputs list
@@ -653,7 +723,7 @@ def test_generate_aiconfig_edit_num_goals_25():
     ):
         ai_config = main_menu()
 
-    # Asserts
+    assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "new-GPT"
     assert ai_config.ai_role == "an agent that looks for the newest python code"
     assert ai_config.ai_goals == [
@@ -664,7 +734,7 @@ def test_generate_aiconfig_edit_num_goals_25():
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_edit_num_goals_none():
+def test_generate_aiconfig_edit_num_goals_none() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
@@ -713,7 +783,7 @@ def test_generate_aiconfig_edit_num_goals_none():
     user_inputs_iterator = iter(user_inputs)
 
     # Function to replace builtins.input and autogpt.utils.session.prompt
-    def mock_input(_prompt):
+    def mock_input(_prompt: str) -> str:
         return next(user_inputs_iterator)
 
     # Patch functions to use the user_inputs list
@@ -722,10 +792,83 @@ def test_generate_aiconfig_edit_num_goals_none():
     ):
         ai_config = main_menu()
 
-    # Asserts
+    assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "new-GPT"
     assert ai_config.ai_role == "an agent that looks for the newest python code"
     assert ai_config.ai_goals == [
         "go online and search for new python code",
         "grab it, save it in a file and shutdown",
+    ]
+
+
+@pytest.mark.vcr
+@requires_api_key("OPENAI_API_KEY")
+def test_generate_aiconfig_edit_plugins() -> None:
+    """Test change configuration and select."""
+
+    # Temporary path / file
+    temp_config_file = cfg.ai_settings_filepath
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+        plugins:
+        - plugin1
+        - plugin3
+    normal-GPT:
+        ai_goals:
+        -  save a text file test2.txt with the text "hello space".
+        -  use read_file to confirm the file test2.txt contains the words "hello space".
+        -  rename file test2.txt to test-4.txt.
+        -  delete file test-2.txt.
+        -  shutdown.
+        ai_role: do a normal file task
+        api_budget: 0.0
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "4",
+        "1",
+        "plugin-GPT",
+        "",
+        "2",
+        "",
+        "",
+        "d",
+        "k",
+        "a",
+        "10.00",
+        "r",
+        "2",
+    ]
+
+    user_inputs_iterator = iter(user_inputs)
+
+    # Function to replace builtins.input and autogpt.utils.session.prompt
+    def mock_input(_prompt: str) -> str:
+        return next(user_inputs_iterator)
+
+    # Patch functions to use the user_inputs list
+    with patch("builtins.input", new=mock_input), patch(
+        "autogpt.utils.session.prompt", new=mock_input
+    ):
+        ai_config = main_menu()
+
+    assert ai_config is not None, "ai_config is None"
+    assert ai_config.ai_name == "plugin-GPT"
+    assert ai_config.ai_role == "do a simple file task"
+    assert ai_config.api_budget == 10.0
+    assert ai_config.plugins == [
+        "plugin3",
+        "plugin2",
     ]

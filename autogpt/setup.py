@@ -1,5 +1,6 @@
 """Set up the AI and its goals"""
 import re
+from typing import Optional
 
 from colorama import Fore
 from jinja2 import Template
@@ -17,7 +18,7 @@ from autogpt.prompts.default_prompts import (
 CFG = Config()
 
 
-def generate_aiconfig_automatic(user_prompt: str) -> AIConfig:
+def generate_aiconfig_automatic(user_prompt: str) -> Optional[AIConfig]:
     """Generates an AIConfig object from the given string.
 
     Returns:
@@ -77,10 +78,9 @@ def generate_aiconfig_automatic(user_prompt: str) -> AIConfig:
     # Save the new configuration
     try:
         new_config.save(CFG.ai_settings_filepath, append=True)
-
+    except ValueError as e:
+        logger.typewriter_log(f"An error occurred: {e}", Fore.RED)
+    else:
         logger.typewriter_log("Configuration saved.", Fore.GREEN)
-
-    except Exception as e:
-        logger.error(f"Exception when trying to save config: {e}")
 
     return new_config
