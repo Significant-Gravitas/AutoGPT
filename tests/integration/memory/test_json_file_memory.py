@@ -34,7 +34,9 @@ def test_json_memory_init_with_backing_empty_file(config: Config, workspace: Wor
     assert index_file.read_text() == "[]"
 
 
-def test_json_memory_init_with_backing_file(config: Config, workspace: Workspace):
+def test_json_memory_init_with_backing_invalid_file(
+    config: Config, workspace: Workspace
+):
     index_file = workspace.root / f"{config.memory_index}.json"
     index_file.touch()
 
@@ -76,6 +78,24 @@ def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embed
     retrieved = index.get("test")
     assert retrieved is not None
     assert retrieved.memory_item == memory_item
+
+
+def test_json_memory_load_index(config: Config, memory_item: MemoryItem):
+    index = JSONFileMemory(config)
+    index.add(memory_item)
+
+    try:
+        assert index.file_path.exists(), "index was not saved to file"
+        assert len(index) == 1, f"index constains {len(index)} items instead of 1"
+        assert index.memories[0] == memory_item, "item in index != added mock item"
+    except AssertionError as e:
+        raise ValueError(f"Setting up for load_index test failed: {e}")
+
+    index.memories = []
+    index.load_index()
+
+    assert len(index) == 1
+    assert index.memories[0] == memory_item
 
 
 @pytest.mark.vcr
