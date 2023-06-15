@@ -163,6 +163,7 @@ def read_file(filename: str, agent: Agent) -> str:
         str: The contents of the file
     """
     try:
+        filename = os.path.join(agent.workspace.root, filename)
         content = read_textual_file(filename, logger)
 
         # TODO: invalidate/update memory when file is edited
