@@ -182,6 +182,9 @@ def create_chat_completion(
         completion: OpenAIObject = openai.ChatCompletion.create(
             messages=messages, **kwargs
         )
+        if not hasattr(completion, "error"):
+            logger.debug(f"Response: {completion}")
+
         return completion
     except Exception as e:
         logger.error(f"Error response from OpenAI: {e}")

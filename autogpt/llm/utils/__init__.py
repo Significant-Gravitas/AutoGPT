@@ -149,7 +149,6 @@ def create_chat_completion(
         messages=prompt.raw(),
         **chat_completion_kwargs,
     )
-    logger.debug(f"Response: {response}")
 
     if hasattr(response, "error"):
         logger.error(response.error)
