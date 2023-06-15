@@ -186,12 +186,17 @@ def chat_with_ai(
         logger.debug(f"{message.role.capitalize()}: {message.content}")
         logger.debug("")
     logger.debug("----------- END OF CONTEXT ----------------")
+
+    prompt_to_log = {
+        "context": message_sequence.raw(),
+        "functions": [function.__dict__ for function in functions]
+    }
     agent.log_cycle_handler.log_cycle(
         agent.ai_name,
         agent.created_at,
         agent.cycle_count,
-        message_sequence.raw(),
-        CURRENT_CONTEXT_FILE_NAME,
+        prompt_to_log,
+        CURRENT_CONTEXT_FILE_NAME
     )
 
     # TODO: use a model defined elsewhere, so that model can contain

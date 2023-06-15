@@ -350,7 +350,7 @@ class Agent:
                 triggering_prompt=self.triggering_prompt,
                 ai_response=reply_content,
                 user_input=user_input,
-                command_result=str(command_result),
+                command_result="I just performed the previous task for you. Here is the result: " + str(command_result),
                 command_name=command_name,
                 command_arguments=arguments,
             )
