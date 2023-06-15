@@ -1,10 +1,10 @@
 import pytest
 
 from autogpt.agent import Agent
-from autogpt.commands.command import CommandRegistry
 from autogpt.config import AIConfig, Config
 from autogpt.main import COMMAND_CATEGORIES
 from autogpt.memory.vector import NoMemory, get_memory
+from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 

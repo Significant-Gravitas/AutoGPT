@@ -4,8 +4,9 @@ from typing import Dict, List, Union
 
 from autogpt.agent.agent import Agent
 from autogpt.agent.agent_manager import AgentManager
-from autogpt.commands.command import CommandRegistry, command
+from autogpt.command_decorator import command
 from autogpt.commands.web_requests import scrape_links, scrape_text
+from autogpt.models.command_registry import CommandRegistry
 from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
 from autogpt.url_utils.validators import validate_url
