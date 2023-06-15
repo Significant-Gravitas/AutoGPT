@@ -29,9 +29,7 @@ COMMAND_CATEGORIES = [
     "autogpt.commands.git_operations",
     "autogpt.commands.google_search",
     "autogpt.commands.image_gen",
-    "autogpt.commands.improve_code",
     "autogpt.commands.web_selenium",
-    "autogpt.commands.write_tests",
     "autogpt.app",
     "autogpt.commands.task_statuses",
 ]
