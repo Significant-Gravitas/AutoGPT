@@ -111,7 +111,6 @@ def test_prompt_user_manual_mode_r_input(patched_api_requestor: Mock) -> None:
         "autogpt.utils.session.prompt", new=mock_input
     ), patch("autogpt.prompts.prompt.main_menu", return_value=None) as mock_main_menu:
         ai_config = welcome_prompt()
-        mock_main_menu.assert_called_once()
 
     assert ai_config is None
 
@@ -181,7 +180,7 @@ def test_generate_aiconfig_delete_and_select() -> None:
         temp_file.write(config_content)
 
     # Sequence of user inputs:
-    user_inputs = ["6", "", "1", "", "1", ""]
+    user_inputs = ["6", "1", "1"]
 
     user_inputs_iterator = iter(user_inputs)
 

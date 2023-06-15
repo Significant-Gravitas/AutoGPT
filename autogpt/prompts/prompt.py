@@ -95,8 +95,7 @@ def select_config_action(
 
     selection = get_valid_input(cfg_count + 1)
     if selection == cfg_count + 1:
-        main_menu()
-        return {}
+        return None
     else:
         return all_configs[list(all_configs.keys())[selection - 1]]
 
@@ -142,13 +141,13 @@ def prompt_for_num_goals(task: str, current_goal_count: Optional[int] = None) ->
                 logger.typewriter_log(
                     "Over 20 goals? Please set manually in settings file.", Fore.RED
                 )
+                continue
             elif num_goals == 0 and task == "create":
                 logger.typewriter_log(
                     "No goals set, using default of 5.", Fore.LIGHTBLUE_EX
                 )
                 num_goals = 5
-            else:
-                break
+            break
         else:
             logger.typewriter_log("Invalid input, enter a number (0-20).", Fore.RED)
 
@@ -373,7 +372,7 @@ def main_menu() -> Optional[AIConfig]:
                 _, action = menu_options[task_index]
                 if task in ["edit", "view", "delete"]:
                     chosen_config = select_config_action(all_configs, task)
-                    if chosen_config == {}:
+                    if chosen_config == None:
                         continue  # Start over
                     config = action(chosen_config)
                 else:  # On "create"
@@ -726,7 +725,6 @@ def delete_config(selected_config: AIConfig) -> None:
 
     Returns:
         None
-
     """
     # Delete configuration
     try:
@@ -744,7 +742,9 @@ def delete_config(selected_config: AIConfig) -> None:
         logger.typewriter_log(
             f"Configuration for {selected_config.ai_name} deleted.", Fore.GREEN
         )
-    main_menu()
+
+    logger.typewriter_log("Returning to the main menu.", speak_text=True)
+    return None
 
 
 # Menu handling
@@ -772,7 +772,7 @@ def handle_config(config: Optional[AIConfig], task: str) -> Optional[AIConfig]:
         task (str): The task to perform, either "create" or "edit".
 
     Returns:
-        Union[AIConfig, None]: The new or edited AI configuration, or None if an error occurred.
+        Optional[AIConfig]: The new or edited AI configuration, or None if an error occurred or the user chose to return to the main menu.
     """
     if config is None:
         config = AIConfig()
@@ -814,7 +814,7 @@ def handle_config(config: Optional[AIConfig], task: str) -> Optional[AIConfig]:
             start_prompt(new_config, sad=True)
 
         if user_choice.lower() == "r":
-            main_menu()
+            return None
 
     except ValueError as e:
         logger.typewriter_log(
