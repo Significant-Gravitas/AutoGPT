@@ -89,13 +89,9 @@ class ApiManager(metaclass=Singleton):
         self.total_completion_tokens += completion_tokens
         self.total_cost += prompt_tokens * model_info.prompt_token_cost / 1000
         if issubclass(type(model_info), CompletionModelInfo):
-<<<<<<< HEAD
-            self.total_cost += completion_tokens * model_info.completion_token_cost / 1000
-=======
             self.total_cost += (
                 completion_tokens * model_info.completion_token_cost / 1000
             )
->>>>>>> 9ed71b3f (Update OpenAI model info and remove duplicate modelsinfo.py (#4700))
 
         logger.debug(f"Total running cost: ${self.total_cost:.3f}")
 
