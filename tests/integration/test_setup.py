@@ -827,7 +827,7 @@ def test_generate_aiconfig_edit_plugins() -> None:
         -  delete file test-2.txt.
         -  shutdown.
         ai_role: do a normal file task
-        api_budget: 0.0
+        api_budget: 5.0
     """
 
     # Write to the temporary file
