@@ -164,21 +164,22 @@ class Agent:
 
                 try:
                     reply_content_json = json.loads(reply_content)
-                    print_assistant_thoughts(
-                        self.ai_name, reply_content_json, self.config.speak_mode
-                    )
-                    self.log_cycle_handler.log_cycle(
-                        self.ai_config.ai_name,
-                        self.created_at,
-                        self.cycle_count,
-                        reply_content_json,
-                        NEXT_ACTION_FILE_NAME,
-                    )
-
-                    # TODO: Validate
                 except json.JSONDecodeError as e:
                     logger.error(f"Could not decode response JSON")
                     logger.debug(f"Invalid response JSON: {reply_content_json}")
+                    continue
+
+                print_assistant_thoughts(
+                    self.ai_name, reply_content_json, self.config.speak_mode
+                )
+                self.log_cycle_handler.log_cycle(
+                    self.ai_config.ai_name,
+                    self.created_at,
+                    self.cycle_count,
+                    reply_content_json,
+                    NEXT_ACTION_FILE_NAME,
+                )
+                # TODO: Validate
             else:
                 logger.warn("AI Response did not include content")
 

@@ -73,11 +73,15 @@ class MessageCycle:
         triggering_prompt: str,
         ai_response: str,
         user_input: Optional[str] = None,
-        command_result: Optional[str] = None,
+        command_result: Optional[Any] = None,
         command_name: Optional[str] = None,
         command_arguments: Optional[dict] = None,
     ) -> MessageCycle:
         function_arguments = json.dumps(command_arguments)
+
+        if type(command_result) != str:
+            command_result = json.dumps(command_result)
+
         return cls(
             triggering_prompt=Message(
                 role=MessageRole.SYSTEM, content=triggering_prompt

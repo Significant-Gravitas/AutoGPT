@@ -1,4 +1,5 @@
 import functools
+import json
 import time
 from typing import List
 from unittest.mock import patch
@@ -177,11 +178,10 @@ def create_chat_completion(
 
     """
     try:
+        logger.debug(f"Messages sent to OpenAI: {json.dumps(messages, indent=4)}")
         completion: OpenAIObject = openai.ChatCompletion.create(
             messages=messages, **kwargs
         )
-        if not hasattr(completion, "error"):
-            logger.debug(f"Response: {completion}")
         return completion
     except Exception as e:
         logger.error(f"Error response from OpenAI: {e}")
