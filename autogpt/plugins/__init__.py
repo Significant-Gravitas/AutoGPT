@@ -235,7 +235,9 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
         plugin = sys.modules[qualified_module_name]
 
         if not plugins_config.is_enabled(plugin_module_name):
-            logger.warn(f"Plugin {plugin_module_name} found but not configured")
+            logger.warn(
+                f"Plugin {plugin_module_name} found but not configured. Add the plugin to plugins_config.yaml to enable"
+            )
             continue
 
         for _, class_obj in inspect.getmembers(plugin):
@@ -257,7 +259,10 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                 plugin_module_name = zipped_module.__name__.split(os.path.sep)[-1]
 
                 if not plugins_config.is_enabled(plugin_module_name):
-                    logger.warn(f"Plugin {plugin_module_name} found but not configured")
+                    logger.warn(
+                        f"Plugin {plugin_module_name} found but not configured. Add the plugin to plugins_config.yaml "
+                        f"to enable"
+                    )
                     continue
 
                 for key in dir(zipped_module):
