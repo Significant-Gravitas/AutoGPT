@@ -172,13 +172,6 @@ class Agent:
                 print_assistant_thoughts(
                     self.ai_name, reply_content_json, self.config.speak_mode
                 )
-                self.log_cycle_handler.log_cycle(
-                    self.ai_config.ai_name,
-                    self.created_at,
-                    self.cycle_count,
-                    reply_content_json,
-                    NEXT_ACTION_FILE_NAME,
-                )
                 # TODO: Validate
             else:
                 logger.warn("AI Response did not include content")
@@ -193,6 +186,18 @@ class Agent:
                 if type(arguments) == str:
                     try:
                         arguments = json.loads(function_call.get("arguments"))
+                        self.log_cycle_handler.log_cycle(
+                            self.ai_config.ai_name,
+                            self.created_at,
+                            self.cycle_count,
+                            reply_content_json | {
+                                "command": {
+                                    "name": command_name,
+                                    "args": arguments
+                                }
+                            },
+                            NEXT_ACTION_FILE_NAME,
+                        )
                     except json.JSONDecodeError as e:
                         logger.error(
                             f"Error: Could not parse arguments (probably due to improper escaping)"
@@ -345,7 +350,7 @@ class Agent:
                 triggering_prompt=self.triggering_prompt,
                 ai_response=reply_content,
                 user_input=user_input,
-                command_result=command_result,
+                command_result=str(command_result),
                 command_name=command_name,
                 command_arguments=arguments,
             )
