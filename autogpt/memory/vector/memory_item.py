@@ -109,21 +109,21 @@ class MemoryItem:
         # The result_message contains either user feedback
         # or the result of the command specified in ai_message
 
-        if ai_message["role"] != "assistant":
-            raise ValueError(f"Invalid role on 'ai_message': {ai_message['role']}")
+        if ai_message.role != "assistant":
+            raise ValueError(f"Invalid role on 'ai_message': {ai_message.role}")
 
         result = (
-            result_message["content"]
-            if result_message["content"].startswith("Command")
+            result_message.content
+            if result_message.content.startswith("Command")
             else "None"
         )
         user_input = (
-            result_message["content"]
-            if result_message["content"].startswith("Human feedback")
+            result_message.content
+            if result_message.content.startswith("Human feedback")
             else "None"
         )
         memory_content = (
-            f"Assistant Reply: {ai_message['content']}"
+            f"Assistant Reply: {ai_message.content}"
             "\n\n"
             f"Result: {result}"
             "\n\n"
@@ -145,11 +145,14 @@ class MemoryItem:
             question_for_summary=question,
         )
 
-    def dump(self) -> str:
-        token_length = count_string_tokens(self.raw_content, Config().embedding_model)
+    def dump(self, calculate_length=False) -> str:
+        if calculate_length:
+            token_length = count_string_tokens(
+                self.raw_content, Config().embedding_model
+            )
         return f"""
 =============== MemoryItem ===============
-Length: {token_length} tokens in {len(self.e_chunks)} chunks
+Size: {f'{token_length} tokens in ' if calculate_length else ''}{len(self.e_chunks)} chunks
 Metadata: {json.dumps(self.metadata, indent=2)}
 ---------------- SUMMARY -----------------
 {self.summary}
@@ -157,6 +160,31 @@ Metadata: {json.dumps(self.metadata, indent=2)}
 {self.raw_content}
 ==========================================
 """
+
+    def __eq__(self, other: MemoryItem):
+        return (
+            self.raw_content == other.raw_content
+            and self.chunks == other.chunks
+            and self.chunk_summaries == other.chunk_summaries
+            # Embeddings can either be list[float] or np.ndarray[float32],
+            # and for comparison they must be of the same type
+            and np.array_equal(
+                self.e_summary
+                if isinstance(self.e_summary, np.ndarray)
+                else np.array(self.e_summary, dtype=np.float32),
+                other.e_summary
+                if isinstance(other.e_summary, np.ndarray)
+                else np.array(other.e_summary, dtype=np.float32),
+            )
+            and np.array_equal(
+                self.e_chunks
+                if isinstance(self.e_chunks[0], np.ndarray)
+                else [np.array(c, dtype=np.float32) for c in self.e_chunks],
+                other.e_chunks
+                if isinstance(other.e_chunks[0], np.ndarray)
+                else [np.array(c, dtype=np.float32) for c in other.e_chunks],
+            )
+        )
 
 
 @dataclasses.dataclass
