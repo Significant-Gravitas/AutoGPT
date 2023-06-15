@@ -3,7 +3,7 @@ name: "Pull Request auto-label"
 on:
   # So that PRs touching the same files as the push are updated
   push:
-    branches: [ master ]
+    branches: [ master, release-* ]
     paths-ignore:
       - 'tests/Auto-GPT-test-cassettes'
       - 'tests/challenges/current_score.json'
