@@ -96,7 +96,8 @@ class MessageCycle:
             if user_input
             else None,
             result=Message(
-                role=MessageRole.FUNCTION,
+                # TODO: This should maybe be a `FUNCTION` role? but it doesn't work
+                role=MessageRole.SYSTEM,
                 content=command_result,
                 function_name=command_name,
                 function_arguments=function_arguments,
