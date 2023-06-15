@@ -6,7 +6,7 @@ from autogpt.prompts.generator import PromptGenerator
 class TestPromptGenerator(TestCase):
     """
     Test cases for the PromptGenerator class, which is responsible for generating
-    prompts for the AI with constraints, commands, resources, and performance evaluations.
+    prompts for the AI with constraints, resources, and performance evaluations.
     """
 
     @classmethod
@@ -24,23 +24,6 @@ class TestPromptGenerator(TestCase):
         constraint = "Constraint1"
         self.generator.add_constraint(constraint)
         self.assertIn(constraint, self.generator.constraints)
-
-    # Test whether the add_command() method adds a command to the generator's commands list
-    def test_add_command(self):
-        """
-        Test if the add_command() method adds a command to the generator's commands list.
-        """
-        command_label = "Command Label"
-        command_name = "command_name"
-        args = {"arg1": "value1", "arg2": "value2"}
-        self.generator.add_command(command_label, command_name, args)
-        command = {
-            "label": command_label,
-            "name": command_name,
-            "args": args,
-            "function": None,
-        }
-        self.assertIn(command, self.generator.commands)
 
     def test_add_resource(self):
         """
@@ -62,32 +45,16 @@ class TestPromptGenerator(TestCase):
     def test_generate_prompt_string(self):
         """
         Test if the generate_prompt_string() method generates a prompt string with all the added
-        constraints, commands, resources, and evaluations.
+        constraints, resources, and evaluations.
         """
         # Define the test data
         constraints = ["Constraint1", "Constraint2"]
-        commands = [
-            {
-                "label": "Command1",
-                "name": "command_name1",
-                "args": {"arg1": "value1"},
-            },
-            {
-                "label": "Command2",
-                "name": "command_name2",
-                "args": {},
-            },
-        ]
         resources = ["Resource1", "Resource2"]
         evaluations = ["Evaluation1", "Evaluation2"]
 
         # Add test data to the generator
         for constraint in constraints:
             self.generator.add_constraint(constraint)
-        for command in commands:
-            self.generator.add_command(
-                command["label"], command["name"], command["args"]
-            )
         for resource in resources:
             self.generator.add_resource(resource)
         for evaluation in evaluations:
@@ -97,19 +64,14 @@ class TestPromptGenerator(TestCase):
         prompt_string = self.generator.generate_prompt_string()
         self.assertIsNotNone(prompt_string)
 
-        # Check if all constraints, commands, resources, and evaluations are present in the prompt string
+        # Check if all constraints, resources, and evaluations are present in the prompt string
         for constraint in constraints:
             self.assertIn(constraint, prompt_string)
-        for command in commands:
-            self.assertIn(command["name"], prompt_string)
-            for key, value in command["args"].items():
-                self.assertIn(f'"{key}": "{value}"', prompt_string)
         for resource in resources:
             self.assertIn(resource, prompt_string)
         for evaluation in evaluations:
             self.assertIn(evaluation, prompt_string)
 
         self.assertIn("constraints", prompt_string.lower())
-        self.assertIn("commands", prompt_string.lower())
         self.assertIn("resources", prompt_string.lower())
         self.assertIn("performance evaluation", prompt_string.lower())

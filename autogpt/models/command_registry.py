@@ -55,15 +55,6 @@ class CommandRegistry:
         command = self.commands[command_name]
         return command(**kwargs)
 
-    def command_prompt(self) -> str:
-        """
-        Returns a string representation of all registered `Command` objects for use in a prompt
-        """
-        commands_list = [
-            f"{idx + 1}. {str(cmd)}" for idx, cmd in enumerate(self.commands.values())
-        ]
-        return "\n".join(commands_list)
-
     def import_commands(self, module_name: str) -> None:
         """
         Imports the specified Python module containing command plugins.

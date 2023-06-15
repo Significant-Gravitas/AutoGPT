@@ -4,3 +4,6 @@ class CommandArgument:
         self.type = type
         self.description = description
         self.required = required
+
+    def __repr__(self):
+        return f"CommandArgument('{self.name}', '{self.type}', '{self.description}', {self.required})"
