@@ -1,4 +1,6 @@
 import os
+import pathlib
+from typing import Any
 
 import pytest
 import yaml
@@ -13,7 +15,7 @@ settings from a YAML file.
 
 
 @pytest.fixture(autouse=True)
-def setup(tmp_path):
+def setup(tmp_path: pathlib.Path) -> Any:
     cfg.ai_settings_filepath = tmp_path / "ai_settings.yaml"
     cfg.workspace_path = tmp_path / "auto_gpt_workspace"
     (cfg.workspace_path).mkdir(parents=True, exist_ok=True)
@@ -24,7 +26,7 @@ def setup(tmp_path):
         cfg.ai_settings_filepath.unlink()
 
 
-def test_goals_are_always_lists_of_strings():
+def test_goals_are_always_lists_of_strings() -> None:
     """Test if the goals attribute is always a list of strings."""
 
     yaml_content = """configs:
@@ -71,7 +73,7 @@ def test_goals_are_always_lists_of_strings():
     assert saved_yaml == expected_yaml
 
 
-def test_ai_config_file_not_exists():
+def test_ai_config_file_not_exists() -> None:
     """Test if file does not exist."""
 
     config_file = cfg.ai_settings_filepath
@@ -80,7 +82,7 @@ def test_ai_config_file_not_exists():
     assert ai_config is None
 
 
-def test_ai_config_file_is_empty():
+def test_ai_config_file_is_empty() -> None:
     """Test if file does not exist."""
 
     config_file = cfg.ai_settings_filepath
@@ -90,7 +92,7 @@ def test_ai_config_file_is_empty():
     assert ai_config is None
 
 
-def test_delete_method():
+def test_delete_method() -> None:
     """Test if the delete method properly removes an AI configuration from the file."""
 
     yaml_content = """configs:
@@ -129,7 +131,7 @@ def test_delete_method():
     ai_config2 = None
 
 
-def test_special_character_config():
+def test_special_character_config() -> None:
     yaml_content = """configs:
       SpécialAI:
         ai_goals:
@@ -152,7 +154,7 @@ def test_special_character_config():
     ai_config = None
 
 
-def test_handling_special_characters_configuration():
+def test_handling_special_characters_configuration() -> None:
     config_file = cfg.ai_settings_filepath
     config_file.write_text(
         "configs:\n  AI1:\n    ai_goals: ['Goal with special characters: !@#$%^&*()']\n"
@@ -183,7 +185,7 @@ def test_handling_special_characters_configuration():
     ai_config = None
 
 
-def test_loading_large_configuration():
+def test_loading_large_configuration() -> None:
     config_file = cfg.ai_settings_filepath
 
     # Create a large configuration with 100 AI entries
@@ -195,19 +197,16 @@ def test_loading_large_configuration():
 
     ai_config = AIConfig.load("AI50", config_file)
 
-    print(config_content)  # debug: print the generated content
-
     assert ai_config.ai_name == "AI50"
     assert ai_config.ai_goals == ["Goal 50"]
     assert ai_config.api_budget == 0.0
 
-    # Clean up the configuration file and related variables
+    # Clean up
     config_file.unlink()
     ai_config = None
-    config_content = None
 
 
-def test_saving_large_configuration():
+def test_saving_large_configuration() -> None:
     config_file = cfg.ai_settings_filepath
     ai_config = AIConfig("AI1", ai_goals=["Goal 1"])
 
@@ -234,13 +233,12 @@ def test_saving_large_configuration():
 
     assert saved_yaml == expected_yaml
 
-    # Clean up the configuration file and related variables
+    # Clean up
     config_file.unlink()
     ai_config = None
-    config_content = None
 
 
-def test_save():
+def test_save() -> None:
     config = AIConfig(
         "test_name",
         "test_role",
@@ -263,7 +261,7 @@ def test_save():
     }
 
 
-def test_save_empty_name():
+def test_save_empty_name() -> None:
     config = AIConfig(
         "",
         "test_role",
@@ -273,14 +271,17 @@ def test_save_empty_name():
     )
 
     config_file = cfg.ai_settings_filepath
-    response = config.save(config_file)
 
-    assert response == "The AI name cannot be empty. The configuration was not saved."
+    with pytest.raises(
+        ValueError,
+        match="The AI name cannot be empty. The configuration was not saved.",
+    ):
+        config.save(config_file)
 
     assert not os.path.exists(config_file)
 
 
-def test_save_with_old_ai_name():
+def test_save_with_old_ai_name() -> None:
     config = AIConfig("ai1", "role1", ["goal1"], 0.0, ["plugin1"])
 
     config_file = cfg.ai_settings_filepath
@@ -302,7 +303,7 @@ def test_save_with_old_ai_name():
     os.remove(config_file)
 
 
-def test_save_with_empty_file():
+def test_save_with_empty_file() -> None:
     config_file = cfg.ai_settings_filepath
     open(config_file, "a").close()
 
@@ -317,68 +318,60 @@ def test_save_with_empty_file():
     os.remove(config_file)
 
 
-def test_delete_no_ai_name():
+def test_delete_no_ai_name() -> None:
     config = AIConfig("ai1", "role1", ["goal1"], 0.0, ["plugin1"])
 
     config_file = cfg.ai_settings_filepath
     config.save(config_file)
 
-    response = config.delete(config_file)
-
-    assert (
-        response
-        == "No AI name provided. Please provide an AI name to delete its configuration."
-    )
+    with pytest.raises(
+        ValueError,
+        match="No AI name provided. Please provide an AI name to delete its configuration.",
+    ):
+        config.delete(config_file)
 
     os.remove(config_file)
 
 
-def test_delete_no_config_file():
+def test_delete_no_config_file() -> None:
     config = AIConfig("ai1", "role1", ["goal1"], 0.0, ["plugin1"])
 
-    response = config.delete("non_existing_file.yaml", "ai1")
+    with pytest.raises(ValueError, match="No configurations to delete."):
+        config.delete("non_existing_file.yaml", "ai1")
 
-    assert response == "No configurations to delete."
 
-
-def test_delete_empty_config_file():
+def test_delete_empty_config_file() -> None:
     config_file = cfg.ai_settings_filepath
     open(config_file, "a").close()
 
     config = AIConfig("ai1", "role1", ["goal1"], 0.0, ["plugin1"])
 
-    response = config.delete(config_file, "ai1")
-
-    assert response == "No configurations to delete."
+    with pytest.raises(ValueError, match="No configurations to delete."):
+        config.delete(config_file, "ai1")
 
     os.remove(config_file)
 
 
-def test_delete_non_existing_ai_name():
+def test_delete_non_existing_ai_name() -> None:
     config = AIConfig("ai1", "role1", ["goal1"], 0.0, ["plugin1"])
 
     config_file = cfg.ai_settings_filepath
     config.save(config_file)
 
-    response = config.delete(config_file, "ai2")
-
-    assert response == "No configuration found for AI 'ai2'."
+    with pytest.raises(ValueError, match="No configuration found for AI 'ai2'."):
+        config.delete(config_file, "ai2")
 
     os.remove(config_file)
 
 
-def test_delete_success():
+def test_delete_success() -> None:
     config = AIConfig("ai1", "role1", ["goal1"], 0.0, ["plugin1"])
 
     config_file = cfg.ai_settings_filepath
     config.save(config_file)
 
-    response = config.delete(config_file, "ai1")
-
-    assert response is None
+    config.delete(config_file, "ai1")  # No need to capture a return value here
 
     with open(config_file, "r", encoding="utf-8") as file:
         saved_configs = yaml.safe_load(file)
     assert "ai1" not in saved_configs["configs"]
-
-    os.remove(config_file)

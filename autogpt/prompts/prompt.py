@@ -125,27 +125,30 @@ def prompt_for_num_goals(task: str, current_goal_count: Optional[int] = None) ->
         "edit": f"{Fore.LIGHTBLUE_EX}No change, {current_goal_count or 0} goals.{Style.RESET_ALL}",
     }[task]
 
-    while not 0 <= num_goals <= 20:
+    while True:
         num_goals_input = clean_input(prompts)
 
         if num_goals_input == "":
-            num_goals = (
-                current_goal_count
-                if task == "edit" and current_goal_count is not None
-                else 5
-            )
+            if task == "create":
+                num_goals = 5
+            elif task == "edit" and current_goal_count is not None:
+                num_goals = current_goal_count
             logger.typewriter_log(fallback_msg)
+            break
+
         elif num_goals_input.isdigit():
             num_goals = int(num_goals_input)
             if num_goals > 20:
                 logger.typewriter_log(
                     "Over 20 goals? Please set manually in settings file.", Fore.RED
                 )
-            elif num_goals == 0:
-                num_goals = 5
+            elif num_goals == 0 and task == "create":
                 logger.typewriter_log(
                     "No goals set, using default of 5.", Fore.LIGHTBLUE_EX
                 )
+                num_goals = 5
+            else:
+                break
         else:
             logger.typewriter_log("Invalid input, enter a number (0-20).", Fore.RED)
 
