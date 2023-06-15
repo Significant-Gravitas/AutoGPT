@@ -1,8 +1,9 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pytest_mock import MockerFixture
 
-from autogpt.llm.api_manager import COSTS, ApiManager
+from autogpt.llm.api_manager import OPEN_AI_MODELS, ApiManager
 
 api_manager = ApiManager()
 
@@ -14,16 +15,17 @@ def reset_api_manager():
 
 
 @pytest.fixture(autouse=True)
-def mock_costs():
-    with patch.dict(
-        COSTS,
-        {
-            "gpt-3.5-turbo": {"prompt": 0.002, "completion": 0.002},
-            "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0},
-        },
-        clear=True,
-    ):
-        yield
+def mock_costs(mocker: MockerFixture):
+    mocker.patch.multiple(
+        OPEN_AI_MODELS["gpt-3.5-turbo"],
+        prompt_token_cost=0.0013,
+        completion_token_cost=0.0025,
+    )
+    mocker.patch.multiple(
+        OPEN_AI_MODELS["text-embedding-ada-002"],
+        prompt_token_cost=0.0004,
+    )
+    yield
 
 
 class TestApiManager:
@@ -87,15 +89,15 @@ class TestApiManager:
 
             assert api_manager.get_total_prompt_tokens() == 10
             assert api_manager.get_total_completion_tokens() == 20
-            assert api_manager.get_total_cost() == (10 * 0.002 + 20 * 0.002) / 1000
+            assert api_manager.get_total_cost() == (10 * 0.0013 + 20 * 0.0025) / 1000
 
     def test_getter_methods(self):
         """Test the getter methods for total tokens, cost, and budget."""
-        api_manager.update_cost(60, 120, "gpt-3.5-turbo")
+        api_manager.update_cost(600, 1200, "gpt-3.5-turbo")
         api_manager.set_total_budget(10.0)
-        assert api_manager.get_total_prompt_tokens() == 60
-        assert api_manager.get_total_completion_tokens() == 120
-        assert api_manager.get_total_cost() == (60 * 0.002 + 120 * 0.002) / 1000
+        assert api_manager.get_total_prompt_tokens() == 600
+        assert api_manager.get_total_completion_tokens() == 1200
+        assert api_manager.get_total_cost() == (600 * 0.0013 + 1200 * 0.0025) / 1000
         assert api_manager.get_total_budget() == 10.0
 
     @staticmethod
@@ -107,7 +109,7 @@ class TestApiManager:
         assert api_manager.get_total_budget() == total_budget
 
     @staticmethod
-    def test_update_cost():
+    def test_update_cost_completion_model():
         """Test if updating the cost works correctly."""
         prompt_tokens = 50
         completion_tokens = 100
@@ -115,9 +117,24 @@ class TestApiManager:
 
         api_manager.update_cost(prompt_tokens, completion_tokens, model)
 
-        assert api_manager.get_total_prompt_tokens() == 50
-        assert api_manager.get_total_completion_tokens() == 100
-        assert api_manager.get_total_cost() == (50 * 0.002 + 100 * 0.002) / 1000
+        assert api_manager.get_total_prompt_tokens() == prompt_tokens
+        assert api_manager.get_total_completion_tokens() == completion_tokens
+        assert (
+            api_manager.get_total_cost()
+            == (prompt_tokens * 0.0013 + completion_tokens * 0.0025) / 1000
+        )
+
+    @staticmethod
+    def test_update_cost_embedding_model():
+        """Test if updating the cost works correctly."""
+        prompt_tokens = 1337
+        model = "text-embedding-ada-002"
+
+        api_manager.update_cost(prompt_tokens, 0, model)
+
+        assert api_manager.get_total_prompt_tokens() == prompt_tokens
+        assert api_manager.get_total_completion_tokens() == 0
+        assert api_manager.get_total_cost() == (prompt_tokens * 0.0004) / 1000
 
     @staticmethod
     def test_get_models():
