@@ -242,7 +242,7 @@ def create_chat_completion(
         max_tokens=max_tokens,
     )
 
-    resp = response.choices[0].message["content"]
+    resp = response.choices[0].message.content
     for plugin in cfg.plugins:
         if not plugin.can_handle_on_response():
             continue

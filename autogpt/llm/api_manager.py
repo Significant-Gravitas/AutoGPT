@@ -34,7 +34,7 @@ class ApiManager(metaclass=Singleton):
         temperature: float = None,
         max_tokens: int | None = None,
         deployment_id=None,
-    ) -> str:
+    ):
         """
         Create a chat completion and update the cost.
         Args:
