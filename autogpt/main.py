@@ -24,7 +24,6 @@ from scripts.install_plugin_deps import install_plugin_dependencies
 
 COMMAND_CATEGORIES = [
     "autogpt.commands.analyze_code",
-    "autogpt.commands.audio_text",
     "autogpt.commands.execute_code",
     "autogpt.commands.file_operations",
     "autogpt.commands.git_operations",
