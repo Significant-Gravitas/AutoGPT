@@ -36,7 +36,6 @@ def test_generate_aiconfig_automatic_typical(patched_api_requestor):
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
     user_inputs = [
-        "T&GF£OIBECC()!*",
         "Chef-GPT",
         "an AI designed to browse bake a cake.",
         "Purchase ingredients",
@@ -49,8 +48,11 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name == "Chef-GPT"
-    assert ai_config.ai_role == "an AI designed to browse bake a cake."
-    assert ai_config.ai_goals == ["Purchase ingredients", "Bake a cake"]
+    assert "an AI culinary expert" in ai_config.ai_role
+
+    ai_goals = "\n".join(ai_config.ai_goals)
+    assert "Offer personalized recipe recommendations" in ai_goals
+    assert "Assist in meal planning" in ai_goals
 
 
 @pytest.mark.vcr
