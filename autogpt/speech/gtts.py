@@ -1,7 +1,8 @@
 """ GTTS Voice. """
 import os
-from playsound import playsound
+
 import gtts
+from playsound import playsound
 
 from autogpt.speech.base import VoiceBase
 

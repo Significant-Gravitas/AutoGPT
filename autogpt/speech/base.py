@@ -2,7 +2,7 @@
 import abc
 from threading import Lock
 
-from autogpt.config import AbstractSingleton
+from autogpt.singleton import AbstractSingleton
 
 
 class VoiceBase(AbstractSingleton):
@@ -37,7 +37,6 @@ class VoiceBase(AbstractSingleton):
         """
         Setup the voices, API key, etc.
         """
-        pass
 
     @abc.abstractmethod
     def _speech(self, text: str, voice_index: int = 0) -> bool:
@@ -47,4 +46,3 @@ class VoiceBase(AbstractSingleton):
         Args:
             text (str): The text to play.
         """
-        pass

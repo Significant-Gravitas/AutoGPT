@@ -1,8 +1,8 @@
 """HTML processing functions"""
 from __future__ import annotations
 
-from requests.compat import urljoin
 from bs4 import BeautifulSoup
+from requests.compat import urljoin
 
 
 def extract_hyperlinks(soup: BeautifulSoup, base_url: str) -> list[tuple[str, str]]:
