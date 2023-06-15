@@ -28,7 +28,9 @@ def memory_json_file(agent_test_config: Config):
     was_memory_backend = agent_test_config.memory_backend
 
     agent_test_config.set_memory_backend("json_file")
-    yield get_memory(agent_test_config, init=True)
+    memory = get_memory(agent_test_config)
+    memory.clear()
+    yield memory
 
     agent_test_config.set_memory_backend(was_memory_backend)
 

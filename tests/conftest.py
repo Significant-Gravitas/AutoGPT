@@ -94,7 +94,8 @@ def agent(config: Config, workspace: Workspace) -> Agent:
     ai_config.command_registry = command_registry
 
     config.set_memory_backend("json_file")
-    memory_json_file = get_memory(config, init=True)
+    memory_json_file = get_memory(config)
+    memory_json_file.clear()
 
     system_prompt = ai_config.construct_full_prompt()
 
