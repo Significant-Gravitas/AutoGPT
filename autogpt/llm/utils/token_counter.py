@@ -26,10 +26,11 @@ def count_message_tokens(
         int: The number of tokens used by the list of messages.
     """
     # TODO: Will tiktoken eventually have this?
-    if model == "gpt-3.5-turbo-16k-0613":
+    if model == "gpt-4-0613":
         encoding_model = "gpt-3.5-turbo"
-    elif model == "gpt-4-0613":
+    else:
         encoding_model = "gpt-4"
+
     try:
         encoding = tiktoken.encoding_for_model(encoding_model)
     except KeyError:
