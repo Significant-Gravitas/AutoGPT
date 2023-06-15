@@ -7,7 +7,7 @@ import pytest
 from autogpt.agent import Agent
 from autogpt.config import AIConfig
 from autogpt.config.config import Config
-from autogpt.llm.base import ChatSequence, Message, MessageCycle, MessageType
+from autogpt.llm.base import ChatSequence, Message, MessageCycle
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens
 from autogpt.memory.message_history import MessageHistory

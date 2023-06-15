@@ -1,5 +1,5 @@
 """ A module for generating custom prompt strings."""
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, List
 
 from autogpt.json_utils.utilities import llm_response_schema
 

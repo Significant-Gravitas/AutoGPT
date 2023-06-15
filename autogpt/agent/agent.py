@@ -7,8 +7,8 @@ from colorama import Fore, Style
 
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
-from autogpt.llm.base import ChatSequence, MessageCycle
-from autogpt.llm.chat import chat_with_ai, create_chat_completion
+from autogpt.llm.base import MessageCycle
+from autogpt.llm.chat import chat_with_ai
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
@@ -89,7 +89,7 @@ class Agent:
 
     def start_interaction_loop(self):
         # Avoid circular imports
-        from autogpt.app import execute_command, get_command
+        from autogpt.app import execute_command
 
         # Interaction Loop
         self.cycle_count = 0
