@@ -64,19 +64,10 @@ class MessageHistory:
             Message: A message with the new running summary after adding the trimmed messages.
             list[Message]: A list of messages that are in full_message_history with an index higher than last_trimmed_index and absent from current_message_chain.
         """
-        cycles_not_in_chain = self.message_cycles[: self.last_trimmed_index]
-        new_messages_not_in_chain = [
-            message for cycle in cycles_not_in_chain for message in cycle.messages
-        ]
-
-        if not new_messages_not_in_chain:
-            return self.summary_message(), []
-        new_summary_message = self.update_running_summary(
-            new_events=new_messages_not_in_chain
-        )
-        self.last_trimmed_index = len(self.message_cycles) - 1
-
-        return new_summary_message, new_messages_not_in_chain
+        # Don't include the prompts in the summary
+        relevant_messages = current_message_chain[3:]
+        new_summary_message = self.update_running_summary(new_events=relevant_messages)
+        return new_summary_message, []
 
     def per_cycle(self):
         """
@@ -175,7 +166,8 @@ class MessageHistory:
 
         return self.summary_message()
 
-    def summarize_batch(self, new_events_batch, cfg):
+    def summarize_batch(self, new_events_batch: list[Message], cfg):
+        batch_string = ". ".join([json.dumps(m.raw()) for m in new_events_batch])
         prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
 
 You will receive the current summary and your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
@@ -187,7 +179,7 @@ Summary So Far:
 
 Latest Development:
 """
-{new_events_batch or "Nothing new happened."}
+{batch_string or "Nothing new happened."}
 """
 '''
 

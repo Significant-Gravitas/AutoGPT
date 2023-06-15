@@ -18,31 +18,20 @@ from tests.utils import skip_in_ci
 @pytest.fixture
 def valid_json_response() -> dict:
     return {
-        "thoughts": {
-            "text": "My task is complete. I will use the 'task_complete' command to shut down.",
-            "reasoning": "I will use the 'task_complete' command because it allows me to shut down and signal that my task is complete.",
-            "plan": "I will use the 'task_complete' command with the reason 'Task complete: retrieved Tesla's revenue in 2022.' to shut down.",
-            "criticism": "I need to ensure that I have completed all necessary tasks before shutting down.",
-            "speak": "",
-        },
-        "command": {
-            "name": "task_complete",
-            "args": {"reason": "Task complete: retrieved Tesla's revenue in 2022."},
-        },
+        "text": "My task is complete. I will use the 'task_complete' command to shut down.",
+        "reasoning": "I will use the 'task_complete' command because it allows me to shut down and signal that my task is complete.",
+        "plan": "I will use the 'task_complete' command with the reason 'Task complete: retrieved Tesla's revenue in 2022.' to shut down.",
+        "criticism": "I need to ensure that I have completed all necessary tasks before shutting down.",
     }
 
 
 @pytest.fixture
 def invalid_json_response() -> dict:
     return {
-        "thoughts": {
-            "text": "My task is complete. I will use the 'task_complete' command to shut down.",
-            "reasoning": "I will use the 'task_complete' command because it allows me to shut down and signal that my task is complete.",
-            "plan": "I will use the 'task_complete' command with the reason 'Task complete: retrieved Tesla's revenue in 2022.' to shut down.",
-            "criticism": "I need to ensure that I have completed all necessary tasks before shutting down.",
-            "speak": "",
-        },
-        "command": {"name": "", "args": {}},
+        "text": "My task is complete. I will use the 'task_complete' command to shut down.",
+        "reasoning": "I will use the 'task_complete' command because it allows me to shut down and signal that my task is complete.",
+        "plan": "I will use the 'task_complete' command with the reason 'Task complete: retrieved Tesla's revenue in 2022.' to shut down.",
+        "criticism": "I need to ensure that I have completed all necessary tasks before shutting down.",
     }
 
 

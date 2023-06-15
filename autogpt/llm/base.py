@@ -142,6 +142,12 @@ class Message:
                 )
         self.content = content
 
+    def __repr__(self):
+        return (
+            f"Message('{self.role}', '{self.content}', '{self.function_name}', '{self.function_arguments}', "
+            f"'{self.message_type}')"
+        )
+
     def raw(self) -> MessageDict:
         raw_message = {"role": self.role}
 

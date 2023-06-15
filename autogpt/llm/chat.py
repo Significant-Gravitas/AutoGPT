@@ -114,6 +114,7 @@ def chat_with_ai(
 
     # Update & add summary of trimmed messages
     if len(agent.history) > 0:
+        # FIXME: This never actually trimmed messages
         new_summary_message, trimmed_messages = agent.history.trim_messages(
             current_message_chain=list(message_sequence),
         )
