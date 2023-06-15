@@ -2,7 +2,7 @@ constraints: [
   '~15000 word limit for short term memory. Your short term memory is limited, so save important information to files if needed.',
   'If you are unsure how you previously did something or want to recall past events, thinking about similar events will help you remember.',
   'No user assistance',
-  'Always call one function',
+  'Always call one function and always give a text response',
 ]
 resources: [
   'Internet access for searches and information gathering.',

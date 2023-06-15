@@ -27,7 +27,7 @@ from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
 
-CONTINUE_STRING = "GENERATE NEXT COMMAND JSON"
+CONTINUE_STRING = "What do you want to do next?"
 
 
 class Agent:
