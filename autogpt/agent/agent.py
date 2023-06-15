@@ -8,15 +8,12 @@ from colorama import Fore, Style
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.utilities import extract_json_from_response, validate_json
-from autogpt.llm.base import ChatSequence
-from autogpt.llm.chat import chat_with_ai, create_chat_completion
+from autogpt.llm.chat import chat_with_ai
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
-    PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
-    SUPERVISOR_FEEDBACK_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
@@ -208,24 +205,6 @@ class Agent:
                     if console_input.lower().strip() == self.config.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
-                    elif console_input.lower().strip() == "s":
-                        logger.typewriter_log(
-                            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
-                            Fore.GREEN,
-                            "",
-                        )
-                        thoughts = assistant_reply_json.get("thoughts", {})
-                        self_feedback_resp = self.get_self_feedback(
-                            thoughts, self.config.fast_llm_model
-                        )
-                        logger.typewriter_log(
-                            f"SELF FEEDBACK: {self_feedback_resp}",
-                            Fore.YELLOW,
-                            "",
-                        )
-                        user_input = self_feedback_resp
-                        command_name = "self_feedback"
-                        break
                     elif console_input.lower().strip() == "":
                         logger.warn("Invalid input format.")
                         continue
@@ -281,8 +260,6 @@ class Agent:
                 result = f"Could not execute command: {arguments}"
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
-            elif command_name == "self_feedback":
-                result = f"Self feedback: {user_input}"
             else:
                 for plugin in self.config.plugins:
                     if not plugin.can_handle_pre_command():
@@ -336,45 +313,3 @@ class Agent:
                         self.workspace.get_path(command_args[pathlike])
                     )
         return command_args
-
-    def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
-        """Generates a feedback response based on the provided thoughts dictionary.
-        This method takes in a dictionary of thoughts containing keys such as 'reasoning',
-        'plan', 'thoughts', and 'criticism'. It combines these elements into a single
-        feedback message and uses the create_chat_completion() function to generate a
-        response based on the input message.
-        Args:
-            thoughts (dict): A dictionary containing thought elements like reasoning,
-            plan, thoughts, and criticism.
-        Returns:
-            str: A feedback response generated using the provided thoughts dictionary.
-        """
-        ai_role = self.ai_config.ai_role
-
-        feedback_prompt = f"Below is a message from me, an AI Agent, assuming the role of {ai_role}. whilst keeping knowledge of my slight limitations as an AI Agent Please evaluate my thought process, reasoning, and plan, and provide a concise paragraph outlining potential improvements. Consider adding or removing ideas that do not align with my role and explaining why, prioritizing thoughts based on their significance, or simply refining my overall thought process."
-        reasoning = thoughts.get("reasoning", "")
-        plan = thoughts.get("plan", "")
-        thought = thoughts.get("thoughts", "")
-        feedback_thoughts = thought + reasoning + plan
-
-        prompt = ChatSequence.for_model(llm_model)
-        prompt.add("user", feedback_prompt + feedback_thoughts)
-
-        self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            prompt.raw(),
-            PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
-        )
-
-        feedback = create_chat_completion(prompt)
-
-        self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            feedback,
-            SUPERVISOR_FEEDBACK_FILE_NAME,
-        )
-        return feedback
