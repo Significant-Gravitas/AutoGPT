@@ -9,21 +9,21 @@ from autogpt.logs import logger
 
 
 @command(
-    "task_complete",
-    "Task Complete",
+    "goals_accomplished",
+    "Goals are accomplished and there is nothing left to do",
     arguments={
         "reason": {
             "type": "string",
-            "description": "Explanation to user of why the task is considered complete",
+            "description": "A summary to the user of how the goals were accomplished",
             "required": True,
         }
     },
 )
-def task_complete(reason: str, agent: Agent) -> NoReturn:
+def goals_accomplished(reason: str, agent: Agent) -> NoReturn:
     """A function that takes in a string and exits the program
 
     Parameters:
-        reason (str): Explanation to user of why the task is considered complete
+        reason (str): A summary to the user of how the goals were accomplished
     Returns:
         A result string from create chat completion. A list of suggestions to
             improve the code.
