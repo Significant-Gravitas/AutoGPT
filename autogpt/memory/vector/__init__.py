@@ -39,7 +39,7 @@ supported_memory = ["json_file", "no_memory"]
 #     MilvusMemory = None
 
 
-def get_memory(cfg: Config, init=False) -> VectorMemory:
+def get_memory(cfg: Config) -> VectorMemory:
     memory = None
 
     match cfg.memory_backend:
@@ -60,7 +60,7 @@ def get_memory(cfg: Config, init=False) -> VectorMemory:
             #     )
             # else:
             #     memory = PineconeMemory(cfg)
-            #     if init:
+            #     if clear:
             #         memory.clear()
 
         case "redis":
