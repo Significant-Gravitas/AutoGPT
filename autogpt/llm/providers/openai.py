@@ -31,7 +31,7 @@ OPEN_AI_CHAT_MODELS = {
             name="gpt-4-0613",
             prompt_token_cost=0.03,
             completion_token_cost=0.06,
-            max_tokens=4096,
+            max_tokens=8192,
         ),
         ChatModelInfo(
             name="gpt-4-32k-0314",
