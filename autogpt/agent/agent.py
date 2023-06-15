@@ -5,7 +5,6 @@ from datetime import datetime
 
 from colorama import Fore, Style
 
-from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.utilities import extract_json_from_response, validate_json
@@ -24,6 +23,7 @@ from autogpt.log_cycle.log_cycle import (
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
+from autogpt.models.command_registry import CommandRegistry
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input

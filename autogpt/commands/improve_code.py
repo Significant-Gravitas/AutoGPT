@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import command
+from autogpt.command_decorator import command
 from autogpt.llm.utils import call_ai_function
 
 
