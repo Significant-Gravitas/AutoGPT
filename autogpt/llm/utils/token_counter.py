@@ -24,7 +24,7 @@ def count_message_tokens(
     Returns:
         int: The number of tokens used by the list of messages.
     """
-    if model.startswith("gpt-3.5"):
+    if model.startswith("gpt-3.5-turbo"):
         tokens_per_message = (
             4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
         )
@@ -36,7 +36,7 @@ def count_message_tokens(
         encoding_model = "gpt-4"
     else:
         raise NotImplementedError(
-            f"num_tokens_from_messages() is not implemented for model {model}.\n"
+            f"count_message_tokens() is not implemented for model {model}.\n"
             " See https://github.com/openai/openai-python/blob/main/chatml.md for"
             " information on how messages are converted to tokens."
         )
