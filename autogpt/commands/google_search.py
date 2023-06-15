@@ -8,7 +8,7 @@ from itertools import islice
 from duckduckgo_search import DDGS
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import command
+from autogpt.command_decorator import command
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 

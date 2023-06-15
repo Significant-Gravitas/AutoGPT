@@ -1,51 +1,10 @@
-import functools
 import importlib
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
-from autogpt.config import Config
+from autogpt.command_decorator import AUTO_GPT_COMMAND_IDENTIFIER
 from autogpt.logs import logger
-
-# Unique identifier for auto-gpt commands
-AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
-
-
-class Command:
-    """A class representing a command.
-
-    Attributes:
-        name (str): The name of the command.
-        description (str): A brief description of what the command does.
-        signature (str): The signature of the function that the command executes. Defaults to None.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        description: str,
-        method: Callable[..., Any],
-        signature: str = "",
-        enabled: bool | Callable[[Config], bool] = True,
-        disabled_reason: Optional[str] = None,
-    ):
-        self.name = name
-        self.description = description
-        self.method = method
-        self.signature = signature
-        self.enabled = enabled
-        self.disabled_reason = disabled_reason
-
-    def __call__(self, *args, **kwargs) -> Any:
-        if hasattr(kwargs, "config") and callable(self.enabled):
-            self.enabled = self.enabled(kwargs["config"])
-        if not self.enabled:
-            if self.disabled_reason:
-                return f"Command '{self.name}' is disabled: {self.disabled_reason}"
-            return f"Command '{self.name}' is disabled"
-        return self.method(*args, **kwargs)
-
-    def __str__(self) -> str:
-        return f"{self.name}: {self.description}, args: {self.signature}"
+from autogpt.models.command import Command
 
 
 class CommandRegistry:
@@ -133,45 +92,3 @@ class CommandRegistry:
             ):
                 cmd_instance = attr()
                 self.register(cmd_instance)
-
-
-def command(
-    name: str,
-    description: str,
-    signature: str,
-    enabled: bool | Callable[[Config], bool] = True,
-    disabled_reason: Optional[str] = None,
-) -> Callable[..., Any]:
-    """The command decorator is used to create Command objects from ordinary functions."""
-
-    # TODO: Remove this in favor of better command management
-    CFG = Config()
-
-    if callable(enabled):
-        enabled = enabled(CFG)
-    if not enabled:
-        if disabled_reason is not None:
-            logger.debug(f"Command '{name}' is disabled: {disabled_reason}")
-        return lambda func: func
-
-    def decorator(func: Callable[..., Any]) -> Command:
-        cmd = Command(
-            name=name,
-            description=description,
-            method=func,
-            signature=signature,
-            enabled=enabled,
-            disabled_reason=disabled_reason,
-        )
-
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
-            return func(*args, **kwargs)
-
-        wrapper.command = cmd
-
-        setattr(wrapper, AUTO_GPT_COMMAND_IDENTIFIER, True)
-
-        return wrapper
-
-    return decorator

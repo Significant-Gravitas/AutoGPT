@@ -19,7 +19,7 @@ def chat_with_ai(
     config: Config,
     agent: Agent,
     system_prompt: str,
-    user_input: str,
+    triggering_prompt: str,
     token_limit: int,
     model: str | None = None,
 ):
@@ -31,7 +31,7 @@ def chat_with_ai(
         config (Config): The config to use.
         agent (Agent): The agent to use.
         system_prompt (str): The prompt explaining the rules to the AI.
-        user_input (str): The input from the user.
+        triggering_prompt (str): The input from the user.
         token_limit (int): The maximum number of tokens allowed in the API call.
         model (str, optional): The model to use. If None, the config.fast_llm_model will be used. Defaults to None.
 
@@ -90,7 +90,7 @@ def chat_with_ai(
     #     )
 
     # Account for user input (appended later)
-    user_input_msg = Message("user", user_input)
+    user_input_msg = Message("user", triggering_prompt)
     current_tokens_used += count_message_tokens([user_input_msg], model)
 
     current_tokens_used += 500  # Reserve space for new_summary_message

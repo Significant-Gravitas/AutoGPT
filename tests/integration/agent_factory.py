@@ -1,10 +1,10 @@
 import pytest
 
 from autogpt.agent import Agent
-from autogpt.commands.command import CommandRegistry
 from autogpt.config import AIConfig, Config
 from autogpt.main import COMMAND_CATEGORIES
 from autogpt.memory.vector import NoMemory, get_memory
+from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 
@@ -28,7 +28,9 @@ def memory_json_file(agent_test_config: Config):
     was_memory_backend = agent_test_config.memory_backend
 
     agent_test_config.set_memory_backend("json_file")
-    yield get_memory(agent_test_config, init=True)
+    memory = get_memory(agent_test_config)
+    memory.clear()
+    yield memory
 
     agent_test_config.set_memory_backend(was_memory_backend)
 
