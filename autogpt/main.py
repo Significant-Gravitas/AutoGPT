@@ -6,11 +6,11 @@ from pathlib import Path
 from colorama import Fore, Style
 
 from autogpt.agent import Agent
-from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
+from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
 from autogpt.utils import (
@@ -23,16 +23,12 @@ from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
 COMMAND_CATEGORIES = [
-    "autogpt.commands.analyze_code",
-    "autogpt.commands.audio_text",
     "autogpt.commands.execute_code",
     "autogpt.commands.file_operations",
     "autogpt.commands.git_operations",
     "autogpt.commands.google_search",
     "autogpt.commands.image_gen",
-    "autogpt.commands.improve_code",
     "autogpt.commands.web_selenium",
-    "autogpt.commands.write_tests",
     "autogpt.app",
     "autogpt.commands.task_statuses",
 ]

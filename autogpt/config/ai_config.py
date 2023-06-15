@@ -13,7 +13,7 @@ import distro
 import yaml
 
 if TYPE_CHECKING:
-    from autogpt.commands.command import CommandRegistry
+    from autogpt.models.command_registry import CommandRegistry
     from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
