@@ -12,7 +12,7 @@ PROMPT_SUMMARY_FILE_NAME = "prompt_summary.json"
 SUMMARY_FILE_NAME = "summary.txt"
 SUPERVISOR_FEEDBACK_FILE_NAME = "supervisor_feedback.txt"
 PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME = "prompt_supervisor_feedback.json"
-USER_INPUT_FILE_NAME = "user_input.txt"
+USER_INPUT_FILE_NAME = "triggering_prompt.txt"
 
 
 class LogCycleHandler:
