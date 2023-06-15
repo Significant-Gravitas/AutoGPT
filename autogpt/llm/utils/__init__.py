@@ -17,6 +17,7 @@ from autogpt.logs import logger
 
 from ..api_manager import ApiManager
 from ..base import ChatSequence, Message
+from ..providers.openai import OPEN_AI_CHAT_MODELS
 from .token_counter import *
 
 
@@ -205,6 +206,8 @@ def create_chat_completion(
         model = prompt.model.name
     if temperature is None:
         temperature = cfg.temperature
+    if max_tokens is None:
+        max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt.token_length
 
     logger.debug(
         f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
