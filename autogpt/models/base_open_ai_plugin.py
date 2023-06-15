@@ -214,13 +214,13 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
 
     def can_handle_user_input(self, user_input: str) -> bool:
         """This method is called to check that the plugin can
-        handle the triggering_prompt method.
+        handle the user_input method.
 
         Args:
             user_input (str): The user input.
 
         Returns:
-            bool: True if the plugin can handle the triggering_prompt method."""
+            bool: True if the plugin can handle the user_input method."""
         return False
 
     def user_input(self, user_input: str) -> str:
