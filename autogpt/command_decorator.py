@@ -12,7 +12,7 @@ AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 def command(
     name: str,
     description: str,
-    signature: str,
+    arguments: dict = None,
     enabled: bool | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
 ) -> Callable[..., Any]:
@@ -33,7 +33,7 @@ def command(
             name=name,
             description=description,
             method=func,
-            signature=signature,
+            signature=arguments,
             enabled=enabled,
             disabled_reason=disabled_reason,
         )

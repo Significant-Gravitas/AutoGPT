@@ -17,7 +17,7 @@ class Command:
         name: str,
         description: str,
         method: Callable[..., Any],
-        signature: str = "",
+        signature: dict = None,
         enabled: bool | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
     ):
