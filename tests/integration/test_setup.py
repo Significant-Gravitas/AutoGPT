@@ -48,7 +48,6 @@ def test_generate_aiconfig_automatic_typical(patched_api_requestor: Mock) -> Non
     assert 1 <= len(ai_config.ai_goals) <= 5
 
 
-
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_prompt_user_manual_mode_r_input(patched_api_requestor: Mock) -> None:
