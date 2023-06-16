@@ -12,7 +12,7 @@ from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
+from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, main_menu, start_prompt
 from autogpt.utils import (
     get_current_git_branch,
     get_latest_bulletin,
@@ -127,6 +127,11 @@ def run_auto_gpt(
     workspace_directory = Workspace.make_workspace(workspace_directory)
     cfg.workspace_path = str(workspace_directory)
 
+    # Set the complete path for the ai_settings file
+    cfg.ai_settings_filepath = str(
+        Path(__file__).resolve().parent.parent / cfg.ai_settings_file
+    )
+
     # HACK: doing this here to collect some globals that depend on the workspace.
     file_logger_path = workspace_directory / "file_logger.txt"
     if not file_logger_path.exists():
@@ -154,10 +159,11 @@ def run_auto_gpt(
         command_registry.import_commands(command_category)
 
     ai_name = ""
-    ai_config = construct_main_ai_config()
+    ai_config = main_menu()
     ai_config.command_registry = command_registry
     if ai_config.ai_name:
         ai_name = ai_config.ai_name
+    config = start_prompt(ai_config)
     # print(prompt)
     # Initialize variables
     next_action_count = 0
@@ -191,5 +197,43 @@ def run_auto_gpt(
         workspace_directory=workspace_directory,
         ai_config=ai_config,
         config=cfg,
+    )
+    agent.start_interaction_loop()
+
+
+def start_agent_directly(ai_config, cfg):
+    if ai_config.ai_name:
+        ai_name = ai_config.ai_name
+
+    # Initialize variables
+    next_action_count = 0
+
+    # add chat plugins capable of report to logger
+    if cfg.chat_messages_enabled:
+        for plugin in cfg.plugins:
+            if hasattr(plugin, "can_handle_report") and plugin.can_handle_report():
+                logger.info(f"Loaded plugin into logger: {plugin.__class__.__name__}")
+                logger.chat_plugins.append(plugin)
+
+    # Initialize memory and make sure it is empty.
+    # this is particularly important for indexing and referencing pinecone memory
+    memory = get_memory(cfg, init=True)
+    logger.typewriter_log(
+        "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
+    )
+    logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
+    system_prompt = ai_config.construct_full_prompt()
+    if cfg.debug_mode:
+        logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
+
+    agent = Agent(
+        ai_name=ai_config.ai_name,
+        memory=memory,
+        next_action_count=next_action_count,
+        command_registry=ai_config.command_registry,
+        config=ai_config,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=cfg.workspace_path,
     )
     agent.start_interaction_loop()

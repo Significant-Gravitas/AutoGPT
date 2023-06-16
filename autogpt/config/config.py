@@ -291,6 +291,14 @@ class Config(metaclass=Singleton):
         """Set the plugins value."""
         self.plugins = value
 
+    def set_plugins_allowlist(self, value: list) -> None:
+        """Set the plugins_allowlist value."""
+        self.plugins_allowlist = value
+
+    def set_plugins_denylist(self, value: list) -> None:
+        """Set the plugins_denylist value."""
+        self.plugins_denylist = value
+
     def set_temperature(self, value: int) -> None:
         """Set the temperature value."""
         self.temperature = value

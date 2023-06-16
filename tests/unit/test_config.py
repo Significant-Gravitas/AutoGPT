@@ -79,6 +79,36 @@ def test_set_smart_llm_model(config: Config):
     config.set_smart_llm_model(smart_llm_model)
 
 
+def test_set_plugins_allowlist(config: Config):
+    """
+    Test if the set_plugins_allowlist() method updates the plugins_allowlist attribute.
+    """
+    # Store original list to reset it after the test
+    original_plugins_allowlist = config.plugins_allowlist
+
+    new_plugins_allowlist = ["plugin1", "plugin2", "plugin3"]
+    config.set_plugins_allowlist(new_plugins_allowlist)
+    assert config.plugins_allowlist == new_plugins_allowlist
+
+    # Reset to original list
+    config.set_plugins_allowlist(original_plugins_allowlist)
+
+
+def test_set_plugins_denylist(config: Config):
+    """
+    Test if the set_plugins_denylist() method updates the plugins_denylist attribute.
+    """
+    # Store original list to reset it after the test
+    original_plugins_denylist = config.plugins_denylist
+
+    new_plugins_denylist = ["plugin4", "plugin5", "plugin6"]
+    config.set_plugins_denylist(new_plugins_denylist)
+    assert config.plugins_denylist == new_plugins_denylist
+
+    # Reset to original list
+    config.set_plugins_denylist(original_plugins_denylist)
+
+
 def test_set_debug_mode(config: Config):
     """
     Test if the set_debug_mode() method updates the debug_mode attribute.
