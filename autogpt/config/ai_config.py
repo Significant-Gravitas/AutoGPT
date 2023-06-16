@@ -116,7 +116,7 @@ class AIConfig:
         self, prompt_generator: Optional[PromptGenerator] = None
     ) -> str:
         """
-        Returns a prompt to the user with the class information in an organized fashion.
+        Returns a prompt with the class information in an organized fashion.
 
         Parameters:
             None
