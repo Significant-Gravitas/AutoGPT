@@ -57,7 +57,7 @@ def get_valid_input(num_options: int) -> int:
         num_options: The total number of options available.
 
     Returns:
-        The user's selected option as an integer.
+        The selected option as an integer.
 
     """
     while True:
