@@ -267,14 +267,20 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                         plugin_name = a_module.__name__
                         plugin_configured = plugins_config.get(plugin_name) is not None
                         plugin_enabled = plugins_config.is_enabled(plugin_name)
-                        
+
                         if plugin_configured and plugin_enabled:
-                            logger.debug(f"Loading plugin {plugin_name} as it was enabled in config.")
+                            logger.debug(
+                                f"Loading plugin {plugin_name} as it was enabled in config."
+                            )
                             loaded_plugins.append(a_module())
                         elif plugin_configured and not plugin_enabled:
-                            logger.debug(f"Not loading plugin {plugin_name} as it was disabled in config.")
+                            logger.debug(
+                                f"Not loading plugin {plugin_name} as it was disabled in config."
+                            )
                         elif not plugin_configured:
-                             logger.warn(f"Not loading plugin {plugin_name} as it was not found in config. Please check your config. Starting with 0.4.1, plugins will not be loaded unless they are enabled in plugins_config.yaml. Zipped plugins should use the class name ({plugin_name}) as the key.")
+                            logger.warn(
+                                f"Not loading plugin {plugin_name} as it was not found in config. Please check your config. Starting with 0.4.1, plugins will not be loaded unless they are enabled in plugins_config.yaml. Zipped plugins should use the class name ({plugin_name}) as the key."
+                            )
 
     # OpenAI plugins
     if cfg.plugins_openai:
