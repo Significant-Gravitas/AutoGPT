@@ -9,11 +9,7 @@ if TYPE_CHECKING:
     from autogpt.agent import Agent
 
 from autogpt.config import Config
-from autogpt.json_utils.utilities import (
-    LLM_DEFAULT_RESPONSE_FORMAT,
-    extract_json_from_response,
-    is_string_valid_json,
-)
+from autogpt.json_utils.utilities import extract_json_from_response
 from autogpt.llm.base import ChatSequence, Message, MessageRole, MessageType
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens, create_chat_completion
@@ -105,8 +101,8 @@ class MessageHistory:
             )
             result_message = messages[i + 1]
             try:
-                assert is_string_valid_json(
-                    ai_message.content, LLM_DEFAULT_RESPONSE_FORMAT
+                assert (
+                    extract_json_from_response(ai_message.content) != {}
                 ), "AI response is not a valid JSON object"
                 assert result_message.type == "action_result"
 
