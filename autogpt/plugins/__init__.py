@@ -254,11 +254,6 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                 logger.debug(f"Plugin: {plugin} Module: {module}")
                 zipped_package = zipimporter(str(plugin))
                 zipped_module = zipped_package.load_module(str(module.parent))
-                plugin_module_name = zipped_module.__name__.split(os.path.sep)[-1]
-
-                if not plugins_config.is_enabled(plugin_module_name):
-                    logger.warn(f"Plugin {plugin_module_name} found but not configured")
-                    continue
 
                 for key in dir(zipped_module):
                     if key.startswith("__"):
@@ -269,7 +264,26 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                         "_abc_impl" in a_keys
                         and a_module.__name__ != "AutoGPTPluginTemplate"
                     ):
-                        loaded_plugins.append(a_module())
+                        plugin_name = a_module.__name__
+                        plugin_configured = plugins_config.get(plugin_name) is not None
+                        plugin_enabled = plugins_config.is_enabled(plugin_name)
+
+                        if plugin_configured and plugin_enabled:
+                            logger.debug(
+                                f"Loading plugin {plugin_name} as it was enabled in config."
+                            )
+                            loaded_plugins.append(a_module())
+                        elif plugin_configured and not plugin_enabled:
+                            logger.debug(
+                                f"Not loading plugin {plugin_name} as it was disabled in config."
+                            )
+                        elif not plugin_configured:
+                            logger.warn(
+                                f"Not loading plugin {plugin_name} as it was not found in config. "
+                                f"Please check your config. Starting with 0.4.1, plugins will not be loaded unless "
+                                f"they are enabled in plugins_config.yaml. Zipped plugins should use the class "
+                                f"name ({plugin_name}) as the key."
+                            )
 
     # OpenAI plugins
     if cfg.plugins_openai:
