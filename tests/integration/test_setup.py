@@ -85,6 +85,7 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor: Mock) -> No
     ]
 
 
+
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_prompt_user_manual_mode_r_input(patched_api_requestor: Mock) -> None:
