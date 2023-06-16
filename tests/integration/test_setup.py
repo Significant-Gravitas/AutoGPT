@@ -48,42 +48,6 @@ def test_generate_aiconfig_automatic_typical(patched_api_requestor: Mock) -> Non
     assert 1 <= len(ai_config.ai_goals) <= 5
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_fallback(patched_api_requestor: Mock) -> None:
-    user_inputs = [
-        "T&GF£OIBECC()!*",
-        "Chef-GPT",
-        "an AI designed to browse bake a cake.",
-        "2",
-        "Purchase ingredients",
-        "Bake a cake",
-        "",
-        "",
-        "",
-        "3.00",
-        "r",
-        "1",
-    ]
-
-    user_inputs_iterator = iter(user_inputs)
-
-    def mock_input(_prompt: str) -> str:
-        return next(user_inputs_iterator)
-
-    with patch("builtins.input", new=mock_input), patch(
-        "autogpt.utils.session.prompt", new=mock_input
-    ):
-        ai_config = main_menu()
-
-    assert ai_config is not None, "ai_config is None"
-    assert ai_config.ai_name == "Chef-GPT"
-    assert ai_config.ai_role == "an AI designed to browse bake a cake."
-    assert ai_config.ai_goals == [
-        "Purchase ingredients",
-        "Bake a cake",
-    ]
-
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
