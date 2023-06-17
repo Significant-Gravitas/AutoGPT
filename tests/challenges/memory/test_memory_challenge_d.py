@@ -4,6 +4,8 @@ from typing import Dict
 import pytest
 from pytest_mock import MockerFixture
 
+import yaml
+
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
@@ -13,6 +15,10 @@ LEVEL_CURRENTLY_BEATEN = 1
 MAX_LEVEL = 5
 OUTPUT_LOCATION = "output.txt"
 
+def read_yaml_file(filename: str) -> dict:
+    with open(filename, 'r') as file:
+        data = yaml.safe_load(file)
+    return data
 
 @challenge()
 def test_memory_challenge_d(
@@ -28,13 +34,8 @@ def test_memory_challenge_d(
         memory_management_agent (Agent)
         user_selected_level (int)
     """
-    sally_anne_test_phrases = [
-        "Sally has a marble (marble A) and she puts it in her basket (basket S), then leaves the room. Anne moves marble A from Sally's basket (basket S) to her own basket (basket A).",
-        "Sally gives a new marble (marble B) to Bob who is outside with her. Bob goes into the room and places marble B into Anne's basket (basket A). Anne tells Bob to tell Sally that he lost the marble b. Bob leaves the room and speaks to Sally about the marble B. Meanwhile, after Bob left the room, Anne moves marble A into the green box, but tells Charlie to tell Sally that marble A is under the sofa. Charlie leaves the room and speaks to Sally about the marble A as instructed by Anne.",
-        "Sally gives a new marble (marble C) to Charlie who is outside with her. Charlie enters the room and exchanges marble C with marble B in Anne's basket (basket A). Anne tells Charlie to tell Sally that he put marble C into the red box. Charlie leaves the room and speak to Sally about marble C as instructed by Anne. Meanwhile, after Charlie leaves the room, Bob enters into the room and moves marble A from the green box to under the sofa, but tells Anne to tell Sally that marble A is in the green box. Anne leaves the room and speak to Sally about the marble A as instructed by Bob",
-        "Sally gives a new marble (marble D) to Anne. Anne gives the marble to Charlie. Charlie enters the room and gives marble D to Bob. Bob tells Charlie to tell Sally that he put marble D under the sofa. Bob put marble D under the sofa Charlie leaves the room and speaks to Sally about marble D. Meanwhile, after Charlie leaves the room, Bob takes marble A from under the sofa and places it in the blue box.",
-        "Sally gives a new marble (marble E) to Charlie who is outside with her. Charlie enters the room and places marble E in the red box. Anne, who is already in the room, takes marble E from the red box, and hides it under the sofa. Then Anne leaves the room and tells Sally that marble E is in the green box. Meanwhile, after Anne leaves the room, Charlie who re-enters the room takes marble D from under the sofa and places it in his own basket (basket C).",
-    ]
+    # load the phrases from the YAML file
+    sally_anne_test_phrases = read_yaml_file('./tests/challenges/memory/sally_anne_test_phrases.yaml')
     level_sally_anne_test_phrases = sally_anne_test_phrases[:level_to_run]
     create_instructions_files(
         memory_management_agent, level_to_run, level_sally_anne_test_phrases
@@ -66,7 +67,6 @@ def check_beliefs(content: str, level: int) -> None:
         2: {
             "Sally": {
                 "marble A": "sofa",  # Because Charlie told her
-                "marble B": "lost",  # Because Bob told her
             },
             "Anne": {
                 "marble A": "green box",  # Because she moved it there
@@ -222,9 +222,11 @@ def generate_content(
         5. Believed_location_of_the_specific_marble describes where is the marble like drawer, basket S, sofa, ...
         6. Do not use expression like <Anne's basket> use <basket A> instead.
         7. All characters believe what they're being told by other characters.
+        8. Do not mention the marble if the character does not know where it is.
+        9. Do not create python script
         Instructions:
         I) Write the following information in the file output.txt in JSON format:
-        1. The respective beliefs of the characters (which means where every marble is according to character x, y, z. Character x should say where it believes every marble it is aware exist is)
+        1. The respective beliefs of the characters (which means where every marble is according to character x, y, z.)
         The format should be as follows:
         {{
             "beliefs": {{
