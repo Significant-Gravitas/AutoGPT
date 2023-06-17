@@ -5,7 +5,7 @@
 **Command to try**:
 
 ```
-pytest -s tests/integration/challenges/information_retrieval/test_information_retrieval_challenge_a.py --level=2
+pytest -s tests/challenges/information_retrieval/test_information_retrieval_challenge_a.py --level=2
 ```
 
 ## Description
