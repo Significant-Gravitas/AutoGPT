@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from autogpt.core.ability.base import Ability
 from autogpt.core.ability.schema import (
@@ -9,10 +8,9 @@ from autogpt.core.ability.schema import (
 )
 from autogpt.core.workspace import Workspace
 
-FILE_OPERATIONS_LOG_PATH = Path("logs/file_operations.log")
-
 
 class ReadFile(Ability):
+
     def __init__(
         self,
         logger: logging.Logger,
@@ -27,7 +25,11 @@ class ReadFile(Ability):
 
     @property
     def description(self) -> str:
-        return "Read a file and return its contents."
+        return "Read and parse all text from a file."
+
+    @property
+    def limitations(self) -> str:
+        return ""
 
     @property
     def arguments(self) -> list[str]:
@@ -36,14 +38,14 @@ class ReadFile(Ability):
     @property
     def requirements(self) -> AbilityRequirements:
         return AbilityRequirements(
-            packages=["charset_normalizer"],
+            packages=["unstructured"],
             workspace=True,
         )
 
     def _check_preconditions(self, filename: str) -> AbilityResult | None:
         message = ""
         try:
-            import charset_normalizer
+            import unstructured
         except ImportError:
             message = "Package charset_normalizer is not installed."
 
@@ -67,21 +69,23 @@ class ReadFile(Ability):
         if result := self._check_preconditions(filename):
             return result
 
-        from charset_normalizer import from_path
+        from unstructured.partition.auto import partition
 
         file_path = self._workspace.get_path(filename)
         try:
-            charset_match = from_path(file_path).best()
-            encoding = charset_match.encoding
-            self._logger.debug(f"Read file '{filename}' with encoding '{encoding}'")
+            elements = partition(str(file_path))
+            # TODO: Lots of other potentially useful information is available
+            #   in the partitioned file. Consider returning more of it.
+            data = "\n\n".join([element.text for element in elements])
             success = True
-            message = str(charset_match)
+            message = f"File {file_path} read successfully."
         except IOError as e:
+            data = None
             success = False
             message = str(e)
 
         return AbilityResult(
             success=success,
             message=message,
-            data=None,
+            data=data,
         )

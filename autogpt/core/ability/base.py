@@ -1,5 +1,7 @@
 import abc
 
+import inflection
+
 from autogpt.core.ability.schema import AbilityRequirements, AbilityResult
 
 
@@ -7,23 +9,29 @@ class Ability(abc.ABC):
     """A class representing an agent ability."""
 
     @property
-    @abc.abstractmethod
     def name(self) -> str:
-        ...
+        """The name of the ability."""
+        return inflection.underscore(self.__class__.__name__)
+
+    @property
+    def signature(self) -> str:
+        return " ".join(self.arguments) if self.arguments else ""
 
     @property
     @abc.abstractmethod
     def description(self) -> str:
+        """A detailed description of what the ability does."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def limitations(self) -> str:
         ...
 
     @property
     @abc.abstractmethod
     def arguments(self) -> list[str]:
         ...
-
-    @property
-    def signature(self) -> str:
-        return " ".join(self.arguments) if self.arguments else ""
 
     @property
     @abc.abstractmethod
