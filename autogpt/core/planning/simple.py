@@ -1,9 +1,7 @@
 import json
 import logging
 import platform
-import re
 import time
-from typing import Callable
 
 import distro
 
@@ -16,12 +14,15 @@ from autogpt.core.configuration import (
 from autogpt.core.memory import Memory
 from autogpt.core.planning import templates
 
+from autogpt.core.planning.base import (
+    PromptStrategy,
+)
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
     LanguageModelPrompt,
     LanguageModelResponse,
-    ReflectionContext,
 )
+from autogpt.core.planning import strategies
 from autogpt.core.resource.model_providers import (
     LanguageModelProvider,
     MessageRole,
@@ -30,6 +31,8 @@ from autogpt.core.resource.model_providers import (
     OpenAIModelName,
 )
 from autogpt.core.workspace import Workspace
+
+from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 
 
 class LanguageModelConfiguration(SystemConfiguration):
@@ -40,6 +43,11 @@ class LanguageModelConfiguration(SystemConfiguration):
     temperature: float = UserConfigurable()
 
 
+class PromptStrategiesConfiguration(SystemConfiguration):
+    name_and_goals: strategies.NameAndGoalsConfiguration
+    initial_plan: strategies.InitialPlanConfiguration
+
+
 class PlannerConfiguration(SystemConfiguration):
     """Configuration for the Planner subsystem."""
 
@@ -47,6 +55,7 @@ class PlannerConfiguration(SystemConfiguration):
     agent_role: str
     agent_goals: list[str]
     models: dict[LanguageModelClassification, LanguageModelConfiguration]
+    prompt_strategies: PromptStrategiesConfiguration
 
 
 class PlannerSettings(SystemSettings):
@@ -77,6 +86,21 @@ class SimplePlanner(Configurable):
                     temperature=0.9,
                 ),
             },
+            prompt_strategies=PromptStrategiesConfiguration(
+                name_and_goals=strategies.NameAndGoalsConfiguration(
+                    model_classification=LanguageModelClassification.SMART_MODEL,
+                    system_prompt=strategies.NameAndGoals.DEFAULT_SYSTEM_PROMPT,
+                    user_prompt_template=strategies.NameAndGoals.DEFAULT_USER_PROMPT_TEMPLATE,
+                ),
+                initial_plan=strategies.InitialPlanConfiguration(
+                    model_classification=LanguageModelClassification.SMART_MODEL,
+                    agent_preamble=strategies.InitialPlan.DEFAULT_AGENT_PREAMBLE,
+                    agent_info=strategies.InitialPlan.DEFAULT_AGENT_INFO,
+                    task_format=strategies.InitialPlan.DEFAULT_TASK_FORMAT,
+                    triggering_prompt_template=strategies.InitialPlan.DEFAULT_TRIGGERING_PROMPT_TEMPLATE,
+                    system_prompt_template=strategies.InitialPlan.DEFAULT_SYSTEM_PROMPT_TEMPLATE,
+                ),
+            ),
         ),
     )
 
@@ -95,165 +119,61 @@ class SimplePlanner(Configurable):
         for model, model_config in self._configuration.models.items():
             self._providers[model] = model_providers[model_config.provider_name]
 
+        self._prompt_strategies = {
+            'name_and_goals': strategies.NameAndGoals(
+                **self._configuration.prompt_strategies.name_and_goals.dict()
+            ),
+            'initial_plan': strategies.InitialPlan(
+                **self._configuration.prompt_strategies.initial_plan.dict()
+            ),
+        }
+
     async def decide_name_and_goals(self, user_objective: str) -> LanguageModelResponse:
-        model_classification = LanguageModelClassification.FAST_MODEL
-        prompt = self._build_name_and_goals_prompt(user_objective)
-        parser = self._parse_name_and_goals
-
-        return await self.chat_with_model(model_classification, prompt, parser)
-
-    async def plan(self, user_feedback: str, memory: Memory) -> LanguageModelResponse:
-        model_classification = LanguageModelClassification.SMART_MODEL
-        model_name = self._configuration.models[model_classification].model_name
-        provider = self._providers[model_classification]
-        token_limit = provider.get_token_limit(model_name)
-        completion_token_min_length = 1000
-        send_token_limit = token_limit - completion_token_min_length
-        remaining_budget = provider.get_remaining_budget()
-
-        parser = self._parse_agent_action_model_response
-        prompt = self._build_plan_prompt(
-            user_feedback, memory, send_token_limit, remaining_budget
+        return await self.chat_with_model(
+            self._prompt_strategies['name_and_goals'],
+            user_objective=user_objective,
         )
-        return await self.chat_with_model(model_classification, prompt, parser)
 
-    async def reflect(self, context: ReflectionContext) -> LanguageModelResponse:
-        model_classification = LanguageModelClassification.SMART_MODEL
-        parser = self._parse_agent_feedback_model_response
-        prompt = LanguageModelPrompt(
-            messages=[],
-            # TODO
-            tokens_used=0,
+    async def make_initial_plan(self) -> LanguageModelResponse:
+        return await self.chat_with_model(
+            self._prompt_strategies['initial_plan'],
+            abilities=list(templates.ABILITIES),
         )
-        return await self.chat_with_model(model_classification, prompt, parser)
 
     async def chat_with_model(
         self,
-        model_classification: LanguageModelClassification,
-        prompt: LanguageModelPrompt,
-        completion_parser: Callable[[str], dict],
+        prompt_strategy: PromptStrategy,
+        **kwargs,
     ) -> LanguageModelResponse:
+        model_classification = prompt_strategy.model_classification
         model_configuration = self._configuration.models[model_classification].dict()
+        self._logger.debug(f"Using model configuration: {model_configuration}")
         del model_configuration["provider_name"]
         provider = self._providers[model_classification]
+
+        template_kwargs = self._make_template_kwargs_for_strategy(prompt_strategy)
+        template_kwargs.update(kwargs)
+        prompt = prompt_strategy.build_prompt(**template_kwargs)
+
+        self._logger.debug(f"Using prompt:\n{prompt}\n\n")
         response = await provider.create_language_completion(
             model_prompt=prompt.messages,
             **model_configuration,
-            completion_parser=completion_parser,
+            completion_parser=prompt_strategy.parse_response_content,
         )
         return LanguageModelResponse.parse_obj(response.dict())
 
-    @staticmethod
-    def _build_name_and_goals_prompt(user_objective: str) -> LanguageModelPrompt:
-        system_message = LanguageModelMessage(
-            role=MessageRole.SYSTEM,
-            content=templates.OBJECTIVE_SYSTEM_PROMPT,
-        )
-        user_message = LanguageModelMessage(
-            role=MessageRole.USER,
-            content=templates.DEFAULT_OBJECTIVE_USER_PROMPT_TEMPLATE.format(
-                user_objective=user_objective,
-            ),
-        )
-        prompt = LanguageModelPrompt(
-            messages=[system_message, user_message],
-            # TODO
-            tokens_used=0,
-        )
-        return prompt
-
-    @staticmethod
-    def _parse_name_and_goals(
-        response_text: str,
-    ) -> dict:
-        """Parse the actual text response from the objective model.
-
-        Args:
-            response_text: The raw response text from the objective model.
-
-        Returns:
-            The parsed response.
-
-        """
-        agent_name = re.search(
-            r"Name(?:\s*):(?:\s*)(.*)", response_text, re.IGNORECASE
-        ).group(1)
-        agent_role = (
-            re.search(
-                r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
-                response_text,
-                re.IGNORECASE | re.DOTALL,
-            )
-            .group(1)
-            .strip()
-        )
-        agent_goals = re.findall(r"(?<=\n)-\s*(.*)", response_text)
-        parsed_response = {
-            "agent_name": agent_name,
-            "agent_role": agent_role,
-            "agent_goals": agent_goals,
-        }
-        return parsed_response
-
-    def _build_plan_prompt(
-        self,
-        user_feedback: str,
-        memory: Memory,
-        send_token_limit: int,
-        remaining_budget: float,
-    ) -> LanguageModelPrompt:
-        template_args = {
+    def _make_template_kwargs_for_strategy(self, strategy: PromptStrategy):
+        provider = self._providers[strategy.model_classification]
+        template_kwargs = {
             "agent_name": self._configuration.agent_name,
             "agent_role": self._configuration.agent_role,
+            "agent_goals": self._configuration.agent_goals,
             "os_info": get_os_info(),
-            "api_budget": remaining_budget,
+            "api_budget": provider.get_remaining_budget(),
             "current_time": time.strftime("%c"),
         }
-
-        main_prompt_args = {
-            "header": templates.PLAN_PROMPT_HEADER.format(**template_args),
-            "goals": to_numbered_list(self._configuration.agent_goals, **template_args),
-            "info": to_numbered_list(templates.PLAN_PROMPT_INFO, **template_args),
-            "constraints": to_numbered_list(
-                templates.PLAN_PROMPT_CONSTRAINTS, **template_args
-            ),
-            "commands": "",  # TODO
-            "resources": to_numbered_list(
-                templates.PLAN_PROMPT_RESOURCES, **template_args
-            ),
-            "performance_evaluations": to_numbered_list(
-                templates.PLAN_PROMPT_PERFORMANCE_EVALUATIONS, **template_args
-            ),
-            "response_json_structure": json.dumps(
-                templates.PLAN_PROMPT_RESPONSE_DICT, indent=4
-            ),
-        }
-        main_prompt = LanguageModelMessage(
-            role=MessageRole.SYSTEM,
-            content=templates.PLAN_PROMPT_MAIN.format(**main_prompt_args),
-        )
-        user_message = LanguageModelMessage(
-            role=MessageRole.USER,
-            content=user_feedback,
-        )
-
-    @staticmethod
-    def _parse_agent_action_model_response(
-        response_text: str,
-    ) -> dict:
-        pass
-
-    @staticmethod
-    def _parse_agent_feedback_model_response(
-        response_text: str,
-    ) -> dict:
-        pass
-
-
-def to_numbered_list(items: list[str], **template_args) -> str:
-    return "\n".join(
-        f"{i+1}. {item.format(**template_args)}" for i, item in enumerate(items)
-    )
+        return template_kwargs
 
 
 def get_os_info() -> str:
@@ -264,3 +184,4 @@ def get_os_info() -> str:
         else distro.name(pretty=True)
     )
     return os_info
+

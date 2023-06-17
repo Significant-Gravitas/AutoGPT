@@ -25,55 +25,35 @@ USER_OBJECTIVE = (
 )
 
 
-####################
-# Prompt templates #
-####################
 
 
-# Objective Prompt
-# ----------------
 
-OBJECTIVE_SYSTEM_PROMPT = (
-    "Your task is to devise up to 5 highly effective goals and an appropriate "
-    "role-based name (_GPT) for an autonomous agent, ensuring that the goals are "
-    "optimally aligned with the successful completion of its assigned task.\n\n"
-    "The user will provide the task, you will provide only the output in the exact "
-    "format specified below with no explanation or conversation.\n\n"
-    "Example input:\n"
-    "Help me with marketing my business\n\n"
-    "Example output:\n"
-    "Name: CMOGPT\n\n"
-    "Description: a professional digital marketer AI that assists Solopreneurs in "
-    "growing their businesses by providing world-class expertise in solving "
-    "marketing problems for SaaS, content products, agencies, and more.\n\n"
-    "Goals:\n"
-    "- Engage in effective problem-solving, prioritization, planning, and supporting "
-    "execution to address your marketing needs as your virtual Chief Marketing "
-    "Officer.\n\n"
-    "- Provide specific, actionable, and concise advice to help you make informed "
-    "decisions without the use of platitudes or overly wordy explanations.\n\n"
-    "- Identify and prioritize quick wins and cost-effective campaigns that maximize "
-    "results with minimal time and budget investment.\n\n"
-    "- Proactively take the lead in guiding you and offering suggestions when faced "
-    "with unclear information or uncertainty to ensure your marketing strategy "
-    "remains on track."
+ABILITIES = (
+    'analyze_code: Analyze Code, args: "code": "<full_code_string>"',
+    'execute_python_file: Execute Python File, args: "filename": "<filename>"',
+    'append_to_file: Append to file, args: "filename": "<filename>", "text": "<text>"',
+    'delete_file: Delete file, args: "filename": "<filename>"',
+    'list_files: List Files in Directory, args: "directory": "<directory>"',
+    'read_file: Read a file, args: "filename": "<filename>"',
+    'write_to_file: Write to file, args: "filename": "<filename>", "text": "<text>"',
+    'google: Google Search, args: "query": "<query>"',
+    'improve_code: Get Improved Code, args: "suggestions": "<list_of_suggestions>", "code": "<full_code_string>"',
+    'browse_website: Browse Website, args: "url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+    'write_tests: Write Tests, args: "code": "<full_code_string>", "focus": "<list_of_focus_areas>"',
+    'get_hyperlinks: Get hyperlinks, args: "url": "<url>"',
+    'get_text_summary: Get text summary, args: "url": "<url>", "question": "<question>"',
+    'task_complete: Task Complete (Shutdown), args: "reason": "<reason>"',
 )
+
+
+
+
+
+
+
 
 # Plan Prompt
 # -----------
-
-PLAN_PROMPT_HEADER = (
-    "You are {agent_name}, {agent_role}.\n"
-    "Your decisions must always be made independently without "
-    "seeking user assistance. Play to your strengths as an LLM and pursue "
-    "simple strategies with no legal complications.\n\n"
-)
-
-PLAN_PROMPT_INFO = [
-    "The OS you are running on is: {os_info}",
-    "It takes money to let you run. Your API budget is ${api_budget:.3f}",
-    "The current time and date is {current_time}",
-]
 
 
 PLAN_PROMPT_CONSTRAINTS = (
@@ -88,7 +68,7 @@ PLAN_PROMPT_CONSTRAINTS = (
 PLAN_PROMPT_RESOURCES = (
     "Internet access for searches and information gathering.",
     "Long-term memory management.",
-    "GPT-3.5 powered Agents for delegation of simple tasks." "File output.",
+    "File output.",
 )
 
 PLAN_PROMPT_PERFORMANCE_EVALUATIONS = (
@@ -142,8 +122,4 @@ PLAN_PROMPT_MAIN = (
 # Parameterized templates #
 ###########################
 
-DEFAULT_OBJECTIVE_USER_PROMPT_TEMPLATE = (
-    "Task: '{user_objective}'\n"
-    "Respond only with the output in the exact format specified in the "
-    "system prompt, with no explanation or conversation.\n"
-)
+

@@ -3,8 +3,6 @@ from autogpt.core.planning.schema import (
     LanguageModelClassification,
     LanguageModelPrompt,
     LanguageModelResponse,
-    PlanningContext,
-    ReflectionContext,
 )
 from autogpt.core.planning.simple import PlannerSettings, SimplePlanner
 from autogpt.core.status import ShortStatus, Status

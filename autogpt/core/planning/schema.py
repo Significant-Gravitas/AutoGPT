@@ -1,5 +1,4 @@
 import enum
-from typing import Any
 
 from pydantic import BaseModel
 
@@ -26,21 +25,9 @@ class LanguageModelPrompt(BaseModel):
     messages: list[LanguageModelMessage]
     tokens_used: int
 
+    def __str__(self):
+        return "\n\n".join([f"{m.role.value}: {m.content}" for m in self.messages])
+
 
 class LanguageModelResponse(LanguageModelProviderModelResponse):
     """Standard response struct for a response from a language model."""
-
-
-class PlanningContext(BaseModel):
-    progress: Any  # To be defined (maybe here, as this might be a good place for summarization)
-    last_command_result: Any  # To be defined in the command interface
-    memories: Any  # List[Memory] # To be defined in the memory interface
-    user_feedback: Any  # Probably just a raw string
-
-
-class ReflectionContext(BaseModel):
-    # Using existing args here
-    reasoning: str
-    plan: list[str]
-    thoughts: str
-    criticism: str

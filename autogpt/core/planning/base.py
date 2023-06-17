@@ -1,9 +1,13 @@
 import abc
 
+from autogpt.core.configuration import (
+    SystemConfiguration,
+    UserConfigurable,
+)
 from autogpt.core.planning.schema import (
-    LanguageModelResponse,
-    PlanningContext,
-    ReflectionContext,
+    LanguageModelClassification,
+    LanguageModelPrompt,
+    LanguageModelMessage,
 )
 
 # class Planner(abc.ABC):
@@ -57,3 +61,20 @@ from autogpt.core.planning.schema import (
 #
 #         """
 #         ...
+
+
+class PromptStrategy(abc.ABC):
+
+    @property
+    @abc.abstractmethod
+    def model_classification(self) -> LanguageModelClassification:
+        ...
+
+    @abc.abstractmethod
+    def build_prompt(self, *_, **kwargs) -> LanguageModelPrompt:
+        ...
+
+    @abc.abstractmethod
+    def parse_response_content(self, response_text: str) -> dict:
+        ...
+
