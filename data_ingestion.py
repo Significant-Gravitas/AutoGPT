@@ -70,7 +70,9 @@ def main() -> None:
     args = parser.parse_args()
 
     # Initialize memory
-    memory = get_memory(cfg, init=args.init)
+    memory = get_memory(cfg)
+    if args.init:
+        memory.clear()
     logger.debug("Using memory of type: " + memory.__class__.__name__)
 
     if args.file:

@@ -1,8 +1,9 @@
 import json
+import os
 import re
 from typing import Any, Dict, List
 
-from tests.conftest import PROXY
+PROXY = os.environ.get("PROXY")
 
 REPLACEMENTS: List[Dict[str, str]] = [
     {
