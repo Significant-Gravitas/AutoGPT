@@ -268,9 +268,8 @@ class Agent:
                         command_name, arguments
                     )
                 command_result = execute_command(
-                    self.command_registry,
-                    command_name,
-                    arguments,
+                    command_name=command_name,
+                    arguments=arguments,
                     agent=self,
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
