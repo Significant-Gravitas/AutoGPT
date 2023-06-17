@@ -1,5 +1,5 @@
 import functools
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -12,7 +12,7 @@ AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 def command(
     name: str,
     description: str,
-    arguments: dict = None,
+    arguments: Dict[str, Dict[str, Any]],
     enabled: bool | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
 ) -> Callable[..., Any]:

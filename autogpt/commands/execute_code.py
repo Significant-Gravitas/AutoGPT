@@ -27,9 +27,9 @@ DENYLIST_CONTROL = "denylist"
             "required": True,
         },
         "name": {
-            "required": True,
             "type": "string",
             "description": "A name to be given to the python file",
+            "required": True,
         },
     },
 )

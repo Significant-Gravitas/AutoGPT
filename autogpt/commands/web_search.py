@@ -15,7 +15,7 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 @command(
     "web_search",
-    "Web Search",
+    "Search the web",
     {
         "query": {
             "type": "string",

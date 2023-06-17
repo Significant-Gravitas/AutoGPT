@@ -287,7 +287,17 @@ def delete_file(filename: str, agent: Agent) -> str:
         return f"Error: {err}"
 
 
-@command("list_files", "List Files in Directory", {})
+@command(
+    "list_files",
+    "List Files in Directory",
+    {
+        "directory": {
+            "type": "string",
+            "description": "The directory to list files in",
+            "required": True,
+        }
+    },
+)
 def list_files(directory: str, agent: Agent) -> list[str]:
     """lists files in a directory recursively
 
