@@ -2,62 +2,7 @@
 from pathlib import Path
 import shutil
 import click
-
-def check_autogpt_command(interactive=True):
-    """
-    Check for the presence of the autogpt command as a way to gauge whether Auto-GPT is installed.
-    """
-    if shutil.which("autogpt") is None:
-        click.echo("Warning: 'autogpt' command not found. With this command, you can run 'autogpt' from anywhere.")
-        if interactive and Path("./autogpt").exists():
-            if click.prompt("Would you like try and install it now? (y/n)") == "y":
-                import subprocess
-                subprocess.run(["pip", "install", "-e", "."])
-        else:
-            click.echo("You can run 'pip install autogpt' to install the Auto-GPT command.")
     
-def check_installation(workspace_directory, interactive=True):
-    """
-    Checks if Auto-GPT is being invoked from within the Auto-GPT folder or if the autogpt command doesn't exist
-    and prompts the user to install it if so.
-    """
-    check_autogpt_command()
-    
-    if not workspace_directory:
-        # Check for default legacy workspace directory & prompt to migrate
-        legacy_workspace_name = "auto_gpt_workspace"
-        legacy_workspace_directory = None
-        
-        if Path(Path.cwd() / legacy_workspace_name).exists():
-            legacy_workspace_directory = Path.cwd() / legacy_workspace_name
-        elif Path(Path(__file__).parent / legacy_workspace_name).exists():
-            legacy_workspace_directory = Path.cwd() / legacy_workspace_name 
-        
-        if legacy_workspace_directory:
-            click.echo("Warning: Old workspace directory found at " + str(legacy_workspace_directory))
-            
-            if interactive:
-                if click.prompt("Would you like to migrate it to your home directory? (y/n)") == "y":
-                    new_workspace_directory = Path.home() / legacy_workspace_name
-                    click.echo("Migrating workspace directory to " + str(new_workspace_directory))
-                    shutil.move(legacy_workspace_directory, new_workspace_directory)
-                    click.echo("Workspace directory migrated successfully.")
-                    workspace_directory = new_workspace_directory
-                else:
-                    click.echo("Please move your old workspace directory to another location, for example, your home directory. The old workspace directory will be deprecated in the future.")
-                    click.echo("You can also specify a custom workspace directory with the --workspace-directory flag.")
-                    workspace_directory = legacy_workspace_directory
-    
-    if not workspace_directory:
-        if interactive:
-            # TODO: Kick off interactive install, ask for workspace directory, openai key etc.
-            pass  
-        else:
-            # TODO: Add non-interactive install, set default workspace directory to home directory
-            pass
-
-
-
 @click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
 @click.option(
     "--skip-reprompt",
@@ -146,8 +91,10 @@ def main(
     """
     # Put imports inside function to avoid importing everything when starting the CLI
     from autogpt.main import run_auto_gpt
-
+    from autogpt.install import check_installation
+    
     check_installation(workspace_directory=workspace_directory, interative=(not continuous))
+    init_project(workspace_directory=workspace_directory, interactive=(not continuous))
 
     if ctx.invoked_subcommand is None:
         run_auto_gpt(
