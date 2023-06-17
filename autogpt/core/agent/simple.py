@@ -162,8 +162,8 @@ class SimpleAgent(Agent, Configurable):
 
     async def step(self, user_feedback: str, *args, **kwargs):
         self._configuration.cycle_count += 1
-        await self._planning.plan(user_feedback, self._memory)
-        return "hi"
+        return await self._planning.make_initial_plan()
+
 
     def __repr__(self):
         return "SimpleAgent()"
@@ -191,7 +191,6 @@ class SimpleAgent(Agent, Configurable):
         cls, logger: logging.Logger, user_configuration: dict
     ) -> AgentSettings:
         """Compile the user's configuration with the defaults."""
-        logger.debug("Compiling agent settings")
         logger.debug("Processing agent system configuration.")
         configuration_dict = {
             "agent": cls.build_agent_configuration(
@@ -218,17 +217,20 @@ class SimpleAgent(Agent, Configurable):
         agent_settings: AgentSettings,
         logger: logging.Logger,
     ) -> LanguageModelResponse:
+        logger.debug("Loading OpenAI provider.")
         provider: OpenAIProvider = cls._get_system_instance(
             "openai_provider",
             agent_settings,
             logger=logger,
         )
+        logger.debug("Loading agent planner.")
         agent_planner: SimplePlanner = cls._get_system_instance(
             "planning",
             agent_settings,
             logger=logger,
             model_providers={"openai": provider},
         )
+        logger.debug("determining agent name and goals.")
         model_response = await agent_planner.decide_name_and_goals(
             user_objective,
         )
