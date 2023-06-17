@@ -5,9 +5,13 @@ import requests
 import yaml
 from colorama import Fore, Style
 from git.repo import Repo
+from prompt_toolkit import ANSI, PromptSession
+from prompt_toolkit.history import InMemoryHistory
 
 from autogpt.config import Config
 from autogpt.logs import logger
+
+session = PromptSession(history=InMemoryHistory())
 
 
 def batch(iterable, max_batch_length: int, overlap: int = 0):
@@ -52,7 +56,7 @@ def clean_input(prompt: str = "", talk=False):
 
         # ask for input, default when just pressing Enter is y
         logger.info("Asking user via keyboard...")
-        answer = input(prompt)
+        answer = session.prompt(ANSI(prompt))
         return answer
     except KeyboardInterrupt:
         logger.info("You interrupted Auto-GPT")

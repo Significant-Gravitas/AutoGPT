@@ -1,4 +1,4 @@
-from autogpt.commands.command import command
+from autogpt.command_decorator import command
 
 
 @command(
