@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 import platform
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import distro
 import yaml
@@ -58,6 +58,91 @@ class AIConfig:
         self.prompt_generator: PromptGenerator | None = None
         self.command_registry: CommandRegistry | None = None
 
+    def to_dict(self) -> dict:
+        """
+        Converts the AIConfig instance to a dictionary.
+
+        Returns:
+            dict: A dictionary representation of the AIConfig instance.
+        """
+        return {
+            "ai_name": self.ai_name,
+            "ai_role": self.ai_role,
+            "ai_goals": self.ai_goals,
+            "api_budget": self.api_budget,
+            "plugins": self.plugins,
+        }
+
+    @staticmethod
+    def update_old_config(config_file: str) -> Tuple[Dict[str, Dict[str, Any]], str]:
+        """
+        Checks and updates the provided configuration file to the latest format supporting multiple configurations.
+
+        Parameters:
+        config_file (str): The path to the configuration file.
+
+        Returns:
+        Tuple[Dict[str, Dict[str, Any]], str]: A dictionary of updated configurations and a status message regarding the transformation.
+        """
+        message = "no configuration(s) detected."
+        config_updated = False
+
+        if not os.path.exists(config_file):
+            return {"configs": {}}, message
+
+        with open(config_file, "r", encoding="utf-8") as file:
+            all_configs = yaml.safe_load(file)
+            # Handle the case when the file exists but is empty
+            if all_configs is None:
+                all_configs = {"configs": {}}
+                config_updated = True
+            else:
+                # Check if the file is in the old format
+                if "configs" not in all_configs:
+                    if (
+                        "ai_name" not in all_configs
+                        or not all_configs["ai_name"].strip()
+                    ):
+                        # ai_name is missing or empty, treat the file as being empty
+                        all_configs = {"configs": {}}
+                        message = "no configuration(s) detected."
+                        config_updated = True
+                    else:
+                        # The file is in the old format, transform it
+                        message = f"successfully transformed to support multiple configurations."
+                        old_config = all_configs
+
+                        # Extract old configuration data
+                        ai_name = old_config["ai_name"]
+                        ai_role = old_config.get("ai_role", None)
+                        ai_goals = old_config.get("ai_goals", None)
+                        api_budget = old_config.get("api_budget", None)
+                        # Create a new AIConfig instance with the old values
+                        all_configs = AIConfig(
+                            ai_name, ai_role, ai_goals, api_budget, plugins=[]
+                        )
+
+                        # Overwrite the old configuration with the new one
+                        try:
+                            all_configs.save(config_file, append=False)
+                        except ValueError as e:
+                            print(f"An error occurred: {e}")
+
+                        # Convert the AIConfig instance to a dictionary
+                        all_configs_dict = {ai_name: all_configs.to_dict()}
+
+                        all_configs = {"configs": all_configs_dict}
+                else:
+                    # The file is not in the old format
+                    message = f"healthy."
+
+        # Save the updated configuration file if there was any update
+        if config_updated:
+            with open(config_file, "w", encoding="utf-8") as file:
+                yaml.safe_dump(all_configs, file)
+
+        return all_configs, message
+
     @staticmethod
     def load(ai_name: str, config_file: str) -> Optional["AIConfig"]:
         """
@@ -92,15 +177,7 @@ class AIConfig:
         Returns:
             Dict[str, AIConfig]: A dictionary containing all the loaded AI configurations.
         """
-        try:
-            with open(config_file, encoding="utf-8") as file:
-                all_configs: Dict[str, Any] = yaml.safe_load(file) or {}
-        except FileNotFoundError:
-            all_configs = {}
-
-        # Handle the case when the file is empty and yaml.safe_load returns None
-        if all_configs is None:
-            return {}
+        all_configs, message = AIConfig.update_old_config(config_file)
 
         configs = all_configs.get("configs", {}) or {}
 
@@ -124,7 +201,7 @@ class AIConfig:
                 ai_name, ai_role, ai_goals, api_budget, plugins
             )
 
-        return ai_configs
+        return ai_configs, message
 
     def save(
         self,

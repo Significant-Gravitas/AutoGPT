@@ -156,7 +156,9 @@ def prompt_for_num_goals(task: str, current_goal_count: Optional[int] = None) ->
 
 def check_ai_name_exists(name: str) -> bool:
     """Check if a name exists in the current configurations."""
-    all_configs: Dict[str, AIConfig] = AIConfig.load_all(cfg.ai_settings_filepath)
+    all_configs, _ = AIConfig.load_all(
+        cfg.ai_settings_filepath
+    )  # , _ to ignore returned message from load_all
     for config in all_configs.values():
         if config.ai_name == name:
             return True
@@ -175,9 +177,12 @@ def validate_input(prompt_text: str) -> str:
     """Validate user input."""
     while True:
         user_input = input(prompt_text).strip()
-        if not user_input.startswith("-"):
-            return prompt_text
-        print("Input cannot start with '-' or '--'. Please try again.")
+        # Validate user input against pattern
+        if re.match(r"^[a-zA-Z0-9-]*$", user_input) and not user_input.startswith("-"):
+            return user_input
+        print(
+            "Input can only contain alphanumeric characters and dashes, and cannot start with '-'. Please try again."
+        )
 
 
 # Start AI prompts
@@ -329,7 +334,6 @@ def main_menu() -> Optional[AIConfig]:
 
     Returns:
         Optional[AIConfig]: The selected or created AI configuration, or None if no configuration was selected or created.
-
     """
     config = None
     config_file = cfg.ai_settings_filepath
@@ -343,14 +347,19 @@ def main_menu() -> Optional[AIConfig]:
     ]
 
     while True:
-        all_configs = AIConfig.load_all(config_file)
+        all_configs, message = AIConfig.load_all(config_file)
         all_configs_keys = list(all_configs.keys())
         cfg_count = len(all_configs)  # Configurations count
         total_options = cfg_count + len(menu_options)
 
         logger.typewriter_log(
-            f"{Fore.GREEN}Attempting to load {cfg.ai_settings_file}: {Fore.YELLOW}{ {True: 'load successful.', False: 'no configuration(s) detected.'}[bool(all_configs)] }{Style.RESET_ALL}"
+            f"{Fore.GREEN}Status of {cfg.ai_settings_file}: {Fore.YELLOW}{message}{Style.RESET_ALL}"
         )
+
+        if all_configs:  # Only log if all_configs is not empty
+            logger.typewriter_log(
+                f"{Fore.GREEN}Attempting to load {cfg.ai_settings_file}: {Fore.YELLOW}load successful.{Style.RESET_ALL}"
+            )
 
         if cfg_count > 0:
             logger.typewriter_log(
@@ -573,6 +582,8 @@ def manage_plugins(config: AIConfig, task: str) -> List[str]:
 
     """
     default_plugins = cfg.plugins_allowlist if cfg and cfg.plugins_allowlist else []
+    plugins = []
+
     if default_plugins:
         logger.typewriter_log("Add plugins from the plugins_allowlist?", Fore.GREEN)
 
@@ -781,7 +792,9 @@ def handle_config(config: Optional[AIConfig], task: str) -> Optional[AIConfig]:
 
         if task == "edit" and not config:
             # User wants to edit a config, but no config was provided, so we need to prompt them to select one
-            all_configs = AIConfig.load_all(cfg.ai_settings_filepath)
+            all_configs, _ = AIConfig.load_all(
+                cfg.ai_settings_filepath
+            )  # , _ to ignore returned message from load_all
             logger.typewriter_log(
                 "Please select a configuration to edit:", Fore.GREEN, speak_text=True
             )
@@ -814,7 +827,7 @@ def handle_config(config: Optional[AIConfig], task: str) -> Optional[AIConfig]:
             start_prompt(new_config, sad=True)
 
         if user_choice.lower() == "r":
-            return None
+            return main_menu()
 
     except ValueError as e:
         logger.typewriter_log(
