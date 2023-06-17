@@ -39,7 +39,7 @@ class SimpleWorkspace(Configurable, Workspace):
         ),
     )
 
-    NULL_BYTES = ["\0", "\000", "\x00", r"\z", "\u0000", "%00"]
+    NULL_BYTES = ["\0", "\000", "\x00", "\u0000", "%00"]
 
     def __init__(
         self,
@@ -180,7 +180,6 @@ class SimpleWorkspace(Configurable, Workspace):
         log_path.mkdir(parents=True, exist_ok=True)
         (log_path / "debug.log").touch()
         (log_path / "cycle.log").touch()
-        (log_path / "file_operations.log").touch()
 
         return workspace_root
 
