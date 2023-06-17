@@ -10,12 +10,15 @@ class MacOSTTS(VoiceBase):
     def _setup(self) -> None:
         pass
 
-    def _speech(self, text: str, voice_index: int = 0) -> bool:
+    def _speech(self, text: str, voice: int = 0) -> bool:
+        voice1 = os.getenv("MAC_OS_VOICE_1") or "Allison"
+        voice2 = os.getenv("MAC_OS_VOICE_2") or "Ava"
+        voice3 = os.getenv("MAC_OS_VOICE_3") or "Samantha"
         """Play the given text."""
-        if voice_index == 0:
-            os.system(f'say "{text}"')
-        elif voice_index == 1:
-            os.system(f'say -v "Ava (Premium)" "{text}"')
+        if voice == 2:
+            os.system(f'say -v {voice3} "{text}"')
+        elif voice == 1:
+            os.system(f'say -v {voice2} "{text}"')
         else:
-            os.system(f'say -v Samantha "{text}"')
+            os.system(f'say -v {voice1} "{text}"')
         return True
