@@ -67,29 +67,3 @@ def validate_json(
     logger.debug("The JSON object is valid.")
 
     return True
-
-
-def validate_json_string(json_string: str, schema_name: str) -> dict | None:
-    """
-    :type schema_name: object
-    :param schema_name: str
-    :type json_object: object
-    """
-
-    try:
-        json_loaded = json.loads(json_string)
-        if not validate_json(json_loaded, schema_name):
-            return None
-        return json_loaded
-    except:
-        return None
-
-
-def is_string_valid_json(json_string: str, schema_name: str) -> bool:
-    """
-    :type schema_name: object
-    :param schema_name: str
-    :type json_object: object
-    """
-
-    return validate_json_string(json_string, schema_name) is not None
