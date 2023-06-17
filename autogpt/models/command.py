@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 from autogpt.config import Config
 
@@ -17,7 +17,7 @@ class Command:
         name: str,
         description: str,
         method: Callable[..., Any],
-        signature: str = "",
+        signature: Dict[str, Dict[str, Any]],
         enabled: bool | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
     ):
