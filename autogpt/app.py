@@ -4,7 +4,7 @@ from typing import Dict, List, Union
 
 from autogpt.agent.agent import Agent
 from autogpt.agent.agent_manager import AgentManager
-from autogpt.commands.command import CommandRegistry, command
+from autogpt.commands.command import command
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
@@ -84,7 +84,6 @@ def map_command_synonyms(command_name: str):
 
 
 def execute_command(
-    command_registry: CommandRegistry,
     command_name: str,
     arguments: dict[str, str],
     agent: Agent,
@@ -94,12 +93,13 @@ def execute_command(
     Args:
         command_name (str): The name of the command to execute
         arguments (dict): The arguments for the command
+        agent (Agent): The agent that is executing the command
 
     Returns:
         str: The result of the command
     """
     try:
-        cmd = command_registry.commands.get(command_name)
+        cmd = agent.command_registry.commands.get(command_name)
 
         # If the command is found, call it with the provided arguments
         if cmd:
@@ -111,7 +111,7 @@ def execute_command(
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
-        for command in agent.prompt.commands:
+        for command in agent.ai_config.prompt_generator.commands:
             if (
                 command_name == command["label"].lower()
                 or command_name == command["name"].lower()
