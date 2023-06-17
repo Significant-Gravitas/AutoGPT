@@ -104,5 +104,5 @@ If you want to selectively disable some command groups, you can use the `DISABLE
 For example, to disable coding related features, set it to the value below:
 
 ```ini
-DISABLED_COMMAND_CATEGORIES=autogpt.commands.execute_code,autogpt.commands.git_operations,autogpt.commands.improve_code,autogpt.commands.write_tests
+DISABLED_COMMAND_CATEGORIES=autogpt.commands.execute_code
 ```
