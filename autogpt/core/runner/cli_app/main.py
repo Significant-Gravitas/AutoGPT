@@ -50,11 +50,12 @@ async def run_auto_gpt(user_configuration: dict):
     )
     print("agent is loaded")
 
-    user_input = click.prompt("What do you want to say to the agent?")
+    user_input = ""
     while True:
         agent_response = await agent.step(user_input)
+        breakpoint()
         print(agent_response.content["text"])
-        user_input = click.prompt("What do you want to say to the agent?")
+        user_input = input("What do you want to say to the agent?")
 
 
 def parse_agent_name_and_goals(name_and_goals: LanguageModelResponse) -> str:
