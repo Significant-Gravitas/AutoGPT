@@ -38,12 +38,12 @@ class ElevenLabsSpeech(VoiceBase):
             "xi-api-key": cfg.elevenlabs_api_key,
         }
         self._voices = default_voices.copy()
-        if cfg.elevenlabs_voice_id in voice_options:
-            cfg.elevenlabs_voice_id = voice_options[cfg.elevenlabs_voice_id]
-        if cfg.elevenlabs_voice_2_id in voice_options:
-            cfg.elevenlabs_voice_2_id = voice_options[cfg.elevenlabs_voice_2_id]
-        self._use_custom_voice(cfg.elevenlabs_voice_id, 0)
-        self._use_custom_voice(cfg.elevenlabs_voice_2_id, 1)
+        if cfg.elevenlabs_voice_1 in voice_options:
+            cfg.elevenlabs_voice_1 = voice_options[cfg.elevenlabs_voice_1]
+        if cfg.elevenlabs_voice_2 in voice_options:
+            cfg.elevenlabs_voice_2 = voice_options[cfg.elevenlabs_voice_2]
+        self._use_custom_voice(cfg.elevenlabs_voice_1, 0)
+        self._use_custom_voice(cfg.elevenlabs_voice_2, 1)
 
     def _use_custom_voice(self, voice, voice_index) -> None:
         """Use a custom voice if provided and not a placeholder

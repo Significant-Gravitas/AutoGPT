@@ -90,10 +90,13 @@ class Config(metaclass=Singleton):
             openai.organization = self.openai_organization
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        # ELEVENLABS_VOICE_1_ID is deprecated and included for backwards-compatibility
-        self.elevenlabs_voice_id = os.getenv(
-            "ELEVENLABS_VOICE_ID", os.getenv("ELEVENLABS_VOICE_1_ID")
+        self.elevenlabs_voice_1 = os.getenv(
+            "ELEVENLABS_VOICE_1", os.getenv("ELEVENLABS_VOICE_1")
         )
+        self.elevenlabs_voice_2 = os.getenv(
+            "ELEVENLABS_VOICE_2", os.getenv("ELEVENLABS_VOICE_2")
+        )
+
         self.streamelements_voice = os.getenv("STREAMELEMENTS_VOICE", "Brian")
 
         # Backwards-compatibility shim for deprecated env variables
@@ -267,13 +270,13 @@ class Config(metaclass=Singleton):
         """Set the ElevenLabs API key value."""
         self.elevenlabs_api_key = value
 
-    def set_elevenlabs_voice_1_id(self, value: str) -> None:
+    def set_elevenlabs_voice_1(self, value: str) -> None:
         """Set the ElevenLabs Voice 1 ID value."""
-        self.elevenlabs_voice_id = value
+        self.elevenlabs_voice_1 = value
 
-    def set_elevenlabs_voice_2_id(self, value: str) -> None:
+    def set_elevenlabs_voice_2(self, value: str) -> None:
         """Set the ElevenLabs Voice 2 ID value."""
-        self.elevenlabs_voice_2_id = value
+        self.elevenlabs_voice_2 = value
 
     def set_google_api_key(self, value: str) -> None:
         """Set the Google API key value."""
