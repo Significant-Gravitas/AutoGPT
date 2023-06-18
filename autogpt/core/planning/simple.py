@@ -1,4 +1,3 @@
-import json
 import logging
 import platform
 import time
@@ -31,8 +30,6 @@ from autogpt.core.resource.model_providers import (
     OpenAIModelName,
 )
 from autogpt.core.workspace import Workspace
-
-from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 
 
 class LanguageModelConfiguration(SystemConfiguration):
