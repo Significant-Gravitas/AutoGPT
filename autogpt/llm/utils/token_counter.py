@@ -51,6 +51,12 @@ def count_message_tokens(
         )
         tokens_per_name = -1  # if there's a name, the role is omitted
         encoding_model = "gpt-3.5-turbo"
+    elif model == "gpt-3.5-turbo-16k":
+        tokens_per_message = (
+            4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
+        )
+        tokens_per_name = -1  # if there's a name, the role is omitted
+        encoding_model = "gpt-3.5-turbo"
     elif model == "gpt-4":
         # !Note: gpt-4 may change over time. Returning num tokens assuming gpt-4-0314.")
         return count_message_tokens(messages, model="gpt-4-0314")
