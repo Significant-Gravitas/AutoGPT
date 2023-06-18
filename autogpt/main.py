@@ -214,6 +214,11 @@ def start_agent_directly(ai_config: AIConfig, cfg: Config) -> None:
     # Initialize variables
     next_action_count = 0
 
+    # TODO: have this directory live outside the repository (e.g. in a user's
+    #   home directory) and have it come in as a command line argument or part of
+    #   the env file.
+    workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
+
     # add chat plugins capable of report to logger
     if cfg.chat_messages_enabled:
         for plugin in cfg.plugins:
@@ -222,8 +227,8 @@ def start_agent_directly(ai_config: AIConfig, cfg: Config) -> None:
                 logger.chat_plugins.append(plugin)
 
     # Initialize memory and make sure it is empty.
-    # this is particularly important for indexing and referencing pinecone memory
-    memory = get_memory(cfg, init=True)
+    memory = get_memory(cfg)
+    memory.clear()
     logger.typewriter_log(
         "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
@@ -233,13 +238,14 @@ def start_agent_directly(ai_config: AIConfig, cfg: Config) -> None:
         logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
 
     agent = Agent(
-        ai_name=ai_config.ai_name,
+        ai_name=ai_name,
         memory=memory,
         next_action_count=next_action_count,
         command_registry=ai_config.command_registry,
-        config=ai_config,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=cfg.workspace_path,
+        workspace_directory=workspace_directory,
+        ai_config=ai_config,
+        config=cfg,
     )
     agent.start_interaction_loop()
