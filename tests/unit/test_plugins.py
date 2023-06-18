@@ -30,8 +30,8 @@ def test_scan_plugins_generic(config: Config):
     plugins_config.plugins["auto_gpt_guanaco"] = PluginConfig(
         name="auto_gpt_guanaco", enabled=True
     )
-    plugins_config.plugins["auto_gpt_vicuna"] = PluginConfig(
-        name="auto_gptp_vicuna", enabled=True
+    plugins_config.plugins["AutoGPTPVicuna"] = PluginConfig(
+        name="AutoGPTPVicuna", enabled=True
     )
     result = scan_plugins(config, debug=True)
     plugin_class_names = [plugin.__class__.__name__ for plugin in result]

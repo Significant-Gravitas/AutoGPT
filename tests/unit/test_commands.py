@@ -41,6 +41,13 @@ class TestCommand:
             name="example",
             description="Example command",
             method=self.example_command_method,
+            signature={
+                "prompt": {
+                    "type": "string",
+                    "description": "The prompt used to generate the image",
+                    "required": True,
+                },
+            },
         )
         result = cmd(arg1=1, arg2="test")
         assert result == "1 - test"
