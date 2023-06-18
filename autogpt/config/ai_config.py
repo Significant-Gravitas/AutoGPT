@@ -145,26 +145,27 @@ class AIConfig:
         return all_configs, message
 
     @staticmethod
-    def load(ai_name: str, config_file: str) -> Optional["AIConfig"]:
+    def load(ai_name: str, config_file: str) -> Tuple[Optional["AIConfig"], str]:
         """
-        Load a specific AI configuration from the config file.
+        Load a specific AI configuration from the config file and return a status message.
 
         Args:
             ai_name (str): The name of the AI configuration to load.
             config_file (str): The path to the configuration file.
 
         Returns:
-            AIConfig: The loaded AI configuration, or None if no such configuration exists.
+            Tuple[Optional[AIConfig], str]: The loaded AI configuration and a status message.
+                                           If no such configuration exists, returns None and the status message.
         """
-        all_configs, message = AIConfig.load_all(config_file)  # type: ignore
+        all_configs, message = AIConfig.load_all(config_file)
 
         if all_configs is None:
-            return None
+            return None, message
 
         if ai_name in all_configs:
-            return all_configs[ai_name]
+            return all_configs[ai_name], message
         else:
-            return None
+            return None, message
 
     @staticmethod
     def load_all(config_file: str) -> Tuple[Dict[str, "AIConfig"], str]:
