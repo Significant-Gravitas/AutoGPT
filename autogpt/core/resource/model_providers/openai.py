@@ -37,9 +37,10 @@ OpenAIChatParser = Callable[[str], dict]
 
 class OpenAIModelName(str, enum.Enum):
     ADA = "text-embedding-ada-002"
-    GPT3 = "gpt-3.5-turbo"
-    GPT4 = "gpt-4"
-    GPT4_32K = "gpt-4-32k"
+    GPT3 = "gpt-3.5-turbo-0613"
+    GPT3_16K = "gpt-3.5-turbo-16k-0613"
+    GPT4 = "gpt-4-0613"
+    GPT4_32K = "gpt-4-32k-0613"
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -60,9 +61,17 @@ OPEN_AI_LANGUAGE_MODELS = {
         name=OpenAIModelName.GPT3,
         service=ModelProviderService.LANGUAGE,
         provider_name=ModelProviderName.OPENAI,
-        prompt_token_cost=0.002,
+        prompt_token_cost=0.0015,
         completion_token_cost=0.002,
-        max_tokens=4097,
+        max_tokens=4096,
+    ),
+    OpenAIModelName.GPT3_16K: LanguageModelProviderModelInfo(
+        name=OpenAIModelName.GPT3,
+        service=ModelProviderService.LANGUAGE,
+        provider_name=ModelProviderName.OPENAI,
+        prompt_token_cost=0.003,
+        completion_token_cost=0.002,
+        max_tokens=16384,
     ),
     OpenAIModelName.GPT4: LanguageModelProviderModelInfo(
         name=OpenAIModelName.GPT4,
@@ -133,6 +142,9 @@ class OpenAIProvider(
         credentials=ModelProviderCredentials(
             models={
                 OpenAIModelName.GPT3: ModelProviderModelCredentials(),
+                OpenAIModelName.GPT3_16K: ModelProviderModelCredentials(),
+                OpenAIModelName.GPT4: ModelProviderModelCredentials(),
+                OpenAIModelName.GPT4_32K: ModelProviderModelCredentials(),
                 OpenAIModelName.ADA: ModelProviderModelCredentials(),
             },
         ),
