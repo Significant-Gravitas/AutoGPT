@@ -162,7 +162,9 @@ class Agent:
                     )
                     command_name, arguments = get_command(assistant_reply_json)
                     if self.config.speak_mode:
-                        say_text(f"I want to execute {command_name}")
+                        command_vars = vars(self.command_registry.commands[command_name])
+                        description = command_vars["description"]
+                        say_text(command_name, description)
 
                     arguments = self._resolve_pathlike_command_args(arguments)
 
