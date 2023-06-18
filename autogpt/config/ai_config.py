@@ -118,20 +118,21 @@ class AIConfig:
                         ai_goals = old_config.get("ai_goals", None)
                         api_budget = old_config.get("api_budget", None)
                         # Create a new AIConfig instance with the old values
-                        all_configs = AIConfig(
+                        ai_config = AIConfig(
                             ai_name, ai_role, ai_goals, api_budget, plugins=[]
                         )
 
                         # Overwrite the old configuration with the new one
                         try:
-                            all_configs.save(config_file, append=False)
+                            ai_config.save(config_file, append=False)
                         except ValueError as e:
                             print(f"An error occurred: {e}")
 
                         # Convert the AIConfig instance to a dictionary
-                        all_configs_dict = {ai_name: all_configs.to_dict()}
+                        all_configs_dict = {ai_name: ai_config.to_dict()}
 
                         all_configs = {"configs": all_configs_dict}
+
                 else:
                     # The file is not in the old format
                     message = f"healthy."
