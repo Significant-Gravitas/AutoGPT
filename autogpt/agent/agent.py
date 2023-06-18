@@ -162,7 +162,9 @@ class Agent:
                     )
                     command_name, arguments = get_command(assistant_reply_json)
                     if self.config.speak_mode:
-                        command_vars = vars(self.command_registry.commands[command_name])
+                        command_vars = vars(
+                            self.command_registry.commands[command_name]
+                        )
                         description = command_vars["description"]
                         say_text(command_name, description)
 

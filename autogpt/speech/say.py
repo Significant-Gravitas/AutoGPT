@@ -48,7 +48,6 @@ def _get_voice_engine(config: Config) -> tuple[VoiceBase, VoiceBase]:
 
 
 def _get_plain_speech(text: str, description: str = ""):
-
     # When executing agent commands, the "text" parameter is the command name, e.g. "read_file".
     # Many commands have descriptions that are suitable for natural-sounding TTS, but not all.
     # If you think a command's description could be better phrased for TTS, add an override below.
@@ -56,7 +55,6 @@ def _get_plain_speech(text: str, description: str = ""):
     preamble = "I'll need permission to"
 
     try:
-
         if text.lower() == "error:":
             return "An unexpected error occurred"
         elif text == "do_nothing" or text.lower() == "none":
