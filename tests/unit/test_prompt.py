@@ -1,7 +1,10 @@
 import builtins
+from pathlib import Path
+from typing import Generator
 from unittest.mock import MagicMock, Mock, call, patch
 
 import pytest
+from _pytest.capture import CaptureFixture
 
 from autogpt.prompts.prompt import (
     cfg,
@@ -17,7 +20,7 @@ class ConfigsMock:
 
 
 @pytest.fixture(autouse=True)
-def setup(tmp_path):
+def setup(tmp_path: Path) -> Generator[None, None, None]:
     cfg.ai_settings_filepath = tmp_path / "ai_settings.yaml"
     cfg.workspace_path = tmp_path / "auto_gpt_workspace"
     (cfg.workspace_path).mkdir(parents=True, exist_ok=True)
@@ -28,12 +31,12 @@ def setup(tmp_path):
 
 
 @patch.object(builtins, "input", side_effect=["-invalid", "--invalid", "valid"])
-def test_validate_input(mock_input):
+def test_validate_input(mock_input: MagicMock) -> None:
     assert validate_input("Enter text: ") == "valid"
     assert mock_input.call_count == 3
 
 
-def test_generate_unique_name():
+def test_generate_unique_name() -> None:
     mock_ai_configs = {
         "config1": MagicMock(ai_name="base-1"),
         "config2": MagicMock(ai_name="base-2"),
@@ -63,8 +66,10 @@ def test_generate_unique_name():
 @patch("autogpt.prompts.prompt.validate_input", side_effect=lambda x: x)
 @patch("autogpt.utils.session.prompt", return_value="test_name")
 def test_manage_ai_name_create(
-    mock_session_prompt, mock_validate_input, mock_check_name
-):
+    mock_session_prompt: MagicMock,
+    mock_validate_input: MagicMock,
+    mock_check_name: MagicMock,
+) -> None:
     configs = ConfigsMock()
     task = "create"
     result = manage_ai_name(configs, task)
@@ -77,8 +82,10 @@ def test_manage_ai_name_create(
 @patch("autogpt.prompts.prompt.validate_input", side_effect=lambda x: x)
 @patch("autogpt.utils.session.prompt", side_effect=["", "Y"])
 def test_manage_ai_name_edit_keep_current(
-    mock_session_prompt, mock_validate_input, mock_check_name
-):
+    mock_session_prompt: MagicMock,
+    mock_validate_input: MagicMock,
+    mock_check_name: MagicMock,
+) -> None:
     configs = ConfigsMock()
     configs.ai_name = "current_name"
     task = "edit"
@@ -92,8 +99,10 @@ def test_manage_ai_name_edit_keep_current(
 @patch("autogpt.prompts.prompt.validate_input", side_effect=lambda x: x)
 @patch("autogpt.utils.session.prompt", side_effect=["new_name"])
 def test_manage_ai_name_edit_change_current(
-    mock_session_prompt, mock_validate_input, mock_check_name
-):
+    mock_session_prompt: MagicMock,
+    mock_validate_input: MagicMock,
+    mock_check_name: MagicMock,
+) -> None:
     configs = ConfigsMock()
     configs.ai_name = "current_name"
     task = "edit"
@@ -103,7 +112,7 @@ def test_manage_ai_name_edit_change_current(
     mock_check_name.assert_called_once_with("new_name")
 
 
-def test_start_prompt(capsys):
+def test_start_prompt(capsys: CaptureFixture) -> None:
     # Mock the necessary dependencies and set up the initial config
     config = Mock()
     config.ai_name = "Test AI"
