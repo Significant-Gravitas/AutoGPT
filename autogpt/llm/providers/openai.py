@@ -42,6 +42,12 @@ OPEN_AI_CHAT_MODELS = {
             supports_functions=True,
         ),
         ChatModelInfo(
+            name="gpt-3.5-turbo-16k",
+            prompt_token_cost=0.003,
+            completion_token_cost=0.004,
+            max_tokens=16384,
+        ),
+        ChatModelInfo(
             name="gpt-3.5-turbo-16k-0613",
             prompt_token_cost=0.003,
             completion_token_cost=0.004,
