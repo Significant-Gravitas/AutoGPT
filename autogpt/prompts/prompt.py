@@ -529,7 +529,7 @@ def manage_ai_goals(config: AIConfig, task: str) -> List[str]:
         logger.typewriter_log(f"Enter up to {max_goals} goals for your AI:", Fore.GREEN)
         kept_goals = []
 
-        for i in range(num_default_goals):
+        for i in range(min(num_default_goals, max_goals)):
             logger.typewriter_log(
                 f"{Fore.GREEN}Current Goal {i+1}: {Fore.YELLOW}'{current_goals[i]}'{Style.RESET_ALL}"
             )
@@ -827,7 +827,7 @@ def handle_config(config: Optional[AIConfig], task: str) -> Optional[AIConfig]:
             start_prompt(new_config, sad=True)
 
         if user_choice.lower() == "r":
-            return main_menu()
+            return None
 
     except ValueError as e:
         logger.typewriter_log(
