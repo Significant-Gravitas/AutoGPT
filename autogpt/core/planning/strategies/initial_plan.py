@@ -7,7 +7,6 @@ from autogpt.core.configuration import (
 from autogpt.core.planning import LanguageModelPrompt, LanguageModelClassification
 from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.strategies.utils import to_numbered_list
-from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 
 from autogpt.core.resource.model_providers import (
     MessageRole,
