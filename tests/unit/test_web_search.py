@@ -4,11 +4,7 @@ import pytest
 from googleapiclient.errors import HttpError
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.google_search import (
-    google_official_search,
-    google_search,
-    safe_google_results,
-)
+from autogpt.commands.web_search import google, safe_google_results, web_search
 
 
 @pytest.mark.parametrize(
@@ -45,8 +41,8 @@ def test_google_search(
     mock_ddg = mocker.Mock()
     mock_ddg.return_value = return_value
 
-    mocker.patch("autogpt.commands.google_search.DDGS.text", mock_ddg)
-    actual_output = google_search(query, agent=agent, num_results=num_results)
+    mocker.patch("autogpt.commands.web_search.DDGS.text", mock_ddg)
+    actual_output = web_search(query, agent=agent, num_results=num_results)
     expected_output = safe_google_results(expected_output)
     assert actual_output == expected_output
 
@@ -88,7 +84,7 @@ def test_google_official_search(
     agent: Agent,
 ):
     mock_googleapiclient.return_value = search_results
-    actual_output = google_official_search(query, agent=agent, num_results=num_results)
+    actual_output = google(query, agent=agent, num_results=num_results)
     assert actual_output == safe_google_results(expected_output)
 
 
@@ -136,5 +132,5 @@ def test_google_official_search_errors(
     )
 
     mock_googleapiclient.side_effect = error
-    actual_output = google_official_search(query, agent=agent, num_results=num_results)
+    actual_output = google(query, agent=agent, num_results=num_results)
     assert actual_output == safe_google_results(expected_output)

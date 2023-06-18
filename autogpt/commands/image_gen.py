@@ -17,7 +17,13 @@ from autogpt.logs import logger
 @command(
     "generate_image",
     "Generate Image",
-    '"prompt": "<prompt>"',
+    {
+        "prompt": {
+            "type": "string",
+            "description": "The prompt used to generate the image",
+            "required": True,
+        },
+    },
     lambda config: config.image_provider,
     "Requires a image provider to be set.",
 )
