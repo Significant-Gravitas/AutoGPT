@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "agbenchmark"
+version = "0.1.0"
+description = "Benchmarking the performance of agents far and wide, regardless of how they are set up and how they work"
+authors = ["Silen Naihin <silen.naihin@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+pytest = "^7.3.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests", "benchmark/challenges",
+]
