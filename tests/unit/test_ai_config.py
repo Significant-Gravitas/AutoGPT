@@ -26,6 +26,77 @@ def setup(tmp_path: pathlib.Path) -> Any:
         cfg.ai_settings_filepath.unlink()
 
 
+def test_old_config_reformat() -> None:
+    """Test if an old config format is updated to the new one."""
+
+    # Old format of the configuration
+    old_yaml_content = """
+    ai_name: McFamished
+    ai_role: A hungry AI
+    ai_goals:
+    - 'Goal 1: Make a sandwich'
+    - 'Goal 2, Eat the sandwich'
+    - 'Goal 3 - Go to sleep'
+    - 'Goal 4: Wake up'
+    api_budget: 0.0
+    """
+
+    config_file = cfg.ai_settings_filepath
+    config_file.write_text(old_yaml_content)
+
+    all_configs, message = AIConfig.update_old_config(str(config_file))
+
+    # Expected format after update
+    expected_yaml_content = """
+    configs:
+      McFamished:
+        ai_name: McFamished
+        ai_role: A hungry AI
+        ai_goals:
+        - 'Goal 1: Make a sandwich'
+        - 'Goal 2, Eat the sandwich'
+        - 'Goal 3 - Go to sleep'
+        - 'Goal 4: Wake up'
+        api_budget: 0.0
+        plugins: []
+    """
+
+    expected_all_configs = yaml.safe_load(expected_yaml_content)
+
+    assert all_configs == expected_all_configs
+    assert message == "successfully transformed to support multiple configurations."
+
+
+def test_old_config_reformat_without_ai_name() -> None:
+    """Test if an old config format is updated to the new one."""
+
+    # Old format of the configuration
+    old_yaml_content = """
+    ai_role: A hungry AI
+    ai_goals:
+    - 'Goal 1: Make a sandwich'
+    - 'Goal 2, Eat the sandwich'
+    - 'Goal 3 - Go to sleep'
+    - 'Goal 4: Wake up'
+    api_budget: 0.0
+    """
+
+    config_file = cfg.ai_settings_filepath
+    config_file.write_text(old_yaml_content)
+
+    all_configs, message = AIConfig.update_old_config(str(config_file))
+
+    # Expected format after update
+    expected_yaml_content = """
+    configs: {}
+    """
+
+    expected_all_configs = yaml.safe_load(expected_yaml_content)
+
+    assert all_configs == expected_all_configs
+    assert message == "no configuration(s) detected."
+
+
 def test_goals_are_always_lists_of_strings() -> None:
     """Test if the goals attribute is always a list of strings."""
 
