@@ -1,49 +1,71 @@
 import abc
+from pprint import pformat
+from typing import ClassVar
 
 import inflection
+from pydantic import Field
 
-from autogpt.core.ability.schema import AbilityRequirements, AbilityResult
+
+from autogpt.core.ability.schema import AbilityResult
+from autogpt.core.configuration import (
+    SystemConfiguration,
+)
+from autogpt.core.planning.simple import (
+    LanguageModelConfiguration,
+)
+
+
+class AbilityConfiguration(SystemConfiguration):
+    """Struct for model configuration."""
+    packages_required: list[str] = Field(default_factory=list)
+    language_model_required: LanguageModelConfiguration = None
+    memory_provider_required: bool = False
+    workspace_required: bool = False
 
 
 class Ability(abc.ABC):
     """A class representing an agent ability."""
+    default_configuration: ClassVar[AbilityConfiguration]
 
-    @property
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         """The name of the ability."""
-        return inflection.underscore(self.__class__.__name__)
+        return inflection.underscore(cls.__name__)
 
-    @property
-    def signature(self) -> str:
-        return " ".join(self.arguments) if self.arguments else ""
-
-    @property
+    @classmethod
     @abc.abstractmethod
-    def description(self) -> str:
+    def description(cls) -> str:
         """A detailed description of what the ability does."""
         ...
 
-    @property
+    @classmethod
     @abc.abstractmethod
-    def limitations(self) -> str:
+    def arguments(cls) -> dict:
+        """A dict of arguments in standard json schema format."""
         ...
 
-    @property
-    @abc.abstractmethod
-    def arguments(self) -> list[str]:
-        ...
-
-    @property
-    @abc.abstractmethod
-    def requirements(self) -> AbilityRequirements:
-        ...
+    @classmethod
+    def required_arguments(cls) -> list[str]:
+        """A list of required arguments."""
+        return []
 
     @abc.abstractmethod
-    def __call__(self, *args, **kwargs) -> AbilityResult:
+    async def __call__(self, *args, **kwargs) -> AbilityResult:
         ...
 
     def __str__(self) -> str:
-        return f"{self.name}: {self.description}, args: {self.signature}"
+        return pformat(self.dump)
+
+    def dump(self) -> dict:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": {
+                "type": "object",
+                "properties": self.arguments,
+                "required": self.required_arguments,
+            },
+        }
 
 
 class AbilityRegistry(abc.ABC):

@@ -1,15 +1,18 @@
 import logging
 
-from autogpt.core.ability.base import Ability
+from autogpt.core.ability.base import Ability, AbilityConfiguration
 from autogpt.core.ability.schema import (
-    AbilityArguments,
-    AbilityRequirements,
     AbilityResult,
 )
 from autogpt.core.workspace import Workspace
 
 
 class ReadFile(Ability):
+
+    default_configuration = AbilityConfiguration(
+        packages_required=["unstructured"],
+        workspace_required=True,
+    )
 
     def __init__(
         self,
@@ -20,27 +23,17 @@ class ReadFile(Ability):
         self._workspace = workspace
 
     @property
-    def name(self) -> str:
-        return "read_file"
-
-    @property
     def description(self) -> str:
         return "Read and parse all text from a file."
 
     @property
-    def limitations(self) -> str:
-        return ""
-
-    @property
-    def arguments(self) -> list[str]:
-        return [AbilityArguments.FILENAME]
-
-    @property
-    def requirements(self) -> AbilityRequirements:
-        return AbilityRequirements(
-            packages=["unstructured"],
-            workspace=True,
-        )
+    def arguments(self) -> dict:
+        return {
+            "filename": {
+                "type": "string",
+                "description": "The name of the file to read.",
+            },
+        }
 
     def _check_preconditions(self, filename: str) -> AbilityResult | None:
         message = ""
