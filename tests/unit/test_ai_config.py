@@ -43,8 +43,11 @@ def test_goals_are_always_lists_of_strings() -> None:
     config_file = cfg.ai_settings_filepath
     config_file.write_text(yaml_content)
 
-    ai_config = AIConfig.load("McFamished", config_file)
+    all_configs, message = AIConfig.load_all(str(config_file))
 
+    ai_config, message = AIConfig.load("McFamished", str(config_file))
+
+    assert ai_config is not None, "ai_config is None"
     assert len(ai_config.ai_goals) == 4
     assert ai_config.ai_goals[0] == "Goal 1: Make a sandwich"
     assert ai_config.ai_goals[1] == "Goal 2, Eat the sandwich"
@@ -78,7 +81,7 @@ def test_ai_config_file_not_exists() -> None:
 
     config_file = cfg.ai_settings_filepath
 
-    ai_config = AIConfig.load("Test", str(config_file))
+    ai_config, message = AIConfig.load("Test", str(config_file))
     assert ai_config is None
 
 
@@ -88,7 +91,7 @@ def test_ai_config_file_is_empty() -> None:
     config_file = cfg.ai_settings_filepath
     config_file.write_text("")
 
-    ai_config = AIConfig.load("Test", str(config_file))
+    ai_config, message = AIConfig.load("Test", str(config_file))
     assert ai_config is None
 
 
@@ -116,13 +119,10 @@ def test_delete_method() -> None:
         "AI1",
     )
 
-    # Print file contents after deletion
-    print(config_file.read_text())
-
-    ai_config = AIConfig.load("AI1", str(config_file))
+    ai_config, message = AIConfig.load("AI1", str(config_file))
     assert ai_config is None
 
-    ai_config2 = AIConfig.load("AI2", str(config_file))
+    ai_config2, message = AIConfig.load("AI2", str(config_file))
     assert ai_config2 is not None
 
     # Clean up the configuration file and related variables
@@ -143,7 +143,7 @@ def test_special_character_config() -> None:
     config_file = cfg.ai_settings_filepath
     config_file.write_text(yaml_content, encoding="utf-8")
 
-    ai_config = AIConfig.load("SpécialAI", config_file)
+    ai_config, message = AIConfig.load("SpécialAI", str(config_file))
 
     assert ai_config.ai_goals == ["Gôal 1: Mäke a sàndwich"]
     assert ai_config.ai_role == "A hùngry AI"
@@ -160,7 +160,7 @@ def test_handling_special_characters_configuration() -> None:
         "configs:\n  AI1:\n    ai_goals: ['Goal with special characters: !@#$%^&*()']\n"
     )
 
-    ai_config = AIConfig.load("AI1", config_file)
+    ai_config, message = AIConfig.load("AI1", str(config_file))
 
     assert len(ai_config.ai_goals) == 1
     assert ai_config.ai_goals[0] == "Goal with special characters: !@#$%^&*()"
@@ -195,7 +195,7 @@ def test_loading_large_configuration() -> None:
 
     config_file.write_text(config_content)
 
-    ai_config = AIConfig.load("AI50", config_file)
+    ai_config, message = AIConfig.load("AI50", str(config_file))
 
     assert ai_config.ai_name == "AI50"
     assert ai_config.ai_goals == ["Goal 50"]

@@ -12,7 +12,7 @@ import distro
 import yaml
 
 if TYPE_CHECKING:
-    from autogpt.commands.command import CommandRegistry
+    from autogpt.models.command_registry import CommandRegistry
     from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
@@ -155,9 +155,8 @@ class AIConfig:
         Returns:
             AIConfig: The loaded AI configuration, or None if no such configuration exists.
         """
-        all_configs = AIConfig.load_all(config_file)  # type: ignore
+        all_configs, message = AIConfig.load_all(config_file)  # type: ignore
 
-        # Handle the case when the file is empty and `load_all` returns None
         if all_configs is None:
             return None
 
@@ -167,15 +166,15 @@ class AIConfig:
             return None
 
     @staticmethod
-    def load_all(config_file: str) -> Dict[str, "AIConfig"]:
+    def load_all(config_file: str) -> Tuple[Dict[str, "AIConfig"], str]:
         """
-        Load all AI configurations from the specified config file.
+        Load all AI configurations from the specified config file and returns a status message.
 
         Parameters:
             config_file (str): The path to the configuration file.
 
         Returns:
-            Dict[str, AIConfig]: A dictionary containing all the loaded AI configurations.
+            Tuple[Dict[str, AIConfig], str]: A tuple containing a dictionary of all loaded AI configurations and a string indicating the status of the operation.
         """
         all_configs, message = AIConfig.update_old_config(config_file)
 

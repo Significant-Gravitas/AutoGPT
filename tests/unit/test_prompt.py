@@ -29,7 +29,7 @@ def setup(tmp_path):
 
 @patch.object(builtins, "input", side_effect=["-invalid", "--invalid", "valid"])
 def test_validate_input(mock_input):
-    assert validate_input("Enter text: ") == "Enter text: "
+    assert validate_input("Enter text: ") == "valid"
     assert mock_input.call_count == 3
 
 
@@ -41,7 +41,7 @@ def test_generate_unique_name():
     }
 
     with patch(
-        "autogpt.config.ai_config.AIConfig.load_all", return_value=mock_ai_configs
+        "autogpt.config.ai_config.AIConfig.load_all", return_value=(mock_ai_configs, "")
     ):
         name = generate_unique_name("base")
         assert name == "base-3"
@@ -53,7 +53,7 @@ def test_generate_unique_name():
     }
 
     with patch(
-        "autogpt.config.ai_config.AIConfig.load_all", return_value=mock_ai_configs
+        "autogpt.config.ai_config.AIConfig.load_all", return_value=(mock_ai_configs, "")
     ):
         name = generate_unique_name("base")
         assert name == "base-1"

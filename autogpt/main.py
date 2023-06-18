@@ -2,11 +2,13 @@
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 from colorama import Fore, Style
 
 from autogpt.agent import Agent
 from autogpt.config import Config, check_openai_api_key
+from autogpt.config.ai_config import AIConfig
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
@@ -48,9 +50,9 @@ def run_auto_gpt(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
-    workspace_directory: str,
+    workspace_directory: Optional[Path],
     install_plugin_deps: bool,
-):
+) -> None:
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
     logger.speak_mode = speak
@@ -133,7 +135,11 @@ def run_auto_gpt(
     )
 
     # HACK: doing this here to collect some globals that depend on the workspace.
-    file_logger_path = workspace_directory / "file_logger.txt"
+    if workspace_directory is not None:
+        file_logger_path = workspace_directory / "file_logger.txt"
+    else:
+        raise ValueError("workspace_directory must be defined")
+
     if not file_logger_path.exists():
         with file_logger_path.open(mode="w", encoding="utf-8") as f:
             f.write("File Operation Logger ")
@@ -201,7 +207,7 @@ def run_auto_gpt(
     agent.start_interaction_loop()
 
 
-def start_agent_directly(ai_config, cfg):
+def start_agent_directly(ai_config: AIConfig, cfg: Config) -> None:
     if ai_config.ai_name:
         ai_name = ai_config.ai_name
 

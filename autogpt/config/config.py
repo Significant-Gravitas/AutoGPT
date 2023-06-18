@@ -1,10 +1,10 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from typing import List
+from typing import List, Optional
 
 import openai
 import yaml
-from auto_gpt_plugin_template import AutoGPTPluginTemplate
+from auto_gpt_plugin_template import AutoGPTPluginTemplate  # type: ignore
 from colorama import Fore
 
 import autogpt
@@ -18,8 +18,8 @@ class Config(metaclass=Singleton):
 
     def __init__(self) -> None:
         """Initialize the Config class"""
-        self.workspace_path: str = None
-        self.file_logger_path: str = None
+        self.workspace_path: Optional[str] = None
+        self.file_logger_path: Optional[str] = None
 
         self.debug_mode = False
         self.continuous_mode = False
@@ -155,7 +155,7 @@ class Config(metaclass=Singleton):
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
-        self.plugins_openai = []
+        self.plugins_openai: List[str] = []
 
         # Deprecated. Kept for backwards-compatibility. Will remove in a future version.
         plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
