@@ -71,11 +71,11 @@ def test_json_memory_clear(config: Config, memory_item: MemoryItem):
 def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embedding):
     index = JSONFileMemory(config)
     assert (
-        index.get("test") == None
+        index.get("test", config) == None
     ), "Cannot test get() because initial index is not empty"
 
     index.add(memory_item)
-    retrieved = index.get("test")
+    retrieved = index.get("test", config)
     assert retrieved is not None
     assert retrieved.memory_item == memory_item
 
@@ -102,20 +102,27 @@ def test_json_memory_load_index(config: Config, memory_item: MemoryItem):
 @requires_api_key("OPENAI_API_KEY")
 def test_json_memory_get_relevant(config: Config, patched_api_requestor: None) -> None:
     index = JSONFileMemory(config)
-    mem1 = MemoryItem.from_text_file("Sample text", "sample.txt")
-    mem2 = MemoryItem.from_text_file("Grocery list:\n- Pancake mix", "groceries.txt")
-    mem3 = MemoryItem.from_text_file("What is your favorite color?", "color.txt")
+    mem1 = MemoryItem.from_text_file("Sample text", "sample.txt", config)
+    mem2 = MemoryItem.from_text_file(
+        "Grocery list:\n- Pancake mix", "groceries.txt", config
+    )
+    mem3 = MemoryItem.from_text_file(
+        "What is your favorite color?", "color.txt", config
+    )
     lipsum = "Lorem ipsum dolor sit amet"
-    mem4 = MemoryItem.from_text_file(" ".join([lipsum] * 100), "lipsum.txt")
+    mem4 = MemoryItem.from_text_file(" ".join([lipsum] * 100), "lipsum.txt", config)
     index.add(mem1)
     index.add(mem2)
     index.add(mem3)
     index.add(mem4)
 
-    assert index.get_relevant(mem1.raw_content, 1)[0].memory_item == mem1
-    assert index.get_relevant(mem2.raw_content, 1)[0].memory_item == mem2
-    assert index.get_relevant(mem3.raw_content, 1)[0].memory_item == mem3
-    assert [mr.memory_item for mr in index.get_relevant(lipsum, 2)] == [mem4, mem1]
+    assert index.get_relevant(mem1.raw_content, 1, config)[0].memory_item == mem1
+    assert index.get_relevant(mem2.raw_content, 1, config)[0].memory_item == mem2
+    assert index.get_relevant(mem3.raw_content, 1, config)[0].memory_item == mem3
+    assert [mr.memory_item for mr in index.get_relevant(lipsum, 2, config)] == [
+        mem4,
+        mem1,
+    ]
 
 
 def test_json_memory_get_stats(config: Config, memory_item: MemoryItem) -> None:

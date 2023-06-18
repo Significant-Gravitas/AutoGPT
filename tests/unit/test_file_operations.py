@@ -13,6 +13,7 @@ from pytest_mock import MockerFixture
 
 import autogpt.commands.file_operations as file_ops
 from autogpt.agent.agent import Agent
+from autogpt.config import Config
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
 from autogpt.workspace import Workspace
@@ -24,11 +25,13 @@ def file_content():
 
 
 @pytest.fixture()
-def mock_MemoryItem_from_text(mocker: MockerFixture, mock_embedding: Embedding):
+def mock_MemoryItem_from_text(
+    mocker: MockerFixture, mock_embedding: Embedding, config: Config
+):
     mocker.patch.object(
         file_ops.MemoryItem,
         "from_text",
-        new=lambda content, source_type, metadata: MemoryItem(
+        new=lambda content, source_type, config, metadata: MemoryItem(
             raw_content=content,
             summary=f"Summary of content '{content}'",
             chunk_summaries=[f"Summary of content '{content}'"],
