@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autogpt.llm.api_manager import COSTS, ApiManager
+from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.providers import openai
 
 api_manager = ApiManager()
@@ -12,19 +12,6 @@ api_manager = ApiManager()
 def reset_api_manager():
     api_manager.reset()
     yield
-
-
-@pytest.fixture(autouse=True)
-def mock_costs():
-    with patch.dict(
-        COSTS,
-        {
-            "gpt-3.5-turbo": {"prompt": 0.002, "completion": 0.002},
-            "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0},
-        },
-        clear=True,
-    ):
-        yield
 
 
 class TestProviderOpenAI:

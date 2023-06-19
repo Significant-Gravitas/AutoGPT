@@ -3,7 +3,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pytest_mock import MockerFixture
 
-from autogpt.llm.api_manager import OPEN_AI_MODELS, ApiManager
+from autogpt.llm.api_manager import ApiManager
+from autogpt.llm.providers.openai import OPEN_AI_MODELS
 
 api_manager = ApiManager()
 

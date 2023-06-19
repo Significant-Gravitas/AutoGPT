@@ -5,7 +5,6 @@ from typing import List, Optional
 import openai
 from openai import Model
 from autogpt.llm.base import CompletionModelInfo
-from autogpt.llm.providers.openai import OPEN_AI_MODELS
 from autogpt.logs import logger
 from autogpt.singleton import Singleton
 
@@ -35,6 +34,7 @@ class ApiManager(metaclass=Singleton):
         model (str): The model used for the API call.
         """
         # the .model property in API responses can contain version suffixes like -v2
+        from autogpt.llm.providers.openai import OPEN_AI_MODELS
         model = model[:-3] if model.endswith("-v2") else model
         model_info = OPEN_AI_MODELS[model]
 
