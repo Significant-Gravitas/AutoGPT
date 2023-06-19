@@ -21,9 +21,14 @@ description = "An open-source attempt to make GPT-4 autonomous"
 "Homepage" = "https://github.com/Significant-Gravitas/Auto-GPT"
 "Bug Tracker" = "https://github.com/Significant-Gravitas/Auto-GPT"
 
-[options.entry_points]
-console_scripts =
-    autogpt = autogpt.cli:main
+[project.scripts]
+autogpt = "agpt.autogpt.cli:main"
+
+[tool.hatch.build.targets.wheel.force-include]
+"autogpt" = "agpt/autogpt"
+"autogpt.*" = "agpt/autogpt/*"
+"scripts" = "agpt/scripts"
+"scripts.*" = "agpt/scripts/*"
 
 [tool.black]
 line-length = 88
@@ -31,7 +36,6 @@ target-version = ['py310']
 include = '\.pyi?$'
 packages = ["autogpt"]
 extend-exclude = '.+/(dist|.venv|venv|build)/.+'
-
 
 [tool.isort]
 profile = "black"

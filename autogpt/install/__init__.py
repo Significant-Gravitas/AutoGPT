@@ -1,10 +1,6 @@
 """
 This module contains the installation classes for AutoGPT.
 """
-from autogpt.install.install import check_installation
+from autogpt.install.installer import Installer
 
-__all__ = [
-    check_installation
-]
-
-
+__all__ = ["Installer"]
