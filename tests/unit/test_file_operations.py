@@ -13,9 +13,9 @@ from pytest_mock import MockerFixture
 
 import autogpt.commands.file_operations as file_ops
 from autogpt.agent.agent import Agent
+from autogpt.config import Config
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
-from autogpt.utils import readable_file_size
 from autogpt.workspace import Workspace
 
 
@@ -25,11 +25,13 @@ def file_content():
 
 
 @pytest.fixture()
-def mock_MemoryItem_from_text(mocker: MockerFixture, mock_embedding: Embedding):
+def mock_MemoryItem_from_text(
+    mocker: MockerFixture, mock_embedding: Embedding, config: Config
+):
     mocker.patch.object(
         file_ops.MemoryItem,
         "from_text",
-        new=lambda content, source_type, metadata: MemoryItem(
+        new=lambda content, source_type, config, metadata: MemoryItem(
             raw_content=content,
             summary=f"Summary of content '{content}'",
             chunk_summaries=[f"Summary of content '{content}'"],
@@ -243,53 +245,6 @@ def test_write_file_succeeds_if_content_different(
     assert result == "File written to successfully."
 
 
-# Update file testing
-def test_replace_in_file_all_occurrences(test_file, test_file_path, agent: Agent):
-    old_content = "This is a test file.\n we test file here\na test is needed"
-    expected_content = (
-        "This is a update file.\n we update file here\na update is needed"
-    )
-    test_file.write(old_content)
-    test_file.close()
-    file_ops.replace_in_file(test_file_path, "test", "update", agent=agent)
-    with open(test_file_path) as f:
-        new_content = f.read()
-    print(new_content)
-    print(expected_content)
-    assert new_content == expected_content
-
-
-def test_replace_in_file_one_occurrence(test_file, test_file_path, agent: Agent):
-    old_content = "This is a test file.\n we test file here\na test is needed"
-    expected_content = "This is a test file.\n we update file here\na test is needed"
-    test_file.write(old_content)
-    test_file.close()
-    file_ops.replace_in_file(
-        test_file_path, "test", "update", agent=agent, occurrence_index=1
-    )
-    with open(test_file_path) as f:
-        new_content = f.read()
-
-    assert new_content == expected_content
-
-
-def test_replace_in_file_multiline_old_text(test_file, test_file_path, agent: Agent):
-    old_content = "This is a multi_line\ntest for testing\nhow well this function\nworks when the input\nis multi-lined"
-    expected_content = "This is a multi_line\nfile. succeeded test\nis multi-lined"
-    test_file.write(old_content)
-    test_file.close()
-    file_ops.replace_in_file(
-        test_file_path,
-        "\ntest for testing\nhow well this function\nworks when the input\n",
-        "\nfile. succeeded test\n",
-        agent=agent,
-    )
-    with open(test_file_path) as f:
-        new_content = f.read()
-
-    assert new_content == expected_content
-
-
 def test_append_to_file(test_nested_file: Path, agent: Agent):
     append_text = "This is appended text.\n"
     file_ops.write_to_file(test_nested_file, append_text, agent=agent)
@@ -373,26 +328,3 @@ def test_list_files(workspace: Workspace, test_directory: Path, agent: Agent):
     non_existent_file = "non_existent_file.txt"
     files = file_ops.list_files("", agent=agent)
     assert non_existent_file not in files
-
-
-def test_download_file(workspace: Workspace, agent: Agent):
-    url = "https://github.com/Significant-Gravitas/Auto-GPT/archive/refs/tags/v0.2.2.tar.gz"
-    local_name = workspace.get_path("auto-gpt.tar.gz")
-    size = 365023
-    readable_size = readable_file_size(size)
-    assert (
-        file_ops.download_file(url, local_name, agent=agent)
-        == f'Successfully downloaded and locally stored file: "{local_name}"! (Size: {readable_size})'
-    )
-    assert os.path.isfile(local_name) is True
-    assert os.path.getsize(local_name) == size
-
-    url = "https://github.com/Significant-Gravitas/Auto-GPT/archive/refs/tags/v0.0.0.tar.gz"
-    assert "Got an HTTP Error whilst trying to download file" in file_ops.download_file(
-        url, local_name, agent=agent
-    )
-
-    url = "https://thiswebsiteiswrong.hmm/v0.0.0.tar.gz"
-    assert "Failed to establish a new connection:" in file_ops.download_file(
-        url, local_name, agent=agent
-    )

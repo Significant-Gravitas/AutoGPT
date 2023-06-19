@@ -3,6 +3,7 @@ import abc
 import re
 from threading import Lock
 
+from autogpt.config import Config
 from autogpt.singleton import AbstractSingleton
 
 
@@ -11,7 +12,7 @@ class VoiceBase(AbstractSingleton):
     Base class for all voice classes.
     """
 
-    def __init__(self):
+    def __init__(self, config: Config):
         """
         Initialize the voice class.
         """
@@ -20,7 +21,7 @@ class VoiceBase(AbstractSingleton):
         self._api_key = None
         self._voices = []
         self._mutex = Lock()
-        self._setup()
+        self._setup(config)
 
     def say(self, text: str, voice_index: int = 0) -> bool:
         """

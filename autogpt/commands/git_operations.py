@@ -3,14 +3,25 @@
 from git.repo import Repo
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import command
+from autogpt.command_decorator import command
 from autogpt.url_utils.validators import validate_url
 
 
 @command(
     "clone_repository",
     "Clone Repository",
-    '"url": "<repository_url>", "clone_path": "<clone_path>"',
+    {
+        "url": {
+            "type": "string",
+            "description": "The URL of the repository to clone",
+            "required": True,
+        },
+        "clone_path": {
+            "type": "string",
+            "description": "The path to clone the repository to",
+            "required": True,
+        },
+    },
     lambda config: config.github_username and config.github_api_key,
     "Configure github_username and github_api_key.",
 )
