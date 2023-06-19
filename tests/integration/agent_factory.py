@@ -59,7 +59,8 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
         ai_name="",
         memory=memory_none,
         command_registry=command_registry,
-        config=ai_config,
+        ai_config=ai_config,
+        config=agent_test_config,
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -70,49 +71,45 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
 
 
 @pytest.fixture
-def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace):
-    command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.app")
-    command_registry.import_commands("autogpt.commands.task_statuses")
+def file_system_agents(
+    agent_test_config, memory_json_file: NoMemory, workspace: Workspace
+):
+    agents = []
+    command_registry = get_command_registry(agent_test_config)
 
-    ai_config = AIConfig(
-        ai_name="write_to_file-GPT",
-        ai_role="an AI designed to use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\" and then use the task_complete command to complete the task.",
-        ai_goals=[
-            "Use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\".",
-            "Use the task_complete command to complete the task.",
-            "Do not use any other commands.",
-        ],
-    )
-    ai_config.command_registry = command_registry
+    ai_goals = [
+        "Write 'Hello World' into a file named \"hello_world.txt\".",
+        'Write \'Hello World\' into 2 files named "hello_world_1.txt"and "hello_world_2.txt".',
+    ]
 
-    triggering_prompt = (
-        "Determine which next command to use, and respond using the"
-        " format specified above:"
-    )
-    system_prompt = ai_config.construct_full_prompt()
-
-    agent = Agent(
-        ai_name="",
-        memory=memory_none,
-        command_registry=command_registry,
-        config=ai_config,
-        next_action_count=0,
-        system_prompt=system_prompt,
-        triggering_prompt=triggering_prompt,
-        workspace_directory=workspace.root,
-    )
-
-    return agent
+    for ai_goal in ai_goals:
+        ai_config = AIConfig(
+            ai_name="File System Agent",
+            ai_role="an AI designed to manage a file system.",
+            ai_goals=[ai_goal],
+        )
+        ai_config.command_registry = command_registry
+        system_prompt = ai_config.construct_full_prompt()
+        Config().set_continuous_mode(False)
+        agents.append(
+            Agent(
+                ai_name="File System Agent",
+                memory=memory_json_file,
+                command_registry=command_registry,
+                ai_config=ai_config,
+                config=agent_test_config,
+                next_action_count=0,
+                system_prompt=system_prompt,
+                triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+                workspace_directory=workspace.root,
+            )
+        )
+    return agents
 
 
 @pytest.fixture
 def memory_management_agent(agent_test_config, memory_json_file, workspace: Workspace):
-    command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.app")
-    command_registry.import_commands("autogpt.commands.task_statuses")
+    command_registry = get_command_registry(agent_test_config)
 
     ai_config = AIConfig(
         ai_name="Follow-Instructions-GPT",
@@ -127,10 +124,11 @@ def memory_management_agent(agent_test_config, memory_json_file, workspace: Work
     system_prompt = ai_config.construct_full_prompt()
 
     agent = Agent(
-        ai_name="",
+        ai_name="Follow-Instructions-GPT",
         memory=memory_json_file,
         command_registry=command_registry,
-        config=ai_config,
+        ai_config=ai_config,
+        config=agent_test_config,
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -145,19 +143,12 @@ def information_retrieval_agents(
     agent_test_config, memory_json_file, workspace: Workspace
 ):
     agents = []
-    command_registry = CommandRegistry()
-    enabled_command_categories = [
-        x
-        for x in COMMAND_CATEGORIES
-        if x not in agent_test_config.disabled_command_categories
-    ]
+    command_registry = get_command_registry(agent_test_config)
 
-    for command_category in enabled_command_categories:
-        command_registry.import_commands(command_category)
     ai_goals = [
-        "Write to a file called output.txt tesla's revenue in 2022 after searching for 'tesla revenue 2022'.",
-        "Write to a file called output.txt tesla's revenue in 2022.",
-        "Write to a file called output.txt tesla's revenue every year since its creation.",
+        "Write to a file called output.txt containing tesla's revenue in 2022 after searching for 'tesla revenue 2022'.",
+        "Write to a file called output.txt containing tesla's revenue in 2022.",
+        "Write to a file called output.txt containing tesla's revenue every year since its creation.",
     ]
     for ai_goal in ai_goals:
         ai_config = AIConfig(
@@ -173,7 +164,8 @@ def information_retrieval_agents(
                 ai_name="Information Retrieval Agent",
                 memory=memory_json_file,
                 command_registry=command_registry,
-                config=ai_config,
+                ai_config=ai_config,
+                config=agent_test_config,
                 next_action_count=0,
                 system_prompt=system_prompt,
                 triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -184,7 +176,9 @@ def information_retrieval_agents(
 
 
 @pytest.fixture
-def kubernetes_agent(memory_json_file, workspace: Workspace):
+def kubernetes_agent(
+    agent_test_config: Config, memory_json_file: NoMemory, workspace: Workspace
+) -> Agent:
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -205,7 +199,8 @@ def kubernetes_agent(memory_json_file, workspace: Workspace):
         ai_name="Kubernetes-Demo",
         memory=memory_json_file,
         command_registry=command_registry,
-        config=ai_config,
+        ai_config=ai_config,
+        config=agent_test_config,
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -238,7 +233,8 @@ def get_nobel_prize_agent(agent_test_config, memory_json_file, workspace: Worksp
         ai_name="Get-PhysicsNobelPrize",
         memory=memory_json_file,
         command_registry=command_registry,
-        config=ai_config,
+        ai_config=ai_config,
+        config=agent_test_config,
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
@@ -249,38 +245,57 @@ def get_nobel_prize_agent(agent_test_config, memory_json_file, workspace: Worksp
 
 
 @pytest.fixture
-def debug_code_agent(agent_test_config, memory_json_file, workspace: Workspace):
-    command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.commands.execute_code")
-    command_registry.import_commands("autogpt.commands.improve_code")
-    command_registry.import_commands("autogpt.app")
-    command_registry.import_commands("autogpt.commands.task_statuses")
-
-    ai_config = AIConfig(
-        ai_name="Debug Code Agent",
-        ai_role="an autonomous agent that specializes in debugging python code",
-        ai_goals=[
-            "1-Run the code in the file named 'code.py' using the execute_code command.",
-            "2-Read code.py to understand why the code is not working as expected.",
-            "3-Modify code.py to fix the error.",
-            "Repeat step 1, 2 and 3 until the code is working as expected. When you're done use the task_complete command.",
-            "Do not use any other commands than execute_python_file and write_file",
+def debug_code_agents(agent_test_config, memory_json_file, workspace: Workspace):
+    agents = []
+    goals = [
+        [
+            "1- Run test.py using the execute_python_file command.",
+            "2- Read code.py using the read_file command.",
+            "3- Modify code.py using the write_to_file command."
+            "Repeat step 1, 2 and 3 until test.py runs without errors.",
         ],
-    )
-    ai_config.command_registry = command_registry
+        [
+            "1- Run test.py.",
+            "2- Read code.py.",
+            "3- Modify code.py."
+            "Repeat step 1, 2 and 3 until test.py runs without errors.",
+        ],
+        ["1- Make test.py run without errors."],
+    ]
 
-    system_prompt = ai_config.construct_full_prompt()
-    Config().set_continuous_mode(False)
-    agent = Agent(
-        ai_name="Debug Code Agent",
-        memory=memory_json_file,
-        command_registry=command_registry,
-        config=ai_config,
-        next_action_count=0,
-        system_prompt=system_prompt,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace.root,
-    )
+    for goal in goals:
+        ai_config = AIConfig(
+            ai_name="Debug Code Agent",
+            ai_role="an autonomous agent that specializes in debugging python code",
+            ai_goals=goal,
+        )
+        command_registry = get_command_registry(agent_test_config)
+        ai_config.command_registry = command_registry
+        system_prompt = ai_config.construct_full_prompt()
+        Config().set_continuous_mode(False)
+        agents.append(
+            Agent(
+                ai_name="Debug Code Agent",
+                memory=memory_json_file,
+                command_registry=command_registry,
+                ai_config=ai_config,
+                config=agent_test_config,
+                next_action_count=0,
+                system_prompt=system_prompt,
+                triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+                workspace_directory=workspace.root,
+            )
+        )
+    return agents
 
-    return agent
+
+def get_command_registry(agent_test_config):
+    command_registry = CommandRegistry()
+    enabled_command_categories = [
+        x
+        for x in COMMAND_CATEGORIES
+        if x not in agent_test_config.disabled_command_categories
+    ]
+    for command_category in enabled_command_categories:
+        command_registry.import_commands(command_category)
+    return command_registry

@@ -4,7 +4,7 @@
 
 **Command to try**: 
 ```
-pytest -s tests/integration/challenges/memory/test_memory_challenge_b.py --level=3
+pytest -s tests/challenges/memory/test_memory_challenge_b.py --level=3
 ``
 
 ## Description
@@ -41,4 +41,3 @@ Write all the task_ids into the file output.txt. The file has not been created y
 ## Objective
 
 The objective of this challenge is to test the agent's ability to follow instructions and maintain memory of the task IDs throughout the process. The agent successfully completed this challenge if it wrote the task ids in a file.
-
