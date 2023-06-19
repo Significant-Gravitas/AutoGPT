@@ -22,7 +22,8 @@ def extract_json_from_response(response_content: str) -> dict:
     try:
         return ast.literal_eval(response_content)
     except BaseException as e:
-        logger.error(f"Error parsing JSON response with literal_eval {e}")
+        logger.info(f"Error parsing JSON response with literal_eval {e}")
+        logger.debug(f"Invalid JSON received in response: {response_content}")
         # TODO: How to raise an error here without causing the program to exit?
         return {}
 
