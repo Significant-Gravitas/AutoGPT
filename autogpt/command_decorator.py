@@ -2,7 +2,6 @@ import functools
 from typing import Any, Callable, Dict, Optional
 
 from autogpt.config import Config
-from autogpt.logs import logger
 from autogpt.models.command import Command
 
 # Unique identifier for auto-gpt commands
@@ -17,16 +16,6 @@ def command(
     disabled_reason: Optional[str] = None,
 ) -> Callable[..., Any]:
     """The command decorator is used to create Command objects from ordinary functions."""
-
-    # TODO: Remove this in favor of better command management
-    config = Config()
-
-    if callable(enabled):
-        enabled = enabled(config)
-    if not enabled:
-        if disabled_reason is not None:
-            logger.debug(f"Command '{name}' is disabled: {disabled_reason}")
-        return lambda func: func
 
     def decorator(func: Callable[..., Any]) -> Command:
         cmd = Command(
