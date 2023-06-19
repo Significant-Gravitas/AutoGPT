@@ -14,9 +14,8 @@ _QUEUE_SEMAPHORE = Semaphore(
 )  # The amount of sounds to queue before blocking the main thread
 
 
-def say_text(text: str, description: str = "", config: Config, voice_index: int = 0) -> None:
+def say_text(text: str, config: Config, description: str = "", voice_index: int = 0) -> None:
     """Speak the given text using the given voice index"""
-    cfg = Config()
     default_voice_engine, voice_engine = _get_voice_engine(config)
     plain_speech = _get_plain_speech(text, description)
 
