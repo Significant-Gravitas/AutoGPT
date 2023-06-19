@@ -1,10 +1,10 @@
 import pickle
 
-class AgentPersist:
+class AgentLoader:
 
-    def __init__(self):
-        pass
+    def __init__(self, agent_path):
+        self._agent_path = agent_path
 
-    def save(self, agent):
-        with open("agent.pkl", "wb") as f:
-            pickle.dump(agent, f)
+    def load(self):
+        with open(self._agent_path, "rb") as f:
+            return pickle.load(f)
