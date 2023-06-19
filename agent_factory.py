@@ -21,6 +21,9 @@ class AgentFactory:
             return self._permanent_agent
         else:
             raise ValueError("Invalid agent type: " + type)
+        if type not in ["temporary", "permanent"]:
+    raise ValueError("Invalid agent type: " + type)
+
 
 @pytest.fixture
 def agent_test_config(config: Config):
