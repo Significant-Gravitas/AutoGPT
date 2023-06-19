@@ -181,7 +181,7 @@ def generate_image_with_sd_webui(
             "negative_prompt": negative_prompt,
             "sampler_index": "DDIM",
             "steps": 20,
-            "cfg_scale": 7.0,
+            "config_scale": 7.0,
             "width": size,
             "height": size,
             "n_iter": 1,

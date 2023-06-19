@@ -23,10 +23,10 @@ performance_evaluations:
 - Another test performance evaluation
 - A third test performance evaluation
 """
-    config_file = tmp_path / "test_prompt_settings.yaml"
-    config_file.write_text(yaml_content)
+    prompt_settings_file = tmp_path / "test_prompt_settings.yaml"
+    prompt_settings_file.write_text(yaml_content)
 
-    prompt_config = PromptConfig(config_file)
+    prompt_config = PromptConfig(prompt_settings_file)
 
     assert len(prompt_config.constraints) == 3
     assert prompt_config.constraints[0] == "A test constraint"

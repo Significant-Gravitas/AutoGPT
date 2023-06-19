@@ -10,7 +10,6 @@ from autogpt.agent.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.setup import CFG
 from autogpt.workspace.workspace import Workspace
 
 ALLOWLIST_CONTROL = "allowlist"
@@ -83,7 +82,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         str: The output of the file
     """
     logger.info(
-        f"Executing python file '{filename}' in working directory '{CFG.workspace_path}'"
+        f"Executing python file '{filename}' in working directory '{agent.config.workspace_path}'"
     )
 
     if not filename.endswith(".py"):
@@ -105,7 +104,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
             ["python", str(path)],
             capture_output=True,
             encoding="utf8",
-            cwd=CFG.workspace_path,
+            cwd=agent.config.workspace_path,
         )
         if result.returncode == 0:
             return result.stdout
@@ -174,6 +173,7 @@ def validate_command(command: str, config: Config) -> bool:
 
     Args:
         command (str): The command to validate
+        config (Config): The config to use to validate the command
 
     Returns:
         bool: True if the command is allowed, False otherwise
@@ -199,7 +199,7 @@ def validate_command(command: str, config: Config) -> bool:
             "required": True,
         }
     },
-    enabled=lambda cfg: cfg.execute_local_commands,
+    enabled=lambda config: config.execute_local_commands,
     disabled_reason="You are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config file: .env - do not attempt to bypass the restriction.",

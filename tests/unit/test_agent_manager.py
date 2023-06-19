@@ -5,9 +5,9 @@ from autogpt.llm.chat import create_chat_completion
 
 
 @pytest.fixture
-def agent_manager():
+def agent_manager(config):
     # Hack, real gross. Singletons are not good times.
-    yield AgentManager()
+    yield AgentManager(config)
     del AgentManager._instances[AgentManager]
 
 
