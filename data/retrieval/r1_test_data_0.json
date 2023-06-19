@@ -1,0 +1,10 @@
+{
+    "category": "information-retrieval",
+    "query": "what is the capital of America",
+    "ground": {
+        "answer": "Washington",
+        "should_contain": ["Washington"],
+        "should_not_contain": ["New York", "Los Angeles", "San Francisco"]
+    },
+    "difficulty_level": "easy"
+}
