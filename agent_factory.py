@@ -8,6 +8,19 @@ from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 
+class AgentFactory:
+
+    def __init__(self):
+        self._temporary_agent = Agent()
+        self._permanent_agent = AgentPersist()
+
+    def create_agent(self, type):
+        if type == "temporary":
+            return self._temporary_agent
+        elif type == "permanent":
+            return self._permanent_agent
+        else:
+            raise ValueError("Invalid agent type: " + type)
 
 @pytest.fixture
 def agent_test_config(config: Config):
