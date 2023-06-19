@@ -20,6 +20,7 @@ def test_memory_challenge_d(
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
+    challenge_name: str,
 ) -> None:
     """
     The agent is given a series of events and must remember the respective beliefs of the characters.
@@ -38,7 +39,13 @@ def test_memory_challenge_d(
     create_instructions_files(
         memory_management_agent, level_to_run, level_sally_anne_test_phrases
     )
-    run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
+    run_interaction_loop(
+        monkeypatch,
+        memory_management_agent,
+        level_to_run + 2,
+        challenge_name,
+        level_to_run,
+    )
     file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
 
     content = read_file(file_path, memory_management_agent)
