@@ -9,7 +9,7 @@ from autogpt.url_utils.validators import validate_url
 
 @command(
     "clone_repository",
-    "Clone Repository",
+    "Clones a Repository",
     {
         "url": {
             "type": "string",
