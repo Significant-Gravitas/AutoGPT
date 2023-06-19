@@ -333,3 +333,35 @@ def test_list_files(workspace: Workspace, test_directory: Path, agent: Agent):
     non_existent_file = "non_existent_file.txt"
     files = file_ops.list_files("", agent=agent)
     assert non_existent_file not in files
+
+
+def test_file_search(workspace: Workspace, test_directory: Path, agent: Agent):
+    # Case 1: Create files A and B, search for A, and ensure we don't return A and B
+    file_a = workspace.get_path("file_a.txt")
+    file_b = workspace.get_path("file_b.txt")
+
+    with open(file_a, "w") as f:
+        f.write("This is file A.")
+
+    with open(file_b, "w") as f:
+        f.write("This is file B.")
+
+    # Create a subdirectory and place a copy of file_a in it
+    if not os.path.exists(test_directory):
+        os.makedirs(test_directory)
+
+    with open(os.path.join(test_directory, file_a.name), "w") as f:
+        f.write("This is file A in the subdirectory.")
+
+    files = file_ops.file_search(
+        pattern="*.txt", dir_path=str(workspace.root), agent=agent
+    )
+    assert file_a.name in files
+    assert file_b.name in files
+    assert os.path.join(Path(test_directory).name, file_a.name) in files
+
+    # Clean up
+    os.remove(file_a)
+    os.remove(file_b)
+    os.remove(os.path.join(test_directory, file_a.name))
+    os.rmdir(test_directory)

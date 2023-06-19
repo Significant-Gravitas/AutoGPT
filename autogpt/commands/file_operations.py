@@ -8,11 +8,13 @@ import os.path
 from pathlib import Path
 from typing import Generator, Literal
 
-from autogpt.agents.agent import Agent
+from autogpt.agent.agent import Agent
+from langchain.tools import FileSearchTool
+
 from autogpt.command_decorator import command
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
-
+from autogpt.models.command import Command
 from .decorators import sanitize_path_arg
 from .file_operations_utils import read_textual_file
 
@@ -338,3 +340,15 @@ def list_files(directory: str, agent: Agent) -> list[str]:
             found_files.append(relative_path)
 
     return found_files
+
+
+def file_search_args(input_args: dict[str, any], agent: Agent):
+    # Force only searching in the workspace root
+    input_args["dir_path"] = str(agent.workspace.root)
+
+    return input_args
+
+
+file_search = Command.generate_from_langchain_tool(
+    tool=FileSearchTool(), arg_converter=file_search_args
+)

@@ -35,6 +35,7 @@ inflection
 # web server
 fastapi
 uvicorn
+langchain>=0.0.233
 
 ##Dev
 coverage
