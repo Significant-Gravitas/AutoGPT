@@ -300,10 +300,9 @@ class Config(metaclass=Singleton):
         self.memory_backend = name
 
 
-def check_openai_api_key() -> None:
+def check_openai_api_key(config: Config) -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
-    cfg = Config()
-    if not cfg.openai_api_key:
+    if not config.openai_api_key:
         print(
             Fore.RED
             + "Please set your OpenAI API key in .env or as an environment variable."
