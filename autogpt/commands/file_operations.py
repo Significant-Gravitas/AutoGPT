@@ -176,7 +176,7 @@ def ingest_file(
 
 @command(
     "write_to_file",
-    "Write to file",
+    "Writes to a file",
     {
         "filename": {
             "type": "string",
@@ -216,7 +216,7 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
 
 @command(
     "append_to_file",
-    "Append to file",
+    "Appends to a file",
     {
         "filename": {
             "type": "string",
@@ -261,7 +261,7 @@ def append_to_file(
 
 @command(
     "delete_file",
-    "Delete file",
+    "Deletes a file",
     {
         "filename": {
             "type": "string",
@@ -291,7 +291,7 @@ def delete_file(filename: str, agent: Agent) -> str:
 
 @command(
     "list_files",
-    "List Files in Directory",
+    "Lists Files in a Directory",
     {
         "directory": {
             "type": "string",

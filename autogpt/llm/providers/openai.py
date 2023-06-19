@@ -111,6 +111,7 @@ OPEN_AI_MODELS: dict[str, ChatModelInfo | EmbeddingModelInfo | TextModelInfo] = 
 def meter_api(func):
     """Adds ApiManager metering to functions which make OpenAI API calls"""
     from autogpt.llm.api_manager import ApiManager
+
     api_manager = ApiManager()
 
     openai_obj_processor = openai.util.convert_to_openai_object
