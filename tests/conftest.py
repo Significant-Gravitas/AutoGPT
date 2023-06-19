@@ -97,7 +97,7 @@ def agent(config: Config, workspace: Workspace) -> Agent:
     memory_json_file = get_memory(config)
     memory_json_file.clear()
 
-    system_prompt = ai_config.construct_full_prompt()
+    system_prompt = ai_config.construct_full_prompt(config)
 
     return Agent(
         ai_name=ai_config.ai_name,

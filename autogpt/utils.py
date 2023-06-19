@@ -23,11 +23,10 @@ def batch(iterable, max_batch_length: int, overlap: int = 0):
         yield iterable[i : i + max_batch_length]
 
 
-def clean_input(prompt: str = "", talk=False):
+def clean_input(config: Config, prompt: str = "", talk=False):
     try:
-        cfg = Config()
-        if cfg.chat_messages_enabled:
-            for plugin in cfg.plugins:
+        if config.chat_messages_enabled:
+            for plugin in config.plugins:
                 if not hasattr(plugin, "can_handle_user_input"):
                     continue
                 if not plugin.can_handle_user_input(user_input=prompt):
@@ -44,14 +43,14 @@ def clean_input(prompt: str = "", talk=False):
                     "sure",
                     "alright",
                 ]:
-                    return cfg.authorise_key
+                    return config.authorise_key
                 elif plugin_response.lower() in [
                     "no",
                     "nope",
                     "n",
                     "negative",
                 ]:
-                    return cfg.exit_key
+                    return config.exit_key
                 return plugin_response
 
         # ask for input, default when just pressing Enter is y
