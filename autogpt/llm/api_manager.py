@@ -4,14 +4,8 @@ from typing import List, Optional
 
 import openai
 from openai import Model
-
-<<<<<<< HEAD
-from autogpt.config import Config
-from autogpt.llm.base import CompletionModelInfo, MessageDict
+from autogpt.llm.base import CompletionModelInfo
 from autogpt.llm.providers.openai import OPEN_AI_MODELS
-=======
-from autogpt.llm.modelsinfo import COSTS
->>>>>>> upstream/master
 from autogpt.logs import logger
 from autogpt.singleton import Singleton
 
@@ -30,8 +24,8 @@ class ApiManager(metaclass=Singleton):
         self.total_cost = 0
         self.total_budget = 0.0
         self.models = None
-        
-    def update_cost(self, prompt_tokens, completion_tokens, model)
+
+    def update_cost(self, prompt_tokens, completion_tokens, model):
         """
         Update the total cost, prompt tokens, and completion tokens.
 
