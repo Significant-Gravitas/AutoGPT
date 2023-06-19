@@ -2,9 +2,14 @@
 
 A repo built for the purpose of benchmarking the performance of agents far and wide, regardless of how they are set up and how they work
 
-#### MVP: function calls api, api returns presigned url, folder is uploaded, write file challenge is measured, score is given
+Simple boilerplate code that spins up a webserver to plug their agent into. We call multiple tasks by invoking different pytest commands on folders and once the agent stops or reaches 50 loops (which they will have to define). We handle the deletion of files after a run loop ends. Then we call call the POST request for the next task. Then we will spit out a combined benchmark once all tests run
 
-#### Diagrams: https://whimsical.com/agbenchmark-5n4hXBq1ZGzBwRsK4TVY7x
+- Agent adds tests by adding to our repo
+- Agent abstracted from benchmark
+- Scalable (parallel servers running tests)
+- Better standardization
+
+##### Diagrams (out of date, cloud oriented): https://whimsical.com/agbenchmark-5n4hXBq1ZGzBwRsK4TVY7x
 
 ## Contributing
 
