@@ -58,7 +58,7 @@ def write_dict_to_json_file(data: dict, file_path: str) -> None:
         json.dump(data, file, indent=4)
 
 
-def fetch_openai_plugins_manifest_and_spec(cfg: Config) -> dict:
+def fetch_openai_plugins_manifest_and_spec(config: Config) -> dict:
     """
     Fetch the manifest for a list of OpenAI plugins.
         Args:
@@ -68,8 +68,8 @@ def fetch_openai_plugins_manifest_and_spec(cfg: Config) -> dict:
     """
     # TODO add directory scan
     manifests = {}
-    for url in cfg.plugins_openai:
-        openai_plugin_client_dir = f"{cfg.plugins_dir}/openai/{urlparse(url).netloc}"
+    for url in config.plugins_openai:
+        openai_plugin_client_dir = f"{config.plugins_dir}/openai/{urlparse(url).netloc}"
         create_directory_if_not_exists(openai_plugin_client_dir)
         if not os.path.exists(f"{openai_plugin_client_dir}/ai-plugin.json"):
             try:
@@ -134,18 +134,18 @@ def create_directory_if_not_exists(directory_path: str) -> bool:
 
 
 def initialize_openai_plugins(
-    manifests_specs: dict, cfg: Config, debug: bool = False
+    manifests_specs: dict, config: Config, debug: bool = False
 ) -> dict:
     """
     Initialize OpenAI plugins.
     Args:
         manifests_specs (dict): per url dictionary of manifest and spec.
-        cfg (Config): Config instance including plugins config
+        config (Config): Config instance including plugins config
         debug (bool, optional): Enable debug logging. Defaults to False.
     Returns:
         dict: per url dictionary of manifest, spec and client.
     """
-    openai_plugins_dir = f"{cfg.plugins_dir}/openai"
+    openai_plugins_dir = f"{config.plugins_dir}/openai"
     if create_directory_if_not_exists(openai_plugins_dir):
         for url, manifest_spec in manifests_specs.items():
             openai_plugin_client_dir = f"{openai_plugins_dir}/{urlparse(url).hostname}"
@@ -188,13 +188,13 @@ def initialize_openai_plugins(
 
 
 def instantiate_openai_plugin_clients(
-    manifests_specs_clients: dict, cfg: Config, debug: bool = False
+    manifests_specs_clients: dict, config: Config, debug: bool = False
 ) -> dict:
     """
     Instantiates BaseOpenAIPlugin instances for each OpenAI plugin.
     Args:
         manifests_specs_clients (dict): per url dictionary of manifest, spec and client.
-        cfg (Config): Config instance including plugins config
+        config (Config): Config instance including plugins config
         debug (bool, optional): Enable debug logging. Defaults to False.
     Returns:
           plugins (dict): per url dictionary of BaseOpenAIPlugin instances.
@@ -206,11 +206,11 @@ def instantiate_openai_plugin_clients(
     return plugins
 
 
-def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate]:
+def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTemplate]:
     """Scan the plugins directory for plugins and loads them.
 
     Args:
-        cfg (Config): Config instance including plugins config
+        config (Config): Config instance including plugins config
         debug (bool, optional): Enable debug logging. Defaults to False.
 
     Returns:
@@ -218,11 +218,11 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
     """
     loaded_plugins = []
     # Generic plugins
-    plugins_path_path = Path(cfg.plugins_dir)
-    plugins_config = cfg.plugins_config
+    plugins_path_path = Path(config.plugins_dir)
+    plugins_config = config.plugins_config
 
     # Directory-based plugins
-    for plugin_path in [f.path for f in os.scandir(cfg.plugins_dir) if f.is_dir()]:
+    for plugin_path in [f.path for f in os.scandir(config.plugins_dir) if f.is_dir()]:
         # Avoid going into __pycache__ or other hidden directories
         if plugin_path.startswith("__"):
             continue
@@ -286,11 +286,11 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                             )
 
     # OpenAI plugins
-    if cfg.plugins_openai:
-        manifests_specs = fetch_openai_plugins_manifest_and_spec(cfg)
+    if config.plugins_openai:
+        manifests_specs = fetch_openai_plugins_manifest_and_spec(config)
         if manifests_specs.keys():
             manifests_specs_clients = initialize_openai_plugins(
-                manifests_specs, cfg, debug
+                manifests_specs, config, debug
             )
             for url, openai_plugin_meta in manifests_specs_clients.items():
                 if not plugins_config.is_enabled(url):
