@@ -7,6 +7,7 @@ import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 
+import autogpt
 from autogpt.singleton import Singleton
 
 
@@ -38,27 +39,30 @@ class Config(metaclass=Singleton):
         else:
             self.disabled_command_categories = []
 
-        deny_commands = os.getenv("DENY_COMMANDS")
-        if deny_commands:
-            self.deny_commands = deny_commands.split(",")
-        else:
-            self.deny_commands = []
+        self.shell_command_control = os.getenv("SHELL_COMMAND_CONTROL", "denylist")
 
-        allow_commands = os.getenv("ALLOW_COMMANDS")
-        if allow_commands:
-            self.allow_commands = allow_commands.split(",")
+        # DENY_COMMANDS is deprecated and included for backwards-compatibility
+        shell_denylist = os.getenv("SHELL_DENYLIST", os.getenv("DENY_COMMANDS"))
+        if shell_denylist:
+            self.shell_denylist = shell_denylist.split(",")
         else:
-            self.allow_commands = []
+            self.shell_denylist = ["sudo", "su"]
+
+        # ALLOW_COMMANDS is deprecated and included for backwards-compatibility
+        shell_allowlist = os.getenv("SHELL_ALLOWLIST", os.getenv("ALLOW_COMMANDS"))
+        if shell_allowlist:
+            self.shell_allowlist = shell_allowlist.split(",")
+        else:
+            self.shell_allowlist = []
 
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.prompt_settings_file = os.getenv(
             "PROMPT_SETTINGS_FILE", "prompt_settings.yaml"
         )
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
-        self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
-        self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
-        self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+        self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-3.5-turbo")
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
+
         self.browse_spacy_language_model = os.getenv(
             "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
         )
@@ -79,27 +83,41 @@ class Config(metaclass=Singleton):
             openai.api_type = self.openai_api_type
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
+        elif os.getenv("OPENAI_API_BASE_URL", None):
+            openai.api_base = os.getenv("OPENAI_API_BASE_URL")
 
         if self.openai_organization is not None:
             openai.organization = self.openai_organization
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
-        self.elevenlabs_voice_2_id = os.getenv("ELEVENLABS_VOICE_2_ID")
+        # ELEVENLABS_VOICE_1_ID is deprecated and included for backwards-compatibility
+        self.elevenlabs_voice_id = os.getenv(
+            "ELEVENLABS_VOICE_ID", os.getenv("ELEVENLABS_VOICE_1_ID")
+        )
+        self.streamelements_voice = os.getenv("STREAMELEMENTS_VOICE", "Brian")
 
-        self.use_mac_os_tts = False
-        self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
+        # Backwards-compatibility shim for deprecated env variables
+        if os.getenv("USE_MAC_OS_TTS"):
+            default_tts_provider = "macos"
+        elif self.elevenlabs_api_key:
+            default_tts_provider = "elevenlabs"
+        elif os.getenv("USE_BRIAN_TTS"):
+            default_tts_provider = "streamelements"
+        else:
+            default_tts_provider = "gtts"
 
-        self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
-
-        self.use_brian_tts = False
-        self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
+        self.text_to_speech_provider = os.getenv(
+            "TEXT_TO_SPEECH_PROVIDER", default_tts_provider
+        )
 
         self.github_api_key = os.getenv("GITHUB_API_KEY")
         self.github_username = os.getenv("GITHUB_USERNAME")
 
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
-        self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
+        # CUSTOM_SEARCH_ENGINE_ID is deprecated and included for backwards-compatibility
+        self.google_custom_search_engine_id = os.getenv(
+            "GOOGLE_CUSTOM_SEARCH_ENGINE_ID", os.getenv("CUSTOM_SEARCH_ENGINE_ID")
+        )
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
@@ -107,6 +125,7 @@ class Config(metaclass=Singleton):
         self.huggingface_image_model = os.getenv(
             "HUGGINGFACE_IMAGE_MODEL", "CompVis/stable-diffusion-v1-4"
         )
+        self.audio_to_text_provider = os.getenv("AUDIO_TO_TEXT_PROVIDER", "huggingface")
         self.huggingface_audio_to_text_model = os.getenv(
             "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
         )
@@ -138,17 +157,36 @@ class Config(metaclass=Singleton):
         self.plugins: List[AutoGPTPluginTemplate] = []
         self.plugins_openai = []
 
+        # Deprecated. Kept for backwards-compatibility. Will remove in a future version.
         plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
         if plugins_allowlist:
             self.plugins_allowlist = plugins_allowlist.split(",")
         else:
             self.plugins_allowlist = []
 
+        # Deprecated. Kept for backwards-compatibility. Will remove in a future version.
         plugins_denylist = os.getenv("DENYLISTED_PLUGINS")
         if plugins_denylist:
             self.plugins_denylist = plugins_denylist.split(",")
         else:
             self.plugins_denylist = []
+
+        # Avoid circular imports
+        from autogpt.plugins import DEFAULT_PLUGINS_CONFIG_FILE
+
+        self.plugins_config_file = os.getenv(
+            "PLUGINS_CONFIG_FILE", DEFAULT_PLUGINS_CONFIG_FILE
+        )
+        self.load_plugins_config()
+
+        self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
+
+    def load_plugins_config(self) -> "autogpt.plugins.PluginsConfig":
+        # Avoid circular import
+        from autogpt.plugins.plugins_config import PluginsConfig
+
+        self.plugins_config = PluginsConfig.load_config(global_config=self)
+        return self.plugins_config
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
@@ -217,14 +255,6 @@ class Config(metaclass=Singleton):
         """Set the smart LLM model value."""
         self.smart_llm_model = value
 
-    def set_fast_token_limit(self, value: int) -> None:
-        """Set the fast token limit value."""
-        self.fast_token_limit = value
-
-    def set_smart_token_limit(self, value: int) -> None:
-        """Set the smart token limit value."""
-        self.smart_token_limit = value
-
     def set_embedding_model(self, value: str) -> None:
         """Set the model to use for creating embeddings."""
         self.embedding_model = value
@@ -239,7 +269,7 @@ class Config(metaclass=Singleton):
 
     def set_elevenlabs_voice_1_id(self, value: str) -> None:
         """Set the ElevenLabs Voice 1 ID value."""
-        self.elevenlabs_voice_1_id = value
+        self.elevenlabs_voice_id = value
 
     def set_elevenlabs_voice_2_id(self, value: str) -> None:
         """Set the ElevenLabs Voice 2 ID value."""
@@ -251,7 +281,7 @@ class Config(metaclass=Singleton):
 
     def set_custom_search_engine_id(self, value: str) -> None:
         """Set the custom search engine id value."""
-        self.custom_search_engine_id = value
+        self.google_custom_search_engine_id = value
 
     def set_debug_mode(self, value: bool) -> None:
         """Set the debug mode value."""

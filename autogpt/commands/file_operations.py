@@ -4,22 +4,22 @@ from __future__ import annotations
 import hashlib
 import os
 import os.path
-from typing import TYPE_CHECKING, Generator, Literal
+import re
+from typing import Generator, Literal
 
 import requests
 from colorama import Back, Fore
+from confection import Config
 from requests.adapters import HTTPAdapter, Retry
 
-from autogpt.commands.command import command
+from autogpt.agent.agent import Agent
+from autogpt.commands.command import command, ignore_unexpected_kwargs
 from autogpt.commands.file_operations_utils import read_textual_file
+from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
-
 
 Operation = Literal["write", "append", "delete"]
 
@@ -102,7 +102,7 @@ def is_duplicate_operation(
 
 
 def log_operation(
-    operation: str, filename: str, config: Config, checksum: str | None = None
+    operation: str, filename: str, agent: Agent, checksum: str | None = None
 ) -> None:
     """Log the file operation to the file_logger.txt
 
@@ -115,43 +115,13 @@ def log_operation(
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
-    append_to_file(config.file_logger_path, f"{log_entry}\n", config, should_log=False)
-
-
-def split_file(
-    content: str, max_length: int = 4000, overlap: int = 0
-) -> Generator[str, None, None]:
-    """
-    Split text into chunks of a specified maximum length with a specified overlap
-    between chunks.
-
-    :param content: The input text to be split into chunks
-    :param max_length: The maximum length of each chunk,
-        default is 4000 (about 1k token)
-    :param overlap: The number of overlapping characters between chunks,
-        default is no overlap
-    :return: A generator yielding chunks of text
-    """
-    start = 0
-    content_length = len(content)
-
-    while start < content_length:
-        end = start + max_length
-        if end + overlap < content_length:
-            chunk = content[start : end + max(overlap - 1, 0)]
-        else:
-            chunk = content[start:content_length]
-
-            # Account for the case where the last chunk is shorter than the overlap, so it has already been consumed
-            if len(chunk) <= overlap:
-                break
-
-        yield chunk
-        start += max_length - overlap
+    append_to_file(
+        agent.config.file_logger_path, f"{log_entry}\n", agent, should_log=False
+    )
 
 
 @command("read_file", "Read a file", '"filename": "<filename>"')
-def read_file(filename: str, config: Config) -> str:
+def read_file(filename: str, agent: Agent) -> str:
     """Read a file and return the contents
 
     Args:
@@ -200,7 +170,7 @@ def ingest_file(
 
 
 @command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
-def write_to_file(filename: str, text: str, config: Config) -> str:
+def write_to_file(filename: str, text: str, agent: Agent) -> str:
     """Write text to a file
 
     Args:
@@ -211,24 +181,86 @@ def write_to_file(filename: str, text: str, config: Config) -> str:
         str: A message indicating success or failure
     """
     checksum = text_checksum(text)
-    if is_duplicate_operation("write", filename, config, checksum):
+    if is_duplicate_operation("write", filename, agent.config, checksum):
         return "Error: File has already been updated."
     try:
         directory = os.path.dirname(filename)
         os.makedirs(directory, exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:
             f.write(text)
-        log_operation("write", filename, config, checksum)
+        log_operation("write", filename, agent, checksum)
         return "File written to successfully."
     except Exception as err:
         return f"Error: {err}"
 
 
 @command(
+    "replace_in_file",
+    "Replace text or code in a file",
+    '"filename": "<filename>", '
+    '"old_text": "<old_text>", "new_text": "<new_text>", '
+    '"occurrence_index": "<occurrence_index>"',
+)
+def replace_in_file(
+    filename: str, old_text: str, new_text: str, agent: Agent, occurrence_index=None
+):
+    """Update a file by replacing one or all occurrences of old_text with new_text using Python's built-in string
+    manipulation and regular expression modules for cross-platform file editing similar to sed and awk.
+
+    Args:
+        filename (str): The name of the file
+        old_text (str): String to be replaced. \n will be stripped from the end.
+        new_text (str): New string. \n will be stripped from the end.
+        occurrence_index (int): Optional index of the occurrence to replace. If None, all occurrences will be replaced.
+
+    Returns:
+        str: A message indicating whether the file was updated successfully or if there were no matches found for old_text
+        in the file.
+
+    Raises:
+        Exception: If there was an error updating the file.
+    """
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        old_text = old_text.rstrip("\n")
+        new_text = new_text.rstrip("\n")
+
+        if occurrence_index is None:
+            new_content = content.replace(old_text, new_text)
+        else:
+            matches = list(re.finditer(re.escape(old_text), content))
+            if not matches:
+                return f"No matches found for {old_text} in {filename}"
+
+            if int(occurrence_index) >= len(matches):
+                return f"Occurrence index {occurrence_index} is out of range for {old_text} in {filename}"
+
+            match = matches[int(occurrence_index)]
+            start, end = match.start(), match.end()
+            new_content = content[:start] + new_text + content[end:]
+
+        if content == new_content:
+            return f"No matches found for {old_text} in {filename}"
+
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(new_content)
+
+        with open(filename, "r", encoding="utf-8") as f:
+            checksum = text_checksum(f.read())
+        log_operation("update", filename, agent, checksum=checksum)
+
+        return f"File {filename} updated successfully."
+    except Exception as e:
+        return "Error: " + str(e)
+
+
+@command(
     "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
 )
 def append_to_file(
-    filename: str, text: str, config: Config, should_log: bool = True
+    filename: str, text: str, agent: Agent, should_log: bool = True
 ) -> str:
     """Append text to a file
 
@@ -249,7 +281,7 @@ def append_to_file(
         if should_log:
             with open(filename, "r", encoding="utf-8") as f:
                 checksum = text_checksum(f.read())
-            log_operation("append", filename, config, checksum=checksum)
+            log_operation("append", filename, agent, checksum=checksum)
 
         return "Text appended successfully."
     except Exception as err:
@@ -257,7 +289,7 @@ def append_to_file(
 
 
 @command("delete_file", "Delete file", '"filename": "<filename>"')
-def delete_file(filename: str, config: Config) -> str:
+def delete_file(filename: str, agent: Agent) -> str:
     """Delete a file
 
     Args:
@@ -266,18 +298,19 @@ def delete_file(filename: str, config: Config) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    if is_duplicate_operation("delete", filename, config):
+    if is_duplicate_operation("delete", filename, agent.config):
         return "Error: File has already been deleted."
     try:
         os.remove(filename)
-        log_operation("delete", filename, config)
+        log_operation("delete", filename, agent)
         return "File deleted successfully."
     except Exception as err:
         return f"Error: {err}"
 
 
 @command("list_files", "List Files in Directory", '"directory": "<directory>"')
-def list_files(directory: str, config: Config) -> list[str]:
+@ignore_unexpected_kwargs
+def list_files(directory: str, agent: Agent) -> list[str]:
     """lists files in a directory recursively
 
     Args:
@@ -293,7 +326,7 @@ def list_files(directory: str, config: Config) -> list[str]:
             if file.startswith("."):
                 continue
             relative_path = os.path.relpath(
-                os.path.join(root, file), config.workspace_path
+                os.path.join(root, file), agent.config.workspace_path
             )
             found_files.append(relative_path)
 
@@ -307,7 +340,7 @@ def list_files(directory: str, config: Config) -> list[str]:
     lambda config: config.allow_downloads,
     "Error: You do not have user authorization to download files locally.",
 )
-def download_file(url, filename, config: Config):
+def download_file(url, filename, agent: Agent):
     """Downloads a file
     Args:
         url (str): URL of the file to download
@@ -317,7 +350,7 @@ def download_file(url, filename, config: Config):
         directory = os.path.dirname(filename)
         os.makedirs(directory, exist_ok=True)
         message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
-        with Spinner(message, plain_output=config.plain_output) as spinner:
+        with Spinner(message, plain_output=agent.config.plain_output) as spinner:
             session = requests.Session()
             retry = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
             adapter = HTTPAdapter(max_retries=retry)
