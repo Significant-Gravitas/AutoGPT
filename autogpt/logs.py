@@ -9,6 +9,7 @@ from typing import Any
 
 from colorama import Fore, Style
 
+from autogpt.config import Config
 from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
 from autogpt.speech import say_text
@@ -254,7 +255,7 @@ logger = Logger()
 def print_assistant_thoughts(
     ai_name: object,
     assistant_reply_json_valid: object,
-    speak_mode: bool = False,
+    config: Config,
 ) -> None:
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
@@ -288,7 +289,7 @@ def print_assistant_thoughts(
     logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
     # Speak the assistant's thoughts
     if assistant_thoughts_speak:
-        if speak_mode:
-            say_text(assistant_thoughts_speak)
+        if config.speak_mode:
+            say_text(assistant_thoughts_speak, config)
         else:
             logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
