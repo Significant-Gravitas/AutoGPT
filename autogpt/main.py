@@ -53,12 +53,12 @@ def run_auto_gpt(
     logger.set_level(logging.DEBUG if debug else logging.INFO)
     logger.speak_mode = speak
 
-    cfg = Config()
+    config = Config()
     # TODO: fill in llm values here
-    check_openai_api_key()
+    check_openai_api_key(config)
 
     create_config(
-        cfg,
+        config,
         continuous,
         continuous_limit,
         ai_settings,
@@ -74,17 +74,17 @@ def run_auto_gpt(
         skip_news,
     )
 
-    if cfg.continuous_mode:
+    if config.continuous_mode:
         for line in get_legal_warning().split("\n"):
             logger.warn(markdown_to_ansi_style(line), "LEGAL:", Fore.RED)
 
-    if not cfg.skip_news:
+    if not config.skip_news:
         motd, is_new_motd = get_latest_bulletin()
         if motd:
             motd = markdown_to_ansi_style(motd)
             for motd_line in motd.split("\n"):
                 logger.info(motd_line, "NEWS:", Fore.GREEN)
-            if is_new_motd and not cfg.chat_messages_enabled:
+            if is_new_motd and not config.chat_messages_enabled:
                 input(
                     Fore.MAGENTA
                     + Style.BRIGHT
@@ -123,7 +123,7 @@ def run_auto_gpt(
     # TODO: pass in the ai_settings file and the env file and have them cloned into
     #   the workspace directory so we can bind them to the agent.
     workspace_directory = Workspace.make_workspace(workspace_directory)
-    cfg.workspace_path = str(workspace_directory)
+    config.workspace_path = str(workspace_directory)
 
     # HACK: doing this here to collect some globals that depend on the workspace.
     file_logger_path = workspace_directory / "file_logger.txt"
@@ -131,17 +131,17 @@ def run_auto_gpt(
         with file_logger_path.open(mode="w", encoding="utf-8") as f:
             f.write("File Operation Logger ")
 
-    cfg.file_logger_path = str(file_logger_path)
+    config.file_logger_path = str(file_logger_path)
 
-    cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
+    config.set_plugins(scan_plugins(config, config.debug_mode))
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
 
     logger.debug(
-        f"The following command categories are disabled: {cfg.disabled_command_categories}"
+        f"The following command categories are disabled: {config.disabled_command_categories}"
     )
     enabled_command_categories = [
-        x for x in COMMAND_CATEGORIES if x not in cfg.disabled_command_categories
+        x for x in COMMAND_CATEGORIES if x not in config.disabled_command_categories
     ]
 
     logger.debug(
@@ -152,7 +152,7 @@ def run_auto_gpt(
         command_registry.import_commands(command_category)
 
     ai_name = ""
-    ai_config = construct_main_ai_config()
+    ai_config = construct_main_ai_config(config)
     ai_config.command_registry = command_registry
     if ai_config.ai_name:
         ai_name = ai_config.ai_name
@@ -161,22 +161,22 @@ def run_auto_gpt(
     next_action_count = 0
 
     # add chat plugins capable of report to logger
-    if cfg.chat_messages_enabled:
-        for plugin in cfg.plugins:
+    if config.chat_messages_enabled:
+        for plugin in config.plugins:
             if hasattr(plugin, "can_handle_report") and plugin.can_handle_report():
                 logger.info(f"Loaded plugin into logger: {plugin.__class__.__name__}")
                 logger.chat_plugins.append(plugin)
 
     # Initialize memory and make sure it is empty.
     # this is particularly important for indexing and referencing pinecone memory
-    memory = get_memory(cfg)
+    memory = get_memory(config)
     memory.clear()
     logger.typewriter_log(
         "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
-    logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
-    system_prompt = ai_config.construct_full_prompt()
-    if cfg.debug_mode:
+    logger.typewriter_log("Using Browser:", Fore.GREEN, config.selenium_web_browser)
+    system_prompt = ai_config.construct_full_prompt(config)
+    if config.debug_mode:
         logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
 
     agent = Agent(
@@ -188,6 +188,6 @@ def run_auto_gpt(
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
         ai_config=ai_config,
-        config=cfg,
+        config=config,
     )
     agent.start_interaction_loop()

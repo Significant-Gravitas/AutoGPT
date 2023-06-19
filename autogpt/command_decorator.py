@@ -19,10 +19,10 @@ def command(
     """The command decorator is used to create Command objects from ordinary functions."""
 
     # TODO: Remove this in favor of better command management
-    CFG = Config()
+    config = Config()
 
     if callable(enabled):
-        enabled = enabled(CFG)
+        enabled = enabled(config)
     if not enabled:
         if disabled_reason is not None:
             logger.debug(f"Command '{name}' is disabled: {disabled_reason}")
