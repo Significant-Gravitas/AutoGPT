@@ -32,13 +32,13 @@ DENYLIST_CONTROL = "denylist"
         },
     },
 )
-def execute_python_code(code: str, basename: str, agent: Agent) -> str:
+def execute_python_code(code: str, name: str, agent: Agent) -> str:
     """Create and execute a Python file in a Docker container and return the STDOUT of the
     executed code. If there is any data that needs to be captured use a print statement
 
     Args:
         code (str): The Python code to run
-        basename (str): A name to be given to the Python file
+        name (str): A name to be given to the Python file
 
     Returns:
         str: The STDOUT captured from the code when it ran
@@ -47,10 +47,10 @@ def execute_python_code(code: str, basename: str, agent: Agent) -> str:
     directory = os.path.join(agent.config.workspace_path, ai_name, "executed_code")
     os.makedirs(directory, exist_ok=True)
 
-    if not basename.endswith(".py"):
-        basename = basename + ".py"
+    if not name.endswith(".py"):
+        name = name + ".py"
 
-    path = os.path.join(directory, basename)
+    path = os.path.join(directory, name)
 
     try:
         with open(path, "w+", encoding="utf-8") as f:
