@@ -81,6 +81,7 @@ def is_duplicate_operation(
     Args:
         operation: The operation to check for
         filename: The name of the file to check for
+        config: The agent config
         checksum: The checksum of the contents to be written
 
     Returns:
@@ -137,7 +138,7 @@ def read_file(filename: str, agent: Agent) -> str:
         content = read_textual_file(filename, logger)
 
         # TODO: invalidate/update memory when file is edited
-        file_memory = MemoryItem.from_text_file(content, filename)
+        file_memory = MemoryItem.from_text_file(content, filename, agent.config)
         if len(file_memory.chunks) > 1:
             return file_memory.summary
 

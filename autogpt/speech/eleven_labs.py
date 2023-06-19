@@ -13,14 +13,13 @@ PLACEHOLDERS = {"your-voice-id"}
 class ElevenLabsSpeech(VoiceBase):
     """ElevenLabs speech class"""
 
-    def _setup(self) -> None:
+    def _setup(self, config: Config) -> None:
         """Set up the voices, API key, etc.
 
         Returns:
             None: None
         """
 
-        cfg = Config()
         default_voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
         voice_options = {
             "Rachel": "21m00Tcm4TlvDq8ikWAM",
@@ -35,7 +34,7 @@ class ElevenLabsSpeech(VoiceBase):
         }
         self._headers = {
             "Content-Type": "application/json",
-            "xi-api-key": cfg.elevenlabs_api_key,
+            "xi-api-key": config.elevenlabs_api_key,
         }
         self._voices = default_voices.copy()
         if cfg.elevenlabs_voice_1 in voice_options:

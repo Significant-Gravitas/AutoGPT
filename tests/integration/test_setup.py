@@ -9,10 +9,10 @@ from tests.utils import requires_api_key
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_default(patched_api_requestor):
+def test_generate_aiconfig_automatic_default(patched_api_requestor, config):
     user_inputs = [""]
     with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
-        ai_config = prompt_user()
+        ai_config = prompt_user(config)
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name is not None
@@ -22,9 +22,9 @@ def test_generate_aiconfig_automatic_default(patched_api_requestor):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_typical(patched_api_requestor):
+def test_generate_aiconfig_automatic_typical(patched_api_requestor, config):
     user_prompt = "Help me create a rock opera about cybernetic giraffes"
-    ai_config = generate_aiconfig_automatic(user_prompt)
+    ai_config = generate_aiconfig_automatic(user_prompt, config)
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name is not None
@@ -34,7 +34,7 @@ def test_generate_aiconfig_automatic_typical(patched_api_requestor):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
+def test_generate_aiconfig_automatic_fallback(patched_api_requestor, config):
     user_inputs = [
         "T&GF£OIBECC()!*",
         "Chef-GPT",
@@ -45,7 +45,7 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
         "",
     ]
     with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
-        ai_config = prompt_user()
+        ai_config = prompt_user(config)
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name == "Chef-GPT"
@@ -55,7 +55,7 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_prompt_user_manual_mode(patched_api_requestor):
+def test_prompt_user_manual_mode(patched_api_requestor, config):
     user_inputs = [
         "--manual",
         "Chef-GPT",
@@ -66,7 +66,7 @@ def test_prompt_user_manual_mode(patched_api_requestor):
         "",
     ]
     with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
-        ai_config = prompt_user()
+        ai_config = prompt_user(config)
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name == "Chef-GPT"

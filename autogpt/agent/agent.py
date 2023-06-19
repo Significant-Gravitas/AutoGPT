@@ -143,7 +143,7 @@ class Agent:
 
             try:
                 assistant_reply_json = extract_json_from_response(assistant_reply)
-                validate_json(assistant_reply_json)
+                validate_json(assistant_reply_json, self.config)
             except json.JSONDecodeError as e:
                 logger.error(f"Exception while validating assistant reply JSON: {e}")
                 assistant_reply_json = {}
@@ -158,7 +158,7 @@ class Agent:
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, self.config.speak_mode
+                        self.ai_name, assistant_reply_json, self.config
                     )
                     command_name, arguments = get_command(assistant_reply_json)
                     if self.config.speak_mode:
@@ -197,10 +197,12 @@ class Agent:
                 )
                 while True:
                     if self.config.chat_messages_enabled:
-                        console_input = clean_input("Waiting for your response...")
+                        console_input = clean_input(
+                            self.config, "Waiting for your response..."
+                        )
                     else:
                         console_input = clean_input(
-                            Fore.MAGENTA + "Input:" + Style.RESET_ALL
+                            self.config, Fore.MAGENTA + "Input:" + Style.RESET_ALL
                         )
                     if console_input.lower().strip() == self.config.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
