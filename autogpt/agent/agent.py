@@ -148,13 +148,14 @@ class Agent:
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
-                validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
+                validated_json = validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
+
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, cfg.speak_mode
+                        self.ai_name, validated_json, cfg.speak_mode
                     )
-                    command_name, arguments = get_command(assistant_reply_json)
+                    command_name, arguments = get_command(validated_json)
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
 
@@ -166,7 +167,7 @@ class Agent:
                 self.config.ai_name,
                 self.created_at,
                 self.cycle_count,
-                assistant_reply_json,
+                validated_json,
                 NEXT_ACTION_FILE_NAME,
             )
 
@@ -207,7 +208,7 @@ class Agent:
                             Fore.GREEN,
                             "",
                         )
-                        thoughts = assistant_reply_json.get("thoughts", {})
+                        thoughts = validated_json.get("thoughts", {})
                         self_feedback_resp = self.get_self_feedback(
                             thoughts, cfg.fast_llm_model
                         )
