@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 import requests
 
+from autogpt.config import Config
 from autogpt.json_utils.utilities import extract_json_from_response, validate_json
 from autogpt.utils import (
     get_bulletin_from_web,
@@ -185,12 +186,12 @@ def test_get_current_git_branch_failure(mock_repo):
     assert branch_name == ""
 
 
-def test_validate_json_valid(valid_json_response):
-    assert validate_json(valid_json_response)
+def test_validate_json_valid(valid_json_response, config: Config):
+    assert validate_json(valid_json_response, config)
 
 
-def test_validate_json_invalid(invalid_json_response):
-    assert not validate_json(valid_json_response)
+def test_validate_json_invalid(invalid_json_response, config: Config):
+    assert not validate_json(valid_json_response, config)
 
 
 def test_extract_json_from_response(valid_json_response: dict):

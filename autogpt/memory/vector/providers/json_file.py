@@ -20,17 +20,17 @@ class JSONFileMemory(VectorMemoryProvider):
     file_path: Path
     memories: list[MemoryItem]
 
-    def __init__(self, cfg: Config) -> None:
+    def __init__(self, config: Config) -> None:
         """Initialize a class instance
 
         Args:
-            cfg: Config object
+            config: Config object
 
         Returns:
             None
         """
-        workspace_path = Path(cfg.workspace_path)
-        self.file_path = workspace_path / f"{cfg.memory_index}.json"
+        workspace_path = Path(config.workspace_path)
+        self.file_path = workspace_path / f"{config.memory_index}.json"
         self.file_path.touch()
         logger.debug(
             f"Initialized {__class__.__name__} with index path {self.file_path}"

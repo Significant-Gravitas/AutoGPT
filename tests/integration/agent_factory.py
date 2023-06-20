@@ -55,7 +55,7 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
     )
     ai_config.command_registry = command_registry
 
-    system_prompt = ai_config.construct_full_prompt()
+    system_prompt = ai_config.construct_full_prompt(agent_test_config)
 
     agent = Agent(
         ai_name="",
@@ -91,8 +91,8 @@ def file_system_agents(
             ai_goals=[ai_goal],
         )
         ai_config.command_registry = command_registry
-        system_prompt = ai_config.construct_full_prompt()
-        Config().set_continuous_mode(False)
+        system_prompt = ai_config.construct_full_prompt(agent_test_config)
+        agent_test_config.set_continuous_mode(False)
         agents.append(
             Agent(
                 ai_name="File System Agent",
@@ -123,7 +123,7 @@ def memory_management_agent(agent_test_config, memory_json_file, workspace: Work
     )
     ai_config.command_registry = command_registry
 
-    system_prompt = ai_config.construct_full_prompt()
+    system_prompt = ai_config.construct_full_prompt(agent_test_config)
 
     agent = Agent(
         ai_name="Follow-Instructions-GPT",
@@ -159,8 +159,8 @@ def information_retrieval_agents(
             ai_goals=[ai_goal],
         )
         ai_config.command_registry = command_registry
-        system_prompt = ai_config.construct_full_prompt()
-        Config().set_continuous_mode(False)
+        system_prompt = ai_config.construct_full_prompt(agent_test_config)
+        agent_test_config.set_continuous_mode(False)
         agents.append(
             Agent(
                 ai_name="Information Retrieval Agent",
@@ -195,8 +195,8 @@ def kubernetes_agent(
     )
     ai_config.command_registry = command_registry
 
-    system_prompt = ai_config.construct_full_prompt()
-    Config().set_continuous_mode(False)
+    system_prompt = ai_config.construct_full_prompt(agent_test_config)
+    agent_test_config.set_continuous_mode(False)
     agent = Agent(
         ai_name="Kubernetes-Demo",
         memory=memory_json_file,
@@ -228,8 +228,8 @@ def get_nobel_prize_agent(agent_test_config, memory_json_file, workspace: Worksp
     )
     ai_config.command_registry = command_registry
 
-    system_prompt = ai_config.construct_full_prompt()
-    Config().set_continuous_mode(False)
+    system_prompt = ai_config.construct_full_prompt(agent_test_config)
+    agent_test_config.set_continuous_mode(False)
 
     agent = Agent(
         ai_name="Get-PhysicsNobelPrize",
@@ -254,7 +254,7 @@ def debug_code_agents(agent_test_config, memory_json_file, workspace: Workspace)
             "1- Run test.py using the execute_python_file command.",
             "2- Read code.py using the read_file command.",
             "3- Modify code.py using the write_to_file command."
-            "Repeat step 1, 2 and 3 until test.py runs without errors.",
+            "Repeat step 1, 2 and 3 until test.py runs without errors. Do not modify the test.py file.",
         ],
         [
             "1- Run test.py.",
@@ -273,8 +273,8 @@ def debug_code_agents(agent_test_config, memory_json_file, workspace: Workspace)
         )
         command_registry = get_command_registry(agent_test_config)
         ai_config.command_registry = command_registry
-        system_prompt = ai_config.construct_full_prompt()
-        Config().set_continuous_mode(False)
+        system_prompt = ai_config.construct_full_prompt(agent_test_config)
+        agent_test_config.set_continuous_mode(False)
         agents.append(
             Agent(
                 ai_name="Debug Code Agent",

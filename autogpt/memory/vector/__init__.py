@@ -39,12 +39,12 @@ supported_memory = ["json_file", "no_memory"]
 #     MilvusMemory = None
 
 
-def get_memory(cfg: Config) -> VectorMemory:
+def get_memory(config: Config) -> VectorMemory:
     memory = None
 
-    match cfg.memory_backend:
+    match config.memory_backend:
         case "json_file":
-            memory = JSONFileMemory(cfg)
+            memory = JSONFileMemory(config)
 
         case "pinecone":
             raise NotImplementedError(
@@ -59,7 +59,7 @@ def get_memory(cfg: Config) -> VectorMemory:
             #         " to use Pinecone as a memory backend."
             #     )
             # else:
-            #     memory = PineconeMemory(cfg)
+            #     memory = PineconeMemory(config)
             #     if clear:
             #         memory.clear()
 
@@ -74,7 +74,7 @@ def get_memory(cfg: Config) -> VectorMemory:
             #         " use Redis as a memory backend."
             #     )
             # else:
-            #     memory = RedisMemory(cfg)
+            #     memory = RedisMemory(config)
 
         case "weaviate":
             raise NotImplementedError(
@@ -89,7 +89,7 @@ def get_memory(cfg: Config) -> VectorMemory:
             #         " use Weaviate as a memory backend."
             #     )
             # else:
-            #     memory = WeaviateMemory(cfg)
+            #     memory = WeaviateMemory(config)
 
         case "milvus":
             raise NotImplementedError(
@@ -104,18 +104,18 @@ def get_memory(cfg: Config) -> VectorMemory:
             #         "Please install pymilvus to use Milvus or Zilliz Cloud as memory backend."
             #     )
             # else:
-            #     memory = MilvusMemory(cfg)
+            #     memory = MilvusMemory(config)
 
         case "no_memory":
             memory = NoMemory()
 
         case _:
             raise ValueError(
-                f"Unknown memory backend '{cfg.memory_backend}'. Please check your config."
+                f"Unknown memory backend '{config.memory_backend}'. Please check your config."
             )
 
     if memory is None:
-        memory = JSONFileMemory(cfg)
+        memory = JSONFileMemory(config)
 
     return memory
 
