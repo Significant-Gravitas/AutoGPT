@@ -159,8 +159,7 @@ class SimpleWorkspace(Configurable, Workspace):
         workspace_parent = Path(workspace_parent).expanduser().resolve()
         workspace_parent.mkdir(parents=True, exist_ok=True)
 
-        planning_config = settings.planning.configuration
-        agent_name = planning_config.agent_name
+        agent_name = settings.agent.name
 
         workspace_root = workspace_parent / agent_name
         workspace_root.mkdir(parents=True, exist_ok=True)

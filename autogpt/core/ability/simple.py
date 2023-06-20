@@ -21,7 +21,7 @@ from autogpt.core.workspace.base import Workspace
 class AbilityRegistryConfiguration(SystemConfiguration):
     """Configuration for the AbilityRegistry subsystem."""
 
-    abilities: dict[str, AbilityConfiguration] = UserConfigurable()
+    abilities: dict[str, AbilityConfiguration]
 
 
 class AbilityRegistrySettings(SystemSettings):
@@ -82,14 +82,8 @@ class SimpleAbilityRegistry(AbilityRegistry, Configurable):
         ability = ability_class(**ability_args)
         self._abilities.append(ability)
 
-    def list_abilities(self) -> list[dict[str, str]]:
-        return [
-            {
-                "name": ability.name(),
-                "description": ability.description(),
-            }
-            for ability in self._abilities
-        ]
+    def list_abilities(self) -> list[str]:
+        return [f"{ability.name()}: {ability.description()}" for ability in self._abilities]
 
     def get_ability(self, ability_name: str) -> Ability:
         for ability in self._abilities:

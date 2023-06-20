@@ -62,6 +62,16 @@ class SimpleAgent(Agent, Configurable):
         name="simple_agent",
         description="A simple agent.",
         configuration=AgentConfiguration(
+            name="Entrepreneur-GPT",
+            role=(
+                "An AI designed to autonomously develop and run businesses with "
+                "the sole goal of increasing your net worth."
+            ),
+            goals=[
+                "Increase net worth",
+                "Grow Twitter Account",
+                "Develop and manage multiple businesses autonomously",
+            ],
             cycle_count=0,
             creation_time="",
             systems=AgentSystems(
@@ -120,7 +130,7 @@ class SimpleAgent(Agent, Configurable):
         cls,
         workspace_path: Path,
         logger: logging.Logger,
-    ) -> "Agent":
+    ) -> "SimpleAgent":
         agent_settings = SimpleWorkspace.load_agent_settings(workspace_path)
         agent_args = {}
 
@@ -166,8 +176,8 @@ class SimpleAgent(Agent, Configurable):
 
         return cls(**agent_args)
 
-    def build_initial_plan(self):
-        return self._planning.make_initial_plan(
+    async def build_initial_plan(self):
+        return await self._planning.make_initial_plan(
             agent_name=self._configuration.name,
             agent_role=self._configuration.role,
             agent_goals=self._configuration.goals,

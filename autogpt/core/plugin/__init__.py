@@ -1,5 +1,5 @@
 """The plugin system allows the Agent to be extended with new functionality."""
-from autogpt.core.plugin.base import Plugin, PluginService
+from autogpt.core.plugin.base import PluginService
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(

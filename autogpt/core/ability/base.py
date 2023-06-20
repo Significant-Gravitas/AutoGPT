@@ -8,11 +8,12 @@ from pydantic import Field
 from autogpt.core.ability.schema import AbilityResult
 from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.planning.simple import LanguageModelConfiguration
-from autogpt.core.plugin.simple import PluginLocation
+
 
 
 class AbilityConfiguration(SystemConfiguration):
     """Struct for model configuration."""
+    from autogpt.core.plugin.base import PluginLocation
 
     location: PluginLocation
     packages_required: list[str] = Field(default_factory=list)

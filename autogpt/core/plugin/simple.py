@@ -1,3 +1,4 @@
+from typing import TYPE_CHECKING
 from importlib import import_module
 
 from autogpt.core.plugin.base import (
@@ -5,13 +6,15 @@ from autogpt.core.plugin.base import (
     PluginService,
     PluginStorageFormat,
     PluginStorageRoute,
-    PluginType,
 )
+
+if TYPE_CHECKING:
+    from autogpt.core.plugin.base import PluginType
 
 
 class SimplePluginService(PluginService):
     @staticmethod
-    def get_plugin(plugin_location: dict | PluginLocation) -> PluginType:
+    def get_plugin(plugin_location: dict | PluginLocation) -> "PluginType":
         """Get a plugin from a plugin location."""
         if isinstance(plugin_location, dict):
             plugin_location = PluginLocation.parse_obj(plugin_location)
@@ -32,14 +35,14 @@ class SimplePluginService(PluginService):
     # Low-level storage format loaders #
     ####################################
     @staticmethod
-    def load_from_file_path(plugin_route: PluginStorageRoute) -> PluginType:
+    def load_from_file_path(plugin_route: PluginStorageRoute) -> "PluginType":
         """Load a plugin from a file path."""
         # TODO: Define an on disk storage format and implement this.
         #   Can pull from existing zip file loading implementation
         raise NotImplemented("Loading from file path is not implemented.")
 
     @staticmethod
-    def load_from_import_path(plugin_route: PluginStorageRoute) -> PluginType:
+    def load_from_import_path(plugin_route: PluginStorageRoute) -> "PluginType":
         """Load a plugin from an import path."""
         module_path, _, class_name = plugin_route.rpartition(".")
         return getattr(import_module(module_path), class_name)
@@ -60,12 +63,12 @@ class SimplePluginService(PluginService):
     #####################################
 
     @staticmethod
-    def load_from_workspace(plugin_route: PluginStorageRoute) -> PluginType:
+    def load_from_workspace(plugin_route: PluginStorageRoute) -> "PluginType":
         """Load a plugin from the workspace."""
         plugin = SimplePluginService.load_from_file_path(plugin_route)
         return plugin
 
     @staticmethod
-    def load_from_installed_package(plugin_route: PluginStorageRoute) -> PluginType:
+    def load_from_installed_package(plugin_route: PluginStorageRoute) -> "PluginType":
         plugin = SimplePluginService.load_from_import_path(plugin_route)
         return plugin

@@ -50,6 +50,9 @@ async def run_auto_gpt(user_configuration: dict):
     )
     print("agent is loaded")
 
+    plan = await agent.build_initial_plan()
+    breakpoint()
+
     user_input = ""
     while True:
         agent_response = await agent.step(user_input)
