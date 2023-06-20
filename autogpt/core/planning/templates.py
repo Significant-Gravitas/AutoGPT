@@ -7,14 +7,10 @@
 ####################
 
 
-
 USER_OBJECTIVE = (
     "Write a wikipedia style article about the project: "
     "https://github.com/significant-gravitas/Auto-GPT"
 )
-
-
-
 
 
 ABILITIES = (
@@ -33,12 +29,6 @@ ABILITIES = (
     'get_text_summary: Get text summary, args: "url": "<url>", "question": "<question>"',
     'task_complete: Task Complete (Shutdown), args: "reason": "<reason>"',
 )
-
-
-
-
-
-
 
 
 # Plan Prompt
@@ -110,5 +100,3 @@ PLAN_PROMPT_MAIN = (
 ###########################
 # Parameterized templates #
 ###########################
-
-

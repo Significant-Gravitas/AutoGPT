@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from autogpt.core.ability import Ability, AbilityRegistry
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.memory import Memory
+
 # from autogpt.core.planning import Planner
 from autogpt.core.resource.model_providers import (
     EmbeddingModelProvider,
@@ -20,7 +21,7 @@ PluginType = (
     | Type[LanguageModelProvider]  # Swappable soon
     | Type[EmbeddingModelProvider]  # Swappable soon
     | Type[Memory]  # Swappable now
-#    | Type[Planner]  # Swappable soon
+    #    | Type[Planner]  # Swappable soon
 )
 
 Plugin = (
@@ -29,7 +30,7 @@ Plugin = (
     | EmbeddingModelProvider
     | LanguageModelProvider
     | Memory
-#    | Planner
+    #    | Planner
 )
 
 

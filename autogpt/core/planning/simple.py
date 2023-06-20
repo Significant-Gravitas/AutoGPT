@@ -11,16 +11,12 @@ from autogpt.core.configuration import (
     UserConfigurable,
 )
 from autogpt.core.memory import Memory
-from autogpt.core.planning import templates
-
-from autogpt.core.planning.base import (
-    PromptStrategy,
-)
+from autogpt.core.planning import strategies, templates
+from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
     LanguageModelResponse,
 )
-from autogpt.core.planning import strategies
 from autogpt.core.resource.model_providers import (
     LanguageModelProvider,
     ModelProviderName,
@@ -44,6 +40,7 @@ class PromptStrategiesConfiguration(SystemConfiguration):
 
 class PlannerConfiguration(SystemConfiguration):
     """Configuration for the Planner subsystem."""
+
     models: dict[LanguageModelClassification, LanguageModelConfiguration]
     prompt_strategies: PromptStrategiesConfiguration
 
@@ -96,17 +93,17 @@ class SimplePlanner(Configurable):
             self._providers[model] = model_providers[model_config.provider_name]
 
         self._prompt_strategies = {
-            'name_and_goals': strategies.NameAndGoals(
+            "name_and_goals": strategies.NameAndGoals(
                 **self._configuration.prompt_strategies.name_and_goals.dict()
             ),
-            'initial_plan': strategies.InitialPlan(
+            "initial_plan": strategies.InitialPlan(
                 **self._configuration.prompt_strategies.initial_plan.dict()
             ),
         }
 
     async def decide_name_and_goals(self, user_objective: str) -> LanguageModelResponse:
         return await self.chat_with_model(
-            self._prompt_strategies['name_and_goals'],
+            self._prompt_strategies["name_and_goals"],
             user_objective=user_objective,
         )
 
@@ -118,7 +115,7 @@ class SimplePlanner(Configurable):
         abilities: list[dict[str, str]],
     ) -> LanguageModelResponse:
         return await self.chat_with_model(
-            self._prompt_strategies['initial_plan'],
+            self._prompt_strategies["initial_plan"],
             agent_name=agent_name,
             agent_role=agent_role,
             agent_goals=agent_goals,
@@ -170,4 +167,3 @@ def get_os_info() -> str:
         else distro.name(pretty=True)
     )
     return os_info
-

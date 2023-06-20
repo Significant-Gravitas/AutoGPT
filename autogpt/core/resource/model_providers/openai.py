@@ -18,8 +18,8 @@ from autogpt.core.resource.model_providers.schema import (
     EmbeddingModelProvider,
     EmbeddingModelProviderModelInfo,
     EmbeddingModelProviderModelResponse,
-    LanguageModelMessage,
     LanguageModelFunction,
+    LanguageModelMessage,
     LanguageModelProvider,
     LanguageModelProviderModelInfo,
     LanguageModelProviderModelResponse,
@@ -202,8 +202,12 @@ class OpenAIProvider(
             "completion_tokens_used": response.usage.completion_tokens,
         }
 
-        parsed_response = completion_parser(response.choices[0].message.to_dict_recursive())
-        response = LanguageModelProviderModelResponse(content=parsed_response, **response_args)
+        parsed_response = completion_parser(
+            response.choices[0].message.to_dict_recursive()
+        )
+        response = LanguageModelProviderModelResponse(
+            content=parsed_response, **response_args
+        )
         self._budget.update_usage_and_cost(response)
         return response
 
@@ -252,7 +256,7 @@ class OpenAIProvider(
             **self._model_credentials[model_name].unmasked(),
         }
         if functions:
-            completion_kwargs['functions'] = functions
+            completion_kwargs["functions"] = functions
 
         return completion_kwargs
 
@@ -312,8 +316,8 @@ async def _create_completion(
 
     """
     messages = [message.dict() for message in messages]
-    if 'functions' in kwargs:
-        kwargs['functions'] = [function.json_schema for function in kwargs['functions']]
+    if "functions" in kwargs:
+        kwargs["functions"] = [function.json_schema for function in kwargs["functions"]]
     return await openai.ChatCompletion.acreate(
         messages=messages,
         **kwargs,

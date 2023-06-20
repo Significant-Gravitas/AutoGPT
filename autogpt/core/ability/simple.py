@@ -1,5 +1,7 @@
 import logging
 
+from autogpt.core.ability.base import Ability, AbilityConfiguration, AbilityRegistry
+from autogpt.core.ability.builtins import BUILTIN_ABILITIES
 from autogpt.core.ability.schema import AbilityResult
 from autogpt.core.configuration import (
     Configurable,
@@ -7,20 +9,18 @@ from autogpt.core.configuration import (
     SystemSettings,
     UserConfigurable,
 )
-
-from autogpt.core.ability.base import Ability, AbilityRegistry, AbilityConfiguration
-from autogpt.core.ability.builtins import BUILTIN_ABILITIES
+from autogpt.core.memory.base import Memory
 from autogpt.core.plugin.simple import SimplePluginService
 from autogpt.core.resource.model_providers import (
     LanguageModelProvider,
     ModelProviderName,
 )
-from autogpt.core.memory.base import Memory
 from autogpt.core.workspace.base import Workspace
 
 
 class AbilityRegistryConfiguration(SystemConfiguration):
     """Configuration for the AbilityRegistry subsystem."""
+
     abilities: dict[str, AbilityConfiguration] = UserConfigurable()
 
 
@@ -29,7 +29,6 @@ class AbilityRegistrySettings(SystemSettings):
 
 
 class SimpleAbilityRegistry(AbilityRegistry, Configurable):
-
     defaults = AbilityRegistrySettings(
         name="simple_ability_registry",
         description="A simple ability registry.",
@@ -55,10 +54,15 @@ class SimpleAbilityRegistry(AbilityRegistry, Configurable):
         self._workspace = workspace
         self._model_providers = model_providers
         self._abilities = []
-        for ability_name, ability_configuration in self._configuration.abilities.items():
+        for (
+            ability_name,
+            ability_configuration,
+        ) in self._configuration.abilities.items():
             self.register_ability(ability_name, ability_configuration)
 
-    def register_ability(self, ability_name: str, ability_configuration: AbilityConfiguration) -> None:
+    def register_ability(
+        self, ability_name: str, ability_configuration: AbilityConfiguration
+    ) -> None:
         ability_class = SimplePluginService.get_plugin(ability_configuration.location)
         ability_args = {
             "logger": self._logger.getChild(ability_name),

@@ -230,6 +230,7 @@ class LanguageModelProviderModelInfo(ModelProviderModelInfo):
 
 class LanguageModelProviderModelResponse(ModelProviderModelResponse):
     """Standard response struct for a response from a language model."""
+
     content: dict = None
 
 

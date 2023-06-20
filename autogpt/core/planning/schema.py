@@ -3,8 +3,8 @@ import enum
 from pydantic import BaseModel, Field
 
 from autogpt.core.resource.model_providers.schema import (
-    LanguageModelMessage,
     LanguageModelFunction,
+    LanguageModelMessage,
     LanguageModelProviderModelResponse,
 )
 

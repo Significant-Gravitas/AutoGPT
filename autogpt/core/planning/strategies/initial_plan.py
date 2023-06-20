@@ -1,17 +1,10 @@
 import json
 
-from autogpt.core.configuration import (
-    SystemConfiguration,
-    UserConfigurable,
-)
-from autogpt.core.planning import LanguageModelPrompt, LanguageModelClassification
+from autogpt.core.configuration import SystemConfiguration, UserConfigurable
+from autogpt.core.planning import LanguageModelClassification, LanguageModelPrompt
 from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.strategies.utils import to_numbered_list
-
-from autogpt.core.resource.model_providers import (
-    MessageRole,
-    LanguageModelMessage,
-)
+from autogpt.core.resource.model_providers import LanguageModelMessage, MessageRole
 
 
 class InitialPlanConfiguration(SystemConfiguration):
@@ -24,11 +17,8 @@ class InitialPlanConfiguration(SystemConfiguration):
 
 
 class InitialPlan(PromptStrategy):
-
     DEFAULT_AGENT_PREAMBLE = (
-        "You are {agent_name}, {agent_role}.\n"
-        "Your goals are:\n"
-        "{agent_goals}"
+        "You are {agent_name}, {agent_role}.\n" "Your goals are:\n" "{agent_goals}"
     )
 
     DEFAULT_AGENT_INFO = [
@@ -43,9 +33,13 @@ class InitialPlan(PromptStrategy):
             "a categorization for the task. Examples: "
             "'research', 'write', 'code', 'design', 'test', 'market', 'sell', 'manage'"
         ),
-        "acceptance_criteria": ["a list of testable criteria that must be met for the task to be considered complete"],
+        "acceptance_criteria": [
+            "a list of testable criteria that must be met for the task to be considered complete"
+        ],
         "priority": "a number between 1 and 10 indicating the priority of the task relative to other generated tasks",
-        "ready_criteria": ["a list of criteria that must be met before the task can be started"],
+        "ready_criteria": [
+            "a list of criteria that must be met before the task can be started"
+        ],
     }
 
     DEFAULT_TRIGGERING_PROMPT_TEMPLATE = (
@@ -67,9 +61,7 @@ class InitialPlan(PromptStrategy):
     )
 
     DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
-        "{agent_preamble}\n\n"
-        "Info:\n{info}\n\n"
-        "{triggering_prompt}\n\n"
+        "{agent_preamble}\n\n" "Info:\n{info}\n\n" "{triggering_prompt}\n\n"
     )
 
     default_configuration = InitialPlanConfiguration(
@@ -107,10 +99,13 @@ class InitialPlan(PromptStrategy):
         **kwargs,
     ) -> LanguageModelPrompt:
         if "abilities" not in kwargs:
-            raise ValueError("You must provide a list of abilities to the initial plan.")
+            raise ValueError(
+                "You must provide a list of abilities to the initial plan."
+            )
 
         kwargs["task_format"] = json.dumps(
-            self._task_format, indent=4,
+            self._task_format,
+            indent=4,
         )
         kwargs["agent_goals"] = to_numbered_list(kwargs["agent_goals"], **kwargs)
         kwargs["abilities"] = to_numbered_list(kwargs["abilities"], **kwargs)

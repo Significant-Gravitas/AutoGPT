@@ -1,13 +1,10 @@
 import abc
 
-from autogpt.core.configuration import (
-    SystemConfiguration,
-    UserConfigurable,
-)
+from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
-    LanguageModelPrompt,
     LanguageModelMessage,
+    LanguageModelPrompt,
 )
 
 # class Planner(abc.ABC):
@@ -64,7 +61,6 @@ from autogpt.core.planning.schema import (
 
 
 class PromptStrategy(abc.ABC):
-
     default_configuration: SystemConfiguration
 
     @property
@@ -79,4 +75,3 @@ class PromptStrategy(abc.ABC):
     @abc.abstractmethod
     def parse_response_content(self, response_text: str) -> dict:
         ...
-

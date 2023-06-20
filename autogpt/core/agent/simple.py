@@ -5,8 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from autogpt.core.agent.base import Agent
 from autogpt.core.ability import AbilityRegistrySettings, SimpleAbilityRegistry
+from autogpt.core.agent.base import Agent
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.embedding import EmbeddingModelSettings, SimpleEmbeddingModel
 from autogpt.core.memory import MemorySettings, SimpleMemory
@@ -177,7 +177,6 @@ class SimpleAgent(Agent, Configurable):
     async def step(self, user_feedback: str, *args, **kwargs):
         self._configuration.cycle_count += 1
         return await self._planning.make_initial_plan()
-
 
     def __repr__(self):
         return "SimpleAgent()"

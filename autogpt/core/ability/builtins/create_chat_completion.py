@@ -1,27 +1,19 @@
 import logging
 
-from autogpt.core.ability.base import AbilityConfiguration, Ability
-from autogpt.core.ability.schema import (
-    AbilityResult,
-)
-from autogpt.core.planning.simple import (
-    LanguageModelConfiguration,
-)
+from autogpt.core.ability.base import Ability, AbilityConfiguration
+from autogpt.core.ability.schema import AbilityResult
+from autogpt.core.planning.simple import LanguageModelConfiguration
+from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 from autogpt.core.resource.model_providers import (
+    LanguageModelMessage,
     LanguageModelProvider,
     MessageRole,
-    LanguageModelMessage,
     ModelProviderName,
     OpenAIModelName,
-)
-from autogpt.core.plugin.simple import (
-    PluginLocation,
-    PluginStorageFormat,
 )
 
 
 class CreateChatCompletion(Ability):
-
     default_configuration = AbilityConfiguration(
         location=PluginLocation(
             storage_format=PluginStorageFormat.INSTALLED_PACKAGE,

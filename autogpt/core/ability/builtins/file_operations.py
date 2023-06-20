@@ -1,14 +1,11 @@
 import logging
 
 from autogpt.core.ability.base import Ability, AbilityConfiguration
-from autogpt.core.ability.schema import (
-    AbilityResult,
-)
+from autogpt.core.ability.schema import AbilityResult
 from autogpt.core.workspace import Workspace
 
 
 class ReadFile(Ability):
-
     default_configuration = AbilityConfiguration(
         packages_required=["unstructured"],
         workspace_required=True,

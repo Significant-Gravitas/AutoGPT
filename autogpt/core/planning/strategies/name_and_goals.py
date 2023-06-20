@@ -1,15 +1,15 @@
 import json
 
-from autogpt.core.configuration import (
-    SystemConfiguration,
-    UserConfigurable,
-)
-from autogpt.core.planning.schema import LanguageModelPrompt, LanguageModelClassification
+from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.planning.base import PromptStrategy
+from autogpt.core.planning.schema import (
+    LanguageModelClassification,
+    LanguageModelPrompt,
+)
 from autogpt.core.resource.model_providers import (
-    MessageRole,
-    LanguageModelMessage,
     LanguageModelFunction,
+    LanguageModelMessage,
+    MessageRole,
 )
 
 
@@ -21,7 +21,6 @@ class NameAndGoalsConfiguration(SystemConfiguration):
 
 
 class NameAndGoals(PromptStrategy):
-
     DEFAULT_SYSTEM_PROMPT = (
         "Your job is to respond to a user-defined task by invoking the `create_agent` function "
         "to generate an autonomous agent to complete the task. You should supply a role-based "
@@ -45,9 +44,7 @@ class NameAndGoals(PromptStrategy):
         "remains on track.'])\n\n"
     )
 
-    DEFAULT_USER_PROMPT_TEMPLATE = (
-        "'{user_objective}'"
-    )
+    DEFAULT_USER_PROMPT_TEMPLATE = "'{user_objective}'"
 
     DEFAULT_CREATE_AGENT_FUNCTION = {
         "name": "create_agent",
@@ -80,7 +77,7 @@ class NameAndGoals(PromptStrategy):
                 },
             },
             "required": ["agent_name", "agent_role", "agent_goals"],
-        }
+        },
     }
 
     default_configuration = NameAndGoalsConfiguration(
@@ -143,4 +140,3 @@ class NameAndGoals(PromptStrategy):
         """
         parsed_response = json.loads(response_content["function_call"]["arguments"])
         return parsed_response
-

@@ -5,21 +5,15 @@ from typing import ClassVar
 import inflection
 from pydantic import Field
 
-
 from autogpt.core.ability.schema import AbilityResult
-from autogpt.core.configuration import (
-    SystemConfiguration,
-)
-from autogpt.core.planning.simple import (
-    LanguageModelConfiguration,
-)
-from autogpt.core.plugin.simple import (
-    PluginLocation,
-)
+from autogpt.core.configuration import SystemConfiguration
+from autogpt.core.planning.simple import LanguageModelConfiguration
+from autogpt.core.plugin.simple import PluginLocation
 
 
 class AbilityConfiguration(SystemConfiguration):
     """Struct for model configuration."""
+
     location: PluginLocation
     packages_required: list[str] = Field(default_factory=list)
     language_model_required: LanguageModelConfiguration = None
@@ -29,6 +23,7 @@ class AbilityConfiguration(SystemConfiguration):
 
 class Ability(abc.ABC):
     """A class representing an agent ability."""
+
     default_configuration: ClassVar[AbilityConfiguration]
 
     @classmethod
@@ -73,9 +68,10 @@ class Ability(abc.ABC):
 
 
 class AbilityRegistry(abc.ABC):
-
     @abc.abstractmethod
-    def register_ability(self, ability_name: str, ability_configuration: AbilityConfiguration) -> None:
+    def register_ability(
+        self, ability_name: str, ability_configuration: AbilityConfiguration
+    ) -> None:
         ...
 
     @abc.abstractmethod
