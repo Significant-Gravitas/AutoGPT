@@ -112,7 +112,7 @@ class SimplePlanner(Configurable):
         agent_name: str,
         agent_role: str,
         agent_goals: list[str],
-        abilities: list[dict[str, str]],
+        abilities: list[str],
     ) -> LanguageModelResponse:
         return await self.chat_with_model(
             self._prompt_strategies["initial_plan"],

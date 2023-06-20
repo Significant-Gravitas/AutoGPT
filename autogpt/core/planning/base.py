@@ -73,5 +73,5 @@ class PromptStrategy(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def parse_response_content(self, response_text: str) -> dict:
+    def parse_response_content(self, response_content: dict) -> dict:
         ...

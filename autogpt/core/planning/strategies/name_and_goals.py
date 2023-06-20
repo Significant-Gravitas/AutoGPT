@@ -41,7 +41,7 @@ class NameAndGoals(PromptStrategy):
         "campaigns that maximize results with minimal time and budget investment.', "
         "'Proactively take the lead in guiding you and offering suggestions when faced "
         "with unclear information or uncertainty to ensure your marketing strategy "
-        "remains on track.'])\n\n"
+        "remains on track.'])"
     )
 
     DEFAULT_USER_PROMPT_TEMPLATE = "'{user_objective}'"
@@ -49,7 +49,7 @@ class NameAndGoals(PromptStrategy):
     DEFAULT_CREATE_AGENT_FUNCTION = {
         "name": "create_agent",
         "description": (
-            "Create a new autonomous AI agent to complete a given task.\n\n"
+            "Create a new autonomous AI agent to complete a given task."
         ),
         "parameters": {
             "type": "object",

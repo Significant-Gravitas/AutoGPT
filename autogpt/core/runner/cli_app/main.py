@@ -51,6 +51,7 @@ async def run_auto_gpt(user_configuration: dict):
     print("agent is loaded")
 
     plan = await agent.build_initial_plan()
+    print(parse_agent_plan(plan))
     breakpoint()
 
     user_input = ""
@@ -68,4 +69,22 @@ def parse_agent_name_and_goals(name_and_goals: LanguageModelResponse) -> str:
     parsed_response += "Agent Goals:\n"
     for i, goal in enumerate(content["agent_goals"]):
         parsed_response += f"{i+1}. {goal}\n"
+    return parsed_response
+
+
+def parse_agent_plan(plan: LanguageModelResponse) -> str:
+    content = plan.content
+    parsed_response = f"Agent Plan:\n"
+    for i, task in enumerate(content['task_list']):
+        parsed_response += f"{i+1}. {task['objective']}\n"
+        parsed_response += f"Task type: {task['task_type']}  "
+        parsed_response += f"Priority: {task['priority']}\n"
+        parsed_response += f"Ready Criteria:\n"
+        for j, criteria in enumerate(task['ready_criteria']):
+            parsed_response += f"    {j+1}. {criteria}\n"
+        parsed_response += f"Acceptance Criteria:\n"
+        for j, criteria in enumerate(task['acceptance_criteria']):
+            parsed_response += f"    {j+1}. {criteria}\n"
+        parsed_response += "\n"
+
     return parsed_response
