@@ -84,19 +84,8 @@ class SimplePlanner(Configurable):
                 ),
             },
             prompt_strategies=PromptStrategiesConfiguration(
-                name_and_goals=strategies.NameAndGoalsConfiguration(
-                    model_classification=LanguageModelClassification.SMART_MODEL,
-                    system_prompt=strategies.NameAndGoals.DEFAULT_SYSTEM_PROMPT,
-                    user_prompt_template=strategies.NameAndGoals.DEFAULT_USER_PROMPT_TEMPLATE,
-                ),
-                initial_plan=strategies.InitialPlanConfiguration(
-                    model_classification=LanguageModelClassification.SMART_MODEL,
-                    agent_preamble=strategies.InitialPlan.DEFAULT_AGENT_PREAMBLE,
-                    agent_info=strategies.InitialPlan.DEFAULT_AGENT_INFO,
-                    task_format=strategies.InitialPlan.DEFAULT_TASK_FORMAT,
-                    triggering_prompt_template=strategies.InitialPlan.DEFAULT_TRIGGERING_PROMPT_TEMPLATE,
-                    system_prompt_template=strategies.InitialPlan.DEFAULT_SYSTEM_PROMPT_TEMPLATE,
-                ),
+                name_and_goals=strategies.NameAndGoals.default_configuration,
+                initial_plan=strategies.InitialPlan.default_configuration,
             ),
         ),
     )
@@ -155,6 +144,7 @@ class SimplePlanner(Configurable):
         self._logger.debug(f"Using prompt:\n{prompt}\n\n")
         response = await provider.create_language_completion(
             model_prompt=prompt.messages,
+            functions=prompt.functions,
             **model_configuration,
             completion_parser=prompt_strategy.parse_response_content,
         )

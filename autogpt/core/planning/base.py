@@ -65,6 +65,8 @@ from autogpt.core.planning.schema import (
 
 class PromptStrategy(abc.ABC):
 
+    default_configuration: SystemConfiguration
+
     @property
     @abc.abstractmethod
     def model_classification(self) -> LanguageModelClassification:

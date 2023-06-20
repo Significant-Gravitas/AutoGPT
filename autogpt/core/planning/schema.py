@@ -1,9 +1,10 @@
 import enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from autogpt.core.resource.model_providers.schema import (
     LanguageModelMessage,
+    LanguageModelFunction,
     LanguageModelProviderModelResponse,
 )
 
@@ -23,7 +24,7 @@ class LanguageModelClassification(str, enum.Enum):
 
 class LanguageModelPrompt(BaseModel):
     messages: list[LanguageModelMessage]
-    tokens_used: int
+    functions: list[LanguageModelFunction] = Field(default_factory=list)
 
     def __str__(self):
         return "\n\n".join([f"{m.role.value}: {m.content}" for m in self.messages])

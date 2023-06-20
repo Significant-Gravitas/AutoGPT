@@ -1,6 +1,6 @@
 import abc
 import enum
-from typing import Callable, ClassVar
+from typing import Callable, ClassVar, Union
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
@@ -36,6 +36,10 @@ class MessageRole(str, enum.Enum):
 class LanguageModelMessage(BaseModel):
     role: MessageRole
     content: str
+
+
+class LanguageModelFunction(BaseModel):
+    json_schema: dict
 
 
 class ModelProviderModelInfo(BaseModel):
@@ -226,7 +230,6 @@ class LanguageModelProviderModelInfo(ModelProviderModelInfo):
 
 class LanguageModelProviderModelResponse(ModelProviderModelResponse):
     """Standard response struct for a response from a language model."""
-
     content: dict = None
 
 
@@ -235,6 +238,7 @@ class LanguageModelProvider(ModelProvider):
     async def create_language_completion(
         self,
         model_prompt: list[LanguageModelMessage],
+        functions: list[LanguageModelFunction],
         model_name: str,
         completion_parser: Callable[[str], dict],
         **kwargs,

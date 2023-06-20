@@ -72,6 +72,15 @@ class InitialPlan(PromptStrategy):
         "{triggering_prompt}\n\n"
     )
 
+    default_configuration = InitialPlanConfiguration(
+        model_classification=LanguageModelClassification.SMART_MODEL,
+        agent_preamble=DEFAULT_AGENT_PREAMBLE,
+        agent_info=DEFAULT_AGENT_INFO,
+        task_format=DEFAULT_TASK_FORMAT,
+        triggering_prompt_template=DEFAULT_TRIGGERING_PROMPT_TEMPLATE,
+        system_prompt_template=DEFAULT_SYSTEM_PROMPT_TEMPLATE,
+    )
+
     def __init__(
         self,
         model_classification: LanguageModelClassification,

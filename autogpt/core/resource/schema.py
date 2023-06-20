@@ -1,8 +1,6 @@
 import abc
 import enum
-from typing import Any
 
-import numpy as np
 from pydantic import SecretBytes, SecretField, SecretStr
 
 from autogpt.core.configuration import (

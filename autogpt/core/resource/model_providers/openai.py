@@ -19,6 +19,7 @@ from autogpt.core.resource.model_providers.schema import (
     EmbeddingModelProviderModelInfo,
     EmbeddingModelProviderModelResponse,
     LanguageModelMessage,
+    LanguageModelFunction,
     LanguageModelProvider,
     LanguageModelProviderModelInfo,
     LanguageModelProviderModelResponse,
@@ -100,17 +101,6 @@ OPEN_AI_MODELS = {
 
 class OpenAICredentials(ModelProviderCredentials):
     use_azure: bool = False
-
-    # @root_validator()
-    # def validate_api_key(cls, values):
-    #     api_key = values.get("api_key")
-    #     models = values.get("models")
-    #     if api_key is None:
-    #         for model, credentials in models.items():
-    #             if credentials.api_key is None:
-    #                 raise ValueError(
-    #                     f"Either api_key for the provider or api_key for model {model} must be provided."
-    #                 )
 
 
 class OpenAIConfiguration(SystemConfiguration):
@@ -195,12 +185,13 @@ class OpenAIProvider(
     async def create_language_completion(
         self,
         model_prompt: list[LanguageModelMessage],
+        functions: list[LanguageModelFunction],
         model_name: OpenAIModelName,
-        completion_parser: Callable[[str], dict],
+        completion_parser: Callable[[dict], dict],
         **kwargs,
     ) -> LanguageModelProviderModelResponse:
         """Create a completion using the OpenAI API."""
-        completion_kwargs = self._get_completion_kwargs(model_name, **kwargs)
+        completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
         response = await self._create_completion(
             messages=model_prompt,
             **completion_kwargs,
@@ -210,8 +201,9 @@ class OpenAIProvider(
             "prompt_tokens_used": response.usage.prompt_tokens,
             "completion_tokens_used": response.usage.completion_tokens,
         }
-        content = completion_parser(response.choices[0].message.content)
-        response = LanguageModelProviderModelResponse(**response_args, content=content)
+
+        parsed_response = completion_parser(response.choices[0].message.to_dict_recursive())
+        response = LanguageModelProviderModelResponse(content=parsed_response, **response_args)
         self._budget.update_usage_and_cost(response)
         return response
 
@@ -238,7 +230,12 @@ class OpenAIProvider(
         self._budget.update_usage_and_cost(response)
         return response
 
-    def _get_completion_kwargs(self, model_name: OpenAIModelName, **kwargs) -> dict:
+    def _get_completion_kwargs(
+        self,
+        model_name: OpenAIModelName,
+        functions: list[LanguageModelFunction],
+        **kwargs,
+    ) -> dict:
         """Get kwargs for completion API call.
 
         Args:
@@ -254,6 +251,8 @@ class OpenAIProvider(
             **kwargs,
             **self._model_credentials[model_name].unmasked(),
         }
+        if functions:
+            completion_kwargs['functions'] = functions
 
         return completion_kwargs
 
@@ -313,6 +312,8 @@ async def _create_completion(
 
     """
     messages = [message.dict() for message in messages]
+    if 'functions' in kwargs:
+        kwargs['functions'] = [function.json_schema for function in kwargs['functions']]
     return await openai.ChatCompletion.acreate(
         messages=messages,
         **kwargs,
