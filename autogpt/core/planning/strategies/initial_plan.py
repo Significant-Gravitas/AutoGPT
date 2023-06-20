@@ -1,8 +1,13 @@
 import json
 
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.planning import LanguageModelClassification, LanguageModelPrompt
 from autogpt.core.planning.base import PromptStrategy
+from autogpt.core.planning.schema import (
+    LanguageModelClassification,
+    LanguageModelPrompt,
+    TaskType,
+    Task,
+)
 from autogpt.core.planning.strategies.utils import to_numbered_list
 from autogpt.core.resource.model_providers import LanguageModelMessage, LanguageModelFunction, MessageRole
 
@@ -34,7 +39,7 @@ class InitialPlan(PromptStrategy):
     ]
 
     DEFAULT_USER_PROMPT_TEMPLATE = (
-        "You are {agent_name}, {agent_role}.\n" "Your goals are:\n" "{agent_goals}"
+        "You are {agent_name}, {agent_role}\n" "Your goals are:\n" "{agent_goals}"
         "You will accomplish your goals by breaking them down into "
         "a series of tasks and then executing those tasks one by one.\n"
         "Your first objective is to break down your goals into a series of small tasks by invoking the provided"
@@ -61,7 +66,7 @@ class InitialPlan(PromptStrategy):
                             "task_type": {
                                 "type": "string",
                                 "description": "A categorization for the task. ",
-                                "enum": ['research', 'write', 'code', 'design', 'test', 'market', 'sell', 'manage'],
+                                "enum": [t.value for t in TaskType],
                             },
                             "acceptance_criteria": {
                                 "type": "array",
@@ -173,4 +178,7 @@ class InitialPlan(PromptStrategy):
 
         """
         parsed_response = json.loads(response_content["function_call"]["arguments"])
+        parsed_response["task_list"] = [
+            Task.parse_obj(task) for task in parsed_response["task_list"]
+        ]
         return parsed_response

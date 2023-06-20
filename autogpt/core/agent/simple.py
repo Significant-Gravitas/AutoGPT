@@ -10,7 +10,14 @@ from autogpt.core.agent.base import Agent
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.embedding import EmbeddingModelSettings, SimpleEmbeddingModel
 from autogpt.core.memory import MemorySettings, SimpleMemory
-from autogpt.core.planning import LanguageModelResponse, PlannerSettings, SimplePlanner
+from autogpt.core.planning import (
+    LanguageModelResponse,
+    PlannerSettings,
+    SimplePlanner,
+    Task,
+    TaskStatus,
+    TaskType,
+)
 from autogpt.core.plugin.simple import (
     PluginLocation,
     PluginStorageFormat,
@@ -124,6 +131,7 @@ class SimpleAgent(Agent, Configurable):
         self._openai_provider = openai_provider
         self._planning = planning
         self._workspace = workspace
+        self._task_queue = []
 
     @classmethod
     def from_workspace(
@@ -177,12 +185,20 @@ class SimpleAgent(Agent, Configurable):
         return cls(**agent_args)
 
     async def build_initial_plan(self):
-        return await self._planning.make_initial_plan(
+        plan = await self._planning.make_initial_plan(
             agent_name=self._configuration.name,
             agent_role=self._configuration.role,
             agent_goals=self._configuration.goals,
             abilities=self._ability_registry.list_abilities(),
         )
+        tasks = [Task.parse_obj(task) for task in plan.content["task_list"]]
+
+        # TODO: Should probably do a step to evaluate the quality of the generated tasks,
+        #  and ensure that they have actionable ready and acceptance criteria
+
+        self._task_queue.extend(tasks)
+        self._task_queue.sort(key=lambda t: t.priority)
+        return plan
 
     async def step(self, user_feedback: str, *args, **kwargs):
         self._configuration.cycle_count += 1
