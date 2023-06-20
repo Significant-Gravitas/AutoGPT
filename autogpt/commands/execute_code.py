@@ -18,7 +18,7 @@ DENYLIST_CONTROL = "denylist"
 
 @command(
     "execute_python_code",
-    "Create a Python file and execute it",
+    "Creates a Python file and executes it",
     {
         "code": {
             "type": "string",
@@ -63,7 +63,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
 
 @command(
     "execute_python_file",
-    "Execute an existing Python file",
+    "Executes an existing Python file",
     {
         "filename": {
             "type": "string",
@@ -191,7 +191,7 @@ def validate_command(command: str, config: Config) -> bool:
 
 @command(
     "execute_shell",
-    "Execute Shell Command, non-interactive commands only",
+    "Executes a Shell Command, non-interactive commands only",
     {
         "command_line": {
             "type": "string",
@@ -237,7 +237,7 @@ def execute_shell(command_line: str, agent: Agent) -> str:
 
 @command(
     "execute_shell_popen",
-    "Execute Shell Command, non-interactive commands only",
+    "Executes a Shell Command, non-interactive commands only",
     {
         "query": {
             "type": "string",
