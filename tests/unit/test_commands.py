@@ -8,7 +8,7 @@ import pytest
 from autogpt.models.command import Command
 from autogpt.models.command_registry import CommandRegistry
 
-SIGNATURE = "(arg1: int, arg2: str) -> str"
+ARGUMENTS = "(arg1: int, arg2: str) -> str"
 
 
 class TestCommand:
@@ -26,13 +26,13 @@ class TestCommand:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            signature=SIGNATURE,
+            arguments=ARGUMENTS,
         )
 
         assert cmd.name == "example"
         assert cmd.description == "Example command"
         assert cmd.method == self.example_command_method
-        assert cmd.signature == "(arg1: int, arg2: str) -> str"
+        assert cmd.arguments == "(arg1: int, arg2: str) -> str"
 
     def test_command_call(self):
         """Test that Command(*args) calls and returns the result of method(*args)."""
@@ -41,7 +41,7 @@ class TestCommand:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            signature={
+            arguments={
                 "prompt": {
                     "type": "string",
                     "description": "The prompt used to generate the image",
@@ -58,21 +58,21 @@ class TestCommand:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            signature=SIGNATURE,
+            arguments=ARGUMENTS,
         )
         with pytest.raises(TypeError):
             cmd(arg1="invalid", does_not_exist="test")
 
-    def test_command_custom_signature(self):
-        custom_signature = "custom_arg1: int, custom_arg2: str"
+    def test_command_custom_arguments(self):
+        custom_arguments = "custom_arg1: int, custom_arg2: str"
         cmd = Command(
             name="example",
             description="Example command",
             method=self.example_command_method,
-            signature=custom_signature,
+            arguments=custom_arguments,
         )
 
-        assert cmd.signature == custom_signature
+        assert cmd.arguments == custom_arguments
 
 
 class TestCommandRegistry:
@@ -87,7 +87,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            signature=SIGNATURE,
+            arguments=ARGUMENTS,
         )
 
         registry.register(cmd)
@@ -102,7 +102,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            signature=SIGNATURE,
+            arguments=ARGUMENTS,
         )
 
         registry.register(cmd)
@@ -117,7 +117,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            signature=SIGNATURE,
+            arguments=ARGUMENTS,
         )
 
         registry.register(cmd)
@@ -139,7 +139,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            signature=SIGNATURE,
+            arguments=ARGUMENTS,
         )
 
         registry.register(cmd)
@@ -161,7 +161,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            signature=SIGNATURE,
+            arguments=ARGUMENTS,
         )
 
         registry.register(cmd)

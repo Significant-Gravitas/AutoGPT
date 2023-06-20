@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
+
+from autogpt.models.command_function import CommandFunction
 
 if TYPE_CHECKING:
     from autogpt.agent.agent import Agent
@@ -21,6 +23,7 @@ def chat_with_ai(
     system_prompt: str,
     triggering_prompt: str,
     token_limit: int,
+    functions: List[CommandFunction],
     model: str | None = None,
 ):
     """
@@ -94,6 +97,7 @@ def chat_with_ai(
     current_tokens_used += count_message_tokens([user_input_msg], model)
 
     current_tokens_used += 500  # Reserve space for new_summary_message
+    current_tokens_used += 500  # Reserve space for the openai functions TODO improve
 
     # Add Messages until the token limit is reached or there are no more messages to add.
     for cycle in reversed(list(agent.history.per_cycle(agent.config))):
@@ -193,11 +197,13 @@ def chat_with_ai(
     assistant_reply = create_chat_completion(
         prompt=message_sequence,
         config=agent.config,
+        functions=functions,
         max_tokens=tokens_remaining,
     )
 
     # Update full message history
     agent.history.append(user_input_msg)
-    agent.history.add("assistant", assistant_reply, "ai_response")
+
+    agent.history.add("assistant", assistant_reply.content, "ai_response")
 
     return assistant_reply

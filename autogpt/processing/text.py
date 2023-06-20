@@ -67,7 +67,8 @@ def summarize_text(
 
     Args:
         text (str): The text to summarize
-        config (Config): The config object
+        config (Config): Thtext(
+                "\n\n".joine config object
         instruction (str): Additional instruction for summarization, e.g. "focus on information related to polar bears", "omit personal information contained in the text"
         question (str): Question to answer in the summary
 
@@ -114,8 +115,8 @@ def summarize_text(
 
         logger.debug(f"Summarizing with {model}:\n{summarization_prompt.dump()}\n")
         summary = create_chat_completion(
-            summarization_prompt, config, temperature=0, max_tokens=500
-        )
+            prompt=summarization_prompt, config=config, temperature=0, max_tokens=500
+        ).content
 
         logger.debug(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
         return summary.strip(), None

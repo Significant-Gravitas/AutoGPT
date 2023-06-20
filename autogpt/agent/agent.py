@@ -20,6 +20,7 @@ from autogpt.log_cycle.log_cycle import (
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
+from autogpt.models.command_function import CommandFunction
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
@@ -138,11 +139,14 @@ class Agent:
                     self.system_prompt,
                     self.triggering_prompt,
                     self.fast_token_limit,
+                    self.get_functions_from_commands(),
                     self.config.fast_llm_model,
                 )
 
             try:
-                assistant_reply_json = extract_json_from_response(assistant_reply)
+                assistant_reply_json = extract_json_from_response(
+                    assistant_reply.content
+                )
                 validate_json(assistant_reply_json, self.config)
             except json.JSONDecodeError as e:
                 logger.error(f"Exception while validating assistant reply JSON: {e}")
@@ -160,7 +164,9 @@ class Agent:
                     print_assistant_thoughts(
                         self.ai_name, assistant_reply_json, self.config
                     )
-                    command_name, arguments = get_command(assistant_reply_json)
+                    command_name, arguments = get_command(
+                        assistant_reply_json, assistant_reply, self.config
+                    )
                     if self.config.speak_mode:
                         say_text(f"I want to execute {command_name}")
 
@@ -314,3 +320,37 @@ class Agent:
                         self.workspace.get_path(command_args[pathlike])
                     )
         return command_args
+
+    def get_functions_from_commands(self) -> list[CommandFunction]:
+        """Get functions from the commands. "functions" in this context refers to OpenAI functions
+        see https://platform.openai.com/docs/guides/gpt/function-calling
+        """
+        functions = []
+        if not self.config.openai_functions:
+            return functions
+        for command in self.command_registry.commands.values():
+            properties = {}
+            required = []
+
+            for argument in command.arguments:
+                properties[argument.name] = {
+                    "type": argument.type,
+                    "description": argument.description,
+                }
+                if argument.required:
+                    required.append(argument.name)
+
+            parameters = {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            }
+            functions.append(
+                CommandFunction(
+                    name=command.name,
+                    description=command.description,
+                    parameters=parameters,
+                )
+            )
+
+        return functions

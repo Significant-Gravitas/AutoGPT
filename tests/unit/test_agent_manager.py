@@ -2,6 +2,7 @@ import pytest
 
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.llm.chat import create_chat_completion
+from autogpt.models.chat_completion_response import ChatCompletionResponse
 
 
 @pytest.fixture
@@ -32,7 +33,9 @@ def mock_create_chat_completion(mocker):
         "autogpt.agent.agent_manager.create_chat_completion",
         wraps=create_chat_completion,
     )
-    mock_create_chat_completion.return_value = "irrelevant"
+    mock_create_chat_completion.return_value = ChatCompletionResponse(
+        content="irrelevant", function_call={}
+    )
     return mock_create_chat_completion
 
 
