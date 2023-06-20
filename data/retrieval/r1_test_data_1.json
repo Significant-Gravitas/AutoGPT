@@ -1,0 +1,10 @@
+{
+    "category": "information-retrieval",
+    "query": "The Nobel Prize in Literature 2012",
+    "ground": {
+        "answer": "Mo Yan",
+        "should_contain": ["Mo Yan"],
+        "should_not_contain": ["Murakami Haruki"]
+    },
+    "difficulty_level": "easy"
+}
