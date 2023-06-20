@@ -49,6 +49,25 @@ def test_execute_python_code(random_code: str, random_string: str, agent: Agent)
     with open(destination) as f:
         assert f.read() == random_code
 
+def test_execute_python_code_filters_out_workspace_escaping(random_code: str, random_string: str, agent: Agent):
+    ai_name = agent.ai_name + "/../../"
+    result: str = sut.execute_python_code(random_code, "test_code", agent=agent)
+    assert result.replace("\r", "") == f"Hello {random_string}!\n"
+
+    # Check that the code is not stored in parent directory
+    destination = os.path.join(
+        agent.config.workspace_path, ai_name, "executed_code", "test_code.py"
+    )
+    with open(destination) as f:
+        assert f.read() == random_code
+    
+    # Check that the code is stored in the correct directory
+    destination = os.path.join(
+        agent.config.workspace_path, agent.ai_name, "executed_code", "test_code.py"
+    )
+    with open(destination) as f:
+        assert f.read() == random_code
+
 
 def test_execute_python_code_overwrites_file(
     random_code: str, random_string: str, agent: Agent

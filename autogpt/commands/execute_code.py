@@ -50,16 +50,17 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
     if not name.endswith(".py"):
         name = name + ".py"
 
-    path = os.path.join(directory, name)
-
     workspace = Workspace(
         agent.config.workspace_path, agent.config.restrict_to_workspace
     )
+    path = os.path.join(directory, name)
+    generated_file = workspace.get_path(path)
+    path = os.path(generated_file)
+
     try:
         with open(path, "w+", encoding="utf-8") as f:
             f.write(code)
 
-        generated_file = workspace.get_path(f.name)
         return execute_python_file(generated_file, agent)
     except Exception as e:
         return f"Error: {str(e)}"
