@@ -14,11 +14,19 @@ from autogpt.core.resource.model_providers import (
     ModelProviderName,
     OpenAIModelName,
 )
+from autogpt.core.plugin.simple import (
+    PluginLocation,
+    PluginStorageFormat,
+)
 
 
 class CreateChatCompletion(Ability):
 
     default_configuration = AbilityConfiguration(
+        location=PluginLocation(
+            storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+            storage_route="autogpt.core.ability.builtins.CreateChatCompletion",
+        ),
         language_model_required=LanguageModelConfiguration(
             model_name=OpenAIModelName.GPT3,
             provider_name=ModelProviderName.OPENAI,

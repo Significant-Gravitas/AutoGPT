@@ -6,18 +6,7 @@
 # Planner defaults #
 ####################
 
-AGENT_NAME = "Entrepreneur-GPT"
 
-AGENT_ROLE = (
-    "An AI designed to autonomously develop and run businesses with "
-    "the sole goal of increasing your net worth."
-)
-
-AGENT_GOALS = [
-    "Increase net worth",
-    "Grow Twitter Account",
-    "Develop and manage multiple businesses autonomously",
-]
 
 USER_OBJECTIVE = (
     "Write a wikipedia style article about the project: "

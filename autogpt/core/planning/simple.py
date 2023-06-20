@@ -18,14 +18,11 @@ from autogpt.core.planning.base import (
 )
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
-    LanguageModelPrompt,
     LanguageModelResponse,
 )
 from autogpt.core.planning import strategies
 from autogpt.core.resource.model_providers import (
     LanguageModelProvider,
-    MessageRole,
-    LanguageModelMessage,
     ModelProviderName,
     OpenAIModelName,
 )
@@ -47,10 +44,6 @@ class PromptStrategiesConfiguration(SystemConfiguration):
 
 class PlannerConfiguration(SystemConfiguration):
     """Configuration for the Planner subsystem."""
-
-    agent_name: str
-    agent_role: str
-    agent_goals: list[str]
     models: dict[LanguageModelClassification, LanguageModelConfiguration]
     prompt_strategies: PromptStrategiesConfiguration
 
@@ -68,9 +61,6 @@ class SimplePlanner(Configurable):
         name="planner",
         description="Manages the agent's planning and goal-setting by constructing language model prompts.",
         configuration=PlannerConfiguration(
-            agent_name=templates.AGENT_NAME,
-            agent_role=templates.AGENT_ROLE,
-            agent_goals=templates.AGENT_GOALS,
             models={
                 LanguageModelClassification.FAST_MODEL: LanguageModelConfiguration(
                     model_name=OpenAIModelName.GPT3,
@@ -120,10 +110,19 @@ class SimplePlanner(Configurable):
             user_objective=user_objective,
         )
 
-    async def make_initial_plan(self) -> LanguageModelResponse:
+    async def make_initial_plan(
+        self,
+        agent_name: str,
+        agent_role: str,
+        agent_goals: list[str],
+        abilities: list[dict[str, str]],
+    ) -> LanguageModelResponse:
         return await self.chat_with_model(
             self._prompt_strategies['initial_plan'],
-            abilities=list(templates.ABILITIES),
+            agent_name=agent_name,
+            agent_role=agent_role,
+            agent_goals=agent_goals,
+            abilities=abilities,
         )
 
     async def chat_with_model(

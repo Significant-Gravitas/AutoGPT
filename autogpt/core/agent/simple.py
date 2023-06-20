@@ -32,6 +32,9 @@ class AgentSystems(SystemConfiguration):
 class AgentConfiguration(SystemConfiguration):
     cycle_count: int
     creation_time: str
+    name: str
+    role: str
+    goals: list[str]
     systems: AgentSystems
 
 
@@ -49,9 +52,9 @@ class AgentSettings(BaseModel):
     workspace: WorkspaceSettings
 
     def update_agent_name_and_goals(self, agent_goals: dict) -> None:
-        self.planning.configuration.agent_name = agent_goals["agent_name"]
-        self.planning.configuration.agent_role = agent_goals["agent_role"]
-        self.planning.configuration.agent_goals = agent_goals["agent_goals"]
+        self.agent.configuration.name = agent_goals["agent_name"]
+        self.agent.configuration.role = agent_goals["agent_role"]
+        self.agent.configuration.goals = agent_goals["agent_goals"]
 
 
 class SimpleAgent(Agent, Configurable):
@@ -145,12 +148,6 @@ class SimpleAgent(Agent, Configurable):
             logger,
             model_providers={"openai": agent_args["openai_provider"]},
         )
-
-        agent_args["ability_registry"] = cls._get_system_instance(
-            "ability_registry",
-            agent_settings,
-            logger,
-        )
         agent_args["memory"] = cls._get_system_instance(
             "memory",
             agent_settings,
@@ -158,7 +155,24 @@ class SimpleAgent(Agent, Configurable):
             workspace=agent_args["workspace"],
         )
 
+        agent_args["ability_registry"] = cls._get_system_instance(
+            "ability_registry",
+            agent_settings,
+            logger,
+            workspace=agent_args["workspace"],
+            memory=agent_args["memory"],
+            model_providers={"openai": agent_args["openai_provider"]},
+        )
+
         return cls(**agent_args)
+
+    def build_initial_plan(self):
+        return self._planning.make_initial_plan(
+            agent_name=self._configuration.name,
+            agent_role=self._configuration.role,
+            agent_goals=self._configuration.goals,
+            abilities=self._ability_registry.list_abilities(),
+        )
 
     async def step(self, user_feedback: str, *args, **kwargs):
         self._configuration.cycle_count += 1

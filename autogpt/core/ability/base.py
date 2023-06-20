@@ -13,10 +13,14 @@ from autogpt.core.configuration import (
 from autogpt.core.planning.simple import (
     LanguageModelConfiguration,
 )
+from autogpt.core.plugin.simple import (
+    PluginLocation,
+)
 
 
 class AbilityConfiguration(SystemConfiguration):
     """Struct for model configuration."""
+    location: PluginLocation
     packages_required: list[str] = Field(default_factory=list)
     language_model_required: LanguageModelConfiguration = None
     memory_provider_required: bool = False
@@ -71,7 +75,7 @@ class Ability(abc.ABC):
 class AbilityRegistry(abc.ABC):
 
     @abc.abstractmethod
-    def register_ability(self, ability: Ability) -> None:
+    def register_ability(self, ability_name: str, ability_configuration: AbilityConfiguration) -> None:
         ...
 
     @abc.abstractmethod

@@ -50,6 +50,8 @@ async def run_auto_gpt(user_configuration: dict):
     )
     print("agent is loaded")
 
+
+
     user_input = ""
     while True:
         agent_response = await agent.step(user_input)
