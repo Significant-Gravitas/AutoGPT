@@ -9,7 +9,6 @@ from jsonschema import Draft7Validator
 from autogpt.config import Config
 from autogpt.logs import logger
 
-CFG = Config()
 LLM_DEFAULT_RESPONSE_FORMAT = "llm_response_format_1"
 
 
@@ -23,7 +22,8 @@ def extract_json_from_response(response_content: str) -> dict:
     try:
         return ast.literal_eval(response_content)
     except BaseException as e:
-        logger.error(f"Error parsing JSON response with literal_eval {e}")
+        logger.info(f"Error parsing JSON response with literal_eval {e}")
+        logger.debug(f"Invalid JSON received in response: {response_content}")
         # TODO: How to raise an error here without causing the program to exit?
         return {}
 
@@ -37,7 +37,7 @@ def llm_response_schema(
 
 
 def validate_json(
-    json_object: object, schema_name: str = LLM_DEFAULT_RESPONSE_FORMAT
+    json_object: object, config: Config, schema_name: str = LLM_DEFAULT_RESPONSE_FORMAT
 ) -> bool:
     """
     :type schema_name: object
@@ -54,7 +54,7 @@ def validate_json(
         for error in errors:
             logger.error(f"JSON Validation Error: {error}")
 
-        if CFG.debug_mode:
+        if config.debug_mode:
             logger.error(
                 json.dumps(json_object, indent=4)
             )  # Replace 'json_object' with the variable containing the JSON data

@@ -38,8 +38,7 @@ def agent(config: Config):
     return agent
 
 
-def test_message_history_batch_summary(mocker, agent):
-    config = Config()
+def test_message_history_batch_summary(mocker, agent, config):
     history = MessageHistory(agent)
     model = config.fast_llm_model
     message_tlength = 0
@@ -114,7 +113,7 @@ def test_message_history_batch_summary(mocker, agent):
         history.append(user_input_msg)
 
     # only take the last cycle of the message history,  trim the rest of previous messages, and generate a summary for them
-    for cycle in reversed(list(history.per_cycle())):
+    for cycle in reversed(list(history.per_cycle(config))):
         messages_to_add = [msg for msg in cycle if msg is not None]
         message_sequence.insert(insertion_index, *messages_to_add)
         break
@@ -127,7 +126,7 @@ def test_message_history_batch_summary(mocker, agent):
 
     # test the main trim_message function
     new_summary_message, trimmed_messages = history.trim_messages(
-        current_message_chain=list(message_sequence),
+        current_message_chain=list(message_sequence), config=config
     )
 
     expected_call_count = math.ceil(
