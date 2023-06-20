@@ -6,7 +6,6 @@ import pytest
 from autogpt.config import Config
 from autogpt.memory.vector import JSONFileMemory, MemoryItem
 from autogpt.workspace import Workspace
-from tests.utils import requires_api_key
 
 
 @pytest.fixture(autouse=True)
@@ -99,7 +98,7 @@ def test_json_memory_load_index(config: Config, memory_item: MemoryItem):
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
+@pytest.mark.requires_openai_api_key
 def test_json_memory_get_relevant(config: Config, patched_api_requestor: None) -> None:
     index = JSONFileMemory(config)
     mem1 = MemoryItem.from_text_file("Sample text", "sample.txt", config)
