@@ -59,7 +59,8 @@ class CreateChatCompletion(Ability):
     async def __call__(self, messages: list[LanguageModelMessage]) -> AbilityResult:
         model_response = await self._language_model_provider.create_language_completion(
             model_prompt=messages,
-            model_name=self._configuration.language_model.model_name,
+            functions=[],
+            model_name=self._configuration.language_model_required.model_name,
             completion_parser=self._parse_response,
         )
         return AbilityResult(
@@ -68,7 +69,5 @@ class CreateChatCompletion(Ability):
         )
 
     @staticmethod
-    def _parse_response(response_text: str) -> dict:
-        return {
-            "text": response_text,
-        }
+    def _parse_response(response_content: dict) -> dict:
+        return {"content": response_content["content"]}

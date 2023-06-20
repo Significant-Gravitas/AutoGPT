@@ -240,7 +240,7 @@ class LanguageModelProvider(ModelProvider):
         model_prompt: list[LanguageModelMessage],
         functions: list[LanguageModelFunction],
         model_name: str,
-        completion_parser: Callable[[str], dict],
+        completion_parser: Callable[[dict], dict],
         **kwargs,
     ) -> LanguageModelProviderModelResponse:
         ...
