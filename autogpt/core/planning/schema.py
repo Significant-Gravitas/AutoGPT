@@ -51,13 +51,25 @@ class TaskStatus(str, enum.Enum):
     DONE: str = "done"
 
 
+class TaskContext(BaseModel):
+    cycle_count: int = 0
+    status: TaskStatus = TaskStatus.TODO
+    parent_task: "Task" = None
+    prior_actions: list[AbilityResult] = Field(default_factory=list)
+    memories: list = Field(default_factory=list)
+    user_input: list[str] = Field(default_factory=list)
+    task_info: list[str] = Field(default_factory=list)
+    enough_info: float = 0.0
+
+
 class Task(BaseModel):
     objective: str
     task_type: str  # TaskType  FIXME: gpt does not obey the enum parameter in its schema
     priority: int
     ready_criteria: list[str]
     acceptance_criteria: list[str]
-    cycle_count: int = 0
-    status: TaskStatus = TaskStatus.TODO
-    parent_task: "Task" = None
-    prior_actions: list[AbilityResult] = Field(default_factory=list)
+    task_context: TaskContext = Field(default_factory=TaskContext)
+
+
+# Need to resolve the circular dependency between Task and TaskContext once both models are defined.
+TaskContext.update_forward_refs()

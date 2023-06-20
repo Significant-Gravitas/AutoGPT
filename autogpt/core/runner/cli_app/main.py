@@ -37,7 +37,7 @@ async def run_auto_gpt(user_configuration: dict):
         )
         print(parse_agent_name_and_goals(name_and_goals))
         # Finally, update the agent settings with the name and goals.
-        agent_settings.update_agent_name_and_goals(name_and_goals.content)
+        agent_settings.update_agent_name_and_goals(name_and_goals)
 
         # Step 3. Provision the agent.
         agent_workspace = SimpleAgent.provision_agent(agent_settings, client_logger)
@@ -52,30 +52,28 @@ async def run_auto_gpt(user_configuration: dict):
 
     plan = await agent.build_initial_plan()
     print(parse_agent_plan(plan))
-    breakpoint()
 
     user_input = ""
     while True:
         agent_response = await agent.step(user_input)
-        breakpoint()
         print(agent_response.content["text"])
         user_input = input("What do you want to say to the agent?")
 
 
-def parse_agent_name_and_goals(name_and_goals: LanguageModelResponse) -> str:
-    content = name_and_goals.content
-    parsed_response = f"Agent Name: {content['agent_name']}\n"
-    parsed_response += f"Agent Role: {content['agent_role']}\n"
+# FIXME: We shouldn't be getting raw responses from the language model to parse here.  TBD on format.
+
+def parse_agent_name_and_goals(name_and_goals: dict) -> str:
+    parsed_response = f"Agent Name: {name_and_goals['agent_name']}\n"
+    parsed_response += f"Agent Role: {name_and_goals['agent_role']}\n"
     parsed_response += "Agent Goals:\n"
-    for i, goal in enumerate(content["agent_goals"]):
+    for i, goal in enumerate(name_and_goals["agent_goals"]):
         parsed_response += f"{i+1}. {goal}\n"
     return parsed_response
 
 
-def parse_agent_plan(plan: LanguageModelResponse) -> str:
-    content = plan.content
+def parse_agent_plan(plan: dict) -> str:
     parsed_response = f"Agent Plan:\n"
-    for i, task in enumerate(content['task_list']):
+    for i, task in enumerate(plan['task_list']):
         parsed_response += f"{i+1}. {task['objective']}\n"
         parsed_response += f"Task type: {task['task_type']}  "
         parsed_response += f"Priority: {task['priority']}\n"

@@ -184,7 +184,7 @@ class SimpleAgent(Agent, Configurable):
 
         return cls(**agent_args)
 
-    async def build_initial_plan(self):
+    async def build_initial_plan(self) -> dict:
         plan = await self._planning.make_initial_plan(
             agent_name=self._configuration.name,
             agent_role=self._configuration.role,
@@ -197,12 +197,19 @@ class SimpleAgent(Agent, Configurable):
         #  and ensure that they have actionable ready and acceptance criteria
 
         self._task_queue.extend(tasks)
-        self._task_queue.sort(key=lambda t: t.priority)
-        return plan
+        self._task_queue.sort(key=lambda t: t.priority, reverse=True)
+        return plan.content
 
     async def step(self, user_feedback: str, *args, **kwargs):
+        if not self._task_queue:
+            return {'response': "I don't have any tasks to work on right now."}
+
         self._configuration.cycle_count += 1
-        return await self._planning.make_initial_plan()
+        task = self._task_queue.pop()
+        breakpoint()
+
+
+
 
     def __repr__(self):
         return "SimpleAgent()"
@@ -255,7 +262,7 @@ class SimpleAgent(Agent, Configurable):
         user_objective: str,
         agent_settings: AgentSettings,
         logger: logging.Logger,
-    ) -> LanguageModelResponse:
+    ) -> dict:
         logger.debug("Loading OpenAI provider.")
         provider: OpenAIProvider = cls._get_system_instance(
             "openai_provider",
@@ -274,7 +281,7 @@ class SimpleAgent(Agent, Configurable):
             user_objective,
         )
 
-        return model_response
+        return model_response.content
 
     @classmethod
     def provision_agent(
