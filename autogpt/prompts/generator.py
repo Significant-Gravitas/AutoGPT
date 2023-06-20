@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from autogpt.json_utils.utilities import llm_response_schema
 
 if TYPE_CHECKING:
-    from autogpt.commands.command import CommandRegistry
+    from autogpt.models.command_registry import CommandRegistry
 
 
 class PromptGenerator:

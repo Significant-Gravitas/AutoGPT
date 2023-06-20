@@ -7,10 +7,9 @@ import docker
 from docker.errors import ImageNotFound
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import command
+from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.setup import CFG
 from autogpt.workspace.workspace import Workspace
 
 ALLOWLIST_CONTROL = "allowlist"
@@ -19,16 +18,27 @@ DENYLIST_CONTROL = "denylist"
 
 @command(
     "execute_python_code",
-    "Create a Python file and execute it",
-    '"code": "<code>", "basename": "<basename>"',
+    "Creates a Python file and executes it",
+    {
+        "code": {
+            "type": "string",
+            "description": "The Python code to run",
+            "required": True,
+        },
+        "name": {
+            "type": "string",
+            "description": "A name to be given to the python file",
+            "required": True,
+        },
+    },
 )
-def execute_python_code(code: str, basename: str, agent: Agent) -> str:
+def execute_python_code(code: str, name: str, agent: Agent) -> str:
     """Create and execute a Python file in a Docker container and return the STDOUT of the
     executed code. If there is any data that needs to be captured use a print statement
 
     Args:
         code (str): The Python code to run
-        basename (str): A name to be given to the Python file
+        name (str): A name to be given to the Python file
 
     Returns:
         str: The STDOUT captured from the code when it ran
@@ -37,10 +47,10 @@ def execute_python_code(code: str, basename: str, agent: Agent) -> str:
     directory = os.path.join(agent.config.workspace_path, ai_name, "executed_code")
     os.makedirs(directory, exist_ok=True)
 
-    if not basename.endswith(".py"):
-        basename = basename + ".py"
+    if not name.endswith(".py"):
+        name = name + ".py"
 
-    path = os.path.join(directory, basename)
+    path = os.path.join(directory, name)
 
     try:
         with open(path, "w+", encoding="utf-8") as f:
@@ -51,7 +61,17 @@ def execute_python_code(code: str, basename: str, agent: Agent) -> str:
         return f"Error: {str(e)}"
 
 
-@command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
+@command(
+    "execute_python_file",
+    "Executes an existing Python file",
+    {
+        "filename": {
+            "type": "string",
+            "description": "The name of te file to execute",
+            "required": True,
+        },
+    },
+)
 def execute_python_file(filename: str, agent: Agent) -> str:
     """Execute a Python file in a Docker container and return the output
 
@@ -62,7 +82,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         str: The output of the file
     """
     logger.info(
-        f"Executing python file '{filename}' in working directory '{CFG.workspace_path}'"
+        f"Executing python file '{filename}' in working directory '{agent.config.workspace_path}'"
     )
 
     if not filename.endswith(".py"):
@@ -84,7 +104,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
             ["python", str(path)],
             capture_output=True,
             encoding="utf8",
-            cwd=CFG.workspace_path,
+            cwd=agent.config.workspace_path,
         )
         if result.returncode == 0:
             return result.stdout
@@ -153,6 +173,7 @@ def validate_command(command: str, config: Config) -> bool:
 
     Args:
         command (str): The command to validate
+        config (Config): The config to use to validate the command
 
     Returns:
         bool: True if the command is allowed, False otherwise
@@ -170,10 +191,16 @@ def validate_command(command: str, config: Config) -> bool:
 
 @command(
     "execute_shell",
-    "Execute Shell Command, non-interactive commands only",
-    '"command_line": "<command_line>"',
-    lambda cfg: cfg.execute_local_commands,
-    "You are not allowed to run local shell commands. To execute"
+    "Executes a Shell Command, non-interactive commands only",
+    {
+        "command_line": {
+            "type": "string",
+            "description": "The command line to execute",
+            "required": True,
+        }
+    },
+    enabled=lambda config: config.execute_local_commands,
+    disabled_reason="You are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config file: .env - do not attempt to bypass the restriction.",
 )
@@ -210,8 +237,14 @@ def execute_shell(command_line: str, agent: Agent) -> str:
 
 @command(
     "execute_shell_popen",
-    "Execute Shell Command, non-interactive commands only",
-    '"command_line": "<command_line>"',
+    "Executes a Shell Command, non-interactive commands only",
+    {
+        "query": {
+            "type": "string",
+            "description": "The search query",
+            "required": True,
+        }
+    },
     lambda config: config.execute_local_commands,
     "You are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
