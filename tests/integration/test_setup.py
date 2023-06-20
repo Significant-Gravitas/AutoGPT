@@ -105,7 +105,9 @@ def test_prompt_user_manual_mode(patched_api_requestor: Mock) -> None:
     ):
         with patch("autogpt.logs.logger.typewriter_log") as mock_logger:
             ai_config = welcome_prompt()
-            mock_logger.assert_called_with("Configuration saved.", "\x1b[32m")
+            mock_logger.assert_called_with(
+                "Configuration saved.", "\x1b[32m", speak_text=True
+            )
 
 
 @pytest.mark.vcr
