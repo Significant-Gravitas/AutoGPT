@@ -3,7 +3,6 @@ from functools import wraps
 from typing import Any, Callable, Optional
 
 import pytest
-from flaky import flaky  # type: ignore
 
 from tests.challenges.challenge_decorator.challenge import Challenge
 from tests.challenges.challenge_decorator.challenge_utils import create_challenge
@@ -11,7 +10,6 @@ from tests.challenges.challenge_decorator.score_utils import (
     get_scores,
     update_new_score,
 )
-from tests.utils import requires_api_key
 
 MAX_LEVEL_TO_IMPROVE_ON = (
     1  # we will attempt to beat 1 level above the current level for now.
@@ -20,13 +18,10 @@ MAX_LEVEL_TO_IMPROVE_ON = (
 CHALLENGE_FAILED_MESSAGE = "Challenges can sometimes fail randomly, please run this test again and if it fails reach out to us on https://discord.gg/autogpt in the 'challenges' channel to let us know the challenge you're struggling with."
 
 
-def challenge(
-    max_runs: int = 2, min_passes: int = 1, api_key: str = "OPENAI_API_KEY"
-) -> Callable[[Callable[..., Any]], Callable[..., None]]:
+def challenge() -> Callable[[Callable[..., Any]], Callable[..., None]]:
     def decorator(func: Callable[..., Any]) -> Callable[..., None]:
-        @requires_api_key(api_key)
+        @pytest.mark.requires_openai_api_key
         @pytest.mark.vcr
-        @flaky(max_runs=max_runs, min_passes=min_passes)
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> None:
             run_remaining = MAX_LEVEL_TO_IMPROVE_ON if Challenge.BEAT_CHALLENGES else 1
