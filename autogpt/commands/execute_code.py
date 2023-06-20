@@ -52,11 +52,15 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
 
     path = os.path.join(directory, name)
 
+    workspace = Workspace(
+        agent.config.workspace_path, agent.config.restrict_to_workspace
+    )
     try:
         with open(path, "w+", encoding="utf-8") as f:
             f.write(code)
 
-        return execute_python_file(f.name, agent)
+        generated_file = workspace.get_path(f.name)
+        return execute_python_file(generated_file, agent)
     except Exception as e:
         return f"Error: {str(e)}"
 
