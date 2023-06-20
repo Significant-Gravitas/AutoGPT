@@ -52,7 +52,7 @@ def kubernetes_agent(
     ai_config.command_registry = command_registry
 
     system_prompt = ai_config.construct_full_prompt()
-    Config().set_continuous_mode(False)
+    agent_test_config.set_continuous_mode(False)
     agent = Agent(
         # We also give the AI a name 
         ai_name="Kubernetes-Demo",
