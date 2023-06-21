@@ -10,7 +10,6 @@ from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.planning.simple import LanguageModelConfiguration
 
 
-
 class AbilityConfiguration(SystemConfiguration):
     """Struct for model configuration."""
     from autogpt.core.plugin.base import PluginLocation
@@ -58,12 +57,12 @@ class Ability(abc.ABC):
 
     def dump(self) -> dict:
         return {
-            "name": self.name,
-            "description": self.description,
+            "name": self.name(),
+            "description": self.description(),
             "parameters": {
                 "type": "object",
-                "properties": self.arguments,
-                "required": self.required_arguments,
+                "properties": self.arguments(),
+                "required": self.required_arguments(),
             },
         }
 
@@ -77,6 +76,10 @@ class AbilityRegistry(abc.ABC):
 
     @abc.abstractmethod
     def list_abilities(self) -> list[str]:
+        ...
+
+    @abc.abstractmethod
+    def dump_abilities(self) -> list[dict]:
         ...
 
     @abc.abstractmethod

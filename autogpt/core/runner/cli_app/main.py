@@ -53,11 +53,14 @@ async def run_auto_gpt(user_configuration: dict):
     plan = await agent.build_initial_plan()
     print(parse_agent_plan(plan))
 
-    user_input = ""
     while True:
-        agent_response = await agent.step(user_input)
-        print(agent_response.content["text"])
-        user_input = input("What do you want to say to the agent?")
+        next_ability = await agent.determine_next_ability(plan)
+        print(parse_next_ability(next_ability))
+        breakpoint()
+        user_input = click.prompt(
+            "Should the agent proceed with this ability?",
+            default="y",
+        )
 
 
 # FIXME: We shouldn't be getting raw responses from the language model to parse here.  TBD on format.
@@ -85,4 +88,13 @@ def parse_agent_plan(plan: dict) -> str:
             parsed_response += f"    {j+1}. {criteria}\n"
         parsed_response += "\n"
 
+    return parsed_response
+
+
+def parse_next_ability(next_ability: dict) -> str:
+    ability_args = ', '.join(f'{k}={v}' for k, v in next_ability['ability_arguments'].items())
+    parsed_response = f"Next Ability: {next_ability['next_ability']}({ability_args})\n"
+    parsed_response += f"Motivation: {next_ability['motivation']}\n"
+    parsed_response += f"Self-criticism: {next_ability['self_criticism']}\n"
+    parsed_response += f"Reasoning: {next_ability['reasoning']}\n"
     return parsed_response

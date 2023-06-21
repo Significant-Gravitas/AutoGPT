@@ -6,3 +6,7 @@ from autogpt.core.planning.strategies.name_and_goals import (
     NameAndGoals,
     NameAndGoalsConfiguration,
 )
+from autogpt.core.planning.strategies.next_ability import (
+    NextAbility,
+    NextAbilityConfiguration,
+)

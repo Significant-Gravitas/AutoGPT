@@ -7,7 +7,6 @@ from autogpt.core.configuration import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
-    UserConfigurable,
 )
 from autogpt.core.memory.base import Memory
 from autogpt.core.plugin.simple import SimplePluginService
@@ -84,6 +83,9 @@ class SimpleAbilityRegistry(AbilityRegistry, Configurable):
 
     def list_abilities(self) -> list[str]:
         return [f"{ability.name()}: {ability.description()}" for ability in self._abilities]
+
+    def dump_abilities(self) -> list[dict]:
+        return [ability.dump() for ability in self._abilities]
 
     def get_ability(self, ability_name: str) -> Ability:
         for ability in self._abilities:

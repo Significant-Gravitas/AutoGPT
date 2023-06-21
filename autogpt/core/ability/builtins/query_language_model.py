@@ -13,7 +13,7 @@ from autogpt.core.resource.model_providers import (
 )
 
 
-class CreateChatCompletion(Ability):
+class QueryLanguageModel(Ability):
     default_configuration = AbilityConfiguration(
         location=PluginLocation(
             storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
@@ -38,25 +38,28 @@ class CreateChatCompletion(Ability):
 
     @classmethod
     def description(cls) -> str:
-        return "Create a chat completion from a list of messages."
+        return "Query a language model. A query should be a question and any relevant context."
 
     @classmethod
     def arguments(cls) -> dict:
         return {
-            "messages": {
-                "type": "array",
-                "description": "A list of messages to use as the prompt for the chat completion.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "role": {"enum": [r.value for r in MessageRole]},
-                        "content": {"type": "string"},
-                    },
-                },
+            "query": {
+                "type": "string",
+                "description": "A query for a language model. A query should contain a question and any relevant context.",
             },
         }
 
-    async def __call__(self, messages: list[LanguageModelMessage]) -> AbilityResult:
+    @classmethod
+    def required_arguments(cls) -> list[str]:
+        return ["query"]
+
+    async def __call__(self, query: str) -> AbilityResult:
+        messages = [
+            LanguageModelMessage(
+                content=query,
+                role=MessageRole.USER,
+            ),
+        ]
         model_response = await self._language_model_provider.create_language_completion(
             model_prompt=messages,
             functions=[],

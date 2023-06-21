@@ -21,12 +21,13 @@ class InitialPlanConfiguration(SystemConfiguration):
 class InitialPlan(PromptStrategy):
 
     DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
-        "You are an augmented language model. This means that you are being used in a larger system "
-        "to extend your functionality. This larger system provides you with a set of abilities you can use.\n\n"
-        "Abilities:\n{abilities}\n\n"
-        "The system will also manage your long term memory by storing information you collect and retrieving "
-        "relevant information for the task you are working on. You should rely on the system for this "
-        "and not attempt to manage your own memory.\n\n"
+        "You are an expert project planner. You're responsibility is to create work plans for autonomous agents. "
+        "You will be given a name, a role, set of goals for the agent to accomplish. Your job is to "
+        "break down those goals into a set of tasks that the agent can accomplish to achieve those goals. "
+        "Agents are resourceful, but require clear instructions. Each task you create should have clearly defined "
+        "`ready_criteria` that the agent can check to see if the task is ready to be started. Each task should "
+        "also have clearly defined `acceptance_criteria` that the agent can check to evaluate if the task is complete. "
+        "You should create as many tasks as you think is necessary to accomplish the goals.\n\n"        
         "System Info:\n{system_info}"
     )
 
@@ -38,14 +39,6 @@ class InitialPlan(PromptStrategy):
 
     DEFAULT_USER_PROMPT_TEMPLATE = (
         "You are {agent_name}, {agent_role}\n" "Your goals are:\n" "{agent_goals}"
-        "You will accomplish your goals by breaking them down into "
-        "a series of tasks and then executing those tasks one by one.\n"
-        "Your first objective is to break down your goals into a series of small tasks by invoking the provided"
-        "`create_initial_agent_plan` function.\n\n"
-        "You should be able to accomplish each task with 1-3 uses of your abilities.\n"
-        "You should make sure each task has clearly defined ready criteria so we can evaluate when the task can be started.\n"
-        "You should also make sure each task has clearly defined acceptance criteria so we can evaluate when the task is complete.\n"
-        "Smaller, well-defined tasks are highly preferable. Generate as many tasks as you think is necessary."
     )
 
     DEFAULT_CREATE_PLAN_FUNCTION = {

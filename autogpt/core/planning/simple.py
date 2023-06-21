@@ -37,6 +37,7 @@ class LanguageModelConfiguration(SystemConfiguration):
 class PromptStrategiesConfiguration(SystemConfiguration):
     name_and_goals: strategies.NameAndGoalsConfiguration
     initial_plan: strategies.InitialPlanConfiguration
+    next_ability: strategies.NextAbilityConfiguration
 
 
 class PlannerConfiguration(SystemConfiguration):
@@ -74,6 +75,7 @@ class SimplePlanner(Configurable):
             prompt_strategies=PromptStrategiesConfiguration(
                 name_and_goals=strategies.NameAndGoals.default_configuration,
                 initial_plan=strategies.InitialPlan.default_configuration,
+                next_ability=strategies.NextAbility.default_configuration,
             ),
         ),
     )
@@ -100,6 +102,9 @@ class SimplePlanner(Configurable):
             "initial_plan": strategies.InitialPlan(
                 **self._configuration.prompt_strategies.initial_plan.dict()
             ),
+            "next_ability": strategies.NextAbility(
+                **self._configuration.prompt_strategies.next_ability.dict()
+            ),
         }
 
     async def decide_name_and_goals(self, user_objective: str) -> LanguageModelResponse:
@@ -123,11 +128,16 @@ class SimplePlanner(Configurable):
             abilities=abilities,
         )
 
-    async def determine_next_action(
+    async def determine_next_ability(
         self,
         task: Task,
+        ability_schema: list[dict],
     ):
-        raise NotImplementedError
+        return await self.chat_with_model(
+            self._prompt_strategies["next_ability"],
+            task=task,
+            ability_schema=ability_schema,
+        )
 
     async def chat_with_model(
         self,

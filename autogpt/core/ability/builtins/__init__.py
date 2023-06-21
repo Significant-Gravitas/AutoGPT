@@ -1,5 +1,5 @@
-from autogpt.core.ability.builtins.create_chat_completion import CreateChatCompletion
+from autogpt.core.ability.builtins.query_language_model import QueryLanguageModel
 
 BUILTIN_ABILITIES = {
-    CreateChatCompletion.name(): CreateChatCompletion,
+    QueryLanguageModel.name(): QueryLanguageModel,
 }

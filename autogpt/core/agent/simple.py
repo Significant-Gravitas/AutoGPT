@@ -203,7 +203,7 @@ class SimpleAgent(Agent, Configurable):
         self._task_queue[-1].context.status = TaskStatus.READY
         return plan.content
 
-    async def step(self, user_feedback: str, *args, **kwargs):
+    async def determine_next_ability(self, *args, **kwargs):
         if not self._task_queue:
             return {'response': "I don't have any tasks to work on right now."}
 
@@ -215,8 +215,11 @@ class SimpleAgent(Agent, Configurable):
         self._logger.info(f"Working on task: {task}")
 
         task = await self._evaluate_task_and_add_context(task)
-        next_ability = await self._choose_next_ability(task)
-
+        next_ability = await self._choose_next_ability(
+            task,
+            self._ability_registry.dump_abilities(),
+        )
+        return next_ability.content
 
     async def _evaluate_task_and_add_context(self, task: Task) -> Task:
         """Evaluate the task and add context to it."""
@@ -230,18 +233,18 @@ class SimpleAgent(Agent, Configurable):
             task.context.enough_info = True
             return task
 
-    async def _choose_next_ability(self, task: Task) -> Task:
+    async def _choose_next_ability(self, task: Task, ability_schema: list[dict]):
         """Choose the next ability to use for the task."""
         self._logger.debug(f"Choosing next ability for task {task}.")
         if task.context.cycle_count > self._configuration.max_task_cycle_count:
             # Don't hit the LLM, just set the next action as "breakdown_task" with an appropriate reason
-            pass
+            raise NotImplementedError
         elif not task.context.enough_info:
             # Don't ask the LLM, just set the next action as "breakdown_task" with an appropriate reason
-            pass
+            raise NotImplementedError
         else:
-            next_action = await self._planning.determine_next_action(task)
-
+            next_ability = await self._planning.determine_next_ability(task, ability_schema)
+            return next_ability
 
     def __repr__(self):
         return "SimpleAgent()"
