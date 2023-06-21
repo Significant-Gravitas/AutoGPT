@@ -29,7 +29,7 @@ def get_command(
     """Parse the response and return the command name and arguments
 
     Args:
-        assistant_reply_json (json): The json response from the AI
+        assistant_reply_json (dict): The response object from the AI
         assistant_reply (ChatModelResponse): The model response from the AI
         config (Config): The config object
 
