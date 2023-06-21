@@ -55,7 +55,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
     )
     path = os.path.join(directory, name)
     generated_file = workspace.get_path(path)
-    path = os.path(generated_file)
+    path = os.path.join(generated_file)
 
     try:
         with open(path, "w+", encoding="utf-8") as f:
