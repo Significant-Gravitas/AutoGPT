@@ -67,6 +67,8 @@ class QueryLanguageModel(Ability):
             completion_parser=self._parse_response,
         )
         return AbilityResult(
+            ability_name=self.name(),
+            ability_args={"query": query},
             success=True,
             message=model_response.content['content'],
         )

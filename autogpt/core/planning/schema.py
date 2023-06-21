@@ -49,7 +49,6 @@ class TaskStatus(str, enum.Enum):
     BACKLOG: str = "backlog"
     READY: str = "ready"
     IN_PROGRESS: str = "in_progress"
-    IN_VALIDATION: str = "in_validation"
     DONE: str = "done"
 
 

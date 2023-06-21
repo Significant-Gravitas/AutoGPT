@@ -104,3 +104,4 @@ def parse_ability_result(ability_result) -> str:
     parsed_response = f"Ability Result: {ability_result['success']}\n"
     parsed_response += f"Message: {ability_result['message']}\n"
     parsed_response += f"Data: {ability_result['data']}\n"
+    return parsed_response

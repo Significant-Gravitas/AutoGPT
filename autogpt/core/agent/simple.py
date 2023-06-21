@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from autogpt.core.ability import AbilityRegistrySettings, SimpleAbilityRegistry
+from autogpt.core.ability import AbilityRegistrySettings, SimpleAbilityRegistry, AbilityResult
 from autogpt.core.agent.base import Agent
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.embedding import EmbeddingModelSettings, SimpleEmbeddingModel
@@ -134,6 +134,7 @@ class SimpleAgent(Agent, Configurable):
         self._planning = planning
         self._workspace = workspace
         self._task_queue = []
+        self._completed_tasks = []
         self._current_task = None
         self._next_ability = None
 
@@ -209,9 +210,6 @@ class SimpleAgent(Agent, Configurable):
         if not self._task_queue:
             return {'response': "I don't have any tasks to work on right now."}
 
-        # TODO: we can parallelize ready tasks.
-        # ready_tasks = [task for task in self._task_queue if task.task_context.status == TaskStatus.READY]
-
         self._configuration.cycle_count += 1
         task = self._task_queue.pop()
         self._logger.info(f"Working on task: {task}")
@@ -229,6 +227,14 @@ class SimpleAgent(Agent, Configurable):
         if user_input == 'y':
             ability = self._ability_registry.get_ability(self._next_ability['next_ability'])
             ability_response = await ability(**self._next_ability['ability_arguments'])
+            await self._update_tasks_and_memory(ability_response)
+            if self._current_task.context.status == TaskStatus.DONE:
+                self._completed_tasks.append(self._current_task)
+            else:
+                self._task_queue.append(self._current_task)
+            self._current_task = None
+            self._next_ability = None
+
             return ability_response
         else:
             raise NotImplementedError
@@ -243,6 +249,7 @@ class SimpleAgent(Agent, Configurable):
             # TODO: Look up relevant memories (need working memory system)
             # TODO: Evaluate whether there is enough information to start the task (language model call).
             task.context.enough_info = True
+            task.context.status = TaskStatus.IN_PROGRESS
             return task
 
     async def _choose_next_ability(self, task: Task, ability_schema: list[dict]):
@@ -257,6 +264,14 @@ class SimpleAgent(Agent, Configurable):
         else:
             next_ability = await self._planning.determine_next_ability(task, ability_schema)
             return next_ability
+
+    async def _update_tasks_and_memory(self, ability_result: AbilityResult):
+        self._current_task.context.prior_actions.append(ability_result)
+        # TODO: Summarize new knowledge
+        # TODO: store knowledge and summaries in memory and in relevant tasks
+        # TODO: evaluate whether the task is complete
+
+
 
     def __repr__(self):
         return "SimpleAgent()"
