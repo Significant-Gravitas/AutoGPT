@@ -290,6 +290,14 @@ class Config:
         """Set the plugins value."""
         self.plugins = value
 
+    def set_plugins_allowlist(self, value: list) -> None:
+        """Set the plugins_allowlist value."""
+        self.plugins_allowlist = value
+
+    def set_plugins_denylist(self, value: list) -> None:
+        """Set the plugins_denylist value."""
+        self.plugins_denylist = value
+
     def set_ai_settings_filepath(self, value: str) -> None:
         """Set the ai_settings_filepath value."""
         self.ai_settings_filepath = value
