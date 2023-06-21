@@ -13,6 +13,8 @@ from autogpt.llm.base import (
     ChatModelInfo,
     EmbeddingModelInfo,
     MessageDict,
+    OpenAIFunctionParameter,
+    OpenAIFunctionProperties,
     OpenAIFunctionSpec,
     TextModelInfo,
     TText,
@@ -282,18 +284,18 @@ def get_openai_command_specs(agent) -> list[OpenAIFunctionSpec]:
         required = []
 
         for argument in command.arguments:
-            properties[argument.name] = {
-                "type": argument.type,
-                "description": argument.description,
-            }
+            properties[argument.name] = OpenAIFunctionProperties(
+                type=argument.type,
+                description=argument.description,
+            )
             if argument.required:
                 required.append(argument.name)
+        parameters = OpenAIFunctionParameter(
+            type="object",
+            properties=properties,
+            required=required,
+        )
 
-        parameters = {
-            "type": "object",
-            "properties": properties,
-            "required": required,
-        }
         functions.append(
             OpenAIFunctionSpec(
                 name=command.name,

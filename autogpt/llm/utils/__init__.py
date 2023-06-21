@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import List, Literal, Optional
 
 from colorama import Fore
@@ -139,7 +140,7 @@ def create_chat_completion(
         ] = config.get_azure_deployment_id_for_model(model)
     if functions:
         chat_completion_kwargs["functions"] = [
-            function.__dict__ for function in functions
+            asdict(function) for function in functions
         ]
 
     response = iopenai.create_chat_completion(

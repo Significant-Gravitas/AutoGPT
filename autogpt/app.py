@@ -53,7 +53,7 @@ def get_command(
         if not isinstance(assistant_reply_json, dict):
             return (
                 "Error:",
-                f"'assistant_reply_json' object is not dictionary {assistant_reply_json}",
+                f"The previous message sent was not a dictionary {assistant_reply_json}",
             )
 
         command = assistant_reply_json["command"]
