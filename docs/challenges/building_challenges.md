@@ -52,7 +52,7 @@ def kubernetes_agent(
     ai_config.command_registry = command_registry
 
     system_prompt = ai_config.construct_full_prompt()
-    Config().set_continuous_mode(False)
+    agent_test_config.set_continuous_mode(False)
     agent = Agent(
         # We also give the AI a name 
         ai_name="Kubernetes-Demo",
@@ -85,8 +85,6 @@ import yaml
 from autogpt.commands.file_operations import read_file, write_to_file
 from tests.integration.agent_utils import run_interaction_loop
 from tests.challenges.utils import run_multiple_times
-from tests.utils import requires_api_key
-
 
 def input_generator(input_sequence: list) -> Generator[str, None, None]:
     """
@@ -100,7 +98,7 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 
 @pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
+@pytest.mark.requires_openai_api_key
 def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs

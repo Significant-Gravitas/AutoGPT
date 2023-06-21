@@ -1,5 +1,5 @@
 """
-Test cases for the Config class, which handles the configuration settings
+Test cases for the config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
 from unittest import mock
@@ -7,14 +7,14 @@ from unittest.mock import patch
 
 import pytest
 
-from autogpt.config.config import Config
+from autogpt.config import Config
 from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL, create_config
 from autogpt.workspace.workspace import Workspace
 
 
 def test_initial_values(config: Config):
     """
-    Test if the initial values of the Config class attributes are set correctly.
+    Test if the initial values of the config class attributes are set correctly.
     """
     assert config.debug_mode == False
     assert config.continuous_mode == False

@@ -13,7 +13,7 @@ import distro
 import yaml
 
 if TYPE_CHECKING:
-    from autogpt.commands.command import CommandRegistry
+    from autogpt.models.command_registry import CommandRegistry
     from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
@@ -58,7 +58,7 @@ class AIConfig:
 
     @staticmethod
     def load(
-        config_file: str = SAVE_FILE,
+        ai_settings_file: str = SAVE_FILE,
         ai_name: str = None,
         ai_role: str = None,
         ai_goals: list[str] = [],
@@ -69,7 +69,7 @@ class AIConfig:
         else returns class with no parameters.
 
         Parameters:
-           config_file (int): The path to the config yaml file.
+           ai_settings_file (int): The path to the config yaml file.
              DEFAULT: "../ai_settings.yaml"
             ai_name (str): AI name override, if supplied by the user via command line.
             ai_role (str): AI role override, if supplied by the user via command line.
@@ -79,19 +79,20 @@ class AIConfig:
             cls (object): An instance of given cls object
         """
 
-        # If we have any overrides, use them and ignore local file config
-        if any([ai_name, ai_role, ai_goals]):
-            config_params = {
-                "ai_name": ai_name,
-                "ai_role": ai_role,
-                "ai_goals": ai_goals,
-            }
-        else:
-            try:
-                with open(config_file, encoding="utf-8") as file:
-                    config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
-            except FileNotFoundError:
-                config_params = {}
+        try:
+            with open(ai_settings_file, encoding="utf-8") as file:
+                config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
+        except FileNotFoundError:
+            config_params = {}
+            
+        ai_name = ai_name if ai_name else config_params.get("ai_name", "")
+        ai_role = ai_role if ai_role else config_params.get("ai_role", "")
+        ai_goals = ai_goals if ai_goals else [
+            str(goal).strip("{}").replace("'", "").replace('"', "")
+            if isinstance(goal, dict)
+            else str(goal)
+            for goal in config_params.get("ai_goals", [])
+        ]
 
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
@@ -105,12 +106,12 @@ class AIConfig:
         # type: Type[AIConfig]
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
-    def save(self, config_file: str = SAVE_FILE) -> None:
+    def save(self, ai_settings_file: str = SAVE_FILE) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
         Parameters:
-            config_file(str): The path to the config yaml file.
+            ai_settings_file(str): The path to the config yaml file.
               DEFAULT: "../ai_settings.yaml"
 
         Returns:
@@ -123,11 +124,11 @@ class AIConfig:
             "ai_goals": self.ai_goals,
             "api_budget": self.api_budget,
         }
-        with open(config_file, "w", encoding="utf-8") as file:
+        with open(ai_settings_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
 
     def construct_full_prompt(
-        self, prompt_generator: Optional[PromptGenerator] = None
+        self, config, prompt_generator: Optional[PromptGenerator] = None
     ) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
@@ -147,22 +148,20 @@ class AIConfig:
             ""
         )
 
-        from autogpt.config import Config
         from autogpt.prompts.prompt import build_default_prompt_generator
 
-        cfg = Config()
         if prompt_generator is None:
-            prompt_generator = build_default_prompt_generator()
+            prompt_generator = build_default_prompt_generator(config)
         prompt_generator.goals = self.ai_goals
         prompt_generator.name = self.ai_name
         prompt_generator.role = self.ai_role
         prompt_generator.command_registry = self.command_registry
-        for plugin in cfg.plugins:
+        for plugin in config.plugins:
             if not plugin.can_handle_post_prompt():
                 continue
             prompt_generator = plugin.post_prompt(prompt_generator)
 
-        if cfg.execute_local_commands:
+        if config.execute_local_commands:
             # add OS info to prompt
             os_name = platform.system()
             os_info = (
