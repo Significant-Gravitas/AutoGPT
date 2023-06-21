@@ -7,7 +7,7 @@ on:
       - 'tests/Auto-GPT-test-cassettes'
       - 'tests/challenges/current_score.json'
   pull_request:
-    branches: [ master, stable ]
+    branches: [ master, release-*, stable ]
 
 concurrency:
   group: ${{ format('docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
