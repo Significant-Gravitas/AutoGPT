@@ -132,6 +132,8 @@ def run_auto_gpt(
         Path(__file__).resolve().parent.parent / config.ai_settings_file
     )
 
+    config.set_ai_settings_filepath(config.ai_settings_filepath)
+
     # HACK: doing this here to collect some globals that depend on the workspace.
     if workspace_directory is not None:
         file_logger_path = workspace_directory / "file_logger.txt"
@@ -145,6 +147,7 @@ def run_auto_gpt(
     config.file_logger_path = str(file_logger_path)
 
     config.set_plugins(scan_plugins(config, config.debug_mode))
+
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
 
@@ -163,11 +166,11 @@ def run_auto_gpt(
         command_registry.import_commands(command_category)
 
     ai_name = ""
-    ai_config = main_menu()
+    ai_config = main_menu(config)
     ai_config.command_registry = command_registry
     if ai_config.ai_name:
         ai_name = ai_config.ai_name
-    start_prompt(ai_config)
+    start_prompt(config, ai_config)
     # print(prompt)
     # Initialize variables
     next_action_count = 0

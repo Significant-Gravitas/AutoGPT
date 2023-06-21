@@ -306,7 +306,7 @@ class AIConfig:
             file.write(yaml.dump(all_configs, allow_unicode=True))
 
     def construct_full_prompt(
-        self, config, prompt_generator: Optional[PromptGenerator] = None
+        self, config: Config, prompt_generator: Optional[PromptGenerator] = None
     ) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.

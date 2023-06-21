@@ -14,8 +14,6 @@ from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import generate_aiconfig_automatic
 from autogpt.utils import clean_input
 
-cfg = Config()
-
 DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond using the JSON schema specified previously:"
 
 
@@ -50,7 +48,7 @@ def build_default_prompt_generator(config: Config) -> PromptGenerator:
     return prompt_generator
 
 
-def get_valid_input(num_options: int) -> int:
+def get_valid_input(config: Config, num_options: int) -> int:
     """
     Check if user input number is within valid range.
 
@@ -63,7 +61,7 @@ def get_valid_input(num_options: int) -> int:
     """
     while True:
         try:
-            selection = int(clean_input("Choose a number: "))
+            selection = int(clean_input(config, "Choose a number: "))
             if (
                 1 <= selection <= num_options
             ):  # The number must be within the valid range
@@ -73,7 +71,7 @@ def get_valid_input(num_options: int) -> int:
 
 
 def select_config_action(
-    all_configs: Dict[str, Any], task: str
+    config: Config, all_configs: Dict[str, Any], task: str
 ) -> Optional[Dict[str, Any]]:
     """
     Prompt user for the selection of an AI configuration.
@@ -94,14 +92,16 @@ def select_config_action(
         logger.typewriter_log(f"{i}. {cfg_name}")
     logger.typewriter_log(f"{cfg_count+1}. Go back to main menu")
 
-    selection = get_valid_input(cfg_count + 1)
+    selection = get_valid_input(config, cfg_count + 1)
     if selection == cfg_count + 1:
         return None
     else:
         return all_configs[list(all_configs.keys())[selection - 1]]
 
 
-def prompt_for_num_goals(task: str, current_goal_count: Optional[int] = None) -> int:
+def prompt_for_num_goals(
+    config: Config, task: str, current_goal_count: Optional[int] = None
+) -> int:
     """
     Prompt the user to enter the number of goals for the AI.
 
@@ -132,7 +132,7 @@ def prompt_for_num_goals(task: str, current_goal_count: Optional[int] = None) ->
             speak_text=True,
         )
 
-        num_goals_input = clean_input(prompts)
+        num_goals_input = clean_input(config, prompts)
 
         if num_goals_input == "":
             if task == "create":
@@ -161,13 +161,13 @@ def prompt_for_num_goals(task: str, current_goal_count: Optional[int] = None) ->
     return num_goals
 
 
-def check_ai_name_exists(name: str) -> bool:
+def check_ai_name_exists(config: Config, name: str) -> bool:
     """Check if a name exists in the current configurations."""
     all_configs, _ = AIConfig.load_all(
-        cfg.ai_settings_filepath
+        config.ai_settings_filepath
     )  # , _ to ignore returned message from load_all
-    for config in all_configs.values():
-        if config.ai_name == name:
+    for tmp_cfg in all_configs.values():
+        if tmp_cfg.ai_name == name:
             return True
     return False
 
@@ -175,7 +175,7 @@ def check_ai_name_exists(name: str) -> bool:
 def generate_unique_name(base: str) -> str:
     """Generate unique AI name."""
     i: int = 1
-    while check_ai_name_exists(f"{base}-{i}"):
+    while check_ai_name_exists(config, f"{base}-{i}"):
         i += 1
     return f"{base}-{i}"
 
@@ -193,7 +193,7 @@ def validate_input(prompt_text: str) -> str:
 
 
 # Start AI prompts
-def welcome_prompt() -> Optional[AIConfig]:
+def welcome_prompt(config: Config) -> Optional[AIConfig]:
     """
     Display the welcome message and prompt the user for their desire to create an AI Assistant.
 
@@ -221,7 +221,7 @@ def welcome_prompt() -> Optional[AIConfig]:
         speak_text=True,
     )
 
-    user_desire = utils.clean_input(f"I want Auto-GPT to: ")
+    user_desire = utils.clean_input(config, f"I want Auto-GPT to: ")
 
     if user_desire == "":
         user_desire = DEFAULT_USER_DESIRE_PROMPT  # Default prompt
@@ -233,11 +233,11 @@ def welcome_prompt() -> Optional[AIConfig]:
             Fore.LIGHTBLUE_EX,
             speak_text=True,
         )
-        return handle_config(None, "create")
+        return handle_config(config, None, "create")
 
     else:
         try:
-            return generate_aiconfig_automatic(user_desire)
+            return generate_aiconfig_automatic(config, user_desire)
         except Exception as e:
             logger.typewriter_log(
                 "Unable to automatically generate AI Config based on user desire.",
@@ -246,15 +246,15 @@ def welcome_prompt() -> Optional[AIConfig]:
                 speak_text=True,
             )
 
-            return handle_config(None, "create")
+            return handle_config(config, None, "create")
 
 
-def start_prompt(config: AIConfig, sad: Optional[Any] = None) -> None:
+def start_prompt(config: Config, tmp_cfg: AIConfig, sad: Optional[Any] = None) -> None:
     """
     Display the start prompt for Auto-GPT with the provided configuration.
 
     Parameters:
-        config (AIConfig): The AI configuration.
+        tmp_cfg (AIConfig): The AI configuration.
         sad (Optional[Any]): An optional parameter. [Add description of the parameter here]
 
     Returns:
@@ -263,25 +263,25 @@ def start_prompt(config: AIConfig, sad: Optional[Any] = None) -> None:
     """
     from autogpt.main import start_agent_directly
 
-    if cfg.skip_reprompt and config.ai_name:
-        logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
-        logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
-        logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
+    if config.skip_reprompt and tmp_cfg.ai_name:
+        logger.typewriter_log("Name :", Fore.GREEN, tmp_cfg.ai_name)
+        logger.typewriter_log("Role :", Fore.GREEN, tmp_cfg.ai_role)
+        logger.typewriter_log("Goals:", Fore.GREEN, f"{tmp_cfg.ai_goals}")
         logger.typewriter_log(
             "Budget:",
             Fore.GREEN,
-            "infinite" if config.api_budget <= 0 else f"${str(config.api_budget)}",
+            "infinite" if tmp_cfg.api_budget <= 0 else f"${str(tmp_cfg.api_budget)}",
         )
 
-    if cfg.restrict_to_workspace:
+    if config.restrict_to_workspace:
         logger.typewriter_log(
             "NOTE:All files/directories created by this agent can be found inside its workspace at:",
             Fore.YELLOW,
         )
-        logger.typewriter_log(f"- {cfg.workspace_path}", Fore.YELLOW)
+        logger.typewriter_log(f"- {config.workspace_path}", Fore.YELLOW)
     # Set total api budget
     api_manager = ApiManager()
-    api_manager.set_total_budget(ai_config.api_budget)
+    api_manager.set_total_budget(tmp_cfg.api_budget)
 
     # Agent Created
     logger.typewriter_log(
@@ -290,22 +290,22 @@ def start_prompt(config: AIConfig, sad: Optional[Any] = None) -> None:
         speak_text=True,
     )
 
-    logger.typewriter_log("Name:", Fore.GREEN, config.ai_name, speak_text=False)
-    logger.typewriter_log("Role:", Fore.GREEN, config.ai_role, speak_text=False)
+    logger.typewriter_log("Name:", Fore.GREEN, tmp_cfg.ai_name, speak_text=False)
+    logger.typewriter_log("Role:", Fore.GREEN, tmp_cfg.ai_role, speak_text=False)
     logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
-    for goal in ai_config.ai_goals:
+    for goal in tmp_cfg.ai_goals:
         logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
     logger.typewriter_log(
-        "Budget:", Fore.GREEN, f"${str(config.api_budget)}", speak_text=False
+        "Budget:", Fore.GREEN, f"${str(tmp_cfg.api_budget)}", speak_text=False
     )
-    if hasattr(config, "plugins"):
+    if hasattr(tmp_cfg, "plugins"):
         logger.typewriter_log("Plugins:", Fore.GREEN, "", speak_text=False)
-        for plugin in config.plugins:
+        for plugin in tmp_cfg.plugins:
             logger.typewriter_log("-", Fore.GREEN, plugin, speak_text=False)
 
     # don't exec when called from main
     if sad:
-        start_agent_directly(config, cfg)
+        start_agent_directly(tmp_cfg, config)
 
 
 # Main menu functions
@@ -335,21 +335,30 @@ def display_main_menu(
         logger.typewriter_log(f"{i}. {option_text}")
 
 
-def main_menu() -> Optional[AIConfig]:
+def main_menu(config: Config) -> Optional[AIConfig]:
     """
     Display the main menu and handle user interactions.
 
     Returns:
         Optional[AIConfig]: The selected or created AI configuration, or None if no configuration was selected or created.
     """
-    config = None
-    config_file = cfg.ai_settings_filepath
+    tmp_cfg = None
+    config_file = config.ai_settings_filepath
 
     menu_options = [
-        ("Create new configuration", lambda config: handle_config(config, "create")),
-        ("Edit existing configuration", lambda config: handle_config(config, "edit")),
-        ("View existing configuration", lambda config: view_config(config)),
-        ("Delete existing configuration", lambda config: delete_config(config)),
+        (
+            "Create new configuration",
+            lambda tmp_cfg: handle_config(config, tmp_cfg, "create"),
+        ),
+        (
+            "Edit existing configuration",
+            lambda tmp_cfg: handle_config(config, tmp_cfg, "edit"),
+        ),
+        ("View existing configuration", lambda tmp_cfg: view_config(config, tmp_cfg)),
+        (
+            "Delete existing configuration",
+            lambda tmp_cfg: delete_config(config, tmp_cfg),
+        ),
         # add more options here...
     ]
 
@@ -359,11 +368,13 @@ def main_menu() -> Optional[AIConfig]:
         cfg_count = len(all_configs)  # Configurations count
         total_options = cfg_count + len(menu_options)
 
-        logger.typewriter_log(f"Status of {cfg.ai_settings_file}:", Fore.GREEN, message)
+        logger.typewriter_log(
+            f"Status of {config.ai_settings_file}:", Fore.GREEN, message
+        )
 
         if all_configs:  # Only log if all_configs is not empty
             logger.typewriter_log(
-                f"Attempting to load {cfg.ai_settings_file}:",
+                f"Attempting to load {config.ai_settings_file}:",
                 Fore.GREEN,
                 "load successful.",
             )
@@ -377,40 +388,40 @@ def main_menu() -> Optional[AIConfig]:
             )
 
             display_main_menu(all_configs, menu_options)  # Displaying menu here
-            selection = get_valid_input(total_options)
+            selection = get_valid_input(config, total_options)
 
             if 1 <= selection <= cfg_count:  # If selection is a valid index
                 config_name = all_configs_keys[selection - 1]
-                config = all_configs[config_name]
-                return config
+                tmp_cfg = all_configs[config_name]
+                return tmp_cfg
             else:  # "Create", "Edit", "View", "Delete"
                 task_index = selection - cfg_count - 1
                 task = menu_options[task_index][0].split()[0].lower()
                 _, action = menu_options[task_index]
                 if task in ["edit", "view", "delete"]:
-                    chosen_config = select_config_action(all_configs, task)
+                    chosen_config = select_config_action(config, all_configs, task)
                     if chosen_config == None:
                         continue  # Start over
-                    config = action(chosen_config)
+                    tmp_cfg = action(chosen_config)
                 else:  # On "create"
-                    config = AIConfig()
-                    config = action(config)
-                if config:  # If an action returns a config
-                    return config
+                    tmp_cfg = AIConfig()
+                    tmp_cfg = action(tmp_cfg)
+                if tmp_cfg:  # If an action returns a tmp_cfg
+                    return tmp_cfg
 
         else:  # If no configurations exist
-            config = AIConfig()
-            config = welcome_prompt()
-            return config
+            tmp_cfg = AIConfig()
+            tmp_cfg = welcome_prompt()
+            return tmp_cfg
 
 
 # Create, edit configurations
-def manage_ai_name(configs: AIConfig, task: str) -> str:
+def manage_ai_name(config: Config, tmp_cfg: AIConfig, task: str) -> str:
     """
     Manage the AI name based on the task.
 
     Parameters:
-        configs (AIConfig): The AI configuration.
+        tmp_cfg (AIConfig): The AI configuration.
         task (str): The task being performed, either "create" or "edit".
 
     Returns:
@@ -421,7 +432,7 @@ def manage_ai_name(configs: AIConfig, task: str) -> str:
         "create": ("Create an AI-Assistant:", "For example, 'Entrepreneur-GPT'"),
         "edit": (
             "Edit the AI name:",
-            f"current name is '{configs.ai_name if configs else None}'. Leave empty to keep the current name.",
+            f"current name is '{tmp_cfg.ai_name if tmp_cfg else None}'. Leave empty to keep the current name.",
         ),
     }
     # Display prompt
@@ -435,28 +446,28 @@ def manage_ai_name(configs: AIConfig, task: str) -> str:
     prompt_text = "AI Name: "
 
     # Get name: user input
-    input_name = utils.clean_input(prompt_text)
-    ai_name = input_name if input_name or task == "create" else configs.ai_name
+    input_name = utils.clean_input(config, prompt_text)
+    ai_name = input_name if input_name or task == "create" else tmp_cfg.ai_name
 
     # Check if name already exists, prompt until unique name provided
-    while check_ai_name_exists(ai_name) and (input_name or task == "create"):
+    while check_ai_name_exists(config, ai_name) and (input_name or task == "create"):
         logger.typewriter_log(
             "This AI name already exists. Please choose a different name.",
             Fore.RED,
             speak_text=True,
         )
-        input_name = utils.clean_input(validate_input(prompt_text))
+        input_name = utils.clean_input(config, validate_input(prompt_text))
     logger.typewriter_log("AI name assigned.", Fore.LIGHTBLUE_EX, speak_text=True)
-    configs.ai_name = ai_name
+    tmp_cfg.ai_name = ai_name
     return ai_name
 
 
-def manage_ai_role(config: AIConfig, task: str) -> str:
+def manage_ai_role(config: Config, tmp_cfg: AIConfig, task: str) -> str:
     """
     Manage the AI role based on the task.
 
     Parameters:
-        config (AIConfig): The AI configuration.
+        tmp_cfg (AIConfig): The AI configuration.
         task (str): The task being performed, either "create" or "edit".
 
     Returns:
@@ -468,7 +479,7 @@ def manage_ai_role(config: AIConfig, task: str) -> str:
         "create": ("Describe your AI's role:", f"For example, '{default_role}'"),
         "edit": (
             "Describe your AI's role:",
-            f"Current role is: '{config.ai_role if config else None}'. Leave empty to keep the current role.",
+            f"Current role is: '{tmp_cfg.ai_role if tmp_cfg else None}'. Leave empty to keep the current role.",
         ),
     }
 
@@ -482,9 +493,9 @@ def manage_ai_role(config: AIConfig, task: str) -> str:
 
     # Get role: user input
     ai_role = (
-        utils.clean_input(f"{config.ai_name if config else None} is: ")
-        or config.ai_role
-        if config
+        utils.clean_input(config, f"{tmp_cfg.ai_name if tmp_cfg else None} is: ")
+        or tmp_cfg.ai_role
+        if tmp_cfg
         else default_role
     )
 
@@ -498,16 +509,16 @@ def manage_ai_role(config: AIConfig, task: str) -> str:
 
     logger.typewriter_log("AI role assigned.", Fore.LIGHTBLUE_EX, speak_text=True)
 
-    config.ai_role = ai_role
+    tmp_cfg.ai_role = ai_role
     return ai_role
 
 
-def manage_ai_goals(config: AIConfig, task: str) -> List[str]:
+def manage_ai_goals(config: Config, tmp_cfg: AIConfig, task: str) -> List[str]:
     """
     Manage the AI goals based on the task.
 
     Parameters:
-        config (AIConfig): The AI configuration.
+        tmp_cfg (AIConfig): The AI configuration.
         task (str): The task being performed, either "create" or "edit".
 
     Returns:
@@ -515,8 +526,8 @@ def manage_ai_goals(config: AIConfig, task: str) -> List[str]:
 
     """
     # Store current_goals and max_goals
-    current_goals = config.ai_goals if config else []
-    max_goals = prompt_for_num_goals(task, len(current_goals))
+    current_goals = tmp_cfg.ai_goals if tmp_cfg else []
+    max_goals = prompt_for_num_goals(config, task, len(current_goals))
 
     ai_goals = []
     num_default_goals = len(current_goals)
@@ -528,7 +539,7 @@ def manage_ai_goals(config: AIConfig, task: str) -> List[str]:
         )
 
         for i in range(max_goals):
-            ai_goal = utils.clean_input(f"Goal {i+1}: ")
+            ai_goal = utils.clean_input(config, f"Goal {i+1}: ")
             logger.info("Use [Enter] to save the input.")
             if ai_goal == "":
                 break
@@ -546,11 +557,11 @@ def manage_ai_goals(config: AIConfig, task: str) -> List[str]:
                 f"Current Goal {i+1}: ", Fore.GREEN, f"'{current_goals[i]}'"
             )
             action = utils.clean_input(
-                "Do you want to [E]dit, [D]elete, or [K]eep this goal? "
+                config, "Do you want to [E]dit, [D]elete, or [K]eep this goal? "
             )
             if action.lower() == "e":
                 ai_goal = utils.clean_input(
-                    f"{Fore.GREEN}New Goal {i+1}:{Style.RESET_ALL} "
+                    config, f"{Fore.GREEN}New Goal {i+1}:{Style.RESET_ALL} "
                 )
                 if ai_goal != "":
                     kept_goals.append(ai_goal)
@@ -571,29 +582,31 @@ def manage_ai_goals(config: AIConfig, task: str) -> List[str]:
             # Add new goals if max_goals not reached
             for i in range(num_ai_goals, max_goals):
                 ai_goal = utils.clean_input(
-                    f"{Fore.GREEN}New Goal {i+1}:{Style.RESET_ALL} "
+                    config, f"{Fore.GREEN}New Goal {i+1}:{Style.RESET_ALL} "
                 )
                 if ai_goal == "":
                     break
                 ai_goals.append(ai_goal)
     logger.typewriter_log("AI goals assigned.", Fore.LIGHTBLUE_EX, speak_text=True)
-    config.ai_goals = ai_goals
+    tmp_cfg.ai_goals = ai_goals
     return ai_goals
 
 
-def manage_plugins(config: AIConfig, task: str) -> List[str]:
+def manage_plugins(config: Config, tmp_cfg: AIConfig, task: str) -> List[str]:
     """
     Manage the plugins based on the task.
 
     Parameters:
-        config (AIConfig): The AI configuration.
+        tmp_cfg (AIConfig): The AI configuration.
         task (str): The task being performed, either "create" or "edit".
 
     Returns:
         List[str]: The updated plugins.
 
     """
-    default_plugins = cfg.plugins_allowlist if cfg and cfg.plugins_allowlist else []
+    default_plugins = (
+        config.plugins_allowlist if config and config.plugins_allowlist else []
+    )
     plugins = []
 
     if default_plugins:
@@ -607,7 +620,8 @@ def manage_plugins(config: AIConfig, task: str) -> List[str]:
             remaining_plugins = []
             for i in range(len(env_plugins)):
                 action = utils.clean_input(
-                    f"{Fore.GREEN}Plugin {i+1}: {Fore.YELLOW}'{env_plugins[i]}'\n{Fore.WHITE}Do you want to [I]gnore or [A]dd this plugin?{Style.RESET_ALL} "
+                    config,
+                    f"{Fore.GREEN}Plugin {i+1}: {Fore.YELLOW}'{env_plugins[i]}'\n{Fore.WHITE}Do you want to [I]gnore or [A]dd this plugin?{Style.RESET_ALL} ",
                 )
                 if action.lower() == "a":
                     remaining_plugins.append(env_plugins[i])
@@ -615,7 +629,7 @@ def manage_plugins(config: AIConfig, task: str) -> List[str]:
             plugins = remaining_plugins
         else:
             # Edit existing plugins
-            plugins = config.plugins
+            plugins = tmp_cfg.plugins
             deleted_plugins = []
             i = 0
             while i < len(plugins):
@@ -626,7 +640,7 @@ def manage_plugins(config: AIConfig, task: str) -> List[str]:
                     speak_text=False,
                 )
                 action = utils.clean_input(
-                    f"Do you want to [D]elete or [K]eep this plugin?"
+                    config, f"Do you want to [D]elete or [K]eep this plugin?"
                 )
                 if action.lower() == "d":
                     deleted_plugins.append(plugins[i])
@@ -645,28 +659,28 @@ def manage_plugins(config: AIConfig, task: str) -> List[str]:
                         speak_text=False,
                     )
                     action = utils.clean_input(
-                        "Do you want to ignore [E]nter or [A]dd this plugin?"
+                        config, "Do you want to ignore [E]nter or [A]dd this plugin?"
                     )
                     if action.lower() == "a":
                         plugins.append(plugin)
     logger.typewriter_log("Plugins assigned.", Fore.LIGHTBLUE_EX, speak_text=True)
-    config.plugins = plugins
+    tmp_cfg.plugins = plugins
     return plugins
 
 
-def manage_api_budget(config: AIConfig, task: str) -> float:
+def manage_api_budget(config: Config, tmp_cfg: AIConfig, task: str) -> float:
     """
     Manage the API budget based on the task.
 
     Parameters:
-        config (AIConfig): The AI configuration.
+        tmp_cfg (AIConfig): The AI configuration.
         task (str): The task being performed, either "create" or "edit".
 
     Returns:
         float: The updated API budget.
 
     """
-    default_budget = config.api_budget if config else 0.0
+    default_budget = tmp_cfg.api_budget if tmp_cfg else 0.0
 
     prompts = {
         "create": (
@@ -688,7 +702,9 @@ def manage_api_budget(config: AIConfig, task: str) -> float:
     )
 
     # Get budget: user input
-    api_budget_input = utils.clean_input(f"{Fore.WHITE}Budget: ${Style.RESET_ALL}")
+    api_budget_input = utils.clean_input(
+        config, f"{Fore.WHITE}Budget: ${Style.RESET_ALL}"
+    )
     api_budget = default_budget
 
     # Attempt to convert to float
@@ -702,51 +718,51 @@ def manage_api_budget(config: AIConfig, task: str) -> float:
             )
             api_budget = default_budget
 
-    config.api_budget = api_budget
+    tmp_cfg.api_budget = api_budget
     return api_budget
 
 
 # View, delete configurations
-def view_config(config: AIConfig) -> None:
+def view_config(config: Config, tmp_cfg: AIConfig) -> None:
     """
     View the details of the given AI configuration.
 
     Parameters:
-        config (AIConfig): The AI configuration to view.
+        tmp_cfg (AIConfig): The AI configuration to view.
 
     Returns:
         None
 
     """
     logger.typewriter_log(
-        f"Configuration {config.ai_name} has the following details:",
+        f"Configuration {tmp_cfg.ai_name} has the following details:",
         Fore.LIGHTBLUE_EX,
         speak_text=True,
     )
-    logger.typewriter_log("Name:", Fore.GREEN, config.ai_name, speak_text=False)
-    logger.typewriter_log("Role:", Fore.GREEN, config.ai_role, speak_text=False)
+    logger.typewriter_log("Name:", Fore.GREEN, tmp_cfg.ai_name, speak_text=False)
+    logger.typewriter_log("Role:", Fore.GREEN, tmp_cfg.ai_role, speak_text=False)
     logger.typewriter_log("Goals:", Fore.GREEN, speak_text=False)
-    for goal in config.ai_goals:
+    for goal in tmp_cfg.ai_goals:
         logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
     logger.typewriter_log(
-        "Budget:", Fore.GREEN, f"${str(config.api_budget)}", speak_text=False
+        "Budget:", Fore.GREEN, f"${str(tmp_cfg.api_budget)}", speak_text=False
     )
-    if hasattr(config, "plugins"):
+    if hasattr(tmp_cfg, "plugins"):
         logger.typewriter_log("Plugins:", Fore.GREEN, speak_text=False)
-        for plugin in config.plugins:
+        for plugin in tmp_cfg.plugins:
             logger.typewriter_log("-", Fore.GREEN, plugin, speak_text=False)
 
     # Prompt
     choice = input("Do you want to [E]dit or [R]eturn to the main menu? ").lower()
 
     if choice == "e":
-        handle_config(config, "edit")
+        handle_config(config, tmp_cfg, "edit")
 
     logger.typewriter_log("Returning to the main menu.", speak_text=True)
     return None
 
 
-def delete_config(selected_config: AIConfig) -> None:
+def delete_config(config: Config, selected_config: AIConfig) -> None:
     """
     Delete the specified AI configuration.
 
@@ -763,8 +779,8 @@ def delete_config(selected_config: AIConfig) -> None:
             Fore.RED,
         )
         AIConfig().delete(
-            config_file=cfg.ai_settings_filepath,
-            ai_name=selected_config.ai_name,
+            config.ai_settings_filepath,
+            selected_config.ai_name,
         )
     except ValueError as e:
         logger.typewriter_log(f"An error occurred: {e}", Fore.RED)
@@ -780,7 +796,7 @@ def delete_config(selected_config: AIConfig) -> None:
 
 
 # Menu handling
-def handle_configs(config: AIConfig, task: str) -> List[Any]:
+def handle_configs(config: Config, tmp_cfg: AIConfig, task: str) -> List[Any]:
     """Handle AI configuration tasks based on the given configuration and task."""
     # List of functions to call
     config_functions = [
@@ -791,48 +807,52 @@ def handle_configs(config: AIConfig, task: str) -> List[Any]:
         manage_api_budget,
     ]
 
-    # Call each function (+ config and task), and store the results in a list
-    return [func(config, task) for func in config_functions]
+    # Call each function (+ tmp_cfg and task), and store the results in a list
+    return [func(config, tmp_cfg, task) for func in config_functions]
 
 
-def handle_config(config: Optional[AIConfig], task: str) -> Optional[AIConfig]:
+def handle_config(
+    config: Config, tmp_cfg: Optional[AIConfig], task: str
+) -> Optional[AIConfig]:
     """
     Handle the creation or editing of an AI configuration.
 
     Parameters:
-        config (Optional[AIConfig]): The existing AI configuration (optional).
+        tmp_cfg (Optional[AIConfig]): The existing AI configuration (optional).
         task (str): The task to perform, either "create" or "edit".
 
     Returns:
         Optional[AIConfig]: The new or edited AI configuration, or None if an error occurred or the user chose to return to the main menu.
     """
-    if config is None:
-        config = AIConfig()
+    if tmp_cfg is None:
+        tmp_cfg = AIConfig()
     try:
         original_ai_name = None
 
-        if task == "edit" and not config:
-            # User wants to edit a config, but no config was provided, so we need to prompt them to select one
+        if task == "edit" and not tmp_cfg:
+            # User wants to edit a tmp_cfg, but no tmp_cfg was provided, so we need to prompt them to select one
             all_configs, _ = AIConfig.load_all(
-                cfg.ai_settings_filepath
+                config.ai_settings_filepath
             )  # , _ to ignore returned message from load_all
             logger.typewriter_log(
                 "Select a configuration to edit:", Fore.GREEN, speak_text=True
             )
             for i, cfg_name in enumerate(all_configs.keys(), start=1):
                 logger.typewriter_log(f"{i}. {cfg_name}")
-            selection = get_valid_input(len(all_configs))
-            config = all_configs[list(all_configs.keys())[selection - 1]]
-            original_ai_name = config.ai_name
+            selection = get_valid_input(config, len(all_configs))
+            tmp_cfg = all_configs[list(all_configs.keys())[selection - 1]]
+            original_ai_name = tmp_cfg.ai_name
 
-        ai_name, ai_role, ai_goals, plugins, api_budget = handle_configs(config, task)
+        ai_name, ai_role, ai_goals, plugins, api_budget = handle_configs(
+            config, tmp_cfg, task
+        )
 
         new_config = AIConfig(ai_name, ai_role, ai_goals, api_budget, plugins)
 
         # Save the new or edited configuration
         try:
             new_config.save(
-                cfg.ai_settings_filepath, append=True, old_ai_name=original_ai_name
+                config.ai_settings_filepath, append=True, old_ai_name=original_ai_name
             )
         except ValueError as e:
             logger.typewriter_log(f"An error occurred: {e}", Fore.RED)
@@ -845,7 +865,7 @@ def handle_config(config: Optional[AIConfig], task: str) -> Optional[AIConfig]:
         )
 
         if user_choice.lower() == "e" or user_choice.lower() == "":
-            start_prompt(new_config, sad=True)
+            start_prompt(config, new_config, sad=True)
 
         if user_choice.lower() == "r":
             return None

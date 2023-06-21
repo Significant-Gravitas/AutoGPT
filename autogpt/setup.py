@@ -6,6 +6,7 @@ from colorama import Fore
 from jinja2 import Template
 
 from autogpt.config.ai_config import AIConfig
+from autogpt.config.config import Config
 from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.chat import create_chat_completion
 from autogpt.logs import logger
@@ -15,7 +16,7 @@ from autogpt.prompts.default_prompts import (
 )
 
 
-def generate_aiconfig_automatic(user_prompt: str) -> Optional[AIConfig]:
+def generate_aiconfig_automatic(config: Config, user_prompt: str) -> Optional[AIConfig]:
     """Generates an AIConfig object from the given string.
 
     Returns:
@@ -57,8 +58,8 @@ def generate_aiconfig_automatic(user_prompt: str) -> Optional[AIConfig]:
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
     api_budget = 0.0  # TODO: parse api budget using a regular expression
 
-    if CFG.plugins_allowlist:
-        plugins = CFG.plugins_allowlist
+    if config.plugins_allowlist:
+        plugins = config.plugins_allowlist
     else:
         plugins = []
 
@@ -68,14 +69,14 @@ def generate_aiconfig_automatic(user_prompt: str) -> Optional[AIConfig]:
             "Automatic generation failed. Falling back to manual generation...",
             Fore.RED,
         )
-        return handle_config(None, "create")
+        return handle_config(config, None, "create")
 
     # Create new AIConfig instance with parsed parameters
     new_config = AIConfig(ai_name, ai_role, ai_goals, api_budget, plugins)
 
     # Save the new configuration
     try:
-        new_config.save(CFG.ai_settings_filepath, append=True)
+        new_config.save(config.ai_settings_filepath, append=True)
     except ValueError as e:
         logger.typewriter_log(f"An error occurred: {e}", Fore.RED)
     else:
