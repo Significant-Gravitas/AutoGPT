@@ -7,6 +7,7 @@ import os
 import re
 from io import TextIOWrapper
 from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 import pytest
 from pytest_mock import MockerFixture
@@ -300,68 +301,35 @@ def test_delete_missing_file(agent: Agent):
     assert False, f"Failed to test delete_file; {filename} not expected to exist"
 
 
-def test_list_files(workspace: Workspace, test_directory: Path, agent: Agent):
-    # Case 1: Create files A and B, search for A, and ensure we don't return A and B
-    file_a = workspace.get_path("file_a.txt")
-    file_b = workspace.get_path("file_b.txt")
+def test_list_files(workspace: Workspace, agent: Agent):
+    test_file = NamedTemporaryFile(dir=workspace.root)
 
-    with open(file_a, "w") as f:
-        f.write("This is file A.")
-
-    with open(file_b, "w") as f:
-        f.write("This is file B.")
-
-    # Create a subdirectory and place a copy of file_a in it
-    if not os.path.exists(test_directory):
-        os.makedirs(test_directory)
-
-    with open(os.path.join(test_directory, file_a.name), "w") as f:
-        f.write("This is file A in the subdirectory.")
+    # Test recursiveness
+    test_subdirectory = TemporaryDirectory(dir=workspace.root)
+    test_file_subdirectory = NamedTemporaryFile(dir=test_subdirectory.name)
 
     files = file_ops.list_files(str(workspace.root), agent=agent)
-    assert file_a.name in files
-    assert file_b.name in files
-    assert os.path.join(Path(test_directory).name, file_a.name) in files
 
-    # Clean up
-    os.remove(file_a)
-    os.remove(file_b)
-    os.remove(os.path.join(test_directory, file_a.name))
-    os.rmdir(test_directory)
-
-    # Case 2: Search for a file that does not exist and make sure we don't throw
-    non_existent_file = "non_existent_file.txt"
-    files = file_ops.list_files("", agent=agent)
-    assert non_existent_file not in files
+    # Use basename because list_files only gives relative paths back
+    assert os.path.basename(test_file.name) in files
+    relative_path = os.path.relpath(test_file_subdirectory.name, workspace.root)
+    assert relative_path in files
 
 
-def test_file_search(workspace: Workspace, test_directory: Path, agent: Agent):
-    # Case 1: Create files A and B, search for A, and ensure we don't return A and B
-    file_a = workspace.get_path("file_a.txt")
-    file_b = workspace.get_path("file_b.txt")
+def test_search_files(workspace: Workspace, agent: Agent):
+    test_file = NamedTemporaryFile(dir=workspace.root, suffix=".txt")
 
-    with open(file_a, "w") as f:
-        f.write("This is file A.")
-
-    with open(file_b, "w") as f:
-        f.write("This is file B.")
-
-    # Create a subdirectory and place a copy of file_a in it
-    if not os.path.exists(test_directory):
-        os.makedirs(test_directory)
-
-    with open(os.path.join(test_directory, file_a.name), "w") as f:
-        f.write("This is file A in the subdirectory.")
+    # Test recursiveness
+    test_subdirectory = TemporaryDirectory(dir=workspace.root)
+    test_file_subdirectory = NamedTemporaryFile(
+        dir=test_subdirectory.name, suffix=".txt"
+    )
 
     files = file_ops.file_search(
         pattern="*.txt", dir_path=str(workspace.root), agent=agent
     )
-    assert file_a.name in files
-    assert file_b.name in files
-    assert os.path.join(Path(test_directory).name, file_a.name) in files
 
-    # Clean up
-    os.remove(file_a)
-    os.remove(file_b)
-    os.remove(os.path.join(test_directory, file_a.name))
-    os.rmdir(test_directory)
+    # Use basename because list_files only gives relative paths back
+    assert os.path.basename(test_file.name) in files
+    relative_path = os.path.relpath(test_file_subdirectory.name, workspace.root)
+    assert relative_path in files

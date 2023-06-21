@@ -8,9 +8,9 @@ import os.path
 from pathlib import Path
 from typing import Generator, Literal
 
-from autogpt.agent.agent import Agent
 from langchain.tools import FileSearchTool
 
+from autogpt.agents import Agent
 from autogpt.command_decorator import command
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory

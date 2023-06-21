@@ -4,7 +4,7 @@ from langchain.tools import BaseTool
 
 from autogpt.config import Config
 from autogpt.logs import logger
-from .command_parameter import CommandParameter
+from autogpt.models.command_parameter import CommandParameter
 
 
 class Command:
@@ -50,7 +50,7 @@ class Command:
         ]
         return f"{self.name}: {self.description}, params: ({', '.join(params)})"
 
-       @classmethod
+    @classmethod
     def generate_from_langchain_tool(
         cls, tool: BaseTool, arg_converter: Optional[Callable] = None
     ) -> "Command":

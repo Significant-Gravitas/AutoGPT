@@ -6,13 +6,8 @@ from pathlib import Path
 import pytest
 from langchain.tools import ListDirectoryTool, StructuredTool
 
-<<<<<<< HEAD
+from autogpt.agents.agent import Agent, execute_command
 from autogpt.models.command import Command, CommandParameter
-=======
-from autogpt.agent import Agent
-from autogpt.app import execute_command
-from autogpt.models.command import Command
->>>>>>> 4d35111d (LangChain tool support, file_search as example)
 from autogpt.models.command_registry import CommandRegistry
 
 PARAMETERS = [
@@ -126,7 +121,6 @@ def test_command_in_registry(example_command_with_aliases: Command):
     registry = CommandRegistry()
     command = example_command_with_aliases
 
-<<<<<<< HEAD
     assert command.name not in registry
     assert "nonexistent_command" not in registry
 
@@ -238,26 +232,28 @@ def test_import_temp_command_file_module(tmp_path: Path):
         registry.commands["function_based"].description == "Function-based test command"
     )
 
-    def test_generate_from_langchain_tool_simple_function(self, agent: Agent):
-        def string_length(input_str: str) -> int:
-            return len(input_str)
 
-        langchain_tool = StructuredTool.from_function(
-            string_length, description="useful to get the length of a string"
-        )
-        command = Command.generate_from_langchain_tool(langchain_tool)
-        agent.command_registry.register(command)
+def test_generate_from_langchain_tool_simple_function(agent: Agent):
+    def string_length(input_str: str) -> int:
+        return len(input_str)
 
-        result = execute_command(
-            command_name="string_length", arguments={"input_str": "12345"}, agent=agent
-        )
-        assert result == 5
+    langchain_tool = StructuredTool.from_function(
+        string_length, description="useful to get the length of a string"
+    )
+    command = Command.generate_from_langchain_tool(langchain_tool)
+    agent.command_registry.register(command)
 
-    def test_execute_langchain_list_directory(self, agent: Agent):
-        command = Command.generate_from_langchain_tool(ListDirectoryTool())
-        agent.command_registry.register(command)
+    result = execute_command(
+        command_name="string_length", arguments={"input_str": "12345"}, agent=agent
+    )
+    assert result == 5
 
-        result = execute_command(
-            command_name="list_directory", arguments={"dir_path": "."}, agent=agent
-        )
-        assert "README.md" in result
+
+def test_execute_langchain_list_directory(agent: Agent):
+    command = Command.generate_from_langchain_tool(ListDirectoryTool())
+    agent.command_registry.register(command)
+
+    result = execute_command(
+        command_name="list_directory", arguments={"dir_path": "."}, agent=agent
+    )
+    assert "README.md" in result
