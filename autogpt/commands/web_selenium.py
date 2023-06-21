@@ -41,7 +41,7 @@ FILE_DIR = Path(__file__).parent.parent
 
 @command(
     "browse_website",
-    "Browse Website",
+    "Browses a Website",
     {
         "url": {"type": "string", "description": "The URL to visit", "required": True},
         "question": {
@@ -232,6 +232,6 @@ def summarize_memorize_webpage(
 
     memory = get_memory(agent.config)
 
-    new_memory = MemoryItem.from_webpage(text, url, question=question)
+    new_memory = MemoryItem.from_webpage(text, url, agent.config, question=question)
     memory.add(new_memory)
     return new_memory.summary

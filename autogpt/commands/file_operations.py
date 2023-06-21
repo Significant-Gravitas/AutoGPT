@@ -11,6 +11,7 @@ from confection import Config
 from autogpt.agent.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.commands.file_operations_utils import read_textual_file
+from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
 
@@ -81,6 +82,7 @@ def is_duplicate_operation(
     Args:
         operation: The operation to check for
         filename: The name of the file to check for
+        config: The agent config
         checksum: The checksum of the contents to be written
 
     Returns:
@@ -137,7 +139,7 @@ def read_file(filename: str, agent: Agent) -> str:
         content = read_textual_file(filename, logger)
 
         # TODO: invalidate/update memory when file is edited
-        file_memory = MemoryItem.from_text_file(content, filename)
+        file_memory = MemoryItem.from_text_file(content, filename, agent.config)
         if len(file_memory.chunks) > 1:
             return file_memory.summary
 
@@ -174,7 +176,7 @@ def ingest_file(
 
 @command(
     "write_to_file",
-    "Write to file",
+    "Writes to a file",
     {
         "filename": {
             "type": "string",
@@ -214,7 +216,7 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
 
 @command(
     "append_to_file",
-    "Append to file",
+    "Appends to a file",
     {
         "filename": {
             "type": "string",
@@ -259,7 +261,7 @@ def append_to_file(
 
 @command(
     "delete_file",
-    "Delete file",
+    "Deletes a file",
     {
         "filename": {
             "type": "string",
@@ -289,7 +291,7 @@ def delete_file(filename: str, agent: Agent) -> str:
 
 @command(
     "list_files",
-    "List Files in Directory",
+    "Lists Files in a Directory",
     {
         "directory": {
             "type": "string",
