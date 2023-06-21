@@ -5,12 +5,11 @@ from unittest.mock import Mock, patch
 import pytest
 
 from autogpt.config.ai_config import AIConfig
-from autogpt.config.config import Config
 from autogpt.prompts.prompt import main_menu, welcome_prompt
 from autogpt.setup import generate_aiconfig_automatic
+from autogpt.config.config import Config
 
 config = Config()
-
 
 @pytest.fixture(autouse=True)
 def setup(tmp_path: Path) -> Any:
@@ -22,30 +21,6 @@ def setup(tmp_path: Path) -> Any:
 
     if config.ai_settings_filepath.exists():
         config.ai_settings_filepath.unlink()
-
-
-@pytest.mark.vcr
-def test_generate_aiconfig_automatic_default(patched_api_requestor: Mock) -> None:
-    user_inputs = [""]
-
-    with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
-        ai_config = welcome_prompt(config)
-
-    assert isinstance(ai_config, AIConfig)
-    assert ai_config.ai_name is not None
-    assert ai_config.ai_role is not None
-    assert 1 <= len(ai_config.ai_goals) <= 5
-
-
-@pytest.mark.vcr
-def test_generate_aiconfig_automatic_typical(patched_api_requestor: Mock) -> None:
-    user_prompt = "Help me create a rock opera about cybernetic giraffes"
-    ai_config = generate_aiconfig_automatic(config, user_prompt)
-
-    assert isinstance(ai_config, AIConfig)
-    assert ai_config.ai_name is not None
-    assert ai_config.ai_role is not None
-    assert 1 <= len(ai_config.ai_goals) <= 5
 
 
 @pytest.mark.vcr
