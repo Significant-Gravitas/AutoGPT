@@ -232,6 +232,7 @@ class SimpleAgent(Agent, Configurable):
                 self._completed_tasks.append(self._current_task)
             else:
                 self._task_queue.append(self._current_task)
+            self._current_task.context.cycle_count += 1
             self._current_task = None
             self._next_ability = None
 
@@ -270,8 +271,6 @@ class SimpleAgent(Agent, Configurable):
         # TODO: Summarize new knowledge
         # TODO: store knowledge and summaries in memory and in relevant tasks
         # TODO: evaluate whether the task is complete
-
-
 
     def __repr__(self):
         return "SimpleAgent()"
