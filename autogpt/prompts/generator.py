@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from autogpt.config import Config
 from autogpt.json_utils.utilities import llm_response_schema
-from autogpt.models.command import Command
 
 if TYPE_CHECKING:
     from autogpt.models.command_registry import CommandRegistry
@@ -141,7 +140,7 @@ class PromptGenerator:
         return (
             f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
             f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
-            f"{generate_commands(self, self.commands, config)}"
+            f"{generate_commands(self, config)}"
             "Performance Evaluation:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
             "Respond with only valid JSON conforming to the following schema: \n"
@@ -149,7 +148,7 @@ class PromptGenerator:
         )
 
 
-def generate_commands(self, commands: List[Command], config: Config) -> str:
+def generate_commands(self, config: Config) -> str:
     """
     Generate a prompt string based on the constraints, commands, resources,
         and performance evaluations.

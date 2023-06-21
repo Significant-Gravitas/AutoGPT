@@ -67,8 +67,7 @@ def summarize_text(
 
     Args:
         text (str): The text to summarize
-        config (Config): Thtext(
-                "\n\n".joine config object
+        config (Config): The config object
         instruction (str): Additional instruction for summarization, e.g. "focus on information related to polar bears", "omit personal information contained in the text"
         question (str): Question to answer in the summary
 

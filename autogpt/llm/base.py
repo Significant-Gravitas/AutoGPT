@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import ceil, floor
-from typing import List, Literal, TypedDict
+from typing import Any, Dict, List, Literal, TypedDict
 
 MessageRole = Literal["system", "user", "assistant"]
 MessageType = Literal["ai_response", "action_result"]
@@ -157,3 +157,13 @@ class ChatModelResponse(LLMResponse):
     """Standard response struct for a response from an LLM model."""
 
     content: str = None
+    function_call: Dict[str, Any] = None
+
+
+@dataclass
+class OpenAIFunctionSpec:
+    """Represents a "function" in OpenAI, which is mapped to a Command in Auto-GPT"""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]

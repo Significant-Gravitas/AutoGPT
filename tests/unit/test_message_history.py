@@ -7,11 +7,10 @@ import pytest
 from autogpt.agent import Agent
 from autogpt.config import AIConfig
 from autogpt.config.config import Config
-from autogpt.llm.base import ChatSequence, Message
+from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens
 from autogpt.memory.message_history import MessageHistory
-from autogpt.models.chat_completion_response import ChatCompletionResponse
 
 
 @pytest.fixture
@@ -46,7 +45,8 @@ def test_message_history_batch_summary(mocker, agent, config):
     message_count = 0
 
     # Setting the mock output and inputs
-    mock_summary_response = ChatCompletionResponse(
+    mock_summary_response = ChatModelResponse(
+        model_info=OPEN_AI_CHAT_MODELS[model],
         content="I executed browse_website command for each of the websites returned from Google search, but none of them have any job openings.",
         function_call={},
     )

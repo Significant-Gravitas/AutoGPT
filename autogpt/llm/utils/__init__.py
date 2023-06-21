@@ -7,11 +7,10 @@ from colorama import Fore
 from autogpt.config import Config
 from autogpt.logs import logger
 
-from ...models.chat_completion_response import ChatCompletionResponse
-from ...models.command_function import CommandFunction
 from ..api_manager import ApiManager
-from ..base import ChatSequence, Message
+from ..base import ChatModelResponse, ChatSequence, Message, OpenAIFunctionSpec
 from ..providers import openai as iopenai
+from ..providers.openai import OPEN_AI_CHAT_MODELS
 from .token_counter import *
 
 
@@ -90,11 +89,11 @@ def create_text_completion(
 def create_chat_completion(
     prompt: ChatSequence,
     config: Config,
-    functions: Optional[List[CommandFunction]] = [],
+    functions: Optional[List[OpenAIFunctionSpec]] = [],
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-) -> ChatCompletionResponse:
+) -> ChatModelResponse:
     """Create a chat completion using the OpenAI API
 
     Args:
@@ -106,6 +105,7 @@ def create_chat_completion(
     Returns:
         str: The response from the chat completion
     """
+
     if model is None:
         model = prompt.model.name
     if temperature is None:
@@ -161,7 +161,11 @@ def create_chat_completion(
             continue
         content = plugin.on_response(content)
 
-    return ChatCompletionResponse(content=content, function_call=function_call)
+    return ChatModelResponse(
+        model_info=OPEN_AI_CHAT_MODELS[model],
+        content=content,
+        function_call=function_call,
+    )
 
 
 def check_model(

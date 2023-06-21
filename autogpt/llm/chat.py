@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
-from autogpt.models.command_function import CommandFunction
+from autogpt.llm.providers.openai import get_openai_command_specs
 
 if TYPE_CHECKING:
     from autogpt.agent.agent import Agent
@@ -23,7 +23,6 @@ def chat_with_ai(
     system_prompt: str,
     triggering_prompt: str,
     token_limit: int,
-    functions: List[CommandFunction],
     model: str | None = None,
 ):
     """
@@ -197,13 +196,12 @@ def chat_with_ai(
     assistant_reply = create_chat_completion(
         prompt=message_sequence,
         config=agent.config,
-        functions=functions,
+        functions=get_openai_command_specs(agent),
         max_tokens=tokens_remaining,
     )
 
     # Update full message history
     agent.history.append(user_input_msg)
-
     agent.history.add("assistant", assistant_reply.content, "ai_response")
 
     return assistant_reply

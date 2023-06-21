@@ -4,7 +4,7 @@ from typing import Dict
 
 from autogpt.agent.agent import Agent
 from autogpt.config import Config
-from autogpt.models.chat_completion_response import ChatCompletionResponse
+from autogpt.llm import ChatModelResponse
 
 
 def is_valid_int(value: str) -> bool:
@@ -24,12 +24,14 @@ def is_valid_int(value: str) -> bool:
 
 
 def get_command(
-    assistant_reply_json: Dict, assistant_reply: ChatCompletionResponse, config: Config
+    assistant_reply_json: Dict, assistant_reply: ChatModelResponse, config: Config
 ):
     """Parse the response and return the command name and arguments
 
     Args:
-        assistant_reply_json (json): The response from the AI
+        assistant_reply_json (json): The json response from the AI
+        assistant_reply (ChatModelResponse): The model response from the AI
+        config (Config): The config object
 
     Returns:
         tuple: The command name and arguments
