@@ -72,9 +72,10 @@ class AIConfig:
             "plugins": self.plugins,
         }
 
-
     @staticmethod
-    def update_old_config(ai_settings_file: str) -> Tuple[Dict[str, Dict[str, Any]], str]:
+    def update_old_config(
+        ai_settings_file: str,
+    ) -> Tuple[Dict[str, Dict[str, Any]], str]:
         """
         Checks and updates the provided configuration file to the latest format supporting multiple configurations.
 
@@ -303,7 +304,6 @@ class AIConfig:
         # Save configurations back to file
         with open(ai_settings_file, "w", encoding="utf-8") as file:
             file.write(yaml.dump(all_configs, allow_unicode=True))
-
 
     def construct_full_prompt(
         self, config, prompt_generator: Optional[PromptGenerator] = None

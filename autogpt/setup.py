@@ -5,7 +5,6 @@ from typing import Optional
 from colorama import Fore
 from jinja2 import Template
 
-from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.chat import create_chat_completion
@@ -14,7 +13,6 @@ from autogpt.prompts.default_prompts import (
     DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
     DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC,
 )
-
 
 
 def generate_aiconfig_automatic(user_prompt: str) -> Optional[AIConfig]:
