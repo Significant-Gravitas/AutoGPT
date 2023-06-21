@@ -172,7 +172,7 @@ def check_ai_name_exists(config: Config, name: str) -> bool:
     return False
 
 
-def generate_unique_name(base: str) -> str:
+def generate_unique_name(config: Config, base: str) -> str:
     """Generate unique AI name."""
     i: int = 1
     while check_ai_name_exists(config, f"{base}-{i}"):
@@ -411,7 +411,7 @@ def main_menu(config: Config) -> Optional[AIConfig]:
 
         else:  # If no configurations exist
             tmp_cfg = AIConfig()
-            tmp_cfg = welcome_prompt()
+            tmp_cfg = welcome_prompt(config)
             return tmp_cfg
 
 

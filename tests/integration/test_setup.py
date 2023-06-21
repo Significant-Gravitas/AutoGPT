@@ -5,30 +5,31 @@ from unittest.mock import Mock, patch
 import pytest
 
 from autogpt.config.ai_config import AIConfig
-from autogpt.prompts.prompt import cfg, main_menu, welcome_prompt
+from autogpt.config.config import Config
+from autogpt.prompts.prompt import main_menu, welcome_prompt
 from autogpt.setup import generate_aiconfig_automatic
-from tests.utils import requires_api_key
+
+config = Config()
 
 
 @pytest.fixture(autouse=True)
 def setup(tmp_path: Path) -> Any:
-    cfg.ai_settings_filepath = tmp_path / "ai_settings.yaml"
-    cfg.workspace_path = tmp_path / "auto_gpt_workspace"
-    (cfg.workspace_path).mkdir(parents=True, exist_ok=True)
-    cfg.plugins_allowlist = ["plugin1", "plugin2", "plugin3"]
+    config.ai_settings_filepath = tmp_path / "ai_settings.yaml"
+    config.workspace_path = tmp_path / "auto_gpt_workspace"
+    (config.workspace_path).mkdir(parents=True, exist_ok=True)
+    config.plugins_allowlist = ["plugin1", "plugin2", "plugin3"]
     yield
 
-    if cfg.ai_settings_filepath.exists():
-        cfg.ai_settings_filepath.unlink()
+    if config.ai_settings_filepath.exists():
+        config.ai_settings_filepath.unlink()
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_automatic_default(patched_api_requestor: Mock) -> None:
     user_inputs = [""]
 
     with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
-        ai_config = welcome_prompt()
+        ai_config = welcome_prompt(config)
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name is not None
@@ -37,10 +38,9 @@ def test_generate_aiconfig_automatic_default(patched_api_requestor: Mock) -> Non
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_automatic_typical(patched_api_requestor: Mock) -> None:
     user_prompt = "Help me create a rock opera about cybernetic giraffes"
-    ai_config = generate_aiconfig_automatic(user_prompt)
+    ai_config = generate_aiconfig_automatic(config, user_prompt)
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name is not None
@@ -49,7 +49,6 @@ def test_generate_aiconfig_automatic_typical(patched_api_requestor: Mock) -> Non
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_prompt_user_manual_mode_r_input(patched_api_requestor: Mock) -> None:
     user_inputs = [
         "--manual",
@@ -73,13 +72,12 @@ def test_prompt_user_manual_mode_r_input(patched_api_requestor: Mock) -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ), patch("autogpt.prompts.prompt.main_menu", return_value=None) as mock_main_menu:
-        ai_config = welcome_prompt()
+        ai_config = welcome_prompt(config)
 
     assert ai_config is None
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_prompt_user_manual_mode(patched_api_requestor: Mock) -> None:
     user_inputs = [
         "--manual",
@@ -104,19 +102,18 @@ def test_prompt_user_manual_mode(patched_api_requestor: Mock) -> None:
         "builtins.input", new=mock_prompt_input
     ):
         with patch("autogpt.logs.logger.typewriter_log") as mock_logger:
-            ai_config = welcome_prompt()
+            ai_config = welcome_prompt(config)
             mock_logger.assert_called_with(
                 "Configuration saved.", "\x1b[32m", speak_text=True
             )
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_delete_and_select() -> None:
     """Test delete configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """configs:
@@ -157,7 +154,7 @@ def test_generate_aiconfig_delete_and_select() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "normal-GPT"
@@ -172,12 +169,11 @@ def test_generate_aiconfig_delete_and_select() -> None:
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_change_and_select() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """configs:
@@ -228,7 +224,7 @@ def test_generate_aiconfig_change_and_select() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "change-GPT"
@@ -240,12 +236,11 @@ def test_generate_aiconfig_change_and_select() -> None:
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_change_add_more_goals() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """configs:
@@ -298,7 +293,7 @@ def test_generate_aiconfig_change_add_more_goals() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "change-GPT"
@@ -312,12 +307,11 @@ def test_generate_aiconfig_change_add_more_goals() -> None:
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_change_and_start() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """configs:
@@ -369,7 +363,7 @@ def test_generate_aiconfig_change_and_start() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "change-GPT"
@@ -381,12 +375,11 @@ def test_generate_aiconfig_change_and_start() -> None:
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_create_and_select() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """configs:
@@ -436,7 +429,7 @@ def test_generate_aiconfig_create_and_select() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "new-GPT"
@@ -448,12 +441,11 @@ def test_generate_aiconfig_create_and_select() -> None:
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_edit_wrong_budget() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """configs:
@@ -504,7 +496,7 @@ def test_generate_aiconfig_edit_wrong_budget() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "new-GPT"
@@ -516,12 +508,11 @@ def test_generate_aiconfig_edit_wrong_budget() -> None:
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_view_config() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """configs:
@@ -574,19 +565,18 @@ def test_generate_aiconfig_view_config() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "normal-GPT"
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_empty_config() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """ """
@@ -620,19 +610,18 @@ def test_generate_aiconfig_empty_config() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "chef-GPT"
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_edit_num_goals_25() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """configs:
@@ -685,7 +674,7 @@ def test_generate_aiconfig_edit_num_goals_25() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "new-GPT"
@@ -697,12 +686,11 @@ def test_generate_aiconfig_edit_num_goals_25() -> None:
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_edit_num_goals_none() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """configs:
@@ -754,7 +742,7 @@ def test_generate_aiconfig_edit_num_goals_none() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "new-GPT"
@@ -766,12 +754,11 @@ def test_generate_aiconfig_edit_num_goals_none() -> None:
 
 
 @pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_edit_plugins() -> None:
     """Test change configuration and select."""
 
     # Temporary path / file
-    temp_config_file = cfg.ai_settings_filepath
+    temp_config_file = config.ai_settings_filepath
 
     # Temporary config
     config_content = """configs:
@@ -826,7 +813,7 @@ def test_generate_aiconfig_edit_plugins() -> None:
     with patch("builtins.input", new=mock_input), patch(
         "autogpt.utils.session.prompt", new=mock_input
     ):
-        ai_config = main_menu()
+        ai_config = main_menu(config)
 
     assert ai_config is not None, "ai_config is None"
     assert ai_config.ai_name == "plugin-GPT"

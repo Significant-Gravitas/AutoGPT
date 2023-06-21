@@ -6,13 +6,15 @@ from unittest.mock import MagicMock, Mock, call, patch
 import pytest
 from _pytest.capture import CaptureFixture
 
+from autogpt.config.config import Config
 from autogpt.prompts.prompt import (
-    cfg,
     generate_unique_name,
     manage_ai_name,
     start_prompt,
     validate_input,
 )
+
+config = Config()
 
 
 class ConfigsMock:
@@ -21,13 +23,13 @@ class ConfigsMock:
 
 @pytest.fixture(autouse=True)
 def setup(tmp_path: Path) -> Generator[None, None, None]:
-    cfg.ai_settings_filepath = tmp_path / "ai_settings.yaml"
-    cfg.workspace_path = tmp_path / "auto_gpt_workspace"
-    (cfg.workspace_path).mkdir(parents=True, exist_ok=True)
+    config.ai_settings_filepath = tmp_path / "ai_settings.yaml"
+    config.workspace_path = tmp_path / "auto_gpt_workspace"
+    (config.workspace_path).mkdir(parents=True, exist_ok=True)
     yield
 
-    if cfg.ai_settings_filepath.exists():
-        cfg.ai_settings_filepath.unlink()
+    if config.ai_settings_filepath.exists():
+        config.ai_settings_filepath.unlink()
 
 
 @patch.object(builtins, "input", side_effect=["-invalid", "--invalid", "valid"])
@@ -46,7 +48,7 @@ def test_generate_unique_name() -> None:
     with patch(
         "autogpt.config.ai_config.AIConfig.load_all", return_value=(mock_ai_configs, "")
     ):
-        name = generate_unique_name("base")
+        name = generate_unique_name(config, "base")
         assert name == "base-3"
 
     mock_ai_configs = {
@@ -58,7 +60,7 @@ def test_generate_unique_name() -> None:
     with patch(
         "autogpt.config.ai_config.AIConfig.load_all", return_value=(mock_ai_configs, "")
     ):
-        name = generate_unique_name("base")
+        name = generate_unique_name(config, "base")
         assert name == "base-1"
 
 
@@ -72,10 +74,10 @@ def test_manage_ai_name_create(
 ) -> None:
     configs = ConfigsMock()
     task = "create"
-    result = manage_ai_name(configs, task)
+    result = manage_ai_name(config, configs, task)
     assert result == "test_name"
     assert configs.ai_name == "test_name"
-    mock_check_name.assert_called_once_with("test_name")
+    mock_check_name.assert_called_once_with(config, "test_name")
 
 
 @patch("autogpt.prompts.prompt.check_ai_name_exists", return_value=False)
@@ -89,10 +91,10 @@ def test_manage_ai_name_edit_keep_current(
     configs = ConfigsMock()
     configs.ai_name = "current_name"
     task = "edit"
-    result = manage_ai_name(configs, task)
+    result = manage_ai_name(config, configs, task)
     assert result == "current_name"
     assert configs.ai_name == "current_name"
-    mock_check_name.assert_called_once_with("current_name")
+    mock_check_name.assert_called_once_with(config, "current_name")
 
 
 @patch("autogpt.prompts.prompt.check_ai_name_exists", return_value=False)
@@ -106,20 +108,20 @@ def test_manage_ai_name_edit_change_current(
     configs = ConfigsMock()
     configs.ai_name = "current_name"
     task = "edit"
-    result = manage_ai_name(configs, task)
+    result = manage_ai_name(config, configs, task)
     assert result == "new_name"
     assert configs.ai_name == "new_name"
-    mock_check_name.assert_called_once_with("new_name")
+    mock_check_name.assert_called_once_with(config, "new_name")
 
 
 def test_start_prompt(capsys: CaptureFixture) -> None:
     # Mock the necessary dependencies and set up the initial config
-    config = Mock()
-    config.ai_name = "Test AI"
-    config.ai_role = "Test role"
-    config.ai_goals = ["Goal 1", "Goal 2"]
-    config.api_budget = 100.0
-    config.plugins = [
+    tmp_cfg = Mock()
+    tmp_cfg.ai_name = "Test AI"
+    tmp_cfg.ai_role = "Test role"
+    tmp_cfg.ai_goals = ["Goal 1", "Goal 2"]
+    tmp_cfg.api_budget = 100.0
+    tmp_cfg.plugins = [
         "Plugin 1",
         "Plugin 2",
     ]  # Provide a valid iterable value for plugins
@@ -130,7 +132,7 @@ def test_start_prompt(capsys: CaptureFixture) -> None:
             mock_api_manager.return_value.set_total_budget.return_value = None
 
             # Call the start_prompt function
-            start_prompt(config)
+            start_prompt(config, tmp_cfg)
 
             # Capture the printed output
             captured = capsys.readouterr()
