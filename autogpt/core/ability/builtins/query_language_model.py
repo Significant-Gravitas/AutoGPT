@@ -17,7 +17,7 @@ class QueryLanguageModel(Ability):
     default_configuration = AbilityConfiguration(
         location=PluginLocation(
             storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-            storage_route="autogpt.core.ability.builtins.CreateChatCompletion",
+            storage_route="autogpt.core.ability.builtins.QueryLanguageModel",
         ),
         language_model_required=LanguageModelConfiguration(
             model_name=OpenAIModelName.GPT3,

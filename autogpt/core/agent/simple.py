@@ -11,12 +11,10 @@ from autogpt.core.configuration import Configurable, SystemConfiguration, System
 from autogpt.core.embedding import EmbeddingModelSettings, SimpleEmbeddingModel
 from autogpt.core.memory import MemorySettings, SimpleMemory
 from autogpt.core.planning import (
-    LanguageModelResponse,
     PlannerSettings,
     SimplePlanner,
     Task,
     TaskStatus,
-    TaskType,
 )
 from autogpt.core.plugin.simple import (
     PluginLocation,
