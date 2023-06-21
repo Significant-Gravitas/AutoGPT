@@ -260,7 +260,7 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                         continue
                     a_module = getattr(zipped_module, key)
                     a_keys = dir(a_module)
-                    
+
                     is_plugin = False
                     if "_abc_impl" in a_keys:
                         for base in a_module.__bases__:
@@ -268,10 +268,7 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                                 is_plugin = True
                                 break
 
-                    if (
-                        is_plugin
-                        and a_module.__name__ != "AutoGPTPluginTemplate"
-                    ):
+                    if is_plugin and a_module.__name__ != "AutoGPTPluginTemplate":
                         plugin_name = a_module.__name__
                         plugin_configured = plugins_config.get(plugin_name) is not None
                         plugin_enabled = plugins_config.is_enabled(plugin_name)
