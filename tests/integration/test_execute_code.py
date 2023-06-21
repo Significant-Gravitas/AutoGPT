@@ -2,7 +2,6 @@ import os
 import random
 import string
 import tempfile
-from typing import Callable
 
 import pytest
 
@@ -12,12 +11,12 @@ from autogpt.config import Config
 
 
 @pytest.fixture
-def random_code(random_string) -> Callable:
+def random_code(random_string) -> str:
     return f"print('Hello {random_string}!')"
 
 
 @pytest.fixture
-def python_test_file(config: Config, random_code: str) -> Callable:
+def python_test_file(config: Config, random_code: str) -> str:
     temp_file = tempfile.NamedTemporaryFile(dir=config.workspace_path, suffix=".py")
     temp_file.write(str.encode(random_code))
     temp_file.flush()
@@ -50,9 +49,21 @@ def test_execute_python_code(random_code: str, random_string: str, agent: Agent)
         assert f.read() == random_code
 
 
-def test_execute_python_code_overwrites_file(
-    random_code: str, random_string: str, agent: Agent
+def test_execute_python_code_disallows_name_arg_path_traversal(
+    random_code: str, agent: Agent
 ):
+    result: str = sut.execute_python_code(
+        random_code, name="../../test_code", agent=agent
+    )
+    assert "Error:" in result, "Path traversal in 'name' argument does not return error"
+    assert "path traversal" in result.lower()
+
+    # Check that the code is not stored in parent directory
+    dst_with_traversal = agent.workspace.get_path("test_code.py")
+    assert not dst_with_traversal.is_file(), "Path traversal by filename not prevented"
+
+
+def test_execute_python_code_overwrites_file(random_code: str, agent: Agent):
     ai_name = agent.ai_name
     destination = os.path.join(
         agent.config.workspace_path, ai_name, "executed_code", "test_code.py"
