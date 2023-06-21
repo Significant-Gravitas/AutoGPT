@@ -7,6 +7,9 @@ from typing import List, Literal, TypedDict
 MessageRole = Literal["system", "user", "assistant"]
 MessageType = Literal["ai_response", "action_result"]
 
+TText = list[int]
+"""Token array representing tokenized text"""
+
 
 class MessageDict(TypedDict):
     role: MessageRole
@@ -31,22 +34,27 @@ class ModelInfo:
 
     Would be lovely to eventually get this directly from APIs, but needs to be scraped from
     websites for now.
-
     """
 
     name: str
-    prompt_token_cost: float
-    completion_token_cost: float
     max_tokens: int
+    prompt_token_cost: float
 
 
 @dataclass
-class ChatModelInfo(ModelInfo):
+class CompletionModelInfo(ModelInfo):
+    """Struct for generic completion model information."""
+
+    completion_token_cost: float
+
+
+@dataclass
+class ChatModelInfo(CompletionModelInfo):
     """Struct for chat model information."""
 
 
 @dataclass
-class TextModelInfo(ModelInfo):
+class TextModelInfo(CompletionModelInfo):
     """Struct for text completion model information."""
 
 

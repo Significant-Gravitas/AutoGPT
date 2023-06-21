@@ -16,9 +16,13 @@ import requests
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from openapi_python_client.config import Config as OpenAPIConfig
 
-from autogpt.config import Config
+from autogpt.config.config import Config
 from autogpt.logs import logger
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
+
+DEFAULT_PLUGINS_CONFIG_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "plugins_config.yaml"
+)
 
 
 def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
@@ -54,7 +58,7 @@ def write_dict_to_json_file(data: dict, file_path: str) -> None:
         json.dump(data, file, indent=4)
 
 
-def fetch_openai_plugins_manifest_and_spec(cfg: Config) -> dict:
+def fetch_openai_plugins_manifest_and_spec(config: Config) -> dict:
     """
     Fetch the manifest for a list of OpenAI plugins.
         Args:
@@ -64,8 +68,8 @@ def fetch_openai_plugins_manifest_and_spec(cfg: Config) -> dict:
     """
     # TODO add directory scan
     manifests = {}
-    for url in cfg.plugins_openai:
-        openai_plugin_client_dir = f"{cfg.plugins_dir}/openai/{urlparse(url).netloc}"
+    for url in config.plugins_openai:
+        openai_plugin_client_dir = f"{config.plugins_dir}/openai/{urlparse(url).netloc}"
         create_directory_if_not_exists(openai_plugin_client_dir)
         if not os.path.exists(f"{openai_plugin_client_dir}/ai-plugin.json"):
             try:
@@ -130,18 +134,18 @@ def create_directory_if_not_exists(directory_path: str) -> bool:
 
 
 def initialize_openai_plugins(
-    manifests_specs: dict, cfg: Config, debug: bool = False
+    manifests_specs: dict, config: Config, debug: bool = False
 ) -> dict:
     """
     Initialize OpenAI plugins.
     Args:
         manifests_specs (dict): per url dictionary of manifest and spec.
-        cfg (Config): Config instance including plugins config
+        config (Config): Config instance including plugins config
         debug (bool, optional): Enable debug logging. Defaults to False.
     Returns:
         dict: per url dictionary of manifest, spec and client.
     """
-    openai_plugins_dir = f"{cfg.plugins_dir}/openai"
+    openai_plugins_dir = f"{config.plugins_dir}/openai"
     if create_directory_if_not_exists(openai_plugins_dir):
         for url, manifest_spec in manifests_specs.items():
             openai_plugin_client_dir = f"{openai_plugins_dir}/{urlparse(url).hostname}"
@@ -184,13 +188,13 @@ def initialize_openai_plugins(
 
 
 def instantiate_openai_plugin_clients(
-    manifests_specs_clients: dict, cfg: Config, debug: bool = False
+    manifests_specs_clients: dict, config: Config, debug: bool = False
 ) -> dict:
     """
     Instantiates BaseOpenAIPlugin instances for each OpenAI plugin.
     Args:
         manifests_specs_clients (dict): per url dictionary of manifest, spec and client.
-        cfg (Config): Config instance including plugins config
+        config (Config): Config instance including plugins config
         debug (bool, optional): Enable debug logging. Defaults to False.
     Returns:
           plugins (dict): per url dictionary of BaseOpenAIPlugin instances.
@@ -202,11 +206,11 @@ def instantiate_openai_plugin_clients(
     return plugins
 
 
-def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate]:
+def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTemplate]:
     """Scan the plugins directory for plugins and loads them.
 
     Args:
-        cfg (Config): Config instance including plugins config
+        config (Config): Config instance including plugins config
         debug (bool, optional): Enable debug logging. Defaults to False.
 
     Returns:
@@ -214,13 +218,11 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
     """
     loaded_plugins = []
     # Generic plugins
-    plugins_path_path = Path(cfg.plugins_dir)
-
-    logger.debug(f"Allowlisted Plugins: {cfg.plugins_allowlist}")
-    logger.debug(f"Denylisted Plugins: {cfg.plugins_denylist}")
+    plugins_path_path = Path(config.plugins_dir)
+    plugins_config = config.plugins_config
 
     # Directory-based plugins
-    for plugin_path in [f.path for f in os.scandir(cfg.plugins_dir) if f.is_dir()]:
+    for plugin_path in [f.path for f in os.scandir(config.plugins_dir) if f.is_dir()]:
         # Avoid going into __pycache__ or other hidden directories
         if plugin_path.startswith("__"):
             continue
@@ -232,11 +234,14 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
         __import__(qualified_module_name)
         plugin = sys.modules[qualified_module_name]
 
+        if not plugins_config.is_enabled(plugin_module_name):
+            logger.warn(f"Plugin {plugin_module_name} found but not configured")
+            continue
+
         for _, class_obj in inspect.getmembers(plugin):
             if (
                 hasattr(class_obj, "_abc_impl")
                 and AutoGPTPluginTemplate in class_obj.__bases__
-                and denylist_allowlist_check(plugin_module_name, cfg)
             ):
                 loaded_plugins.append(class_obj())
 
@@ -249,6 +254,7 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                 logger.debug(f"Plugin: {plugin} Module: {module}")
                 zipped_package = zipimporter(str(plugin))
                 zipped_module = zipped_package.load_module(str(module.parent))
+
                 for key in dir(zipped_module):
                     if key.startswith("__"):
                         continue
@@ -257,52 +263,45 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                     if (
                         "_abc_impl" in a_keys
                         and a_module.__name__ != "AutoGPTPluginTemplate"
-                        and denylist_allowlist_check(a_module.__name__, cfg)
                     ):
-                        loaded_plugins.append(a_module())
+                        plugin_name = a_module.__name__
+                        plugin_configured = plugins_config.get(plugin_name) is not None
+                        plugin_enabled = plugins_config.is_enabled(plugin_name)
+
+                        if plugin_configured and plugin_enabled:
+                            logger.debug(
+                                f"Loading plugin {plugin_name} as it was enabled in config."
+                            )
+                            loaded_plugins.append(a_module())
+                        elif plugin_configured and not plugin_enabled:
+                            logger.debug(
+                                f"Not loading plugin {plugin_name} as it was disabled in config."
+                            )
+                        elif not plugin_configured:
+                            logger.warn(
+                                f"Not loading plugin {plugin_name} as it was not found in config. "
+                                f"Please check your config. Starting with 0.4.1, plugins will not be loaded unless "
+                                f"they are enabled in plugins_config.yaml. Zipped plugins should use the class "
+                                f"name ({plugin_name}) as the key."
+                            )
 
     # OpenAI plugins
-    if cfg.plugins_openai:
-        manifests_specs = fetch_openai_plugins_manifest_and_spec(cfg)
+    if config.plugins_openai:
+        manifests_specs = fetch_openai_plugins_manifest_and_spec(config)
         if manifests_specs.keys():
             manifests_specs_clients = initialize_openai_plugins(
-                manifests_specs, cfg, debug
+                manifests_specs, config, debug
             )
             for url, openai_plugin_meta in manifests_specs_clients.items():
-                if denylist_allowlist_check(url, cfg):
-                    plugin = BaseOpenAIPlugin(openai_plugin_meta)
-                    loaded_plugins.append(plugin)
+                if not plugins_config.is_enabled(url):
+                    logger.warn(f"Plugin {plugin_module_name} found but not configured")
+                    continue
+
+                plugin = BaseOpenAIPlugin(openai_plugin_meta)
+                loaded_plugins.append(plugin)
 
     if loaded_plugins:
         logger.info(f"\nPlugins found: {len(loaded_plugins)}\n" "--------------------")
     for plugin in loaded_plugins:
         logger.info(f"{plugin._name}: {plugin._version} - {plugin._description}")
     return loaded_plugins
-
-
-def denylist_allowlist_check(plugin_name: str, cfg: Config) -> bool:
-    """Check if the plugin is in the allowlist or denylist.
-
-    Args:
-        plugin_name (str): Name of the plugin.
-        cfg (Config): Config object.
-
-    Returns:
-        True or False
-    """
-    logger.debug(f"Checking if plugin {plugin_name} should be loaded")
-    if (
-        plugin_name in cfg.plugins_denylist
-        or "all" in cfg.plugins_denylist
-        or "none" in cfg.plugins_allowlist
-    ):
-        logger.debug(f"Not loading plugin {plugin_name} as it was in the denylist.")
-        return False
-    if plugin_name in cfg.plugins_allowlist or "all" in cfg.plugins_allowlist:
-        logger.debug(f"Loading plugin {plugin_name} as it was in the allowlist.")
-        return True
-    ack = input(
-        f"WARNING: Plugin {plugin_name} found. But not in the"
-        f" allowlist... Load? ({cfg.authorise_key}/{cfg.exit_key}): "
-    )
-    return ack.lower() == cfg.authorise_key
