@@ -1,5 +1,3 @@
-import json
-
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.schema import (
@@ -8,7 +6,7 @@ from autogpt.core.planning.schema import (
     TaskType,
     Task,
 )
-from autogpt.core.planning.strategies.utils import to_numbered_list
+from autogpt.core.planning.strategies.utils import to_numbered_list, json_loads
 from autogpt.core.resource.model_providers import LanguageModelMessage, LanguageModelFunction, MessageRole
 
 
@@ -44,8 +42,10 @@ class InitialPlan(PromptStrategy):
         "a series of tasks and then executing those tasks one by one.\n"
         "Your first objective is to break down your goals into a series of small tasks by invoking the provided"
         "`create_initial_agent_plan` function.\n\n"
-        "You should be able to accomplish each task with 1-3 uses of your abilities. "
-        "Smaller, well-defined tasks are highly preferable."
+        "You should be able to accomplish each task with 1-3 uses of your abilities.\n"
+        "You should make sure each task has clearly defined ready criteria so we can evaluate when the task can be started.\n"
+        "You should also make sure each task has clearly defined acceptance criteria so we can evaluate when the task is complete.\n"
+        "Smaller, well-defined tasks are highly preferable. Generate as many tasks as you think is necessary."
     )
 
     DEFAULT_CREATE_PLAN_FUNCTION = {
@@ -63,7 +63,7 @@ class InitialPlan(PromptStrategy):
                                 "type": "string",
                                 "description": "An imperative verb phrase that succinctly describes the task.",
                             },
-                            "task_type": {
+                            "type": {
                                 "type": "string",
                                 "description": "A categorization for the task. ",
                                 "enum": [t.value for t in TaskType],
@@ -89,7 +89,7 @@ class InitialPlan(PromptStrategy):
                                 },
                             },
                         },
-                        "required": ["objective", "task_type", "acceptance_criteria", "priority", "ready_criteria"],
+                        "required": ["objective", "type", "acceptance_criteria", "priority", "ready_criteria"],
                     },
                 },
             },
@@ -177,7 +177,7 @@ class InitialPlan(PromptStrategy):
             The parsed response.
 
         """
-        parsed_response = json.loads(response_content["function_call"]["arguments"])
+        parsed_response = json_loads(response_content["function_call"]["arguments"])
         parsed_response["task_list"] = [
             Task.parse_obj(task) for task in parsed_response["task_list"]
         ]

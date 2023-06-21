@@ -38,6 +38,7 @@ class AgentSystems(SystemConfiguration):
 
 class AgentConfiguration(SystemConfiguration):
     cycle_count: int
+    max_task_cycle_count: int
     creation_time: str
     name: str
     role: str
@@ -80,6 +81,7 @@ class SimpleAgent(Agent, Configurable):
                 "Develop and manage multiple businesses autonomously",
             ],
             cycle_count=0,
+            max_task_cycle_count=3,
             creation_time="",
             systems=AgentSystems(
                 ability_registry=PluginLocation(
@@ -198,17 +200,47 @@ class SimpleAgent(Agent, Configurable):
 
         self._task_queue.extend(tasks)
         self._task_queue.sort(key=lambda t: t.priority, reverse=True)
+        self._task_queue[-1].context.status = TaskStatus.READY
         return plan.content
 
     async def step(self, user_feedback: str, *args, **kwargs):
         if not self._task_queue:
             return {'response': "I don't have any tasks to work on right now."}
 
+        # TODO: we can parallelize ready tasks.
+        # ready_tasks = [task for task in self._task_queue if task.task_context.status == TaskStatus.READY]
+
         self._configuration.cycle_count += 1
         task = self._task_queue.pop()
-        breakpoint()
+        self._logger.info(f"Working on task: {task}")
+
+        task = await self._evaluate_task_and_add_context(task)
+        next_ability = await self._choose_next_ability(task)
 
 
+    async def _evaluate_task_and_add_context(self, task: Task) -> Task:
+        """Evaluate the task and add context to it."""
+        if task.context.status == TaskStatus.IN_PROGRESS:
+            # Nothing to do here
+            return task
+        else:
+            self._logger.debug(f"Evaluating task {task} and adding relevant context.")
+            # TODO: Look up relevant memories (need working memory system)
+            # TODO: Evaluate whether there is enough information to start the task (language model call).
+            task.context.enough_info = True
+            return task
+
+    async def _choose_next_ability(self, task: Task) -> Task:
+        """Choose the next ability to use for the task."""
+        self._logger.debug(f"Choosing next ability for task {task}.")
+        if task.context.cycle_count > self._configuration.max_task_cycle_count:
+            # Don't hit the LLM, just set the next action as "breakdown_task" with an appropriate reason
+            pass
+        elif not task.context.enough_info:
+            # Don't ask the LLM, just set the next action as "breakdown_task" with an appropriate reason
+            pass
+        else:
+            next_action = await self._planning.determine_next_action(task)
 
 
     def __repr__(self):

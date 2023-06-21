@@ -16,6 +16,7 @@ from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
     LanguageModelResponse,
+    Task,
 )
 from autogpt.core.resource.model_providers import (
     LanguageModelProvider,
@@ -121,6 +122,12 @@ class SimplePlanner(Configurable):
             agent_goals=agent_goals,
             abilities=abilities,
         )
+
+    async def determine_next_action(
+        self,
+        task: Task,
+    ):
+        raise NotImplementedError
 
     async def chat_with_model(
         self,

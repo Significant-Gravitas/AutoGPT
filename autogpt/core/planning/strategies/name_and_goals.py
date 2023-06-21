@@ -6,6 +6,7 @@ from autogpt.core.planning.schema import (
     LanguageModelClassification,
     LanguageModelPrompt,
 )
+from autogpt.core.planning.strategies.utils import json_loads
 from autogpt.core.resource.model_providers import (
     LanguageModelFunction,
     LanguageModelMessage,
@@ -138,5 +139,5 @@ class NameAndGoals(PromptStrategy):
             The parsed response.
 
         """
-        parsed_response = json.loads(response_content["function_call"]["arguments"])
+        parsed_response = json_loads(response_content["function_call"]["arguments"])
         return parsed_response
