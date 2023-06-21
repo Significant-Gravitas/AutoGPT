@@ -36,7 +36,7 @@ def llm_response_schema(
         json_schema = json.load(f)
     if config.openai_functions:
         del json_schema["properties"]["command"]
-        json_schema["required"] = ["thoughts"]
+        json_schema["required"].remove("command")
     return json_schema
 
 
