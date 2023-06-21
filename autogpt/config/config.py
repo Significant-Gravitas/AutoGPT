@@ -1,15 +1,13 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from colorama import Fore
-from dotenv import load_dotenv, dotenv_values, set_key, unset_key
 from pathlib import Path
 from typing import List
 
+from colorama import Fore
+from dotenv import dotenv_values, load_dotenv, set_key, unset_key
+
 # Load environment variables from .env file
 load_dotenv()
-
-
-from autogpt.config.singleton import Singleton
 
 import openai
 import yaml
