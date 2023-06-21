@@ -14,6 +14,7 @@ from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import generate_aiconfig_automatic
 from autogpt.utils import clean_input
 
+
 cfg = Config()
 
 DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond using the JSON schema specified previously:"
@@ -281,7 +282,7 @@ def start_prompt(config: AIConfig, sad: Optional[Any] = None) -> None:
         logger.typewriter_log(f"- {cfg.workspace_path}", Fore.YELLOW)
     # Set total api budget
     api_manager = ApiManager()
-    api_manager.set_total_budget(config.api_budget)
+    api_manager.set_total_budget(ai_config.api_budget)
 
     # Agent Created
     logger.typewriter_log(
@@ -293,7 +294,7 @@ def start_prompt(config: AIConfig, sad: Optional[Any] = None) -> None:
     logger.typewriter_log("Name:", Fore.GREEN, config.ai_name, speak_text=False)
     logger.typewriter_log("Role:", Fore.GREEN, config.ai_role, speak_text=False)
     logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
-    for goal in config.ai_goals:
+    for goal in ai_config.ai_goals:
         logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
     logger.typewriter_log(
         "Budget:", Fore.GREEN, f"${str(config.api_budget)}", speak_text=False

@@ -16,8 +16,14 @@ from autogpt.logs import logger
 
 @command(
     "generate_image",
-    "Generate Image",
-    '"prompt": "<prompt>"',
+    "Generates an Image",
+    {
+        "prompt": {
+            "type": "string",
+            "description": "The prompt used to generate the image",
+            "required": True,
+        },
+    },
     lambda config: config.image_provider,
     "Requires a image provider to be set.",
 )
@@ -175,7 +181,7 @@ def generate_image_with_sd_webui(
             "negative_prompt": negative_prompt,
             "sampler_index": "DDIM",
             "steps": 20,
-            "cfg_scale": 7.0,
+            "config_scale": 7.0,
             "width": size,
             "height": size,
             "n_iter": 1,

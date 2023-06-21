@@ -57,18 +57,18 @@ def call_ai_function(
 
 def create_text_completion(
     prompt: str,
+    config: Config,
     model: Optional[str],
     temperature: Optional[float],
     max_output_tokens: Optional[int],
 ) -> str:
-    cfg = Config()
     if model is None:
-        model = cfg.fast_llm_model
+        model = config.fast_llm_model
     if temperature is None:
-        temperature = cfg.temperature
+        temperature = config.temperature
 
-    if cfg.use_azure:
-        kwargs = {"deployment_id": cfg.get_azure_deployment_id_for_model(model)}
+    if config.use_azure:
+        kwargs = {"deployment_id": config.get_azure_deployment_id_for_model(model)}
     else:
         kwargs = {"model": model}
 
@@ -77,7 +77,7 @@ def create_text_completion(
         **kwargs,
         temperature=temperature,
         max_tokens=max_output_tokens,
-        api_key=cfg.openai_api_key,
+        api_key=config.openai_api_key,
     )
     logger.debug(f"Response: {response}")
 
@@ -87,6 +87,7 @@ def create_text_completion(
 # Overly simple abstraction until we create something better
 def create_chat_completion(
     prompt: ChatSequence,
+    config: Config,
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -102,11 +103,10 @@ def create_chat_completion(
     Returns:
         str: The response from the chat completion
     """
-    cfg = Config()
     if model is None:
         model = prompt.model.name
     if temperature is None:
-        temperature = cfg.temperature
+        temperature = config.temperature
 
     logger.debug(
         f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
@@ -117,7 +117,7 @@ def create_chat_completion(
         "max_tokens": max_tokens,
     }
 
-    for plugin in cfg.plugins:
+    for plugin in config.plugins:
         if plugin.can_handle_chat_completion(
             messages=prompt.raw(),
             **chat_completion_kwargs,
@@ -129,11 +129,11 @@ def create_chat_completion(
             if message is not None:
                 return message
 
-    chat_completion_kwargs["api_key"] = cfg.openai_api_key
-    if cfg.use_azure:
-        chat_completion_kwargs["deployment_id"] = cfg.get_azure_deployment_id_for_model(
-            model
-        )
+    chat_completion_kwargs["api_key"] = config.openai_api_key
+    if config.use_azure:
+        chat_completion_kwargs[
+            "deployment_id"
+        ] = config.get_azure_deployment_id_for_model(model)
 
     response = iopenai.create_chat_completion(
         messages=prompt.raw(),
@@ -148,7 +148,7 @@ def create_chat_completion(
         logger.error(response.error)
         raise RuntimeError(response.error)
 
-    for plugin in cfg.plugins:
+    for plugin in config.plugins:
         if not plugin.can_handle_on_response():
             continue
         resp = plugin.on_response(resp)

@@ -1,25 +1,24 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from typing import List, Optional
+from typing import List
 
 import openai
 import yaml
-from auto_gpt_plugin_template import AutoGPTPluginTemplate  # type: ignore
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 
 import autogpt
-from autogpt.singleton import Singleton
 
 
-class Config(metaclass=Singleton):
+class Config:
     """
     Configuration class to store the state of bools for different scripts access.
     """
 
     def __init__(self) -> None:
         """Initialize the Config class"""
-        self.workspace_path: Optional[str] = None
-        self.file_logger_path: Optional[str] = None
+        self.workspace_path: str = None
+        self.file_logger_path: str = None
 
         self.debug_mode = False
         self.continuous_mode = False
@@ -155,7 +154,7 @@ class Config(metaclass=Singleton):
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
-        self.plugins_openai: List[str] = []
+        self.plugins_openai = []
 
         # Deprecated. Kept for backwards-compatibility. Will remove in a future version.
         plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
@@ -291,14 +290,6 @@ class Config(metaclass=Singleton):
         """Set the plugins value."""
         self.plugins = value
 
-    def set_plugins_allowlist(self, value: list) -> None:
-        """Set the plugins_allowlist value."""
-        self.plugins_allowlist = value
-
-    def set_plugins_denylist(self, value: list) -> None:
-        """Set the plugins_denylist value."""
-        self.plugins_denylist = value
-
     def set_temperature(self, value: int) -> None:
         """Set the temperature value."""
         self.temperature = value
@@ -308,7 +299,7 @@ class Config(metaclass=Singleton):
         self.memory_backend = name
 
 
-def check_openai_api_key(config) -> None:
+def check_openai_api_key(config: Config) -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     if not config.openai_api_key:
         print(

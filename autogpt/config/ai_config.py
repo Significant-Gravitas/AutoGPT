@@ -63,6 +63,7 @@ class AIConfig:
         Returns:
             dict: A dictionary representation of the AIConfig instance.
         """
+
         return {
             "ai_name": self.ai_name,
             "ai_role": self.ai_role,
@@ -71,13 +72,14 @@ class AIConfig:
             "plugins": self.plugins,
         }
 
+
     @staticmethod
-    def update_old_config(config_file: str) -> Tuple[Dict[str, Dict[str, Any]], str]:
+    def update_old_config(ai_settings_file: str) -> Tuple[Dict[str, Dict[str, Any]], str]:
         """
         Checks and updates the provided configuration file to the latest format supporting multiple configurations.
 
         Parameters:
-        config_file (str): The path to the configuration file.
+        ai_settings_file (str): The path to the configuration file.
 
         Returns:
         Tuple[Dict[str, Dict[str, Any]], str]: A dictionary of updated configurations and a status message regarding the transformation.
@@ -85,10 +87,10 @@ class AIConfig:
         message = "no configuration(s) detected."
         config_updated = False
 
-        if not os.path.exists(config_file):
+        if not os.path.exists(ai_settings_file):
             return {"configs": {}}, message
 
-        with open(config_file, "r", encoding="utf-8") as file:
+        with open(ai_settings_file, "r", encoding="utf-8") as file:
             all_configs = yaml.safe_load(file)
             # Handle the case when the file exists but is empty
             if all_configs is None:
@@ -122,7 +124,7 @@ class AIConfig:
 
                         # Overwrite the old configuration with the new one
                         try:
-                            ai_config.save(config_file, append=False)
+                            ai_config.save(ai_settings_file, append=False)
                         except ValueError as e:
                             print(f"An error occurred: {e}")
 
@@ -137,25 +139,25 @@ class AIConfig:
 
         # Save the updated configuration file if there was any update
         if config_updated:
-            with open(config_file, "w", encoding="utf-8") as file:
+            with open(ai_settings_file, "w", encoding="utf-8") as file:
                 yaml.safe_dump(all_configs, file)
 
         return all_configs, message
 
     @staticmethod
-    def load(ai_name: str, config_file: str) -> Tuple[Optional["AIConfig"], str]:
+    def load(ai_name: str, ai_settings_file: str) -> Tuple[Optional["AIConfig"], str]:
         """
         Load a specific AI configuration from the config file and return a status message.
 
         Args:
             ai_name (str): The name of the AI configuration to load.
-            config_file (str): The path to the configuration file.
+            ai_settings_file (str): The path to the configuration file.
 
         Returns:
             Tuple[Optional[AIConfig], str]: The loaded AI configuration and a status message.
                                            If no such configuration exists, returns None and the status message.
         """
-        all_configs, message = AIConfig.load_all(config_file)
+        all_configs, message = AIConfig.load_all(ai_settings_file)
 
         if all_configs is None:
             return None, message
@@ -166,17 +168,17 @@ class AIConfig:
             return None, message
 
     @staticmethod
-    def load_all(config_file: str) -> Tuple[Dict[str, "AIConfig"], str]:
+    def load_all(ai_settings_file: str) -> Tuple[Dict[str, "AIConfig"], str]:
         """
         Load all AI configurations from the specified config file and returns a status message.
 
         Parameters:
-            config_file (str): The path to the configuration file.
+            ai_settings_file (str): The path to the configuration file.
 
         Returns:
             Tuple[Dict[str, AIConfig], str]: A tuple containing a dictionary of all loaded AI configurations and a string indicating the status of the operation.
         """
-        all_configs, message = AIConfig.update_old_config(config_file)
+        all_configs, message = AIConfig.update_old_config(ai_settings_file)
 
         configs = all_configs.get("configs", {}) or {}
 
@@ -204,7 +206,7 @@ class AIConfig:
 
     def save(
         self,
-        config_file: str,
+        ai_settings_file: str,
         append: bool = False,
         old_ai_name: Optional[str] = None,
     ) -> None:
@@ -212,7 +214,7 @@ class AIConfig:
         Saves the class parameters to the specified file YAML file path as a YAML file.
 
         Parameters:
-            config_file(str): The path to the config YAML file.
+            ai_settings_file(str): The path to the config YAML file.
                 DEFAULT: "../ai_settings.yaml"
             append(bool): Whether to append the new configuration to the existing file.
                 If False, the file will be overwritten. If True, the new configuration will be appended.
@@ -241,10 +243,10 @@ class AIConfig:
             }
         }
 
-        if not append or not os.path.exists(config_file):
+        if not append or not os.path.exists(ai_settings_file):
             all_configs: Dict[str, Dict[str, Any]] = {"configs": {}}
         else:
-            with open(config_file, "r", encoding="utf-8") as file:
+            with open(ai_settings_file, "r", encoding="utf-8") as file:
                 all_configs = yaml.safe_load(file)
 
                 # Handle the case when the file exists but is empty
@@ -258,15 +260,15 @@ class AIConfig:
         # Append the new config
         all_configs["configs"].update(config)
 
-        with open(config_file, "w", encoding="utf-8") as file:
+        with open(ai_settings_file, "w", encoding="utf-8") as file:
             file.write(yaml.dump(all_configs, allow_unicode=True))
 
-    def delete(self, config_file: str, ai_name: str = "") -> None:
+    def delete(self, ai_settings_file: str, ai_name: str = "") -> None:
         """
         Deletes a configuration from the specified YAML file.
 
         Parameters:
-            config_file(str): The path to the config YAML file.
+            ai_settings_file(str): The path to the config YAML file.
                 DEFAULT: "../ai_settings.yaml"
             ai_name(str): The name of the AI whose configuration is to be deleted.
 
@@ -282,10 +284,10 @@ class AIConfig:
             )
 
         # Load existing configurations
-        if not os.path.exists(config_file):
+        if not os.path.exists(ai_settings_file):
             raise ValueError("No configurations to delete.")
         else:
-            with open(config_file, "r", encoding="utf-8") as file:
+            with open(ai_settings_file, "r", encoding="utf-8") as file:
                 all_configs = yaml.safe_load(file)
 
                 # Handle the case when the file exists but is empty
@@ -299,8 +301,9 @@ class AIConfig:
             raise ValueError(f"No configuration found for AI '{ai_name}'.")
 
         # Save configurations back to file
-        with open(config_file, "w", encoding="utf-8") as file:
+        with open(ai_settings_file, "w", encoding="utf-8") as file:
             file.write(yaml.dump(all_configs, allow_unicode=True))
+
 
     def construct_full_prompt(
         self, config, prompt_generator: Optional[PromptGenerator] = None
