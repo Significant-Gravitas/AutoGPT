@@ -1,15 +1,8 @@
-# agbenchmark
+# Auto-GPT Benchmark
 
 A repo built for the purpose of benchmarking the performance of agents far and wide, regardless of how they are set up and how they work
 
-Simple boilerplate code that spins up a webserver to plug their agent into. We call multiple tasks by invoking different pytest commands on folders and once the agent stops or reaches 50 loops (which they will have to define). We handle the deletion of files after a run loop ends. Then we call call the POST request for the next task. Then we will spit out a combined benchmark once all tests run
-
-- Agent adds tests by adding to our repo
-- Agent abstracted from benchmark
-- Scalable (parallel servers running tests)
-- Better standardization
-
-##### Diagrams (out of date, cloud oriented): https://whimsical.com/agbenchmark-5n4hXBq1ZGzBwRsK4TVY7x
+##### Diagrams: https://whimsical.com/agbenchmark-5n4hXBq1ZGzBwRsK4TVY7x
 
 ## Contributing
 
@@ -19,7 +12,7 @@ Simple boilerplate code that spins up a webserver to plug their agent into. We c
 - To add requirements `poetry add requirement`.
 - To run in venv `poetry run python script.py`
 
-Feel free to merge with `main` at will (but also to ask for review) - if you can't send msg in R&D chat for access.
+Feel free to create prs to merge with `main` at will (but also feel free to ask for review) - if you can't send msg in R&D chat for access.
 
 If you push at any point and break things - it'll happen to everyone - fix it asap. Step 1 is to revert `main` to last working commit
 
@@ -27,62 +20,89 @@ Let people know what beautiful code you write does, document everything well
 
 Share your progress :)
 
+## How this works
+
+1. `pip install auto-gpt-benchmarks`
+2. Add boilerplate code to start webserver to your agent (run loop and stop condition)
+3. `agbenchmark start --challenge challenge_category` remove challenge flag to run all tests. specify config of hostname, port, and workspace directory
+4. We call the server to run the agent for each test
+5. Show pass rate of tests, logs, and any other metrics
+
+### To run the basic existing mock (June 21)
+
+1. clone the repo `auto-gpt-benchmarks`
+2. `pip install poetry`
+3. `poetry shell`
+4. `poetry install`
+5. `agbenchmark start`
+   Keep config the same and watch the logs :)
+
+#### Bonuses
+
+- You can adds tests by git cloning auto-gpt-benchmarks to your repo
+- Agent is abstracted from benchmark, don't need to do any extra setup other then starting the server
+- Simple, easy to use
+- Don't have to deal with cloud or parallelization yet
+
+### Pytest
+
+to create a test:
+
+```
+@pytest.mark.parametrize(
+"server_response",
+["VARIABLE"], # VARIABLE = the query/goal you provide to the model
+indirect=True,
+)
+@pytest.mark.(VARIABLE) # VARIABLE = category of the test
+def test_file_in_workspace(workspace): # VARIABLE = the actual test that asserts
+assert os.path.exists(os.path.join(workspace, "file_to_check.txt"))
+```
+
 ## Api
 
-FastAPI with REST, import requests
-
-```
-POST hostname:8080/challenges
-{
-   "test_name": ""
-   "challenge": "memory" - optional
-}
-```
-
-## Auth:
-
-get preSignedUrl from API
-
-```
-POST preSignedUrl
-{
-   "artifacts": [{}]
-}
-```
+FastAPI with REST, import requests to call in auto-gpt-benchmarks. Boilerplate code given to agent project to start server
 
 ## Workspace
 
-Kubernetes with AWS3 or GCP
-
-## Challenges
+Defined by the user on config
 
 #### Dataset
 
 Manually created, existing challenges within Auto-Gpt, https://osu-nlp-group.github.io/Mind2Web/
 
-#### Simple challenge creation through a DSL (domain specific language)
+## Repo
 
 ```
-Challenge TicTacToeCoding
-    Description "The agent should implement a basic tic-tac-toe game in Python."
-    Artifacts {
-        Code "tictactoe.py"
-    }
-    Tasks {
-        Code "Write a function to initialize the game board."
-        Code "Write a function to handle a player's turn."
-        Code "Write a function to check for a winning move."
-        Test "Write tests for the blog post model, serializer, and view."
-        Command "Run Django's test suite to ensure everything is working as expected."
-    }
-    SuccessCriteria {
-        Correctness "The game should correctly alternate between two players."
-        Correctness "The game should correctly identify a winning move."
-        Efficiency "The game should not use unnecessary computational resources."
-        Design "The solution should follow good practices for Django and Django Rest Framework."
-    }
-EndChallenge
+|-- auto-gpt-benchmarks/ **main project directory**
+| |-- metrics.py **combining scores, metrics, final evaluation**
+| |-- start_benchmark.py **entry point from cli**
+| |-- conftest.py **shared fixtures across all tests**
+| |-- Challenge.py **easy challenge creation class?**
+| |-- config.json **hostname, port, workspace folder**
+| |-- challenges/ **challenges across different domains**
+| | |-- adaptability/
+| | |-- basic_abilities/
+| | |-- code/
+| | |-- memory/
+| | |-- retrieval/
+| | |-- web_navigation/
+| | |-- writing/
+| |-- tests/ **challenges across different metrics**
+| | |-- basic_abilities/
+| | |-- interface/
+| |-- workspace/ **workspace related func**
+| | |-- **init**.py
+| | |-- workspace_manager.py **creation, deletion**
 ```
+
+### Easy Challenge Creation
+
+tbd, but potentially shared Challenge class that challenges instantiate as challenges need different utils/metrics for eval
+
+#### Written Challenges
+
+For code, writing we can create a reference text and use metrics like METEOR, BERTScore, BARTScore
 
 #### Validators
 
@@ -91,46 +111,5 @@ Designed to handle specific types of output (e.g., text, code, structured data)
 #### Logging
 
 Log different requests coming in - write file, change file, etc. Maybe a db in the future for metrics, logs, etc
-
-#### Written Challenges
-
-For code, writing we can create a reference text and use metrics like METEOR, BERTScore, BARTScore
-
-## Repo
-
-```
-|-- agbenchmark/ **main project directory**
-| |-- **init**.py
-| |-- server/
-| | |-- **init**.py
-| | |-- api.py **opens server on host and exposes urls**
-| | |-- utils.py
-| |-- benchmark/
-| | |-- **init**.py
-| | |-- benchmark.py **combining scores, metrics, final evaluation**
-| | |-- run.py **entry point. sets everything up**
-| | |-- challenges/ **challenges across different metrics**
-| | | |-- **init**.py
-| | | |-- Challenge.py **easy challenge creation through Challenge class. potentially how DSL is defined. may need to inherit challenge class like Adaptability(Challenge)**
-| | | |-- utils.py
-| | | |-- adaptability.py
-| | | |-- basic_abilities.py
-| | | |-- code.py
-| | | |-- memory.py
-| | | |-- retrieval.py
-| | | |-- web_navigation.py
-| | | |-- writing.py
-| |-- workspace/ **workspace related func**
-| | |-- **init**.py
-| | |-- workspace_manager.py **creation, deletion, preSignedUrl generation**
-| | |-- cloud_services/
-| | | |-- **init**.py
-| | | |-- aws.py **not finalized, but write, read, and del files**
-|-- tests/ **test func of agbenchmark**
-| |-- **init**.py
-| |-- test_api.py
-| |-- test_benchmark.py
-| |-- test_workspace_manager.py
-```
 
 Later: GitHub Actions integration, OpenAPI?, good versioning and backward compatibility
