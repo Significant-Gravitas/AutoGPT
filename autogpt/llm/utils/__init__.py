@@ -8,7 +8,7 @@ from autogpt.config import Config
 from autogpt.logs import logger
 
 from ..api_manager import ApiManager
-from ..base import ChatSequence, Message
+from ..base import ChatSequence, Function, Message
 from ..providers import openai as iopenai
 from .token_counter import *
 
@@ -89,6 +89,7 @@ def create_chat_completion(
     prompt: ChatSequence,
     config: Config,
     model: Optional[str] = None,
+    functions: Optional[List[Function]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
 ) -> str:
@@ -97,6 +98,7 @@ def create_chat_completion(
     Args:
         messages (List[Message]): The messages to send to the chat completion
         model (str, optional): The model to use. Defaults to None.
+        functions (List[Function], optional): The functions to use. Defaults to None.
         temperature (float, optional): The temperature to use. Defaults to 0.9.
         max_tokens (int, optional): The max tokens to use. Defaults to None.
 
@@ -109,13 +111,16 @@ def create_chat_completion(
         temperature = config.temperature
 
     logger.debug(
-        f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
+        f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}, enable_function_calling: {config.enable_function_calling}, funcions: {functions}{Fore.RESET}"
     )
     chat_completion_kwargs = {
         "model": model,
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+
+    if config.enable_function_calling and functions:
+        chat_completion_kwargs["functions"] = [function.raw() for function in functions]
 
     for plugin in config.plugins:
         if plugin.can_handle_chat_completion(
@@ -144,6 +149,9 @@ def create_chat_completion(
     resp = ""
     if not hasattr(response, "error"):
         resp = response.choices[0].message["content"]
+        if response.choices[0].finish_reason == "function_call":
+            resp = response.choices[0].message.function_call.arguments
+
     else:
         logger.error(response.error)
         raise RuntimeError(response.error)

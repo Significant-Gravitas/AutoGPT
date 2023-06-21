@@ -7,8 +7,9 @@ if TYPE_CHECKING:
     from autogpt.agent.agent import Agent
 
 from autogpt.config import Config
+from autogpt.json_utils.utilities import llm_response_schema
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import ChatSequence, Message
+from autogpt.llm.base import ChatSequence, Function, Message
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
@@ -116,6 +117,9 @@ def chat_with_ai(
         message_sequence.insert(insertion_index, new_summary_message)
         current_tokens_used += tokens_to_add - 500
 
+        if config.enable_function_calling:
+            current_tokens_used += 100  # Tokens for the functions below
+
         # FIXME: uncomment when memory is back in use
         # memory_store = get_memory(config)
         # for _, ai_msg, result_msg in agent.history.per_cycle(trimmed_messages):
@@ -188,11 +192,20 @@ def chat_with_ai(
         CURRENT_CONTEXT_FILE_NAME,
     )
 
+    functions = [
+        Function(
+            name="respond",
+            description="Respond the determination to user.",
+            parameters=llm_response_schema(),
+        )
+    ]
+
     # TODO: use a model defined elsewhere, so that model can contain
     # temperature and other settings we care about
     assistant_reply = create_chat_completion(
         prompt=message_sequence,
         config=agent.config,
+        functions=functions,
         max_tokens=tokens_remaining,
     )
 

@@ -1,6 +1,7 @@
 """ A module for generating custom prompt strings."""
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
+from autogpt.config import Config
 from autogpt.json_utils.utilities import llm_response_schema
 
 if TYPE_CHECKING:
@@ -135,13 +136,21 @@ class PromptGenerator:
         Returns:
             str: The generated prompt string.
         """
-        return (
+        base_string = (
             f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
             "Commands:\n"
             f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
             f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             "Performance Evaluation:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
-            "Respond with only valid JSON conforming to the following schema: \n"
-            f"{llm_response_schema()}\n"
         )
+        config = Config()
+        if config.enable_function_calling:
+            return base_string + (
+                "Respond with only valid JSON conforming to the schema: \n"
+            )
+        else:
+            return base_string + (
+                "Respond with only valid JSON conforming to the following schema: \n"
+                f"{llm_response_schema()}\n"
+            )

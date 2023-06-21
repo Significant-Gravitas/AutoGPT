@@ -16,6 +16,12 @@ class MessageDict(TypedDict):
     content: str
 
 
+class FunctionDict(TypedDict):
+    name: str
+    description: str
+    parameters: dict
+
+
 @dataclass
 class Message:
     """OpenAI Message object containing a role and the message content"""
@@ -26,6 +32,22 @@ class Message:
 
     def raw(self) -> MessageDict:
         return {"role": self.role, "content": self.content}
+
+
+@dataclass
+class Function:
+    """OpenAI Function object containing a name, a description and parameters"""
+
+    name: str
+    description: str
+    parameters: dict
+
+    def raw(self) -> FunctionDict:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters,
+        }
 
 
 @dataclass

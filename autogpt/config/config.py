@@ -69,6 +69,7 @@ class Config:
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.openai_organization = os.getenv("OPENAI_ORGANIZATION")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
+        self.enable_function_calling = os.getenv("ENABLE_FUNCTION_CALLING") == "True"
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
