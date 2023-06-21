@@ -15,8 +15,6 @@ if TYPE_CHECKING:
     from autogpt.models.command_registry import CommandRegistry
     from autogpt.prompts.generator import PromptGenerator
 
-# Soon this will go in a folder where it remembers more stuff about the run(s)
-
 
 class AIConfig:
     """
@@ -234,7 +232,7 @@ class AIConfig:
                 "The AI name cannot be empty. The configuration was not saved."
             )
 
-        new_config = {
+        config = {
             self.ai_name: {
                 "ai_role": self.ai_role,
                 "ai_goals": self.ai_goals,
@@ -258,7 +256,7 @@ class AIConfig:
             del all_configs["configs"][old_ai_name]
 
         # Append the new config
-        all_configs["configs"].update(new_config)
+        all_configs["configs"].update(config)
 
         with open(config_file, "w", encoding="utf-8") as file:
             file.write(yaml.dump(all_configs, allow_unicode=True))
@@ -305,10 +303,10 @@ class AIConfig:
             file.write(yaml.dump(all_configs, allow_unicode=True))
 
     def construct_full_prompt(
-        self, prompt_generator: Optional[PromptGenerator] = None
+        self, config, prompt_generator: Optional[PromptGenerator] = None
     ) -> str:
         """
-        Returns a prompt with the class information in an organized fashion.
+        Returns a prompt to the user with the class information in an organized fashion.
 
         Parameters:
             None
@@ -325,22 +323,20 @@ class AIConfig:
             ""
         )
 
-        from autogpt.config import Config
         from autogpt.prompts.prompt import build_default_prompt_generator
 
-        CFG = Config()
         if prompt_generator is None:
-            prompt_generator = build_default_prompt_generator()
+            prompt_generator = build_default_prompt_generator(config)
         prompt_generator.goals = self.ai_goals
         prompt_generator.name = self.ai_name
         prompt_generator.role = self.ai_role
         prompt_generator.command_registry = self.command_registry
-        for plugin in CFG.plugins:
+        for plugin in config.plugins:
             if not plugin.can_handle_post_prompt():
                 continue
             prompt_generator = plugin.post_prompt(prompt_generator)
 
-        if CFG.execute_local_commands:
+        if config.execute_local_commands:
             # add OS info to prompt
             os_name = platform.system()
             os_info = (

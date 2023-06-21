@@ -20,7 +20,7 @@ DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond u
 
 
 # Helper functions
-def build_default_prompt_generator() -> PromptGenerator:
+def build_default_prompt_generator(config: Config) -> PromptGenerator:
     """
     This function generates a prompt string that includes various constraints,
         commands, resources, and performance evaluations.
@@ -33,7 +33,7 @@ def build_default_prompt_generator() -> PromptGenerator:
     prompt_generator = PromptGenerator()
 
     # Initialize the PromptConfig object and load the file set in the main config (default: prompts_settings.yaml)
-    prompt_config = PromptConfig(cfg.prompt_settings_file)
+    prompt_config = PromptConfig(config.prompt_settings_file)
 
     # Add constraints to the PromptGenerator object
     for constraint in prompt_config.constraints:
