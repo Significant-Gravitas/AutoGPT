@@ -271,7 +271,7 @@ def create_embedding(
 
 
 def get_openai_command_specs(agent) -> list[OpenAIFunctionSpec]:
-    """Get functions from the commands. "functions" in this context refers to OpenAI functions
+    """Get OpenAI-consumable function specs for the agent's available commands.
     see https://platform.openai.com/docs/guides/gpt/function-calling
     """
     functions = []
