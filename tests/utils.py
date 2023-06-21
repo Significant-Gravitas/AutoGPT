@@ -1,38 +1,6 @@
-import functools
 import os
-from contextlib import contextmanager
 
 import pytest
-
-from autogpt.config import Config
-
-
-@contextmanager
-def dummy_openai_api_key():
-    # even when we record the VCR cassettes, openAI wants an API key
-    config = Config()
-    original_api_key = config.openai_api_key
-    config.set_openai_api_key("sk-dummy")
-
-    try:
-        yield
-    finally:
-        config.set_openai_api_key(original_api_key)
-
-
-def requires_api_key(env_var):
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            if env_var == "OPENAI_API_KEY":
-                if not os.environ.get(env_var) and env_var == "OPENAI_API_KEY":
-                    with dummy_openai_api_key():
-                        return func(*args, **kwargs)
-            return func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
 
 
 def skip_in_ci(test_function):

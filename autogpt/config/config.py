@@ -8,10 +8,9 @@ from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 
 import autogpt
-from autogpt.singleton import Singleton
 
 
-class Config(metaclass=Singleton):
+class Config:
     """
     Configuration class to store the state of bools for different scripts access.
     """

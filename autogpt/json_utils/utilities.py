@@ -52,7 +52,7 @@ def validate_json(
 
     if errors := sorted(validator.iter_errors(json_object), key=lambda e: e.path):
         for error in errors:
-            logger.error(f"JSON Validation Error: {error}")
+            logger.debug(f"JSON Validation Error: {error}")
 
         if config.debug_mode:
             logger.error(
