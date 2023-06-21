@@ -4,12 +4,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from autogpt.config.ai_config import AIConfig
-from autogpt.prompts.prompt import main_menu, welcome_prompt
-from autogpt.setup import generate_aiconfig_automatic
 from autogpt.config.config import Config
+from autogpt.prompts.prompt import main_menu, welcome_prompt
 
 config = Config()
+
 
 @pytest.fixture(autouse=True)
 def setup(tmp_path: Path) -> Any:
