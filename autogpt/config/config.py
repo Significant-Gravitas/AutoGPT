@@ -7,10 +7,10 @@ import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 
-from autogpt.singleton import Singleton
+import autogpt
 
 
-class Config(metaclass=Singleton):
+class Config:
     """
     Configuration class to store the state of bools for different scripts access.
     """
@@ -82,6 +82,8 @@ class Config(metaclass=Singleton):
             openai.api_type = self.openai_api_type
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
+        elif os.getenv("OPENAI_API_BASE_URL", None):
+            openai.api_base = os.getenv("OPENAI_API_BASE_URL")
 
         if self.openai_organization is not None:
             openai.organization = self.openai_organization
@@ -154,19 +156,36 @@ class Config(metaclass=Singleton):
         self.plugins: List[AutoGPTPluginTemplate] = []
         self.plugins_openai = []
 
+        # Deprecated. Kept for backwards-compatibility. Will remove in a future version.
         plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
         if plugins_allowlist:
             self.plugins_allowlist = plugins_allowlist.split(",")
         else:
             self.plugins_allowlist = []
 
+        # Deprecated. Kept for backwards-compatibility. Will remove in a future version.
         plugins_denylist = os.getenv("DENYLISTED_PLUGINS")
         if plugins_denylist:
             self.plugins_denylist = plugins_denylist.split(",")
         else:
             self.plugins_denylist = []
 
+        # Avoid circular imports
+        from autogpt.plugins import DEFAULT_PLUGINS_CONFIG_FILE
+
+        self.plugins_config_file = os.getenv(
+            "PLUGINS_CONFIG_FILE", DEFAULT_PLUGINS_CONFIG_FILE
+        )
+        self.load_plugins_config()
+
         self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
+
+    def load_plugins_config(self) -> "autogpt.plugins.PluginsConfig":
+        # Avoid circular import
+        from autogpt.plugins.plugins_config import PluginsConfig
+
+        self.plugins_config = PluginsConfig.load_config(global_config=self)
+        return self.plugins_config
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
@@ -280,10 +299,9 @@ class Config(metaclass=Singleton):
         self.memory_backend = name
 
 
-def check_openai_api_key() -> None:
+def check_openai_api_key(config: Config) -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
-    cfg = Config()
-    if not cfg.openai_api_key:
+    if not config.openai_api_key:
         print(
             Fore.RED
             + "Please set your OpenAI API key in .env or as an environment variable."

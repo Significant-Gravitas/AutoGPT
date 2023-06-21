@@ -6,11 +6,10 @@ from pathlib import Path
 import docker
 from docker.errors import ImageNotFound
 
-from autogpt.commands.command import command
+from autogpt.agent.agent import Agent
+from autogpt.command_decorator import command
 from autogpt.config import Config
-from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
-from autogpt.setup import CFG
 from autogpt.workspace.workspace import Workspace
 
 ALLOWLIST_CONTROL = "allowlist"
@@ -19,40 +18,61 @@ DENYLIST_CONTROL = "denylist"
 
 @command(
     "execute_python_code",
-    "Create a Python file and execute it",
-    '"code": "<code>", "basename": "<basename>"',
+    "Creates a Python file and executes it",
+    {
+        "code": {
+            "type": "string",
+            "description": "The Python code to run",
+            "required": True,
+        },
+        "name": {
+            "type": "string",
+            "description": "A name to be given to the python file",
+            "required": True,
+        },
+    },
 )
-def execute_python_code(code: str, basename: str, config: Config) -> str:
+def execute_python_code(code: str, name: str, agent: Agent) -> str:
     """Create and execute a Python file in a Docker container and return the STDOUT of the
     executed code. If there is any data that needs to be captured use a print statement
 
     Args:
         code (str): The Python code to run
-        basename (str): A name to be given to the Python file
+        name (str): A name to be given to the Python file
 
     Returns:
         str: The STDOUT captured from the code when it ran
     """
-    ai_name = AIConfig.load(config.ai_settings_file).ai_name
-    directory = os.path.join(config.workspace_path, ai_name, "executed_code")
+    ai_name = agent.ai_name
+    directory = os.path.join(agent.config.workspace_path, ai_name, "executed_code")
     os.makedirs(directory, exist_ok=True)
 
-    if not basename.endswith(".py"):
-        basename = basename + ".py"
+    if not name.endswith(".py"):
+        name = name + ".py"
 
-    path = os.path.join(directory, basename)
+    path = os.path.join(directory, name)
 
     try:
         with open(path, "w+", encoding="utf-8") as f:
             f.write(code)
 
-        return execute_python_file(f.name, config)
+        return execute_python_file(f.name, agent)
     except Exception as e:
         return f"Error: {str(e)}"
 
 
-@command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
-def execute_python_file(filename: str, config: Config) -> str:
+@command(
+    "execute_python_file",
+    "Executes an existing Python file",
+    {
+        "filename": {
+            "type": "string",
+            "description": "The name of te file to execute",
+            "required": True,
+        },
+    },
+)
+def execute_python_file(filename: str, agent: Agent) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
@@ -62,13 +82,15 @@ def execute_python_file(filename: str, config: Config) -> str:
         str: The output of the file
     """
     logger.info(
-        f"Executing python file '{filename}' in working directory '{CFG.workspace_path}'"
+        f"Executing python file '{filename}' in working directory '{agent.config.workspace_path}'"
     )
 
     if not filename.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    workspace = Workspace(config.workspace_path, config.restrict_to_workspace)
+    workspace = Workspace(
+        agent.config.workspace_path, agent.config.restrict_to_workspace
+    )
 
     path = workspace.get_path(filename)
     if not path.is_file():
@@ -82,7 +104,7 @@ def execute_python_file(filename: str, config: Config) -> str:
             ["python", str(path)],
             capture_output=True,
             encoding="utf8",
-            cwd=CFG.workspace_path,
+            cwd=agent.config.workspace_path,
         )
         if result.returncode == 0:
             return result.stdout
@@ -116,7 +138,7 @@ def execute_python_file(filename: str, config: Config) -> str:
             image_name,
             ["python", str(path.relative_to(workspace.root))],
             volumes={
-                config.workspace_path: {
+                agent.config.workspace_path: {
                     "bind": "/workspace",
                     "mode": "ro",
                 }
@@ -151,6 +173,7 @@ def validate_command(command: str, config: Config) -> bool:
 
     Args:
         command (str): The command to validate
+        config (Config): The config to use to validate the command
 
     Returns:
         bool: True if the command is allowed, False otherwise
@@ -168,14 +191,20 @@ def validate_command(command: str, config: Config) -> bool:
 
 @command(
     "execute_shell",
-    "Execute Shell Command, non-interactive commands only",
-    '"command_line": "<command_line>"',
-    lambda cfg: cfg.execute_local_commands,
-    "You are not allowed to run local shell commands. To execute"
+    "Executes a Shell Command, non-interactive commands only",
+    {
+        "command_line": {
+            "type": "string",
+            "description": "The command line to execute",
+            "required": True,
+        }
+    },
+    enabled=lambda config: config.execute_local_commands,
+    disabled_reason="You are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config file: .env - do not attempt to bypass the restriction.",
 )
-def execute_shell(command_line: str, config: Config) -> str:
+def execute_shell(command_line: str, agent: Agent) -> str:
     """Execute a shell command and return the output
 
     Args:
@@ -184,14 +213,14 @@ def execute_shell(command_line: str, config: Config) -> str:
     Returns:
         str: The output of the command
     """
-    if not validate_command(command_line, config):
+    if not validate_command(command_line, agent.config):
         logger.info(f"Command '{command_line}' not allowed")
         return "Error: This Shell Command is not allowed."
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
-    if not current_dir.is_relative_to(config.workspace_path):
-        os.chdir(config.workspace_path)
+    if not current_dir.is_relative_to(agent.config.workspace_path):
+        os.chdir(agent.config.workspace_path)
 
     logger.info(
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
@@ -208,14 +237,20 @@ def execute_shell(command_line: str, config: Config) -> str:
 
 @command(
     "execute_shell_popen",
-    "Execute Shell Command, non-interactive commands only",
-    '"command_line": "<command_line>"',
+    "Executes a Shell Command, non-interactive commands only",
+    {
+        "query": {
+            "type": "string",
+            "description": "The search query",
+            "required": True,
+        }
+    },
     lambda config: config.execute_local_commands,
     "You are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config. Do not attempt to bypass the restriction.",
 )
-def execute_shell_popen(command_line, config: Config) -> str:
+def execute_shell_popen(command_line, agent: Agent) -> str:
     """Execute a shell command with Popen and returns an english description
     of the event and the process id
 
@@ -225,14 +260,14 @@ def execute_shell_popen(command_line, config: Config) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
-    if not validate_command(command_line, config):
+    if not validate_command(command_line, agent.config):
         logger.info(f"Command '{command_line}' not allowed")
         return "Error: This Shell Command is not allowed."
 
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
-    if config.workspace_path not in current_dir:
-        os.chdir(config.workspace_path)
+    if agent.config.workspace_path not in current_dir:
+        os.chdir(agent.config.workspace_path)
 
     logger.info(
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"

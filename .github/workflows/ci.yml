@@ -7,18 +7,18 @@ on:
       - 'tests/Auto-GPT-test-cassettes'
       - 'tests/challenges/current_score.json'
   pull_request:
-    branches: [ stable, master ]
+    branches: [ stable, master, release-* ]
   pull_request_target:
-    branches: [ master, ci-test* ]
+    branches: [ master, release-*, ci-test* ]
 
 concurrency:
-  group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
-  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') && github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target') }}
+  group: ${{ format('ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
 
 jobs:
   lint:
-    # eliminate duplicate runs on master
-    if: github.event_name == 'push' || github.base_ref != 'master' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
+    # eliminate duplicate runs
+    if: github.event_name == 'push' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
 
     runs-on: ubuntu-latest
     env:
@@ -69,12 +69,12 @@ jobs:
 
       - name: Check for unused imports and pass statements
         run: |
-          cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports autogpt tests"
+          cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests"
           $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
 
   test:
-    # eliminate duplicate runs on master
-    if: github.event_name == 'push' || github.base_ref != 'master' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
+    # eliminate duplicate runs
+    if: github.event_name == 'push' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
 
     permissions:
       # Gives the action the necessary permissions for publishing new
@@ -245,3 +245,10 @@ jobs:
             echo $TOKEN | gh auth login --with-token
             gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
+
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-logs
+          path: logs/

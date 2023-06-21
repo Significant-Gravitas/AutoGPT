@@ -1,0 +1,6 @@
+# Netlify config for Auto-GPT docs
+
+[build]
+  publish = "public/"
+  command = "mkdocs build -d public"
+  ignore = "git diff --quiet HEAD^ HEAD docs mkdocs.yml CONTRIBUTING.md CODE_OF_CONDUCT.md LICENSE"

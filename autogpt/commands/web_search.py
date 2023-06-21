@@ -4,25 +4,27 @@ from __future__ import annotations
 import json
 import time
 from itertools import islice
-from typing import TYPE_CHECKING
 
 from duckduckgo_search import DDGS
 
-from autogpt.commands.command import command
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
+from autogpt.agent.agent import Agent
+from autogpt.command_decorator import command
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 
 @command(
-    "google",
-    "Google Search",
-    '"query": "<query>"',
-    lambda config: not config.google_api_key,
+    "web_search",
+    "Searches the web",
+    {
+        "query": {
+            "type": "string",
+            "description": "The search query",
+            "required": True,
+        }
+    },
 )
-def google_search(query: str, config: Config, num_results: int = 8) -> str:
+def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     """Return the results of a Google search
 
     Args:
@@ -55,14 +57,18 @@ def google_search(query: str, config: Config, num_results: int = 8) -> str:
 @command(
     "google",
     "Google Search",
-    '"query": "<query>"',
+    {
+        "query": {
+            "type": "string",
+            "description": "The search query",
+            "required": True,
+        }
+    },
     lambda config: bool(config.google_api_key)
     and bool(config.google_custom_search_engine_id),
     "Configure google_api_key and custom_search_engine_id.",
 )
-def google_official_search(
-    query: str, config: Config, num_results: int = 8
-) -> str | list[str]:
+def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
     """Return the results of a Google search using the official Google API
 
     Args:
@@ -78,8 +84,8 @@ def google_official_search(
 
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
-        api_key = config.google_api_key
-        custom_search_engine_id = config.google_custom_search_engine_id
+        api_key = agent.config.google_api_key
+        custom_search_engine_id = agent.config.google_custom_search_engine_id
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)
