@@ -10,16 +10,23 @@ import venv
 from platformdirs import user_config_dir
 from colorama import Fore
 from prompt_toolkit import prompt
+import requests
 from autogpt.logs import logger
 
 PREFS_FILE = ".container_prefs.txt"
 PREFS = [
-    "1. Always use Docker: Recommended for best security (Requires Docker to be installed.)",
+    "1. Always use Docker: Recommended, most secure. (Requires Docker to be installed.)",
     "2. Always use virtual environment: Avoids dependency conflicts.",
     "3. Run Auto-GPT directly and ask again next time.",
     "4. Run Auto-GPT directly and never ask again. Use --container-options to change this.",
 ]
 
+DOCKER_FILES_TO_COPY = {
+    "docker-compose.yml": ["docker-compose.yml", "docker-compose.yml"],
+    "Dockerfile": ["Dockerfile",],
+    ".env": [".env", ".env.template"],
+    "azure.yaml": ["azure.yaml", "azure.yml", "azure.yaml.template", "azure.yml.template"],
+}
 
 class ContainerConfig:
     def __init__(self):
@@ -140,15 +147,38 @@ class ContainerConfig:
         self._prefs_file.unlink(missing_ok=True)
         self._prefs = None
 
-    def _copy_to_docker(self, src: Path, dest: Path) -> bool:
+    def _copy_file_to_docker(self, src: Path, dest: Path) -> bool:
         if not src.exists():
             return False
         
-        if src.is_dir():
-            shutil.copytree(src, dest)
+        if src.isdir():
+            dest_path = shutil.copytree(src, dest)
+            return dest_path.exists() and dest_path.isdir() and dest_path == dest
         else:
-            shutil.copy(src, dest)
-        
+            dest_path = shutil.copy(src, dest)
+            return dest_path.exists() and dest_path.isfile() and dest_path == dest
+            
+    
+    def _copy_files_to_docker(self, cwd: Path) -> None:
+        for dest_file, sources in DOCKER_FILES_TO_COPY.items():
+            for source_file in sources:
+                copied = False
+                if self._copy_file_to_docker(cwd / source_file, self._docker_dir / dest_file):
+                    copied = True
+                    break
+            if not copied:
+                for source_file in sources:
+                    # Try to download from GitHub
+                    logger.info(f"Downloading {source_file} from GitHub...")
+                    file = requests.get(
+                        f"https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/stable/{source_file}"
+                    )
+                    if file.status_code == 200:
+                        with open(self._docker_dir / dest_file, "w") as f:
+                            f.write(file.text)
+                        copied = True
+                        break
+                    
     def _run_in_docker(self) -> None:
         """
         Runs Auto-GPT in a Docker container.
@@ -164,12 +194,7 @@ class ContainerConfig:
         if not self._docker_dir.exists():
             self._docker_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Initializing Docker container at {self._docker_dir}.")
-            self._copy_to_docker(cwd / "docker-compose.yml", self._docker_dir / "docker-compose.yml")
-            self._copy_to_docker(cwd / "Dockerfile", self._docker_dir / "Dockerfile")
-            if not self._copy_to_docker(cwd / ".env", self._docker_dir / ".env"):
-                self._copy_to_docker(cwd / ".env.template", self._docker_dir / ".env")
-            if not self._copy_to_docker(cwd / "azure.yaml", self._docker_dir / "azure.yaml"):
-                self._copy_to_docker(cwd / "azure.yaml.template", self._docker_dir / "azure.yaml")
+            self._copy_files_to_docker(cwd)
         
         os.chdir(self._docker_dir)
         subprocess.run(["docker compose", "build", "autogpt"])   
