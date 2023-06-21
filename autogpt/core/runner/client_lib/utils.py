@@ -43,8 +43,8 @@ def handle_exceptions(
             raise
         except Exception as e:
             if with_debugger:
+                print(f"Uncaught exception {e}")
                 import pdb
-
                 pdb.post_mortem()
             else:
                 raise

@@ -54,16 +54,15 @@ async def run_auto_gpt(user_configuration: dict):
     print(parse_agent_plan(plan))
 
     while True:
-        next_ability = await agent.determine_next_ability(plan)
-        print(parse_next_ability(next_ability))
-        breakpoint()
+        current_task, next_ability = await agent.determine_next_ability(plan)
+        print(parse_next_ability(current_task, next_ability))
         user_input = click.prompt(
             "Should the agent proceed with this ability?",
             default="y",
         )
+        ability_result = await agent.execute_next_ability(user_input)
+        print(parse_ability_result(ability_result))
 
-
-# FIXME: We shouldn't be getting raw responses from the language model to parse here.  TBD on format.
 
 def parse_agent_name_and_goals(name_and_goals: dict) -> str:
     parsed_response = f"Agent Name: {name_and_goals['agent_name']}\n"
@@ -91,10 +90,17 @@ def parse_agent_plan(plan: dict) -> str:
     return parsed_response
 
 
-def parse_next_ability(next_ability: dict) -> str:
+def parse_next_ability(current_task, next_ability: dict) -> str:
+    parsed_response = f"Current Task: {current_task.objective}\n"
     ability_args = ', '.join(f'{k}={v}' for k, v in next_ability['ability_arguments'].items())
-    parsed_response = f"Next Ability: {next_ability['next_ability']}({ability_args})\n"
+    parsed_response += f"Next Ability: {next_ability['next_ability']}({ability_args})\n"
     parsed_response += f"Motivation: {next_ability['motivation']}\n"
     parsed_response += f"Self-criticism: {next_ability['self_criticism']}\n"
     parsed_response += f"Reasoning: {next_ability['reasoning']}\n"
     return parsed_response
+
+
+def parse_ability_result(ability_result) -> str:
+    parsed_response = f"Ability Result: {ability_result['success']}\n"
+    parsed_response += f"Message: {ability_result['message']}\n"
+    parsed_response += f"Data: {ability_result['data']}\n"

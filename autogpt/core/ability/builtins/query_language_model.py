@@ -68,7 +68,7 @@ class QueryLanguageModel(Ability):
         )
         return AbilityResult(
             success=True,
-            message=model_response.content["text"],
+            message=model_response.content['content'],
         )
 
     @staticmethod

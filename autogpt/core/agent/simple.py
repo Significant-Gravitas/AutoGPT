@@ -134,6 +134,8 @@ class SimpleAgent(Agent, Configurable):
         self._planning = planning
         self._workspace = workspace
         self._task_queue = []
+        self._current_task = None
+        self._next_ability = None
 
     @classmethod
     def from_workspace(
@@ -219,7 +221,17 @@ class SimpleAgent(Agent, Configurable):
             task,
             self._ability_registry.dump_abilities(),
         )
-        return next_ability.content
+        self._current_task = task
+        self._next_ability = next_ability.content
+        return self._current_task, self._next_ability
+
+    async def execute_next_ability(self, user_input: str, *args, **kwargs):
+        if user_input == 'y':
+            ability = self._ability_registry.get_ability(self._next_ability['next_ability'])
+            ability_response = await ability(**self._next_ability['ability_arguments'])
+            return ability_response
+        else:
+            raise NotImplementedError
 
     async def _evaluate_task_and_add_context(self, task: Task) -> Task:
         """Evaluate the task and add context to it."""
