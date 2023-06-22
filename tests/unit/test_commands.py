@@ -35,7 +35,10 @@ class TestCommand:
         assert cmd.name == "example"
         assert cmd.description == "Example command"
         assert cmd.method == self.example_command_method
-        assert str(cmd) == "example: Example command, params: (arg1: int, arg2: Optional[str])"
+        assert (
+            str(cmd)
+            == "example: Example command, params: (arg1: int, arg2: Optional[str])"
+        )
 
     def test_command_call(self):
         """Test that Command(*args) calls and returns the result of method(*args)."""
