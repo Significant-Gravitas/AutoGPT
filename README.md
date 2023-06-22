@@ -24,7 +24,7 @@ Share your progress :)
 
 1. `pip install auto-gpt-benchmarks`
 2. Add boilerplate code to start webserver to your agent (run loop and stop condition)
-3. `agbenchmark start --challenge challenge_category` remove challenge flag to run all tests. specify config of hostname, port, and workspace directory
+3. `agbenchmark start --category challenge_category` remove challenge flag to run all tests. specify config of hostname, port, and workspace directory
 4. We call the server to run the agent for each test
 5. Show pass rate of tests, logs, and any other metrics
 
