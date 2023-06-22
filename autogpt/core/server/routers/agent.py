@@ -8,8 +8,8 @@ from autogpt.core.server.services.auth_service import get_current_user
 router = APIRouter()
 
 
-@router.post("/{agent_id}/sessions", response_model=str)
-async def start_session(agent_id: str, current_user=Depends(get_current_user)):
+@router.post("/{agent_id}/start", response_model=str)
+async def start_agebt(agent_id: str, current_user=Depends(get_current_user)):
     return await agent_service.start_session(agent_id, current_user)
 
 
