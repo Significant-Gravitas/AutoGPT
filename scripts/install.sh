@@ -22,7 +22,7 @@ else
 fi
 
 # Try to ensure we're in a terminal window
-if [ ! -t 0 ]; then
+if [ 0 ]; then
     if [ $OS == "LINUX" ]; then
         x-terminal-emulator -e "$0" "$@"
     elif [ $OS == "MAC" ]; then
@@ -265,5 +265,5 @@ fi
 
 echo
 echo "Launching Auto-GPT..."
-./autogpt
+bash -s ./autogpt
 exit 0
