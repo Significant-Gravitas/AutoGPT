@@ -28,7 +28,7 @@ logging_config = dict(
         "h": {
             "class": "logging.StreamHandler",
             "formatter": "console",
-            "level": logging.DEBUG,
+            "level": logging.INFO,
         },
     },
     root={

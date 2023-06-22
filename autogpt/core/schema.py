@@ -1,4 +1,5 @@
 import enum
+import uuid
 import numpy as np
 from typing import Any, Callable, List, Optional, Dict, Literal, Sequence, MutableSet
 import pydantic
@@ -506,7 +507,9 @@ class BaseMessageBroker(PolyBaseModel):
 class BaseAgent(PolyBaseModel):
     """A Base Agent Class"""
 
-    uid: str
+    name: str
+    uid: str = str(uuid.uuid4())
+    session_id: str = str(uuid.uuid4())
     message_broker: BaseMessageBroker
 
     async def run(self) -> None:

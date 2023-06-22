@@ -46,13 +46,22 @@ def cli() -> None:
     pass
 
 @cli.command()
-@click.option("--agent-def", "-a", help="Agent Definition Json")
+@click.option("--agent-def", "-d", help="Agent Definition Json")
 def start_agent(agent_def: str) -> None:
-    """Starts an agent on the server"""
+    """
+    Starts an agent on the server
+    Example usage: 
+        ./run core cli start-agent -d '{"uid": "test_agent","name": "test_agent","llm_provider": {"type": "OpenAIProvider","api_key": "ccc","chat_completion_model": "gpt-3.5-turbo"},"message_broker": {"type": "MessageBroker","channels": []}}'
+    """
     import requests
     print(f"Starting agent:/n {agent_def}")
-    response = requests.post('http://localhost:8000/agent/start/', data=agent_def)
-    print(f"Agent id: {response.json()['agent_id']}")
+
+    response = requests.post('http://localhost:8000/agents/start', json={"data": agent_def})
+
+    response_data = response.json()
+    print(f"Agent name: {response_data['name']}")
+    print(f"Agent id: {response_data['id']}")
+    print(f"Agent session id: {response_data['session_id']}")
 
 
 @cli.command()
@@ -62,7 +71,7 @@ def stop_agent(id: str, kill: bool) -> None:
     """Stops an agent on the server"""
     import requests
     data = {"id": id, "kill": kill}
-    response = requests.post('http://localhost:8000/agent/stop/', json=data)
+    response = requests.post('http://localhost:8000/agents/stop/', json=data)
     if response.status_code == 200:
         print("Agent Stopped")
     else:
@@ -73,7 +82,7 @@ def stop_agent(id: str, kill: bool) -> None:
 def list_agents() -> None:
     """Lists all running agents"""
     import requests
-    response = requests.get('http://localhost:8000/agent/list')
+    response = requests.get('http://localhost:8000/agents/list')
     if response.status_code == 200:
         agents = response.json()
 
@@ -113,7 +122,7 @@ def listen_to_agent(id: str, start_timestamp: str, end_timestamp: str) -> None:
         params["end_timestamp"] = end_timestamp
 
     # send request to get thoughts between the two timestamps
-    response = requests.get(f'http://localhost:8000/agent/{id}/thoughts', params=params)
+    response = requests.get(f'http://localhost:8000/agents/{id}/thoughts', params=params)
 
     if response.status_code == 200:
         # print out the agent's thoughts from the response data
@@ -136,7 +145,7 @@ def run_agent_step(agent_def: str, id: str, session_id: str) -> None:
     print('Running Serverless Agent Step')
 
     # Use f-string to interpolate id and session_id into the API endpoint
-    url = f'http://localhost:8000/agent/{id}/step/{session_id}'
+    url = f'http://localhost:8000/agents/{id}/step/{session_id}'
     headers = {'Content-Type': 'application/json'}  # assuming you're sending JSON
     data = {'agent_def': json.loads(agent_def)}  # convert agent_def from str to dict
     
@@ -150,7 +159,7 @@ def run_agent_step(agent_def: str, id: str, session_id: str) -> None:
     else:
         print(f"Step execution failed: {response.json()['reason']}")
 
-
+core.add_command(cli)
 
 if __name__ == "__main__":
     logging.config.dictConfig(autogpt.core.logging_config.logging_config)

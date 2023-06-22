@@ -11,15 +11,13 @@ def build_agent(name: str, channel: QueueChannel):
     print("Building agent...")
     # get api key from env
     api_key = os.getenv("OPENAI_API_KEY")
-    message_broker = MessageBroker()
-    message_broker.add_channel(channel)
     agent_str = f"""
         {{
             "uid": "test_agent",
             "name": "test_agent",
             "llm_provider": {{
                 "type": "OpenAIProvider",
-                "api_key": "{api_key}",
+                "api_key": "ccc",
                 "chat_completion_model": "gpt-3.5-turbo"
             }},
             "message_broker": {{
