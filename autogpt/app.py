@@ -3,6 +3,8 @@ import json
 from typing import Dict
 
 from autogpt.agent.agent import Agent
+from autogpt.config import Config
+from autogpt.llm import ChatModelResponse
 
 
 def is_valid_int(value: str) -> bool:
@@ -21,11 +23,15 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response_json: Dict):
+def get_command(
+    assistant_reply_json: Dict, assistant_reply: ChatModelResponse, config: Config
+):
     """Parse the response and return the command name and arguments
 
     Args:
-        response_json (json): The response from the AI
+        assistant_reply_json (dict): The response object from the AI
+        assistant_reply (ChatModelResponse): The model response from the AI
+        config (Config): The config object
 
     Returns:
         tuple: The command name and arguments
@@ -35,14 +41,24 @@ def get_command(response_json: Dict):
 
         Exception: If any other error occurs
     """
+    if config.openai_functions:
+        if assistant_reply.function_call is None:
+            return "Error:", "No 'function_call' in assistant reply"
+        assistant_reply_json["command"] = {
+            "name": assistant_reply.function_call.name,
+            "args": json.loads(assistant_reply.function_call.arguments),
+        }
     try:
-        if "command" not in response_json:
+        if "command" not in assistant_reply_json:
             return "Error:", "Missing 'command' object in JSON"
 
-        if not isinstance(response_json, dict):
-            return "Error:", f"'response_json' object is not dictionary {response_json}"
+        if not isinstance(assistant_reply_json, dict):
+            return (
+                "Error:",
+                f"The previous message sent was not a dictionary {assistant_reply_json}",
+            )
 
-        command = response_json["command"]
+        command = assistant_reply_json["command"]
         if not isinstance(command, dict):
             return "Error:", "'command' object is not a dictionary"
 

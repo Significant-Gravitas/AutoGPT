@@ -29,11 +29,15 @@ def extract_json_from_response(response_content: str) -> dict:
 
 
 def llm_response_schema(
-    schema_name: str = LLM_DEFAULT_RESPONSE_FORMAT,
+    config: Config, schema_name: str = LLM_DEFAULT_RESPONSE_FORMAT
 ) -> dict[str, Any]:
     filename = os.path.join(os.path.dirname(__file__), f"{schema_name}.json")
     with open(filename, "r") as f:
-        return json.load(f)
+        json_schema = json.load(f)
+    if config.openai_functions:
+        del json_schema["properties"]["command"]
+        json_schema["required"].remove("command")
+    return json_schema
 
 
 def validate_json(
@@ -47,7 +51,7 @@ def validate_json(
     Returns:
         bool: Whether the json_object is valid or not
     """
-    schema = llm_response_schema(schema_name)
+    schema = llm_response_schema(config, schema_name)
     validator = Draft7Validator(schema)
 
     if errors := sorted(validator.iter_errors(json_object), key=lambda e: e.path):
