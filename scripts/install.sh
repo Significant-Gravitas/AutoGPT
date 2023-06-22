@@ -228,9 +228,9 @@ if [ $? -ne 0 ]; then
 fi
 
 # 4XX in contents? Format: 4XX: [message]
-if grep -q "4[0-9][0-9]: [*]" $LAUNCHER_CMD_SRC; then
+if grep -q "4[0-9][0-9]: [*]" ./autogpt; then
     echo "Error downloading $LAUNCHER_CMD_SRC. Please check the URL and try again."
-    cat $LAUNCHER_CMD_SRC
+    cat ./autogpt
     exit 1
 fi
 
