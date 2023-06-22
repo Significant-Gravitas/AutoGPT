@@ -7,12 +7,12 @@ import autogpt.core.config
 
 
 @click.group()
-def main() -> None:
+def core() -> None:
     """Autogpt commands."""
     pass
 
 
-@main.command()
+@core.command()
 def start() -> None:
     """Run the test agent."""
     import asyncio
@@ -28,7 +28,7 @@ def start() -> None:
     loop.run_until_complete(asyncio.gather(agent1.run(), agent2.run()))
 
 
-@main.command()
+@core.command()
 @click.option("--host", default="0.0.0.0", help="Host address.")
 @click.option("--port", default=8000, help="Listening port.")
 def server(host: str, port: int):
@@ -133,9 +133,9 @@ def hr() -> None:
     print("Hello, I'm a human resources manager!")
 
 
-main.add_command(examples)
+core.add_command(examples)
 
 
 if __name__ == "__main__":
     logging.config.dictConfig(autogpt.core.config.logging_config)
-    main()
+    core()
