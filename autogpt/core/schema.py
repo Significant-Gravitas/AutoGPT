@@ -3,6 +3,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 import pydantic
 
+from autogpt.core.system_config import SystemConfig
+
 
 class PolyBaseModel(pydantic.BaseModel):
     """
@@ -524,6 +526,18 @@ class BaseAgent(PolyBaseModel):
     uid: str = str(uuid.uuid4())
     session_id: str = str(uuid.uuid4())
     message_broker: BaseMessageBroker
+
+    async def configure(self, system_config: SystemConfig) -> None:
+        """
+        Agent Specification and system configuration need to be kept separate.
+        We don't want to clutter agent specification with system configuration.
+        Likewise we don't want to increase io operations by loading the system config more than once.
+        We also don't want to use a singleton which would reduce the flexibility of the design.
+
+        As such we have this function, that makes the agent responsible for propagating system
+        config to it's components after they have been instantiated whilst the agent is starting up at startup.
+        """
+        raise NotImplementedError
 
     async def run(self) -> None:
         """Runs the agent"""
