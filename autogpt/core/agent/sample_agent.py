@@ -11,11 +11,7 @@ from autogpt.core.messaging.messages import (
     ShutdownMessage,
     StatusMessage,
 )
-from autogpt.core.schema import (
-    BaseAgent,
-    BaseLLMProvider,
-    BaseMessage,
-)
+from autogpt.core.schema import BaseAgent, BaseLLMProvider, BaseMessage
 
 logger = logging.getLogger(__name__)
 
