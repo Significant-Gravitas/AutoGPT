@@ -7,8 +7,9 @@ from tests.challenges.utils import run_interaction_loop
 CYCLE_COUNT = 2
 
 
+@pytest.mark.asyncio
 @challenge()
-def test_browse_website(
+async def test_browse_website(
     browser_agent: Agent,
     patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,

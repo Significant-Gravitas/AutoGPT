@@ -3,7 +3,7 @@ from pytest_mock import MockerFixture
 
 from autogpt.commands.file_operations import read_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import get_workspace_path, run_interaction_loop
+from tests.challenges.utils import get_workspace_path_from_agent, run_interaction_loop
 
 CYCLE_COUNT = 3
 EXPECTED_REVENUES = [["81"], ["81"], ["81", "53", "24", "21", "11", "7", "4", "3", "2"]]
@@ -12,8 +12,9 @@ from autogpt.agent import Agent
 OUTPUT_LOCATION = "output.txt"
 
 
+@pytest.mark.asyncio
 @challenge()
-def test_information_retrieval_challenge_a(
+async def test_information_retrieval_challenge_a(
     information_retrieval_agents: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
@@ -35,7 +36,9 @@ def test_information_retrieval_challenge_a(
         level_to_run,
     )
 
-    file_path = get_workspace_path(information_retrieval_agent, OUTPUT_LOCATION)
+    file_path = get_workspace_path_from_agent(
+        information_retrieval_agent, OUTPUT_LOCATION
+    )
     content = read_file(file_path, information_retrieval_agent)
     expected_revenues = EXPECTED_REVENUES[level_to_run - 1]
     for revenue in expected_revenues:

@@ -20,10 +20,11 @@ CHALLENGE_FAILED_MESSAGE = "Challenges can sometimes fail randomly, please run t
 
 def challenge() -> Callable[[Callable[..., Any]], Callable[..., None]]:
     def decorator(func: Callable[..., Any]) -> Callable[..., None]:
+        @pytest.mark.asyncio
         @pytest.mark.requires_openai_api_key
         @pytest.mark.vcr
         @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> None:
+        async def wrapper(*args: Any, **kwargs: Any) -> None:
             run_remaining = MAX_LEVEL_TO_IMPROVE_ON if Challenge.BEAT_CHALLENGES else 1
             original_error: Optional[Exception] = None
 
@@ -39,7 +40,7 @@ def challenge() -> Callable[[Callable[..., Any]], Callable[..., None]]:
                     kwargs["level_to_run"] = challenge.level_to_run
                     kwargs["challenge_name"] = challenge.name
                     try:
-                        func(*args, **kwargs)
+                        await func(*args, **kwargs)
                         challenge.succeeded = True
                     except AssertionError as err:
                         original_error = AssertionError(

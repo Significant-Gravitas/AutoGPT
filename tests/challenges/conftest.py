@@ -1,10 +1,13 @@
-from typing import Any, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 import pytest
 from _pytest.config import Config
 from _pytest.config.argparsing import Parser
 from _pytest.fixtures import FixtureRequest
+from fastapi import FastAPI
+from httpx import AsyncClient
 
+from autogpt.api.application import get_app
 from tests.challenges.challenge_decorator.challenge import Challenge
 from tests.vcr import before_record_response
 
@@ -59,3 +62,44 @@ def challenge_name() -> str:
 @pytest.fixture(autouse=True)
 def check_beat_challenges(request: FixtureRequest) -> None:
     Challenge.BEAT_CHALLENGES = request.config.getoption("--beat-challenges")
+
+
+@pytest.fixture
+def asyncio_backend() -> str:
+    """
+    Backend for anyio pytest plugin.
+
+    Returns:
+    str the asyncio_backend
+    """
+    return "asyncio"
+
+
+@pytest.fixture
+async def client(
+    fastapi_app: FastAPI,
+    anyio_backend: str,
+) -> AsyncGenerator[AsyncClient, None]:
+    """
+    Fixture that creates client for requesting server.
+    fastapi_app: (FastAPI) the application.
+    asyncio_backend: (str) the asyncio_backend
+
+    Returns:
+    AsyncGenerator: The async client
+    """
+    async with AsyncClient(
+        app=fastapi_app, base_url="http://localhost:8000"
+    ) as async_client:
+        yield async_client
+
+
+@pytest.fixture
+def fastapi_app() -> FastAPI:
+    """
+    Fixture for creating FastAPI app.
+
+    Returns:
+    FastAPI: fastapi app with mocked dependencies.
+    """
+    return get_app()
