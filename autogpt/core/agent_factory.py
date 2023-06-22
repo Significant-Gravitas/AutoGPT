@@ -1,8 +1,6 @@
 import os
 
 from autogpt.core.agent import SampleAgent
-from autogpt.core.LLM.openai_povider import OpenAIProvider
-from autogpt.core.messaging.message_broker import MessageBroker
 from autogpt.core.messaging.queue_channel import QueueChannel
 
 

@@ -8,13 +8,13 @@ from autogpt.core.messaging.messages import (
     InfoMessage,
     QueryMessage,
     ResponseMessage,
+    ShutdownMessage,
     StatusMessage,
 )
 from autogpt.core.schema import (
     BaseAgent,
     BaseLLMProvider,
     BaseMessage,
-    BaseMessageBroker,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,8 @@ class SampleAgent(BaseAgent):
 
     name: str
     llm_provider: BaseLLMProvider
+    running: bool = True
+    stopping: bool = True  # used for graceful shutdown
 
     async def testing_random_action(self) -> None:
         """A random action for testing purposes"""
@@ -51,21 +53,34 @@ class SampleAgent(BaseAgent):
 
     async def run(self) -> None:
         """Runs the agent"""
-        while True:
-            print(f"Agent: {self.uid} is running...")
-            # Perform a random action
-            await self.testing_random_action()
-            for channel in self.message_broker.channels:
-                message = await channel.get()
-                await self.process_message(message)
+        try:
+            while self.running:
+                print(f"Agent: {self.uid} is running...")
 
-            # sleep 1 second
-            await asyncio.sleep(1)
+                if asyncio.current_task().cancelled():
+                    logger.warning("Agent cancelled Abruptly with no graceful shutdown")
+                    break
+
+                # Perform a random action
+                await self.testing_random_action()
+                for channel in self.message_broker.channels:
+                    message = await channel.get()
+                    await self.process_message(message)
+                    if self.stopping:
+                        await self.shutdown()
+                        return
+
+                # sleep 1 second
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            logger.warning(f"Agent: {self.name}:{self.uid} stopped suddenly")
 
     async def process_message(self, message: BaseMessage) -> None:
         """Process an incoming message"""
         if isinstance(message, QueryMessage):
             await self.process_query(message)
+        elif isinstance(message, ShutdownMessage):
+            await self.stop()
         elif isinstance(message, CommandMessage):
             await self.process_command(message)
         elif isinstance(message, ResponseMessage):
@@ -96,3 +111,11 @@ class SampleAgent(BaseAgent):
     async def process_info(self, message: InfoMessage) -> None:
         """Process an InfoMessage"""
         print(f"Agent: {self.uid} received info: {message.info}")
+
+    async def stop(self) -> None:
+        """stop the agent"""
+        self.running = False
+
+    async def shutdown(self) -> None:
+        """Gracefully shutdown the agent"""
+        logger.info("Gracefully shutting down the agent")
