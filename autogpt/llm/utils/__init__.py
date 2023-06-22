@@ -9,9 +9,13 @@ from autogpt.config import Config
 from autogpt.logs import logger
 
 from ..api_manager import ApiManager
-from ..base import ChatModelResponse, ChatSequence, Message, OpenAIFunctionSpec
+from ..base import ChatModelResponse, ChatSequence, Message
 from ..providers import openai as iopenai
-from ..providers.openai import OPEN_AI_CHAT_MODELS
+from ..providers.openai import (
+    OPEN_AI_CHAT_MODELS,
+    OpenAIFunctionCall,
+    OpenAIFunctionSpec,
+)
 from .token_counter import *
 
 
@@ -54,7 +58,7 @@ def call_ai_function(
             Message("user", arg_str),
         ],
     )
-    return create_chat_completion(prompt=prompt, temperature=0).content
+    return create_chat_completion(prompt=prompt, temperature=0, config=config).content
 
 
 def create_text_completion(
@@ -154,8 +158,8 @@ def create_chat_completion(
         raise RuntimeError(response.error)
 
     first_message = response.choices[0].message
-    content = first_message["content"]
-    function_call = first_message.get("function_call", {})
+    content: str | None = first_message.get("content")
+    function_call: OpenAIFunctionCall | None = first_message.get("function_call")
 
     for plugin in config.plugins:
         if not plugin.can_handle_on_response():
