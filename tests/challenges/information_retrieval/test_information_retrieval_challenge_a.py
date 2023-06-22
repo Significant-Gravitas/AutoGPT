@@ -13,7 +13,7 @@ OUTPUT_LOCATION = "output.txt"
 
 
 @challenge()
-def test_information_retrieval_challenge_a(
+async def test_information_retrieval_challenge_a(
     information_retrieval_agents: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
@@ -35,7 +35,7 @@ def test_information_retrieval_challenge_a(
         level_to_run,
     )
 
-    file_path = get_workspace_path(information_retrieval_agent, OUTPUT_LOCATION)
+    file_path = get_workspace_path_from_agent(information_retrieval_agent, OUTPUT_LOCATION)
     content = read_file(file_path, information_retrieval_agent)
     expected_revenues = EXPECTED_REVENUES[level_to_run - 1]
     for revenue in expected_revenues:

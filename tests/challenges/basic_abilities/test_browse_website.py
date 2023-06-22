@@ -8,7 +8,7 @@ CYCLE_COUNT = 2
 
 
 @challenge()
-def test_browse_website(
+async def test_browse_website(
     browser_agent: Agent,
     patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,

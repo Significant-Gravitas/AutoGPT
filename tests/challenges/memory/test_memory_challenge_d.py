@@ -15,7 +15,7 @@ OUTPUT_LOCATION = "output.txt"
 
 
 @challenge()
-def test_memory_challenge_d(
+async def test_memory_challenge_d(
     memory_management_agent: Agent,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -46,7 +46,7 @@ def test_memory_challenge_d(
         challenge_name,
         level_to_run,
     )
-    file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
+    file_path = get_workspace_path_from_agent(memory_management_agent, OUTPUT_LOCATION)
 
     content = read_file(file_path, memory_management_agent)
     check_beliefs(content, level_to_run)
@@ -192,7 +192,7 @@ def create_instructions_files(
     for i in range(1, level + 1):
         content = generate_content(i, test_phrases, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
-        file_path = get_workspace_path(memory_management_agent, file_name)
+        file_path = get_workspace_path_from_agent(memory_management_agent, file_name)
         write_to_file(file_path, content, memory_management_agent)
 
 

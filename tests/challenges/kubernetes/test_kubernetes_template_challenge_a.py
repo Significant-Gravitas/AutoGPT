@@ -12,7 +12,7 @@ OUTPUT_LOCATION = "kube.yaml"
 
 
 @challenge()
-def test_kubernetes_template_challenge_a(
+async def test_kubernetes_template_challenge_a(
     kubernetes_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
@@ -32,7 +32,7 @@ def test_kubernetes_template_challenge_a(
         monkeypatch, kubernetes_agent, CYCLE_COUNT, challenge_name, level_to_run
     )
 
-    file_path = get_workspace_path(kubernetes_agent, OUTPUT_LOCATION)
+    file_path = get_workspace_path_from_agent(kubernetes_agent, OUTPUT_LOCATION)
     content = read_file(file_path, kubernetes_agent)
 
     for word in ["apiVersion", "kind", "metadata", "spec"]:

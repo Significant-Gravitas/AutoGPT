@@ -126,12 +126,7 @@ def run_auto_gpt(
     config.workspace_path = str(workspace_directory)
 
     # HACK: doing this here to collect some globals that depend on the workspace.
-    file_logger_path = workspace_directory / "file_logger.txt"
-    if not file_logger_path.exists():
-        with file_logger_path.open(mode="w", encoding="utf-8") as f:
-            f.write("File Operation Logger ")
-
-    config.file_logger_path = str(file_logger_path)
+    config = Workspace.build_file_logger_path(config, workspace_directory)
 
     config.set_plugins(scan_plugins(config, config.debug_mode))
     # Create a CommandRegistry instance and scan default folder

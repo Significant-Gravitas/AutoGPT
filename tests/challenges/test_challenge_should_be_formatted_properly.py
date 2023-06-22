@@ -50,7 +50,7 @@ def assert_single_test_function(functions_list: List, test_file: str) -> None:
     ), f"The function in {test_file} should have the same name as the file without 'test_' prefix"
 
 
-def test_method_name_and_count() -> None:
+async def test_method_name_and_count() -> None:
     current_file: str = os.path.basename(__file__)
     test_files: List[str] = get_python_files(CHALLENGES_DIR, current_file)
     for test_file in test_files:
