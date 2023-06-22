@@ -235,8 +235,8 @@ if grep -q "4[0-9][0-9]: [*]" ./autogpt; then
 fi
 
 chmod +x autogpt
-# Add the launch script to the user's PATH
-export PATH=$PATH:$CONFIG_DIR
+# Move to $HOME/.local/bin which is usually in the PATH
+mv autogpt $HOME/.local/bin/autogpt
 
 # Install complete
 echo
@@ -255,5 +255,5 @@ fi
 
 echo
 echo "Launching Auto-GPT..."
-bash -s ./autogpt
+$HOME/.local/bin/autogpt
 exit 0
