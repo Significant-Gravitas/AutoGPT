@@ -9,7 +9,7 @@ from autogpt.models.command import Command, CommandParameter
 from autogpt.models.command_registry import CommandRegistry
 
 PARAMETERS = [
-    CommandParameter("arg1", "int", description="Argument 1", required=False),
+    CommandParameter("arg1", "int", description="Argument 1", required=True),
     CommandParameter("arg2", "str", description="Argument 2", required=False),
 ]
 
@@ -35,7 +35,7 @@ class TestCommand:
         assert cmd.name == "example"
         assert cmd.description == "Example command"
         assert cmd.method == self.example_command_method
-        assert cmd.parameters == "(arg1: int, arg2: str) -> str"
+        assert str(cmd) == "example: Example command, params: (arg1: int, arg2: Optional[str])"
 
     def test_command_call(self):
         """Test that Command(*args) calls and returns the result of method(*args)."""
@@ -160,7 +160,7 @@ class TestCommandRegistry:
         registry.register(cmd)
         command_prompt = registry.command_prompt()
 
-        assert f"(arg1: int, arg2: str)" in command_prompt
+        assert f"(arg1: int, arg2: Optional[str])" in command_prompt
 
     def test_import_mock_commands_module(self):
         """Test that the registry can import a module with mock command plugins."""
