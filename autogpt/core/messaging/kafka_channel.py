@@ -1,6 +1,6 @@
 import kafka
 
-from autogpt.core.schema import BaseMessage, BaseMessageChannel
+from autogpt.core.schema import BaseEvent, BaseMessageChannel
 
 
 class KafkaChannel(BaseMessageChannel):
@@ -13,14 +13,14 @@ class KafkaChannel(BaseMessageChannel):
         self.producer = kafka.KafkaProducer(bootstrap_servers=f"{host}:{port}")
         self.consumer = kafka.KafkaConsumer(topic, bootstrap_servers=f"{host}:{port}")
 
-    async def get(self) -> BaseMessage:
+    async def get(self) -> BaseEvent:
         """Gets a message from the channel."""
         for msg in self.consumer:
             self.received_message_count += 1
             self.received_bytes_count += len(msg.value)
             return msg.value
 
-    async def send(self, message: BaseMessage) -> None:
+    async def send(self, message: BaseEvent) -> None:
         """Sends a message to the channel."""
         self.sent_message_count += 1
         self.send_bytes_count += len(message)

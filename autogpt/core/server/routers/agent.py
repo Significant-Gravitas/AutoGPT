@@ -6,7 +6,7 @@ from fastapi import APIRouter
 # There is a catch with dynamic creation of agents based on json request
 # All classes need to have been imported to be able to be found this needs
 # to be looked at again to see if we can find a cleaner way to do this
-from autogpt.core.agent.sample_agent import SampleAgent
+from autogpt.core.agent.simple_agent import SampleAgent
 from autogpt.core.messaging.queue_channel import QueueChannel
 from autogpt.core.server.models.agent import (
     AgentDefinition,

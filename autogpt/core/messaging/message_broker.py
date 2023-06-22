@@ -1,5 +1,5 @@
 """This module contains the message broker class."""
-from autogpt.core.schema import BaseMessage, BaseMessageBroker, BaseMessageChannel
+from autogpt.core.schema import BaseEvent, BaseMessageBroker, BaseMessageChannel
 
 
 class MessageBroker(BaseMessageBroker):
@@ -23,10 +23,10 @@ class MessageBroker(BaseMessageBroker):
         """Adds a channel."""
         self.channels.append(channel)
 
-    async def get_from_channel(self, channel_uid: str) -> BaseMessage:
+    async def get_from_channel(self, channel_uid: str) -> BaseEvent:
         """Gets a message from a channel."""
         return await self.get_channel(channel_uid).get()
 
-    async def send_to_channel(self, channel_uid: str, message: BaseMessage) -> None:
+    async def send_to_channel(self, channel_uid: str, message: BaseEvent) -> None:
         """Sends a message to a channel."""
         return await self.get_channel(channel_uid).send(message)

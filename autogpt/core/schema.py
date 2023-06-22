@@ -1,6 +1,7 @@
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Literal, MutableSet, Optional, Sequence
 
+import numpy as np
 import pydantic
 
 from autogpt.core.system_config import SystemConfig
@@ -28,13 +29,13 @@ class PolyBaseModel(pydantic.BaseModel):
     """
 
     @classmethod
-    def __get_validators__(cls):
+    def __get_validators__(self) -> Any:
         # __get_validators__ should yield all validator functions for the model.
         # In this case, we are just using the custom `validate` method below.
-        yield cls.validate
+        yield self.validate
 
     @classmethod
-    def validate(cls, v: dict) -> Any:
+    def validate(self, v: dict) -> Any:
         """
         Validate that the input can be parsed into one of the subclasses.
 
@@ -48,7 +49,7 @@ class PolyBaseModel(pydantic.BaseModel):
         #     raise ValueError("Must be a dict")
 
         # Check all subclasses to find a match.
-        for subclass in cls.__subclasses__():
+        for subclass in self.__subclasses__():
             # If 'type' field is present, and it matches the subclass name,
             # parse the data into that subclass.
             if "type" in v:
@@ -74,98 +75,45 @@ class PolyBaseModel(pydantic.BaseModel):
 ############################
 ####### Mind Schema ########
 ############################
-class BasePlanStep(PolyBaseModel):
-    """A class for plan steps."""
-
-    name: str
-    prompt: str
-
-
-class BaseStepResults(PolyBaseModel):
-    """A class for plan step results."""
-
-    prompt: str
-    variables: Dict[str, str]
-
-
-class BasePlan(PolyBaseModel):
-    """A class for plans."""
-
-    steps: List[BasePlanStep]
-    deliverables: List[str]
-
-
-class BaseGoal(PolyBaseModel):
-    """A class for goals."""
-
-    name: str
-    objectives: List[str]
-
-
-class BaseIntrospection(PolyBaseModel):
-    """A class for introspection on a plan."""
-
-    plan_efficiency: float
-    plan_effectiveness: float
-    success_probability: float
 
 
 class BaseMind(PolyBaseModel):
     """
     The mind is the core of the agent. It is responsible for planning, executing, and introspecting on a goal.
 
+    Aim is to keep this abstraction layer as simple as possible with as few assumptions as possible.
+
+    Critically Spawning a sub-mind has been removed as that could be handled via an ability
+
     params:
         goal: The goal to achieve.
-        plan: The plan to achieve the goal, as calculated by the agent.
-        introspection: The introspection on the plan, as calculated by the agent.
-
         prompt_loader: The prompt loader to use to load the planning, step execution and introspection prompts
-
-        id: The id of the mind.
-        name: The name of the mind.
-        description: The description of the mind.
-
+        llm_provider: The llm model that the mind uses to reason
         memory: The memory system for the mind.
         workspace: The workspace system for the mind.
-        message_broker: The message broker for the mind.
+        abilities: The ability register for the agent
 
     methods:
-
-        plan: Generates a plan given a goal loading the prompt using the prompt loader.
-        execute: Executes a plan, the details of which are implementation specific.
-        introspect: Introspects on a plan given a goal loading the prompt using the prompt loader.
-        spawn_sub_mind: Spawns a sub mind.
+        step:  Mind steps forward in its logic doing 1 "action" this could be 1 call to an llm or a series of them.
     """
 
-    goal: BaseGoal
-    plan: Optional[BasePlan] = None
-
+    goal: str
     prompt_loader: "BasePromptEngine"
+    llm_provider: "BaseLLMProvider"
+    memory: "BaseMemoryProvider"
+    abilities: "BaseAbilityRegistry"
 
-    id: str
-    name: str
-    description: str
-
-    memory: str
     workspace: str
-    message_broker: "BaseMessageBroker"
 
-    sub_minds: List["BaseMind"] = []
+    async def step(self, message: Optional["BaseMessage"] = None) -> "BaseEvent":
+        """
+        Mind steps forward doing 1 action.
 
-    async def plan(self) -> BasePlan:
-        """Implement logic to generate a plan given a goal."""
-        raise NotImplementedError
+        The step could be triggered from a user message, but not necessarily
 
-    async def execute(self) -> None:
-        """Implement logic to execute a plan."""
-        raise NotImplementedError
-
-    async def introspect(self) -> BaseIntrospection:
-        """Implement logic to introspect on a plan given a goal."""
-        raise NotImplementedError
-
-    async def spawn_sub_mind(self, goal: BaseGoal, channel_id: str) -> None:
-        """Spawns a sub mind with the given goal and channel id."""
+        returns:
+            BaseEvent: should be more an event for user interpretation and logging
+        """
         raise NotImplementedError
 
 
@@ -175,173 +123,122 @@ class BaseMind(PolyBaseModel):
 ## copied from @Pwuts work #
 ############################
 
-# Embedding = list[np.float32] | np.ndarray[Any, np.dtype[np.float32]]
-# MemoryDocType = Literal["webpage", "text_file", "code_file", "agent_history"]
-
-# class Message(PolyBaseModel):
-#     """OpenAI Message object containing a role and the message content"""
-#     role: str
-#     content: str
-
-# class MemoryItem(PolyBaseModel):
-#     """Memory object containing raw content as well as embeddings"""
-
-#     raw_content: str
-#     summary: str
-#     chunks: list[str]
-#     chunk_summaries: list[str]
-#     e_summary: Embedding
-#     e_chunks: list[Embedding]
-#     metadata: dict
-
-#     async def get_relevance(self, query: str, e_query: Embedding) -> "MemoryItemRelevance":
-#         """Get the relevance of a memory item to a query"""
-#         raise NotImplementedError
-
-#     # @staticmethod
-#     # async def from_text(
-#     #     text: str,
-#     #     source_type: MemoryDocType,
-#     #     metadata: Optional[dict] = None,
-#     #     how_to_summarize: Optional[str] = None,
-#     #     question_for_summary: Optional[str] = None,
-#     # ) -> "MemoryItem":
-#     #     """Create a memory item from text"""
-#     #     raise NotImplementedError
-
-#     # @staticmethod
-#     # async def from_text_file(content: str, path: str) -> "MemoryItem":
-#     #     """Create a memory item from a text file"""
-#     #     return MemoryItem.from_text(content, "text_file", {"location": path})
-
-#     # @staticmethod
-#     # async def from_code_file(content: str, path: str) -> "MemoryItem":
-#     #     """Create a memory item from a code file"""
-#     #     # TODO: implement tailored code memories
-#     #     return MemoryItem.from_text(content, "code_file", {"location": path})
-
-#     # @staticmethod
-#     # async def from_ai_action(ai_message: Message, result_message: Message) -> "MemoryItem":
-#     #     """
-#     #     The result_message contains either user feedback
-#     #     or the result of the command specified in ai_message
-#     #     """
-#     #     return NotImplementedError
-
-#     # @staticmethod
-#     # async def from_webpage(content: str, url: str, question: Optional[str]= None) -> "MemoryItem":
-#     #     """Create a memory item from a webpage"""
-#     #     return MemoryItem.from_text(
-#     #         text=content,
-#     #         source_type="webpage",
-#     #         metadata={"location": url},
-#     #         question_for_summary=question,
-#     #     )
-
-#     def __str__(self) -> str:
-#         """String representation of a memory item"""
-#         raise NotImplementedError
-
-# class MemoryItemRelevance:
-#     """
-#     Class that encapsulates memory relevance search functionality and data.
-#     Instances contain a MemoryItem and its relevance scores for a given query.
-#     """
-
-#     memory_item: MemoryItem
-#     for_query: str
-#     summary_relevance_score: float
-#     chunk_relevance_scores: list[float]
-
-#     # @staticmethod
-#     # def of(
-#     #     memory_item: MemoryItem, for_query: str, e_query: Embedding | None = None
-#     # ) -> "MemoryItemRelevance":
-#     #     """Create a MemoryItemRelevance instance for a given query"""
-#     #     return NotImplementedError
-
-#     # @staticmethod
-#     # def calculate_scores(
-#     #     memory: MemoryItem, compare_to: Embedding
-#     # ) -> tuple[float, float, list[float]]:
-#     #     """
-#     #     Calculates similarity between given embedding and all embeddings of the memory
-#     #     Returns:
-#     #         float: the aggregate (max) relevance score of the memory
-#     #         float: the relevance score of the memory summary
-#     #         list: the relevance scores of the memory chunks
-#     #     """
-#     #     return NotImplementedError
-
-#     @property
-#     def score(self) -> float:
-#         """The aggregate relevance score of the memory item for the given query"""
-#         return NotImplementedError
-
-#     @property
-#     def most_relevant_chunk(self) -> tuple[str, float]:
-#         """The most relevant chunk of the memory item + its score for the given query"""
-#         return NotImplementedError
+Embedding = list[np.float32] | np.ndarray[Any, np.dtype[np.float32]]
+MemoryDocType = Literal["webpage", "text_file", "code_file", "agent_history"]
 
 
-# class BaseMemoryProvider(PolyBaseModel):
-#     """Base class for memory systems."""
+class LLMMessage(BaseEvent):
+    """OpenAI Message object containing a role and the message content"""
 
-#     def get(self, query: str) -> Optional[MemoryItemRelevance]:
-#         """
-#         Gets the data from the memory that is most relevant to the given query.
-#         Args:
-#             data: The data to compare to.
-#         Returns: The most relevant Memory
-#         """
-#         return NotImplementedError
+    role: str
+    content: str
 
-#     def get_relevant(self, query: str, k: int) -> Sequence[MemoryItemRelevance]:
-#         """
-#         Returns the top-k most relevant memories for the given query
-#         Args:
-#             query: the query to compare stored memories to
-#             k: the number of relevant memories to fetch
-#         Returns:
-#             list[MemoryItemRelevance] containing the top [k] relevant memories
-#         """
-#         return NotImplementedError
 
-#     def score_memories_for_relevance(
-#         self, for_query: str,
-#     ) -> Sequence[MemoryItemRelevance]:
-#         """
-#         Returns MemoryItemRelevance for every memory in the index.
-#         Implementations may override this function for performance purposes.
-#         """
-#         return NotImplementedError
+class MemoryItem(PolyBaseModel):
+    """Memory object containing raw content as well as embeddings"""
 
-#     def get_stats(self) -> tuple[int, int]:
-#         """
-#         Returns:
-#             tuple (n_memories: int, n_chunks: int): the stats of the memory index
-#         """
-#         return NotImplementedError
+    raw_content: str
+    summary: str
+    chunks: list[str]
+    chunk_summaries: list[str]
+    e_summary: Embedding
+    e_chunks: list[Embedding]
+    metadata: dict
 
-#     def add(self, memory: MemoryItem) -> None:
-#         """
-#         Adds a memory to the memory index
-#         Args:
-#             memory: the memory to add
-#         """
-#         return NotImplementedError
+    async def get_relevance(
+        self, query: str, e_query: Embedding
+    ) -> "MemoryItemRelevance":
+        """Get the relevance of a memory item to a query"""
+        raise NotImplementedError
 
-#     def discard(self, memory: MemoryItem) -> None:
-#         """
-#         Removes a memory from the memory index
-#         Args:
-#             memory: the memory to remove
-#         """
-#         return NotImplementedError
+    def __str__(self) -> str:
+        """String representation of a memory item"""
+        raise NotImplementedError
 
-#     def clear(self) -> None:
-#         """Clears the memory index"""
-#         return NotImplementedError
+
+class MemoryItemRelevance:
+    """
+    Class that encapsulates memory relevance search functionality and data.
+    Instances contain a MemoryItem and its relevance scores for a given query.
+    """
+
+    memory_item: MemoryItem
+    for_query: str
+    summary_relevance_score: float
+    chunk_relevance_scores: list[float]
+
+    @property
+    def score(self) -> float:
+        """The aggregate relevance score of the memory item for the given query"""
+        return NotImplementedError
+
+    @property
+    def most_relevant_chunk(self) -> tuple[str, float]:
+        """The most relevant chunk of the memory item + its score for the given query"""
+        return NotImplementedError
+
+
+class BaseMemoryProvider(PolyBaseModel):
+    """Base class for memory systems."""
+
+    memory_items: MutableSet[MemoryItem]
+
+    def get(self, query: str) -> Optional[MemoryItemRelevance]:
+        """
+        Gets the data from the memory that is most relevant to the given query.
+        Args:
+            data: The data to compare to.
+        Returns: The most relevant Memory
+        """
+        return NotImplementedError
+
+    def get_relevant(self, query: str, k: int) -> Sequence[MemoryItemRelevance]:
+        """
+        Returns the top-k most relevant memories for the given query
+        Args:
+            query: the query to compare stored memories to
+            k: the number of relevant memories to fetch
+        Returns:
+            list[MemoryItemRelevance] containing the top [k] relevant memories
+        """
+        return NotImplementedError
+
+    def score_memories_for_relevance(
+        self,
+        for_query: str,
+    ) -> Sequence[MemoryItemRelevance]:
+        """
+        Returns MemoryItemRelevance for every memory in the index.
+        Implementations may override this function for performance purposes.
+        """
+        return NotImplementedError
+
+    def get_stats(self) -> tuple[int, int]:
+        """
+        Returns:
+            tuple (n_memories: int, n_chunks: int): the stats of the memory index
+        """
+        return NotImplementedError
+
+    def add(self, memory: MemoryItem) -> None:
+        """
+        Adds a memory to the memory index
+        Args:
+            memory: the memory to add
+        """
+        return NotImplementedError
+
+    def discard(self, memory: MemoryItem) -> None:
+        """
+        Removes a memory from the memory index
+        Args:
+            memory: the memory to remove
+        """
+        return NotImplementedError
+
+    def clear(self) -> None:
+        """Clears the memory index"""
+        return NotImplementedError
 
 
 ############################
@@ -442,12 +339,17 @@ class BaseAbilityRegistry(PolyBaseModel):
 ############################
 
 
-class BaseMessage(PolyBaseModel):
+class BaseEvent(PolyBaseModel):
     """Base class for a message that can be sent and received on a channel."""
 
     from_uid: str
-    to_uid: str
     timestamp: int
+
+
+class BaseMessage(BaseEvent):
+    """Base Message that is sent to an agent"""
+
+    to_uid: str
 
 
 class BaseMessageChannel(PolyBaseModel):
@@ -505,11 +407,11 @@ class BaseMessageBroker(PolyBaseModel):
         """Adds a channel."""
         raise NotImplementedError
 
-    async def get_from_channel(self, channel_uid: str) -> BaseMessage:
+    async def get_from_channel(self, channel_uid: str) -> BaseEvent:
         """Gets a message from a channel."""
         raise NotImplementedError
 
-    async def send_to_channel(self, channel_uid: str, message: BaseMessage) -> None:
+    async def send_to_channel(self, channel_uid: str, message: BaseEvent) -> None:
         """Sends a message to a channel."""
         raise NotImplementedError
 
