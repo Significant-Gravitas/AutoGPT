@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 
+# ====================================================================================================
+# This script is used to install Auto-GPT via the Docker method
+# If other installation methods are desired, refer to the documentation at https://docs.agpt.co/
+# ====================================================================================================
+
 # Definitions
 CONFIG_DIR=~/.autogpt
 DOCKER_IMAGE_NAME="significantgravitas/auto-gpt"
-GITHUB_REPO="https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/"
 
 # Files to download from GitHub (use paths relative to the repository root)
 # Any template files will be copied after download (.template will be removed)
@@ -20,12 +24,52 @@ GITHUB_FILE_DOWNLOAD_LIST=(
 # It will be renamed to 'autogpt' and act as the main entrypoint and user command
 LAUNCHER_SCRIPT="scripts/autogpt_cmd.sh"
 
+# This script should not be run inside a Docker container
+if [ -f /.dockerenv ]; then
+    echo "This script should not be run inside a Docker container."
+    exit 1
+fi
+
 # Intro
 echo "Hi, this is Auto-GPT. Welcome to my installation script!"
 echo "This script will install the 'autogpt' command on your system. It is designed to work on Linux and MacOS."
 echo "Note: If you intend to use Auto-GPT as a Python module in your project, this script is not for you. Please refer to the documentation at https://docs.agpt.co/."
 echo "Press Ctrl+C to exit the script at any time."
 echo ""
+
+# Allow github user to be changed using --user or -u argument
+GITHUB_USER="Significant-Gravitas"
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -u|--user) GITHUB_USER="$2"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Allow repo to be changed using "--repo" or "-r" argument
+GITHUB_REPO="Auto-GPT"
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -r|--repo) GITHUB_REPO="$2"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Allow branch to be changed using "--branch, -b, --tag, -t" argument
+# Default to "stable" branch
+BRANCH="stable"
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -b|--branch|-t|--tag) BRANCH="$2"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Construct the URL to the raw files:
+GITHUB_FILES_BASE="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/"
 
 # Check the OS
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
@@ -86,7 +130,7 @@ cd $CONFIG_DIR
 # Download files from GitHub
 echo "Downloading Auto-GPT config files from GitHub..."
 for file in "${GITHUB_DOWNLOAD_LIST[@]}"; do
-    curl -O $GITHUB_REPO/$file
+    curl -O $GITHUB_FILES_BASE/$file
 
     # Create config files from templates
     if [[ $file == *.template && ! -f ${file%.*} ]]; then
@@ -108,7 +152,7 @@ docker pull $DOCKER_IMAGE_NAME
 
 # Install launch script
 echo "Creating launch script..."
-curl -o autogpt $GITHUB_REPO/$LAUNCH_SCRIPT
+curl -o autogpt $GITHUB_FILES_BASE/$LAUNCH_SCRIPT
 chmod +x autogpt
 mv autogpt /usr/local/bin/
 

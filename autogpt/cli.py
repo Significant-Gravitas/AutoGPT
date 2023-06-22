@@ -102,15 +102,19 @@ def main(
     """
     # Put imports inside function to avoid importing everything when starting the CLI
     from autogpt.main import run_auto_gpt
-    from autogpt.install import Installer
     from autogpt.config import ContainerConfig
     
-    installer = Installer()
-    if install_options:
-        installer.reset_prefs()
-    installer.run(interactive=(not continuous))
-    
     container_config = ContainerConfig()
+    if not container_config.is_docker():
+        from autogpt.install import Installer
+        installer = Installer()
+        if install_options:
+            installer.reset_prefs()
+        installer.run(interactive=(not continuous))
+    else:
+        if install_options:
+            click.echo("'--install-options' is ignored when using Docker.")
+    
     if container_options:
         container_config.reset_prefs()
     container_config.run(interactive=(not continuous))

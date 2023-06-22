@@ -1,7 +1,49 @@
 #!/usr/bin/env
 
+# ====================================================================================================
 # This script is used to launch Auto-GPT from the command line
 # It is installed to /usr/local/bin/autogpt by the install.sh script
+# ====================================================================================================
+
+# This script shoudl not be run inside a Docker container
+if [ -f /.dockerenv ]; then
+    echo "This script should not be run inside a Docker container."
+    exit 1
+fi
+
+# Allow github user to be changed using --user or -u argument
+GITHUB_USER="Significant-Gravitas"
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -u|--user) GITHUB_USER="$2"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Allow repo to be changed using "--repo" or "-r" argument
+GITHUB_REPO="Auto-GPT"
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -r|--repo) GITHUB_REPO="$2"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Allow branch to be changed using "--branch, -b, --tag, -t" argument
+# Default to "stable" branch
+BRANCH="stable"
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -b|--branch|-t|--tag) BRANCH="$2"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Construct the URL to the raw files:
+GITHUB_FILES_BASE="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/"
 
 # If the user has changed requirements.txt, they can run autogpt --rebuild to rebuild the Docker image
 if [ "$1" == "--rebuild" ]; then
@@ -43,7 +85,7 @@ if [ "$1" == "--reinstall" ]; then
 
     # Reinstall
     echo "Reinstalling Auto-GPT..."
-    curl -s https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/scripts/install.sh | bash
+    curl -s $GITHUB_FILES_BASE/scripts/install.sh -u $GITHUB_USER -r $GITHUB_REPO -b $BRANCH | bash
     exit 0
 fi
 
