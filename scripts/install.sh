@@ -11,6 +11,29 @@ if [ -f /.dockerenv ]; then
     exit 1
 fi
 
+# Check the OS
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    OS="LINUX"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    OS="MAC"
+else
+    echo "This script is only compatible with Linux and MacOS."
+    exit 1
+fi
+
+# Try to ensure we're in a terminal window
+if [ ! -t 0 ]; then
+    if [ $OS == "LINUX" ]; then
+        x-terminal-emulator -e "$0" "$@"
+    elif [ $OS == "MAC" ]; then
+        osascript -e 'tell application "Terminal" to do script "bash -c \"'"$0"' '"$@"'\""' >/dev/null
+    else
+        echo "This script is only compatible with Linux and MacOS."
+        exit 1
+    fi
+    exit 0
+fi
+
 # ====================================================================================================
 # Configurable variables
 # ====================================================================================================
@@ -96,16 +119,6 @@ pause
 GITHUB_FILES_BASE="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/"
 echo "Using GitHub files base: $GITHUB_FILES_BASE"
 echo ""
-
-# Check the OS
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    OS="LINUX"
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    OS="MAC"
-else
-    echo "This script is only compatible with Linux and MacOS."
-    exit 1
-fi
 
 # Check if Docker is installed
 echo "Checking if Docker is installed..."

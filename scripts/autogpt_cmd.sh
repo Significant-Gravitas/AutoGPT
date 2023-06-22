@@ -5,10 +5,33 @@
 # It is installed to /usr/local/bin/autogpt by the install.sh script
 # ====================================================================================================
 
-# This script shoudl not be run inside a Docker container
+# This script should not be run inside a Docker container
 if [ -f /.dockerenv ]; then
     echo "This script should not be run inside a Docker container."
     exit 1
+fi
+
+# Check the OS
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    OS="LINUX"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    OS="MAC"
+else
+    echo "This script is only compatible with Linux and MacOS."
+    exit 1
+fi
+
+# Try to ensure we're in a terminal window
+if [ ! -t 0 ]; then
+    if [ $OS == "LINUX" ]; then
+        x-terminal-emulator -e "$0" "$@"
+    elif [ $OS == "MAC" ]; then
+        osascript -e 'tell application "Terminal" to do script "bash -c \"'"$0"' '"$@"'\""' >/dev/null
+    else
+        echo "This script is only compatible with Linux and MacOS."
+        exit 1
+    fi
+    exit 0
 fi
 
 # Github user: --user or -u
@@ -85,4 +108,4 @@ if [ REINSTALL == 1 ]; then
 fi
 
 # Default behaviour: Launch Auto-GPT
-docker compose run --rm auto-gpt $@
+docker compose -i run --rm auto-gpt $@
