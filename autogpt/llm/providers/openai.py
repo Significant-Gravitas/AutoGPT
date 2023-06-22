@@ -305,7 +305,7 @@ class OpenAIFunctionSpec:
 
     @property
     def __dict__(self):
-        """Output"""
+        """Output an OpenAI-consumable function specification"""
         return {
             "name": self.name,
             "description": self.description,

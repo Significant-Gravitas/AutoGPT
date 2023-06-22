@@ -94,7 +94,7 @@ def create_text_completion(
 def create_chat_completion(
     prompt: ChatSequence,
     config: Config,
-    functions: Optional[List[OpenAIFunctionSpec]] = [],
+    functions: Optional[List[OpenAIFunctionSpec]] = None,
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -144,8 +144,9 @@ def create_chat_completion(
         ] = config.get_azure_deployment_id_for_model(model)
     if functions:
         chat_completion_kwargs["functions"] = [
-            asdict(function) for function in functions
+            function.__dict__ for function in functions
         ]
+        logger.debug(f"Function dicts: {chat_completion_kwargs['functions']}")
 
     response = iopenai.create_chat_completion(
         messages=prompt.raw(),
