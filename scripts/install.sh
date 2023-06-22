@@ -30,7 +30,7 @@ DOCKER_IMAGE="significantgravitas/auto-gpt"
 # Files to download from GitHub (use paths relative to the repository root)
 # Any template files will be copied after download (.template will be removed)
 FILES_TO_DOWNLOAD=(
-    "docker-compose.yml"
+    "docker-compose.yml.template"
     "plugins_config.yaml"
     "prompt_settings.yaml"
     ".env.template"
