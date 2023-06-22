@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 import time
 
@@ -9,7 +10,14 @@ from autogpt.core.messaging.messages import (
     ResponseMessage,
     StatusMessage,
 )
-from autogpt.core.schema import BaseAgent, BaseLLMProvider, BaseMessage, BaseMessageBroker
+from autogpt.core.schema import (
+    BaseAgent,
+    BaseLLMProvider,
+    BaseMessage,
+    BaseMessageBroker,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class SampleAgent(BaseAgent):

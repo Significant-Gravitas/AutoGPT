@@ -45,18 +45,22 @@ def cli() -> None:
     """Autogpt commands."""
     pass
 
+
 @cli.command()
 @click.option("--agent-def", "-d", help="Agent Definition Json")
 def start_agent(agent_def: str) -> None:
     """
     Starts an agent on the server
-    Example usage: 
+    Example usage:
         ./run core cli start-agent -d '{"uid": "test_agent","name": "test_agent","llm_provider": {"type": "OpenAIProvider","api_key": "ccc","chat_completion_model": "gpt-3.5-turbo"},"message_broker": {"type": "MessageBroker","channels": []}}'
     """
     import requests
+
     print(f"Starting agent:/n {agent_def}")
 
-    response = requests.post('http://localhost:8000/agents/start', json={"data": agent_def})
+    response = requests.post(
+        "http://localhost:8000/agents/start", json={"data": agent_def}
+    )
 
     response_data = response.json()
     print(f"Agent name: {response_data['name']}")
@@ -66,12 +70,18 @@ def start_agent(agent_def: str) -> None:
 
 @cli.command()
 @click.option("--id", "-i", help="Agent Id")
-@click.option("--kill", "-k", is_flag=True, help="Kill the agent without allowing it to shut itself down")
+@click.option(
+    "--kill",
+    "-k",
+    is_flag=True,
+    help="Kill the agent without allowing it to shut itself down",
+)
 def stop_agent(id: str, kill: bool) -> None:
     """Stops an agent on the server"""
     import requests
+
     data = {"agent_id": id, "kill": kill}
-    response = requests.post('http://localhost:8000/agents/stop/', json=data)
+    response = requests.post("http://localhost:8000/agents/stop/", json=data)
     if response.status_code == 200:
         print("Agent Stopped")
     else:
@@ -82,14 +92,19 @@ def stop_agent(id: str, kill: bool) -> None:
 def list_agents() -> None:
     """Lists all running agents"""
     import requests
-    response = requests.get('http://localhost:8000/agents/list')
+
+    response = requests.get("http://localhost:8000/agents/list")
     if response.status_code == 200:
         agents = response.json()
         # print the table header
-        print("{:<20} {:<40} {:<20}".format('Agent Name', 'Agent ID', 'Session ID'))
+        print("{:<20} {:<40} {:<20}".format("Agent Name", "Agent ID", "Session ID"))
         # print the table body
-        for agent in agents['agents']:
-            print("{:<20} {:<40} {:<20}".format(agent['name'], agent['id'], agent['session_id']))
+        for agent in agents["agents"]:
+            print(
+                "{:<20} {:<40} {:<20}".format(
+                    agent["name"], agent["id"], agent["session_id"]
+                )
+            )
     else:
         print(f"Failed to list agents: {response.json()['reason']}")
 
@@ -120,7 +135,9 @@ def listen_to_agent(id: str, start_timestamp: str, end_timestamp: str) -> None:
         params["end_timestamp"] = end_timestamp
 
     # send request to get thoughts between the two timestamps
-    response = requests.get(f'http://localhost:8000/agents/{id}/thoughts', params=params)
+    response = requests.get(
+        f"http://localhost:8000/agents/{id}/thoughts", params=params
+    )
 
     if response.status_code == 200:
         # print out the agent's thoughts from the response data
@@ -137,25 +154,27 @@ def listen_to_agent(id: str, start_timestamp: str, end_timestamp: str) -> None:
 @click.option("--session-id", "-s", help="session id of the agent", required=True)
 def run_agent_step(agent_def: str, id: str, session_id: str) -> None:
     """Runs an agent step how we would execute as a serverless system"""
-    import requests
     import json
 
-    print('Running Serverless Agent Step')
+    import requests
+
+    print("Running Serverless Agent Step")
 
     # Use f-string to interpolate id and session_id into the API endpoint
-    url = f'http://localhost:8000/agents/{id}/step/{session_id}'
-    headers = {'Content-Type': 'application/json'}  # assuming you're sending JSON
-    data = {'agent_def': json.loads(agent_def)}  # convert agent_def from str to dict
-    
+    url = f"http://localhost:8000/agents/{id}/step/{session_id}"
+    headers = {"Content-Type": "application/json"}  # assuming you're sending JSON
+    data = {"agent_def": json.loads(agent_def)}  # convert agent_def from str to dict
+
     # Make the request
     response = requests.get(url, headers=headers, data=json.dumps(data))
 
     # Check the status code of the response
     if response.status_code == 200:
-        # print out the results of the step. 
-        print(response.json()['thoughts'])  # assuming 'thoughts' key in response data
+        # print out the results of the step.
+        print(response.json()["thoughts"])  # assuming 'thoughts' key in response data
     else:
         print(f"Step execution failed: {response.json()['reason']}")
+
 
 core.add_command(cli)
 

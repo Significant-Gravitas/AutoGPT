@@ -1,7 +1,8 @@
 import enum
 import uuid
+from typing import Any, Callable, Dict, List, Literal, MutableSet, Optional, Sequence
+
 import numpy as np
-from typing import Any, Callable, List, Optional, Dict, Literal, Sequence, MutableSet
 import pydantic
 
 
@@ -15,7 +16,7 @@ class PolyBaseModel(pydantic.BaseModel):
     The subclasses should have a unique 'type' field in the input data to identify them.
 
     The class uses the 'type' field in the input data to determine which subclass to parse the data into.
-    If 'type' field is not present in the data, it will attempt to parse the data into each subclass 
+    If 'type' field is not present in the data, it will attempt to parse the data into each subclass
     until successful validation, or raise a ValueError if no subclasses validate successfully.
 
     :method __get_validators__: Pydantic models use this method to get a list of validators for the model.
@@ -48,11 +49,10 @@ class PolyBaseModel(pydantic.BaseModel):
 
         # Check all subclasses to find a match.
         for subclass in cls.__subclasses__():
-
             # If 'type' field is present, and it matches the subclass name,
             # parse the data into that subclass.
             if "type" in v:
-                type_value = v.get('type')
+                type_value = v.get("type")
                 if type_value == subclass.__name__:
                     # Remove 'type' from dict as it's not a field of the subclass model.
                     del v["type"]
@@ -76,26 +76,35 @@ class PolyBaseModel(pydantic.BaseModel):
 ############################
 class BasePlanStep(PolyBaseModel):
     """A class for plan steps."""
+
     name: str
     prompt: str
+
 
 class BaseStepResults(PolyBaseModel):
     """A class for plan step results."""
+
     prompt: str
     variables: Dict[str, str]
 
+
 class BasePlan(PolyBaseModel):
     """A class for plans."""
+
     steps: List[BasePlanStep]
     deliverables: List[str]
 
+
 class BaseGoal(PolyBaseModel):
     """A class for goals."""
+
     name: str
     objectives: List[str]
 
+
 class BaseIntrospection(PolyBaseModel):
     """A class for introspection on a plan."""
+
     plan_efficiency: float
     plan_effectiveness: float
     success_probability: float
@@ -119,7 +128,7 @@ class BaseMind(PolyBaseModel):
         memory: The memory system for the mind.
         workspace: The workspace system for the mind.
         message_broker: The message broker for the mind.
-    
+
     methods:
 
         plan: Generates a plan given a goal loading the prompt using the prompt loader.
@@ -127,6 +136,7 @@ class BaseMind(PolyBaseModel):
         introspect: Introspects on a plan given a goal loading the prompt using the prompt loader.
         spawn_sub_mind: Spawns a sub mind.
     """
+
     goal: BaseGoal
     plan: Optional[BasePlan] = None
 
@@ -158,6 +168,7 @@ class BaseMind(PolyBaseModel):
         """Spawns a sub mind with the given goal and channel id."""
         raise NotImplementedError
 
+
 ############################
 ##### Memory Schema ########
 ############################
@@ -186,7 +197,7 @@ class BaseMind(PolyBaseModel):
 #     async def get_relevance(self, query: str, e_query: Embedding) -> "MemoryItemRelevance":
 #         """Get the relevance of a memory item to a query"""
 #         raise NotImplementedError
-    
+
 #     # @staticmethod
 #     # async def from_text(
 #     #     text: str,
@@ -197,7 +208,7 @@ class BaseMind(PolyBaseModel):
 #     # ) -> "MemoryItem":
 #     #     """Create a memory item from text"""
 #     #     raise NotImplementedError
-    
+
 #     # @staticmethod
 #     # async def from_text_file(content: str, path: str) -> "MemoryItem":
 #     #     """Create a memory item from a text file"""
@@ -216,7 +227,7 @@ class BaseMind(PolyBaseModel):
 #     #     or the result of the command specified in ai_message
 #     #     """
 #     #     return NotImplementedError
-    
+
 #     # @staticmethod
 #     # async def from_webpage(content: str, url: str, question: Optional[str]= None) -> "MemoryItem":
 #     #     """Create a memory item from a webpage"""
@@ -273,10 +284,9 @@ class BaseMind(PolyBaseModel):
 #         return NotImplementedError
 
 
-
 # class BaseMemoryProvider(PolyBaseModel):
 #     """Base class for memory systems."""
-        
+
 #     def get(self, query: str) -> Optional[MemoryItemRelevance]:
 #         """
 #         Gets the data from the memory that is most relevant to the given query.
@@ -312,7 +322,7 @@ class BaseMind(PolyBaseModel):
 #             tuple (n_memories: int, n_chunks: int): the stats of the memory index
 #         """
 #         return NotImplementedError
-    
+
 #     def add(self, memory: MemoryItem) -> None:
 #         """
 #         Adds a memory to the memory index
@@ -320,7 +330,7 @@ class BaseMind(PolyBaseModel):
 #             memory: the memory to add
 #         """
 #         return NotImplementedError
-    
+
 #     def discard(self, memory: MemoryItem) -> None:
 #         """
 #         Removes a memory from the memory index
@@ -328,32 +338,35 @@ class BaseMind(PolyBaseModel):
 #             memory: the memory to remove
 #         """
 #         return NotImplementedError
-    
+
 #     def clear(self) -> None:
 #         """Clears the memory index"""
 #         return NotImplementedError
-
 
 
 ############################
 ### Prompt Loader Schema ###
 ############################
 
+
 class BasePromptEngine(PolyBaseModel):
     """A base class for prompt loaders."""
+
     directory: str
 
     def load_prompt(self, prompt_name: str) -> str:
         """Loads a prompt."""
         raise NotImplementedError
-    
+
     def generate_prompt(self, prompt_template: str, data: dict) -> str:
         """Generates a prompt."""
         raise NotImplementedError
 
+
 ############################
 ### LLM Provider Schema ####
 ############################
+
 
 class BaseLLMProvider(PolyBaseModel):
     """The base class for all LLM providers."""
@@ -361,14 +374,15 @@ class BaseLLMProvider(PolyBaseModel):
     async def chat(self, messages: list) -> str:
         """Send a query to the LLM provider"""
         raise NotImplementedError
-    
+
+
 class BaseEmbeddingProvider(PolyBaseModel):
     """The base class for Embedding Providers."""
 
     async def get_embedding(self, messages: list) -> str:
         """Create a chat completion"""
         raise NotImplementedError
-    
+
 
 ############################
 ##### Abilities Schema #####
@@ -472,6 +486,7 @@ class BaseMessageBroker(PolyBaseModel):
         """
         Config class is a configuration class for Pydantic models.
         """
+
         arbitrary_types_allowed = True
 
     def list_channels(self) -> None:

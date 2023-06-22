@@ -9,6 +9,7 @@ from openai.error import APIError, RateLimitError
 
 from autogpt.core.schema import BaseLLMProvider
 
+
 class ChatCompletionModels(str, enum.Enum):
     """Available Chat Completion Models"""
 
@@ -26,13 +27,14 @@ class EmbeddingModels(str, enum.Enum):
     TEXT_EMBEDDING_ADA_002 = "text-embedding-ada-002"
     TEXT_SEARCH_ADA_DOC_001 = "text-search-ada-doc-001"
 
+
 logger = logging.getLogger(__name__)
 
 
 class OpenAIProvider(BaseLLMProvider):
     """The base class for all LLM providers."""
 
-    api_key: str
+    api_key: str = None
     max_tokens: int = 1000
     chat_completion_model: ChatCompletionModels = ChatCompletionModels.GTP_4
     embedding_model: EmbeddingModels = EmbeddingModels.TEXT_EMBEDDING_ADA_002
