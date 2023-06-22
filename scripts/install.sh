@@ -21,16 +21,6 @@ else
     exit 1
 fi
 
-# Try to ensure we're in a terminal window
-if [ 0 ]; then
-    if [ $OS == "LINUX" ]; then
-        x-terminal-emulator -e "$0" "$@"
-    elif [ $OS == "MAC" ]; then
-        osascript -e 'tell application "Terminal" to do script "bash -c \"$0\" \"$@\""' >/dev/null
-    fi
-    exit 0
-fi
-
 # ====================================================================================================
 # Configurable variables
 # ====================================================================================================
