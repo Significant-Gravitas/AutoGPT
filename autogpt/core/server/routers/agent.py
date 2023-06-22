@@ -10,6 +10,8 @@ from autogpt.core.server.services import agent_service
 from autogpt.core.agent import SampleAgent
 from autogpt.core.LLM.openai_povider import OpenAIProvider 
 from autogpt.core.messaging.message_broker import MessageBroker
+from autogpt.core.messaging.queue_channel import QueueChannel
+from autogpt.core.server.services.agent_service import create_agent
 
 import json
 
@@ -24,8 +26,8 @@ class StartAgentResponse(BaseModel):
     id: str
     session_id: str
 
+channel = QueueChannel(id="channel1", name="channel1", host="localhost", port=8080)
 agents = []
-
 
 @router.post("/start", response_model=StartAgentResponse)
 async def start_agent(agent_definition: AgentDefinition):
@@ -33,6 +35,10 @@ async def start_agent(agent_definition: AgentDefinition):
     # agent_def_dict = json.loads(agent_definition.data)  # convert the json string to a python dictionary
 
     agent = SampleAgent.parse_raw(agent_definition.data)
+
+    await create_agent(agent, channel)
+    agents.append({'name': agent.name, 'id': agent.uid, 'session_id': agent.session_id})
+
     return StartAgentResponse(name=agent.name, id=agent.uid, session_id=agent.session_id)
 
 
