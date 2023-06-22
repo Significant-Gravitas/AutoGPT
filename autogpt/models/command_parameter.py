@@ -2,11 +2,11 @@ import dataclasses
 
 
 @dataclasses.dataclass
-class CommandArgument:
+class CommandParameter:
     name: str
     type: str
     description: str
     required: bool
 
     def __repr__(self):
-        return f"CommandArgument('{self.name}', '{self.type}', '{self.description}', {self.required})"
+        return f"CommandParameter('{self.name}', '{self.type}', '{self.description}', {self.required})"

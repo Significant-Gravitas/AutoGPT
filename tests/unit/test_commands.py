@@ -5,10 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from autogpt.models.command import Command
+from autogpt.models.command import Command, CommandParameter
 from autogpt.models.command_registry import CommandRegistry
 
-ARGUMENTS = "(arg1: int, arg2: str) -> str"
+PARAMETERS = [
+    CommandParameter("arg1", "int", description="Argument 1", required=False),
+    CommandParameter("arg2", "str", description="Argument 2", required=False),
+]
 
 
 class TestCommand:
@@ -26,13 +29,13 @@ class TestCommand:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            arguments=ARGUMENTS,
+            parameters=PARAMETERS,
         )
 
         assert cmd.name == "example"
         assert cmd.description == "Example command"
         assert cmd.method == self.example_command_method
-        assert cmd.arguments == "(arg1: int, arg2: str) -> str"
+        assert cmd.parameters == "(arg1: int, arg2: str) -> str"
 
     def test_command_call(self):
         """Test that Command(*args) calls and returns the result of method(*args)."""
@@ -41,13 +44,14 @@ class TestCommand:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            arguments={
-                "prompt": {
-                    "type": "string",
-                    "description": "The prompt used to generate the image",
-                    "required": True,
-                },
-            },
+            parameters=[
+                CommandParameter(
+                    name="prompt",
+                    type="string",
+                    description="The prompt used to generate the image",
+                    required=True,
+                ),
+            ],
         )
         result = cmd(arg1=1, arg2="test")
         assert result == "1 - test"
@@ -58,21 +62,10 @@ class TestCommand:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            arguments=ARGUMENTS,
+            parameters=PARAMETERS,
         )
         with pytest.raises(TypeError):
             cmd(arg1="invalid", does_not_exist="test")
-
-    def test_command_custom_arguments(self):
-        custom_arguments = "custom_arg1: int, custom_arg2: str"
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_command_method,
-            arguments=custom_arguments,
-        )
-
-        assert cmd.arguments == custom_arguments
 
 
 class TestCommandRegistry:
@@ -87,7 +80,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            arguments=ARGUMENTS,
+            parameters=PARAMETERS,
         )
 
         registry.register(cmd)
@@ -102,7 +95,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            arguments=ARGUMENTS,
+            parameters=PARAMETERS,
         )
 
         registry.register(cmd)
@@ -117,7 +110,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            arguments=ARGUMENTS,
+            parameters=PARAMETERS,
         )
 
         registry.register(cmd)
@@ -139,7 +132,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            arguments=ARGUMENTS,
+            parameters=PARAMETERS,
         )
 
         registry.register(cmd)
@@ -161,7 +154,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
-            arguments=ARGUMENTS,
+            parameters=PARAMETERS,
         )
 
         registry.register(cmd)

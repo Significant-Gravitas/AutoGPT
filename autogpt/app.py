@@ -42,6 +42,8 @@ def get_command(
         Exception: If any other error occurs
     """
     if config.openai_functions:
+        if assistant_reply.function_call is None:
+            return "Error:", "No 'function_call' in assistant reply"
         assistant_reply_json["command"] = {
             "name": assistant_reply.function_call.name,
             "args": json.loads(assistant_reply.function_call.arguments),

@@ -1,38 +1,43 @@
 import functools
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional, TypedDict
 
 from autogpt.config import Config
-from autogpt.models.command import Command
-from autogpt.models.command_argument import CommandArgument
+from autogpt.models.command import Command, CommandParameter
 
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 
 
+class CommandParameterSpec(TypedDict):
+    type: str
+    description: str
+    required: bool
+
+
 def command(
     name: str,
     description: str,
-    arguments: Dict[str, Dict[str, Any]],
+    parameters: dict[str, CommandParameterSpec],
     enabled: bool | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
 ) -> Callable[..., Any]:
     """The command decorator is used to create Command objects from ordinary functions."""
 
     def decorator(func: Callable[..., Any]) -> Command:
-        typed_arguments = [
-            CommandArgument(
-                name=arg_name,
-                description=argument.get("description"),
-                type=argument.get("type", "string"),
-                required=argument.get("required", False),
+        typed_parameters = [
+            CommandParameter(
+                name=param_name,
+                description=parameter.get("description"),
+                type=parameter.get("type", "string"),
+                required=parameter.get("required", False),
             )
-            for arg_name, argument in arguments.items()
+            for param_name, parameter in parameters.items()
         ]
         cmd = Command(
             name=name,
             description=description,
             method=func,
-            arguments=typed_arguments,
+            parameters=typed_parameters,
             enabled=enabled,
             disabled_reason=disabled_reason,
         )
