@@ -235,8 +235,8 @@ if grep -q "4[0-9][0-9]: [*]" ./autogpt; then
 fi
 
 chmod +x autogpt
-# Move to $HOME/.local/bin which is usually in the PATH
-mv autogpt $HOME/.local/bin/autogpt
+# TODO: Make the following optional?
+sudo mv autogpt /usr/local/bin/autogpt
 
 # Install complete
 echo
@@ -255,5 +255,5 @@ fi
 
 echo
 echo "Launching Auto-GPT..."
-$HOME/.local/bin/autogpt
+autogpt
 exit 0
