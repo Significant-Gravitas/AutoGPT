@@ -95,4 +95,4 @@ if [ REINSTALL == 1 ]; then
 fi
 
 # Default behaviour: Launch Auto-GPT
-docker compose -i run --rm auto-gpt $@
+docker compose run --rm auto-gpt $@

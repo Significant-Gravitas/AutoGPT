@@ -235,12 +235,14 @@ if grep -q "4[0-9][0-9]: [*]" ./autogpt; then
 fi
 
 chmod +x autogpt
-# TODO: Make the following optional?
-sudo mv autogpt /usr/local/bin/autogpt
+# TODO: How do we install the command globally without sudo?
+# sudo mv autogpt /usr/local/bin/autogpt
 
 # Install complete
 echo
-echo "Installation complete! You can start using Auto-GPT by running 'autogpt' in your terminal."
+echo "Installation complete!"
+echo 
+echo "You can launch Auto-GPT by running '$CONFIG_DIR/autogpt' in your terminal."
 echo
  
 # Launch Auto-GPT
@@ -255,5 +257,5 @@ fi
 
 echo
 echo "Launching Auto-GPT..."
-autogpt
+$CONFIG_DIR/autogpt
 exit 0
