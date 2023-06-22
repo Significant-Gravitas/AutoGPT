@@ -80,7 +80,7 @@ if [ REINSTALL == 1 ]; then
 
     # Reinstall
     echo "Reinstalling Auto-GPT..."
-    curl -s $GITHUB_FILES_BASE/scripts/install.sh -u $GITHUB_USER -r $GITHUB_REPO -b $BRANCH | bash
+    curl -sSL $GITHUB_FILES_BASE/scripts/install.sh | bash -s -- -u $GITHUB_USER -r $GITHUB_REPO -b $BRANCH
     exit 0
 fi
 

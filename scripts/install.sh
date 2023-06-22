@@ -194,7 +194,7 @@ for file in "${FILES_TO_DOWNLOAD[@]}"; do
     fi
     
     # Create config files from templates.
-    if [[ $file == *.template && ! -f ${file%.*} ]]; then
+    if [[ $file == *.template ]]; then
         echo "Copying $file to ${file%.*}..."
         cp $file ${file%.*}
     fi
@@ -223,14 +223,14 @@ curl -o autogpt $LAUNCHER_CMD_SRC
 
 # 404?
 if [ $? -ne 0 ]; then
-    echo "Error downloading $file. Please check the URL and try again."
+    echo "Error downloading $LAUNCHER_CMD_SRC. Please check the URL and try again."
     exit 1
 fi
 
 # 4XX in contents? Format: 4XX: [message]
-if grep -q "4[0-9][0-9]: [*]" $file; then
-    echo "Error downloading $file. Please check the URL and try again."
-    cat $file
+if grep -q "4[0-9][0-9]: [*]" $LAUNCHER_CMD_SRC; then
+    echo "Error downloading $LAUNCHER_CMD_SRC. Please check the URL and try again."
+    cat $LAUNCHER_CMD_SRC
     exit 1
 fi
 
