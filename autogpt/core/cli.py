@@ -70,12 +70,12 @@ def start_agent(agent_def: str) -> None:
 def stop_agent(id: str, kill: bool) -> None:
     """Stops an agent on the server"""
     import requests
-    data = {"id": id, "kill": kill}
+    data = {"agent_id": id, "kill": kill}
     response = requests.post('http://localhost:8000/agents/stop/', json=data)
     if response.status_code == 200:
         print("Agent Stopped")
     else:
-        print(f"Stopping agent failed: {response.json()['reason']}")
+        print(f"Stopping agent failed: {response.json()}")
 
 
 @cli.command()
@@ -85,13 +85,11 @@ def list_agents() -> None:
     response = requests.get('http://localhost:8000/agents/list')
     if response.status_code == 200:
         agents = response.json()
-
         # print the table header
-        print("{:<20} {:<20}".format('Agent Name', 'Agent ID'))
-
+        print("{:<20} {:<40} {:<20}".format('Agent Name', 'Agent ID', 'Session ID'))
         # print the table body
-        for agent in agents:
-            print("{:<20} {:<20}".format(agent['name'], agent['id']))
+        for agent in agents['agents']:
+            print("{:<20} {:<40} {:<20}".format(agent['name'], agent['id'], agent['session_id']))
     else:
         print(f"Failed to list agents: {response.json()['reason']}")
 

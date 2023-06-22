@@ -1,23 +1,27 @@
-from typing import Optional
-
 from pydantic import BaseModel
+from typing import List
 
 
-class AgentBase(BaseModel):
+class AgentDefinition(BaseModel):
+    data: str
+
+class StartAgentResponse(BaseModel):
     name: str
-    description: Optional[str]
+    id: str
+    session_id: str
 
+class RunningAgent(BaseModel):
+    name: str
+    id: str
+    session_id: str
 
-class AgentCreate(AgentBase):
-    pass
+class AgentListResponse(BaseModel):
+    agents: List[RunningAgent]
 
+class StopAgentReq(BaseModel):
+    agent_id: str
+    immediately: bool = False
 
-class AgentUpdate(AgentBase):
-    pass
-
-
-class Agent(AgentBase):
-    id: int
-
-    class Config:
-        orm_mode = True
+class StopAgentResponse(BaseModel):
+    agent_id:str
+    status: str

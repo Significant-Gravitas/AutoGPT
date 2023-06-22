@@ -8,7 +8,6 @@ from autogpt.core.schema import BaseMessage
 
 class ShutdownMessage(BaseMessage):
     """A message that tells the agent to shutdown for some information."""
-    query: str
     immediately: bool
 
 
