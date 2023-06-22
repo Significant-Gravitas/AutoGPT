@@ -36,7 +36,7 @@ class SampleAgent(BaseAgent):
                 ),
             )
         elif roll == 2:
-            ans = await self.llm_provider.create_chat_completion(
+            ans = await self.llm_provider.chat(
                 [{"role": "user", "content": "Hello, how are you?"}]
             )
             print(ans)

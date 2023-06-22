@@ -7,7 +7,24 @@ import openai
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError
 
-from autogpt.core.schema import BaseLLMProvider, ChatCompletionModels, EmbeddingModels
+from autogpt.core.schema import BaseLLMProvider
+
+class ChatCompletionModels(str, enum.Enum):
+    """Available Chat Completion Models"""
+
+    GTP_3_5_TURBO = "gpt-3.5-turbo"
+    GTP_3_5_TURBO_0301 = "gpt-3.5-turbo-0301"
+    GTP_4 = "gpt-4"
+    GTP_4_0314 = "gpt-4-0314"
+    GTP_4_32K = "gpt-4-32k"
+    GTP_4_32K_0314 = "gpt-4-32k-0314"
+
+
+class EmbeddingModels(str, enum.Enum):
+    """Available Embedding Models"""
+
+    TEXT_EMBEDDING_ADA_002 = "text-embedding-ada-002"
+    TEXT_SEARCH_ADA_DOC_001 = "text-search-ada-doc-001"
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +38,8 @@ class OpenAIProvider(BaseLLMProvider):
     embedding_model: EmbeddingModels = EmbeddingModels.TEXT_EMBEDDING_ADA_002
     temperature: float = 0.9
     warned_user: bool = False
+    debug_mode: bool = False
+    num_retries: int = 0
 
     def log_debug_msg(self, message: str) -> None:
         """Log a debug message"""
@@ -62,7 +81,7 @@ class OpenAIProvider(BaseLLMProvider):
             )
         time.sleep(back_off)
 
-    async def create_chat_completion(self, messages: list) -> str:
+    async def chat(self, messages: list) -> str:
         """Create a chat completion using the OpenAI API
 
         Args:

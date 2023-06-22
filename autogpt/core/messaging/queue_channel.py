@@ -10,6 +10,9 @@ class QueueChannel(BaseMessageChannel):
     queue = asyncio.queues.Queue()
 
     class Config:
+        """
+        Config class is a configuration class for Pydantic models.
+        """
         arbitrary_types_allowed = True
 
     async def get(self) -> BaseMessage:
