@@ -75,7 +75,7 @@ class ContainerConfig:
         # Don't show this to the user if they are running in a docker container.
         if self.is_docker():
             logger.info("Running in Docker container. Skipping container config.")
-            # return
+            return
 
         if self._prefs is None or self._prefs == 3:
             print(

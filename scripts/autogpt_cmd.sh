@@ -1,4 +1,4 @@
-#!/usr/bin/env
+#!/usr/bin/env bash
 
 # ====================================================================================================
 # This script is used to launch Auto-GPT from the command line
@@ -11,33 +11,28 @@ if [ -f /.dockerenv ]; then
     exit 1
 fi
 
-# Allow github user to be changed using --user or -u argument
+# Github user: --user or -u
+# Github repo: --repo or -r
+# Branch or tag: --branch, -b, --tag, -t
+# Rebuild: --rebuild
+# Upgrade: --upgrade
+# Reinstall: --reinstall
 GITHUB_USER="Significant-Gravitas"
+GITHUB_REPO="Auto-GPT"
+BRANCH="stable"
+REBUILD=0
+UPGRADE=0
+REINSTALL=0
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -u|--user) GITHUB_USER="$2"; shift ;;
-        *) echo "Unknown parameter passed: $1"; exit 1 ;;
-    esac
-    shift
-done
-
-# Allow repo to be changed using "--repo" or "-r" argument
-GITHUB_REPO="Auto-GPT"
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
         -r|--repo) GITHUB_REPO="$2"; shift ;;
-        *) echo "Unknown parameter passed: $1"; exit 1 ;;
-    esac
-    shift
-done
-
-# Allow branch to be changed using "--branch, -b, --tag, -t" argument
-# Default to "stable" branch
-BRANCH="stable"
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
         -b|--branch|-t|--tag) BRANCH="$2"; shift ;;
-        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+        --rebuild) REBUILD=1; shift ;;
+        --upgrade) UPGRADE=1; shift ;;
+        --reinstall) REINSTALL=1; shift ;;
+        *) echo "Unknown parameter passed: $1"; echo ""; HELP=1 ;;
     esac
     shift
 done
@@ -46,21 +41,21 @@ done
 GITHUB_FILES_BASE="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/"
 
 # If the user has changed requirements.txt, they can run autogpt --rebuild to rebuild the Docker image
-if [ "$1" == "--rebuild" ]; then
+if [ REBUILD == 1 ]; then
     echo "Rebuilding Auto-GPT image..."
     docker compose build auto-gpt
     exit 0
 fi
 
 # Upgrade hook --upgrade
-if [ "$1" == "--upgrade" ]; then
+if [ UPGRADE == 1 ]; then
     echo "Upgrading Auto-GPT image..."
     docker compose pull auto-gpt
     exit 0
 fi
 
 # Reinstall hook --reinstall
-if [ "$1" == "--reinstall" ]; then
+if [ REINSTALL == 1 ]; then
     # Warning, this will delete the config files as well
     # Get user confirmation first!
     echo "This will delete all Auto-GPT config files and reinstall Auto-GPT."
