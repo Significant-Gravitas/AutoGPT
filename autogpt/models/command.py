@@ -40,4 +40,8 @@ class Command:
         return self.method(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f"{self.name}: {self.description}, params: {self.parameters}"
+        params = [
+            f"{param.name}: {param.type if param.required else f'Optional[{param.type}]'}"
+            for param in self.parameters
+        ]
+        return f"{self.name}: {self.description}, params: ({', '.join(params)})"
