@@ -139,8 +139,8 @@ class PromptGenerator:
         """
         return (
             f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
-            f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             f"{generate_commands(self, config)}"
+            f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             "Performance Evaluation:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
             "Respond with only valid JSON conforming to the following schema: \n"
