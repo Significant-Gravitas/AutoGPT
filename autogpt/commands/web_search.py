@@ -8,18 +8,23 @@ from itertools import islice
 from duckduckgo_search import DDGS
 
 from autogpt.agent.agent import Agent
-from autogpt.commands.command import command
+from autogpt.command_decorator import command
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 
 @command(
-    "google",
-    "Google Search",
-    '"query": "<query>"',
-    lambda config: not config.google_api_key,
+    "web_search",
+    "Searches the web",
+    {
+        "query": {
+            "type": "string",
+            "description": "The search query",
+            "required": True,
+        }
+    },
 )
-def google_search(query: str, agent: Agent, num_results: int = 8) -> str:
+def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     """Return the results of a Google search
 
     Args:
@@ -52,14 +57,18 @@ def google_search(query: str, agent: Agent, num_results: int = 8) -> str:
 @command(
     "google",
     "Google Search",
-    '"query": "<query>"',
+    {
+        "query": {
+            "type": "string",
+            "description": "The search query",
+            "required": True,
+        }
+    },
     lambda config: bool(config.google_api_key)
     and bool(config.google_custom_search_engine_id),
     "Configure google_api_key and custom_search_engine_id.",
 )
-def google_official_search(
-    query: str, agent: Agent, num_results: int = 8
-) -> str | list[str]:
+def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
     """Return the results of a Google search using the official Google API
 
     Args:

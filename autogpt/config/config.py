@@ -9,10 +9,9 @@ from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 
 import autogpt
-from autogpt.singleton import Singleton
 
 
-class Config(metaclass=Singleton):
+class Config:
     """
     Configuration class to store the state of bools for different scripts access.
     """
@@ -89,6 +88,8 @@ class Config(metaclass=Singleton):
 
         if self.openai_organization is not None:
             openai.organization = self.openai_organization
+
+        self.openai_functions = os.getenv("OPENAI_FUNCTIONS", "False") == "True"
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         # ELEVENLABS_VOICE_1_ID is deprecated and included for backwards-compatibility
@@ -301,10 +302,9 @@ class Config(metaclass=Singleton):
         self.memory_backend = name
 
 
-def check_openai_api_key() -> None:
+def check_openai_api_key(config: Config) -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
-    cfg = Config()
-    if not cfg.openai_api_key:
+    if not config.openai_api_key:
         print(
             Fore.RED
             + "Please set your OpenAI API key in .env or as an environment variable."

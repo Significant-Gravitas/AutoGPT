@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+from autogpt.llm.providers.openai import get_openai_command_specs
+
 if TYPE_CHECKING:
     from autogpt.agent.agent import Agent
 
@@ -19,7 +21,7 @@ def chat_with_ai(
     config: Config,
     agent: Agent,
     system_prompt: str,
-    user_input: str,
+    triggering_prompt: str,
     token_limit: int,
     model: str | None = None,
 ):
@@ -31,7 +33,7 @@ def chat_with_ai(
         config (Config): The config to use.
         agent (Agent): The agent to use.
         system_prompt (str): The prompt explaining the rules to the AI.
-        user_input (str): The input from the user.
+        triggering_prompt (str): The input from the user.
         token_limit (int): The maximum number of tokens allowed in the API call.
         model (str, optional): The model to use. If None, the config.fast_llm_model will be used. Defaults to None.
 
@@ -90,13 +92,14 @@ def chat_with_ai(
     #     )
 
     # Account for user input (appended later)
-    user_input_msg = Message("user", user_input)
+    user_input_msg = Message("user", triggering_prompt)
     current_tokens_used += count_message_tokens([user_input_msg], model)
 
     current_tokens_used += 500  # Reserve space for new_summary_message
+    current_tokens_used += 500  # Reserve space for the openai functions TODO improve
 
     # Add Messages until the token limit is reached or there are no more messages to add.
-    for cycle in reversed(list(agent.history.per_cycle())):
+    for cycle in reversed(list(agent.history.per_cycle(agent.config))):
         messages_to_add = [msg for msg in cycle if msg is not None]
         tokens_to_add = count_message_tokens(messages_to_add, model)
         if current_tokens_used + tokens_to_add > send_token_limit:
@@ -110,14 +113,14 @@ def chat_with_ai(
     # Update & add summary of trimmed messages
     if len(agent.history) > 0:
         new_summary_message, trimmed_messages = agent.history.trim_messages(
-            current_message_chain=list(message_sequence),
+            current_message_chain=list(message_sequence), config=agent.config
         )
         tokens_to_add = count_message_tokens([new_summary_message], model)
         message_sequence.insert(insertion_index, new_summary_message)
         current_tokens_used += tokens_to_add - 500
 
         # FIXME: uncomment when memory is back in use
-        # memory_store = get_memory(cfg)
+        # memory_store = get_memory(config)
         # for _, ai_msg, result_msg in agent.history.per_cycle(trimmed_messages):
         #     memory_to_add = MemoryItem.from_ai_action(ai_msg, result_msg)
         #     logger.debug(f"Storing the following memory:\n{memory_to_add.dump()}")
@@ -192,11 +195,13 @@ def chat_with_ai(
     # temperature and other settings we care about
     assistant_reply = create_chat_completion(
         prompt=message_sequence,
+        config=agent.config,
+        functions=get_openai_command_specs(agent),
         max_tokens=tokens_remaining,
     )
 
     # Update full message history
     agent.history.append(user_input_msg)
-    agent.history.add("assistant", assistant_reply, "ai_response")
+    agent.history.add("assistant", assistant_reply.content, "ai_response")
 
     return assistant_reply
