@@ -17,8 +17,9 @@ Input:
   - **answer** (str): The raw text of ground truth answer
   - **should_contain** (list): the exact strings that is required in the final answer
   - **should_not_contain** (list): the exact strings that should not be in the final answer
-  - **files**: files that the are used for retrieval
+  - **files**: files that the are used for retrieval. Can specify file here or an extension **TODO:** like .txt
 - **difficulty**(str): the difficulty of this query. choices from
+- **mock_func**: function to mock the agent's response. This is used for testing purposes
 
 Example:
 

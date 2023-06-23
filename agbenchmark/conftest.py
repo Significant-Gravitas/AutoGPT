@@ -2,9 +2,10 @@ import json
 import os
 import pytest
 import shutil
-from agbenchmark.mocks.tests.retrieval_manual import mock_retrieval
 from agbenchmark.tests.regression.RegressionManager import RegressionManager
 import requests
+from requests.exceptions import RequestException
+from agbenchmark.mocks.MockManager import MockManager
 
 
 @pytest.fixture(scope="module")
@@ -33,15 +34,34 @@ def workspace(config):
 
 @pytest.fixture(autouse=True)
 def server_response(request, config):
-    task = request.param  # The task is passed in indirectly
-    print(f"Server starting at {request.module}")
-    # response = requests.post(
-    #     f"{config['hostname']}:{config['port']}", data={"task": task}
-    # )
-    # assert (
-    #     response.status_code == 200
-    # ), f"Request failed with status code {response.status_code}"
-    mock_retrieval(task, config["workspace"])
+    """Calling to get a response"""
+    if isinstance(request.param, tuple):
+        task = request.param[0]  # The task is passed in indirectly
+        mock_function_name = request.param[1]
+    else:
+        task = request.param
+        mock_function_name = None
+    # print(f"Server starting at {request.module}")
+    # try:
+    #     response = requests.post(
+    #         f"{config['hostname']}:{config['port']}", data={"task": task}
+    #     )
+    #     response.raise_for_status()  # This will raise an HTTPError if the status is 4xx or 5xx
+    # except RequestException:
+    #     # If an exception occurs (could be connection, timeout, or HTTP errors), we use the mock
+
+    if mock_function_name:
+        mock_manager = MockManager(
+            task
+        )  # workspace doesn't need to be passed in, stays the same
+        print("Server unavailable, using mock", mock_function_name)
+        mock_manager.delegate(mock_function_name)
+    else:
+        print("No mock provided")
+
+    # else:
+    #     # This code is run if no exception occurred
+    #     print(f"Request succeeded with status code {response.status_code}")
 
 
 regression_txt = "agbenchmark/tests/regression/regression_tests.txt"

@@ -16,6 +16,7 @@ class Challenge(BaseModel):
     task: str
     ground: Ground
     difficulty: str
+    mock_func: Optional[str] = None
 
     def serialize(self, path: str) -> None:
         with open(path, "w") as file:

@@ -11,7 +11,7 @@ class TestRetrieval1(RetrievalChallenge):
 
     @pytest.mark.parametrize(
         "server_response",
-        [data.task],
+        [(data.task, data.mock_func)],
         indirect=True,
     )
     @pytest.mark.retrieval
