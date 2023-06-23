@@ -6,7 +6,7 @@ from pytest_mock import MockerFixture
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import get_workspace_path, run_interaction_loop
+from tests.challenges.utils import get_workspace_path_from_agent, run_interaction_loop
 
 CYCLE_COUNT = 3
 OUTPUT_LOCATION = "2010_nobel_prize_winners.txt"
@@ -37,7 +37,7 @@ def test_information_retrieval_challenge_b(
             challenge_name,
             level_to_run,
         )
-    file_path = get_workspace_path(get_nobel_prize_agent, OUTPUT_LOCATION)
+    file_path = get_workspace_path_from_agent(get_nobel_prize_agent, OUTPUT_LOCATION)
 
     content = read_file(file_path, get_nobel_prize_agent)
     assert "Andre Geim" in content, "Expected the file to contain Andre Geim"
