@@ -50,6 +50,9 @@ done
 # Construct the URL to the raw files:
 GITHUB_FILES_BASE="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/"
 
+CONFIG_DIR=~/.autogpt
+cd $CONFIG_DIR
+
 # If the user has changed requirements.txt, they can run autogpt --rebuild to rebuild the Docker image
 if [ REBUILD == 1 ]; then
     echo "Rebuilding Auto-GPT image..."
@@ -79,14 +82,15 @@ if [ REINSTALL == 1 ]; then
 
     ## Backup config files
     echo "Backing up config files..."
-    mkdir -p ~/.autogpt-backup-$(date +%Y-%m-%d_%H-%M-%S)
-    cp -r ~/.autogpt/* ~/.autogpt-backup-$(date +%Y-%m-%d_%H-%M-%S)
+    BACKUP_DIR=$CONFIG_DIR-backup-$(date +%Y-%m-%d_%H-%M-%S)
+    mkdir -p $BACKUP_DIR
+    cp -r $CONFIG_DIR/* $BACKUP_DIR
 
     # Delete config files
     echo "Deleting config files..."
     ## !!!WARNING!!! TODO: Decide whether to use -rf here !!!WARNING!!!
-    # rm -rf ~/.autogpt
-    rm -r ~/.autogpt
+    # rm -rf $CONFIG_DIR
+    rm -r $CONFIG_DIR
 
     # Reinstall
     echo "Reinstalling Auto-GPT..."

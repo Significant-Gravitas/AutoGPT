@@ -252,7 +252,7 @@ set +x
 echo
 echo "Installation complete!"
 echo 
-echo "You can launch Auto-GPT by running '$CONFIG_DIR/autogpt' in your terminal."
+echo "You can launch Auto-GPT by running 'autogpt' in your terminal."
 echo
  
 # Launch Auto-GPT
