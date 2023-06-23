@@ -143,12 +143,18 @@ then
         brew install --cask docker
     else
         echo "Installing Docker on Linux..."
+        echo "Some of the instructions in this section may require administrator privileges."
+        echo "If prompted, please enter your password."
+        echo "Enabling xtrace to show commands as they are run..."
+        set -x
         sudo apt-get update
         sudo apt-get install apt-transport-https ca-certificates curl software-properties-common -y
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
         sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
         sudo apt-get update
         sudo apt-get install docker-ce -y
+        echo "Done. Disabling xtrace..."
+        set +x
     fi
 
     if ! command -v docker &> /dev/null
@@ -235,8 +241,12 @@ if grep -q "4[0-9][0-9]: [*]" ./autogpt; then
 fi
 
 chmod +x autogpt
-# TODO: How do we install the command globally without sudo?
-# sudo mv autogpt /usr/local/bin/autogpt
+echo "Installing the launch script to /usr/local/bin..."
+echo "You may be prompted for your password. Enabling xtrace to show commands as they are run..."
+set -x
+sudo mv autogpt /usr/local/bin/autogpt
+echo "Done. Disabling xtrace..."
+set +x
 
 # Install complete
 echo
@@ -257,5 +267,5 @@ fi
 
 echo
 echo "Launching Auto-GPT..."
-$CONFIG_DIR/autogpt
+autogpt
 exit 0
