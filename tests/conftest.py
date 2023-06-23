@@ -50,6 +50,9 @@ def config(
     temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace
 ) -> Config:
     config = Config()
+    if not config.openai_api_key:
+        config.set_openai_api_key("sk-dummy")
+
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
     config.load_plugins_config()

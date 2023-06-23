@@ -8,10 +8,9 @@ from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 
 import autogpt
-from autogpt.singleton import Singleton
 
 
-class Config(metaclass=Singleton):
+class Config:
     """
     Configuration class to store the state of bools for different scripts access.
     """
@@ -88,6 +87,8 @@ class Config(metaclass=Singleton):
 
         if self.openai_organization is not None:
             openai.organization = self.openai_organization
+
+        self.openai_functions = os.getenv("OPENAI_FUNCTIONS", "False") == "True"
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         # ELEVENLABS_VOICE_1_ID is deprecated and included for backwards-compatibility
