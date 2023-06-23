@@ -4,13 +4,16 @@ A repo built for the purpose of benchmarking the performance of agents far and w
 
 ##### Diagrams: https://whimsical.com/agbenchmark-5n4hXBq1ZGzBwRsK4TVY7x
 
-## Contributing
+### To run the basic existing mock (June 21)
 
-- Make sure you have `poetry` installed - `pip install poetry`.
-- Then `poetry install` for dependencies
+1. clone the repo `auto-gpt-benchmarks`
+2. `pip install poetry`
+3. `poetry shell`
+4. `poetry install`
+5. `agbenchmark start`
+   Keep config the same and watch the logs :)
 
 - To add requirements `poetry add requirement`.
-- To run in venv `poetry run python script.py`
 
 Feel free to create prs to merge with `main` at will (but also feel free to ask for review) - if you can't send msg in R&D chat for access.
 
