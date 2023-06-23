@@ -42,7 +42,7 @@ while [[ "$#" -gt 0 ]]; do
         --rebuild) REBUILD=1; shift ;;
         --upgrade) UPGRADE=1; shift ;;
         --reinstall) REINSTALL=1; shift ;;
-        *) echo "Unknown parameter passed: $1"; echo ""; HELP=1 ;;
+        *) echo "";;
     esac
     shift
 done
