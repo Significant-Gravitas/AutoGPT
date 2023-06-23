@@ -1,9 +1,11 @@
+import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from colorama import Fore, Style
 
 from autogpt import utils
+from autogpt.commands.file_operations import handle_ingest
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.config.prompt_config import PromptConfig
@@ -74,7 +76,7 @@ def select_config_action(
     config: Config, all_configs: Dict[str, Any], task: str
 ) -> Optional[Dict[str, Any]]:
     """
-    Prompt user for the selection of an AI configuration.
+    Prompt user for the selection of an AI configuration or option.
 
     Params:
         all_configs (Dict[str, Any]): A dictionary of all available AI configurations.
@@ -83,20 +85,53 @@ def select_config_action(
     Returns:
         Optional[Dict[str, Any]]: The selected AI configuration, or user goes back to the main menu.
     """
-    cfg_count = len(all_configs)
+    hold_to_ingest = {}
 
-    logger.typewriter_log(
-        f"Select a configuration to {task}:", Fore.GREEN, speak_text=True
-    )
-    for i, cfg_name in enumerate(all_configs.keys(), start=1):
-        logger.typewriter_log(f"{i}. {cfg_name}")
+    if task in ["edit", "view", "delete"]:
+        cfg_count = len(all_configs)
+        logger.typewriter_log(
+            f"Select a configuration to {task}:", Fore.GREEN, speak_text=True
+        )
+        for i, cfg_name in enumerate(all_configs.keys(), start=1):
+            logger.typewriter_log(f"{i}. {cfg_name}")
+    else:
+        cfg_count = 0
+        logger.typewriter_log(
+            f"Choose a directory or file to {task}:", Fore.GREEN, speak_text=True
+        )
+
+        items = os.listdir(config.workspace_path)
+        directories = [
+            item
+            for item in items
+            if os.path.isdir(os.path.join(config.workspace_path, item))
+        ]
+        files = [
+            item
+            for item in items
+            if os.path.isfile(os.path.join(config.workspace_path, item))
+        ]
+
+        for i, directory in enumerate(directories, start=1):
+            logger.typewriter_log(f"{i}. [ dir] --- ./{directory}")
+            hold_to_ingest[i] = os.path.join(config.workspace_path, directory)
+            cfg_count += 1
+
+        for i, file in enumerate(files, start=len(directories) + 1):
+            logger.typewriter_log(f"{i}. [file] --- ./{file}")
+            hold_to_ingest[i] = os.path.join(config.workspace_path, file)
+            cfg_count += 1
+
     logger.typewriter_log(f"{cfg_count+1}. Go back to main menu")
 
     selection = get_valid_input(config, cfg_count + 1)
     if selection == cfg_count + 1:
         return None
     else:
-        return all_configs[list(all_configs.keys())[selection - 1]]
+        if task == "ingest":
+            return hold_to_ingest.get(selection)
+        else:
+            return all_configs[list(all_configs.keys())[selection - 1]]
 
 
 def prompt_for_num_goals(
@@ -359,6 +394,10 @@ def main_menu(config: Config) -> Optional[AIConfig]:
             "Delete existing configuration",
             lambda tmp_cfg: delete_config(config, tmp_cfg),
         ),
+        (
+            "Ingest data from directory or file",
+            lambda tmp_cfg, to_ingest: handle_ingest(config, to_ingest),
+        ),
         # add more options here...
     ]
 
@@ -403,6 +442,11 @@ def main_menu(config: Config) -> Optional[AIConfig]:
                     if chosen_config == None:
                         continue  # Start over
                     tmp_cfg = action(chosen_config)
+                elif task in ["ingest"]:
+                    chosen_config = select_config_action(config, all_configs, task)
+                    if chosen_config == None:
+                        continue  # Start over
+                    tmp_cfg = action(config, to_ingest=chosen_config)
                 else:  # On "create"
                     tmp_cfg = AIConfig()
                     tmp_cfg = action(tmp_cfg)

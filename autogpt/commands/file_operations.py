@@ -13,7 +13,7 @@ from autogpt.command_decorator import command
 from autogpt.commands.file_operations_utils import read_textual_file
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.memory.vector import MemoryItem, VectorMemory
+from autogpt.memory.vector import MemoryItem, VectorMemory, get_memory
 
 Operation = Literal["write", "append", "delete"]
 
@@ -143,15 +143,59 @@ def read_file(filename: str, agent: Agent) -> str:
         if len(file_memory.chunks) > 1:
             return file_memory.summary
 
-        return content
+        return file_memory
     except Exception as e:
-        return f"Error: {str(e)}"
+        traceback.print_exc()
+        return f"Error ->: {str(e)}"
 
 
-def ingest_file(
-    filename: str,
-    memory: VectorMemory,
-) -> None:
+def handle_ingest(config: Config, to_ingest: str) -> None:
+    """Handle the ingestion of a file or directory from startup-menu."""
+    ingest_functions = {
+        "file": ingest_file,
+        "directory": ingest_directory,
+    }
+
+    class Agent:
+        pass
+
+    agent = Agent()
+    agent.config = config
+
+    # Initialize memory
+    memory = get_memory(config)
+
+    # Assign the config object to the agent's config attribute
+    agent.config = config
+
+    ingest_type = "file" if os.path.isfile(to_ingest) else "directory"
+
+    try:
+        ingest_function = ingest_functions[ingest_type]
+        ingest_function(to_ingest, memory, agent)
+    except KeyError:
+        raise ValueError(
+            "Invalid input. Please provide a valid file or directory path."
+        )
+
+
+def ingest_directory(directory: str, memory: VectorMemory, agent: Agent) -> None:
+    """
+    Ingest all files in a directory by calling the ingest_file function for each file.
+
+    :param directory: The directory containing the files to ingest
+    :param memory: An object with an add() method to store the chunks in memory
+    """
+    try:
+        files = list_files(directory, agent)
+        for file in files:
+            file_path = os.path.join(agent.config.workspace_path, file)
+            ingest_file(file_path, memory, agent)
+    except Exception as e:
+        logger.error(f"Error while ingesting directory '{directory}': {str(e)}")
+
+
+def ingest_file(filename: str, memory: VectorMemory, agent: Agent) -> None:
     """
     Ingest a file by reading its content, splitting it into chunks with a specified
     maximum length and overlap, and adding the chunks to the memory storage.
@@ -162,11 +206,9 @@ def ingest_file(
     """
     try:
         logger.info(f"Ingesting file {filename}")
-        content = read_file(filename)
+        file_memory = read_file(filename, agent)
 
         # TODO: differentiate between different types of files
-        file_memory = MemoryItem.from_text_file(content, filename)
-        logger.debug(f"Created memory: {file_memory.dump(True)}")
         memory.add(file_memory)
 
         logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
