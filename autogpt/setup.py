@@ -39,7 +39,7 @@ def generate_aiconfig_automatic(config: Config, user_prompt: str) -> Optional[AI
             ],
         ),
         config,
-    )
+    ).content
 
     # Debug LLM Output
     logger.debug(f"AI Config Generator Raw Output: {output}")

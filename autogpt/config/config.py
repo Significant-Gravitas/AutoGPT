@@ -88,6 +88,8 @@ class Config:
         if self.openai_organization is not None:
             openai.organization = self.openai_organization
 
+        self.openai_functions = os.getenv("OPENAI_FUNCTIONS", "False") == "True"
+
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         # ELEVENLABS_VOICE_1_ID is deprecated and included for backwards-compatibility
         self.elevenlabs_voice_id = os.getenv(
