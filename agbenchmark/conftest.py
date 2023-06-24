@@ -17,7 +17,7 @@ def config():
     return config
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def workspace(config):
     yield config["workspace"]
     # teardown after test function completes
