@@ -8,6 +8,14 @@ data = ChallengeData.deserialize(
 )
 
 
+@pytest.fixture(scope="module", autouse=True)
+def setup_module(workspace):
+    if data.ground.should_contain:
+        Challenge.write_to_file(
+            workspace, data.ground.files[0], "this is how we're doing"
+        )
+
+
 class TestReadFile(Challenge):
     """Testing if LLM can read a file"""
 
