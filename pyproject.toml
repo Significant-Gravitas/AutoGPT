@@ -28,7 +28,8 @@ testpaths = [
 ]
 markers = [
     "retrieval",
-    "regression"
+    "regression",
+    "basic"
 ]
 
 [tool.poetry.scripts]
