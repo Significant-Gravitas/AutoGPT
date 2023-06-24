@@ -5,7 +5,7 @@ from pytest_mock import MockerFixture
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import get_workspace_path, run_interaction_loop
+from tests.challenges.utils import get_workspace_path_from_agent, run_interaction_loop
 
 CYCLE_COUNT = 3
 OUTPUT_LOCATION = "kube.yaml"
@@ -32,7 +32,7 @@ def test_kubernetes_template_challenge_a(
         monkeypatch, kubernetes_agent, CYCLE_COUNT, challenge_name, level_to_run
     )
 
-    file_path = get_workspace_path(kubernetes_agent, OUTPUT_LOCATION)
+    file_path = get_workspace_path_from_agent(kubernetes_agent, OUTPUT_LOCATION)
     content = read_file(file_path, kubernetes_agent)
 
     for word in ["apiVersion", "kind", "metadata", "spec"]:
