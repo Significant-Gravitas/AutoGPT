@@ -72,7 +72,10 @@ def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure
             assert "Reached rate limit, passing..." in output.out
             assert "Please double check" in output.out
         if type(error) == ServiceUnavailableError:
-            assert "The OpenAI API engine is currently overloaded, passing..." in output.out
+            assert (
+                "The OpenAI API engine is currently overloaded, passing..."
+                in output.out
+            )
             assert "Please double check" in output.out
         if type(error) == APIError:
             assert "API Bad gateway" in output.out
@@ -96,12 +99,15 @@ def test_retry_open_api_rate_limit_no_warn(capsys):
     assert "Reached rate limit, passing..." in output.out
     assert "Please double check" not in output.out
 
+
 def test_retry_open_api_service_unavairable_no_warn(capsys):
     """Tests the retry logic with a service unavairable error"""
     error_count = 2
     retry_count = 10
 
-    raises = error_factory(ServiceUnavailableError, error_count, retry_count, warn_user=False)
+    raises = error_factory(
+        ServiceUnavailableError, error_count, retry_count, warn_user=False
+    )
     result = raises()
     call_count = min(error_count, retry_count) + 1
     assert result == call_count
