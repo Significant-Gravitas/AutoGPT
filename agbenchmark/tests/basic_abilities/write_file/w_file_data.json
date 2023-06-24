@@ -1,6 +1,7 @@
 {
   "category": ["basic"],
   "task": "What is the capital of America?",
+  "dependencies": [],
   "ground": {
     "answer": "Washington",
     "should_contain": ["Washington"],

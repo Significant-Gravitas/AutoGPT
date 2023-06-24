@@ -609,6 +609,21 @@ files = [
 pytest = ">=3.6.0"
 
 [[package]]
+name = "pytest-ordering"
+version = "0.6"
+description = "pytest plugin to run your tests in a specific order"
+optional = false
+python-versions = "*"
+files = [
+    {file = "pytest-ordering-0.6.tar.gz", hash = "sha256:561ad653626bb171da78e682f6d39ac33bb13b3e272d406cd555adb6b006bda6"},
+    {file = "pytest_ordering-0.6-py2-none-any.whl", hash = "sha256:27fba3fc265f5d0f8597e7557885662c1bdc1969497cd58aff6ed21c3b617de2"},
+    {file = "pytest_ordering-0.6-py3-none-any.whl", hash = "sha256:3f314a178dbeb6777509548727dc69edf22d6d9a2867bf2d310ab85c403380b6"},
+]
+
+[package.dependencies]
+pytest = "*"
+
+[[package]]
 name = "requests"
 version = "2.31.0"
 description = "Python HTTP for Humans."
@@ -778,4 +793,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "4a1629eb643b5b68d47f6d1407942aa6d4a796c6d5a1b6a54bbc096b9d0efa2d"
+content-hash = "65b68e43440faafbd2883edd6b10bc177ab334380e908c27c9f511703065f8e7"
