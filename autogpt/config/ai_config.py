@@ -164,5 +164,5 @@ class AIConfig:
         if self.api_budget > 0.0:
             full_prompt += f"\nIt takes money to let you run. Your API budget is ${self.api_budget:.3f}"
         self.prompt_generator = prompt_generator
-        full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
+        full_prompt += f"\n\n{prompt_generator.generate_prompt_string(config)}"
         return full_prompt
