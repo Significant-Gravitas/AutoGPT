@@ -25,6 +25,7 @@ class TestReadFile(Challenge):
         indirect=True,
     )
     @pytest.mark.basic
+    @pytest.mark.dependency(depends=["write_file"])
     def test_retrieval(
         self, workspace
     ):  # create_file simply there for the function to depend on the fixture

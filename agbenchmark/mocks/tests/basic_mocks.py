@@ -7,8 +7,6 @@ def basic_read_file_mock(task: str, workspace: str):
     This mock reads a file and returns its content.
     """
 
-    # Challenge.write_to_file(workspace, "file_to_check.txt", "this is how we're doing")
-
     file_contents = Challenge.open_file(workspace, "file_to_check.txt")
 
     Challenge.write_to_file(
