@@ -118,14 +118,7 @@ def run_auto_gpt(
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
-    if workspace_directory is None:
-        workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
-    else:
-        workspace_directory = Path(workspace_directory)
-    # TODO: pass in the ai_settings file and the env file and have them cloned into
-    #   the workspace directory so we can bind them to the agent.
-    workspace_directory = Workspace.make_workspace(workspace_directory)
-    config.workspace_path = str(workspace_directory)
+    workspace_directory = Workspace.get_workspace_directory(config, workspace_directory)
 
     # Set the complete path for the ai_settings file
     config.ai_settings_filepath = str(
@@ -135,16 +128,7 @@ def run_auto_gpt(
     config.set_ai_settings_filepath(config.ai_settings_filepath)
 
     # HACK: doing this here to collect some globals that depend on the workspace.
-    if workspace_directory is not None:
-        file_logger_path = workspace_directory / "file_logger.txt"
-    else:
-        raise ValueError("workspace_directory must be defined")
-
-    if not file_logger_path.exists():
-        with file_logger_path.open(mode="w", encoding="utf-8") as f:
-            f.write("File Operation Logger ")
-
-    config.file_logger_path = str(file_logger_path)
+    Workspace.build_file_logger_path(config, workspace_directory)
 
     config.set_plugins(scan_plugins(config, config.debug_mode))
 
@@ -215,10 +199,9 @@ def start_agent_directly(ai_config: AIConfig, config: Config) -> None:
     # Initialize variables
     next_action_count = 0
 
-    # TODO: have this directory live outside the repository (e.g. in a user's
-    #   home directory) and have it come in as a command line argument or part of
-    #   the env file.
-    workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
+    workspace_directory = Workspace.get_workspace_directory(config, None)
+
+    Workspace.build_file_logger_path(config, workspace_directory)
 
     # add chat plugins capable of report to logger
     if config.chat_messages_enabled:
