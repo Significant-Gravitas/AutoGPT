@@ -1,9 +1,10 @@
 from autogpt.agent import Agent
 from autogpt.config import AIConfig, Config
+from autogpt.main import COMMAND_CATEGORIES
 from autogpt.memory.vector import get_memory
+from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
-from tests.integration.agent_factory import get_command_registry
 
 
 def run_task(task) -> None:
@@ -39,3 +40,13 @@ def bootstrap_agent(task):
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=str(workspace_directory_path),
     )
+
+
+def get_command_registry(config):
+    command_registry = CommandRegistry()
+    enabled_command_categories = [
+        x for x in COMMAND_CATEGORIES if x not in config.disabled_command_categories
+    ]
+    for command_category in enabled_command_categories:
+        command_registry.import_commands(command_category)
+    return command_registry

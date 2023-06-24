@@ -1,14 +1,8 @@
 import pytest
 
 from autogpt.workspace import Workspace
-from benchmarks import run_task
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.schema import Task
-from tests.challenges.utils import (
-    get_workspace_path,
-    setup_mock_input,
-    setup_mock_log_cycle_agent_name,
-)
+from tests.challenges.utils import get_workspace_path, run_challenge
 
 CYCLE_COUNT_PER_LEVEL = [1, 1]
 EXPECTED_OUTPUTS_PER_LEVEL = [
@@ -23,18 +17,20 @@ USER_INPUTS = [
 
 @challenge()
 def test_write_file(
-    workspace: Workspace,
     patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
     challenge_name: str,
+    workspace: Workspace,
     patched_make_workspace: pytest.fixture,
 ) -> None:
-    user_input = USER_INPUTS[level_to_run - 1]
-    setup_mock_input(monkeypatch, CYCLE_COUNT_PER_LEVEL[level_to_run - 1])
-    setup_mock_log_cycle_agent_name(monkeypatch, challenge_name, level_to_run)
-    task = Task(user_input=user_input)
-    run_task(task)
+    run_challenge(
+        challenge_name,
+        level_to_run,
+        monkeypatch,
+        USER_INPUTS[level_to_run - 1],
+        CYCLE_COUNT_PER_LEVEL[level_to_run - 1],
+    )
 
     expected_outputs = EXPECTED_OUTPUTS_PER_LEVEL[level_to_run - 1]
 
