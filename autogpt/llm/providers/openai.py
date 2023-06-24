@@ -9,7 +9,7 @@ from unittest.mock import patch
 import openai
 import openai.api_resources.abstract.engine_api_resource as engine_api_resource
 from colorama import Fore, Style
-from openai.error import APIError, RateLimitError, Timeout
+from openai.error import APIError, RateLimitError, Timeout, ServiceUnavailableError
 from openai.openai_object import OpenAIObject
 
 if TYPE_CHECKING:
@@ -164,6 +164,7 @@ def retry_api(
         warn_user bool: Whether to warn the user. Defaults to True.
     """
     retry_limit_msg = f"{Fore.RED}Error: " f"Reached rate limit, passing...{Fore.RESET}"
+    retry_service_unavailable_msg = f"{Fore.RED}Error: " f"The OpenAI API engine is currently overloaded, passing...{Fore.RESET}"
     api_key_error_msg = (
         f"Please double check that you have setup a "
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
@@ -191,8 +192,17 @@ def retry_api(
                         logger.double_check(api_key_error_msg)
                         user_warned = True
 
+                except ServiceUnavailableError:
+                    if attempt == num_attempts:
+                        raise
+
+                    logger.debug(retry_service_unavailable_msg)
+                    if not user_warned:
+                        logger.double_check(api_key_error_msg)
+                        user_warned = True
+
                 except (APIError, Timeout) as e:
-                    if (e.http_status not in [429, 502, 503]) or (
+                    if (e.http_status not in [429, 502]) or (
                         attempt == num_attempts
                     ):
                         raise
