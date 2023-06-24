@@ -15,6 +15,7 @@ requests = "^2.31.0"
 openai = "^0.27.8"
 pydantic = "^1.10.9"
 pytest-dependency = "^0.5.1"
+pytest-ordering = "^0.6"
 
 
 [build-system]
