@@ -1,5 +1,6 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
+import re
 from typing import List
 
 import openai
@@ -310,4 +311,22 @@ def check_openai_api_key(config: Config) -> None:
             + Fore.RESET
         )
         print("You can get your key from https://platform.openai.com/account/api-keys")
-        exit(1)
+        openai_api_key = input(
+            "If you do have the key, please enter your OpenAI API key now:\n"
+        )
+        key_pattern = r"^sk-\w{48}"
+        openai_api_key = openai_api_key.strip()
+        if re.search(key_pattern, openai_api_key):
+            os.environ["OPENAI_API_KEY"] = openai_api_key
+            cfg.set_openai_api_key(openai_api_key)
+            print(
+                Fore.GREEN
+                + "OpenAI API key successfully set!\n"
+                + Fore.ORANGE
+                + "NOTE: The API key you've set is only temporary.\n"
+                + "For longer sessions, please set it in .env file"
+                + Fore.RESET
+            )
+        else:
+            print("Invalid OpenAI API key!")
+            exit(1)
