@@ -17,6 +17,7 @@ class TestWriteFile(Challenge):
         indirect=True,
     )
     @pytest.mark.basic
+    @pytest.mark.dependency(name="write_file")
     def test_retrieval(self, workspace):
         file = self.open_file(workspace, data.ground.files[0])
 
