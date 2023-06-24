@@ -1,7 +1,6 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
 import logging
 import sys
-
 from pathlib import Path
 from typing import Optional
 
