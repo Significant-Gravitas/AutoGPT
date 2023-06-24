@@ -1,0 +1,15 @@
+{
+  "category": ["basic"],
+  "task": "Write the string 'random string' before any existing text to the file called file_to_check.txt",
+  "ground": {
+    "answer": "random string: this is how we're doing",
+    "should_contain": ["random string: this is how we're doing"],
+    "files": ["file_to_check.txt"]
+  },
+  "mock_func": "basic_read_file_mock",
+  "info": {
+    "description": "This reads the file quickly",
+    "difficulty": "basic",
+    "side_effects": [""]
+  }
+}

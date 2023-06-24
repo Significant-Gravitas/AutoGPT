@@ -1,5 +1,6 @@
 import os
 from typing import Optional
+from agbenchmark.challenges.define_task_types import Ground
 
 
 class Challenge:
@@ -30,3 +31,24 @@ class Challenge:
             for filename in os.listdir(workspace)
             if os.path.isfile(os.path.join(workspace, filename))
         ]
+
+    def scoring(self, content: str, ground: Ground):
+        if ground.should_contain:
+            for should_contain_word in ground.should_contain:
+                if should_contain_word not in content:
+                    return 0.0
+                else:
+                    print(
+                        f"Word that should exist: {should_contain_word} exists in the content"
+                    )
+
+        if ground.should_not_contain:
+            for should_not_contain_word in ground.should_not_contain:
+                if should_not_contain_word in content:
+                    return 0.0
+                else:
+                    print(
+                        f"Word that should not exist: {should_not_contain_word} does not exist in the content"
+                    )
+
+        return 1.0
