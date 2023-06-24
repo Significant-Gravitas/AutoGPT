@@ -163,11 +163,10 @@ def retry_api(
         backoff_base float: Base for exponential backoff. Defaults to 2.
         warn_user bool: Whether to warn the user. Defaults to True.
     """
-    retry_limit_msg = f"{Fore.RED}Error: " f"Reached rate limit, passing...{Fore.RESET}"
-    retry_service_unavailable_msg = (
-        f"{Fore.RED}Error: "
-        f"The OpenAI API engine is currently overloaded, passing...{Fore.RESET}"
-    )
+    error_messages = {
+        ServiceUnavailableError: f"{Fore.RED}Error: The OpenAI API engine is currently overloaded, passing...{Fore.RESET}",
+        RateLimitError: f"{Fore.RED}Error: Reached rate limit, passing...{Fore.RESET}",
+    }
     api_key_error_msg = (
         f"Please double check that you have setup a "
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
@@ -186,20 +185,12 @@ def retry_api(
                 try:
                     return func(*args, **kwargs)
 
-                except RateLimitError:
+                except (RateLimitError, ServiceUnavailableError) as e:
                     if attempt == num_attempts:
                         raise
 
-                    logger.debug(retry_limit_msg)
-                    if not user_warned:
-                        logger.double_check(api_key_error_msg)
-                        user_warned = True
-
-                except ServiceUnavailableError:
-                    if attempt == num_attempts:
-                        raise
-
-                    logger.debug(retry_service_unavailable_msg)
+                    error_msg = error_messages[type(e)]
+                    logger.debug(error_msg)
                     if not user_warned:
                         logger.double_check(api_key_error_msg)
                         user_warned = True
