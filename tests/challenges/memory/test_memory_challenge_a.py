@@ -4,7 +4,7 @@ from pytest_mock import MockerFixture
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import get_workspace_path, run_interaction_loop
+from tests.challenges.utils import get_workspace_path_from_agent, run_interaction_loop
 
 OUTPUT_LOCATION = "output.txt"
 
@@ -37,7 +37,7 @@ def test_memory_challenge_a(
         level_to_run,
     )
 
-    file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
+    file_path = get_workspace_path_from_agent(memory_management_agent, OUTPUT_LOCATION)
     content = read_file(file_path, memory_management_agent)
     assert task_id in content, f"Expected the file to contain {task_id}"
 
@@ -59,7 +59,7 @@ def create_instructions_files(
     for i in range(1, num_files + 1):
         content = generate_content(i, task_id, base_filename, num_files)
         file_name = f"{base_filename}{i}.txt"
-        file_path = get_workspace_path(memory_management_agent, file_name)
+        file_path = get_workspace_path_from_agent(memory_management_agent, file_name)
         write_to_file(file_path, content, memory_management_agent)
 
 

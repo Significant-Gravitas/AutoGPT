@@ -6,7 +6,7 @@ from autogpt.commands.file_operations import read_file, write_to_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import (
     generate_noise,
-    get_workspace_path,
+    get_workspace_path_from_agent,
     run_interaction_loop,
 )
 
@@ -60,7 +60,7 @@ def test_memory_challenge_c(
         challenge_name,
         level_to_run,
     )
-    file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
+    file_path = get_workspace_path_from_agent(memory_management_agent, OUTPUT_LOCATION)
     content = read_file(file_path, agent=memory_management_agent)
     for phrase in level_silly_phrases:
         assert phrase in content, f"Expected the file to contain {phrase}"
@@ -84,7 +84,7 @@ def create_instructions_files(
     for i in range(1, level + 1):
         content = generate_content(i, task_ids, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
-        file_path = get_workspace_path(memory_management_agent, file_name)
+        file_path = get_workspace_path_from_agent(memory_management_agent, file_name)
         write_to_file(file_path, content, memory_management_agent)
 
 
