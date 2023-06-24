@@ -4,6 +4,12 @@ import json
 import os
 
 
+class Info(BaseModel):
+    difficulty: str
+    description: str
+    side_effects: List[str]
+
+
 class Ground(BaseModel):
     answer: str
     should_contain: Optional[List[str]]
@@ -11,20 +17,20 @@ class Ground(BaseModel):
     files: List[str]
 
 
-class Challenge(BaseModel):
-    category: str
+class ChallengeData(BaseModel):
+    category: List[str]
     task: str
     ground: Ground
-    difficulty: str
     mock_func: Optional[str] = None
+    info: Info
 
     def serialize(self, path: str) -> None:
         with open(path, "w") as file:
             file.write(self.json())
 
     @staticmethod
-    def deserialize(path: str) -> "Challenge":
+    def deserialize(path: str) -> "ChallengeData":
         print("Deserializing", path)
         with open(path, "r") as file:
             data = json.load(file)
-        return Challenge(**data)
+        return ChallengeData(**data)
