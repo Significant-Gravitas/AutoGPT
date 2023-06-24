@@ -1,6 +1,6 @@
 import pytest
 from agbenchmark.challenges.define_task_types import ChallengeData
-from agbenchmark.Challenge import Challenge
+from agbenchmark.tests.basic_abilities.BasicChallenge import BasicChallenge
 import os
 
 data = ChallengeData.deserialize(
@@ -8,7 +8,7 @@ data = ChallengeData.deserialize(
 )
 
 
-class TestWriteFile(Challenge):
+class TestWriteFile(BasicChallenge):
     """Testing if LLM can write to a file"""
 
     @pytest.mark.parametrize(
@@ -16,9 +16,8 @@ class TestWriteFile(Challenge):
         [(data.task, data.mock_func)],
         indirect=True,
     )
-    @pytest.mark.basic
-    @pytest.mark.dependency(name="write_file")
-    def test_retrieval(self, workspace):
+    @pytest.mark.dependency()
+    def test_write_file(self, workspace):
         file = self.open_file(workspace, data.ground.files[0])
 
         score = self.scoring(file, data.ground)

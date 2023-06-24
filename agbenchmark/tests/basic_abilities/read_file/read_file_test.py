@@ -1,7 +1,9 @@
 import pytest
 from agbenchmark.challenges.define_task_types import ChallengeData
 from agbenchmark.Challenge import Challenge
+from agbenchmark.tests.basic_abilities.BasicChallenge import BasicChallenge
 import os
+from pytest_dependency import depends
 
 data = ChallengeData.deserialize(
     os.path.join(os.path.dirname(__file__), "r_file_data.json")
@@ -16,7 +18,7 @@ def setup_module(workspace):
         )
 
 
-class TestReadFile(Challenge):
+class TestReadFile(BasicChallenge):
     """Testing if LLM can read a file"""
 
     @pytest.mark.parametrize(
@@ -24,11 +26,9 @@ class TestReadFile(Challenge):
         [(data.task, data.mock_func)],
         indirect=True,
     )
-    @pytest.mark.basic
-    @pytest.mark.dependency(depends=["write_file"])
-    def test_retrieval(
-        self, workspace
-    ):  # create_file simply there for the function to depend on the fixture
+    def test_read_file(self, request, workspace):
+        depends(request, data.dependencies)
+
         file = self.open_file(workspace, data.ground.files[0])
 
         score = self.scoring(file, data.ground)

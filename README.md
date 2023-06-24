@@ -51,15 +51,73 @@ Share your progress :)
 
 to create a test:
 
-```
-@pytest.mark.parametrize(
-"server_response",
-["VARIABLE"], # VARIABLE = the query/goal you provide to the model
-indirect=True,
+```python
+import pytest
+from agbenchmark.challenges.define_task_types import ChallengeData
+from ..CategoryChallenge import CategoryChallenge
+import os
+
+data = ChallengeData.deserialize(
+    os.path.join(os.path.dirname(__file__), "r_file_data.json")
 )
-@pytest.mark.(VARIABLE) # VARIABLE = category of the test
-def test_file_in_workspace(workspace): # VARIABLE = the actual test that asserts
-assert os.path.exists(os.path.join(workspace, "file_to_check.txt"))
+
+class TestSomething(CategoryChallenge):
+    """Testing if LLM can read a file"""
+
+    @pytest.mark.parametrize(
+        "server_response",
+        [(data.task, data.mock_func)],
+        indirect=True,
+    )
+    def test_retrieval(
+        self, workspace
+    ):
+        # scoring logic goes here
+```
+
+All challenges will inherit from parent class which has the mark
+
+```python
+@pytest.mark.basic
+class BasicChallenge(Challenge):
+    pass
+```
+
+If you want to add a custom mark to a Challenge, you must specify it before the test definition
+
+```python
+@pytest.mark.other_mark
+def test_retrieval(self, workspace):
+```
+
+To add a dependency to a challenge use the following
+
+```python
+# to defining what a test depends on
+from pytest_dependency import depends
+
+def test1(self, request, workspace):
+   depends(request, data.dependencies)
+# for defining a test as a dependency
+@pytest.mark.dependency()
+def test2
+```
+
+Ordering of challenges needs to be used in combination with the above to make sure it executes afterwards
+
+```python
+@pytest.mark.run(order=1)
+```
+
+To create a file to test a challenge, add this to the challenge file which will create a file before running the server
+
+```python
+@pytest.fixture(scope="module", autouse=True)
+def setup_module(workspace):
+    if data.ground.should_contain:
+        Challenge.write_to_file(
+            workspace, data.ground.files[0], "this is how we're doing"
+        )
 ```
 
 ## Api

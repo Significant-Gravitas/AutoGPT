@@ -1,5 +1,6 @@
 {
   "category": ["basic"],
+  "dependencies": ["test_write_file"],
   "task": "What is the capital of America?",
   "ground": {
     "answer": "Washington",

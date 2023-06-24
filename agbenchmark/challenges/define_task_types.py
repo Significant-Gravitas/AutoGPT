@@ -20,6 +20,7 @@ class Ground(BaseModel):
 class ChallengeData(BaseModel):
     category: List[str]
     task: str
+    dependencies: List[str]
     ground: Ground
     mock_func: Optional[str] = None
     info: Info

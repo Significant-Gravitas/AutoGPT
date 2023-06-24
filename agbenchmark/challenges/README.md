@@ -4,28 +4,25 @@
 
 Input:
 
-- **category** (str): information-retrieval
-- **difficulty**(str): the difficulty of this query. choices from
-
-## Information-retrieval challenges
-
-Input:
-
-- **category** (str): information-retrieval
-- **task** (str): the question the agent needs to be solve.
+- **category** (str[]): Category of the challenge such as 'retrieval', 'comprehension', etc. _this is not currently used. for the future it may be needed_
+- **task** (str): The task that the agent needs to solve.
+- **dependencies** (str[]): The dependencies that the challenge needs to run.
 - **ground** (dict): The ground truth.
-  - **answer** (str): The raw text of ground truth answer
-  - **should_contain** (list): the exact strings that is required in the final answer
-  - **should_not_contain** (list): the exact strings that should not be in the final answer
-  - **files**: files that the are used for retrieval. Can specify file here or an extension **TODO:** like .txt
-- **difficulty**(str): the difficulty of this query. choices from
-- **mock_func**: function to mock the agent's response. This is used for testing purposes
+  - **answer** (str): The raw text of the ground truth answer.
+  - **should_contain** (list): The exact strings that are required in the final answer.
+  - **should_not_contain** (list): The exact strings that should not be in the final answer.
+  - **files** (list): Files that are used for retrieval. Can specify file here or an extension.
+- **mock_func** (str): Function to mock the agent's response. This is used for testing purposes.
+- **info** (dict): Additional info about the challenge.
+  - **difficulty** (str): The difficulty of this query.
+  - **description** (str): Description of the challenge.
+  - **side_effects** (str[]): Describes the effects of the challenge.
 
 Example:
 
 ```python
 {
-  "category": "retrieval",
+  "category": ["basic"],
   "task": "What is the capital of America?",
   "ground": {
     "answer": "Washington",
@@ -33,11 +30,16 @@ Example:
     "should_not_contain": ["New York", "Los Angeles", "San Francisco"],
     "files": ["file_to_check.txt"]
   },
-  "difficulty": "easy"
+  "mock_func": "write_file_mock",
+  "info": {
+    "difficulty": "easy",
+    "description": "Tests the writing to file",
+    "side_effects": ["tests if there is in fact an LLM attached"]
+  }
 }
 
 ```
 
-Output:
+Current Output:
 
 - **score** (float): scores range from [0, 1]
