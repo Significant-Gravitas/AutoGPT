@@ -362,7 +362,8 @@ def main() -> None:
 
         os_type = ensure_valid_os()
         ensure_docker_cmd(os_type)
-        config_dir = Path(CONFIG_DIR).mkdir(parents=True, exist_ok=True)
+        config_dir = Path(CONFIG_DIR)
+        config_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(config_dir)
         base_files_url = get_files_base_url()
 

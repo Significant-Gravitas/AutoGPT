@@ -178,6 +178,14 @@ if [[ ! -d $CONFIG_DIR ]]; then
     echo
     mkdir -p $CONFIG_DIR
 fi
+
+if [[ ! -d $CONFIG_DIR/bin]]; then
+    echo "Creating bin directory at $CONFIG_DIR/bin..."
+    echo "All user configuration files will be stored here."
+    echo
+    mkdir -p $CONFIG_DIR/bin
+fi
+
 cd $CONFIG_DIR
 
 # Download files from GitHub
@@ -225,7 +233,7 @@ docker pull $DOCKER_IMAGE
 LAUNCHER_CMD_SRC=$GITHUB_FILES_BASE$LAUNCHER_CMD_SRC
 echo "Creating launch script. Source: $LAUNCHER_CMD_SRC)..."
 echo
-curl -o autogpt $LAUNCHER_CMD_SRC
+curl -o ./bin/autogpt $LAUNCHER_CMD_SRC
 
 # 404?
 if [ $? -ne 0 ]; then
@@ -234,19 +242,13 @@ if [ $? -ne 0 ]; then
 fi
 
 # 4XX in contents? Format: 4XX: [message]
-if grep -q "4[0-9][0-9]: [*]" ./autogpt; then
+if grep -q "4[0-9][0-9]: [*]" ./bin/autogpt; then
     echo "Error downloading $LAUNCHER_CMD_SRC. Please check the URL and try again."
-    cat ./autogpt
+    cat ./bin/autogpt
     exit 1
 fi
 
-chmod +x autogpt
-echo "Installing the launch script to /usr/local/bin..."
-echo "You may be prompted for your password. Enabling xtrace to show commands as they are run..."
-set -x
-sudo mv autogpt /usr/local/bin/autogpt
-echo "Done. Disabling xtrace..."
-set +x
+chmod +x ./bin/autogpt
 
 # Install complete
 echo
