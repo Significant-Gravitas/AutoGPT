@@ -45,6 +45,7 @@ def count_message_tokens(
         # !Note: gpt-3.5-turbo may change over time.
         # Returning num tokens assuming gpt-3.5-turbo-0301.")
         return count_message_tokens(messages, model="gpt-3.5-turbo-0301")
+
     elif model == "gpt-3.5-turbo-0301":
         tokens_per_message = (
             4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
@@ -56,10 +57,12 @@ def count_message_tokens(
             4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
         )
         tokens_per_name = -1  # if there's a name, the role is omitted
-        encoding_model = "gpt-3.5-turbo"
     elif model == "gpt-4":
         # !Note: gpt-4 may change over time. Returning num tokens assuming gpt-4-0314.")
         return count_message_tokens(messages, model="gpt-4-0314")
+    elif model == "gpt-4-32k":
+        # !Note: gpt-4 may change over time. Returning num tokens assuming gpt-4-0314.")
+        return count_message_tokens(messages, model="gpt-4-0314")       encoding_model = "gpt-3.5-turbo"
     elif model.startswith("gpt-4"):
         tokens_per_message = 3
         tokens_per_name = 1
