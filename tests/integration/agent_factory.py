@@ -67,43 +67,6 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
 
 
 @pytest.fixture
-def file_system_agents(
-    agent_test_config, memory_json_file: NoMemory, workspace: Workspace
-):
-    agents = []
-    command_registry = get_command_registry(agent_test_config)
-
-    ai_goals = [
-        "Write 'Hello World' into a file named \"hello_world.txt\".",
-        'Write \'Hello World\' into 2 files named "hello_world_1.txt"and "hello_world_2.txt".',
-    ]
-
-    for ai_goal in ai_goals:
-        ai_config = AIConfig(
-            ai_name="File System Agent",
-            ai_role="an AI designed to manage a file system.",
-            ai_goals=[ai_goal],
-        )
-        ai_config.command_registry = command_registry
-        system_prompt = ai_config.construct_full_prompt(agent_test_config)
-        agent_test_config.set_continuous_mode(False)
-        agents.append(
-            Agent(
-                ai_name="File System Agent",
-                memory=memory_json_file,
-                command_registry=command_registry,
-                ai_config=ai_config,
-                config=agent_test_config,
-                next_action_count=0,
-                system_prompt=system_prompt,
-                triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-                workspace_directory=workspace.root,
-            )
-        )
-    return agents
-
-
-@pytest.fixture
 def memory_management_agent(agent_test_config, memory_json_file, workspace: Workspace):
     command_registry = get_command_registry(agent_test_config)
 

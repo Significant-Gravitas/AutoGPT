@@ -8,6 +8,7 @@ import pytest
 
 from autogpt.agent import Agent
 from autogpt.log_cycle.log_cycle import LogCycleHandler
+from autogpt.workspace import Workspace
 
 
 def generate_noise(noise_size: int) -> str:
@@ -64,13 +65,17 @@ def setup_mock_log_cycle_agent_name(
     )
 
 
-def get_workspace_path(agent: Agent, file_name: str) -> str:
+def get_workspace_path(workspace: Workspace, file_name: str) -> str:
+    return str(workspace.get_path(file_name))
+
+
+def get_workspace_path_from_agent(agent: Agent, file_name: str) -> str:
     return str(agent.workspace.get_path(file_name))
 
 
 def copy_file_into_workspace(
     agent: Agent, directory_path: Path, file_path: str
 ) -> None:
-    workspace_code_file_path = get_workspace_path(agent, file_path)
+    workspace_code_file_path = get_workspace_path_from_agent(agent, file_path)
     code_file_path = directory_path / file_path
     shutil.copy(code_file_path, workspace_code_file_path)

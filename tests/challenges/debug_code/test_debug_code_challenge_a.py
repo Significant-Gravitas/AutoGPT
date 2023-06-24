@@ -8,7 +8,7 @@ from autogpt.commands.execute_code import execute_python_file
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import (
     copy_file_into_workspace,
-    get_workspace_path,
+    get_workspace_path_from_agent,
     run_interaction_loop,
 )
 
@@ -45,7 +45,8 @@ def test_debug_code_challenge_a(
     )
 
     output = execute_python_file(
-        get_workspace_path(debug_code_agent, TEST_FILE_PATH), debug_code_agent
+        get_workspace_path_from_agent(debug_code_agent, TEST_FILE_PATH),
+        debug_code_agent,
     )
 
     assert "error" not in output.lower(), f"Errors found in output: {output}!"
