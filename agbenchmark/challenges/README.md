@@ -6,7 +6,7 @@ Input:
 
 - **category** (str[]): Category of the challenge such as 'retrieval', 'comprehension', etc. _this is not currently used. for the future it may be needed_
 - **task** (str): The task that the agent needs to solve.
-- **dependencies** (str[]): The dependencies that the challenge needs to run.
+- **dependencies** (str[]): The dependencies that the challenge needs to run. Needs to be the full node to the test function.
 - **ground** (dict): The ground truth.
   - **answer** (str): The raw text of the ground truth answer.
   - **should_contain** (list): The exact strings that are required in the final answer.
@@ -23,18 +23,20 @@ Example:
 ```python
 {
   "category": ["basic"],
-  "task": "What is the capital of America?",
+  "task": "Write the string 'random string' before any existing text to the file called file_to_check.txt",
+  "dependencies": [
+    "agbenchmark/tests/basic_abilities/write_file/write_file_test.py::TestWriteFile::test_write_file"
+  ],
   "ground": {
-    "answer": "Washington",
-    "should_contain": ["Washington"],
-    "should_not_contain": ["New York", "Los Angeles", "San Francisco"],
+    "answer": "random string: this is how we're doing",
+    "should_contain": ["random string: this is how we're doing"],
     "files": ["file_to_check.txt"]
   },
-  "mock_func": "write_file_mock",
+  "mock_func": "basic_read_file_mock",
   "info": {
-    "difficulty": "easy",
-    "description": "Tests the writing to file",
-    "side_effects": ["tests if there is in fact an LLM attached"]
+    "description": "This reads the file quickly",
+    "difficulty": "basic",
+    "side_effects": [""]
   }
 }
 
