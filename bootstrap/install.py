@@ -107,7 +107,7 @@ def download_files(base_url: str) -> None:
         SystemExit: If there is an error downloading a file.
     """
     for file in FILES_TO_DOWNLOAD:
-        url = f"{base_url}/{file}".replace("//", "/")
+        url = f"{base_url}/{file}"
         try:
             response = requests.get(url)
             response.raise_for_status()
@@ -167,7 +167,7 @@ def install_launch_script(base_url: str) -> None:
         SystemExit: If the autogpt command script fails to install.
     """
     try:
-        launcher_cmd_src = f"{base_url}/scripts/autogpt_cmd.sh".replace("//", "/")
+        launcher_cmd_src = f"{base_url}/scripts/autogpt_cmd.sh"
         response = requests.get(launcher_cmd_src)
         response.raise_for_status()
         autogpt_cmd_file = Path("autogpt")
@@ -341,9 +341,7 @@ def get_files_base_url() -> str:
     github_branch_or_tag = click.prompt(
         "GitHub branch or tag", type=str, default="stable"
     )
-    return f"{github_files_base}/{github_user}/{github_repo}/{github_branch_or_tag}/".replace(
-        "//", "/"
-    )
+    return f"{github_files_base}/{github_user}/{github_repo}/{github_branch_or_tag}/"
 
 
 def main() -> None:

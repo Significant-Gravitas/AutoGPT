@@ -1,109 +1,208 @@
+import os
+import shutil
+import subprocess
 import sys
-from unittest.mock import MagicMock, patch
+import venv
 import pytest
 from pathlib import Path
+import subprocess
+import sys
+from unittest.mock import MagicMock
 
 from autogpt.config.container_config import ContainerConfig
 
 @pytest.fixture
-def container_config():
-    return ContainerConfig()
+def container_config() -> ContainerConfig:
+    return ContainerConfig(
+        image_name="test_image",
+        repo="test/repo",
+        branch_or_tag="test-branch",
+        rebuild_image=False,
+        pull_image=False,
+        reinstall=False,
+        interactive=False,
+        allow_virtualenv=False,
+        args=[],
+    )
 
-def test_prefs_file_exists(container_config):
-    assert container_config._prefs_file.exists()
+def test_running_in_docker(container_config):
+    assert container_config.running_in_docker() == Path("/.dockerenv").exists()
 
-def test_is_docker(container_config):
-    if Path('/.dockerenv').exists():
-        assert container_config.is_docker() == True
-    else:
-        assert container_config.is_docker() == False
-
-def test_is_virtual_env(container_config):
-    expected_result = (
-        hasattr(sys, 'real_prefix') or
-        (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix))
+def test_running_in_virtual_env(container_config):
+    assert (
+        container_config.running_in_virtual_env()
+        == (hasattr(sys, "real_prefix") or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix))
+    )
     
-    assert container_config.is_virtual_env() == expected_result
+def test_running_in_docker_true(monkeypatch, container_config):
+    monkeypatch.setattr(Path, "exists", lambda x: True)
+    assert container_config.running_in_docker() is True
+
+def test_running_in_docker_false(monkeypatch, container_config):
+    monkeypatch.setattr(Path, "exists", lambda x: False)
+    assert container_config.running_in_docker() is False
 
 def test_save_prefs(container_config):
-    initial_prefs = container_config._prefs
-    container_config._prefs = 1
+    container_config.prefs = 2
     container_config.save_prefs()
-    container_config._prefs = 2
-    container_config.save_prefs()
-
-    assert int(container_config._prefs_file.read_text()) == 2
-
-    container_config._prefs_file.write_text(str(initial_prefs))
+    assert container_config.prefs_file.read_text() == "2"
 
 def test_reset_prefs(container_config):
-    initial_prefs = container_config._prefs
-    container_config._prefs = 2
-    container_config.save_prefs()
     container_config.reset_prefs()
+    assert container_config.prefs is None
+    assert not container_config.prefs_file.exists()
 
-    assert container_config._prefs is None
+class MockContainerConfig(ContainerConfig):
+    running_in_docker = MagicMock()
+    allow_virtualenv = MagicMock()
+    check_docker_is_installed = MagicMock()
+    show_selections = MagicMock()
+    run_reinstall = MagicMock()
+    run_rebuild_image = MagicMock()
+    run_pull_image = MagicMock()
+    run_in_docker = MagicMock()
 
-    container_config._prefs_file.write_text(str(initial_prefs))
 
-# Helper function to create temporary directories for testing
 @pytest.fixture
-def temp_dirs(tmpdir_factory):
-    src_dir = tmpdir_factory.mktemp("src")
-    dest_dir = tmpdir_factory.mktemp("docker")
-    return src_dir, dest_dir
+def mock_container_config():
+    return MockContainerConfig(
+        image_name="test_image",
+        repo="test/repo",
+        branch_or_tag="test-branch",
+        rebuild_image=False,
+        pull_image=False,
+        reinstall=False,
+        interactive=False,
+        allow_virtualenv=False,
+        args=[],
+    )
 
-# Test cases for _copy_file_to_docker method
-def test_copy_file_to_docker_src_not_exists(temp_dirs):
-    src, dest = temp_dirs
-    obj = ContainerConfig()
-    non_existent_file = src.join("non_existent.txt")
-    assert not obj._copy_file_to_docker(non_existent_file, dest.join("dest.txt"))
 
-def test_copy_file_to_docker_copy_directory(temp_dirs):
-    src, dest = temp_dirs
-    obj = ContainerConfig()
-    test_dir = src.mkdir("test_dir")
-    test_dir.join("test_file.txt").write("sample_content")
-    assert obj._copy_file_to_docker(test_dir, dest.join("test_dir"))
-    assert dest.join("test_dir", "test_file.txt").read() == "sample_content"
+def test_run_in_docker_container(mock_container_config):
+    mock_container_config.running_in_docker.return_value = True
 
-def test_copy_file_to_docker_copy_single_file(temp_dirs):
-    src, dest = temp_dirs
-    obj = ContainerConfig()
-    test_file = src.join("test_file.txt")
-    test_file.write("sample_content")
-    assert obj._copy_file_to_docker(test_file, dest.join("test_file.txt"))
-    assert dest.join("test_file.txt").read() == "sample_content"
+    mock_container_config.run()
 
-@patch("autogpt.config.container_config.ContainerConfig._copy_file_to_docker")
-def test_copy_files_to_docker_success(copy_mock, temp_dirs):
-    obj = ContainerConfig()
-    obj._docker_dir = temp_dirs[1]
+    mock_container_config.running_in_docker.assert_called_once_with()
+    mock_container_config.show_selections.assert_not_called()
 
-    copy_mock.return_value = True
-    FILES_TO_COPY = {"dest.txt": ["src.txt"]}
 
-    with patch.dict("autogpt.config.container_config.DOCKER_FILES_TO_COPY", FILES_TO_COPY, clear=True):
-        obj._copy_files_to_docker(temp_dirs[0])
+def test_run_with_virtualenv_allowed(mock_container_config):
+    mock_container_config.running_in_docker.return_value = False
+    mock_container_config.allow_virtualenv = True
+    mock_container_config.run()
+    mock_container_config.show_selections.assert_called_once_with()
 
-    print(copy_mock.call_args_list)
-    copy_mock.assert_called_once_with(temp_dirs[0].join("src.txt"), temp_dirs[1].join("dest.txt"))
+def test_run_with_docker_not_installed(mock_container_config):
+    mock_container_config.running_in_docker.return_value = False
+    mock_container_config.allow_virtualenv = False
+    mock_container_config.check_docker_is_installed.return_value = False
 
-@patch("autogpt.config.container_config.ContainerConfig._copy_file_to_docker")
-@patch("requests.get")
-def test_copy_files_to_docker_download_success(get_mock, copy_mock, temp_dirs):
-    obj = ContainerConfig()
-    obj._docker_dir = temp_dirs[1]
+    with pytest.raises(AssertionError, match="Docker is not installed. Please install Docker and try again."):
+        mock_container_config.run()
 
-    copy_mock.return_value = False
-    FILES_TO_COPY = {"dest.txt": ["src.txt"]}
-    response = MagicMock(status_code=200, text="downloaded_content")
-    get_mock.return_value = response
+    mock_container_config.run_reinstall.assert_not_called()
+    mock_container_config.run_rebuild_image.assert_not_called()
+    mock_container_config.run_pull_image.assert_not_called()
+    mock_container_config.run_in_docker.assert_not_called()
 
-    with patch.dict("autogpt.config.container_config.DOCKER_FILES_TO_COPY", FILES_TO_COPY, clear=True):
-        obj._copy_files_to_docker(temp_dirs[0])
 
-    copy_mock.assert_called_once_with(temp_dirs[0].join("src.txt"), temp_dirs[1].join("dest.txt"))
-    get_mock.assert_called_once_with("https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/stable/src.txt")
-    assert temp_dirs[1].join("dest.txt").read() == "downloaded_content"
+def test_install_docker(container_config, monkeypatch):
+    # Test for each type of OS
+    os_type_windows = "win32"
+    os_type_mac = "darwin"
+    os_type_linux = "linux"
+    monkeypatch.setattr(subprocess, "run", MagicMock())
+    monkeypatch.setattr(container_config, "docker_is_installed", MagicMock(return_value=False))
+    monkeypatch.setattr(container_config, "_install_docker_windows", MagicMock())
+    monkeypatch.setattr(container_config, "_install_docker_mac", MagicMock())
+    monkeypatch.setattr(container_config, "_install_docker_linux", MagicMock())
+    monkeypatch.setattr("sys.platform", os_type_windows)
+    container_config.install_docker()
+    container_config._install_docker_windows.assert_called()
+    monkeypatch.setattr("sys.platform", os_type_mac)
+    container_config.install_docker()
+    container_config._install_docker_mac.assert_called()
+    monkeypatch.setattr("sys.platform", os_type_linux)
+    container_config.install_docker()
+    container_config._install_docker_linux.assert_called()
+    
+def test_copy_config_files(container_config, monkeypatch):
+    file_list = ["file1", "file2", "file3"]
+    container_config.docker_config_dir =Path("/dummy_dest")
+    monkeypatch.setattr(container_config, "copy_file", MagicMock())
+    container_config.copy_config_files(Path("/dummy_cwd"), file_list)
+    assert container_config.copy_file.call_count == len(file_list)
+
+def test_copy_file(container_config, monkeypatch):
+    src = Path("/src_path")
+    dest = Path("/dest_path")
+    monkeypatch.setattr(Path, "is_dir", lambda x: False)
+    monkeypatch.setattr(Path, "exists", lambda x: True)
+    monkeypatch.setattr(Path, "is_file", lambda x: True)
+    monkeypatch.setattr(shutil, "copy", lambda x, y: dest)
+    assert container_config.copy_file(src, dest) is True
+
+def test_get_files_base_url(container_config, monkeypatch):
+    base_url = container_config.get_files_base_url()
+    assert base_url == f"https://raw.githubusercontent.com/{container_config.repo}/{container_config.branch_or_tag}/"
+
+def test_run_reinstall(container_config, monkeypatch):
+    monkeypatch.setattr(container_config, "running_in_docker", MagicMock(return_value=False))
+    monkeypatch.setattr(container_config, "init_docker_config", MagicMock())
+    docker_config_dir = MagicMock()
+    docker_config_dir.exists.return_value = False
+    monkeypatch.setattr(container_config, "docker_config_dir", docker_config_dir)
+    monkeypatch.setattr(shutil, "copytree", MagicMock())
+    config_dir = MagicMock()
+    config_dir.unlink = MagicMock()
+    monkeypatch.setattr(container_config, "config_dir", config_dir)
+    monkeypatch.setattr(subprocess, "run", MagicMock())
+    monkeypatch.setattr("os.chdir", MagicMock())
+    monkeypatch.setattr(sys, "exit", MagicMock())
+    container_config.run_reinstall()
+    container_config.init_docker_config.assert_called()
+
+def test_run_pull_image(container_config, monkeypatch):
+    monkeypatch.setattr(container_config, "init_docker_config", MagicMock())
+    monkeypatch.setattr(subprocess, "run", MagicMock())
+    monkeypatch.setattr("os.chdir", MagicMock())
+    container_config.run_pull_image()
+    container_config.init_docker_config.assert_called()
+
+def test_run_rebuild_image(container_config, monkeypatch):
+    monkeypatch.setattr(container_config, "init_docker_config", MagicMock())
+    monkeypatch.setattr(subprocess, "run", MagicMock())
+    monkeypatch.setattr("os.chdir", MagicMock())
+    container_config.run_rebuild_image()
+    container_config.init_docker_config.assert_called()
+
+def test_init_docker_config(container_config, monkeypatch):
+    docker_config_dir = MagicMock()
+    docker_config_dir.exists.return_value = False
+    monkeypatch.setattr(container_config, "docker_config_dir", docker_config_dir)
+    monkeypatch.setattr(container_config, "copy_config_files", MagicMock())
+    container_config.init_docker_config()
+    container_config.copy_config_files.assert_called()
+
+def test_run_in_docker(container_config, monkeypatch):
+    monkeypatch.setattr(container_config, "running_in_docker", MagicMock(return_value=False))
+    monkeypatch.setattr(container_config, "docker_is_installed", MagicMock(return_value=True))
+    monkeypatch.setattr(container_config, "init_docker_config", MagicMock())
+    monkeypatch.setattr("os.chdir", MagicMock())
+    monkeypatch.setattr(sys, "exit", MagicMock())
+    monkeypatch.setattr(subprocess, "run", MagicMock())
+    container_config.run_in_docker()
+    container_config.init_docker_config.assert_called()
+
+def test_run_in_virtual_env(container_config, monkeypatch):
+    monkeypatch.setattr(container_config, "running_in_virtual_env", MagicMock(return_value=False))
+    assert not container_config.running_in_virtual_env()
+    venv_dir = MagicMock()
+    venv_dir.exists.return_value = False
+    monkeypatch.setattr(container_config, "venv_dir", venv_dir)
+    monkeypatch.setattr(venv.EnvBuilder, "create", MagicMock())
+    monkeypatch.setattr(subprocess, "run", MagicMock())
+    monkeypatch.setattr(sys, "exit", MagicMock())
+    container_config.run_in_virtual_env()
+    venv.EnvBuilder.create.assert_called()

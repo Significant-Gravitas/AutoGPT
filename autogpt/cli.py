@@ -105,7 +105,7 @@ def main(
     from autogpt.config import ContainerConfig
     
     container_config = ContainerConfig()
-    if not container_config.is_docker():
+    if not container_config.is_running_in_docker():
         from autogpt.install import Installer
         installer = Installer()
         if install_options:
