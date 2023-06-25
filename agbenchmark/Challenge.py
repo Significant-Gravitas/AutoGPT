@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+import glob
 from agbenchmark.challenges.define_task_types import Ground
 
 
@@ -13,6 +13,26 @@ class Challenge:
         workspace_dir = os.path.join(script_dir, filename)
         with open(workspace_dir, "r") as f:
             return f.read()
+
+    @staticmethod
+    def open_files(workspace: str, file_patterns: list):
+        script_dir = os.path.abspath(workspace)
+        files_contents = []
+
+        for file_pattern in file_patterns:
+            # Check if it is a file extension
+            if file_pattern.startswith("."):
+                # Find all files with the given extension in the workspace
+                matching_files = glob.glob(os.path.join(script_dir, "*" + file_pattern))
+            else:
+                # Otherwise, it is a specific file
+                matching_files = [os.path.join(script_dir, file_pattern)]
+
+            for file_path in matching_files:
+                with open(file_path, "r") as f:
+                    files_contents.append(f.read())
+
+        return files_contents
 
     @staticmethod
     def write_to_file(workspace: str, filename: str, content: str):

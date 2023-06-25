@@ -1,1 +1,14 @@
-{}
+{
+    "TestWriteFile": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/tests/basic_abilities/write_file/write_file_test.py::TestWriteFile::test_write_file[regression_data0-server_response0]"
+    },
+    "TestReadFile": {
+        "difficulty": "basic",
+        "dependencies": [
+            "test_write_file"
+        ],
+        "test": "agbenchmark/tests/basic_abilities/read_file/read_file_test.py::TestReadFile::test_read_file[regression_data0-server_response0]"
+    }
+}
