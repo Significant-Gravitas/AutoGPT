@@ -38,7 +38,7 @@ class ReadFile(Ability):
         try:
             import unstructured
         except ImportError:
-            message = "Package charset_normalizer is not installed."
+            message = "Package unstructured is not installed."
 
         try:
             file_path = self._workspace.get_path(filename)
@@ -84,7 +84,7 @@ class ReadFile(Ability):
 
 class WriteFile(Ability):
     default_configuration = AbilityConfiguration(
-        packages_required=["unstructured"],
+        packages_required=["os"],
         workspace_required=True,
     )
 
@@ -145,6 +145,83 @@ class WriteFile(Ability):
                 f.write(contents)
             success = True
             message = f"File {file_path} written successfully."
+        except IOError as e:
+            data = None
+            success = False
+            message = str(e)
+
+        return AbilityResult(
+            success=success,
+            message=message,
+            data=data,
+        )
+
+
+class ListFiles(Ability):
+    default_configuration = AbilityConfiguration(
+        packages_required=["os"],
+        workspace_required=True,
+    )
+
+    def __init__(
+        self,
+        logger: logging.Logger,
+        workspace: Workspace,
+    ):
+        self._logger = logger
+        self._workspace = workspace
+
+    @property
+    def description(self) -> str:
+        return "Lists Files in a Directory."
+
+    @property
+    def arguments(self) -> dict:
+        return {
+            "directory": {
+                "type": "string",
+                "description": "The directory to list the files",
+            }
+        }
+
+    def _check_preconditions(self, directory: str) -> AbilityResult | None:
+        message = ""
+        try:
+            directory = self._workspace.get_path(directory)
+
+            if not os.path.exists(directory):
+                message = f"Given directory: {directory} does not exist."
+            elif not os.path.isdir(directory):
+                message = f"Given directory: {directory} is not a directory."
+        except ValueError as e:
+            message = str(e)
+
+        if message:
+            return AbilityResult(
+                success=False,
+                message=message,
+                data=None,
+            )
+
+    def __call__(self, directory: str) -> AbilityResult:
+        if result := self._check_preconditions(directory):
+            return result
+
+        file_path = self._workspace.get_path(directory)
+        try:
+            found_files = []
+
+            for root, _, files in os.walk(file_path):
+                for file in files:
+                    if file.startswith("."):
+                        continue
+                    relative_path = os.path.relpath(
+                        os.path.join(root, file), self._workspace.root
+                    )
+                    found_files.append(relative_path)
+            success = True
+            message = f"Files listed successfully."
+            data = found_files
         except IOError as e:
             data = None
             success = False
