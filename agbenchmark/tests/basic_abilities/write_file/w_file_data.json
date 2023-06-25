@@ -10,7 +10,7 @@
   },
   "mock_func": "basic_write_file_mock",
   "info": {
-    "difficulty": "easy",
+    "difficulty": "basic",
     "description": "Tests the writing to file",
     "side_effects": ["tests if there is in fact an LLM attached"]
   }
