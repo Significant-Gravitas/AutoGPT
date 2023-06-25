@@ -3,7 +3,6 @@ from agbenchmark.challenges.define_task_types import ChallengeData
 from agbenchmark.Challenge import Challenge
 from agbenchmark.tests.basic_abilities.BasicChallenge import BasicChallenge
 import os
-from pytest_dependency import depends
 
 data = ChallengeData.deserialize(
     os.path.join(os.path.dirname(__file__), "r_file_data.json")
@@ -26,9 +25,8 @@ class TestReadFile(BasicChallenge):
         [(data.task, data.mock_func)],
         indirect=True,
     )
-    def test_read_file(self, request, workspace):
-        depends(request, data.dependencies)
-
+    @pytest.mark.order(after=data.dependencies)
+    def test_read_file(self, workspace):
         file = self.open_file(workspace, data.ground.files[0])
 
         score = self.scoring(file, data.ground)

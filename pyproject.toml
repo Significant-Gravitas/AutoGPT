@@ -16,6 +16,7 @@ openai = "^0.27.8"
 pydantic = "^1.10.9"
 pytest-dependency = "^0.5.1"
 pytest-ordering = "^0.6"
+pytest-order = "^1.1.0"
 
 
 [build-system]
@@ -24,7 +25,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q"
+addopts = "--order-dependencies" # -ra -q 
 testpaths = [
     "tests", "agbenchmark",
 ]
