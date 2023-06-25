@@ -4,13 +4,13 @@ import subprocess
 from pathlib import Path
 
 import docker
-from docker.errors import ImageNotFound
+from docker.errors import DockerException, ImageNotFound
+from docker.models.containers import Container as DockerContainer
 
 from autogpt.agent.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.workspace.workspace import Workspace
 
 ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"
@@ -44,19 +44,23 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
         str: The STDOUT captured from the code when it ran
     """
     ai_name = agent.ai_name
-    directory = os.path.join(agent.config.workspace_path, ai_name, "executed_code")
-    os.makedirs(directory, exist_ok=True)
+    code_dir = agent.workspace.get_path(Path(ai_name, "executed_code"))
+    os.makedirs(code_dir, exist_ok=True)
 
     if not name.endswith(".py"):
         name = name + ".py"
 
-    path = os.path.join(directory, name)
+    # The `name` arg is not covered by Agent._resolve_pathlike_command_args(),
+    # so sanitization must be done here to prevent path traversal.
+    file_path = agent.workspace.get_path(code_dir / name)
+    if not file_path.is_relative_to(code_dir):
+        return "Error: 'name' argument resulted in path traversal, operation aborted"
 
     try:
-        with open(path, "w+", encoding="utf-8") as f:
+        with open(file_path, "w+", encoding="utf-8") as f:
             f.write(code)
 
-        return execute_python_file(f.name, agent)
+        return execute_python_file(str(file_path), agent)
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -88,12 +92,8 @@ def execute_python_file(filename: str, agent: Agent) -> str:
     if not filename.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    workspace = Workspace(
-        agent.config.workspace_path, agent.config.restrict_to_workspace
-    )
-
-    path = workspace.get_path(filename)
-    if not path.is_file():
+    file_path = Path(filename)
+    if not file_path.is_file():
         # Mimic the response that you get from the command line so that it's easier to identify
         return (
             f"python: can't open file '{filename}': [Errno 2] No such file or directory"
@@ -101,7 +101,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
 
     if we_are_running_in_a_docker_container():
         result = subprocess.run(
-            ["python", str(path)],
+            ["python", str(file_path)],
             capture_output=True,
             encoding="utf8",
             cwd=agent.config.workspace_path,
@@ -134,9 +134,10 @@ def execute_python_file(filename: str, agent: Agent) -> str:
                     logger.info(f"{status}: {progress}")
                 elif status:
                     logger.info(status)
-        container = client.containers.run(
+
+        container: DockerContainer = client.containers.run(
             image_name,
-            ["python", str(path.relative_to(workspace.root))],
+            ["python", str(file_path.relative_to(agent.workspace.root))],
             volumes={
                 agent.config.workspace_path: {
                     "bind": "/workspace",
@@ -147,7 +148,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
             stderr=True,
             stdout=True,
             detach=True,
-        )
+        )  # type: ignore
 
         container.wait()
         logs = container.logs().decode("utf-8")
@@ -158,7 +159,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
 
         return logs
 
-    except docker.errors.DockerException as e:
+    except DockerException as e:
         logger.warn(
             "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
         )

@@ -55,3 +55,9 @@ skip = '''
     dist/*
 
 '''
+
+[tool.pytest.ini_options]
+markers = [
+    "requires_openai_api_key",
+    "requires_huggingface_api_key"
+]
