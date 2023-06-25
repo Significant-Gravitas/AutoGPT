@@ -2,7 +2,6 @@ import pytest
 from agbenchmark.challenges.retrieval.Retrieval import RetrievalChallenge
 from agbenchmark.challenges.define_task_types import ChallengeData, Ground
 import os
-from pytest_dependency import depends
 
 
 data = ChallengeData.deserialize(
@@ -19,7 +18,6 @@ class TestRetrieval1(RetrievalChallenge):
         indirect=True,
     )
     def test_retrieval(self, request, workspace):
-        depends(request, data.dependencies)
         file = self.open_file(workspace, data.ground.files[0])
 
         score = self.scoring(file, data.ground)
