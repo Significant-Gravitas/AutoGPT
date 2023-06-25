@@ -1,7 +1,9 @@
 {
   "category": ["basic"],
   "task": "Write the string 'random string' before any existing text to the file called file_to_check.txt",
-  "dependencies": ["test_write_file"],
+  "dependencies": [
+    "agbenchmark/tests/basic_abilities/write_file/write_file_test.py::TestWriteFile::test_write_file"
+  ],
   "ground": {
     "answer": "random string: this is how we're doing",
     "should_contain": ["random string: this is how we're doing"],

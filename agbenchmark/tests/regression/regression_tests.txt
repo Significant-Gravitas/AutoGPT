@@ -1,3 +1,3 @@
-agbenchmark/tests/basic_abilities/read_file/read_file_test.py::TestReadFile::test_retrieval[server_response0]
-agbenchmark/tests/basic_abilities/write_file/write_file_test.py::TestWriteFile::test_retrieval[server_response0]
 agbenchmark/tests/basic_abilities/write_file/write_file_test.py::TestWriteFile::test_write_file[server_response0]
+agbenchmark/challenges/retrieval/r1/r1_test.py::TestRetrieval1::test_retrieval[server_response0]
+agbenchmark/tests/basic_abilities/read_file/read_file_test.py::TestReadFile::test_read_file[server_response0]
