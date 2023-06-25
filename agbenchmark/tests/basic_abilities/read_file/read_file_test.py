@@ -25,7 +25,7 @@ class TestReadFile(BasicChallenge):
         [(data.task, data.mock_func)],
         indirect=True,
     )
-    @pytest.mark.order(after=data.dependencies)
+    @pytest.mark.depends(on=data.dependencies)
     def test_read_file(self, workspace):
         file = self.open_file(workspace, data.ground.files[0])
 
