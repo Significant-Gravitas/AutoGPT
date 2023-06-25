@@ -1,14 +1,14 @@
 {
   "category": ["basic"],
-  "dependencies": ["test_write_file"],
   "task": "What is the capital of America?",
+  "dependencies": [],
   "ground": {
     "answer": "Washington",
     "should_contain": ["Washington"],
     "should_not_contain": ["New York", "Los Angeles", "San Francisco"],
     "files": ["file_to_check.txt"]
   },
-  "mock_func": "write_file_mock",
+  "mock_func": "basic_write_file_mock",
   "info": {
     "difficulty": "easy",
     "description": "Tests the writing to file",

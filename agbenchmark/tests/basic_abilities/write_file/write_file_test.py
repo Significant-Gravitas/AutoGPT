@@ -16,7 +16,6 @@ class TestWriteFile(BasicChallenge):
         [(data.task, data.mock_func)],
         indirect=True,
     )
-    @pytest.mark.dependency()
     def test_write_file(self, workspace):
         file = self.open_file(workspace, data.ground.files[0])
 
