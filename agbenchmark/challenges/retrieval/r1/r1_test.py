@@ -17,7 +17,12 @@ class TestRetrieval1(RetrievalChallenge):
         [(data.task, data.mock_func)],
         indirect=True,
     )
-    def test_retrieval(self, request, workspace):
+    @pytest.mark.parametrize(
+        "regression_data",
+        [data],
+        indirect=True,
+    )
+    def test_retrieval(self, workspace, current_challenge_data):
         file = self.open_file(workspace, data.ground.files[0])
 
         score = self.scoring(file, data.ground)
