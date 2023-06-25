@@ -25,6 +25,11 @@ class TestReadFile(BasicChallenge):
         [(data.task, data.mock_func)],
         indirect=True,
     )
+    @pytest.mark.parametrize(
+        "regression_data",
+        [data],
+        indirect=True,
+    )
     @pytest.mark.depends(on=data.dependencies)
     def test_read_file(self, workspace):
         file = self.open_file(workspace, data.ground.files[0])

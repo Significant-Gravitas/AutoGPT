@@ -6,6 +6,7 @@ from agbenchmark.tests.regression.RegressionManager import RegressionManager
 import requests
 from requests.exceptions import RequestException
 from agbenchmark.mocks.MockManager import MockManager
+from agbenchmark.challenges.define_task_types import ChallengeData
 
 
 @pytest.fixture(scope="module")
@@ -64,21 +65,34 @@ def server_response(request, config):
     #     print(f"Request succeeded with status code {response.status_code}")
 
 
-regression_txt = "agbenchmark/tests/regression/regression_tests.txt"
+regression_json = "agbenchmark/tests/regression/regression_tests.json"
 
-regression_manager = RegressionManager(regression_txt)
+regression_manager = RegressionManager(regression_json)
+
+
+# this is to get the challenge_data from every test
+@pytest.fixture(autouse=True)
+def regression_data(request):
+    return request.param
 
 
 def pytest_runtest_makereport(item, call):
-    """Called for each test report. Generated for each stage
-    of a test run (setup, call, teardown)."""
     if call.when == "call":
-        if (
-            call.excinfo is None
-        ):  # if no error in the call stage, add it as a regression test
-            regression_manager.add_test(item.nodeid)
-        else:  # otherwise, :(
-            regression_manager.remove_test(item.nodeid)
+        challenge_data = item.funcargs.get("regression_data", None)
+        difficulty = challenge_data.info.difficulty if challenge_data else "unknown"
+        dependencies = challenge_data.dependencies if challenge_data else []
+
+        test_details = {
+            "difficulty": difficulty,
+            "dependencies": dependencies,
+            "test": item.nodeid,
+        }
+
+        print("pytest_runtest_makereport", test_details)
+        if call.excinfo is None:
+            regression_manager.add_test(item.nodeid.split("::")[1], test_details)
+        else:
+            regression_manager.remove_test(item.nodeid.split("::")[1])
 
 
 def pytest_collection_modifyitems(items):
@@ -86,7 +100,7 @@ def pytest_collection_modifyitems(items):
     to add regression marker to collected test items."""
     for item in items:
         print("pytest_collection_modifyitems", item.nodeid)
-        if item.nodeid + "\n" in regression_manager.tests:
+        if item.nodeid.split("::")[1] in regression_manager.tests:
             print(regression_manager.tests)
             item.add_marker(pytest.mark.regression)
 
