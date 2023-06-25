@@ -32,10 +32,12 @@ class TestReadFile(BasicChallenge):
     )
     @pytest.mark.depends(on=data.dependencies)
     def test_read_file(self, workspace):
-        file = self.open_file(workspace, data.ground.files[0])
+        files_contents = self.open_files(workspace, data.ground.files)
 
-        score = self.scoring(file, data.ground)
+        scores = []
+        for file_content in files_contents:
+            score = self.scoring(file_content, data.ground)
+            print("Your score is:", score)
+            scores.append(score)
 
-        print("You score is:", score)
-
-        assert score
+        assert 1 in scores
