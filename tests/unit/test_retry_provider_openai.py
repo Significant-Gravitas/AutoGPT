@@ -1,10 +1,10 @@
 import pytest
-from openai.error import APIError, RateLimitError
+from openai.error import APIError, RateLimitError, ServiceUnavailableError
 
 from autogpt.llm.providers import openai
 
 
-@pytest.fixture(params=[RateLimitError, APIError])
+@pytest.fixture(params=[RateLimitError, ServiceUnavailableError, APIError])
 def error(request):
     if request.param == APIError:
         return request.param("Error", http_status=502)
@@ -52,7 +52,7 @@ def test_retry_open_api_no_error(capsys):
     ids=["passing", "passing_edge", "failing", "failing_edge", "failing_no_retries"],
 )
 def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure):
-    """Tests the retry with simulated errors [RateLimitError, APIError], but should ulimately pass"""
+    """Tests the retry with simulated errors [RateLimitError, ServiceUnavailableError, APIError], but should ulimately pass"""
     call_count = min(error_count, retry_count) + 1
 
     raises = error_factory(error, error_count, retry_count)
@@ -70,6 +70,12 @@ def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure
     if error_count and retry_count:
         if type(error) == RateLimitError:
             assert "Reached rate limit, passing..." in output.out
+            assert "Please double check" in output.out
+        if type(error) == ServiceUnavailableError:
+            assert (
+                "The OpenAI API engine is currently overloaded, passing..."
+                in output.out
+            )
             assert "Please double check" in output.out
         if type(error) == APIError:
             assert "API Bad gateway" in output.out
@@ -91,6 +97,25 @@ def test_retry_open_api_rate_limit_no_warn(capsys):
     output = capsys.readouterr()
 
     assert "Reached rate limit, passing..." in output.out
+    assert "Please double check" not in output.out
+
+
+def test_retry_open_api_service_unavairable_no_warn(capsys):
+    """Tests the retry logic with a service unavairable error"""
+    error_count = 2
+    retry_count = 10
+
+    raises = error_factory(
+        ServiceUnavailableError, error_count, retry_count, warn_user=False
+    )
+    result = raises()
+    call_count = min(error_count, retry_count) + 1
+    assert result == call_count
+    assert raises.count == call_count
+
+    output = capsys.readouterr()
+
+    assert "The OpenAI API engine is currently overloaded, passing..." in output.out
     assert "Please double check" not in output.out
 
 
