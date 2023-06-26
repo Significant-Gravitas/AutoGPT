@@ -5,6 +5,7 @@ from autogpt.memory.vector.utils import Embedding
 
 
 @pytest.fixture
+## Added MemoryItem type notation to funciton return type
 def memory_item(mock_embedding: Embedding) -> MemoryItem:
     return MemoryItem(
         raw_content="test content",

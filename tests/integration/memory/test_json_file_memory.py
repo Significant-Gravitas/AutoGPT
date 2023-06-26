@@ -12,11 +12,13 @@ from autogpt.workspace import Workspace
 
 
 @pytest.fixture(autouse=True)
+# Added None return type notation
 def cleanup_sut_singleton() -> None:
     if JSONFileMemory in JSONFileMemory._instances:
         del JSONFileMemory._instances[JSONFileMemory]
 
 
+# Added None return type notation
 def test_json_memory_init_without_backing_file(
     config: Config, workspace: Workspace
 ) -> None:
@@ -28,6 +30,7 @@ def test_json_memory_init_without_backing_file(
     assert index_file.read_text() == "[]"
 
 
+#  Added None return type notation
 def test_json_memory_init_with_backing_empty_file(
     config: Config, workspace: Workspace
 ) -> None:
@@ -40,6 +43,7 @@ def test_json_memory_init_with_backing_empty_file(
     assert index_file.read_text() == "[]"
 
 
+# Added None return typenotation
 def test_json_memory_init_with_backing_invalid_file(
     config: Config, workspace: Workspace
 ) -> None:
@@ -57,12 +61,14 @@ def test_json_memory_init_with_backing_invalid_file(
     assert index_file.read_text() == "[]"
 
 
+# Added None return type notation
 def test_json_memory_add(config: Config, memory_item: MemoryItem) -> None:
     index = JSONFileMemory(config)
     index.add(memory_item)
     assert index.memories[0] == memory_item
 
 
+# Added None return type notation
 def test_json_memory_clear(config: Config, memory_item: MemoryItem) -> None:
     index = JSONFileMemory(config)
     assert index.memories == []
@@ -74,6 +80,8 @@ def test_json_memory_clear(config: Config, memory_item: MemoryItem) -> None:
     assert index.memories == []
 
 
+## Added None return type Notation
+## Added Type notation to mock_get_embedding argument
 def test_json_memory_get(
     config: Config,
     memory_item: MemoryItem,
@@ -90,6 +98,7 @@ def test_json_memory_get(
     assert retrieved.memory_item == memory_item
 
 
+## Added return type notation
 def test_json_memory_load_index(config: Config, memory_item: MemoryItem) -> None:
     index = JSONFileMemory(config)
     index.add(memory_item)
