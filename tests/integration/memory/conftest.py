@@ -5,7 +5,7 @@ from autogpt.memory.vector.utils import Embedding
 
 
 @pytest.fixture
-def memory_item(mock_embedding: Embedding)-> MemoryItem:
+def memory_item(mock_embedding: Embedding) -> MemoryItem:
     return MemoryItem(
         raw_content="test content",
         summary="test content summary",
