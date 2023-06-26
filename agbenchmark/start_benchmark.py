@@ -17,8 +17,10 @@ def start(category, noreg):
     """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
     config_file = "agbenchmark/config.json"
 
+    config_dir = os.path.abspath(config_file)
+
     # Check if configuration file exists and is not empty
-    if not os.path.exists(config_file) or os.stat(config_file).st_size == 0:
+    if not os.path.exists(config_dir) or os.stat(config_dir).st_size == 0:
         config = {}
 
         config["hostname"] = click.prompt(
@@ -26,15 +28,20 @@ def start(category, noreg):
         )
         config["port"] = click.prompt("Please enter a new port", default=8080)
         config["workspace"] = click.prompt(
-            "Please enter a new workspace path", default="/path/to/workspace"
+            "Please enter a new workspace path", default="agbenchmark/mocks/workspace"
         )
 
-        with open(config_file, "w") as f:
+        with open(config_dir, "w") as f:
             json.dump(config, f)
     else:
         # If the configuration file exists and is not empty, load it
-        with open(config_file, "r") as f:
+        with open(config_dir, "r") as f:
             config = json.load(f)
+
+    # create workspace directory if it doesn't exist
+    workspace_path = config_dir = os.path.abspath(config["workspace"])
+    if not os.path.exists(workspace_path):
+        os.makedirs(workspace_path, exist_ok=True)
 
     print("Current configuration:")
     for key, value in config.items():
