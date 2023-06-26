@@ -1,12 +1,9 @@
 import abc
+import copy
 import typing
 from typing import Any
 
-from pydantic import BaseModel, Field
-
-
-def UserConfigurable(*args, **kwargs):
-    return Field(*args, **kwargs, user_configurable=True)
+from pydantic import BaseModel
 
 
 class SystemConfiguration(BaseModel):
@@ -88,6 +85,7 @@ def deep_update(original_dict: dict, update_dict: dict) -> dict:
     Returns:
         dict: The updated dictionary.
     """
+    original_dict = copy.deepcopy(original_dict)
     for key, value in update_dict.items():
         if (
             key in original_dict
