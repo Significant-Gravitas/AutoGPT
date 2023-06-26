@@ -260,7 +260,11 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                         continue
                     a_module = getattr(zipped_module, key)
 
-                    if inspect.isclass(a_module) and issubclass(a_module, AutoGPTPluginTemplate) and a_module.__name__ != "AutoGPTPluginTemplate":
+                    if (
+                        inspect.isclass(a_module)
+                        and issubclass(a_module, AutoGPTPluginTemplate)
+                        and a_module.__name__ != "AutoGPTPluginTemplate"
+                    ):
                         plugin_name = a_module.__name__
                         plugin_configured = plugins_config.get(plugin_name) is not None
                         plugin_enabled = plugins_config.is_enabled(plugin_name)
@@ -282,7 +286,9 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                                 f"name ({plugin_name}) as the key."
                             )
                     else:
-                        logger.debug(f"Skipping {key}: {a_module.__name__} because it doesn't subclass AutoGPTPluginTemplate.")
+                        logger.debug(
+                            f"Skipping {key}: {a_module.__name__} because it doesn't subclass AutoGPTPluginTemplate."
+                        )
 
     # OpenAI plugins
     if config.plugins_openai:
