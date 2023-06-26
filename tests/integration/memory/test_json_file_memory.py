@@ -9,12 +9,12 @@ from autogpt.workspace import Workspace
 
 
 @pytest.fixture(autouse=True)
-def cleanup_sut_singleton():
+def cleanup_sut_singleton()-> None:
     if JSONFileMemory in JSONFileMemory._instances:
         del JSONFileMemory._instances[JSONFileMemory]
 
 
-def test_json_memory_init_without_backing_file(config: Config, workspace: Workspace):
+def test_json_memory_init_without_backing_file(config: Config, workspace: Workspace) ->None:
     index_file = workspace.root / f"{config.memory_index}.json"
 
     assert not index_file.exists()
@@ -23,7 +23,7 @@ def test_json_memory_init_without_backing_file(config: Config, workspace: Worksp
     assert index_file.read_text() == "[]"
 
 
-def test_json_memory_init_with_backing_empty_file(config: Config, workspace: Workspace):
+def test_json_memory_init_with_backing_empty_file(config: Config, workspace: Workspace) -> None:
     index_file = workspace.root / f"{config.memory_index}.json"
     index_file.touch()
 
@@ -35,7 +35,7 @@ def test_json_memory_init_with_backing_empty_file(config: Config, workspace: Wor
 
 def test_json_memory_init_with_backing_invalid_file(
     config: Config, workspace: Workspace
-):
+)-> None:
     index_file = workspace.root / f"{config.memory_index}.json"
     index_file.touch()
 
@@ -50,13 +50,13 @@ def test_json_memory_init_with_backing_invalid_file(
     assert index_file.read_text() == "[]"
 
 
-def test_json_memory_add(config: Config, memory_item: MemoryItem):
+def test_json_memory_add(config: Config, memory_item: MemoryItem) ->None:
     index = JSONFileMemory(config)
     index.add(memory_item)
     assert index.memories[0] == memory_item
 
 
-def test_json_memory_clear(config: Config, memory_item: MemoryItem):
+def test_json_memory_clear(config: Config, memory_item: MemoryItem) -> None:
     index = JSONFileMemory(config)
     assert index.memories == []
 
@@ -67,7 +67,7 @@ def test_json_memory_clear(config: Config, memory_item: MemoryItem):
     assert index.memories == []
 
 
-def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embedding):
+def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embedding) -> None:
     index = JSONFileMemory(config)
     assert (
         index.get("test", config) == None
@@ -79,7 +79,7 @@ def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embed
     assert retrieved.memory_item == memory_item
 
 
-def test_json_memory_load_index(config: Config, memory_item: MemoryItem):
+def test_json_memory_load_index(config: Config, memory_item: MemoryItem) ->None:
     index = JSONFileMemory(config)
     index.add(memory_item)
 
