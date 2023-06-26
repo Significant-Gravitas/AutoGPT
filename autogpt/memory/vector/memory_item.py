@@ -36,19 +36,19 @@ class MemoryItem:
     def from_text(
         text: str,
         source_type: MemoryDocType,
+        config: Config,
         metadata: dict = {},
         how_to_summarize: str | None = None,
         question_for_summary: str | None = None,
     ):
-        cfg = Config()
         logger.debug(f"Memorizing text:\n{'-'*32}\n{text}\n{'-'*32}\n")
 
         chunks = [
             chunk
             for chunk, _ in (
-                split_text(text, cfg.embedding_model)
+                split_text(text, config.embedding_model, config)
                 if source_type != "code_file"
-                else chunk_content(text, cfg.embedding_model)
+                else chunk_content(text, config.embedding_model)
             )
         ]
         logger.debug("Chunks: " + str(chunks))
@@ -58,6 +58,7 @@ class MemoryItem:
             for summary, _ in [
                 summarize_text(
                     text_chunk,
+                    config,
                     instruction=how_to_summarize,
                     question=question_for_summary,
                 )
@@ -66,7 +67,7 @@ class MemoryItem:
         ]
         logger.debug("Chunk summaries: " + str(chunk_summaries))
 
-        e_chunks = get_embedding(chunks)
+        e_chunks = get_embedding(chunks, config)
 
         summary = (
             chunk_summaries[0]
@@ -81,7 +82,7 @@ class MemoryItem:
 
         # TODO: investigate search performance of weighted average vs summary
         # e_average = np.average(e_chunks, axis=0, weights=[len(c) for c in chunks])
-        e_summary = get_embedding(summary)
+        e_summary = get_embedding(summary, config)
 
         metadata["source_type"] = source_type
 
@@ -96,8 +97,8 @@ class MemoryItem:
         )
 
     @staticmethod
-    def from_text_file(content: str, path: str):
-        return MemoryItem.from_text(content, "text_file", {"location": path})
+    def from_text_file(content: str, path: str, config: Config):
+        return MemoryItem.from_text(content, "text_file", config, {"location": path})
 
     @staticmethod
     def from_code_file(content: str, path: str):
@@ -109,21 +110,21 @@ class MemoryItem:
         # The result_message contains either user feedback
         # or the result of the command specified in ai_message
 
-        if ai_message["role"] != "assistant":
-            raise ValueError(f"Invalid role on 'ai_message': {ai_message['role']}")
+        if ai_message.role != "assistant":
+            raise ValueError(f"Invalid role on 'ai_message': {ai_message.role}")
 
         result = (
-            result_message["content"]
-            if result_message["content"].startswith("Command")
+            result_message.content
+            if result_message.content.startswith("Command")
             else "None"
         )
         user_input = (
-            result_message["content"]
-            if result_message["content"].startswith("Human feedback")
+            result_message.content
+            if result_message.content.startswith("Human feedback")
             else "None"
         )
         memory_content = (
-            f"Assistant Reply: {ai_message['content']}"
+            f"Assistant Reply: {ai_message.content}"
             "\n\n"
             f"Result: {result}"
             "\n\n"
@@ -137,19 +138,25 @@ class MemoryItem:
         )
 
     @staticmethod
-    def from_webpage(content: str, url: str, question: str | None = None):
+    def from_webpage(
+        content: str, url: str, config: Config, question: str | None = None
+    ):
         return MemoryItem.from_text(
             text=content,
             source_type="webpage",
+            config=config,
             metadata={"location": url},
             question_for_summary=question,
         )
 
-    def dump(self) -> str:
-        token_length = count_string_tokens(self.raw_content, Config().embedding_model)
+    def dump(self, calculate_length=False) -> str:
+        if calculate_length:
+            token_length = count_string_tokens(
+                self.raw_content, Config().embedding_model
+            )
         return f"""
 =============== MemoryItem ===============
-Length: {token_length} tokens in {len(self.e_chunks)} chunks
+Size: {f'{token_length} tokens in ' if calculate_length else ''}{len(self.e_chunks)} chunks
 Metadata: {json.dumps(self.metadata, indent=2)}
 ---------------- SUMMARY -----------------
 {self.summary}
@@ -157,6 +164,31 @@ Metadata: {json.dumps(self.metadata, indent=2)}
 {self.raw_content}
 ==========================================
 """
+
+    def __eq__(self, other: MemoryItem):
+        return (
+            self.raw_content == other.raw_content
+            and self.chunks == other.chunks
+            and self.chunk_summaries == other.chunk_summaries
+            # Embeddings can either be list[float] or np.ndarray[float32],
+            # and for comparison they must be of the same type
+            and np.array_equal(
+                self.e_summary
+                if isinstance(self.e_summary, np.ndarray)
+                else np.array(self.e_summary, dtype=np.float32),
+                other.e_summary
+                if isinstance(other.e_summary, np.ndarray)
+                else np.array(other.e_summary, dtype=np.float32),
+            )
+            and np.array_equal(
+                self.e_chunks
+                if isinstance(self.e_chunks[0], np.ndarray)
+                else [np.array(c, dtype=np.float32) for c in self.e_chunks],
+                other.e_chunks
+                if isinstance(other.e_chunks[0], np.ndarray)
+                else [np.array(c, dtype=np.float32) for c in other.e_chunks],
+            )
+        )
 
 
 @dataclasses.dataclass
