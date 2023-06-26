@@ -7,6 +7,7 @@ import requests
 from requests.exceptions import RequestException
 from agbenchmark.mocks.MockManager import MockManager
 from agbenchmark.challenges.define_task_types import ChallengeData
+import subprocess
 
 
 @pytest.fixture(scope="module")
@@ -42,27 +43,34 @@ def server_response(request, config):
     else:
         task = request.param
         mock_function_name = None
-    # print(f"Server starting at {request.module}")
-    # try:
-    #     response = requests.post(
-    #         f"{config['hostname']}:{config['port']}", data={"task": task}
-    #     )
-    #     response.raise_for_status()  # This will raise an HTTPError if the status is 4xx or 5xx
-    # except RequestException:
-    #     # If an exception occurs (could be connection, timeout, or HTTP errors), we use the mock
 
-    if mock_function_name:
-        mock_manager = MockManager(
-            task
-        )  # workspace doesn't need to be passed in, stays the same
-        print("Server unavailable, using mock", mock_function_name)
-        mock_manager.delegate(mock_function_name)
-    else:
-        print("No mock provided")
+    # get the current file's directory
+    current_dir = os.path.dirname(os.path.abspath(__file__))
 
+    # construct the script's path
+    script_path = os.path.join(current_dir, "..", "agent", "agbenchmark_run.py")
+
+    # form the command
+    command = ["python", script_path, task]
+
+    # if mock_function_name:
+    #     mock_manager = MockManager(
+    #         task
+    #     )  # workspace doesn't need to be passed in, stays the same
+    #     print("Server unavailable, using mock", mock_function_name)
+    #     mock_manager.delegate(mock_function_name)
     # else:
-    #     # This code is run if no exception occurred
-    #     print(f"Request succeeded with status code {response.status_code}")
+    #     print("No mock provided")
+
+    try:
+        # run the command and wait for it to complete
+        result = subprocess.run(
+            command, shell=True, check=True, text=True, capture_output=True
+        )
+        return result
+    except subprocess.CalledProcessError as e:
+        print(f"Subprocess failed with the following error:\n{e}")
+        # If the subprocess returns a non-zero exit status
 
 
 regression_json = "agbenchmark/tests/regression/regression_tests.json"
