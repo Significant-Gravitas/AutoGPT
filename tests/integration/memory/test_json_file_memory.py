@@ -6,6 +6,8 @@ import pytest
 from autogpt.config import Config
 from autogpt.memory.vector import JSONFileMemory, MemoryItem
 from autogpt.workspace import Workspace
+from typing import Callable
+from pytest_mock import MockerFixture
 
 
 @pytest.fixture(autouse=True)
@@ -67,7 +69,7 @@ def test_json_memory_clear(config: Config, memory_item: MemoryItem) -> None:
     assert index.memories == []
 
 
-def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embedding) -> None:
+def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embedding:Callable[[MockerFixture, int], None]) -> None:
     index = JSONFileMemory(config)
     assert (
         index.get("test", config) == None
