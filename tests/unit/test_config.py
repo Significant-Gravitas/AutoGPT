@@ -165,10 +165,20 @@ def test_azure_config(config, workspace):
     # Store model name to reset it after the test
     fast_llm_model = config.fast_llm_model
     smart_llm_model = config.smart_llm_model
-    openai_api_type = config.openai_api_type if hasattr(config, "openai_api_type") else None
-    openai_api_base = config.openai_api_base if hasattr(config, "openai_api_base") else None
-    openai_api_version = config.openai_api_version if hasattr(config, "openai_api_version") else None
-    azure_model_to_deployment_id_map = config.azure_model_to_deployment_id_map if hasattr(config, "azure_model_to_deployment_id_map") else None
+    openai_api_type = (
+        config.openai_api_type if hasattr(config, "openai_api_type") else None
+    )
+    openai_api_base = (
+        config.openai_api_base if hasattr(config, "openai_api_base") else None
+    )
+    openai_api_version = (
+        config.openai_api_version if hasattr(config, "openai_api_version") else None
+    )
+    azure_model_to_deployment_id_map = (
+        config.azure_model_to_deployment_id_map
+        if hasattr(config, "azure_model_to_deployment_id_map")
+        else None
+    )
 
     config.load_azure_config(str(config_file))
 
