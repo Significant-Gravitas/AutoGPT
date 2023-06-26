@@ -1,4 +1,4 @@
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.app import execute_command
 
 

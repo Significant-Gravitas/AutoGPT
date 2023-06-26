@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.config import AIConfig
 from autogpt.config.config import Config
 from autogpt.llm.base import ChatModelResponse, ChatSequence, Message

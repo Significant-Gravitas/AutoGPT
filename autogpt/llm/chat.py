@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from autogpt.llm.providers.openai import get_openai_command_specs
 
 if TYPE_CHECKING:
-    from autogpt.agent.agent import Agent
+    from autogpt.agents.agent import Agent
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager

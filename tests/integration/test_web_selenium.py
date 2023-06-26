@@ -1,7 +1,7 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.commands.web_selenium import browse_website
 
 

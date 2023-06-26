@@ -2,7 +2,7 @@
 import json
 from typing import Dict
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.config import Config
 from autogpt.llm import ChatModelResponse
 

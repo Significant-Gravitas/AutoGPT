@@ -8,7 +8,7 @@ from typing import Generator, Literal
 
 from confection import Config
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.commands.file_operations_utils import read_textual_file
 from autogpt.config import Config

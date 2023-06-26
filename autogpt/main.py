@@ -4,7 +4,7 @@ import sys
 
 from colorama import Fore, Style
 
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger

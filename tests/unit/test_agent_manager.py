@@ -1,6 +1,6 @@
 import pytest
 
-from autogpt.agent.agent_manager import AgentManager
+from autogpt.agents.agent_manager import AgentManager
 from autogpt.llm import ChatModelResponse
 from autogpt.llm.chat import create_chat_completion
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
