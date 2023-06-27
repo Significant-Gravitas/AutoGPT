@@ -5,6 +5,7 @@ import yaml
 from autogpt.config.config import Config
 from autogpt.plugins import inspect_zip_for_modules, scan_plugins
 from autogpt.plugins.plugin_config import PluginConfig
+from autogpt.plugins.plugins_config import PluginsConfig
 
 PLUGINS_TEST_DIR = "tests/unit/data/test_plugins"
 PLUGIN_TEST_ZIP_FILE = "Auto-GPT-Plugin-Test-master.zip"
@@ -69,7 +70,7 @@ def test_create_base_config(config: Config):
     config.plugins_denylist = ["c", "d"]
 
     os.remove(config.plugins_config_file)
-    plugins_config = config.load_plugins_config()
+    plugins_config = PluginsConfig.load_config(global_config=config)
 
     # Check the structure of the plugins config data
     assert len(plugins_config.plugins) == 4
@@ -101,7 +102,7 @@ def test_load_config(config: Config):
         f.write(yaml.dump(test_config))
 
     # Load the config from disk
-    plugins_config = config.load_plugins_config()
+    plugins_config = PluginsConfig.load_config(global_config=config)
 
     # Check that the loaded config is equal to the test config
     assert len(plugins_config.plugins) == 2
