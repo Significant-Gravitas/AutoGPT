@@ -10,7 +10,7 @@ from typing import Generator
     
     This import file is necessary for giving the type hint for memory_none function
 """
-from ....autogpt.memory.vector.providers.base import VectorMemoryProvider as VectorMemory # type: ignore 
+from ......autogpt.memory.vector.providers.base import VectorMemoryProvider as VectorMemory # type: ignore 
 
 import autogpt.memory.vector.memory_item as vector_memory_item
 import autogpt.memory.vector.providers.base as memory_provider_base
