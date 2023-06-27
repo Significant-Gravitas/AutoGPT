@@ -209,7 +209,7 @@ class Config(Configurable):
 
         wipe_workspace_on_start = os.getenv("WIPE_WORKSPACE_ON_START")
         if wipe_workspace_on_start == "True":
-            print("Removing All Files Inside Auto_got_workspace")
+            print("Removing All Files Inside auto_gpt_workspace")
             workspace_path = "autogpt/auto_gpt_workspace"
             if os.path.isdir(workspace_path):
                 for file_name in os.listdir(workspace_path):
