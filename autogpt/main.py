@@ -145,7 +145,7 @@ def run_auto_gpt(
         if callable(command.enabled) and not command.enabled(config):
             command.enabled = False
             incompatible_commands.append(command)
-    
+
     for command in incompatible_commands:
         command_registry.unregister(command.name)
         logger.debug(
