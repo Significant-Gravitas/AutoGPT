@@ -5,10 +5,20 @@ from autogpt.config import AIConfig, Config
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.workspace import Workspace
+from typing import Generator
+"""
+    Added #type: ignore because without it, mypy command gave following error:
+        mypy
+        tests/integration/memory/utils.py:5: error: Skipping analyzing ".autogpt.memory.vector.providers.base": module is installed, but missing library stubs or py.typed marker  [import]
+        tests/integration/memory/utils.py:5: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+    
+    This import file is necessary for giving the type hint for memory_json_file function
+"""
+from ....autogpt.memory.vector.providers.base import VectorMemoryProvider as VectorMemory # type: ignore 
 
 
 @pytest.fixture
-def memory_json_file(config: Config):
+def memory_json_file(config: Config) -> Generator[VectorMemory, None, None]:
     was_memory_backend = config.memory_backend
 
     config.memory_backend = "json_file"
@@ -20,7 +30,7 @@ def memory_json_file(config: Config):
 
 
 @pytest.fixture
-def dummy_agent(config: Config, memory_json_file, workspace: Workspace):
+def dummy_agent(config: Config, memory_json_file:Generator[VectorMemory, None, None], workspace: Workspace)->Agent:
     command_registry = CommandRegistry()
 
     ai_config = AIConfig(
