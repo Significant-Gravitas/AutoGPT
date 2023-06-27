@@ -1,6 +1,16 @@
 import numpy
 import pytest
 from pytest_mock import MockerFixture
+from typing import Generator
+"""
+    Added #type: ignore because without it, mypy command gave following error:
+        mypy
+        tests/integration/memory/utils.py:5: error: Skipping analyzing ".autogpt.memory.vector.providers.base": module is installed, but missing library stubs or py.typed marker  [import]
+        tests/integration/memory/utils.py:5: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+    
+    This import file is necessary for giving the type hint for memory_none function
+"""
+from ....autogpt.memory.vector.providers.base import VectorMemoryProvider as VectorMemory # type: ignore 
 
 import autogpt.memory.vector.memory_item as vector_memory_item
 import autogpt.memory.vector.providers.base as memory_provider_base
@@ -11,7 +21,7 @@ from autogpt.memory.vector.utils import Embedding
 
 
 @pytest.fixture
-def embedding_dimension(config: Config):
+def embedding_dimension(config: Config)-> int:      ## Because embedding_dimensions has int type
     return OPEN_AI_EMBEDDING_MODELS[config.embedding_model].embedding_dimensions
 
 
@@ -21,7 +31,7 @@ def mock_embedding(embedding_dimension: int) -> Embedding:
 
 
 @pytest.fixture
-def mock_get_embedding(mocker: MockerFixture, embedding_dimension: int):
+def mock_get_embedding(mocker: MockerFixture, embedding_dimension: int) -> None:
     mocker.patch.object(
         vector_memory_item,
         "get_embedding",
@@ -35,7 +45,7 @@ def mock_get_embedding(mocker: MockerFixture, embedding_dimension: int):
 
 
 @pytest.fixture
-def memory_none(agent_test_config: Config, mock_get_embedding):
+def memory_none(agent_test_config: Config, mock_get_embedding : None) -> Generator[VectorMemory, None, None]:
     was_memory_backend = agent_test_config.memory_backend
 
     agent_test_config.set_memory_backend("no_memory")
