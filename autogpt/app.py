@@ -25,7 +25,7 @@ def is_valid_int(value: str) -> bool:
 
 def get_command(
     assistant_reply_json: Dict, assistant_reply: ChatModelResponse, config: Config
-):
+) -> tuple[str, dict[str, str]]:
     """Parse the response and return the command name and arguments
 
     Args:
