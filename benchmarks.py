@@ -13,9 +13,9 @@ def run_task(task) -> None:
 
 
 def bootstrap_agent(task):
-    config = Config()
-    config.set_continuous_mode(False)
-    config.set_temperature(0)
+    config = Config.build_config_from_env()
+    config.continuous_mode = False
+    config.temperature = 0
     config.plain_output = True
     command_registry = get_command_registry(config)
     config.memory_backend = "no_memory"
