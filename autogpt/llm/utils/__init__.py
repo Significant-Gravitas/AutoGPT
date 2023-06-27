@@ -9,7 +9,7 @@ import openai
 import openai.api_resources.abstract.engine_api_resource as engine_api_resource
 import openai.util
 from colorama import Fore, Style
-from openai.error import APIError, RateLimitError
+from openai.error import APIError, RateLimitError, ServiceUnavailableError
 from openai.openai_object import OpenAIObject
 
 from autogpt.config import Config
@@ -68,7 +68,10 @@ def retry_openai_api(
         backoff_base float: Base for exponential backoff. Defaults to 2.
         warn_user bool: Whether to warn the user. Defaults to True.
     """
-    retry_limit_msg = f"{Fore.RED}Error: " f"Reached rate limit, passing...{Fore.RESET}"
+    error_messages = {
+        ServiceUnavailableError: f"{Fore.RED}Error: The OpenAI API engine is currently overloaded, passing...{Fore.RESET}",
+        RateLimitError: f"{Fore.RED}Error: Reached rate limit, passing...{Fore.RESET}",
+    }
     api_key_error_msg = (
         f"Please double check that you have setup a "
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
@@ -87,19 +90,18 @@ def retry_openai_api(
                 try:
                     return func(*args, **kwargs)
 
-                except RateLimitError:
+                except (RateLimitError, ServiceUnavailableError) as e:
                     if attempt == num_attempts:
                         raise
 
-                    logger.debug(retry_limit_msg)
+                    error_msg = error_messages[type(e)]
+                    logger.debug(error_msg)
                     if not user_warned:
                         logger.double_check(api_key_error_msg)
                         user_warned = True
 
                 except APIError as e:
-                    if (e.http_status not in [429, 502, 503]) or (
-                        attempt == num_attempts
-                    ):
+                    if (e.http_status not in [429, 502]) or (attempt == num_attempts):
                         raise
 
                 backoff = backoff_base ** (attempt + 2)
