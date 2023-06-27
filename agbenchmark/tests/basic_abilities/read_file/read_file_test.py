@@ -1,5 +1,4 @@
 import pytest
-from agbenchmark.challenges.define_task_types import ChallengeData
 from agbenchmark.Challenge import Challenge
 from agbenchmark.tests.basic_abilities.BasicChallenge import BasicChallenge
 import os
@@ -8,9 +7,7 @@ import os
 class TestReadFile(BasicChallenge):
     """Testing if LLM can read a file"""
 
-    @pytest.fixture(
-        scope="module", autouse=True
-    )  # this is specific to setting up a file for the test, not all tests have this
+    @pytest.fixture(scope="module", autouse=True)
     def setup_module(self, workspace):
         Challenge.write_to_file(
             workspace, self.data.ground.files[0], "this is how we're doing"

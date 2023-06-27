@@ -1,5 +1,3 @@
 {
-  "hostname": "localhost",
-  "port": 8080,
-  "workspace": "C:/Users/silen/miniagi"
+  "hostname": "localhost"
 }

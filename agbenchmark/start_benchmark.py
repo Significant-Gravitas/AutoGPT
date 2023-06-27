@@ -27,10 +27,6 @@ def start(category, noreg, mock):
     if not os.path.exists(config_dir) or os.stat(config_dir).st_size == 0:
         config = {}
 
-        config["hostname"] = click.prompt(
-            "\nPlease enter a new hostname", default="localhost"
-        )
-        config["port"] = click.prompt("Please enter a new port", default=8080)
         config["workspace"] = click.prompt(
             "Please enter a new workspace path",
             default=os.path.join(Path.home(), "miniagi"),
