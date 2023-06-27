@@ -4,7 +4,8 @@
 
 Input:
 
-- **category** (str[]): Category of the challenge such as 'retrieval', 'comprehension', etc. _this is not currently used. for the future it may be needed_
+- **name** (str): Name of the challenge.
+- **category** (str[]): Category of the challenge such as 'basic', 'retrieval', 'comprehension', etc. _this is not currently used. for the future it may be needed_
 - **task** (str): The task that the agent needs to solve.
 - **dependencies** (str[]): The dependencies that the challenge needs to run. Needs to be the full node to the test function.
 - **ground** (dict): The ground truth.
@@ -12,7 +13,9 @@ Input:
   - **should_contain** (list): The exact strings that are required in the final answer.
   - **should_not_contain** (list): The exact strings that should not be in the final answer.
   - **files** (list): Files that are used for retrieval. Can specify file here or an extension.
-- **mock_func** (str): Function to mock the agent's response. This is used for testing purposes.
+- **mock** (dict): Mock response for testing.
+  - **mock_func** (str): Function to mock the agent's response. This is used for testing purposes.
+  - **mock_task** (str): Task to provide for the mock function.
 - **info** (dict): Additional info about the challenge.
   - **difficulty** (str): The difficulty of this query.
   - **description** (str): Description of the challenge.
@@ -22,24 +25,26 @@ Example:
 
 ```python
 {
+  "name": "basic_write_file",
   "category": ["basic"],
-  "task": "Write the string 'random string' before any existing text to the file called file_to_check.txt",
-  "dependencies": [
-    "agbenchmark/tests/basic_abilities/write_file/write_file_test.py::TestWriteFile::test_write_file"
-  ],
+  "task": "Print the the capital of America to a .txt file",
+  "dependencies": [],
   "ground": {
-    "answer": "random string: this is how we're doing",
-    "should_contain": ["random string: this is how we're doing"],
-    "files": ["file_to_check.txt"]
+    "answer": "Washington",
+    "should_contain": ["Washington"],
+    "should_not_contain": ["New York", "Los Angeles", "San Francisco"],
+    "files": [".txt"]
   },
-  "mock_func": "basic_read_file_mock",
+  "mock": {
+    "mock_func": "basic_write_file_mock",
+    "mock_task": "What is the capital of America?"
+  },
   "info": {
-    "description": "This reads the file quickly",
     "difficulty": "basic",
-    "side_effects": [""]
+    "description": "Tests the writing to file",
+    "side_effects": ["tests if there is in fact an LLM attached"]
   }
 }
-
 ```
 
 Current Output:

@@ -1,5 +1,4 @@
 import pytest
-from agbenchmark.challenges.define_task_types import ChallengeData
 from agbenchmark.tests.basic_abilities.BasicChallenge import BasicChallenge
 import os
 
