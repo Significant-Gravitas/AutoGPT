@@ -39,9 +39,16 @@ def start(category, noreg):
             config = json.load(f)
 
     # create workspace directory if it doesn't exist
-    workspace_path = config_dir = os.path.abspath(config["workspace"])
+    workspace_path = os.path.abspath(config["workspace"])
     if not os.path.exists(workspace_path):
         os.makedirs(workspace_path, exist_ok=True)
+
+    regression_path = os.path.abspath(
+        "agbenchmark/tests/regression/regression_tests.txt"
+    )
+    if not os.path.exists(regression_path):
+        with open(regression_path, "a"):
+            pass
 
     print("Current configuration:")
     for key, value in config.items():
