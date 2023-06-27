@@ -171,8 +171,8 @@ class Config(Configurable):
             == "True",
             "openai_functions": os.getenv("OPENAI_FUNCTIONS", "False") == "True",
             "elevenlabs_api_key": os.getenv("ELEVENLABS_API_KEY"),
-            "elevenlabs_voice_1", os.getenv("ELEVENLABS_VOICE_1")
-            "elevenlabs_voice_2", os.getenv("ELEVENLABS_VOICE_1")
+            "elevenlabs_voice_1": os.getenv("ELEVENLABS_VOICE_1"),
+            "elevenlabs_voice_2": os.getenv("ELEVENLABS_VOICE_1"),
             "streamelements_voice": os.getenv("STREAMELEMENTS_VOICE"),
             "text_to_speech_provider": os.getenv("TEXT_TO_SPEECH_PROVIDER"),
             "github_api_key": os.getenv("GITHUB_API_KEY"),
