@@ -1,10 +1,12 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Generator, Optional
 
 import pytest
 from _pytest.config import Config
 from _pytest.config.argparsing import Parser
 from _pytest.fixtures import FixtureRequest
+from pytest_mock import MockerFixture
 
+from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge import Challenge
 from tests.vcr import before_record_response
 
@@ -59,3 +61,17 @@ def challenge_name() -> str:
 @pytest.fixture(autouse=True)
 def check_beat_challenges(request: FixtureRequest) -> None:
     Challenge.BEAT_CHALLENGES = request.config.getoption("--beat-challenges")
+
+
+@pytest.fixture
+def patched_make_workspace(mocker: MockerFixture, workspace: Workspace) -> Generator:
+    def patched_make_workspace(*args: Any, **kwargs: Any) -> str:
+        return workspace.root
+
+    mocker.patch.object(
+        Workspace,
+        "make_workspace",
+        new=patched_make_workspace,
+    )
+
+    yield

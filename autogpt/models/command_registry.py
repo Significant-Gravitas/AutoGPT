@@ -15,6 +15,8 @@ class CommandRegistry:
     directory.
     """
 
+    commands: dict[str, Command]
+
     def __init__(self):
         self.commands = {}
 
