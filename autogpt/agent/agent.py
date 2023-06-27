@@ -142,7 +142,9 @@ class Agent:
                 )
 
             try:
-                assistant_reply_json = extract_json_from_response(assistant_reply)
+                assistant_reply_json = extract_json_from_response(
+                    assistant_reply.content
+                )
                 validate_json(assistant_reply_json, self.config)
             except json.JSONDecodeError as e:
                 logger.error(f"Exception while validating assistant reply JSON: {e}")
@@ -160,7 +162,9 @@ class Agent:
                     print_assistant_thoughts(
                         self.ai_name, assistant_reply_json, self.config
                     )
-                    command_name, arguments = get_command(assistant_reply_json)
+                    command_name, arguments = get_command(
+                        assistant_reply_json, assistant_reply, self.config
+                    )
                     if self.config.speak_mode:
                         say_text(f"I want to execute {command_name}")
 

@@ -5,7 +5,7 @@ from typing import List, Optional
 import openai
 from openai import Model
 
-from autogpt.llm.modelsinfo import COSTS
+from autogpt.llm.base import CompletionModelInfo
 from autogpt.logs import logger
 from autogpt.singleton import Singleton
 
@@ -35,14 +35,19 @@ class ApiManager(metaclass=Singleton):
         model (str): The model used for the API call.
         """
         # the .model property in API responses can contain version suffixes like -v2
+        from autogpt.llm.providers.openai import OPEN_AI_MODELS
+
         model = model[:-3] if model.endswith("-v2") else model
+        model_info = OPEN_AI_MODELS[model]
 
         self.total_prompt_tokens += prompt_tokens
         self.total_completion_tokens += completion_tokens
-        self.total_cost += (
-            prompt_tokens * COSTS[model]["prompt"]
-            + completion_tokens * COSTS[model]["completion"]
-        ) / 1000
+        self.total_cost += prompt_tokens * model_info.prompt_token_cost / 1000
+        if issubclass(type(model_info), CompletionModelInfo):
+            self.total_cost += (
+                completion_tokens * model_info.completion_token_cost / 1000
+            )
+
         logger.debug(f"Total running cost: ${self.total_cost:.3f}")
 
     def set_total_budget(self, total_budget):

@@ -4,28 +4,30 @@ from typing import Dict
 import pytest
 from pytest_mock import MockerFixture
 
-from autogpt.agent import Agent
-from autogpt.commands.file_operations import read_file, write_to_file
+from autogpt.commands.file_operations import read_file
+from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import get_workspace_path, run_interaction_loop
+from tests.challenges.utils import get_workspace_path, run_challenge
 
 LEVEL_CURRENTLY_BEATEN = 1
 MAX_LEVEL = 5
 OUTPUT_LOCATION = "output.txt"
+USER_INPUT = "Use the command read_file to read the instructions_1.txt file\nFollow the instructions in the instructions_1.txt file"
 
 
 @challenge()
 def test_memory_challenge_d(
-    memory_management_agent: Agent,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
     challenge_name: str,
+    workspace: Workspace,
+    patched_make_workspace: pytest.fixture,
 ) -> None:
     """
     The agent is given a series of events and must remember the respective beliefs of the characters.
     Args:
-        memory_management_agent (Agent)
+        workspace (Workspace)
         user_selected_level (int)
     """
     sally_anne_test_phrases = [
@@ -36,19 +38,14 @@ def test_memory_challenge_d(
         "Sally gives a new marble (marble E) to Charlie who is outside with her. Charlie enters the room and places marble E in the red box. Anne, who is already in the room, takes marble E from the red box, and hides it under the sofa. Then Anne leaves the room and tells Sally that marble E is in the green box. Meanwhile, after Anne leaves the room, Charlie who re-enters the room takes marble D from under the sofa and places it in his own basket (basket C).",
     ]
     level_sally_anne_test_phrases = sally_anne_test_phrases[:level_to_run]
-    create_instructions_files(
-        memory_management_agent, level_to_run, level_sally_anne_test_phrases
+    create_instructions_files(workspace, level_to_run, level_sally_anne_test_phrases)
+    run_challenge(
+        challenge_name, level_to_run, monkeypatch, USER_INPUT, level_to_run + 2
     )
-    run_interaction_loop(
-        monkeypatch,
-        memory_management_agent,
-        level_to_run + 2,
-        challenge_name,
-        level_to_run,
-    )
-    file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
 
-    content = read_file(file_path, memory_management_agent)
+    file_path = get_workspace_path(workspace, OUTPUT_LOCATION)
+
+    content = read_file(file_path, workspace)
     check_beliefs(content, level_to_run)
 
 
@@ -176,7 +173,7 @@ def extract_beliefs(content: str) -> Dict[str, Dict[str, str]]:
 
 
 def create_instructions_files(
-    memory_management_agent: Agent,
+    workspace: Workspace,
     level: int,
     test_phrases: list,
     base_filename: str = "instructions_",
@@ -185,15 +182,16 @@ def create_instructions_files(
     Creates a series of instructions files for the memory challenge.
     Args:
         level:
-        memory_management_agent (Agent)
+        workspace (Workspace)
         test_phrases (list)
         base_filename (str, optional)
     """
     for i in range(1, level + 1):
         content = generate_content(i, test_phrases, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
-        file_path = get_workspace_path(memory_management_agent, file_name)
-        write_to_file(file_path, content, memory_management_agent)
+        file_path = get_workspace_path(workspace, file_name)
+        with open(file_path, "w") as file:
+            file.write(content)
 
 
 def generate_content(
