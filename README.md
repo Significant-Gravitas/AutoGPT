@@ -65,7 +65,7 @@ class TestSomething(CategoryChallenge):
     """Testing if LLM can read a file"""
 
     @pytest.mark.parametrize(
-        "server_response",
+        "run_agent",
         [(data.task, data.mock_func)],
         indirect=True,
     )

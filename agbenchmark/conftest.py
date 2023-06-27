@@ -4,18 +4,24 @@ import pytest
 import shutil
 from agbenchmark.tests.regression.RegressionManager import RegressionManager
 import requests
-from requests.exceptions import RequestException
 from agbenchmark.mocks.MockManager import MockManager
-from agbenchmark.challenges.define_task_types import ChallengeData
 import subprocess
+from agbenchmark.Challenge import Challenge
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 @pytest.fixture(scope="module")
-def config():
+def config(request):
     config_file = os.path.abspath("agbenchmark/config.json")
     print(f"Config file: {config_file}")
     with open(config_file, "r") as f:
         config = json.load(f)
+
+    if request.config.getoption("--mock"):
+        config["workspace"] = "agbenchmark/mocks/workspace"
+
     return config
 
 
@@ -34,43 +40,49 @@ def workspace(config):
             print(f"Failed to delete {file_path}. Reason: {e}")
 
 
+def pytest_addoption(parser):
+    parser.addoption("--mock", action="store_true", default=False)
+
+
+AGENT_NAME = os.getenv("AGENT_NAME")
+AGENT_TIMEOUT = os.getenv("AGENT_TIMEOUT")
+
+
 @pytest.fixture(autouse=True)
-def server_response(request, config):
+def run_agent(request, config):
     """Calling to get a response"""
     if isinstance(request.param, tuple):
         task = request.param[0]  # The task is passed in indirectly
-        mock_function_name = request.param[1]
+        mock_function_name = request.param[1] or None
     else:
         task = request.param
         mock_function_name = None
 
-    # get the current file's directory
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if mock_function_name != None and (request.config.getoption("--mock")):
+        if mock_function_name:
+            mock_manager = MockManager(
+                task
+            )  # workspace doesn't need to be passed in, stays the same
+            print("Server unavailable, using mock", mock_function_name)
+            mock_manager.delegate(mock_function_name)
+        else:
+            print("No mock provided")
+    else:
+        path = os.path.join(os.getcwd(), f"agent\\{AGENT_NAME}")
 
-    # construct the script's path
-    script_path = os.path.join(current_dir, "..", "agent", "agbenchmark_run.py")
+        try:
+            timeout = int(AGENT_TIMEOUT) if AGENT_TIMEOUT is not None else 60
 
-    # form the command
-    command = ["python", script_path, task]
-
-    # if mock_function_name:
-    #     mock_manager = MockManager(
-    #         task
-    #     )  # workspace doesn't need to be passed in, stays the same
-    #     print("Server unavailable, using mock", mock_function_name)
-    #     mock_manager.delegate(mock_function_name)
-    # else:
-    #     print("No mock provided")
-
-    try:
-        # run the command and wait for it to complete
-        result = subprocess.run(
-            command, shell=True, check=True, text=True, capture_output=True
-        )
-        return result
-    except subprocess.CalledProcessError as e:
-        print(f"Subprocess failed with the following error:\n{e}")
-        # If the subprocess returns a non-zero exit status
+            subprocess.run(
+                ["python", "miniagi.py", task],
+                check=True,
+                cwd=path,
+                timeout=timeout
+                # text=True,
+                # capture_output=True
+            )
+        except subprocess.TimeoutExpired:
+            print("The subprocess has exceeded the time limit and was terminated.")
 
 
 regression_json = "agbenchmark/tests/regression/regression_tests.json"
@@ -80,13 +92,13 @@ regression_manager = RegressionManager(regression_json)
 
 # this is to get the challenge_data from every test
 @pytest.fixture(autouse=True)
-def regression_data(request):
+def challenge_data(request):
     return request.param
 
 
 def pytest_runtest_makereport(item, call):
     if call.when == "call":
-        challenge_data = item.funcargs.get("regression_data", None)
+        challenge_data = item.funcargs.get("challenge_data", None)
         difficulty = challenge_data.info.difficulty if challenge_data else "unknown"
         dependencies = challenge_data.dependencies if challenge_data else []
 
@@ -105,9 +117,9 @@ def pytest_runtest_makereport(item, call):
 
 def pytest_collection_modifyitems(items):
     """Called once all test items are collected. Used
-    to add regression marker to collected test items."""
+    to add regression and depends markers to collected test items."""
     for item in items:
-        print("pytest_collection_modifyitems", item.nodeid)
+        # regression add
         if item.nodeid.split("::")[1] in regression_manager.tests:
             print(regression_manager.tests)
             item.add_marker(pytest.mark.regression)
@@ -116,3 +128,26 @@ def pytest_collection_modifyitems(items):
 def pytest_sessionfinish():
     """Called at the end of the session to save regression tests"""
     regression_manager.save()
+
+
+# this is so that all tests can inherit from the Challenge class
+def pytest_generate_tests(metafunc):
+    if "challenge_data" in metafunc.fixturenames:
+        # Get the instance of the test class
+        test_class = metafunc.cls()
+
+        # Generate the parameters
+        params = test_class.data
+
+        # Add the parameters to the test function
+        metafunc.parametrize("challenge_data", [params], indirect=True)
+
+    if "run_agent" in metafunc.fixturenames:
+        # Get the instance of the test class
+        test_class = metafunc.cls()
+
+        # Generate the parameters
+        params = [(test_class.task, test_class.mock)]
+
+        # Add the parameters to the test function
+        metafunc.parametrize("run_agent", params, indirect=True)
