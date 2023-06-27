@@ -41,7 +41,7 @@ FILE_DIR = Path(__file__).parent.parent
 
 @command(
     "browse_website",
-    "Browse Website",
+    "Browses a Website",
     {
         "url": {"type": "string", "description": "The URL to visit", "required": True},
         "question": {

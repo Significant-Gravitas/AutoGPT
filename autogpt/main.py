@@ -1,12 +1,11 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
 import logging
 import sys
-from pathlib import Path
 
 from colorama import Fore, Style
 
 from autogpt.agent import Agent
-from autogpt.config import Config, check_openai_api_key
+from autogpt.config.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
@@ -53,7 +52,8 @@ def run_auto_gpt(
     logger.set_level(logging.DEBUG if debug else logging.INFO)
     logger.speak_mode = speak
 
-    config = Config()
+    config = Config.build_config_from_env()
+
     # TODO: fill in llm values here
     check_openai_api_key(config)
 
@@ -116,24 +116,12 @@ def run_auto_gpt(
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
-    if workspace_directory is None:
-        workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
-    else:
-        workspace_directory = Path(workspace_directory)
-    # TODO: pass in the ai_settings file and the env file and have them cloned into
-    #   the workspace directory so we can bind them to the agent.
-    workspace_directory = Workspace.make_workspace(workspace_directory)
-    config.workspace_path = str(workspace_directory)
+    workspace_directory = Workspace.get_workspace_directory(config, workspace_directory)
 
     # HACK: doing this here to collect some globals that depend on the workspace.
-    file_logger_path = workspace_directory / "file_logger.txt"
-    if not file_logger_path.exists():
-        with file_logger_path.open(mode="w", encoding="utf-8") as f:
-            f.write("File Operation Logger ")
+    Workspace.build_file_logger_path(config, workspace_directory)
 
-    config.file_logger_path = str(file_logger_path)
-
-    config.set_plugins(scan_plugins(config, config.debug_mode))
+    config.plugins = scan_plugins(config, config.debug_mode)
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
 

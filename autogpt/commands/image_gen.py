@@ -16,7 +16,7 @@ from autogpt.logs import logger
 
 @command(
     "generate_image",
-    "Generate Image",
+    "Generates an Image",
     {
         "prompt": {
             "type": "string",
