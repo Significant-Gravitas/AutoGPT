@@ -139,13 +139,17 @@ def run_auto_gpt(
     for command_category in enabled_command_categories:
         command_registry.import_commands(command_category)
 
-    # Unregister commands that will not run due to config settings
+    # Unregister commands that are incompatible with the current config
     for command in command_registry.commands:
         if callable(command.enabled) and not command.enabled(config):
             command.enabled = False
             command_registry.unregister_command(command.name)
-            logger.info(f"Unregistering disabled command '{command.name}': {command.disabled_reason or 'Disabled by config settings.'}")
-            
+            logger.info(
+                f"Unregistering disabled command: "
+                f"'{command.name}' - "
+                f"{command.disabled_reason or 'Incompatible with current config.'}"
+            )
+
     ai_name = ""
     ai_config = construct_main_ai_config(config)
     ai_config.command_registry = command_registry
