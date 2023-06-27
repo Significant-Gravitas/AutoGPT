@@ -145,9 +145,8 @@ def run_auto_gpt(
             command.enabled = False
             command_registry.unregister_command(command.name)
             logger.info(
-                f"Unregistering disabled command: "
-                f"'{command.name}' - "
-                f"{command.disabled_reason or 'Incompatible with current config.'}"
+                f"Unregistering disabled command: {command.name}, "
+                f"reason - {command.disabled_reason or 'Incompatible with current config.'}"
             )
 
     ai_name = ""
