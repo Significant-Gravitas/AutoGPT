@@ -4,6 +4,11 @@ import json
 import os
 
 
+class Mock(BaseModel):
+    mock_func: str
+    mock_task: Optional[str] = None
+
+
 class Info(BaseModel):
     difficulty: str
     description: str
@@ -12,17 +17,18 @@ class Info(BaseModel):
 
 class Ground(BaseModel):
     answer: str
-    should_contain: Optional[List[str]]
-    should_not_contain: Optional[List[str]]
+    should_contain: Optional[List[str]] = None
+    should_not_contain: Optional[List[str]] = None
     files: List[str]
 
 
 class ChallengeData(BaseModel):
+    name: str
     category: List[str]
     task: str
     dependencies: List[str]
     ground: Ground
-    mock_func: Optional[str] = None
+    mock: Optional[Mock] = None
     info: Info
 
     def serialize(self, path: str) -> None:

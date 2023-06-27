@@ -1,11 +1,62 @@
 import os
 import glob
+import pytest
+from abc import ABC, abstractmethod
 from agbenchmark.challenges.define_task_types import Ground
+from agbenchmark.challenges.define_task_types import ChallengeData
+from dotenv import load_dotenv, set_key
+
+load_dotenv()
+
+mock_test_str = os.getenv("MOCK_TEST")
+MOCK_TEST = mock_test_str.lower() == "true" if mock_test_str else False
 
 
-class Challenge:
+class Challenge(ABC):
     """The parent class to all specific challenges classes.
     Defines helper methods for running a challenge"""
+
+    @abstractmethod
+    def get_file_path(self) -> str:
+        """This should be implemented by any class which inherits from BasicChallenge"""
+        pass
+
+    @property
+    def data(self) -> ChallengeData:
+        return ChallengeData.deserialize(self.get_file_path())
+
+    @property
+    def mock(self):
+        return self.data.mock.mock_func if self.data.mock else None
+
+    @property
+    def task(self):
+        return (
+            self.data.mock.mock_task if self.data.mock and MOCK_TEST else self.data.task
+        )
+
+    @property
+    def dependencies(self) -> list:
+        print("self.data.dependencies", self.data.dependencies)
+        return self.data.dependencies
+
+    @property
+    def name(self) -> str:
+        print("self.data.name", self.data.name)
+        return self.data.name
+
+    @pytest.mark.parametrize(
+        "run_agent",
+        [(task, mock)],
+        indirect=True,
+    )
+    @pytest.mark.parametrize(
+        "challenge_data",
+        [data],
+        indirect=True,
+    )
+    def test_method(self, workspace):
+        raise NotImplementedError
 
     @staticmethod
     def open_file(workspace: str, filename: str):
