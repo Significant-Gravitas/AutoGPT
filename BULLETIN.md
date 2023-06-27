@@ -17,6 +17,6 @@ Key Highlights:
 - OpenAI API Key Prompt: Auto-GPT will now courteously prompt users for their OpenAI API key, if it's not already provided.
 - Summarization Enhancements: We've optimized Auto-GPT's use of the LLM context window even further.
 - JSON Memory Reading: Support for reading memories from JSON files has been improved, resulting in enhanced task execution.
-
+- Deprecated commands, removed for a leaner, more performant LLM: analyze_code, write_tests, improve_code, audio_text, web_playwright, web_requests
 ## Take a look at the Release Notes on Github for the full changelog!
 https://github.com/Significant-Gravitas/Auto-GPT/releases
