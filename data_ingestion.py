@@ -5,7 +5,7 @@ from autogpt.commands.file_operations import ingest_file, list_files
 from autogpt.config import Config
 from autogpt.memory.vector import VectorMemory, get_memory
 
-config = Config()
+config = Config.build_config_from_env()
 
 
 def configure_logging():
