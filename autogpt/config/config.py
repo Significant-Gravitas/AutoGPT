@@ -30,6 +30,7 @@ class ConfigSettings(SystemSettings):
     exit_key: str
     plain_output: bool
     disabled_command_categories: list[str]
+    wipe_workspace_on_start: bool
     shell_command_control: str
     shell_denylist: list[str]
     shell_allowlist: list[str]
@@ -113,6 +114,7 @@ class Config(Configurable):
         exit_key="n",
         plain_output=False,
         disabled_command_categories=[],
+        wipe_workspace_on_start=False,
         shell_command_control="denylist",
         shell_denylist=["sudo", "su"],
         shell_allowlist=[],
@@ -204,6 +206,19 @@ class Config(Configurable):
             config_dict[
                 "disabled_command_categories"
             ] = disabled_command_categories.split(",")
+
+        wipe_workspace_on_start = os.getenv("WIPE_WORKSPACE_ON_START")
+        if wipe_workspace_on_start == "True":
+            print("Removing All Files Inside Auto_got_workspace")
+            workspace_path = "autogpt/auto_gpt_workspace"
+            if os.path.isdir(workspace_path):
+                for file_name in os.listdir(workspace_path):
+                    file_path = os.path.join(workspace_path, file_name)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                print("Workspace files wiped successfully.")
+            else:
+                print("Workspace folder does not exist.")
 
         # Converting to a list from comma-separated string
         shell_denylist = os.getenv("SHELL_DENYLIST", os.getenv("DENY_COMMANDS"))
