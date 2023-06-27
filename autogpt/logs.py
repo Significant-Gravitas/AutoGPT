@@ -249,6 +249,10 @@ def remove_color_codes(s: str) -> str:
     return ansi_escape.sub("", s)
 
 
+def remove_ansi_escape(s: str) -> str:
+    return s.replace("\x1B", "")
+
+
 logger = Logger()
 
 
@@ -263,12 +267,16 @@ def print_assistant_thoughts(
     assistant_thoughts_criticism = None
 
     assistant_thoughts = assistant_reply_json_valid.get("thoughts", {})
-    assistant_thoughts_text = assistant_thoughts.get("text")
+    assistant_thoughts_text = remove_ansi_escape(assistant_thoughts.get("text"))
     if assistant_thoughts:
-        assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
-        assistant_thoughts_plan = assistant_thoughts.get("plan")
-        assistant_thoughts_criticism = assistant_thoughts.get("criticism")
-        assistant_thoughts_speak = assistant_thoughts.get("speak")
+        assistant_thoughts_reasoning = remove_ansi_escape(
+            assistant_thoughts.get("reasoning")
+        )
+        assistant_thoughts_plan = remove_ansi_escape(assistant_thoughts.get("plan"))
+        assistant_thoughts_criticism = remove_ansi_escape(
+            assistant_thoughts.get("criticism")
+        )
+        assistant_thoughts_speak = remove_ansi_escape(assistant_thoughts.get("speak"))
     logger.typewriter_log(
         f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
     )

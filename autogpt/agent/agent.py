@@ -17,7 +17,7 @@ from autogpt.log_cycle.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
-from autogpt.logs import logger, print_assistant_thoughts
+from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
 from autogpt.models.command_registry import CommandRegistry
@@ -185,7 +185,7 @@ class Agent:
             logger.typewriter_log(
                 "NEXT ACTION: ",
                 Fore.CYAN,
-                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
                 f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
             )
 

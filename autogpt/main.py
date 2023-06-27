@@ -5,7 +5,7 @@ import sys
 from colorama import Fore, Style
 
 from autogpt.agent import Agent
-from autogpt.config import Config, check_openai_api_key
+from autogpt.config.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
@@ -52,7 +52,8 @@ def run_auto_gpt(
     logger.set_level(logging.DEBUG if debug else logging.INFO)
     logger.speak_mode = speak
 
-    config = Config()
+    config = Config.build_config_from_env()
+
     # TODO: fill in llm values here
     check_openai_api_key(config)
 
@@ -120,7 +121,7 @@ def run_auto_gpt(
     # HACK: doing this here to collect some globals that depend on the workspace.
     Workspace.build_file_logger_path(config, workspace_directory)
 
-    config.set_plugins(scan_plugins(config, config.debug_mode))
+    config.plugins = scan_plugins(config, config.debug_mode)
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
 
