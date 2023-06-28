@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-requirements-txt"]
 build-backend = "hatchling.build"
 
 [project]
@@ -16,10 +16,31 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 description = "An open-source attempt to make GPT-4 autonomous"
+dynamic = ["dependencies"]
 
 [project.urls]
 "Homepage" = "https://github.com/Significant-Gravitas/Auto-GPT"
 "Bug Tracker" = "https://github.com/Significant-Gravitas/Auto-GPT"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project.scripts]
+autogpt = "agpt.autogpt.cli:main"
+
+[tool.hatch.build.targets.wheel.force-include]
+"autogpt" = "agpt/autogpt"
+"autogpt.*" = "agpt/autogpt/*"
+"scripts" = "agpt/scripts"
+"scripts.*" = "agpt/scripts/*"
+"benchmarks.py" = "agpt/benchmarks.py"
+"bootstrap" = "agpt/bootstrap"
+"bootstrap.*" = "agpt/bootstrap/*"
+"data_ingestion.py" = "agpt/data_ingestion.py"
+"main.py" = "agpt/main.py"
+
+[tool.hatch.metadata.hooks.requirements_txt]
+files = ["requirements_dist.txt"]
 
 [tool.black]
 line-length = 88

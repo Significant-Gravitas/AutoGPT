@@ -1,0 +1,19 @@
+## Dev requirements
+# For people tinkering with Auto-GPT
+
+coverage
+flake8
+numpy
+pre-commit
+black
+isort
+gitpython==3.1.31
+auto-gpt-plugin-template @ git+https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template@0.1.0
+mkdocs
+pymdown-extensions
+mypy
+types-Markdown
+types-beautifulsoup4
+types-colorama
+types-Pillow
+hatch-requirements-txt

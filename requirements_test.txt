@@ -1,0 +1,12 @@
+## Test requirements
+
+pytest
+asynctest
+pytest-asyncio
+pytest-benchmark
+pytest-cov
+pytest-integration
+pytest-mock
+vcrpy @ git+https://github.com/Significant-Gravitas/vcrpy.git@master
+pytest-recording
+pytest-xdist

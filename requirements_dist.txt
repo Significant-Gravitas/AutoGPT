@@ -1,0 +1,40 @@
+## Prod requirements
+# Only include requirements in a format that meets PEP 508 so we can build them for pypi
+# That means no git+, http://, etc.
+# https://www.python.org/dev/peps/pep-0508/#id17
+
+beautifulsoup4>=4.12.2
+colorama==0.4.6
+distro==1.8.0
+openai==0.27.2
+playsound==1.2.2
+python-dotenv==1.0.0
+pyyaml==6.0
+PyPDF2
+python-docx
+markdown
+pylatexenc
+readability-lxml==0.8.1
+requests
+tiktoken==0.3.3
+gTTS==2.3.1
+docker
+duckduckgo-search
+google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
+pinecone-client==2.2.1
+redis
+orjson==3.8.10
+Pillow
+selenium==4.1.4
+webdriver-manager
+jsonschema
+click
+charset-normalizer>=3.1.0
+spacy>=3.0.0,<4.0.0
+prompt_toolkit>=3.0.38
+pydantic
+platformdirs
+auto-gpt-plugin-template
+
+# OpenAI and Generic plugins import
+openapi-python-client==0.13.4
