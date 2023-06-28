@@ -9,6 +9,7 @@ from typing import Any
 
 from colorama import Fore, Style
 
+from autogpt.config import Config
 from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
 from autogpt.speech import say_text
@@ -248,13 +249,17 @@ def remove_color_codes(s: str) -> str:
     return ansi_escape.sub("", s)
 
 
+def remove_ansi_escape(s: str) -> str:
+    return s.replace("\x1B", "")
+
+
 logger = Logger()
 
 
 def print_assistant_thoughts(
     ai_name: object,
     assistant_reply_json_valid: object,
-    speak_mode: bool = False,
+    config: Config,
 ) -> None:
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
@@ -262,12 +267,16 @@ def print_assistant_thoughts(
     assistant_thoughts_criticism = None
 
     assistant_thoughts = assistant_reply_json_valid.get("thoughts", {})
-    assistant_thoughts_text = assistant_thoughts.get("text")
+    assistant_thoughts_text = remove_ansi_escape(assistant_thoughts.get("text"))
     if assistant_thoughts:
-        assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
-        assistant_thoughts_plan = assistant_thoughts.get("plan")
-        assistant_thoughts_criticism = assistant_thoughts.get("criticism")
-        assistant_thoughts_speak = assistant_thoughts.get("speak")
+        assistant_thoughts_reasoning = remove_ansi_escape(
+            assistant_thoughts.get("reasoning")
+        )
+        assistant_thoughts_plan = remove_ansi_escape(assistant_thoughts.get("plan"))
+        assistant_thoughts_criticism = remove_ansi_escape(
+            assistant_thoughts.get("criticism")
+        )
+        assistant_thoughts_speak = remove_ansi_escape(assistant_thoughts.get("speak"))
     logger.typewriter_log(
         f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
     )
@@ -288,7 +297,7 @@ def print_assistant_thoughts(
     logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
     # Speak the assistant's thoughts
     if assistant_thoughts_speak:
-        if speak_mode:
-            say_text(assistant_thoughts_speak)
+        if config.speak_mode:
+            say_text(assistant_thoughts_speak, config)
         else:
             logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")

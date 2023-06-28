@@ -1,49 +1,48 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from autogpt.agent import Agent
-from autogpt.commands.file_operations import read_file, write_to_file
+from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import get_workspace_path, run_interaction_loop
+from tests.challenges.utils import get_workspace_path, run_challenge
 
 OUTPUT_LOCATION = "output.txt"
+
+USER_INPUT = "Use the command read_file to read the instructions_1.txt file\nFollow the instructions in the instructions_1.txt file"
 
 
 @challenge()
 def test_memory_challenge_a(
-    memory_management_agent: Agent,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
     challenge_name: str,
+    workspace: Workspace,
+    patched_make_workspace: pytest.fixture,
 ) -> None:
     """
     The agent reads a file containing a task_id. Then, it reads a series of other files.
     After reading 'n' files, the agent must write the task_id into a new file.
     Args:
-        memory_management_agent (Agent)
+        workspace (Workspace)
         patched_api_requestor (MockerFixture)
         monkeypatch (pytest.MonkeyPatch)
         level_to_run (int)
     """
     task_id = "2314"
-    create_instructions_files(memory_management_agent, level_to_run, task_id)
+    create_instructions_files(workspace, level_to_run, task_id)
 
-    run_interaction_loop(
-        monkeypatch,
-        memory_management_agent,
-        level_to_run + 2,
-        challenge_name,
-        level_to_run,
+    run_challenge(
+        challenge_name, level_to_run, monkeypatch, USER_INPUT, level_to_run + 2
     )
 
-    file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
-    content = read_file(file_path, memory_management_agent)
+    file_path = get_workspace_path(workspace, OUTPUT_LOCATION)
+    with open(file_path, "r") as file:
+        content = file.read()
     assert task_id in content, f"Expected the file to contain {task_id}"
 
 
 def create_instructions_files(
-    memory_management_agent: Agent,
+    workspace: Workspace,
     num_files: int,
     task_id: str,
     base_filename: str = "instructions_",
@@ -51,7 +50,7 @@ def create_instructions_files(
     """
     Creates a series of instructions files for the memory challenge.
     Args:
-        memory_management_agent (Agent)
+        workspace (Workspace)
         num_files (int)
         task_id (str)
         base_filename (str, optional)
@@ -59,8 +58,9 @@ def create_instructions_files(
     for i in range(1, num_files + 1):
         content = generate_content(i, task_id, base_filename, num_files)
         file_name = f"{base_filename}{i}.txt"
-        file_path = get_workspace_path(memory_management_agent, file_name)
-        write_to_file(file_path, content, memory_management_agent)
+        file_path = get_workspace_path(workspace, file_name)
+        with open(file_path, "w") as file:
+            file.write(content)
 
 
 def generate_content(
