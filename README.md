@@ -73,8 +73,7 @@ class BasicChallenge(Challenge):
     pass
 ```
 
-To create a file to test a challenge, add this to the challenge file which will create a file before running the server
-
+Add the below to create a file in the workspace prior to running a challenge. Only use when a file is needed to be created in the workspace prior to a test, such as with the read_file_test. 
 ```python
 @pytest.fixture(
         scope="module", autouse=True
