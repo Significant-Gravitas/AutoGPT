@@ -24,6 +24,7 @@ ENV PATH="$PATH:/root/.local/bin"
 COPY requirements_dist.txt .
 COPY requirements_dist_extra.txt .
 COPY requirements_dev.txt .
+COPY requirements_test.txt .
 COPY requirements.txt .
 
 # Set the entrypoint
