@@ -10,4 +10,6 @@ services:
       - .env
     volumes:
       - ./:/app
+      - ./docker-compose.yml:/app/docker-compose.yml:ro
+      - ./Dockerfile:/app/Dockerfile:ro
     profiles: ["exclude-from-up"]
