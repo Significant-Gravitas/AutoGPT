@@ -36,6 +36,7 @@ class Spinner:
         self,
         message: str = "Loading...",
         delay: float = 0.1,
+        plain_output: bool = False,
         interruptable: bool = False,
         on_soft_interrupt=None,
     ) -> None:
@@ -45,6 +46,7 @@ class Spinner:
             message (str): The message to display.
             delay (float): The delay between each spinner update.
         """
+        self.plain_output = plain_output
         self.spinner = itertools.cycle(["-", "/", "|", "\\"])
         self.delay = delay
         self.message = message
@@ -54,8 +56,16 @@ class Spinner:
         self.on_soft_interrupt = on_soft_interrupt
         self.ended = threading.Event()
 
+    def print_message(self):
+        sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
+        sys.stdout.write(f"{next(self.spinner)} {self.message}\r")
+        sys.stdout.flush()
+
     def spin(self) -> None:
         """Spin the spinner"""
+        if self.plain_output:
+            self.print_message()
+            return
 
         def key_pressed(pressed_key, key_to_check, keyboard_key=None):
             if keyboard_key is None:
@@ -67,8 +77,7 @@ class Spinner:
             return False
 
         while self.running:
-            sys.stdout.write(f"{next(self.spinner)} {self.message}\r")
-            sys.stdout.flush()
+            self.print_message()
             # Add non-blocking reading of char to stop spinner
             if self.interruptable:
                 if (self.oldtty) and sys.stdin in select.select(
@@ -140,9 +149,7 @@ class Spinner:
             new_message (str): New message to display.
             delay (float): The delay in seconds between each spinner update.
         """
-        time.sleep(delay)
-        sys.stdout.write(
-            f"\r{' ' * (len(self.message) + 2)}\r"
-        )  # Clear the current message
-        sys.stdout.flush()
+        self.delay = delay
         self.message = new_message
+        if self.plain_output:
+            self.print_message()

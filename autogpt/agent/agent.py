@@ -5,6 +5,7 @@ import signal
 import sys
 from datetime import datetime
 from pathlib import Path
+from enum import Enum
 
 from colorama import Fore, Style
 
@@ -28,6 +29,13 @@ from autogpt.speech import say_text
 from autogpt.spinner import Spinner, SpinnerInterrupted
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
+
+
+class InteractionResult(Enum):
+    OK = 0
+    SoftInterrupt = 1
+    HardInterrupt = 2
+    ExceptionInValidation = 3
 
 
 class Agent:
@@ -86,6 +94,7 @@ class Agent:
         self.fast_token_limit = OPEN_AI_CHAT_MODELS.get(
             config.fast_llm_model
         ).max_tokens
+        self.setofexecuted = set()
 
     @staticmethod
     async def async_task_and_spin(spn, some_task, args):
@@ -112,7 +121,7 @@ class Agent:
 
     def start_interaction_loop(self):
         # Avoid circular imports
-        from autogpt.app import execute_command, get_command
+        from autogpt.app import execute_command
 
         def enter_input():
             logger.info(
@@ -180,8 +189,6 @@ class Agent:
 
         arguments = None
         user_input = ""
-        setofexecuted = set()
-        tostop = True
 
         # Signal handler for interrupting y -N
         def signal_handler(signum, frame):
@@ -220,99 +227,38 @@ class Agent:
                     f"{self.config.continuous_limit}",
                 )
                 break
-            tmp_interrupt = False
 
-            def upd():
-                logger.info("Soft interrupt")
-                nonlocal tmp_interrupt
-                tmp_interrupt = True
+            (
+                status,
+                assistant_reply,
+                assistant_reply_json,
+            ) = self.interact_with_assistant(command_name)
 
-            # Send message to AI, get response
-            command_completed = False
-            try:
-                interruptable = command_name is not None
-                with Spinner(
-                    "Thinking... (q to quit, <space> to stop afterwards) "
-                    if interruptable
-                    else "Thinking...",
-                    interruptable=interruptable,
-                    on_soft_interrupt=upd,
-                ) as spn:
-                    # convert this call to thread
-
-                    assistant_reply = asyncio.run(
-                        self.async_task_and_spin(
-                            spn,
-                            chat_with_ai,
-                            (
-                                self.config,
-                                self,
-                                self.system_prompt,
-                                self.triggering_prompt,
-                                self.fast_token_limit,
-                                self.config.fast_llm_model,
-                            ),
-                        )
-                    )
-
-                assistant_reply_json = extract_json_from_response(
-                    assistant_reply.content
-                )
-
-                for plugin in self.config.plugins:
-                    if not plugin.can_handle_post_planning():
-                        continue
-                    assistant_reply_json = plugin.post_planning(assistant_reply_json)
-                command_completed = True
-            except SpinnerInterrupted:
-                logger.warn("Task canceled")
-                assistant_reply_json = {}
-
-            for plugin in self.config.plugins:
-                if not plugin.can_handle_post_planning():
-                    continue
-                assistant_reply_json = plugin.post_planning(assistant_reply_json)
-
+            tostop = True
             # Print Assistant thoughts
             if assistant_reply_json != {}:
                 # Get command name and arguments
-                try:
-                    print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, self.config
-                    )
-                    command_name, arguments = get_command(
-                        assistant_reply_json, assistant_reply, self.config
-                    )
-                    if self.config.speak_mode:
-                        say_text(f"I want to execute {command_name}")
+                args = (command_name, arguments) = self.get_next_command_to_execute(
+                    assistant_reply, assistant_reply_json
+                )
+                tostop = self.check_if_command_exist(*args)
 
-                    arguments = self._resolve_pathlike_command_args(arguments)
+            tostop = tostop or (
+                status != InteractionResult.OK
+            )  # stop also in exception
 
-                except Exception as e:
-                    logger.error("Error: \n", str(e))
-
-                try:
-                    from frozendict import frozendict
-
-                    argumentsdic = frozendict(arguments)
-                    if (command_name, argumentsdic) in setofexecuted:
-                        logger.info("Already executed this shit, stoping.")
-                        tostop = True
-                    tostop = False
-                    setofexecuted.add((command_name, argumentsdic))
-                except Exception as e:
-                    logger.error(f"Exception {e} in adding to dic\n")
-                    tostop = False
-
-                tostop = tostop or tmp_interrupt or (not command_completed)
-
-            print_next_command(command_completed)
+            if command_name != "":
+                print_next_command(
+                    (status != InteractionResult.HardInterrupt)
+                    and (status != InteractionResult.ExceptionInValidation)
+                )
+            else:
+                tostop = True
 
             if command_name in self.config.commands_to_ignore:
                 user_input = "GENERATE NEXT COMMAND JSON"
             elif (
-                not self.config.continuous_mode
-                and self.next_action_count == 0
+                (not self.config.continuous_mode and self.next_action_count == 0)
                 or tostop
                 or command_name in self.config.commands_to_stop
             ):
@@ -321,7 +267,7 @@ class Agent:
                 # to exit
                 self.user_input = ""
                 logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
+                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands "
                     "'n' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
@@ -405,6 +351,102 @@ class Agent:
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
+
+    def get_next_command_to_execute(self, assistant_reply, assistant_reply_json):
+        command_name, arguments = None, None
+        try:
+            print_assistant_thoughts(self.ai_name, assistant_reply_json, self.config)
+            from autogpt.app import get_command
+
+            command_name, arguments = get_command(
+                assistant_reply_json, assistant_reply, self.config
+            )
+            if self.config.speak_mode:
+                say_text(f"I want to execute {command_name}")
+
+            arguments = self._resolve_pathlike_command_args(arguments)
+        except Exception as e:
+            logger.error("Error: \n", str(e))
+
+        return command_name, arguments
+
+    def check_if_command_exist(self, command_name, arguments):
+        try:
+            tostop = False
+            from frozendict import frozendict
+
+            arguments_hash = hash(frozendict(arguments))
+
+            if (command_name, arguments_hash) in self.setofexecuted:
+                logger.info("Already executed this shit, stopping.")
+                tostop = True
+
+            self.setofexecuted.add((command_name, arguments_hash))
+        except Exception as e:
+            logger.error(f"Exception {e} in adding to dic\n")
+            tostop = False
+        return tostop
+
+    def interact_with_assistant(self, command_name):
+        status = InteractionResult.OK
+
+        def upd():
+            logger.info("Soft interrupt")
+            nonlocal status
+            status = InteractionResult.SoftInterrupt
+
+        # Send message to AI, get response
+        assistant_reply_json = {}
+        try:
+            interruptable = command_name is not None
+            with Spinner(
+                "Thinking... (q to stop immediately, <space> to stop afterwards) "
+                if interruptable
+                else "Thinking...",
+                interruptable=interruptable,
+                on_soft_interrupt=upd,
+                plain_output=self.config.plain_output,
+            ) as spn:
+                # convert this call to thread
+
+                assistant_reply = asyncio.run(
+                    self.async_task_and_spin(
+                        spn,
+                        chat_with_ai,
+                        (
+                            self.config,
+                            self,
+                            self.system_prompt,
+                            self.triggering_prompt,
+                            self.fast_token_limit,
+                            self.config.fast_llm_model,
+                        ),
+                    )
+                )
+        except SpinnerInterrupted:
+            logger.warn("Task canceled")
+            assistant_reply_json = {}
+            assistant_reply = None
+            status = InteractionResult.HardInterrupt
+
+        if assistant_reply is not None:
+            try:
+                assistant_reply_json = extract_json_from_response(
+                    assistant_reply.content
+                )
+                validate_json(assistant_reply_json, self.config)
+            except json.JSONDecodeError as e:
+                logger.error(f"Exception while validating assistant reply JSON: {e}")
+                assistant_reply_json = {}
+                status = InteractionResult.ExceptionInValidation
+
+        if assistant_reply_json != {}:
+            for plugin in self.config.plugins:
+                if not plugin.can_handle_post_planning():
+                    continue
+                assistant_reply_json = plugin.post_planning(assistant_reply_json)
+
+        return status, assistant_reply, assistant_reply_json
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
