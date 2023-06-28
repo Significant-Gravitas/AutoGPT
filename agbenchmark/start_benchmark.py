@@ -2,6 +2,10 @@ import click
 import pytest
 import json
 import os
+from pathlib import Path
+from dotenv import load_dotenv, set_key
+
+load_dotenv()
 
 
 @click.group()
@@ -12,8 +16,8 @@ def cli():
 @cli.command()
 @click.option("--category", default=None, help="Specific category to run")
 @click.option("--noreg", is_flag=True, help="Skip regression tests")
-def start(category, noreg):
-    """Start the benchmark tests. If a category flag is is provided, run the categories with that mark."""
+@click.option("--mock", is_flag=True, help="Run with mock")
+def start(category, noreg, mock):
     """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
     config_file = "agbenchmark/config.json"
 
@@ -23,12 +27,9 @@ def start(category, noreg):
     if not os.path.exists(config_dir) or os.stat(config_dir).st_size == 0:
         config = {}
 
-        config["hostname"] = click.prompt(
-            "\nPlease enter a new hostname", default="localhost"
-        )
-        config["port"] = click.prompt("Please enter a new port", default=8080)
         config["workspace"] = click.prompt(
-            "Please enter a new workspace path", default="agbenchmark/mocks/workspace"
+            "Please enter a new workspace path",
+            default=os.path.join(Path.home(), "miniagi"),
         )
 
         with open(config_dir, "w") as f:
@@ -38,13 +39,17 @@ def start(category, noreg):
         with open(config_dir, "r") as f:
             config = json.load(f)
 
+    set_key(".env", "MOCK_TEST", "True" if mock else "False")
+    if mock:
+        config["workspace"] = "agbenchmark/mocks/workspace"
+
     # create workspace directory if it doesn't exist
     workspace_path = os.path.abspath(config["workspace"])
     if not os.path.exists(workspace_path):
         os.makedirs(workspace_path, exist_ok=True)
 
     regression_path = os.path.abspath(
-        "agbenchmark/tests/regression/regression_tests.txt"
+        "agbenchmark/tests/regression/regression_tests.json"
     )
     if not os.path.exists(regression_path):
         with open(regression_path, "a"):
@@ -73,6 +78,9 @@ def start(category, noreg):
             )  # run categorys that are not regression categorys
         else:
             print("Running all categorys")  # run all categorys
+
+    if mock:
+        pytest_args.append("--mock")
 
     # Run pytest with the constructed arguments
     pytest.main(pytest_args)
