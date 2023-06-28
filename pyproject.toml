@@ -14,6 +14,8 @@ click = "^8.1.3"
 requests = "^2.31.0"
 openai = "^0.27.8"
 pydantic = "^1.10.9"
+pytest-depends = "^1.0.1"
+python-dotenv = "^1.0.0"
 
 
 [build-system]
@@ -28,7 +30,8 @@ testpaths = [
 ]
 markers = [
     "retrieval",
-    "regression"
+    "regression",
+    "basic",
 ]
 
 [tool.poetry.scripts]

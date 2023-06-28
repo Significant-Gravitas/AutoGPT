@@ -1,16 +1,17 @@
 import pytest
-from agbenchmark.challenges.retrieval.Retrieval import RetrievalChallenge
-from agbenchmark.challenges.define_task_types import ChallengeData, Ground
+from agbenchmark.tests.basic_abilities.BasicChallenge import BasicChallenge
 import os
 
 
-class TestRetrieval1(RetrievalChallenge):
-    """The first information-retrieval challenge"""
+class TestWriteFile(BasicChallenge):
+    """Testing if LLM can write to a file"""
 
     def get_file_path(self) -> str:  # all tests must implement this method
-        return os.path.join(os.path.dirname(__file__), "r1_data.json")
+        return os.path.join(os.path.dirname(__file__), "w_file_data.json")
 
+    @pytest.mark.depends(on=[], name="basic_write_file")
     def test_method(self, workspace):
+        print("my workspace is ", workspace)
         files_contents = self.open_files(workspace, self.data.ground.files)
 
         scores = []
