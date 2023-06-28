@@ -4,7 +4,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
-from typing import Dict
+from typing import Dict, List
 
 import yaml
 from colorama import Fore
@@ -14,6 +14,8 @@ from autogpt.plugins.plugins_config import PluginsConfig
 
 AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
 from typing import Optional
+
+splitifnotnone = lambda x: (x.split(",") if x is not None else None)
 
 
 class Config(SystemSettings):
@@ -82,6 +84,8 @@ class Config(SystemSettings):
     elevenlabs_voice_id: Optional[str] = None
     plugins: list[str]
     authorise_key: str
+    commands_to_ignore: Optional[List]
+    commands_to_stop: Optional[List]
 
     # Executed immediately after init by Pydantic
     def model_post_init(self, **kwargs) -> None:
@@ -155,6 +159,8 @@ class ConfigBuilder(Configurable[Config]):
         plugins=[],
         authorise_key="y",
         redis_password="",
+        commands_to_ignore=["browse_website", "google"],
+        commands_to_stop=["task_complete"],
     )
 
     @classmethod
@@ -204,6 +210,8 @@ class ConfigBuilder(Configurable[Config]):
             "plugins_dir": os.getenv("PLUGINS_DIR"),
             "plugins_config_file": os.getenv("PLUGINS_CONFIG_FILE"),
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
+            "commands_to_ignore": splitifnotnone(os.getenv("COMMANDS_TO_IGNORE")),
+            "commands_to_stop": splitifnotnone(os.getenv("COMMANDS_TO_STOP")),
         }
 
         # Converting to a list from comma-separated string

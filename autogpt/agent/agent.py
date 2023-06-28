@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 import json
 import signal
 import sys
@@ -23,7 +25,7 @@ from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.speech import say_text
-from autogpt.spinner import Spinner
+from autogpt.spinner import Spinner, SpinnerInterrupted
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
 
@@ -85,15 +87,101 @@ class Agent:
             config.fast_llm_model
         ).max_tokens
 
+    @staticmethod
+    async def async_task_and_spin(spn, some_task, args):
+        loop = asyncio.get_event_loop()
+        # Run the synchronous function in an executor
+        pool = concurrent.futures.ThreadPoolExecutor()
+        try:
+            task = loop.run_in_executor(pool, some_task, *args)
+            event_task = loop.run_in_executor(pool, spn.ended.wait)
+            # Wait for the task or the event to complete
+            done, pending = await asyncio.wait(
+                {task, event_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+            # Cancel any pending tasks
+            for t in pending:
+                t.cancel()
+            # Check which task completed
+            if task in done:
+                result = await task
+                return result
+
+        finally:
+            pool.shutdown(wait=False)  # dont want to use 'with' because it waits...
+
     def start_interaction_loop(self):
         # Avoid circular imports
         from autogpt.app import execute_command, get_command
 
+        def enter_input():
+            logger.info(
+                "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
+                "'n' to exit program, or enter feedback for "
+                f"{self.ai_name}..."
+            )
+
+        def get_user_choice():  # False to continue loop , True to break
+            nonlocal console_input, user_input, command_name
+
+            if console_input.lower() == self.config.exit_key:
+                user_input = "EXIT"
+                return True
+            elif console_input.lower().strip() == "":
+                logger.warn("Invalid input format.")
+                return False
+
+            if console_input.lower().strip() == self.config.authorise_key:
+                user_input = "GENERATE NEXT COMMAND JSON"
+                return True
+            elif console_input.lower().startswith(f"{self.config.authorise_key} -"):
+                try:
+                    self.next_action_count = abs(int(console_input.split(" ")[1]))
+                    user_input = "GENERATE NEXT COMMAND JSON"
+                except ValueError:
+                    logger.warn(
+                        "Invalid input format. Please enter 'y -n' where n is"
+                        " the number of continuous tasks."
+                    )
+                    return False
+                return True
+
+            user_input = console_input
+            command_name = "human_feedback"
+            self.log_cycle_handler.log_cycle(
+                self.ai_config.ai_name,
+                self.created_at,
+                self.cycle_count,
+                user_input,
+                USER_INPUT_FILE_NAME,
+            )
+            return True
+
+        def print_next_command(is_next):
+            self.log_cycle_handler.log_cycle(
+                self.ai_config.ai_name,
+                self.created_at,
+                self.cycle_count,
+                assistant_reply_json,
+                NEXT_ACTION_FILE_NAME,
+            )
+
+            # First log new-line so user can differentiate sections better in console
+            logger.typewriter_log("\n")
+            logger.typewriter_log(
+                "NEXT ACTION: " if is_next else "LAST ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
+                f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+            )
+
         # Interaction Loop
         self.cycle_count = 0
-        command_name = None
+
         arguments = None
         user_input = ""
+        setofexecuted = set()
+        tostop = True
 
         # Signal handler for interrupting y -N
         def signal_handler(signum, frame):
@@ -108,6 +196,7 @@ class Agent:
                 self.next_action_count = 0
 
         signal.signal(signal.SIGINT, signal_handler)
+        command_name = None
 
         while True:
             # Discontinue if continuous limit is reached
@@ -131,24 +220,52 @@ class Agent:
                     f"{self.config.continuous_limit}",
                 )
                 break
-            # Send message to AI, get response
-            with Spinner("Thinking... ", plain_output=self.config.plain_output):
-                assistant_reply = chat_with_ai(
-                    self.config,
-                    self,
-                    self.system_prompt,
-                    self.triggering_prompt,
-                    self.fast_token_limit,
-                    self.config.fast_llm_model,
-                )
+            tmp_interrupt = False
 
+            def upd():
+                logger.info("Soft interrupt")
+                nonlocal tmp_interrupt
+                tmp_interrupt = True
+
+            # Send message to AI, get response
+            command_completed = False
             try:
+                interruptable = command_name is not None
+                with Spinner(
+                    "Thinking... (q to quit, <space> to stop afterwards) "
+                    if interruptable
+                    else "Thinking...",
+                    interruptable=interruptable,
+                    on_soft_interrupt=upd,
+                ) as spn:
+                    # convert this call to thread
+
+                    assistant_reply = asyncio.run(
+                        self.async_task_and_spin(
+                            spn,
+                            chat_with_ai,
+                            (
+                                self.config,
+                                self,
+                                self.system_prompt,
+                                self.triggering_prompt,
+                                self.fast_token_limit,
+                                self.config.fast_llm_model,
+                            ),
+                        )
+                    )
+
                 assistant_reply_json = extract_json_from_response(
                     assistant_reply.content
                 )
-                validate_json(assistant_reply_json, self.config)
-            except json.JSONDecodeError as e:
-                logger.error(f"Exception while validating assistant reply JSON: {e}")
+
+                for plugin in self.config.plugins:
+                    if not plugin.can_handle_post_planning():
+                        continue
+                    assistant_reply_json = plugin.post_planning(assistant_reply_json)
+                command_completed = True
+            except SpinnerInterrupted:
+                logger.warn("Task canceled")
                 assistant_reply_json = {}
 
             for plugin in self.config.plugins:
@@ -173,24 +290,32 @@ class Agent:
 
                 except Exception as e:
                     logger.error("Error: \n", str(e))
-            self.log_cycle_handler.log_cycle(
-                self.ai_config.ai_name,
-                self.created_at,
-                self.cycle_count,
-                assistant_reply_json,
-                NEXT_ACTION_FILE_NAME,
-            )
 
-            # First log new-line so user can differentiate sections better in console
-            logger.typewriter_log("\n")
-            logger.typewriter_log(
-                "NEXT ACTION: ",
-                Fore.CYAN,
-                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
-                f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-            )
+                try:
+                    from frozendict import frozendict
 
-            if not self.config.continuous_mode and self.next_action_count == 0:
+                    argumentsdic = frozendict(arguments)
+                    if (command_name, argumentsdic) in setofexecuted:
+                        logger.info("Already executed this shit, stoping.")
+                        tostop = True
+                    tostop = False
+                    setofexecuted.add((command_name, argumentsdic))
+                except Exception as e:
+                    logger.error(f"Exception {e} in adding to dic\n")
+                    tostop = False
+
+                tostop = tostop or tmp_interrupt or (not command_completed)
+
+            print_next_command(command_completed)
+
+            if command_name in self.config.commands_to_ignore:
+                user_input = "GENERATE NEXT COMMAND JSON"
+            elif (
+                not self.config.continuous_mode
+                and self.next_action_count == 0
+                or tostop
+                or command_name in self.config.commands_to_stop
+            ):
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -200,49 +325,15 @@ class Agent:
                     "'n' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
+
                 while True:
                     if self.config.chat_messages_enabled:
-                        console_input = clean_input(
-                            self.config, "Waiting for your response..."
-                        )
+                        console_input = clean_input("Waiting for your response...")
                     else:
                         console_input = clean_input(
                             self.config, Fore.MAGENTA + "Input:" + Style.RESET_ALL
                         )
-                    if console_input.lower().strip() == self.config.authorise_key:
-                        user_input = "GENERATE NEXT COMMAND JSON"
-                        break
-                    elif console_input.lower().strip() == "":
-                        logger.warn("Invalid input format.")
-                        continue
-                    elif console_input.lower().startswith(
-                        f"{self.config.authorise_key} -"
-                    ):
-                        try:
-                            self.next_action_count = abs(
-                                int(console_input.split(" ")[1])
-                            )
-                            user_input = "GENERATE NEXT COMMAND JSON"
-                        except ValueError:
-                            logger.warn(
-                                "Invalid input format. Please enter 'y -n' where n is"
-                                " the number of continuous tasks."
-                            )
-                            continue
-                        break
-                    elif console_input.lower() == self.config.exit_key:
-                        user_input = "EXIT"
-                        break
-                    else:
-                        user_input = console_input
-                        command_name = "human_feedback"
-                        self.log_cycle_handler.log_cycle(
-                            self.ai_config.ai_name,
-                            self.created_at,
-                            self.cycle_count,
-                            user_input,
-                            USER_INPUT_FILE_NAME,
-                        )
+                    if get_user_choice():
                         break
 
                 if user_input == "GENERATE NEXT COMMAND JSON":
@@ -254,6 +345,7 @@ class Agent:
                 elif user_input == "EXIT":
                     logger.info("Exiting...")
                     break
+
             else:
                 # First log new-line so user can differentiate sections better in console
                 logger.typewriter_log("\n")
@@ -264,7 +356,9 @@ class Agent:
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
-                result = f"Could not execute command: {arguments}"
+                result = (
+                    f"Command {command_name} threw the following error: {arguments}"
+                )
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
             else:
@@ -295,7 +389,10 @@ class Agent:
                     if not plugin.can_handle_post_command():
                         continue
                     result = plugin.post_command(command_name, result)
-                if self.next_action_count > 0:
+                if (
+                    self.next_action_count > 0
+                    and command_name not in self.config.commands_to_ignore
+                ):
                     self.next_action_count -= 1
 
             # Check if there's a result from the command append it to the message
