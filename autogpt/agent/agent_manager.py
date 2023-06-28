@@ -10,12 +10,12 @@ from autogpt.singleton import Singleton
 class AgentManager(metaclass=Singleton):
     """Agent manager for managing GPT agents"""
 
-    def __init__(self):
+    def __init__(self, config: Config):
         self.next_key = 0
         self.agents: dict[
             int, tuple[str, list[Message], str]
         ] = {}  # key, (task, full_message_history, model)
-        self.cfg = Config()
+        self.config = config
 
     # Create new GPT agent
     # TODO: Centralise use of create_chat_completion() to globally enforce token limit
@@ -35,18 +35,20 @@ class AgentManager(metaclass=Singleton):
         """
         messages = ChatSequence.for_model(model, [Message("user", creation_prompt)])
 
-        for plugin in self.cfg.plugins:
+        for plugin in self.config.plugins:
             if not plugin.can_handle_pre_instruction():
                 continue
             if plugin_messages := plugin.pre_instruction(messages.raw()):
                 messages.extend([Message(**raw_msg) for raw_msg in plugin_messages])
         # Start GPT instance
-        agent_reply = create_chat_completion(prompt=messages)
+        agent_reply = create_chat_completion(
+            prompt=messages, config=self.config
+        ).content
 
         messages.add("assistant", agent_reply)
 
         plugins_reply = ""
-        for i, plugin in enumerate(self.cfg.plugins):
+        for i, plugin in enumerate(self.config.plugins):
             if not plugin.can_handle_on_instruction():
                 continue
             if plugin_result := plugin.on_instruction([m.raw() for m in messages]):
@@ -62,7 +64,7 @@ class AgentManager(metaclass=Singleton):
 
         self.agents[key] = (task, list(messages), model)
 
-        for plugin in self.cfg.plugins:
+        for plugin in self.config.plugins:
             if not plugin.can_handle_post_instruction():
                 continue
             agent_reply = plugin.post_instruction(agent_reply)
@@ -85,19 +87,21 @@ class AgentManager(metaclass=Singleton):
         messages = ChatSequence.for_model(model, messages)
         messages.add("user", message)
 
-        for plugin in self.cfg.plugins:
+        for plugin in self.config.plugins:
             if not plugin.can_handle_pre_instruction():
                 continue
             if plugin_messages := plugin.pre_instruction([m.raw() for m in messages]):
                 messages.extend([Message(**raw_msg) for raw_msg in plugin_messages])
 
         # Start GPT instance
-        agent_reply = create_chat_completion(prompt=messages)
+        agent_reply = create_chat_completion(
+            prompt=messages, config=self.config
+        ).content
 
         messages.add("assistant", agent_reply)
 
         plugins_reply = agent_reply
-        for i, plugin in enumerate(self.cfg.plugins):
+        for i, plugin in enumerate(self.config.plugins):
             if not plugin.can_handle_on_instruction():
                 continue
             if plugin_result := plugin.on_instruction([m.raw() for m in messages]):
@@ -107,7 +111,7 @@ class AgentManager(metaclass=Singleton):
         if plugins_reply and plugins_reply != "":
             messages.add("assistant", plugins_reply)
 
-        for plugin in self.cfg.plugins:
+        for plugin in self.config.plugins:
             if not plugin.can_handle_post_instruction():
                 continue
             agent_reply = plugin.post_instruction(agent_reply)

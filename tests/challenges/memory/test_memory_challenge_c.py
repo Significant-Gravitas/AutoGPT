@@ -1,26 +1,24 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from autogpt.agent import Agent
-from autogpt.commands.file_operations import read_file, write_to_file
+from autogpt.commands.file_operations import read_file
+from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import (
-    generate_noise,
-    get_workspace_path,
-    run_interaction_loop,
-)
+from tests.challenges.utils import generate_noise, get_workspace_path, run_challenge
 
 NOISE = 1200
 OUTPUT_LOCATION = "output.txt"
+USER_INPUT = "Use the command read_file to read the instructions_1.txt file\nFollow the instructions in the instructions_1.txt file"
 
 
 @challenge()
 def test_memory_challenge_c(
-    memory_management_agent: Agent,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
     challenge_name: str,
+    workspace: Workspace,
+    patched_make_workspace: pytest.fixture,
 ) -> None:
     """
     Instead of reading task Ids from files as with the previous challenges, the agent now must remember
@@ -28,7 +26,7 @@ def test_memory_challenge_c(
     after seeing several of them.
 
     Args:
-        memory_management_agent (Agent)
+        workspace (Workspace)
         patched_api_requestor (MockerFixture)
         monkeypatch (pytest.MonkeyPatch)
         level_to_run (int)
@@ -48,26 +46,23 @@ def test_memory_challenge_c(
 
     level_silly_phrases = silly_phrases[:level_to_run]
     create_instructions_files(
-        memory_management_agent,
+        workspace,
         level_to_run,
         level_silly_phrases,
     )
 
-    run_interaction_loop(
-        monkeypatch,
-        memory_management_agent,
-        level_to_run + 2,
-        challenge_name,
-        level_to_run,
+    run_challenge(
+        challenge_name, level_to_run, monkeypatch, USER_INPUT, level_to_run + 2
     )
-    file_path = get_workspace_path(memory_management_agent, OUTPUT_LOCATION)
-    content = read_file(file_path, agent=memory_management_agent)
+
+    file_path = get_workspace_path(workspace, OUTPUT_LOCATION)
+    content = read_file(file_path, agent=workspace)
     for phrase in level_silly_phrases:
         assert phrase in content, f"Expected the file to contain {phrase}"
 
 
 def create_instructions_files(
-    memory_management_agent: Agent,
+    workspace: Workspace,
     level: int,
     task_ids: list,
     base_filename: str = "instructions_",
@@ -76,7 +71,7 @@ def create_instructions_files(
     Creates a series of instructions files for the memory challenge.
     Args:
         level:
-        memory_management_agent (Agent)
+        workspace (Workspace)
         num_files (int)
         task_ids (list)
         base_filename (str, optional)
@@ -84,8 +79,9 @@ def create_instructions_files(
     for i in range(1, level + 1):
         content = generate_content(i, task_ids, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
-        file_path = get_workspace_path(memory_management_agent, file_name)
-        write_to_file(file_path, content, memory_management_agent)
+        file_path = get_workspace_path(workspace, file_name)
+        with open(file_path, "w") as file:
+            file.write(content)
 
 
 def generate_content(
