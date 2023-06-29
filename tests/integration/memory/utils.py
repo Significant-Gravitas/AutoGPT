@@ -1,4 +1,4 @@
-from typing import Any, Callable, Generator
+from typing import Any, Generator
 
 import numpy
 import pytest
@@ -9,7 +9,6 @@ import autogpt.memory.vector.providers.base as memory_provider_base
 from autogpt.config.config import Config
 from autogpt.llm.providers.openai import OPEN_AI_EMBEDDING_MODELS
 from autogpt.memory.vector import get_memory
-from autogpt.workspace import Workspace
 
 """
     Added #type: ignore because without it, mypy command gave following error:
