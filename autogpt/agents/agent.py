@@ -95,7 +95,7 @@ class Agent(BaseAgent):
             self.ai_config.ai_name,
             self.created_at,
             self.cycle_count,
-            [m.raw() for m in self.history],
+            self.history.raw(),
             FULL_MESSAGE_HISTORY_FILE_NAME,
         )
 

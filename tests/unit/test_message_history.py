@@ -117,7 +117,7 @@ def test_message_history_batch_summary(mocker, agent, config):
         history.append(user_input_msg)
 
     # only take the last cycle of the message history,  trim the rest of previous messages, and generate a summary for them
-    for cycle in reversed(list(history.per_cycle(config))):
+    for cycle in reversed(list(history.per_cycle())):
         messages_to_add = [msg for msg in cycle if msg is not None]
         message_sequence.insert(insertion_index, *messages_to_add)
         break

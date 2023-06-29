@@ -99,7 +99,7 @@ def chat_with_ai(
     current_tokens_used += 500  # Reserve space for the openai functions TODO improve
 
     # Add Messages until the token limit is reached or there are no more messages to add.
-    for cycle in reversed(list(agent.history.per_cycle(agent.config))):
+    for cycle in reversed(list(agent.history.per_cycle())):
         messages_to_add = [msg for msg in cycle if msg is not None]
         tokens_to_add = count_message_tokens(messages_to_add, model)
         if current_tokens_used + tokens_to_add > send_token_limit:
