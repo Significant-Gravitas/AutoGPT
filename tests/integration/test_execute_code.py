@@ -2,9 +2,9 @@ import os
 import random
 import string
 import tempfile
+from typing import Generator
 
 import pytest
-from typing import Generator
 
 import autogpt.commands.execute_code as sut  # system under testing
 from autogpt.agent.agent import Agent
@@ -12,12 +12,12 @@ from autogpt.config import Config
 
 
 @pytest.fixture
-def random_code(random_string:str) -> str:
+def random_code(random_string: str) -> str:
     return f"print('Hello {random_string}!')"
 
 
 @pytest.fixture
-def python_test_file(config: Config, random_code: str) -> Generator[str,None,None]:
+def python_test_file(config: Config, random_code: str) -> Generator[str, None, None]:
     temp_file = tempfile.NamedTemporaryFile(dir=config.workspace_path, suffix=".py")
     temp_file.write(str.encode(random_code))
     temp_file.flush()
@@ -27,16 +27,20 @@ def python_test_file(config: Config, random_code: str) -> Generator[str,None,Non
 
 
 @pytest.fixture
-def random_string()->str:
+def random_string() -> str:
     return "".join(random.choice(string.ascii_lowercase) for _ in range(10))
 
 
-def test_execute_python_file(python_test_file: str, random_string: str, agent: Agent) -> None:
+def test_execute_python_file(
+    python_test_file: str, random_string: str, agent: Agent
+) -> None:
     result: str = sut.execute_python_file(python_test_file, agent=agent)
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
 
 
-def test_execute_python_code(random_code: str, random_string: str, agent: Agent)-> None:
+def test_execute_python_code(
+    random_code: str, random_string: str, agent: Agent
+) -> None:
     ai_name = agent.ai_name
 
     result: str = sut.execute_python_code(random_code, "test_code", agent=agent)
@@ -52,7 +56,7 @@ def test_execute_python_code(random_code: str, random_string: str, agent: Agent)
 
 def test_execute_python_code_disallows_name_arg_path_traversal(
     random_code: str, agent: Agent
-)->None:
+) -> None:
     result: str = sut.execute_python_code(
         random_code, name="../../test_code", agent=agent
     )
@@ -64,7 +68,7 @@ def test_execute_python_code_disallows_name_arg_path_traversal(
     assert not dst_with_traversal.is_file(), "Path traversal by filename not prevented"
 
 
-def test_execute_python_code_overwrites_file(random_code: str, agent: Agent)-> None:
+def test_execute_python_code_overwrites_file(random_code: str, agent: Agent) -> None:
     ai_name = agent.ai_name
     destination = os.path.join(
         agent.config.workspace_path, ai_name, "executed_code", "test_code.py"
@@ -103,7 +107,9 @@ def test_execute_shell(random_string: str, agent: Agent) -> None:
     assert f"Hello {random_string}!" in result
 
 
-def test_execute_shell_local_commands_not_allowed(random_string: str, agent: Agent) -> None:
+def test_execute_shell_local_commands_not_allowed(
+    random_string: str, agent: Agent
+) -> None:
     result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert f"Hello {random_string}!" in result
 

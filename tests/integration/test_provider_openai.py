@@ -1,22 +1,24 @@
+from typing import Generator, List
 from unittest.mock import MagicMock, patch
-from pytest import LogCaptureFixture
+
 import pytest
-from typing import List
+from pytest import LogCaptureFixture
+
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.providers import openai
-from typing import Generator
+
 api_manager = ApiManager()
 
 
 @pytest.fixture(autouse=True)
-def reset_api_manager() -> Generator[None,None,None]:
+def reset_api_manager() -> Generator[None, None, None]:
     api_manager.reset()
     yield
 
 
 class TestProviderOpenAI:
     @staticmethod
-    def test_create_chat_completion_debug_mode(caplog :LogCaptureFixture) -> None:
+    def test_create_chat_completion_debug_mode(caplog: LogCaptureFixture) -> None:
         """Test if debug mode logs response."""
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -37,7 +39,7 @@ class TestProviderOpenAI:
     @staticmethod
     def test_create_chat_completion_empty_messages() -> None:
         """Test if empty messages result in zero tokens and cost."""
-        messages: List[str]= []
+        messages: List[str] = []
         model = "gpt-3.5-turbo"
 
         with patch("openai.ChatCompletion.create") as mock_create:

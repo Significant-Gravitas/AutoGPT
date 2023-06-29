@@ -1,3 +1,5 @@
+from typing import Generator
+
 import pytest
 
 from autogpt.agent import Agent
@@ -5,7 +7,7 @@ from autogpt.config import AIConfig, Config
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.workspace import Workspace
-from typing import Generator
+
 """
     Added #type: ignore because without it, mypy command gave following error:
         mypy
@@ -14,7 +16,9 @@ from typing import Generator
     
     This import file is necessary for giving the type hint for memory_json_file function
 """
-from ....autogpt.memory.vector.providers.base import VectorMemoryProvider as VectorMemory # type: ignore 
+from ....autogpt.memory.vector.providers.base import (
+    VectorMemoryProvider as VectorMemory,  # type: ignore
+)
 
 
 @pytest.fixture
@@ -30,7 +34,11 @@ def memory_json_file(config: Config) -> Generator[VectorMemory, None, None]:
 
 
 @pytest.fixture
-def dummy_agent(config: Config, memory_json_file:Generator[VectorMemory, None, None], workspace: Workspace)->Agent:
+def dummy_agent(
+    config: Config,
+    memory_json_file: Generator[VectorMemory, None, None],
+    workspace: Workspace,
+) -> Agent:
     command_registry = CommandRegistry()
 
     ai_config = AIConfig(

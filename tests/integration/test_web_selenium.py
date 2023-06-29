@@ -7,7 +7,7 @@ from autogpt.commands.web_selenium import browse_website
 
 @pytest.mark.vcr
 @pytest.mark.requires_openai_api_key
-def test_browse_website(agent: Agent, patched_api_requestor: MockerFixture)  -> None:
+def test_browse_website(agent: Agent, patched_api_requestor: MockerFixture) -> None:
     url = "https://barrel-roll.com"
     question = "How to execute a barrel roll"
 

@@ -1,16 +1,21 @@
-from unittest.mock import patch
-from autogpt.config.config import Config
-import pytest
 from typing import Callable
-from autogpt.workspace import Workspace
-from autogpt.config.ai_config import AIConfig
-from autogpt.setup import generate_aiconfig_automatic, prompt_user
+from unittest.mock import patch
+
+import pytest
 from pytest_mock import MockerFixture
+
+from autogpt.config.ai_config import AIConfig
+from autogpt.config.config import Config
+from autogpt.setup import generate_aiconfig_automatic, prompt_user
+from autogpt.workspace import Workspace
 
 
 @pytest.mark.vcr
 @pytest.mark.requires_openai_api_key
-def test_generate_aiconfig_automatic_default(patched_api_requestor: Callable[[MockerFixture],None], config:Callable[[str,MockerFixture,Workspace],Config])-> None:
+def test_generate_aiconfig_automatic_default(
+    patched_api_requestor: Callable[[MockerFixture], None],
+    config: Callable[[str, MockerFixture, Workspace], Config],
+) -> None:
     user_inputs = [""]
     with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
         ai_config = prompt_user(config)
@@ -23,7 +28,10 @@ def test_generate_aiconfig_automatic_default(patched_api_requestor: Callable[[Mo
 
 @pytest.mark.vcr
 @pytest.mark.requires_openai_api_key
-def test_generate_aiconfig_automatic_typical(patched_api_requestor:Callable[[MockerFixture],None], config:Callable[[str,MockerFixture,Workspace],Config]) -> None:
+def test_generate_aiconfig_automatic_typical(
+    patched_api_requestor: Callable[[MockerFixture], None],
+    config: Callable[[str, MockerFixture, Workspace], Config],
+) -> None:
     user_prompt = "Help me create a rock opera about cybernetic giraffes"
     ai_config = generate_aiconfig_automatic(user_prompt, config)
 
@@ -35,7 +43,10 @@ def test_generate_aiconfig_automatic_typical(patched_api_requestor:Callable[[Moc
 
 @pytest.mark.vcr
 @pytest.mark.requires_openai_api_key
-def test_generate_aiconfig_automatic_fallback(patched_api_requestor:Callable[[MockerFixture],None], config:Callable[[str,MockerFixture,Workspace],Config]) -> None:
+def test_generate_aiconfig_automatic_fallback(
+    patched_api_requestor: Callable[[MockerFixture], None],
+    config: Callable[[str, MockerFixture, Workspace], Config],
+) -> None:
     user_inputs = [
         "T&GF£OIBECC()!*",
         "Chef-GPT",
@@ -56,7 +67,10 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor:Callable[[Mo
 
 @pytest.mark.vcr
 @pytest.mark.requires_openai_api_key
-def test_prompt_user_manual_mode(ppatched_api_requestor:Callable[[MockerFixture],None], config:Callable[[str,MockerFixture,Workspace],Config]) -> None:
+def test_prompt_user_manual_mode(
+    ppatched_api_requestor: Callable[[MockerFixture], None],
+    config: Callable[[str, MockerFixture, Workspace], Config],
+) -> None:
     user_inputs = [
         "--manual",
         "Chef-GPT",
