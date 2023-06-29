@@ -107,10 +107,15 @@ class GenerateImage(Ability):
                 )
             elif self.image_generator is "dalli":
                 return self._generate_dalle_image(
+                    prompt=prompt,
+                    filename=filename,
+
 
                 )
             elif self.image_generator is "stablediffusion":
                 return self._generate_stablediffusion_image(
+                    prompt=prompt,
+                    filename=filename
 
                 )
 
@@ -197,8 +202,49 @@ class GenerateImage(Ability):
         self,
         prompt: str,
         filename: str,
+        api_key: str,
+        size: int = 256
     ) -> AbilityResult:
-        return AbilityResult()
+        from base64 import b64decode
+        import openai
+        if size not in [256, 512, 1024]:
+            closest = min([256, 512, 1024], key=lambda x: abs(x - size))
+            self._logger.info(
+                f"DALL-E only supports image sizes of 256x256, 512x512, or 1024x1024. Setting to {closest}, was {size}."
+            )
+            size = closest
+
+        try:
+            response = openai.Image.create(
+                prompt=prompt,
+                n=1,
+                size=f"{size}x{size}",
+                response_format="b64_json",
+                api_key=api_key
+            )
+
+            self._logger.info(f"Image Generated for prompt:{prompt}")
+
+            image_data = b64decode(response["data"][0]["b64_json"])
+
+            try:
+                with open(filename, mode="wb") as png:
+                    png.write(image_data)
+            except IOError:
+                return AbilityResult(
+                    success=False,
+                    message="Error while writing file."
+                )
+        except openai.OpenAIError as e:
+            return AbilityResult(
+                success=False,
+                message=f"Error querying OpenAI. {e}"
+            )
+
+        return AbilityResult(
+            success=True,
+            message=f"Saved to disk:{filename}"
+        )
     
     def _generate_stablediffusion_image(
         self,
