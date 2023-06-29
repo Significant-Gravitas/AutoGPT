@@ -1,8 +1,8 @@
 import json
-from pathlib import Path
 import signal
 import sys
 from datetime import datetime
+from pathlib import Path
 
 from colorama import Fore, Style
 

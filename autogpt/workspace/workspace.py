@@ -148,7 +148,9 @@ class Workspace:
         config.file_logger_path = str(file_logger_path)
 
     @staticmethod
-    def get_workspace_directory(config: Config, workspace_directory: Optional[str | Path] = None):
+    def get_workspace_directory(
+        config: Config, workspace_directory: Optional[str | Path] = None
+    ):
         if workspace_directory is None:
             workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
         elif type(workspace_directory) == str:

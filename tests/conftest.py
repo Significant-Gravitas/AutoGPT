@@ -7,8 +7,8 @@ import yaml
 from pytest_mock import MockerFixture
 
 from autogpt.agent.agent import Agent
-from autogpt.config.ai_config import AIConfig
 from autogpt.config import AIConfig, Config, ConfigBuilder
+from autogpt.config.ai_config import AIConfig
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import TypingConsoleHandler
 from autogpt.memory.vector import get_memory

@@ -28,6 +28,7 @@ class SystemSettings(BaseModel, abc.ABC):
 
 S = TypeVar("S", bound=SystemSettings)
 
+
 class Configurable(abc.ABC, Generic[S]):
     """A base class for all configurable objects."""
 

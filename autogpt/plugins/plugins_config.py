@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Union
 
 import yaml
 
 if TYPE_CHECKING:
     from autogpt.config import Config
+
 from autogpt.logs import logger
 from autogpt.plugins.plugin_config import PluginConfig
 
 
 class PluginsConfig:
     """Class for holding configuration of all plugins"""
+
     plugins: dict[str, PluginConfig]
 
     def __init__(self, plugins_config: dict[str, Any]):
