@@ -3,5 +3,12 @@
         "difficulty": "basic",
         "dependencies": [],
         "test": "agbenchmark/tests/basic_abilities/write_file/write_file_test.py::TestWriteFile::test_method[challenge_data0-run_agent0]"
+    },
+    "TestReadFile": {
+        "difficulty": "basic",
+        "dependencies": [
+            "basic_write_file"
+        ],
+        "test": "agbenchmark/tests/basic_abilities/read_file/read_file_test.py::TestReadFile::test_method[challenge_data0-run_agent0]"
     }
 }

@@ -1,3 +1,9 @@
 {
-  "hostname": "localhost"
+  "workspace": "C:\\Users\\silen\\miniagi",
+  "cutoff": {
+    "type": "time",
+    "user_prompt": "Press enter to continue or abort this action by typing feedback:",
+    "user_input": "\n",
+    "count": 5
+  }
 }
