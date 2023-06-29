@@ -9,7 +9,6 @@ from pytest_mock import MockerFixture
         mypy
         tests/integration/memory/utils.py:5: error: Skipping analyzing ".autogpt.memory.vector.providers.base": module is installed, but missing library stubs or py.typed marker  [import]
         tests/integration/memory/utils.py:5: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
-    
     This import file is necessary for giving the type hint for memory_none function
 """
 import autogpt.memory.vector.memory_item as vector_memory_item
@@ -19,7 +18,7 @@ from autogpt.llm.providers.openai import OPEN_AI_EMBEDDING_MODELS
 from autogpt.memory.vector import get_memory
 from autogpt.memory.vector.utils import Embedding
 
-from ......autogpt.memory.vector.providers.base import (
+from autogpt.memory.vector.providers.base import (
     VectorMemoryProvider as VectorMemory,  # type: ignore
 )
 

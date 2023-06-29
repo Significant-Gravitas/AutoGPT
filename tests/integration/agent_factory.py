@@ -16,7 +16,7 @@ from autogpt.workspace import Workspace
     
     This import file is necessary for giving the type hint for memory_json_file function
 """
-from ....autogpt.memory.vector.providers.base import (
+from autogpt.memory.vector.providers.base import (
     VectorMemoryProvider as VectorMemory,  # type: ignore
 )
 
