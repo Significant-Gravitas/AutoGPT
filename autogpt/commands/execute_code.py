@@ -1,5 +1,6 @@
 """Execute code in a Docker container"""
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -93,6 +94,21 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         return "Error: Invalid file type. Only .py files are allowed."
 
     file_path = Path(filename)
+    path_requirementsfile = Path(os.path.join(os.path.dirname(filename), "requirements.txt"))
+    path_dockerfile = Path(os.path.join(os.path.dirname(filename), "Dockerfile"))
+    image_name = "python:3-alpine"
+    
+    with open(file_path) as f:
+        code = f.read()
+    regex_imports = re.findall(r"import (.*(?=\n))", code)
+    print("regex_imports", regex_imports)
+    if len(regex_imports) > 0:
+        with open(path_requirementsfile, "w+", encoding="utf-8") as f1:
+            f1.write('\n'.join(str(re.split(" ", regex_import)[0]) for regex_import in regex_imports) + '\n')
+        with open(path_dockerfile, "w+", encoding="utf-8") as f2:
+            f2.write("FROM {0}\n\nUSER root\n\nRUN mkdir -p /usr/src/app\n\nWORKDIR /usr/src/app\n\nCOPY {1} .\n\nRUN pip install -r requirements.txt\n\nCMD [\"python\", \"{2}\"]".format(image_name, agent.workspace.root, str(file_path.relative_to(agent.workspace.root))))
+
+    print("path", file_path, path_requirementsfile, path_dockerfile)
     if not file_path.is_file():
         # Mimic the response that you get from the command line so that it's easier to identify
         return (
@@ -100,8 +116,12 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         )
 
     if we_are_running_in_a_docker_container():
+        commands = ["python {0}".format(str(file_path))]
+        if path_requirementsfile.is_file():
+            commands = ["pip install -r {0}".format(str(path_requirementsfile))] + commands
+        print("commands", commands) 
         result = subprocess.run(
-            ["python", str(file_path)],
+            commands,
             capture_output=True,
             encoding="utf8",
             cwd=agent.config.workspace_path,
@@ -116,7 +136,6 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         # You can replace this with the desired Python image/version
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
-        image_name = "python:3-alpine"
         try:
             client.images.get(image_name)
             logger.warn(f"Image '{image_name}' found locally")
@@ -134,10 +153,15 @@ def execute_python_file(filename: str, agent: Agent) -> str:
                     logger.info(f"{status}: {progress}")
                 elif status:
                     logger.info(status)
-
+        commands = ["python {0}".format(str(file_path.relative_to(agent.workspace.root)))]
+        if path_requirementsfile.is_file():
+            image_name = client.images.build(path=path_dockerfile)
+            commands = None
+        print("commands", commands)
+        
         container: DockerContainer = client.containers.run(
             image_name,
-            ["python", str(file_path.relative_to(agent.workspace.root))],
+            commands,
             volumes={
                 agent.config.workspace_path: {
                     "bind": "/workspace",
