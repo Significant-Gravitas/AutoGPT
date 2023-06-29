@@ -12,6 +12,8 @@ from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.logs import logger
 
+from .decorators import sanitize_path_arg
+
 ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"
 
@@ -76,6 +78,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
         },
     },
 )
+@sanitize_path_arg("filename")
 def execute_python_file(filename: str, agent: Agent) -> str:
     """Execute a Python file in a Docker container and return the output
 

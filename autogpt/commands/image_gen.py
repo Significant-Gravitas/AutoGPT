@@ -24,7 +24,7 @@ from autogpt.logs import logger
             "required": True,
         },
     },
-    lambda config: config.image_provider,
+    lambda config: config.image_provider is not None,
     "Requires a image provider to be set.",
 )
 def generate_image(prompt: str, agent: Agent, size: int = 256) -> str:

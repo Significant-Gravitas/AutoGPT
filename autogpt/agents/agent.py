@@ -158,8 +158,6 @@ class Agent(BaseAgent):
                 if self.config.speak_mode:
                     say_text(f"I want to execute {command_name}", self.config)
 
-                arguments = self._resolve_pathlike_command_args(arguments)
-
             except Exception as e:
                 logger.error("Error: \n", str(e))
         self.log_cycle_handler.log_cycle(
@@ -299,14 +297,3 @@ class Agent(BaseAgent):
             )
 
         super().on_response(assistant_reply)
-
-    def _resolve_pathlike_command_args(self, command_args: dict[str, str]):
-        if "directory" in command_args and command_args["directory"] in {"", "/"}:
-            command_args["directory"] = str(self.workspace.root)
-        else:
-            for pathlike in ["filename", "directory", "clone_path"]:
-                if pathlike in command_args:
-                    command_args[pathlike] = str(
-                        self.workspace.get_path(command_args[pathlike])
-                    )
-        return command_args

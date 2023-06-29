@@ -10,10 +10,12 @@ from confection import Config
 
 from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
-from autogpt.commands.file_operations_utils import read_textual_file
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
+
+from .decorators import sanitize_path_arg
+from .file_operations_utils import read_textual_file
 
 Operation = Literal["write", "append", "delete"]
 
@@ -126,6 +128,7 @@ def log_operation(
         }
     },
 )
+@sanitize_path_arg("filename")
 def read_file(filename: str, agent: Agent) -> str:
     """Read a file and return the contents
 
@@ -190,6 +193,7 @@ def ingest_file(
         },
     },
 )
+@sanitize_path_arg("filename")
 def write_to_file(filename: str, text: str, agent: Agent) -> str:
     """Write text to a file
 
@@ -230,6 +234,7 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
         },
     },
 )
+@sanitize_path_arg("filename")
 def append_to_file(
     filename: str, text: str, agent: Agent, should_log: bool = True
 ) -> str:
@@ -270,6 +275,7 @@ def append_to_file(
         }
     },
 )
+@sanitize_path_arg("filename")
 def delete_file(filename: str, agent: Agent) -> str:
     """Delete a file
 
@@ -300,6 +306,7 @@ def delete_file(filename: str, agent: Agent) -> str:
         }
     },
 )
+@sanitize_path_arg("directory")
 def list_files(directory: str, agent: Agent) -> list[str]:
     """lists files in a directory recursively
 
