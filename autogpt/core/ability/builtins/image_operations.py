@@ -1,6 +1,8 @@
 import logging
 import os
 
+from requests import RequestException
+
 from autogpt.core.ability.base import Ability, AbilityConfiguration
 from autogpt.core.ability.schema import AbilityResult
 from autogpt.core.workspace import Workspace
@@ -109,14 +111,15 @@ class GenerateImage(Ability):
                 return self._generate_dalle_image(
                     prompt=prompt,
                     filename=filename,
-
-
+                    api_key="",
+                    size=512
                 )
             elif self.image_generator is "stablediffusion":
                 return self._generate_stablediffusion_image(
                     prompt=prompt,
-                    filename=filename
-
+                    filename=filename,
+                    stable_diffusion_url="",
+                    size=512,
                 )
 
         except IOError as e:
@@ -203,7 +206,7 @@ class GenerateImage(Ability):
         prompt: str,
         filename: str,
         api_key: str,
-        size: int = 256
+        size: int = 512
     ) -> AbilityResult:
         from base64 import b64decode
         import openai
@@ -249,6 +252,50 @@ class GenerateImage(Ability):
     def _generate_stablediffusion_image(
         self,
         prompt: str,
+        negative_prompt: str,
         filename: str,
+        stable_diffusion_url: str,
+        size: int = 512,
+        username: str | None = None,
+        password: str | None = None,
+        extra: dict = {},
     ) -> AbilityResult:
-        return AbilityResult()
+        import io
+        from base64 import b64decode
+        import requests
+        from PIL import Image
+        s = requests.Session()
+        if username and password:
+            s.auth = (username, password or "")
+
+        try:
+            # Generate the images
+            response = requests.post(
+                f"{stable_diffusion_url}/sdapi/v1/txt2img",
+                json={
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt,
+                    "sampler_index": "DDIM",
+                    "steps": 20,
+                    "config_scale": 7.0,
+                    "width": size,
+                    "height": size,
+                    "n_iter": 1,
+                    **extra,
+                },
+            )
+
+            self._logger.info(f"Image Generated for prompt:{prompt}")
+
+            # Save the image to disk
+            response = response.json()
+            b64 = b64decode(response["images"][0].split(",", 1)[0])
+            image = Image.open(io.BytesIO(b64))
+            image.save(filename)
+        except RequestException as e:
+            return AbilityResult(
+                success=False,
+                message=f"Failed to generate image: {e}"
+            )
+
+        return AbilityResult(success=True,message=f"Saved to disk:{filename}")
