@@ -22,6 +22,7 @@ class SystemSettings(BaseModel, abc.ABC):
     description: typing.Optional[str]
 
     class Config:
+        arbitrary_types_allowed = True
         extra = "forbid"
         use_enum_values = True
 
