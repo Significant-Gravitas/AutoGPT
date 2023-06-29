@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import signal
 import sys
 from datetime import datetime
@@ -64,7 +65,7 @@ class Agent:
         ai_config: AIConfig,
         system_prompt: str,
         triggering_prompt: str,
-        workspace_directory: str,
+        workspace_directory: str | Path,
         config: Config,
     ):
         self.ai_name = ai_name
