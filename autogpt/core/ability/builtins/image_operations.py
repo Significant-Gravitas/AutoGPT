@@ -1,5 +1,4 @@
 import logging
-import os
 
 from requests import RequestException
 
@@ -104,15 +103,12 @@ class GenerateImage(Ability):
                 return self._generate_huggingface_image(
                     prompt=prompt,
                     filename=filename,
-                    huggingface_api_token=""
-                    huggingface_image_model=""
+                    huggingface_api_token="",
+                    huggingface_image_model="",
                 )
             elif self.image_generator is "dalli":
                 return self._generate_dalle_image(
-                    prompt=prompt,
-                    filename=filename,
-                    api_key="",
-                    size=512
+                    prompt=prompt, filename=filename, api_key="", size=512
                 )
             elif self.image_generator is "stablediffusion":
                 return self._generate_stablediffusion_image(
@@ -133,7 +129,7 @@ class GenerateImage(Ability):
             data=data,
         )
 
-    # NOTE: How on earth do we combine a thousand APIs into one here? what if one requires more info 
+    # NOTE: How on earth do we combine a thousand APIs into one here? what if one requires more info
     def _generate_huggingface_image(
         self,
         prompt: str,
@@ -144,6 +140,7 @@ class GenerateImage(Ability):
         import io
         import json
         import time
+
         import requests
         from PIL import Image
 
@@ -202,14 +199,12 @@ class GenerateImage(Ability):
         )
 
     def _generate_dalle_image(
-        self,
-        prompt: str,
-        filename: str,
-        api_key: str,
-        size: int = 512
+        self, prompt: str, filename: str, api_key: str, size: int = 512
     ) -> AbilityResult:
         from base64 import b64decode
+
         import openai
+
         if size not in [256, 512, 1024]:
             closest = min([256, 512, 1024], key=lambda x: abs(x - size))
             self._logger.info(
@@ -223,7 +218,7 @@ class GenerateImage(Ability):
                 n=1,
                 size=f"{size}x{size}",
                 response_format="b64_json",
-                api_key=api_key
+                api_key=api_key,
             )
 
             self._logger.info(f"Image Generated for prompt:{prompt}")
@@ -234,21 +229,12 @@ class GenerateImage(Ability):
                 with open(filename, mode="wb") as png:
                     png.write(image_data)
             except IOError:
-                return AbilityResult(
-                    success=False,
-                    message="Error while writing file."
-                )
+                return AbilityResult(success=False, message="Error while writing file.")
         except openai.OpenAIError as e:
-            return AbilityResult(
-                success=False,
-                message=f"Error querying OpenAI. {e}"
-            )
+            return AbilityResult(success=False, message=f"Error querying OpenAI. {e}")
 
-        return AbilityResult(
-            success=True,
-            message=f"Saved to disk:{filename}"
-        )
-    
+        return AbilityResult(success=True, message=f"Saved to disk:{filename}")
+
     def _generate_stablediffusion_image(
         self,
         prompt: str,
@@ -262,8 +248,10 @@ class GenerateImage(Ability):
     ) -> AbilityResult:
         import io
         from base64 import b64decode
+
         import requests
         from PIL import Image
+
         s = requests.Session()
         if username and password:
             s.auth = (username, password or "")
@@ -294,8 +282,7 @@ class GenerateImage(Ability):
             image.save(filename)
         except RequestException as e:
             return AbilityResult(
-                success=False,
-                message=f"Failed to generate image: {e}"
+                success=False, message=f"Failed to generate image: {e}"
             )
 
-        return AbilityResult(success=True,message=f"Saved to disk:{filename}")
+        return AbilityResult(success=True, message=f"Saved to disk:{filename}")
