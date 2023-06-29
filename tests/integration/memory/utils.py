@@ -16,11 +16,10 @@ import autogpt.memory.vector.providers.base as memory_provider_base
 from autogpt.config.config import Config
 from autogpt.llm.providers.openai import OPEN_AI_EMBEDDING_MODELS
 from autogpt.memory.vector import get_memory
-from autogpt.memory.vector.utils import Embedding
-
 from autogpt.memory.vector.providers.base import (
     VectorMemoryProvider as VectorMemory,  # type: ignore
 )
+from autogpt.memory.vector.utils import Embedding
 
 
 @pytest.fixture
