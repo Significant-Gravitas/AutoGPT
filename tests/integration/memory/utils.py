@@ -11,8 +11,6 @@ from autogpt.workspace import Workspace
         mypy
         tests/integration/memory/utils.py:5: error: Skipping analyzing ".autogpt.memory.vector.providers.base": module is installed, but missing library stubs or py.typed marker  [import]
         tests/integration/memory/utils.py:5: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
-    
-    This import file is necessary for giving the type hint for memory_none function
 """
 import autogpt.memory.vector.memory_item as vector_memory_item
 import autogpt.memory.vector.providers.base as memory_provider_base
