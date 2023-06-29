@@ -5,7 +5,7 @@ import sys
 from colorama import Fore, Style
 
 from autogpt.agents import Agent
-from autogpt.config import Config, check_openai_api_key
+from autogpt.config.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
@@ -52,7 +52,8 @@ def run_auto_gpt(
     logger.set_level(logging.DEBUG if debug else logging.INFO)
     logger.speak_mode = speak
 
-    config = Config()
+    config = Config.build_config_from_env()
+
     # TODO: fill in llm values here
     check_openai_api_key(config)
 
@@ -120,7 +121,7 @@ def run_auto_gpt(
     # HACK: doing this here to collect some globals that depend on the workspace.
     Workspace.build_file_logger_path(config, workspace_directory)
 
-    config.set_plugins(scan_plugins(config, config.debug_mode))
+    config.plugins = scan_plugins(config, config.debug_mode)
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
 
@@ -137,6 +138,20 @@ def run_auto_gpt(
 
     for command_category in enabled_command_categories:
         command_registry.import_commands(command_category)
+
+    # Unregister commands that are incompatible with the current config
+    incompatible_commands = []
+    for command in command_registry.commands.values():
+        if callable(command.enabled) and not command.enabled(config):
+            command.enabled = False
+            incompatible_commands.append(command)
+
+    for command in incompatible_commands:
+        command_registry.unregister(command.name)
+        logger.debug(
+            f"Unregistering incompatible command: {command.name}, "
+            f"reason - {command.disabled_reason or 'Disabled by current config.'}"
+        )
 
     ai_name = ""
     ai_config = construct_main_ai_config(config)

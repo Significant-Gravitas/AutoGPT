@@ -11,12 +11,12 @@ from autogpt.workspace import Workspace
 def memory_json_file(config: Config):
     was_memory_backend = config.memory_backend
 
-    config.set_memory_backend("json_file")
+    config.memory_backend = "json_file"
     memory = get_memory(config)
     memory.clear()
     yield memory
 
-    config.set_memory_backend(was_memory_backend)
+    config.memory_backend = was_memory_backend
 
 
 @pytest.fixture

@@ -219,8 +219,8 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
     loaded_plugins = []
     # Generic plugins
     plugins_path_path = Path(config.plugins_dir)
-    plugins_config = config.plugins_config
 
+    plugins_config = config.plugins_config
     # Directory-based plugins
     for plugin_path in [f.path for f in os.scandir(config.plugins_dir) if f.is_dir()]:
         # Avoid going into __pycache__ or other hidden directories
@@ -259,9 +259,10 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                     if key.startswith("__"):
                         continue
                     a_module = getattr(zipped_module, key)
-                    a_keys = dir(a_module)
+
                     if (
-                        "_abc_impl" in a_keys
+                        inspect.isclass(a_module)
+                        and issubclass(a_module, AutoGPTPluginTemplate)
                         and a_module.__name__ != "AutoGPTPluginTemplate"
                     ):
                         plugin_name = a_module.__name__
@@ -284,6 +285,10 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                                 f"they are enabled in plugins_config.yaml. Zipped plugins should use the class "
                                 f"name ({plugin_name}) as the key."
                             )
+                    else:
+                        logger.debug(
+                            f"Skipping {key}: {a_module.__name__} because it doesn't subclass AutoGPTPluginTemplate."
+                        )
 
     # OpenAI plugins
     if config.plugins_openai:

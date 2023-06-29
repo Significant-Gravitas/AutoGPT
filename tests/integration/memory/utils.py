@@ -38,7 +38,7 @@ def mock_get_embedding(mocker: MockerFixture, embedding_dimension: int):
 def memory_none(agent_test_config: Config, mock_get_embedding):
     was_memory_backend = agent_test_config.memory_backend
 
-    agent_test_config.set_memory_backend("no_memory")
+    agent_test_config.memory_backend = "no_memory"
     yield get_memory(agent_test_config)
 
-    agent_test_config.set_memory_backend(was_memory_backend)
+    agent_test_config.memory_backend = was_memory_backend
