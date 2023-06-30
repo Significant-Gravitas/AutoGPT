@@ -29,7 +29,17 @@ def start(category, noreg, mock):
 
         config["workspace"] = click.prompt(
             "Please enter a new workspace path",
-            default=os.path.join(Path.home(), "miniagi"),
+            default=os.path.join(Path.home(), "workspace"),
+        )
+
+        config["func_path"] = click.prompt(
+            "Please enter a the path to your run_specific_agent function implementation",
+            default="/benchmarks.py",
+        )
+
+        config["cutoff"] = click.prompt(
+            "Please enter a hard cutoff runtime for your agent",
+            default="60",
         )
 
         with open(config_dir, "w") as f:
