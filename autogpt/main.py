@@ -1,11 +1,12 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
 import logging
 import sys
+from pathlib import Path
 
 from colorama import Fore, Style
 
 from autogpt.agent import Agent
-from autogpt.config.config import Config, check_openai_api_key
+from autogpt.config.config import ConfigBuilder, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
@@ -45,14 +46,14 @@ def run_auto_gpt(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
-    workspace_directory: str,
+    workspace_directory: str | Path,
     install_plugin_deps: bool,
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
     logger.speak_mode = speak
 
-    config = Config.build_config_from_env()
+    config = ConfigBuilder.build_config_from_env()
 
     # TODO: fill in llm values here
     check_openai_api_key(config)
