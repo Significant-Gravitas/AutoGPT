@@ -1,6 +1,0 @@
-# These cannot be included in the pypi package for various reasons
-# They can be handled via --setup or other boostrapping, or instrutions to run 
-# the following commands:
-# python -m pip install --requirement https://raw.githubusercontent.com/Significant-Grativas/Auto-GPT/master/requirements_extra.txt
-
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl

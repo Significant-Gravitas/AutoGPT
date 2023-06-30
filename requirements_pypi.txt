@@ -1,7 +1,10 @@
-## Prod requirements
-# Only include requirements in a format that meets PEP 508 so we can build them for pypi
-# That means no git+, http://, etc.
-# https://www.python.org/dev/peps/pep-0508/#id17
+## Production requirements
+## This file is included in the pypi build so only include requirements that are needed for production
+##
+## Format: 
+##   Only use a format that meets PEP 508 so we can build them for pypi
+##   That means no git+, http://, etc.
+##   https://www.python.org/dev/peps/pep-0508/#id17
 
 beautifulsoup4>=4.12.2
 colorama==0.4.6

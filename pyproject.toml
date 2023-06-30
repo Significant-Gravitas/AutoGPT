@@ -40,7 +40,7 @@ autogpt = "agpt.autogpt.cli:main"
 "main.py" = "agpt/main.py"
 
 [tool.hatch.metadata.hooks.requirements_txt]
-files = ["requirements_dist.txt"]
+files = ["requirements_pypi.txt"]
 
 [tool.black]
 line-length = 88

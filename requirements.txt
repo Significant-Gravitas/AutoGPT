@@ -1,6 +1,38 @@
--r requirements_dist.txt
--r requirements_dist_extra.txt
--r requirements_dev.txt
+-r requirements_pypi.txt
+
+## Extra requirements, not compatible with pypi
+## They can be installed via --setup or other boostrapping, or the following commands:
+## python -m pip install --requirement https://raw.githubusercontent.com/Significant-Grativas/Auto-GPT/master/requirements.txt
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl
+
+## Dev requirements
+coverage
+flake8
+numpy
+pre-commit
+black
+isort
+gitpython==3.1.31
+auto-gpt-plugin-template @ git+https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template@0.1.0
+mkdocs
+pymdown-extensions
+mypy
+types-Markdown
+types-beautifulsoup4
+types-colorama
+types-Pillow
+hatch-requirements-txt
 
 # Items below this point will not be included in the Docker Image
--r requirements_test.txt
+
+## Test requirements
+pytest
+asynctest
+pytest-asyncio
+pytest-benchmark
+pytest-cov
+pytest-integration
+pytest-mock
+vcrpy @ git+https://github.com/Significant-Gravitas/vcrpy.git@master
+pytest-recording
+pytest-xdist
