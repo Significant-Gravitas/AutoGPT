@@ -1,9 +1,10 @@
 {
   "workspace": "C:\\Users\\silen\\miniagi",
-  "cutoff": {
-    "type": "time",
-    "user_prompt": "Press enter to continue or abort this action by typing feedback:",
+  "agent": {
+    "type": "script",
+    "path": "",
+    "script": "python miniagi.py {}",
     "user_input": "\n",
-    "count": 5
+    "cutoff": 60
   }
 }

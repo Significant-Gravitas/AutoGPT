@@ -17,10 +17,9 @@ class TestReadFile(BasicChallenge):
         return os.path.join(os.path.dirname(__file__), "r_file_data.json")
 
     @pytest.mark.depends(on=["basic_write_file"], name="basic_read_file")
-    def test_method(
-        self, workspace
-    ):  # run_test is a common name that all tests must implement
-        files_contents = self.open_files(workspace, self.data.ground.files)
+    def test_method(self, config):
+        self.setup_challenge(config)
+        files_contents = self.open_files(config["workspace"], self.data.ground.files)
 
         scores = []
         for file_content in files_contents:
