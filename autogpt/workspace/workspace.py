@@ -10,6 +10,7 @@ agent.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -77,7 +78,7 @@ class Workspace:
     @staticmethod
     def _sanitize_path(
         relative_path: str | Path,
-        root: str | Path = None,
+        root: Optional[str | Path] = None,
         restrict_to_root: bool = True,
     ) -> Path:
         """Resolve the relative path within the given root if possible.
@@ -139,7 +140,7 @@ class Workspace:
         return full_path
 
     @staticmethod
-    def build_file_logger_path(config, workspace_directory):
+    def build_file_logger_path(config: Config, workspace_directory: Path):
         file_logger_path = workspace_directory / "file_logger.txt"
         if not file_logger_path.exists():
             with file_logger_path.open(mode="w", encoding="utf-8") as f:
@@ -147,10 +148,12 @@ class Workspace:
         config.file_logger_path = str(file_logger_path)
 
     @staticmethod
-    def get_workspace_directory(config: Config, workspace_directory: str = None):
+    def get_workspace_directory(
+        config: Config, workspace_directory: Optional[str | Path] = None
+    ):
         if workspace_directory is None:
             workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
-        else:
+        elif type(workspace_directory) == str:
             workspace_directory = Path(workspace_directory)
         # TODO: pass in the ai_settings file and the env file and have them cloned into
         #   the workspace directory so we can bind them to the agent.
