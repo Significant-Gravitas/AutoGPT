@@ -23,6 +23,7 @@ class Challenge(ABC):
 
     @property
     def data(self) -> ChallengeData:
+        # TODO: make it so that this is cached somewhere to just call self.deserialized_data
         return ChallengeData.deserialize(self.get_file_path())
 
     @property
@@ -37,19 +38,15 @@ class Challenge(ABC):
 
     @property
     def dependencies(self) -> list:
-        print("self.data.dependencies", self.data.dependencies)
         return self.data.dependencies
 
     def setup_challenge(self, config):
         from agbenchmark.agent_interface import run_agent
 
-        print("SETTING UP CHALLENGE...")
-
         run_agent(self.task, self.mock, config)
 
     @property
     def name(self) -> str:
-        print("self.data.name", self.data.name)
         return self.data.name
 
     @pytest.mark.parametrize(

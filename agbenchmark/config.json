@@ -1,10 +1,5 @@
 {
   "workspace": "C:\\Users\\silen\\miniagi",
-  "agent": {
-    "type": "script",
-    "path": "",
-    "script": "python miniagi.py {}",
-    "user_input": "\n",
-    "cutoff": 60
-  }
+  "func_path": "agent/benchmarks.py",
+  "cutoff": 60
 }
