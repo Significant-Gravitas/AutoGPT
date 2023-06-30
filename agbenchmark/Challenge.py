@@ -4,7 +4,7 @@ import pytest
 from abc import ABC, abstractmethod
 from agbenchmark.challenges.define_task_types import Ground
 from agbenchmark.challenges.define_task_types import ChallengeData
-from dotenv import load_dotenv, set_key
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -23,6 +23,7 @@ class Challenge(ABC):
 
     @property
     def data(self) -> ChallengeData:
+        # TODO: make it so that this is cached somewhere to just call self.deserialized_data
         return ChallengeData.deserialize(self.get_file_path())
 
     @property
@@ -37,25 +38,23 @@ class Challenge(ABC):
 
     @property
     def dependencies(self) -> list:
-        print("self.data.dependencies", self.data.dependencies)
         return self.data.dependencies
+
+    def setup_challenge(self, config):
+        from agbenchmark.agent_interface import run_agent
+
+        run_agent(self.task, self.mock, config)
 
     @property
     def name(self) -> str:
-        print("self.data.name", self.data.name)
         return self.data.name
 
-    @pytest.mark.parametrize(
-        "run_agent",
-        [(task, mock)],
-        indirect=True,
-    )
     @pytest.mark.parametrize(
         "challenge_data",
         [data],
         indirect=True,
     )
-    def test_method(self, workspace):
+    def test_method(self, config):
         raise NotImplementedError
 
     @staticmethod
