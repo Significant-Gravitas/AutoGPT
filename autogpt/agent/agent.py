@@ -4,14 +4,16 @@ import json
 import signal
 import sys
 from datetime import datetime
-from pathlib import Path
 from enum import Enum
+from pathlib import Path
+from typing import Callable, Dict, Optional, Tuple
 
 from colorama import Fore, Style
 
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.utilities import extract_json_from_response, validate_json
+from autogpt.llm.base import ChatModelResponse
 from autogpt.llm.chat import chat_with_ai
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens
@@ -97,7 +99,9 @@ class Agent:
         self.setofexecuted = set()
 
     @staticmethod
-    async def async_task_and_spin(spn, some_task, args):
+    async def async_task_and_spin(
+        spn: Spinner, some_task: Callable, args: Tuple
+    ) -> Optional[str]:
         loop = asyncio.get_event_loop()
         # Run the synchronous function in an executor
         pool = concurrent.futures.ThreadPoolExecutor()
@@ -115,23 +119,24 @@ class Agent:
             if task in done:
                 result = await task
                 return result
+            return None
 
         finally:
             pool.shutdown(wait=False)  # dont want to use 'with' because it waits...
 
-    def start_interaction_loop(self):
+    def start_interaction_loop(self) -> None:
         # Avoid circular imports
         from autogpt.app import execute_command
 
-        def enter_input():
+        def enter_input() -> None:
             logger.info(
                 "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
                 "'n' to exit program, or enter feedback for "
                 f"{self.ai_name}..."
             )
 
-        def get_user_choice():  # False to continue loop , True to break
-            nonlocal console_input, user_input, command_name
+        def get_user_choice() -> bool:  # False to continue loop , True to break
+            nonlocal console_input, user_input, command_name  # type: ignore
 
             if console_input.lower() == self.config.exit_key:
                 user_input = "EXIT"
@@ -166,7 +171,7 @@ class Agent:
             )
             return True
 
-        def print_next_command(is_next):
+        def print_next_command(is_next: bool) -> None:
             self.log_cycle_handler.log_cycle(
                 self.ai_config.ai_name,
                 self.created_at,
@@ -191,7 +196,7 @@ class Agent:
         user_input = ""
 
         # Signal handler for interrupting y -N
-        def signal_handler(signum, frame):
+        def signal_handler(signum: int, frame) -> None:
             if self.next_action_count == 0:
                 sys.exit()
             else:
@@ -274,7 +279,9 @@ class Agent:
 
                 while True:
                     if self.config.chat_messages_enabled:
-                        console_input = clean_input("Waiting for your response...")
+                        console_input = clean_input(
+                            self.config, "Waiting for your response..."
+                        )
                     else:
                         console_input = clean_input(
                             self.config, Fore.MAGENTA + "Input:" + Style.RESET_ALL
@@ -352,7 +359,9 @@ class Agent:
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
 
-    def get_next_command_to_execute(self, assistant_reply, assistant_reply_json):
+    def get_next_command_to_execute(
+        self, assistant_reply: ChatModelResponse, assistant_reply_json: Dict
+    ) -> Tuple[str, Tuple]:
         command_name, arguments = None, None
         try:
             print_assistant_thoughts(self.ai_name, assistant_reply_json, self.config)
@@ -387,7 +396,9 @@ class Agent:
             tostop = False
         return tostop
 
-    def interact_with_assistant(self, command_name):
+    def interact_with_assistant(
+        self, command_name
+    ) -> Tuple[InteractionResult, ChatModelResponse, Dict]:
         status = InteractionResult.OK
 
         def upd():
@@ -396,7 +407,7 @@ class Agent:
             status = InteractionResult.SoftInterrupt
 
         # Send message to AI, get response
-        assistant_reply_json = {}
+        assistant_reply_json = {}  # type: ignore
         try:
             interruptable = command_name is not None
             with Spinner(

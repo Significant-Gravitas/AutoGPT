@@ -88,7 +88,7 @@ class Config(SystemSettings):
     commands_to_stop: Optional[List]
 
     # Executed immediately after init by Pydantic
-    def model_post_init(self, **kwargs) -> None:
+    def model_post_init(self, **kwargs) -> None:  # type: ignore
         if not self.plugins_config.plugins:
             self.plugins_config = PluginsConfig.load_config(self)
 
