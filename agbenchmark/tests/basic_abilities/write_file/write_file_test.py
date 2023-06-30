@@ -10,9 +10,9 @@ class TestWriteFile(BasicChallenge):
         return os.path.join(os.path.dirname(__file__), "w_file_data.json")
 
     @pytest.mark.depends(on=[], name="basic_write_file")
-    def test_method(self, workspace):
-        print("my workspace is ", workspace)
-        files_contents = self.open_files(workspace, self.data.ground.files)
+    def test_method(self, config):
+        self.setup_challenge(config)
+        files_contents = self.open_files(config["workspace"], self.data.ground.files)
 
         scores = []
         for file_content in files_contents:

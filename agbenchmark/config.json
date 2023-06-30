@@ -1,3 +1,5 @@
 {
-  "hostname": "localhost"
+  "workspace": "C:\\Users\\silen\\miniagi",
+  "func_path": "agent/benchmarks.py",
+  "cutoff": 60
 }
