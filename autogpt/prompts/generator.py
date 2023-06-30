@@ -1,6 +1,8 @@
 """ A module for generating custom prompt strings."""
+import json
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
+from autogpt.config import Config
 from autogpt.json_utils.utilities import llm_response_schema
 
 if TYPE_CHECKING:
@@ -127,7 +129,7 @@ class PromptGenerator:
         else:
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
 
-    def generate_prompt_string(self) -> str:
+    def generate_prompt_string(self, config: Config) -> str:
         """
         Generate a prompt string based on the constraints, commands, resources,
             and performance evaluations.
@@ -137,11 +139,26 @@ class PromptGenerator:
         """
         return (
             f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
-            "Commands:\n"
-            f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
+            f"{generate_commands(self, config)}"
             f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             "Performance Evaluation:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
             "Respond with only valid JSON conforming to the following schema: \n"
-            f"{llm_response_schema()}\n"
+            f"{json.dumps(llm_response_schema(config))}\n"
         )
+
+
+def generate_commands(self, config: Config) -> str:
+    """
+    Generate a prompt string based on the constraints, commands, resources,
+        and performance evaluations.
+
+    Returns:
+        str: The generated prompt string.
+    """
+    if config.openai_functions:
+        return ""
+    return (
+        "Commands:\n"
+        f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
+    )

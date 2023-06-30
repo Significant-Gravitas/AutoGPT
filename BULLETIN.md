@@ -3,45 +3,20 @@ Check out *https://agpt.co*, the official news & updates site for Auto-GPT!
 The documentation also has a place here, at *https://docs.agpt.co*
 
 # For contributors 👷🏼
-Since releasing v0.3.0, we are working on re-architecting the Auto-GPT core to make
-it more extensible and to make room for structural performance-oriented R&D.
-In the meantime, we have less time to process incoming pull requests and issues,
-so we focus on high-value contributions:
- * significant bugfixes
- * *major* improvements to existing functionality and/or docs (so no single-typo fixes)
- * contributions that help us with re-architecture and other roadmapped items
-We have to be somewhat selective in order to keep making progress, but this does not
-mean you can't contribute. Check out the contribution guide on our wiki:
+Since releasing v0.3.0, whave been working on re-architecting the Auto-GPT core to make it more extensible and make room for structural performance-oriented R&D.
+
+Check out the contribution guide on our wiki:
 https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing
 
-# 🚀 v0.4.0 Release 🚀
-Two weeks and 76 pull requests have passed since v0.3.1, and we are happy to announce
-the release of v0.4.0!
+# 🚀 v0.4.3 Release 🚀
+We're happy to announce the 0.4.3 maintenance release, which primarily focuses on refining the LLM command execution,
+extending support for OpenAI's latest models (including the powerful GPT-3 16k model), and laying the groundwork 
+for future compatibility with OpenAI's function calling feature.
 
-Highlights and notable changes since v0.3.0:
-
-## ⚠️ Command `send_tweet` is REMOVED
-Twitter functionality (and more) is now covered by plugins.
-
-## ⚠️ Memory backend deprecation 💾
-The Milvus, Pinecone and Weaviate memory backends were rendered incompatible
-by work on the memory system, and have been removed in `master`. The Redis
-memory store was also temporarily removed; we will merge a new implementation ASAP.
-Whether built-in support for the others will be added back in the future is subject to
-discussion, feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
-
-## Document support in `read_file` 📄
-Auto-GPT can now read text from document files, with support added for PDF, DOCX, CSV,
-HTML, TeX and more!
-
-## Managing Auto-GPT's access to commands ❌🔧
-You can now disable set of built-in commands through the *DISABLED_COMMAND_CATEGORIES*
-variable in .env. Specific shell commands can also be disabled using *DENY_COMMANDS*,
-or selectively enabled using *ALLOW_COMMANDS*.
-
-## Further fixes and changes 🛠️
-Other highlights include improvements to self-feedback mode and continuous mode,
-documentation, docker and devcontainer setups, and much more. Most of the improvements
-that were made are not yet visible to users, but will pay off in the long term.
-Take a look at the Release Notes on Github for the full changelog!
+Key Highlights:
+- OpenAI API Key Prompt: Auto-GPT will now courteously prompt users for their OpenAI API key, if it's not already provided.
+- Summarization Enhancements: We've optimized Auto-GPT's use of the LLM context window even further.
+- JSON Memory Reading: Support for reading memories from JSON files has been improved, resulting in enhanced task execution.
+- Deprecated commands, removed for a leaner, more performant LLM: analyze_code, write_tests, improve_code, audio_text, web_playwright, web_requests
+## Take a look at the Release Notes on Github for the full changelog!
 https://github.com/Significant-Gravitas/Auto-GPT/releases

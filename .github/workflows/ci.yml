@@ -7,18 +7,18 @@ on:
       - 'tests/Auto-GPT-test-cassettes'
       - 'tests/challenges/current_score.json'
   pull_request:
-    branches: [ stable, master ]
+    branches: [ stable, master, release-* ]
   pull_request_target:
-    branches: [ master, ci-test* ]
+    branches: [ master, release-*, ci-test* ]
 
 concurrency:
-  group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
-  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') && github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target') }}
+  group: ${{ format('ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
 
 jobs:
   lint:
-    # eliminate duplicate runs on master
-    if: github.event_name == 'push' || github.base_ref != 'master' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
+    # eliminate duplicate runs
+    if: github.event_name == 'push' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
 
     runs-on: ubuntu-latest
     env:
@@ -73,8 +73,8 @@ jobs:
           $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
 
   test:
-    # eliminate duplicate runs on master
-    if: github.event_name == 'push' || github.base_ref != 'master' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
+    # eliminate duplicate runs
+    if: github.event_name == 'push' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
 
     permissions:
       # Gives the action the necessary permissions for publishing new
