@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from colorama import Fore, Style
 
@@ -101,7 +101,7 @@ class Agent:
     @staticmethod
     async def async_task_and_spin(
         spn: Spinner, some_task: Callable, args: Tuple
-    ) -> Optional[str]:
+    ) -> Optional[Any]:
         loop = asyncio.get_event_loop()
         # Run the synchronous function in an executor
         pool = concurrent.futures.ThreadPoolExecutor()
@@ -196,7 +196,7 @@ class Agent:
         user_input = ""
 
         # Signal handler for interrupting y -N
-        def signal_handler(signum: int, frame) -> None:
+        def signal_handler(signum: int, frame) -> None:  # type: ignore
             if self.next_action_count == 0:
                 sys.exit()
             else:
@@ -208,7 +208,7 @@ class Agent:
                 self.next_action_count = 0
 
         signal.signal(signal.SIGINT, signal_handler)
-        command_name = None
+        command_name = ""
 
         while True:
             # Discontinue if continuous limit is reached
@@ -377,7 +377,7 @@ class Agent:
         except Exception as e:
             logger.error("Error: \n", str(e))
 
-        return command_name, arguments
+        return command_name, arguments  # type: ignore
 
     def check_if_command_exist(self, command_name, arguments):
         try:
@@ -397,11 +397,11 @@ class Agent:
         return tostop
 
     def interact_with_assistant(
-        self, command_name
+        self, command_name: str
     ) -> Tuple[InteractionResult, ChatModelResponse, Dict]:
         status = InteractionResult.OK
 
-        def upd():
+        def upd() -> None:
             logger.info("Soft interrupt")
             nonlocal status
             status = InteractionResult.SoftInterrupt
@@ -409,12 +409,9 @@ class Agent:
         # Send message to AI, get response
         assistant_reply_json = {}  # type: ignore
         try:
-            interruptable = command_name is not None
             with Spinner(
-                "Thinking... (q to stop immediately, <space> to stop afterwards) "
-                if interruptable
-                else "Thinking...",
-                interruptable=interruptable,
+                "Thinking... (q to stop immediately, <space> to stop afterwards) ",
+                interruptable=True,
                 on_soft_interrupt=upd,
                 plain_output=self.config.plain_output,
             ) as spn:
@@ -459,7 +456,7 @@ class Agent:
 
         return status, assistant_reply, assistant_reply_json
 
-    def _resolve_pathlike_command_args(self, command_args):
+    def _resolve_pathlike_command_args(self, command_args: Dict) -> Dict:
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
             command_args["directory"] = str(self.workspace.root)
         else:

@@ -6,9 +6,7 @@ import select
 import sys
 import threading
 import time
-from typing import Any, Callable, List
-
-from typing import Optional
+from typing import Any, Callable, List, Optional
 
 if os.name == "nt":
     import keyboard
