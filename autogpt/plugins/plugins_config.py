@@ -1,15 +1,21 @@
+from __future__ import annotations
+
 import os
-from typing import Any, Union
+from typing import TYPE_CHECKING, Any, Union
 
 import yaml
 
-from autogpt.config.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.logs import logger
 from autogpt.plugins.plugin_config import PluginConfig
 
 
 class PluginsConfig:
     """Class for holding configuration of all plugins"""
+
+    plugins: dict[str, PluginConfig]
 
     def __init__(self, plugins_config: dict[str, Any]):
         self.plugins = {}
@@ -33,7 +39,7 @@ class PluginsConfig:
 
     def is_enabled(self, name) -> bool:
         plugin_config = self.plugins.get(name)
-        return plugin_config and plugin_config.enabled
+        return plugin_config is not None and plugin_config.enabled
 
     @classmethod
     def load_config(cls, global_config: Config) -> "PluginsConfig":

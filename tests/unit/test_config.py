@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from autogpt.config import Config
+from autogpt.config import Config, ConfigBuilder
 from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL, create_config
 from autogpt.workspace.workspace import Workspace
 
@@ -131,13 +131,13 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config: Config)
     config.smart_llm_model = smart_llm_model
 
 
-def test_missing_azure_config(config: Config, workspace: Workspace):
+def test_missing_azure_config(workspace: Workspace):
     config_file = workspace.get_path("azure_config.yaml")
     with pytest.raises(FileNotFoundError):
-        Config.load_azure_config(str(config_file))
+        ConfigBuilder.load_azure_config(str(config_file))
 
     config_file.write_text("")
-    azure_config = Config.load_azure_config(str(config_file))
+    azure_config = ConfigBuilder.load_azure_config(str(config_file))
 
     assert azure_config["openai_api_type"] == "azure"
     assert azure_config["openai_api_base"] == ""
