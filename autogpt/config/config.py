@@ -243,8 +243,8 @@ class Config(Configurable):
             config_dict["openai_api_base"] = azure_config["openai_api_base"]
             config_dict["openai_api_version"] = azure_config["openai_api_version"]
 
-        if os.getenv("OPENAI_API_BASE_URL"):
-            config_dict["openai_api_base"] = os.getenv("OPENAI_API_BASE_URL")
+        if os.getenv("OPENAI_API_BASE"):
+            config_dict["openai_api_base"] = os.getenv("OPENAI_API_BASE")
 
         openai_organization = os.getenv("OPENAI_ORGANIZATION")
         if openai_organization is not None:
