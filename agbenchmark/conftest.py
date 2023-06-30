@@ -2,11 +2,7 @@ import json
 import os
 import pytest
 import shutil
-import subprocess
-import sys
 from agbenchmark.tests.regression.RegressionManager import RegressionManager
-from agbenchmark.mocks.MockManager import MockManager
-from agbenchmark.benchmark import run_agnostic
 
 
 @pytest.fixture(scope="module")
@@ -39,29 +35,6 @@ def workspace(config):
 
 def pytest_addoption(parser):
     parser.addoption("--mock", action="store_true", default=False)
-
-
-@pytest.fixture(autouse=True)
-def run_agent(request, config):
-    """Calling to get a response"""
-    if isinstance(request.param, tuple):
-        task = request.param[0]  # The task is passed in indirectly
-        mock_function_name = request.param[1] or None
-    else:
-        task = request.param
-        mock_function_name = None
-
-    if mock_function_name != None and (request.config.getoption("--mock")):
-        if mock_function_name:
-            mock_manager = MockManager(
-                task
-            )  # workspace doesn't need to be passed in, stays the same
-            print("Server unavailable, using mock", mock_function_name)
-            mock_manager.delegate(mock_function_name)
-        else:
-            print("No mock provided")
-    else:
-        run_agnostic(config, task)
 
 
 regression_json = "agbenchmark/tests/regression/regression_tests.json"
@@ -120,13 +93,3 @@ def pytest_generate_tests(metafunc):
 
         # Add the parameters to the test function
         metafunc.parametrize("challenge_data", [params], indirect=True)
-
-    if "run_agent" in metafunc.fixturenames:
-        # Get the instance of the test class
-        test_class = metafunc.cls()
-
-        # Generate the parameters
-        params = [(test_class.task, test_class.mock)]
-
-        # Add the parameters to the test function
-        metafunc.parametrize("run_agent", params, indirect=True)

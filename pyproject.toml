@@ -16,8 +16,6 @@ openai = "^0.27.8"
 pydantic = "^1.10.9"
 pytest-depends = "^1.0.1"
 python-dotenv = "^1.0.0"
-pexpect = "^4.8.0"
-wexpect = "^4.0.0"
 
 
 [build-system]
