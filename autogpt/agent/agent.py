@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 from colorama import Fore, Style
 
+from autogpt.commands.loopwatcher import LoopWatcher
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.utilities import extract_json_from_response, validate_json
@@ -26,7 +27,8 @@ from autogpt.log_cycle.log_cycle import (
 from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
-from autogpt.models.command_registry import CommandRegistry
+from autogpt.models.command import CommandInstance
+from autogpt.models.command_registry import CommandRegistry, AgentCommandRegistry
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner, SpinnerInterrupted
 from autogpt.utils import clean_input
@@ -84,7 +86,7 @@ class Agent:
         self.memory = memory
         self.history = MessageHistory(self)
         self.next_action_count = next_action_count
-        self.command_registry = command_registry
+        self.command_registry = AgentCommandRegistry(self, command_registry)
         self.config = config
         self.ai_config = ai_config
         self.system_prompt = system_prompt
@@ -96,7 +98,7 @@ class Agent:
         self.fast_token_limit = OPEN_AI_CHAT_MODELS.get(
             config.fast_llm_model
         ).max_tokens
-        self.setofexecuted = set()
+        self.loopwatcher = LoopWatcher()
 
     @staticmethod
     async def async_task_and_spin(
@@ -124,10 +126,63 @@ class Agent:
         finally:
             pool.shutdown(wait=False)  # dont want to use 'with' because it waits...
 
-    def start_interaction_loop(self) -> None:
-        # Avoid circular imports
-        from autogpt.app import execute_command
+    def get_command_instance(
+        self, assistant_reply_json: Dict, assistant_reply: ChatModelResponse
+    ) -> CommandInstance:
+        """Parse the response and return the command name and arguments
 
+        Args:
+            assistant_reply_json (dict): The response object from the AI
+            assistant_reply (ChatModelResponse): The model response from the AI
+            config (Config): The config object
+
+        Returns:
+            tuple: The command name and arguments
+
+        Raises:
+            json.decoder.JSONDecodeError: If the response is not valid JSON
+
+            Exception: If any other error occurs
+        """
+        if self.config.openai_functions:
+            if assistant_reply.function_call is None:
+                return "Error:", "No 'function_call' in assistant reply"
+            assistant_reply_json["command"] = {
+                "name": assistant_reply.function_call.name,
+                "args": json.loads(assistant_reply.function_call.arguments),
+            }
+        try:
+            if "command" not in assistant_reply_json:
+                return "Error:", "Missing 'command' object in JSON"
+
+            if not isinstance(assistant_reply_json, dict):
+                return (
+                    "Error:",
+                    f"The previous message sent was not a dictionary {assistant_reply_json}",
+                )
+
+            command = assistant_reply_json["command"]
+            if not isinstance(command, dict):
+                return "Error:", "'command' object is not a dictionary"
+
+            if "name" not in command:
+                return "Error:", "Missing 'name' field in 'command' object"
+
+            command_name = command["name"]
+
+            # Use an empty dictionary if 'args' field is not present in 'command' object
+            arguments = command.get("args", {})
+
+            return self.command_registry.get_command(command_name).generate_instance(
+                arguments, agent=self
+            )
+        except json.decoder.JSONDecodeError:
+            return "Error:", "Invalid JSON"
+        # All other errors, return "Error: + error message"
+        except Exception as e:
+            return "Error:", str(e)
+
+    def start_interaction_loop(self) -> None:
         def enter_input() -> None:
             logger.info(
                 "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
@@ -237,16 +292,16 @@ class Agent:
                 status,
                 assistant_reply,
                 assistant_reply_json,
-            ) = self.interact_with_assistant(command_name)
+            ) = self.interact_with_assistant()
 
             tostop = True
             # Print Assistant thoughts
             if assistant_reply_json != {}:
                 # Get command name and arguments
-                args = (command_name, arguments) = self.get_next_command_to_execute(
+                cmd = self.get_next_command_to_execute(
                     assistant_reply, assistant_reply_json
                 )
-                tostop = self.check_if_command_exist(*args)
+                tostop = self.loopwatcher.should_stop_on_command(cmd)
 
             tostop = tostop or (
                 status != InteractionResult.OK
@@ -290,6 +345,7 @@ class Agent:
                         break
 
                 if user_input == "GENERATE NEXT COMMAND JSON":
+                    self.loopwatcher.command_authorized(hash(cmd))
                     logger.typewriter_log(
                         "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
                         Fore.MAGENTA,
@@ -321,11 +377,8 @@ class Agent:
                     command_name, arguments = plugin.pre_command(
                         command_name, arguments
                     )
-                command_result = execute_command(
-                    command_name=command_name,
-                    arguments=arguments,
-                    agent=self,
-                )
+                command_result = cmd.execute()
+
                 result = f"Command {command_name} returned: " f"{command_result}"
 
                 result_tlength = count_string_tokens(
@@ -361,43 +414,25 @@ class Agent:
 
     def get_next_command_to_execute(
         self, assistant_reply: ChatModelResponse, assistant_reply_json: Dict
-    ) -> Tuple[str, Tuple]:
+    ) -> CommandInstance:
         command_name, arguments = None, None
         try:
             print_assistant_thoughts(self.ai_name, assistant_reply_json, self.config)
-            from autogpt.app import get_command
 
-            command_name, arguments = get_command(
-                assistant_reply_json, assistant_reply, self.config
-            )
+            cmd = self.get_command_instance(assistant_reply, assistant_reply_json)
+
+            assistant_reply_json, assistant_reply, self.config
+
             if self.config.speak_mode:
-                say_text(f"I want to execute {command_name}")
+                say_text(f"I want to execute {cmd}")
 
-            arguments = self._resolve_pathlike_command_args(arguments)
         except Exception as e:
             logger.error("Error: \n", str(e))
 
-        return command_name, arguments  # type: ignore
-
-    def check_if_command_exist(self, command_name, arguments):
-        try:
-            tostop = False
-            from frozendict import frozendict
-
-            arguments_hash = hash(frozendict(arguments))
-
-            if (command_name, arguments_hash) in self.setofexecuted:
-                logger.info("Already executed this shit, stopping.")
-                tostop = True
-
-            self.setofexecuted.add((command_name, arguments_hash))
-        except Exception as e:
-            logger.error(f"Exception {e} in adding to dic\n")
-            tostop = False
-        return tostop
+        return cmd
 
     def interact_with_assistant(
-        self, command_name: str
+        self,
     ) -> Tuple[InteractionResult, ChatModelResponse, Dict]:
         status = InteractionResult.OK
 
@@ -455,14 +490,3 @@ class Agent:
                 assistant_reply_json = plugin.post_planning(assistant_reply_json)
 
         return status, assistant_reply, assistant_reply_json
-
-    def _resolve_pathlike_command_args(self, command_args: Dict) -> Dict:
-        if "directory" in command_args and command_args["directory"] in {"", "/"}:
-            command_args["directory"] = str(self.workspace.root)
-        else:
-            for pathlike in ["filename", "directory", "clone_path"]:
-                if pathlike in command_args:
-                    command_args[pathlike] = str(
-                        self.workspace.get_path(command_args[pathlike])
-                    )
-        return command_args

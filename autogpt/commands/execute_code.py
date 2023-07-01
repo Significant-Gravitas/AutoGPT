@@ -1,4 +1,6 @@
 """Execute code in a Docker container"""
+import hashlib
+import logging
 import os
 import subprocess
 from pathlib import Path
@@ -11,6 +13,8 @@ from autogpt.agent.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.logs import logger
+from autogpt.models.command import CommandInstance
+from common.common import calculate_sha256
 
 ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"
@@ -76,97 +80,111 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
         },
     },
 )
-def execute_python_file(filename: str, agent: Agent) -> str:
-    """Execute a Python file in a Docker container and return the output
+class ExecuteCmd:
 
-    Args:
-        filename (str): The name of the file to execute
+    @classmethod
+    def execute_python_file(cls,filename: str, agent: Agent) -> str:
+        """Execute a Python file in a Docker container and return the output
 
-    Returns:
-        str: The output of the file
-    """
-    logger.info(
-        f"Executing python file '{filename}' in working directory '{agent.config.workspace_path}'"
-    )
+        Args:
+            filename (str): The name of the file to execute
 
-    if not filename.endswith(".py"):
-        return "Error: Invalid file type. Only .py files are allowed."
-
-    file_path = Path(filename)
-    if not file_path.is_file():
-        # Mimic the response that you get from the command line so that it's easier to identify
-        return (
-            f"python: can't open file '{filename}': [Errno 2] No such file or directory"
+        Returns:
+            str: The output of the file
+        """
+        logger.info(
+            f"Executing python file '{filename}' in working directory '{agent.config.workspace_path}'"
         )
 
-    if we_are_running_in_a_docker_container():
-        result = subprocess.run(
-            ["python", str(file_path)],
-            capture_output=True,
-            encoding="utf8",
-            cwd=agent.config.workspace_path,
-        )
-        if result.returncode == 0:
-            return result.stdout
-        else:
-            return f"Error: {result.stderr}"
+        if not filename.endswith(".py"):
+            return "Error: Invalid file type. Only .py files are allowed."
 
-    try:
-        client = docker.from_env()
-        # You can replace this with the desired Python image/version
-        # You can find available Python images on Docker Hub:
-        # https://hub.docker.com/_/python
-        image_name = "python:3-alpine"
-        try:
-            client.images.get(image_name)
-            logger.warn(f"Image '{image_name}' found locally")
-        except ImageNotFound:
-            logger.info(
-                f"Image '{image_name}' not found locally, pulling from Docker Hub"
+        file_path = Path(filename)
+        if not file_path.is_file():
+            # Mimic the response that you get from the command line so that it's easier to identify
+            return (
+                f"python: can't open file '{filename}': [Errno 2] No such file or directory"
             )
-            # Use the low-level API to stream the pull response
-            low_level_client = docker.APIClient()
-            for line in low_level_client.pull(image_name, stream=True, decode=True):
-                # Print the status and progress, if available
-                status = line.get("status")
-                progress = line.get("progress")
-                if status and progress:
-                    logger.info(f"{status}: {progress}")
-                elif status:
-                    logger.info(status)
 
-        container: DockerContainer = client.containers.run(
-            image_name,
-            ["python", str(file_path.relative_to(agent.workspace.root))],
-            volumes={
-                agent.config.workspace_path: {
-                    "bind": "/workspace",
-                    "mode": "ro",
-                }
-            },
-            working_dir="/workspace",
-            stderr=True,
-            stdout=True,
-            detach=True,
-        )  # type: ignore
+        if we_are_running_in_a_docker_container():
+            result = subprocess.run(
+                ["python", str(file_path)],
+                capture_output=True,
+                encoding="utf8",
+                cwd=agent.config.workspace_path,
+            )
+            if result.returncode == 0:
+                return result.stdout
+            else:
+                return f"Error: {result.stderr}"
 
-        container.wait()
-        logs = container.logs().decode("utf-8")
-        container.remove()
+        try:
+            client = docker.from_env()
+            # You can replace this with the desired Python image/version
+            # You can find available Python images on Docker Hub:
+            # https://hub.docker.com/_/python
+            image_name = "python:3-alpine"
+            try:
+                client.images.get(image_name)
+                logger.warn(f"Image '{image_name}' found locally")
+            except ImageNotFound:
+                logger.info(
+                    f"Image '{image_name}' not found locally, pulling from Docker Hub"
+                )
+                # Use the low-level API to stream the pull response
+                low_level_client = docker.APIClient()
+                for line in low_level_client.pull(image_name, stream=True, decode=True):
+                    # Print the status and progress, if available
+                    status = line.get("status")
+                    progress = line.get("progress")
+                    if status and progress:
+                        logger.info(f"{status}: {progress}")
+                    elif status:
+                        logger.info(status)
 
-        # print(f"Execution complete. Output: {output}")
-        # print(f"Logs: {logs}")
+            container: DockerContainer = client.containers.run(
+                image_name,
+                ["python", str(file_path.relative_to(agent.workspace.root))],
+                volumes={
+                    agent.config.workspace_path: {
+                        "bind": "/workspace",
+                        "mode": "ro",
+                    }
+                },
+                working_dir="/workspace",
+                stderr=True,
+                stdout=True,
+                detach=True,
+            )  # type: ignore
 
-        return logs
+            container.wait()
+            logs = container.logs().decode("utf-8")
+            container.remove()
 
-    except DockerException as e:
-        logger.warn(
-            "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
-        )
-        return f"Error: {str(e)}"
+            # print(f"Execution complete. Output: {output}")
+            # print(f"Logs: {logs}")
 
-    except Exception as e:
-        return f"Error: {str(e)}"
+            return logs
+
+        except DockerException as e:
+            logger.warn(
+                "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
+            )
+            return f"Error: {str(e)}"
+
+        except Exception as e:
+            return f"Error: {str(e)}"
+    @classmethod
+    def calculate_hash(cls,filename):
+        try:
+            with open(filename,'rb') as file:
+                sha256 = calculate_sha256(iter(lambda: file.read(4096), b''))
+                return hash( ('execute_python_file', sha256))
+        except:
+            logging.error("error in calculate_hash")
+            return hash (('execute_python_file', 404))
+
+    METHOD = execute_python_file
 
 
 def validate_command(command: str, config: Config) -> bool:

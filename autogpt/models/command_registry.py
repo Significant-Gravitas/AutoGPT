@@ -4,7 +4,61 @@ from typing import Any, Callable
 
 from autogpt.command_decorator import AUTO_GPT_COMMAND_IDENTIFIER
 from autogpt.logs import logger
-from autogpt.models.command import Command
+from autogpt.models.command import Command, GenericCommand, PromptCommand
+
+
+class UnkownCommand(KeyError):
+    def __init__(self, command_name):
+        self.command_name = command_name
+        self.message = (
+            f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
+        )
+        " list for available commands and only respond in the specified JSON"
+        " format."
+
+
+class AgentCommandRegistry:
+    def __init__(self,agent,commandregistry):
+        self.agent=agent
+        self.commandregistry=commandregistry
+
+    def get_command(self, name: str) -> GenericCommand:
+        # hopefully we can resolve here
+        cmd = self.commandregistry.get_command(name)
+
+        # If the command is found, call it with the provided arguments
+        if cmd:
+            return cmd
+
+        # TODO: Remove commands below after they are moved to the command registry.
+        command_name = self.map_command_synonyms(name.lower())
+
+        # TODO: Change these to take in a file rather than pasted code, if
+        # non-file is given, return instructions "Input should be a python
+        # filepath, write your code to file and try again
+        for command in self.agent.ai_config.prompt_generator.commands:
+            if (
+                command_name == command["label"].lower()
+                or command_name == command["name"].lower()
+            ):
+                return PromptCommand(**command)
+
+        raise UnkownCommand(command_name)
+
+    @staticmethod
+    def map_command_synonyms(command_name: str):
+        """Takes the original command name given by the AI, and checks if the
+        string matches a list of common/known hallucinations
+        """
+        synonyms = [
+            ("write_file", "write_to_file"),
+            ("create_file", "write_to_file"),
+            ("search", "google"),
+        ]
+        for seen_command, actual_command_name in synonyms:
+            if command_name == seen_command:
+                return actual_command_name
+        return command_name
 
 
 class CommandRegistry:
@@ -47,9 +101,6 @@ class CommandRegistry:
             reloaded_module = self._reload_module(module)
             if hasattr(reloaded_module, "register"):
                 reloaded_module.register(self)
-
-    def get_command(self, name: str) -> Callable[..., Any]:
-        return self.commands[name]
 
     def call(self, command_name: str, **kwargs) -> Any:
         if command_name not in self.commands:
@@ -94,3 +145,7 @@ class CommandRegistry:
             ):
                 cmd_instance = attr()
                 self.register(cmd_instance)
+
+    def get_command(self, name: str) -> GenericCommand:
+        # hopefully we can resolve here
+        return self.commands.get(name)
