@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import signal
 import sys
 from datetime import datetime
@@ -64,7 +65,7 @@ class Agent(BaseAgent):
         memory: VectorMemory,
         next_action_count: int,
         triggering_prompt: str,
-        workspace_directory: str,
+        workspace_directory: str | Path,
         config: Config,
     ):
         super().__init__(

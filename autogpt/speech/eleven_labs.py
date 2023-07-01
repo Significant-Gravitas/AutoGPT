@@ -1,11 +1,15 @@
 """ElevenLabs speech module"""
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING
 
 import requests
 from playsound import playsound
 
-from autogpt.config.config import Config
-from autogpt.speech.base import VoiceBase
+if TYPE_CHECKING:
+    from autogpt.config import Config
+from .base import VoiceBase
 
 PLACEHOLDERS = {"your-voice-id"}
 
