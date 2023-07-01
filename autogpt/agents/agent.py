@@ -1,8 +1,8 @@
 import json
-from pathlib import Path
 import signal
 import sys
 from datetime import datetime
+from pathlib import Path
 
 from colorama import Fore, Style
 
@@ -28,6 +28,7 @@ from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
 
 from .base import BaseAgent
+
 
 class Agent(BaseAgent):
     """Agent class for interacting with Auto-GPT.
@@ -69,11 +70,7 @@ class Agent(BaseAgent):
         config: Config,
     ):
         super().__init__(
-            ai_config,
-            system_prompt,
-            command_registry,
-            config,
-            next_action_count
+            ai_config, system_prompt, command_registry, config, next_action_count
         )
         self.ai_config = ai_config
         self.system_prompt = system_prompt
@@ -129,9 +126,7 @@ class Agent(BaseAgent):
         from autogpt.app import execute_command, get_command
 
         try:
-            assistant_reply_json = extract_json_from_response(
-                assistant_reply.content
-            )
+            assistant_reply_json = extract_json_from_response(assistant_reply.content)
             validate_json(assistant_reply_json, self.config)
         except json.JSONDecodeError as e:
             logger.error(f"Exception while validating assistant reply JSON: {e}")
@@ -203,13 +198,9 @@ class Agent(BaseAgent):
                 elif console_input.lower().strip() == "":
                     logger.warn("Invalid input format.")
                     continue
-                elif console_input.lower().startswith(
-                    f"{self.config.authorise_key} -"
-                ):
+                elif console_input.lower().startswith(f"{self.config.authorise_key} -"):
                     try:
-                        self.next_action_count = abs(
-                            int(console_input.split(" ")[1])
-                        )
+                        self.next_action_count = abs(int(console_input.split(" ")[1]))
                         user_input = "GENERATE NEXT COMMAND JSON"
                     except ValueError:
                         logger.warn(
@@ -259,9 +250,7 @@ class Agent(BaseAgent):
             for plugin in self.config.plugins:
                 if not plugin.can_handle_pre_command():
                     continue
-                command_name, arguments = plugin.pre_command(
-                    command_name, arguments
-                )
+                command_name, arguments = plugin.pre_command(command_name, arguments)
             command_result = execute_command(
                 command_name=command_name,
                 arguments=arguments,
@@ -293,8 +282,6 @@ class Agent(BaseAgent):
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
         else:
             self.history.add("system", "Unable to execute command", "action_result")
-            logger.typewriter_log(
-                "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
-            )
+            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
 
         super().on_response(assistant_reply)

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager, nullcontext
 from typing import Callable, Optional
-from autogpt.config.ai_config import AIConfig
 
+from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
 from autogpt.llm.utils import create_chat_completion
@@ -12,7 +12,9 @@ from autogpt.models.command_registry import CommandRegistry
 
 
 class BaseAgent:
-    think_context: Callable[[BaseAgent], AbstractContextManager] = lambda _: nullcontext()
+    think_context: Callable[
+        [BaseAgent], AbstractContextManager
+    ] = lambda _: nullcontext()
 
     def __init__(
         self,
