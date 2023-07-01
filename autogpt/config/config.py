@@ -1,4 +1,6 @@
 """Configuration class to store the state of bools for different scripts access."""
+from __future__ import annotations
+
 import contextlib
 import os
 import re
@@ -8,21 +10,22 @@ import yaml
 from colorama import Fore
 
 from autogpt.core.configuration.schema import Configurable, SystemSettings
+from autogpt.plugins.plugins_config import PluginsConfig
 
 AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
 from typing import Optional
 
 
-class ConfigSettings(SystemSettings):
+class Config(SystemSettings):
     fast_llm_model: str
     smart_llm_model: str
     continuous_mode: bool
     skip_news: bool
-    workspace_path: Optional[str]
-    file_logger_path: Optional[str]
+    workspace_path: Optional[str] = None
+    file_logger_path: Optional[str] = None
     debug_mode: bool
     plugins_dir: str
-    plugins_config: dict[str, str]
+    plugins_config: PluginsConfig
     continuous_limit: int
     speak_mode: bool
     skip_reprompt: bool
@@ -37,31 +40,31 @@ class ConfigSettings(SystemSettings):
     prompt_settings_file: str
     embedding_model: str
     browse_spacy_language_model: str
-    openai_api_key: Optional[str]
-    openai_organization: Optional[str]
+    openai_api_key: Optional[str] = None
+    openai_organization: Optional[str] = None
     temperature: float
     use_azure: bool
     execute_local_commands: bool
     restrict_to_workspace: bool
-    openai_api_type: Optional[str]
-    openai_api_base: Optional[str]
-    openai_api_version: Optional[str]
+    openai_api_type: Optional[str] = None
+    openai_api_base: Optional[str] = None
+    openai_api_version: Optional[str] = None
     openai_functions: bool
-    elevenlabs_api_key: Optional[str]
+    elevenlabs_api_key: Optional[str] = None
     streamelements_voice: str
     text_to_speech_provider: str
-    github_api_key: Optional[str]
-    github_username: Optional[str]
-    google_api_key: Optional[str]
-    google_custom_search_engine_id: Optional[str]
-    image_provider: Optional[str]
+    github_api_key: Optional[str] = None
+    github_username: Optional[str] = None
+    google_api_key: Optional[str] = None
+    google_custom_search_engine_id: Optional[str] = None
+    image_provider: Optional[str] = None
     image_size: int
-    huggingface_api_token: Optional[str]
+    huggingface_api_token: Optional[str] = None
     huggingface_image_model: str
     audio_to_text_provider: str
-    huggingface_audio_to_text_model: Optional[str]
-    sd_webui_url: Optional[str]
-    sd_webui_auth: Optional[str]
+    huggingface_audio_to_text_model: Optional[str] = None
+    sd_webui_url: Optional[str] = None
+    sd_webui_auth: Optional[str] = None
     selenium_web_browser: str
     selenium_headless: bool
     user_agent: str
@@ -76,12 +79,17 @@ class ConfigSettings(SystemSettings):
     plugins_openai: list[str]
     plugins_config_file: str
     chat_messages_enabled: bool
-    elevenlabs_voice_id: Optional[str]
+    elevenlabs_voice_id: Optional[str] = None
     plugins: list[str]
     authorise_key: str
 
+    # Executed immediately after init by Pydantic
+    def model_post_init(self, **kwargs) -> None:
+        if not self.plugins_config.plugins:
+            self.plugins_config = PluginsConfig.load_config(self)
 
-class Config(Configurable):
+
+class ConfigBuilder(Configurable[Config]):
     default_plugins_config_file = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "..", "plugins_config.yaml"
     )
@@ -96,7 +104,7 @@ class Config(Configurable):
     else:
         default_tts_provider = "gtts"
 
-    defaults_settings = ConfigSettings(
+    defaults_settings = Config(
         name="Default Server Config",
         description="This is a default server configuration",
         smart_llm_model="gpt-3.5-turbo",
@@ -106,7 +114,7 @@ class Config(Configurable):
         skip_news=False,
         debug_mode=False,
         plugins_dir="plugins",
-        plugins_config={},
+        plugins_config=PluginsConfig({}),
         speak_mode=False,
         skip_reprompt=False,
         allow_downloads=False,

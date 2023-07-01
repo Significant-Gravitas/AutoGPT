@@ -1,4 +1,5 @@
 """Handles loading of plugins."""
+from __future__ import annotations
 
 import importlib.util
 import inspect
@@ -7,7 +8,7 @@ import os
 import sys
 import zipfile
 from pathlib import Path
-from typing import List
+from typing import TYPE_CHECKING, List
 from urllib.parse import urlparse
 from zipimport import zipimporter
 
@@ -16,7 +17,9 @@ import requests
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from openapi_python_client.config import Config as OpenAPIConfig
 
-from autogpt.config.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.logs import logger
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
