@@ -2,6 +2,7 @@ import json
 import signal
 import sys
 from datetime import datetime
+from pathlib import Path
 
 from colorama import Fore, Style
 
@@ -17,7 +18,7 @@ from autogpt.log_cycle.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
-from autogpt.logs import logger, print_assistant_thoughts
+from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
 from autogpt.models.command_registry import CommandRegistry
@@ -64,7 +65,7 @@ class Agent:
         ai_config: AIConfig,
         system_prompt: str,
         triggering_prompt: str,
-        workspace_directory: str,
+        workspace_directory: str | Path,
         config: Config,
     ):
         self.ai_name = ai_name
@@ -142,7 +143,9 @@ class Agent:
                 )
 
             try:
-                assistant_reply_json = extract_json_from_response(assistant_reply)
+                assistant_reply_json = extract_json_from_response(
+                    assistant_reply.content
+                )
                 validate_json(assistant_reply_json, self.config)
             except json.JSONDecodeError as e:
                 logger.error(f"Exception while validating assistant reply JSON: {e}")
@@ -160,7 +163,9 @@ class Agent:
                     print_assistant_thoughts(
                         self.ai_name, assistant_reply_json, self.config
                     )
-                    command_name, arguments = get_command(assistant_reply_json)
+                    command_name, arguments = get_command(
+                        assistant_reply_json, assistant_reply, self.config
+                    )
                     if self.config.speak_mode:
                         say_text(f"I want to execute {command_name}")
 
@@ -181,7 +186,7 @@ class Agent:
             logger.typewriter_log(
                 "NEXT ACTION: ",
                 Fore.CYAN,
-                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
                 f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
             )
 

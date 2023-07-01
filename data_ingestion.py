@@ -2,10 +2,10 @@ import argparse
 import logging
 
 from autogpt.commands.file_operations import ingest_file, list_files
-from autogpt.config import Config
+from autogpt.config import ConfigBuilder
 from autogpt.memory.vector import VectorMemory, get_memory
 
-config = Config()
+config = ConfigBuilder.build_config_from_env()
 
 
 def configure_logging():
