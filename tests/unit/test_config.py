@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from autogpt.config import Config, ConfigBuilder
-from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL, create_config
+from autogpt.configurator import create_config
 from autogpt.workspace.workspace import Workspace
 
 
@@ -149,7 +149,7 @@ def test_create_config_gpt4only(config: Config) -> None:
     fast_llm_model = config.fast_llm_model
     smart_llm_model = config.smart_llm_model
     with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
-        mock_get_models.return_value = [{"id": GPT_4_MODEL}]
+        mock_get_models.return_value = [{"id": "gpt-4"}]
         create_config(
             config=config,
             continuous=False,
@@ -166,8 +166,8 @@ def test_create_config_gpt4only(config: Config) -> None:
             allow_downloads=False,
             skip_news=False,
         )
-        assert config.fast_llm_model == GPT_4_MODEL
-        assert config.smart_llm_model == GPT_4_MODEL
+        assert config.fast_llm_model == "gpt-4"
+        assert config.smart_llm_model == "gpt-4"
 
     # Reset config
     config.fast_llm_model = fast_llm_model
@@ -178,7 +178,7 @@ def test_create_config_gpt3only(config: Config) -> None:
     fast_llm_model = config.fast_llm_model
     smart_llm_model = config.smart_llm_model
     with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
-        mock_get_models.return_value = [{"id": GPT_3_MODEL}]
+        mock_get_models.return_value = [{"id": "gpt-3.5-turbo"}]
         create_config(
             config=config,
             continuous=False,
@@ -195,8 +195,8 @@ def test_create_config_gpt3only(config: Config) -> None:
             allow_downloads=False,
             skip_news=False,
         )
-        assert config.fast_llm_model == GPT_3_MODEL
-        assert config.smart_llm_model == GPT_3_MODEL
+        assert config.fast_llm_model == "gpt-3.5-turbo"
+        assert config.smart_llm_model == "gpt-3.5-turbo"
 
     # Reset config
     config.fast_llm_model = fast_llm_model
