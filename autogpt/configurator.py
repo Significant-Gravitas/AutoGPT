@@ -14,6 +14,7 @@ from autogpt.memory.vector import get_supported_memory_backends
 if TYPE_CHECKING:
     from autogpt.config import Config
 
+
 def create_config(
     config: Config,
     continuous: bool,
@@ -87,10 +88,7 @@ def create_config(
         config.fast_llm_model = "gpt-3.5-turbo"
         config.smart_llm_model = "gpt-3.5-turbo"
 
-    elif (
-        gpt4only
-        and check_model("gpt-4", model_type="smart_llm_model") == "gpt-4"
-    ):
+    elif gpt4only and check_model("gpt-4", model_type="smart_llm_model") == "gpt-4":
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         # --gpt4only should always use gpt-4, despite user's SMART_LLM_MODEL config
         config.fast_llm_model = "gpt-4"
