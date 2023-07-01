@@ -5,24 +5,35 @@ from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.execute_code import execute_python_file
-from autogpt.commands.file_operations import append_to_file, write_to_file
-from autogpt.config import Config
+from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import run_interaction_loop
-from tests.utils import requires_api_key
+from tests.challenges.utils import (
+    copy_file_into_workspace,
+    get_workspace_path,
+    run_challenge,
+)
 
 CYCLE_COUNT = 5
+EXPECTED_VALUES = ["[0, 1]", "[2, 5]", "[0, 3]"]
+DIRECTORY_PATH = Path(__file__).parent / "data"
+CODE_FILE_PATH = "code.py"
+TEST_FILE_PATH = "test.py"
+USER_INPUTS = [
+    "1- Run test.py using the execute_python_file command.\n2- Read code.py using the read_file command.\n3- Modify code.py using the write_to_file command.\nRepeat step 1, 2 and 3 until test.py runs without errors. Do not modify the test.py file.",
+    "1- Run test.py.\n2- Read code.py.\n3- Modify code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
+    "Make test.py run without errors.",
+]
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-@challenge
+@challenge()
 def test_debug_code_challenge_a(
-    debug_code_agent: Agent,
+    dummy_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
-    config: Config,
     level_to_run: int,
+    challenge_name: str,
+    workspace: Workspace,
+    patched_make_workspace: pytest.fixture,
 ) -> None:
     """
     Test whether the agent can debug a simple code snippet.
@@ -30,20 +41,28 @@ def test_debug_code_challenge_a(
     :param debug_code_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
     :patched_api_requestor: Sends api requests to our API CI pipeline
-    :config: The config object for the agent.
     :level_to_run: The level to run.
     """
 
-    file_path = str(debug_code_agent.workspace.get_path("code.py"))
+    copy_file_into_workspace(workspace, DIRECTORY_PATH, CODE_FILE_PATH)
+    copy_file_into_workspace(workspace, DIRECTORY_PATH, TEST_FILE_PATH)
 
-    code_file_path = Path(__file__).parent / "data" / "two_sum.py"
-    test_file_path = Path(__file__).parent / "data" / "two_sum_tests.py"
+    run_challenge(
+        challenge_name,
+        level_to_run,
+        monkeypatch,
+        USER_INPUTS[level_to_run - 1],
+        CYCLE_COUNT,
+    )
 
-    write_to_file(file_path, code_file_path.read_text(), config)
+    output = execute_python_file(
+        get_workspace_path(workspace, TEST_FILE_PATH),
+        dummy_agent,
+    )
 
-    run_interaction_loop(monkeypatch, debug_code_agent, CYCLE_COUNT)
-
-    append_to_file(file_path, test_file_path.read_text(), config)
-
-    output = execute_python_file(file_path, config)
     assert "error" not in output.lower(), f"Errors found in output: {output}!"
+
+    for expected_value in EXPECTED_VALUES:
+        assert (
+            expected_value in output
+        ), f"Expected output to contain {expected_value}, but it was not found in {output}!"

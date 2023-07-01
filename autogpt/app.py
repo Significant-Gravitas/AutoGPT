@@ -1,15 +1,10 @@
 """ Command and Control """
 import json
-from typing import Dict, List, Union
+from typing import Dict
 
-from autogpt.agent.agent_manager import AgentManager
-from autogpt.commands.command import CommandRegistry, command
-from autogpt.commands.web_requests import scrape_links, scrape_text
+from autogpt.agent.agent import Agent
 from autogpt.config import Config
-from autogpt.processing.text import summarize_text
-from autogpt.prompts.generator import PromptGenerator
-from autogpt.speech import say_text
-from autogpt.url_utils.validators import validate_url
+from autogpt.llm import ChatModelResponse
 
 
 def is_valid_int(value: str) -> bool:
@@ -28,11 +23,15 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response_json: Dict):
+def get_command(
+    assistant_reply_json: Dict, assistant_reply: ChatModelResponse, config: Config
+):
     """Parse the response and return the command name and arguments
 
     Args:
-        response_json (json): The response from the AI
+        assistant_reply_json (dict): The response object from the AI
+        assistant_reply (ChatModelResponse): The model response from the AI
+        config (Config): The config object
 
     Returns:
         tuple: The command name and arguments
@@ -42,14 +41,24 @@ def get_command(response_json: Dict):
 
         Exception: If any other error occurs
     """
+    if config.openai_functions:
+        if assistant_reply.function_call is None:
+            return "Error:", "No 'function_call' in assistant reply"
+        assistant_reply_json["command"] = {
+            "name": assistant_reply.function_call.name,
+            "args": json.loads(assistant_reply.function_call.arguments),
+        }
     try:
-        if "command" not in response_json:
+        if "command" not in assistant_reply_json:
             return "Error:", "Missing 'command' object in JSON"
 
-        if not isinstance(response_json, dict):
-            return "Error:", f"'response_json' object is not dictionary {response_json}"
+        if not isinstance(assistant_reply_json, dict):
+            return (
+                "Error:",
+                f"The previous message sent was not a dictionary {assistant_reply_json}",
+            )
 
-        command = response_json["command"]
+        command = assistant_reply_json["command"]
         if not isinstance(command, dict):
             return "Error:", "'command' object is not a dictionary"
 
@@ -85,27 +94,26 @@ def map_command_synonyms(command_name: str):
 
 
 def execute_command(
-    command_registry: CommandRegistry,
     command_name: str,
-    arguments,
-    prompt: PromptGenerator,
-    config: Config,
+    arguments: dict[str, str],
+    agent: Agent,
 ):
     """Execute the command and return the result
 
     Args:
         command_name (str): The name of the command to execute
         arguments (dict): The arguments for the command
+        agent (Agent): The agent that is executing the command
 
     Returns:
         str: The result of the command
     """
     try:
-        cmd = command_registry.commands.get(command_name)
+        cmd = agent.command_registry.commands.get(command_name)
 
         # If the command is found, call it with the provided arguments
         if cmd:
-            return cmd(**arguments, config=config)
+            return cmd(**arguments, agent=agent)
 
         # TODO: Remove commands below after they are moved to the command registry.
         command_name = map_command_synonyms(command_name.lower())
@@ -113,7 +121,7 @@ def execute_command(
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
-        for command in prompt.commands:
+        for command in agent.ai_config.prompt_generator.commands:
             if (
                 command_name == command["label"].lower()
                 or command_name == command["name"].lower()
@@ -126,117 +134,3 @@ def execute_command(
         )
     except Exception as e:
         return f"Error: {str(e)}"
-
-
-@command(
-    "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
-)
-@validate_url
-def get_text_summary(url: str, question: str, config: Config) -> str:
-    """Get the text summary of a webpage
-
-    Args:
-        url (str): The url to scrape
-        question (str): The question to summarize the text for
-
-    Returns:
-        str: The summary of the text
-    """
-    text = scrape_text(url, config)
-    summary, _ = summarize_text(text, question=question)
-
-    return f""" "Result" : {summary}"""
-
-
-@command("get_hyperlinks", "Get hyperlinks", '"url": "<url>"')
-@validate_url
-def get_hyperlinks(url: str, config: Config) -> Union[str, List[str]]:
-    """Get all hyperlinks on a webpage
-
-    Args:
-        url (str): The url to scrape
-
-    Returns:
-        str or list: The hyperlinks on the page
-    """
-    return scrape_links(url, config)
-
-
-@command(
-    "start_agent",
-    "Start GPT Agent",
-    '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"',
-)
-def start_agent(name: str, task: str, prompt: str, config: Config, model=None) -> str:
-    """Start an agent with a given name, task, and prompt
-
-    Args:
-        name (str): The name of the agent
-        task (str): The task of the agent
-        prompt (str): The prompt for the agent
-        model (str): The model to use for the agent
-
-    Returns:
-        str: The response of the agent
-    """
-    agent_manager = AgentManager()
-
-    # Remove underscores from name
-    voice_name = name.replace("_", " ")
-
-    first_message = f"""You are {name}.  Respond with: "Acknowledged"."""
-    agent_intro = f"{voice_name} here, Reporting for duty!"
-
-    # Create agent
-    if config.speak_mode:
-        say_text(agent_intro, 1)
-    key, ack = agent_manager.create_agent(task, first_message, model)
-
-    if config.speak_mode:
-        say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
-
-    # Assign task (prompt), get response
-    agent_response = agent_manager.message_agent(key, prompt)
-
-    return f"Agent {name} created with key {key}. First response: {agent_response}"
-
-
-@command("message_agent", "Message GPT Agent", '"key": "<key>", "message": "<message>"')
-def message_agent(key: str, message: str, config: Config) -> str:
-    """Message an agent with a given key and message"""
-    # Check if the key is a valid integer
-    if is_valid_int(key):
-        agent_response = AgentManager().message_agent(int(key), message)
-    else:
-        return "Invalid key, must be an integer."
-
-    # Speak response
-    if config.speak_mode:
-        say_text(agent_response, 1)
-    return agent_response
-
-
-@command("list_agents", "List GPT Agents", "() -> str")
-def list_agents(config: Config) -> str:
-    """List all agents
-
-    Returns:
-        str: A list of all agents
-    """
-    return "List of agents:\n" + "\n".join(
-        [str(x[0]) + ": " + x[1] for x in AgentManager().list_agents()]
-    )
-
-
-@command("delete_agent", "Delete GPT Agent", '"key": "<key>"')
-def delete_agent(key: str, config: Config) -> str:
-    """Delete an agent with a given key
-
-    Args:
-        key (str): The key of the agent to delete
-
-    Returns:
-        str: A message indicating whether the agent was deleted or not
-    """
-    result = AgentManager().delete_agent(key)
-    return f"Agent {key} deleted." if result else f"Agent {key} does not exist."
