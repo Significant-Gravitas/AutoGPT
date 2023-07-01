@@ -6,7 +6,7 @@ from pathlib import Path
 from colorama import Fore, Style
 
 from autogpt.agent import Agent
-from autogpt.config import Config, check_openai_api_key
+from autogpt.config.config import ConfigBuilder, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
@@ -46,14 +46,15 @@ def run_auto_gpt(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
-    workspace_directory: str,
+    workspace_directory: str | Path,
     install_plugin_deps: bool,
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
     logger.speak_mode = speak
 
-    config = Config()
+    config = ConfigBuilder.build_config_from_env()
+
     # TODO: fill in llm values here
     check_openai_api_key(config)
 
@@ -116,24 +117,12 @@ def run_auto_gpt(
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
-    if workspace_directory is None:
-        workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
-    else:
-        workspace_directory = Path(workspace_directory)
-    # TODO: pass in the ai_settings file and the env file and have them cloned into
-    #   the workspace directory so we can bind them to the agent.
-    workspace_directory = Workspace.make_workspace(workspace_directory)
-    config.workspace_path = str(workspace_directory)
+    workspace_directory = Workspace.get_workspace_directory(config, workspace_directory)
 
     # HACK: doing this here to collect some globals that depend on the workspace.
-    file_logger_path = workspace_directory / "file_logger.txt"
-    if not file_logger_path.exists():
-        with file_logger_path.open(mode="w", encoding="utf-8") as f:
-            f.write("File Operation Logger ")
+    Workspace.build_file_logger_path(config, workspace_directory)
 
-    config.file_logger_path = str(file_logger_path)
-
-    config.set_plugins(scan_plugins(config, config.debug_mode))
+    config.plugins = scan_plugins(config, config.debug_mode)
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
 
@@ -150,6 +139,20 @@ def run_auto_gpt(
 
     for command_category in enabled_command_categories:
         command_registry.import_commands(command_category)
+
+    # Unregister commands that are incompatible with the current config
+    incompatible_commands = []
+    for command in command_registry.commands.values():
+        if callable(command.enabled) and not command.enabled(config):
+            command.enabled = False
+            incompatible_commands.append(command)
+
+    for command in incompatible_commands:
+        command_registry.unregister(command.name)
+        logger.debug(
+            f"Unregistering incompatible command: {command.name}, "
+            f"reason - {command.disabled_reason or 'Disabled by current config.'}"
+        )
 
     ai_name = ""
     ai_config = construct_main_ai_config(config)

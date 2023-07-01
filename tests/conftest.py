@@ -7,8 +7,8 @@ import yaml
 from pytest_mock import MockerFixture
 
 from autogpt.agent.agent import Agent
+from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.config.ai_config import AIConfig
-from autogpt.config.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import TypingConsoleHandler
 from autogpt.memory.vector import get_memory
@@ -49,13 +49,17 @@ def temp_plugins_config_file():
 def config(
     temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace
 ) -> Config:
-    config = Config()
-    if not config.openai_api_key:
-        config.set_openai_api_key("sk-dummy")
+    config = ConfigBuilder.build_config_from_env()
+    if not os.environ.get("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = "sk-dummy"
 
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
-    config.load_plugins_config()
+
+    # avoid circular dependency
+    from autogpt.plugins.plugins_config import PluginsConfig
+
+    config.plugins_config = PluginsConfig.load_config(global_config=config)
 
     # Do a little setup and teardown since the config object is a singleton
     mocker.patch.multiple(
@@ -95,8 +99,7 @@ def agent(config: Config, workspace: Workspace) -> Agent:
 
     command_registry = CommandRegistry()
     ai_config.command_registry = command_registry
-
-    config.set_memory_backend("json_file")
+    config.memory_backend = "json_file"
     memory_json_file = get_memory(config)
     memory_json_file.clear()
 

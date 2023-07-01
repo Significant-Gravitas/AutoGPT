@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import ceil, floor
-from typing import List, Literal, TypedDict
+from typing import TYPE_CHECKING, List, Literal, Optional, TypedDict
+
+if TYPE_CHECKING:
+    from autogpt.llm.providers.openai import OpenAIFunctionCall
 
 MessageRole = Literal["system", "user", "assistant"]
 MessageType = Literal["ai_response", "action_result"]
@@ -156,4 +159,5 @@ class EmbeddingModelResponse(LLMResponse):
 class ChatModelResponse(LLMResponse):
     """Standard response struct for a response from an LLM model."""
 
-    content: str = None
+    content: Optional[str] = None
+    function_call: Optional[OpenAIFunctionCall] = None

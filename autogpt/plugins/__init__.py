@@ -1,4 +1,5 @@
 """Handles loading of plugins."""
+from __future__ import annotations
 
 import importlib.util
 import inspect
@@ -7,7 +8,7 @@ import os
 import sys
 import zipfile
 from pathlib import Path
-from typing import List
+from typing import TYPE_CHECKING, List
 from urllib.parse import urlparse
 from zipimport import zipimporter
 
@@ -16,7 +17,9 @@ import requests
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from openapi_python_client.config import Config as OpenAPIConfig
 
-from autogpt.config.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.logs import logger
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
@@ -219,8 +222,8 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
     loaded_plugins = []
     # Generic plugins
     plugins_path_path = Path(config.plugins_dir)
-    plugins_config = config.plugins_config
 
+    plugins_config = config.plugins_config
     # Directory-based plugins
     for plugin_path in [f.path for f in os.scandir(config.plugins_dir) if f.is_dir()]:
         # Avoid going into __pycache__ or other hidden directories
@@ -259,9 +262,10 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                     if key.startswith("__"):
                         continue
                     a_module = getattr(zipped_module, key)
-                    a_keys = dir(a_module)
+
                     if (
-                        "_abc_impl" in a_keys
+                        inspect.isclass(a_module)
+                        and issubclass(a_module, AutoGPTPluginTemplate)
                         and a_module.__name__ != "AutoGPTPluginTemplate"
                     ):
                         plugin_name = a_module.__name__
@@ -284,6 +288,10 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                                 f"they are enabled in plugins_config.yaml. Zipped plugins should use the class "
                                 f"name ({plugin_name}) as the key."
                             )
+                    else:
+                        logger.debug(
+                            f"Skipping {key}: {a_module.__name__} because it doesn't subclass AutoGPTPluginTemplate."
+                        )
 
     # OpenAI plugins
     if config.plugins_openai:

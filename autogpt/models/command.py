@@ -1,6 +1,8 @@
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional
 
 from autogpt.config import Config
+
+from .command_parameter import CommandParameter
 
 
 class Command:
@@ -9,7 +11,7 @@ class Command:
     Attributes:
         name (str): The name of the command.
         description (str): A brief description of what the command does.
-        signature (str): The signature of the function that the command executes. Defaults to None.
+        parameters (list): The parameters of the function that the command executes.
     """
 
     def __init__(
@@ -17,14 +19,14 @@ class Command:
         name: str,
         description: str,
         method: Callable[..., Any],
-        signature: Dict[str, Dict[str, Any]],
+        parameters: list[CommandParameter],
         enabled: bool | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
     ):
         self.name = name
         self.description = description
         self.method = method
-        self.signature = signature
+        self.parameters = parameters
         self.enabled = enabled
         self.disabled_reason = disabled_reason
 
@@ -38,4 +40,8 @@ class Command:
         return self.method(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f"{self.name}: {self.description}, args: {self.signature}"
+        params = [
+            f"{param.name}: {param.type if param.required else f'Optional[{param.type}]'}"
+            for param in self.parameters
+        ]
+        return f"{self.name}: {self.description}, params: ({', '.join(params)})"
