@@ -206,6 +206,7 @@ class ConfigBuilder(Configurable[Config]):
             "plugins_dir": os.getenv("PLUGINS_DIR"),
             "plugins_config_file": os.getenv("PLUGINS_CONFIG_FILE"),
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
+            "wipe_workspace_on_start": os.getenv("WIPE_WORKSPACE_ON_START"),
         }
 
         # Converting to a list from comma-separated string
@@ -215,8 +216,8 @@ class ConfigBuilder(Configurable[Config]):
                 "disabled_command_categories"
             ] = disabled_command_categories.split(",")
 
-        wipe_workspace_on_start = os.getenv("WIPE_WORKSPACE_ON_START")
-        if wipe_workspace_on_start == "True":
+        config_dict["wipe_workspace_on_start"] = os.getenv("WIPE_WORKSPACE_ON_START", "False") == "True"
+        if config_dict.get("wipe_workspace_on_start", False):
             print("Removing All Files Inside auto_gpt_workspace")
             workspace_path = "autogpt/auto_gpt_workspace"
             if os.path.isdir(workspace_path):
