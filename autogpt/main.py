@@ -54,6 +54,10 @@ def run_auto_gpt(
     logger.speak_mode = speak
 
     config = ConfigBuilder.build_config_from_env()
+    
+    # Hotfix: Call model_post_init explictly as it doesn't seem to be called for pydantic<2.0.0
+    # https://github.com/pydantic/pydantic/issues/1729#issuecomment-1300576214
+    config.model_post_init()
 
     # TODO: fill in llm values here
     check_openai_api_key(config)
