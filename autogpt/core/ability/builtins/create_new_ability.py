@@ -92,5 +92,5 @@ class CreateNewAbility(Ability):
         package_requirements: list[str],
         code: str,
     ) -> AbilityResult:
-        breakpoint()
+        raise NotImplementedError
 

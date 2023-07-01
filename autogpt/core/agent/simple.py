@@ -230,7 +230,6 @@ class SimpleAgent(Agent, Configurable):
                 self._completed_tasks.append(self._current_task)
             else:
                 self._task_queue.append(self._current_task)
-            self._current_task.context.cycle_count += 1
             self._current_task = None
             self._next_ability = None
 
@@ -265,6 +264,7 @@ class SimpleAgent(Agent, Configurable):
             return next_ability
 
     async def _update_tasks_and_memory(self, ability_result: AbilityResult):
+        self._current_task.context.cycle_count += 1
         self._current_task.context.prior_actions.append(ability_result)
         # TODO: Summarize new knowledge
         # TODO: store knowledge and summaries in memory and in relevant tasks
