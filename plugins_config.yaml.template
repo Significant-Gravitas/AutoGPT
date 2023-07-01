@@ -5,21 +5,21 @@
 # For zipped plugins, the key is the class name of the plugin
 # E.g.
 # MyPlugin:
-#   - config: {}
-#   - enabled: true
+#   config: {}
+#   enabled: true
 #
 # For unzipped plugins, the key is the name of the plugin directory
 # E.g.
 # my_plugin:
-#   - config: {}
-#   - enabled: true
+#   config: {}
+#   enabled: true
 #
 # Plugin config is a dictionary of key-value pairs
 # E.g.
 # MyPlugin:
-#   - config:
+#   config:
 #       my_key: my_value
-#   - enabled: false
+#   enabled: false
 #
 # Only enabled plugins will be loaded
 # ====================================  
