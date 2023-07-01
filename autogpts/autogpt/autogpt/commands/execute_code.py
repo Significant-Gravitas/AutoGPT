@@ -303,4 +303,20 @@ def we_are_running_in_a_docker_container() -> bool:
     Returns:
         bool: True if we are running in a Docker container, False otherwise
     """
-    return os.path.exists("/.dockerenv")
+
+    # Check if the /.dockerenv file exists
+    if os.path.isfile('/.dockerenv'):
+        return True
+
+    # Check if the /proc/self/cgroup file contains "docker" in its contents
+    with open('/proc/self/cgroup', 'r') as f:
+        for line in f:
+            if 'docker' in line:
+                return True
+
+    # Check if the 'DOCKER_CONTAINER' environment variable is set
+    if 'DOCKER_CONTAINER' in os.environ:
+        return True
+
+    # None of the Docker-specific checks passed
+    return False
