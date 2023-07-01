@@ -49,17 +49,13 @@ def temp_plugins_config_file():
 def config(
     temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace
 ) -> Config:
-    config = Config.build_config_from_env()
+    config = Config()
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
 
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
-
-    # avoid circular dependency
-    from autogpt.plugins.plugins_config import PluginsConfig
-
-    config.plugins_config = PluginsConfig.load_config(global_config=config)
+    config.load_plugins_config()
 
     # Do a little setup and teardown since the config object is a singleton
     mocker.patch.multiple(
@@ -99,7 +95,8 @@ def agent(config: Config, workspace: Workspace) -> Agent:
 
     command_registry = CommandRegistry()
     ai_config.command_registry = command_registry
-    config.memory_backend = "json_file"
+
+    config.set_memory_backend("json_file")
     memory_json_file = get_memory(config)
     memory_json_file.clear()
 
