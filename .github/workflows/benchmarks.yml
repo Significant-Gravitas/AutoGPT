@@ -50,7 +50,7 @@ jobs:
       - name: Run pytest with coverage
         run: |
           rm -rf tests/Auto-GPT-test-cassettes
-          pytest -n auto ${{ matrix.config.task }}
+          pytest -n auto --record-mode=all ${{ matrix.config.task }}
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}

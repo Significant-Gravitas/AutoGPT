@@ -8,7 +8,6 @@ from PIL import Image
 
 from autogpt.agent.agent import Agent
 from autogpt.commands.image_gen import generate_image, generate_image_with_sd_webui
-from tests.utils import requires_api_key
 
 
 @pytest.fixture(params=[256, 512, 1024])
@@ -17,7 +16,7 @@ def image_size(request):
     return request.param
 
 
-@requires_api_key("OPENAI_API_KEY")
+@pytest.mark.requires_openai_api_key
 @pytest.mark.vcr
 def test_dalle(agent: Agent, workspace, image_size, patched_api_requestor):
     """Test DALL-E image generation."""
@@ -32,7 +31,7 @@ def test_dalle(agent: Agent, workspace, image_size, patched_api_requestor):
 @pytest.mark.xfail(
     reason="The image is too big to be put in a cassette for a CI pipeline. We're looking into a solution."
 )
-@requires_api_key("HUGGINGFACE_API_TOKEN")
+@pytest.mark.requires_huggingface_api_key
 @pytest.mark.parametrize(
     "image_model",
     ["CompVis/stable-diffusion-v1-4", "stabilityai/stable-diffusion-2-1"],
