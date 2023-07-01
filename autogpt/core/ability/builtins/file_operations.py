@@ -1,4 +1,5 @@
 import logging
+import os
 
 from autogpt.core.ability.base import Ability, AbilityConfiguration
 from autogpt.core.ability.schema import AbilityResult
@@ -69,6 +70,81 @@ class ReadFile(Ability):
             data = "\n\n".join([element.text for element in elements])
             success = True
             message = f"File {file_path} read successfully."
+        except IOError as e:
+            data = None
+            success = False
+            message = str(e)
+
+        return AbilityResult(
+            success=success,
+            message=message,
+            data=data,
+        )
+
+
+class WriteFile(Ability):
+    default_configuration = AbilityConfiguration(
+        packages_required=["unstructured"],
+        workspace_required=True,
+    )
+
+    def __init__(
+        self,
+        logger: logging.Logger,
+        workspace: Workspace,
+    ):
+        self._logger = logger
+        self._workspace = workspace
+
+    @property
+    def description(self) -> str:
+        return "Write text to a file."
+
+    @property
+    def arguments(self) -> dict:
+        return {
+            "filename": {
+                "type": "string",
+                "description": "The name of the file to write.",
+            },
+            "contents": {
+                "type": "string",
+                "description": "The contents of the file to write.",
+            },
+        }
+
+    def _check_preconditions(
+        self, filename: str, contents: str
+    ) -> AbilityResult | None:
+        message = ""
+        try:
+            file_path = self._workspace.get_path(filename)
+            if file_path.exists():
+                message = f"File {filename} already exists."
+            if len(contents):
+                message = f"File {filename} was not given any content."
+        except ValueError as e:
+            message = str(e)
+
+        if message:
+            return AbilityResult(
+                success=False,
+                message=message,
+                data=None,
+            )
+
+    def __call__(self, filename: str, contents: str) -> AbilityResult:
+        if result := self._check_preconditions(filename, contents):
+            return result
+
+        file_path = self._workspace.get_path(filename)
+        try:
+            directory = os.path.dirname(file_path)
+            os.makedirs(directory)
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(contents)
+            success = True
+            message = f"File {file_path} written successfully."
         except IOError as e:
             data = None
             success = False
