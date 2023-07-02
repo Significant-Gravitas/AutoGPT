@@ -65,8 +65,8 @@ class ModelProviderModelResponse(BaseModel):
     model_info: ModelProviderModelInfo
 
 
-class ModelProviderModelCredentials(ProviderCredentials):
-    """Credentials for a particular model from a model provider."""
+class ModelProviderCredentials(ProviderCredentials):
+    """Credentials for a model provider."""
 
     api_key: SecretStr | None = UserConfigurable(default=None)
     api_type: SecretStr | None = UserConfigurable(default=None)
@@ -79,34 +79,6 @@ class ModelProviderModelCredentials(ProviderCredentials):
 
     class Config:
         extra = "ignore"
-
-
-class ModelProviderCredentials(ProviderCredentials):
-    """Credentials for all models from a model provider."""
-
-    api_key: SecretStr | None = UserConfigurable(default=None)
-    api_type: SecretStr | None = UserConfigurable(default=None)
-    api_base: SecretStr | None = UserConfigurable(default=None)
-    api_version: SecretStr | None = UserConfigurable(default=None)
-    deployment_id: SecretStr | None = UserConfigurable(default=None)
-    models: dict[str, ModelProviderModelCredentials] | None = None
-
-    def unmask(self, exclude: set[str]) -> dict:
-        unmasked = unmask(self)
-        for field in exclude:
-            del unmasked[field]
-        return unmasked
-
-    def get_credentials(self):
-        if self.models is None:
-            return
-        provider_credentials = self.unmask(exclude={"models"})
-        for model_name, model_credentials in self.models.items():
-            model_dict = model_credentials.unmasked()
-            model_dict.update(provider_credentials)
-            self.models[model_name] = ModelProviderModelCredentials(**model_dict)
-
-        return self.models
 
 
 def unmask(model: BaseModel):

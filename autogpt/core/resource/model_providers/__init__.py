@@ -18,7 +18,6 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProvider,
     ModelProviderBudget,
     ModelProviderCredentials,
-    ModelProviderModelCredentials,
     ModelProviderModelInfo,
     ModelProviderModelResponse,
     ModelProviderName,

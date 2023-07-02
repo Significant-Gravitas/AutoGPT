@@ -25,7 +25,6 @@ from autogpt.core.resource.model_providers.schema import (
     LanguageModelProviderModelResponse,
     ModelProviderBudget,
     ModelProviderCredentials,
-    ModelProviderModelCredentials,
     ModelProviderName,
     ModelProviderService,
     ModelProviderSettings,
@@ -99,9 +98,6 @@ OPEN_AI_MODELS = {
 }
 
 
-class OpenAICredentials(ModelProviderCredentials):
-    use_azure: bool = False
-
 
 class OpenAIConfiguration(SystemConfiguration):
     retries_per_request: int = UserConfigurable()
@@ -114,7 +110,7 @@ class OpenAIModelProviderBudget(ModelProviderBudget):
 
 class OpenAISettings(ModelProviderSettings):
     configuration: OpenAIConfiguration
-    credentials: OpenAICredentials
+    credentials: ModelProviderCredentials()
     budget: OpenAIModelProviderBudget
 
 
@@ -129,15 +125,7 @@ class OpenAIProvider(
         configuration=OpenAIConfiguration(
             retries_per_request=10,
         ),
-        credentials=ModelProviderCredentials(
-            models={
-                OpenAIModelName.GPT3: ModelProviderModelCredentials(),
-                OpenAIModelName.GPT3_16K: ModelProviderModelCredentials(),
-                OpenAIModelName.GPT4: ModelProviderModelCredentials(),
-                OpenAIModelName.GPT4_32K: ModelProviderModelCredentials(),
-                OpenAIModelName.ADA: ModelProviderModelCredentials(),
-            },
-        ),
+        credentials=ModelProviderCredentials(),
         budget=OpenAIModelProviderBudget(
             total_budget=math.inf,
             total_cost=0.0,
@@ -158,10 +146,7 @@ class OpenAIProvider(
         logger: logging.Logger,
     ):
         self._configuration = settings.configuration
-        # Resolve global credentials with model specific credentials
-        self._model_credentials: dict[
-            str, ModelProviderModelCredentials
-        ] = settings.credentials.get_credentials()
+        self._credentials = settings.credentials
         self._budget = settings.budget
 
         self._logger = logger
@@ -253,7 +238,7 @@ class OpenAIProvider(
         completion_kwargs = {
             "model": model_name,
             **kwargs,
-            **self._model_credentials[model_name].unmasked(),
+            **self._credentials.unmasked(),
         }
         if functions:
             completion_kwargs["functions"] = functions
@@ -278,7 +263,7 @@ class OpenAIProvider(
         embedding_kwargs = {
             "model": model_name,
             **kwargs,
-            **self._model_credentials[model_name].unmasked(),
+            **self._credentials.unmasked(),
         }
 
         return embedding_kwargs
