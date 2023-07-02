@@ -27,12 +27,17 @@ from autogpt.log_cycle.log_cycle import (
 from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
-from autogpt.models.command import CommandInstance
-from autogpt.models.command_registry import CommandRegistry, AgentCommandRegistry
+from autogpt.models.command import CommandInstance, VoidCommandInstance
+from autogpt.models.command_registry import (
+    AgentCommandRegistry,
+    CommandRegistry,
+    UnkownCommand,
+)
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner, SpinnerInterrupted
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
+from common.common import simple_exception_handling
 
 
 class InteractionResult(Enum):
@@ -99,10 +104,10 @@ class Agent:
             config.fast_llm_model
         ).max_tokens
         self.loopwatcher = LoopWatcher()
+        self.cleanupExecuter = concurrent.futures.ThreadPoolExecutor()
 
-    @staticmethod
     async def async_task_and_spin(
-        spn: Spinner, some_task: Callable, args: Tuple
+        self, spn: Spinner, some_task: Callable, args: Tuple
     ) -> Optional[Any]:
         loop = asyncio.get_event_loop()
         # Run the synchronous function in an executor
@@ -124,7 +129,8 @@ class Agent:
             return None
 
         finally:
-            pool.shutdown(wait=False)  # dont want to use 'with' because it waits...
+            pool.shutdown(wait=False)
+            # dont want to use 'with' because it waits...
 
     def get_command_instance(
         self, assistant_reply_json: Dict, assistant_reply: ChatModelResponse
@@ -173,14 +179,17 @@ class Agent:
             # Use an empty dictionary if 'args' field is not present in 'command' object
             arguments = command.get("args", {})
 
-            return self.command_registry.get_command(command_name).generate_instance(
-                arguments, agent=self
-            )
         except json.decoder.JSONDecodeError:
             return "Error:", "Invalid JSON"
         # All other errors, return "Error: + error message"
         except Exception as e:
             return "Error:", str(e)
+
+        try:
+            command = self.command_registry.get_command(command_name)
+            return command.generate_instance(arguments, agent=self)
+        except UnkownCommand:
+            return VoidCommandInstance()
 
     def start_interaction_loop(self) -> None:
         def enter_input() -> None:
@@ -302,25 +311,26 @@ class Agent:
                     assistant_reply, assistant_reply_json
                 )
                 tostop = self.loopwatcher.should_stop_on_command(cmd)
-
+            else:
+                cmd = VoidCommandInstance()
             tostop = tostop or (
                 status != InteractionResult.OK
             )  # stop also in exception
 
-            if command_name != "":
+            command_name, arguments = cmd.name, cmd.arguments  # for now
+
+            if not cmd.is_void:
                 print_next_command(
                     (status != InteractionResult.HardInterrupt)
                     and (status != InteractionResult.ExceptionInValidation)
                 )
-            else:
-                tostop = True
 
-            if command_name in self.config.commands_to_ignore:
+            if cmd.should_ignore:
                 user_input = "GENERATE NEXT COMMAND JSON"
             elif (
                 (not self.config.continuous_mode and self.next_action_count == 0)
                 or tostop
-                or command_name in self.config.commands_to_stop
+                or cmd.should_stop
             ):
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
@@ -374,43 +384,62 @@ class Agent:
                 for plugin in self.config.plugins:
                     if not plugin.can_handle_pre_command():
                         continue
-                    command_name, arguments = plugin.pre_command(
-                        command_name, arguments
-                    )
-                command_result = cmd.execute()
 
-                result = f"Command {command_name} returned: " f"{command_result}"
+                    try:
+                        command_name, arguments = plugin.pre_command(
+                            command_name, arguments
+                        )
 
-                result_tlength = count_string_tokens(
-                    str(command_result), self.config.fast_llm_model
-                )
-                memory_tlength = count_string_tokens(
-                    str(self.history.summary_message()), self.config.fast_llm_model
-                )
-                if result_tlength + memory_tlength + 600 > self.fast_token_limit:
-                    result = f"Failure: command {command_name} returned too much output. \
-                        Do not execute this command again with the same arguments."
-
-                for plugin in self.config.plugins:
-                    if not plugin.can_handle_post_command():
+                        command = self.command_registry.get_command(command_name)
+                        cmd = command.generate_instance(arguments, agent=self)
+                    except UnkownCommand:
+                        logger.error(
+                            f"Plugin {plugin} failed to pre-command and return unkown command"
+                        )
                         continue
-                    result = plugin.post_command(command_name, result)
-                if (
-                    self.next_action_count > 0
-                    and command_name not in self.config.commands_to_ignore
-                ):
+                    except:
+                        logger.error(f"Plugin {plugin} failed to pre-command")
+                        continue  # here we use the privous instance
+                if not cmd.is_void:
+                    command_result = simple_exception_handling(
+                        err_description=f"error in executing command {cmd}",
+                        return_on_exc="exception",  # shouldnt happen I guess
+                    )(lambda: cmd.execute())()
+
+                    result = f"Command {command_name} returned: " f"{command_result}"
+
+                    result_tlength = count_string_tokens(
+                        str(command_result), self.config.fast_llm_model
+                    )
+                    memory_tlength = count_string_tokens(
+                        str(self.history.summary_message()), self.config.fast_llm_model
+                    )
+                    if result_tlength + memory_tlength + 600 > self.fast_token_limit:
+                        result = f"Failure: command {command_name} returned too much output. \
+                            Do not execute this command again with the same arguments."
+
+                    for plugin in self.config.plugins:
+                        if not plugin.can_handle_post_command():
+                            continue
+                        result = plugin.post_command(command_name, result)
+                else:
+                    result = None
+
+                if self.next_action_count > 0 and not (cmd.should_ignore):
                     self.next_action_count -= 1
 
-            # Check if there's a result from the command append it to the message
-            # history
-            if result is not None:
-                self.history.add("system", result, "action_result")
-                logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
-            else:
-                self.history.add("system", "Unable to execute command", "action_result")
-                logger.typewriter_log(
-                    "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
-                )
+                # Check if there's a result from the command append it to the message
+                # history
+                if result is not None:
+                    self.history.add("system", result, "action_result")
+                    logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
+                else:
+                    self.history.add(
+                        "system", "Unable to execute command", "action_result"
+                    )
+                    logger.typewriter_log(
+                        "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
+                    )
 
     def get_next_command_to_execute(
         self, assistant_reply: ChatModelResponse, assistant_reply_json: Dict
@@ -419,7 +448,7 @@ class Agent:
         try:
             print_assistant_thoughts(self.ai_name, assistant_reply_json, self.config)
 
-            cmd = self.get_command_instance(assistant_reply, assistant_reply_json)
+            cmd = self.get_command_instance(assistant_reply_json, assistant_reply)
 
             assistant_reply_json, assistant_reply, self.config
 

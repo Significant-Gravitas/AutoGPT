@@ -64,7 +64,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
         with open(file_path, "w+", encoding="utf-8") as f:
             f.write(code)
 
-        return execute_python_file(str(file_path), agent)
+        return ExecuteFileCmd.execute_python_file(str(file_path), agent)
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -80,10 +80,9 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
         },
     },
 )
-class ExecuteCmd:
-
+class ExecuteFileCmd:
     @classmethod
-    def execute_python_file(cls,filename: str, agent: Agent) -> str:
+    def execute_python_file(cls, filename: str, agent: Agent) -> str:
         """Execute a Python file in a Docker container and return the output
 
         Args:
@@ -102,9 +101,7 @@ class ExecuteCmd:
         file_path = Path(filename)
         if not file_path.is_file():
             # Mimic the response that you get from the command line so that it's easier to identify
-            return (
-                f"python: can't open file '{filename}': [Errno 2] No such file or directory"
-            )
+            return f"python: can't open file '{filename}': [Errno 2] No such file or directory"
 
         if we_are_running_in_a_docker_container():
             result = subprocess.run(
@@ -174,15 +171,16 @@ class ExecuteCmd:
 
         except Exception as e:
             return f"Error: {str(e)}"
+
     @classmethod
-    def calculate_hash(cls,filename):
+    def calculate_hash(cls, filename):
         try:
-            with open(filename,'rb') as file:
-                sha256 = calculate_sha256(iter(lambda: file.read(4096), b''))
-                return hash( ('execute_python_file', sha256))
+            with open(filename, "rb") as file:
+                sha256 = calculate_sha256(iter(lambda: file.read(4096), b""))
+                return hash(("execute_python_file", sha256))
         except:
             logging.error("error in calculate_hash")
-            return hash (('execute_python_file', 404))
+            return hash(("execute_python_file", 404))
 
     METHOD = execute_python_file
 

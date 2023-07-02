@@ -2,7 +2,7 @@ import functools
 from typing import Any, Callable, Optional, Type, TypedDict, overload
 
 from autogpt.config import Config
-from autogpt.models.command import Command, CommandParameter
+from autogpt.models.command import Command, CommandInstance, CommandParameter
 
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
@@ -20,7 +20,7 @@ def command_attr(
     parameters: dict[str, CommandParameterSpec],
     enabled: bool | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
-    instancecls: Optional["CommandInstance"] = "CommandInstance",
+    instancecls: Optional[CommandInstance] = CommandInstance,
     max_seen_to_stop: Optional[int] = None,
     stop_if_looped: Optional[bool] = True,
 ) -> Callable[..., Any]:

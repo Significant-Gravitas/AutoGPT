@@ -1,15 +1,21 @@
 import logging
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import InitVar, dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Type
 
 from autogpt.config import Config
+from common.common import simple_exception_handling
 
 from .command_parameter import CommandParameter
 
 
 class GenericCommand(ABC):
     # also has name
+    # @property
+    # @abstractmethod
+    # def name(self):
+    #     ... (should be fixed)
+
     def execute(self, *args, **kwargs) -> Any:
         ...
 
@@ -29,7 +35,7 @@ class PromptCommand(GenericCommand):
             kwargs.pop("agent")
         return self.function(*args, **kwargs)
 
-    def get_instance(self, arguments, agent=None):
+    def generate_instance(self, arguments, agent=None):
         return CommandInstance(self, arguments, agent=agent)
 
 
@@ -48,13 +54,13 @@ class Command(GenericCommand):
         self,
         name: str,
         description: str,
-        method: Callable[..., Any],
+        method: Optional[Callable[..., Any]],
         parameters: list[CommandParameter],
         enabled: bool | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
         instancecls: Optional[
-            "CommandInstance"
-        ] = "CommandInstance",  # not really needed right now
+            Type["CommandInstance"]
+        ] = None,  # not really needed right now
         max_seen_to_stop: Optional[int] = None,
         stop_if_looped: Optional[bool] = True,
     ):
@@ -64,14 +70,15 @@ class Command(GenericCommand):
         self.parameters = parameters
         self.enabled = enabled
         self.disabled_reason = disabled_reason
-        self.instancecls = instancecls
+        self.instancecls = CommandInstance if instancecls is None else instancecls
         self.max_seen_to_stop = max_seen_to_stop
         self.stop_if_looped = stop_if_looped
 
     def __call__(self, *args, **kwargs) -> Any:
         self.execute(*args, **kwargs)
 
-    def get_instance(self, arguments, agent=None):
+    @simple_exception_handling(lambda_on_exc=lambda: VoidCommandInstance())
+    def generate_instance(self, arguments, agent=None):
         return self.instancecls(self, arguments, agent=agent)
 
     def execute(self, *args, **kwargs):
@@ -99,22 +106,38 @@ class Command(GenericCommand):
         return hash((self.name, frozendict(**kwargs)))
 
 
+class GenericCommandInstance:
+    pass
+
+
 @dataclass
-class CommandInstance:
+class CommandInstance(GenericCommandInstance):
     command: GenericCommand
     arguments: dict
     agent: InitVar = None
+    """
+    A class that represent a instance of command to execute with concrete parameters. 
+    This function has also access to agent
+    """
 
     def __hash__(self):
+        assert self._argfixed
         if self._hash is None:
-            self._hash = self.command.calculate_hash(
-                self.arguments
-            )  # should be calulcated before applying path
+            self._hash = self.command.calculate_hash(**self.arguments)
         return self._hash
 
     def __post_init__(self, agent):
         self._hash = None
-        self._agent = agent
+        self.agent = agent
+        self._argfixed = False
+        if self.agent:
+            try:
+                self._resolve_pathlike_command_args()
+
+                # We dont want the hash to be ambigous, and it is only calculated once so arguments should be frozen.
+            except:
+                logging.error("error in resolving pathlike command args {self}")
+        self._argfixed = True
 
     def _resolve_pathlike_command_args(self):
         if "directory" in self.arguments and self.arguments["directory"] in {"", "/"}:
@@ -127,17 +150,58 @@ class CommandInstance:
                     )
 
     def execute(self):
-        try:
-            if self.agent:
-                self._resolve_pathlike_command_args()
-        except:
-            logging.error("error in resolving pathlike command args")
-            raise
-        return self.command.execute(**self.arguments, agent=self._agent)
+        return self.command.execute(**self.arguments, agent=self.agent)
 
     @property
     def name(self):
         return self.command.name
 
     def __str__(self):
-        return self.name
+        return f"<inst of {self.name} -  {hex(hash(self))}>"
+
+    @property
+    def is_void(self):
+        return True
+
+    @property
+    def should_ignore(self) -> bool:
+        if self.agent is None:
+            return False
+        return self.name in self.agent.config.commands_to_ignore
+
+    @property
+    def should_stop(self) -> bool:
+        if self.agent is None:
+            return False
+        return self.name in self.agent.config.commands_to_stop
+
+
+class VoidCommandInstance(GenericCommandInstance):
+    CMD = Command(name="", description="empty command", method=None, parameters=[])
+
+    @property
+    def name(self):
+        return ""
+
+    @property
+    def command(self):
+        return self.CMD
+
+    @property
+    def arguments():
+        return {}
+
+    @property
+    def is_void(self):
+        return True
+
+    @property
+    def should_ignore(self) -> bool:
+        return False
+
+    @property
+    def should_stop(self) -> bool:
+        return True
+
+    def __hash__(self) -> int:
+        return 0

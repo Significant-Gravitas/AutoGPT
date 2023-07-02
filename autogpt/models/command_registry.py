@@ -5,6 +5,7 @@ from typing import Any, Callable
 from autogpt.command_decorator import AUTO_GPT_COMMAND_IDENTIFIER
 from autogpt.logs import logger
 from autogpt.models.command import Command, GenericCommand, PromptCommand
+from common import common
 
 
 class UnkownCommand(KeyError):
@@ -17,11 +18,15 @@ class UnkownCommand(KeyError):
         " format."
 
 
-class AgentCommandRegistry:
-    def __init__(self,agent,commandregistry):
-        self.agent=agent
-        self.commandregistry=commandregistry
+common.default_not_detailed_errors.add(UnkownCommand)  # shared?
 
+
+class AgentCommandRegistry:
+    def __init__(self, agent, commandregistry):
+        self.agent = agent
+        self.commandregistry = commandregistry
+
+    @common.simple_exception_handling(err_to_throw=[UnkownCommand], log_if_thrown=True)
     def get_command(self, name: str) -> GenericCommand:
         # hopefully we can resolve here
         cmd = self.commandregistry.get_command(name)

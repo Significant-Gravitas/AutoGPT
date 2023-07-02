@@ -1,9 +1,11 @@
 import collections
+from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, NamedTuple
 
 from autogpt.logs import logger
 from autogpt.models.command import CommandInstance
+from common.common import simple_exception_handling
 
 
 class CommandStatus(Enum):
@@ -12,7 +14,8 @@ class CommandStatus(Enum):
     ShouldBeIgnored = 2
 
 
-class ExecutedCommand(NamedTuple):
+@dataclass
+class ExecutedCommand:
     number: int
     status: CommandStatus
 
@@ -23,43 +26,32 @@ class LoopWatcher:
             lambda: ExecutedCommand(0, CommandStatus.NeverSeen)
         )
 
+    @simple_exception_handling(return_on_exc=True)
     def should_stop_on_command(self, cmd: CommandInstance):
-        try:
-            tostop = False
-            from frozendict import frozendict
+        tostop = False
+        from frozendict import frozendict
 
-            var = self.executed_dict[hash(cmd)]
-            var.number += 1
+        var = self.executed_dict[hash(cmd)]
+        var.number += 1
 
-            if var.status == CommandStatus.NeverSeen:
-                var.status = CommandStatus.FirstTime
+        if var.status == CommandStatus.NeverSeen:
+            var.status = CommandStatus.FirstTime
 
-            elif var.status == CommandStatus.ShouldBeIgnored:
-                logger.debug(f"Command {cmd} should be ignored")
-                if (
-                    cmd.command.max_seen_to_stop is not None
-                    and var.number > cmd.command.max_seen_to_stop
-                ):
-                    logger.info(
-                        f"Command {cmd} has been executed {var.number} times, stopping."
-                    )
-                    return True
+        elif var.status == CommandStatus.ShouldBeIgnored:
+            logger.debug(f"Command {cmd} should be ignored")
+            if (
+                cmd.command.max_seen_to_stop is not None
+                and var.number > cmd.command.max_seen_to_stop
+            ):
+                logger.info(
+                    f"Command {cmd} has been executed {var.number} times, stopping."
+                )
+                return True
 
-            else:
-                if (
-                    self.config.loopwatcher_stop_on_command
-                    and cmd.command.stop_if_looped
-                ):
-                    return True
-                    # logger.info(f"Command {cmd} has been executed {var.number} times, stopping.")
-                # logger.info("Already executed this shit, stopping.")
+        else:
+            if self.config.loopwatcher_stop_on_command and cmd.command.stop_if_looped:
+                return True
 
-        except Exception as e:
-            import traceback
-
-            traceback.print_exc()
-            logger.error(f"Exception {e} in adding to dic\n")
-            tostop = False
         return tostop
 
     def command_authorized(self, hash):
