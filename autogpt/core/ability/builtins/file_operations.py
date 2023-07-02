@@ -2,7 +2,7 @@ import logging
 import os
 
 from autogpt.core.ability.base import Ability, AbilityConfiguration
-from autogpt.core.ability.schema import AbilityResult
+from autogpt.core.ability.schema import AbilityResult, Knowledge, ContentType
 from autogpt.core.workspace import Workspace
 
 
@@ -51,6 +51,8 @@ class ReadFile(Ability):
 
         if message:
             return AbilityResult(
+                ability_name=self.name(),
+                ability_args={"filename": filename},
                 success=False,
                 message=message,
                 data=None,
@@ -67,18 +69,24 @@ class ReadFile(Ability):
             elements = partition(str(file_path))
             # TODO: Lots of other potentially useful information is available
             #   in the partitioned file. Consider returning more of it.
-            data = "\n\n".join([element.text for element in elements])
+            new_knowledge = Knowledge(
+                content="\n\n".join([element.text for element in elements]),
+                content_type=ContentType.TEXT,
+                content_metadata={"filename": filename},
+            )
             success = True
             message = f"File {file_path} read successfully."
         except IOError as e:
-            data = None
+            new_knowledge = None
             success = False
             message = str(e)
 
         return AbilityResult(
+            ability_name=self.name(),
+            ability_args={"filename": filename},
             success=success,
             message=message,
-            data=data,
+            new_knowledge=new_knowledge,
         )
 
 
@@ -128,6 +136,8 @@ class WriteFile(Ability):
 
         if message:
             return AbilityResult(
+                ability_name=self.name(),
+                ability_args={"filename": filename, "contents": contents},
                 success=False,
                 message=message,
                 data=None,
@@ -146,12 +156,12 @@ class WriteFile(Ability):
             success = True
             message = f"File {file_path} written successfully."
         except IOError as e:
-            data = None
             success = False
             message = str(e)
 
         return AbilityResult(
+            ability_name=self.name(),
+            ability_args={"filename": filename},
             success=success,
             message=message,
-            data=data,
         )
