@@ -1,15 +1,18 @@
 import json
 import os
+from pathlib import Path
+
 import pytest
 import shutil
 from agbenchmark.tests.regression.RegressionManager import RegressionManager
+from agbenchmark.start_benchmark import CONFIG_PATH, REGRESSION_TESTS_PATH
 
 
 @pytest.fixture(scope="module")
 def config(request):
-    config_file = os.path.abspath("agbenchmark/config.json")
-    print(f"Config file: {config_file}")
-    with open(config_file, "r") as f:
+
+    print(f"Config file: {CONFIG_PATH}")
+    with open(CONFIG_PATH, "r") as f:
         config = json.load(f)
 
     if request.config.getoption("--mock"):
@@ -36,10 +39,7 @@ def workspace(config):
 def pytest_addoption(parser):
     parser.addoption("--mock", action="store_true", default=False)
 
-
-regression_json = "agbenchmark/tests/regression/regression_tests.json"
-
-regression_manager = RegressionManager(regression_json)
+regression_manager = RegressionManager(REGRESSION_TESTS_PATH)
 
 
 # this is to get the challenge_data from every test
@@ -53,12 +53,15 @@ def pytest_runtest_makereport(item, call):
         challenge_data = item.funcargs.get("challenge_data", None)
         difficulty = challenge_data.info.difficulty if challenge_data else "unknown"
         dependencies = challenge_data.dependencies if challenge_data else []
-
+        parts = item.nodeid.split("::")[0].split("/")
+        agbenchmark_index = parts.index("agbenchmark")
+        file_path = "/".join(parts[agbenchmark_index:])
         test_details = {
             "difficulty": difficulty,
             "dependencies": dependencies,
-            "test": item.nodeid,
+            "test": file_path,
         }
+
 
         print("pytest_runtest_makereport", test_details)
         if call.excinfo is None:

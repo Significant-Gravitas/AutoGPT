@@ -1,5 +1,5 @@
 {
-  "workspace": "C:\\Users\\silen\\miniagi",
-  "func_path": "agent/benchmarks.py",
+  "workspace": "autogpt/workspace/auto_gpt_workspace",
+  "func_path": "benchmarks.py",
   "cutoff": 60
 }
