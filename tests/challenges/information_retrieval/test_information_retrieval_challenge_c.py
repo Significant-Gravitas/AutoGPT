@@ -43,7 +43,5 @@ def test_information_retrieval_challenge_c(
     with open(file_path, "r") as file:
         content = file.read()
     coo_name = COO[level_to_run - 1]
-    for name in coo_name:
-        assert (
-             name in content
-    ), f"Expected the file to contain {name}"
+    for chief in coo_name:
+        assert chief in content, f"Expected the file to contain {chief}"
