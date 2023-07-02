@@ -1,18 +1,22 @@
 import importlib
-
-from agbenchmark.mocks.MockManager import MockManager
 import os
-import sys
 import subprocess
+import sys
 import time
+from typing import Any, Dict, Optional
+
 from dotenv import load_dotenv
+
+from agbenchmark.mocks.mock_manager import MockManager
 
 load_dotenv()
 
 MOCK_FLAG = os.getenv("MOCK_TEST")
 
 
-def run_agent(task, mock_func, config):
+def run_agent(
+    task: Optional[str], mock_func: Optional[str], config: Dict[str, Any]
+) -> None:
     """Calling to get a response"""
 
     if mock_func == None and MOCK_FLAG == "True":
@@ -33,18 +37,24 @@ def run_agent(task, mock_func, config):
         # Add current directory to Python's import path
         sys.path.append(cwd)
 
-
         module_name = config["func_path"].replace("/", ".").rstrip(".py")
         module = importlib.import_module(module_name)
 
-
         command = [sys.executable, "benchmarks.py", str(task)]
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd)
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            cwd=cwd,
+        )
 
         start_time = time.time()
         timeout = config["cutoff"]
 
         while True:
+            if process.stdout is None:
+                continue
             output = process.stdout.readline()
             print(output.strip())
 
@@ -55,7 +65,9 @@ def run_agent(task, mock_func, config):
 
             # Check if process has exceeded timeout
             if time.time() - start_time > timeout:
-                print("The Python function has exceeded the time limit and was terminated.")
+                print(
+                    "The Python function has exceeded the time limit and was terminated."
+                )
                 process.terminate()
                 break
 
@@ -64,7 +76,6 @@ def run_agent(task, mock_func, config):
 
         # Wait for process to terminate, then get return code
         process.wait()
-
 
 
 ENVIRONMENT = os.getenv("ENVIRONMENT") or "production"

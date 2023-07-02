@@ -1,16 +1,16 @@
 import json
 import os
-from pathlib import Path
+import shutil
+from typing import Any, Dict, Generator, List
 
 import pytest
-import shutil
-from agbenchmark.tests.regression.RegressionManager import RegressionManager
+
 from agbenchmark.start_benchmark import CONFIG_PATH, REGRESSION_TESTS_PATH
+from agbenchmark.tests.regression.RegressionManager import RegressionManager
 
 
 @pytest.fixture(scope="module")
-def config(request):
-
+def config(request: Any) -> None:
     print(f"Config file: {CONFIG_PATH}")
     with open(CONFIG_PATH, "r") as f:
         config = json.load(f)
@@ -22,7 +22,7 @@ def config(request):
 
 
 @pytest.fixture(scope="module")
-def workspace(config):
+def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
     yield config["workspace"]
     # teardown after test function completes
     for filename in os.listdir(config["workspace"]):
@@ -36,19 +36,20 @@ def workspace(config):
             print(f"Failed to delete {file_path}. Reason: {e}")
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: Any) -> None:
     parser.addoption("--mock", action="store_true", default=False)
+
 
 regression_manager = RegressionManager(REGRESSION_TESTS_PATH)
 
 
 # this is to get the challenge_data from every test
 @pytest.fixture(autouse=True)
-def challenge_data(request):
+def challenge_data(request: Any) -> None:
     return request.param
 
 
-def pytest_runtest_makereport(item, call):
+def pytest_runtest_makereport(item: Any, call: Any) -> None:
     if call.when == "call":
         challenge_data = item.funcargs.get("challenge_data", None)
         difficulty = challenge_data.info.difficulty if challenge_data else "unknown"
@@ -62,7 +63,6 @@ def pytest_runtest_makereport(item, call):
             "test": file_path,
         }
 
-
         print("pytest_runtest_makereport", test_details)
         if call.excinfo is None:
             regression_manager.add_test(item.nodeid.split("::")[1], test_details)
@@ -70,7 +70,7 @@ def pytest_runtest_makereport(item, call):
             regression_manager.remove_test(item.nodeid.split("::")[1])
 
 
-def pytest_collection_modifyitems(items):
+def pytest_collection_modifyitems(items: List[Any]) -> None:
     """Called once all test items are collected. Used
     to add regression and depends markers to collected test items."""
     for item in items:
@@ -80,13 +80,13 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.regression)
 
 
-def pytest_sessionfinish():
+def pytest_sessionfinish() -> None:
     """Called at the end of the session to save regression tests"""
     regression_manager.save()
 
 
 # this is so that all tests can inherit from the Challenge class
-def pytest_generate_tests(metafunc):
+def pytest_generate_tests(metafunc: Any) -> None:
     if "challenge_data" in metafunc.fixturenames:
         # Get the instance of the test class
         test_class = metafunc.cls()

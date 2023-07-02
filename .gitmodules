@@ -1,4 +1,4 @@
-[submodule "Auto-GPT"]
+[submodule "agent/Auto-GPT"]
 	path = agent/Auto-GPT
 	url = https://github.com/Significant-Gravitas/Auto-GPT.git
 	branch = benchmark-integration
