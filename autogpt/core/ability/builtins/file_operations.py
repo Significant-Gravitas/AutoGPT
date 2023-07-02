@@ -164,5 +164,4 @@ class WriteFile(Ability):
             ability_args={"filename": filename},
             success=success,
             message=message,
-            new_knowledge=None,
         )

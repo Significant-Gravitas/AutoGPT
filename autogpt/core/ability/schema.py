@@ -25,4 +25,4 @@ class AbilityResult(BaseModel):
     ability_args: dict[str, str]
     success: bool
     message: str
-    new_knowledge: Union[Knowledge, None]
+    new_knowledge: Knowledge = None
