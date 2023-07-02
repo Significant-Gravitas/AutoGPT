@@ -1,7 +1,7 @@
-from agbenchmark.Challenge import Challenge
+from agbenchmark.challenge import Challenge
 
 
-def basic_read_file_mock(task: str, workspace: str):
+def basic_read_file_mock(task: str, workspace: str) -> None:
     """
     This mock reads a file and returns its content.
     """
@@ -13,7 +13,7 @@ def basic_read_file_mock(task: str, workspace: str):
     )
 
 
-def basic_write_file_mock(task: str, workspace: str):
+def basic_write_file_mock(task: str, workspace: str) -> None:
     """
     This mock writes to a file (creates one if it doesn't exist)
     """

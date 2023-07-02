@@ -46,14 +46,14 @@ jobs:
 
       - name: Set up venv and install Python dependencies
         run: |
+          poetry install --only main
+          poetry build
+          
+
+      - name: Run regression tests
+        run: |
           python -m venv venv
           source venv/bin/activate
-          poetry install
-
-      - name: Build project
-        run: |
-          source venv/bin/activate
-          poetry build
           cd agent/Auto-GPT
           pip install -r requirements.txt
           pip install ../../dist/agbenchmark-0.1.0-py3-none-any.whl

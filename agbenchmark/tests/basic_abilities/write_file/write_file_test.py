@@ -1,8 +1,8 @@
-from pathlib import Path
-
-import pytest
-from agbenchmark.tests.basic_abilities.BasicChallenge import BasicChallenge
 import os
+from pathlib import Path
+from typing import Any, Dict
+
+from agbenchmark.tests.basic_abilities.basic_challenge import BasicChallenge
 
 
 class TestWriteFile(BasicChallenge):
@@ -11,10 +11,10 @@ class TestWriteFile(BasicChallenge):
     def get_file_path(self) -> str:  # all tests must implement this method
         return os.path.join(os.path.dirname(__file__), "w_file_data.json")
 
-    def test_method(self, config):
+    def test_method(self, config: Dict[str, Any]) -> None:
         self.setup_challenge(config)
 
-        workspace = Path(os.getcwd()) / config['workspace']
+        workspace = Path(os.getcwd()) / config["workspace"]
         files_contents = self.open_files(workspace, self.data.ground.files)
 
         scores = []

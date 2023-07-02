@@ -1,8 +1,11 @@
-import click
-import pytest
 import json
 import os
+import sys
 from pathlib import Path
+from typing import List
+
+import click
+import pytest
 from dotenv import load_dotenv, set_key
 
 load_dotenv()
@@ -15,8 +18,9 @@ CONFIG_PATH = str(new_path.resolve())
 
 REGRESSION_TESTS_PATH = str(Path(os.getcwd()) / "regression_tests.json")
 
+
 @click.group()
-def cli():
+def cli() -> None:
     pass
 
 
@@ -24,7 +28,7 @@ def cli():
 @click.option("--category", default=None, help="Specific category to run")
 @click.option("--reg", is_flag=True, help="Runs only regression tests")
 @click.option("--mock", is_flag=True, help="Run with mock")
-def start(category, reg, mock):
+def start(category: str, reg: bool, mock: bool) -> int:
     """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
     # Check if configuration file exists and is not empty
     if not os.path.exists(CONFIG_PATH) or os.stat(CONFIG_PATH).st_size == 0:
@@ -61,7 +65,6 @@ def start(category, reg, mock):
     if not os.path.exists(workspace_path):
         os.makedirs(workspace_path, exist_ok=True)
 
-
     if not os.path.exists(REGRESSION_TESTS_PATH):
         with open(REGRESSION_TESTS_PATH, "a"):
             pass
@@ -74,9 +77,7 @@ def start(category, reg, mock):
     tests_to_run = []
     pytest_args = ["-vs"]
     if category:
-        pytest_args.extend(
-            ["-m", category]
-        )
+        pytest_args.extend(["-m", category])
     else:
         if reg:
             print("Running all regression tests")
@@ -91,20 +92,24 @@ def start(category, reg, mock):
     if not tests_to_run:
         tests_to_run = [str(CURRENT_DIRECTORY)]
     pytest_args.extend(tests_to_run)
-    pytest.main(pytest_args)
+
+    return sys.exit(pytest.main(pytest_args))
 
 
-def get_regression_tests():
+def get_regression_tests() -> List[str]:
     if not Path(REGRESSION_TESTS_PATH).exists():
-        with open(REGRESSION_TESTS_PATH, 'w') as file:
+        with open(REGRESSION_TESTS_PATH, "w") as file:
             json.dump({}, file)
 
-    with open(REGRESSION_TESTS_PATH, 'r') as file:
+    with open(REGRESSION_TESTS_PATH, "r") as file:
         data = json.load(file)
 
-    regression_tests = [str(CURRENT_DIRECTORY / ".." / value['test']) for key, value in data.items()]
+    regression_tests = [
+        str(CURRENT_DIRECTORY / ".." / value["test"]) for key, value in data.items()
+    ]
 
     return regression_tests
+
 
 if __name__ == "__main__":
     start()

@@ -1,10 +1,12 @@
-import os
 import glob
-import pytest
+import os
 from abc import ABC, abstractmethod
-from agbenchmark.challenges.define_task_types import Ground
-from agbenchmark.challenges.define_task_types import ChallengeData
+from typing import Any, Dict, List, Optional
+
+import pytest
 from dotenv import load_dotenv
+
+from agbenchmark.challenges.define_task_types import ChallengeData, Ground
 
 load_dotenv()
 
@@ -27,11 +29,11 @@ class Challenge(ABC):
         return ChallengeData.deserialize(self.get_file_path())
 
     @property
-    def mock(self):
+    def mock(self) -> Optional[str]:
         return self.data.mock.mock_func if self.data.mock else None
 
     @property
-    def task(self):
+    def task(self) -> Optional[str]:
         return (
             self.data.mock.mock_task if self.data.mock and MOCK_TEST else self.data.task
         )
@@ -40,7 +42,7 @@ class Challenge(ABC):
     def dependencies(self) -> list:
         return self.data.dependencies
 
-    def setup_challenge(self, config):
+    def setup_challenge(self, config: Dict[str, Any]) -> None:
         from agbenchmark.agent_interface import run_agent
 
         run_agent(self.task, self.mock, config)
@@ -54,18 +56,18 @@ class Challenge(ABC):
         [data],
         indirect=True,
     )
-    def test_method(self, config):
+    def test_method(self, config: Dict[str, Any]) -> None:
         raise NotImplementedError
 
     @staticmethod
-    def open_file(workspace: str, filename: str):
+    def open_file(workspace: str, filename: str) -> str:
         script_dir = os.path.abspath(workspace)
         workspace_dir = os.path.join(script_dir, filename)
         with open(workspace_dir, "r") as f:
             return f.read()
 
     @staticmethod
-    def open_files(workspace: str, file_patterns: list):
+    def open_files(workspace: str, file_patterns: list) -> List[str]:
         script_dir = os.path.abspath(workspace)
         files_contents = []
 
@@ -85,7 +87,7 @@ class Challenge(ABC):
         return files_contents
 
     @staticmethod
-    def write_to_file(workspace: str, filename: str, content: str):
+    def write_to_file(workspace: str, filename: str, content: str) -> None:
         script_dir = os.path.abspath(workspace)
         print("Writing file at", script_dir)
         workspace_dir = os.path.join(script_dir, filename)
@@ -95,14 +97,14 @@ class Challenge(ABC):
             # Write the content to the file.
             f.write(content)
 
-    def get_filenames_in_workspace(self, workspace: str):
+    def get_filenames_in_workspace(self, workspace: str) -> List[str]:
         return [
             filename
             for filename in os.listdir(workspace)
             if os.path.isfile(os.path.join(workspace, filename))
         ]
 
-    def scoring(self, content: str, ground: Ground):
+    def scoring(self, content: str, ground: Ground) -> float:
         if ground.should_contain:
             for should_contain_word in ground.should_contain:
                 if should_contain_word not in content:

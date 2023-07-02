@@ -1,5 +1,7 @@
-from agbenchmark.challenges.retrieval.Retrieval import RetrievalChallenge
 import os
+from typing import Any, Dict
+
+from agbenchmark.challenges.retrieval.retrieval import RetrievalChallenge
 
 
 class TestRetrieval1(RetrievalChallenge):
@@ -8,7 +10,7 @@ class TestRetrieval1(RetrievalChallenge):
     def get_file_path(self) -> str:  # all tests must implement this method
         return os.path.join(os.path.dirname(__file__), "r1_data.json")
 
-    def test_method(self, config):
+    def test_method(self, config: Dict[str, Any]) -> None:
         self.setup_challenge(config)
         files_contents = self.open_files(config["workspace"], self.data.ground.files)
 

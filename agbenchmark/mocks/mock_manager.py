@@ -1,4 +1,5 @@
-import sys
+from typing import Any
+
 import agbenchmark.mocks.tests.basic_mocks as basic_mocks
 import agbenchmark.mocks.tests.retrieval_mocks as retrieval_mocks
 
@@ -9,7 +10,7 @@ class MockManager:
         self.workspace = "agbenchmark/mocks/workspace"
         self.modules = [basic_mocks, retrieval_mocks]
 
-    def delegate(self, mock_function_name, *args, **kwargs):
+    def delegate(self, mock_function_name: Any, *args: Any, **kwargs: Any) -> None:
         if hasattr(self, mock_function_name):
             # Check if the mock function is an attribute of this class
             getattr(self, mock_function_name)(*args, **kwargs)
