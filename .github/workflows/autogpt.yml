@@ -2,6 +2,9 @@ name: Auto-GPT Regression Test
 
 on:
   workflow_dispatch:
+    branches: [ master ]
+  push:
+    branches: [ stable, master, ci-test* ]
 
 jobs:
   regression-tests:
