@@ -6,10 +6,10 @@ import os
 import re
 from typing import Dict
 
+import openai
 import yaml
 from colorama import Fore
 
-import openai
 from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.plugins.plugins_config import PluginsConfig
 
@@ -252,7 +252,9 @@ class ConfigBuilder(Configurable[Config]):
             config_dict["openai_api_type"] = azure_config["openai_api_type"]
             config_dict["openai_api_base"] = azure_config["openai_api_base"]
             config_dict["openai_api_version"] = azure_config["openai_api_version"]
-            config_dict["azure_model_to_deployment_id_map"] = azure_config["azure_model_map"]
+            config_dict["azure_model_to_deployment_id_map"] = azure_config[
+                "azure_model_map"
+            ]
 
             openai.api_type = azure_config["openai_api_type"]
             openai.api_base = azure_config["openai_api_base"]
@@ -285,15 +287,13 @@ class ConfigBuilder(Configurable[Config]):
         """
         with open(config_file) as file:
             config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
-        
+
         return {
             "openai_api_type": config_params.get("azure_api_type") or "azure",
             "openai_api_base": config_params.get("azure_api_base") or "",
             "openai_api_version": config_params.get("azure_api_version")
             or "2023-03-15-preview",
-            "azure_model_map": config_params.get(
-                "azure_model_map", {}
-            ),
+            "azure_model_map": config_params.get("azure_model_map", {}),
         }
 
 
@@ -326,29 +326,29 @@ def check_openai_api_key(config: Config) -> None:
             print("Invalid OpenAI API key!")
             exit(1)
 
-    
+
 def get_azure_deployment_id_for_model(config: Config, model: str) -> str:
-        """
-        Returns the relevant deployment id for the model specified.
+    """
+    Returns the relevant deployment id for the model specified.
 
-        Parameters:
-            model(str): The model to map to the deployment id.
+    Parameters:
+        model(str): The model to map to the deployment id.
 
-        Returns:
-            The matching deployment id if found, otherwise an empty string.
-        """
-        
-        if model == config.fast_llm_model:
-            return config.azure_model_to_deployment_id_map[
-                "fast_llm_model_deployment_id"
-            ]  # type: ignore
-        elif model == config.smart_llm_model:
-            return config.azure_model_to_deployment_id_map[
-                "smart_llm_model_deployment_id"
-            ]  # type: ignore
-        elif model == "text-embedding-ada-002":
-            return config.azure_model_to_deployment_id_map[
-                "embedding_model_deployment_id"
-            ]  # type: ignore
-        else:
-            return ""
+    Returns:
+        The matching deployment id if found, otherwise an empty string.
+    """
+
+    if model == config.fast_llm_model:
+        return config.azure_model_to_deployment_id_map[
+            "fast_llm_model_deployment_id"
+        ]  # type: ignore
+    elif model == config.smart_llm_model:
+        return config.azure_model_to_deployment_id_map[
+            "smart_llm_model_deployment_id"
+        ]  # type: ignore
+    elif model == "text-embedding-ada-002":
+        return config.azure_model_to_deployment_id_map[
+            "embedding_model_deployment_id"
+        ]  # type: ignore
+    else:
+        return ""

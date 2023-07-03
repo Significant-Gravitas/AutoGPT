@@ -5,7 +5,7 @@ from typing import List, Literal, Optional
 
 from colorama import Fore
 
-from autogpt.config import Config, get_azure_deployment_id_for_model 
+from autogpt.config import Config, get_azure_deployment_id_for_model
 from autogpt.logs import logger
 
 from ..api_manager import ApiManager
@@ -141,9 +141,9 @@ def create_chat_completion(
 
     chat_completion_kwargs["api_key"] = config.openai_api_key
     if config.use_azure:
-        chat_completion_kwargs[
-            "deployment_id"
-        ] = get_azure_deployment_id_for_model(config, model)
+        chat_completion_kwargs["deployment_id"] = get_azure_deployment_id_for_model(
+            config, model
+        )
     if functions:
         chat_completion_kwargs["functions"] = [
             function.__dict__ for function in functions
