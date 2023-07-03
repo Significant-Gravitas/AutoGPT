@@ -17,7 +17,7 @@ The `master` branch is under heavy development and may often be in a **broken** 
 <hr/>
 
 
-Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
+Auto-GPT is a leading experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first SOTA examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
 <h2 align="center"> Demo April 16th 2023 </h2>
 
