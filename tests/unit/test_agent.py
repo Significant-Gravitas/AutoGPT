@@ -5,6 +5,9 @@ import pytest
 from autogpt.agent import Agent
 from autogpt.config import AIConfig
 from autogpt.config.config import Config
+from autogpt.core.agent.simple import SimpleAgent
+from autogpt.core.runner.client_lib.logging import get_client_logger
+from autogpt.workspace.workspace import Workspace
 
 
 @pytest.fixture
@@ -16,7 +19,11 @@ def agent(config: Config):
     ai_config = AIConfig(ai_name=ai_name)
     system_prompt = "System prompt"
     triggering_prompt = "Triggering prompt"
-    workspace_directory = "workspace_directory"
+    client_logger = get_client_logger()
+    agent_settings = SimpleAgent.compile_settings(client_logger, {})
+    workspace = Workspace(
+        settings=agent_settings.workspace, logger=client_logger
+    )
 
     agent = Agent(
         ai_name=ai_name,
@@ -27,7 +34,7 @@ def agent(config: Config):
         config=config,
         system_prompt=system_prompt,
         triggering_prompt=triggering_prompt,
-        workspace_directory=workspace_directory,
+        workspace=workspace,
     )
     return agent
 

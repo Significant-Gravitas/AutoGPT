@@ -41,7 +41,7 @@ def dummy_agent(config: Config, memory_json_file, workspace: Workspace):
         next_action_count=0,
         system_prompt="dummy_prompt",
         triggering_prompt="dummy triggering prompt",
-        workspace_directory=workspace.root,
+        workspace=workspace,
     )
 
     return agent
