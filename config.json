@@ -1,0 +1,5 @@
+{
+  "workspace": "autogpt/workspace/auto_gpt_workspace",
+  "func_path": "benchmarks.py",
+  "cutoff": 60
+}
