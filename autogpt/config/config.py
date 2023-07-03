@@ -253,7 +253,7 @@ class ConfigBuilder(Configurable[Config]):
             config_dict["openai_api_base"] = azure_config["openai_api_base"]
             config_dict["openai_api_version"] = azure_config["openai_api_version"]
             config_dict["azure_model_to_deployment_id_map"] = azure_config[
-                "azure_model_map"
+                "azure_model_to_deployment_id_map"
             ]
 
             openai.api_type = azure_config["openai_api_type"]
@@ -293,7 +293,9 @@ class ConfigBuilder(Configurable[Config]):
             "openai_api_base": config_params.get("azure_api_base") or "",
             "openai_api_version": config_params.get("azure_api_version")
             or "2023-03-15-preview",
-            "azure_model_map": config_params.get("azure_model_map", {}),
+            "azure_model_to_deployment_id_map": config_params.get(
+                "azure_model_map", {}
+            ),
         }
 
 
