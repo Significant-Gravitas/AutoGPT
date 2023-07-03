@@ -1,7 +1,6 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
 import logging
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from colorama import Fore, Style
@@ -9,21 +8,8 @@ from colorama import Fore, Style
 from autogpt.agent import Agent
 from autogpt.config.config import ConfigBuilder, check_openai_api_key
 from autogpt.configurator import create_config
-from autogpt.core.ability.simple import AbilityRegistrySettings
-from autogpt.core.agent.simple import (
-    AgentConfiguration,
-    AgentSettings,
-    AgentSystems,
-    AgentSystemSettings,
-    SimpleAgent,
-)
-from autogpt.core.embedding.simple import EmbeddingModelSettings
-from autogpt.core.memory.simple import MemorySettings
-from autogpt.core.planning.simple import PlannerSettings
-from autogpt.core.plugin.base import PluginLocation
-from autogpt.core.resource.model_providers.openai import OpenAISettings
+from autogpt.core.agent.simple import SimpleAgent
 from autogpt.core.runner.client_lib.logging import get_client_logger
-from autogpt.core.workspace.simple import WorkspaceSettings
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
@@ -174,7 +160,7 @@ def run_auto_gpt(
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
-    agent_settings: AgentSettings = SimpleAgent.compile_settings(client_logger, {})
+    agent_settings = SimpleAgent.compile_settings(client_logger, {})
 
     workspace_path = Workspace.setup_workspace(
         settings=agent_settings, logger=client_logger

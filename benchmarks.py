@@ -1,6 +1,6 @@
 from autogpt.agent import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
-from autogpt.core.agent.simple import AgentSettings, SimpleAgent
+from autogpt.core.agent.simple import SimpleAgent
 from autogpt.core.runner.client_lib.logging import get_client_logger
 from autogpt.main import COMMAND_CATEGORIES
 from autogpt.memory.vector import get_memory
@@ -22,12 +22,12 @@ def bootstrap_agent(task):
     command_registry = get_command_registry(config)
     config.memory_backend = "no_memory"
     client_logger = get_client_logger()
-    agent_settings: AgentSettings = SimpleAgent.compile_settings(client_logger, {})
-    workspace_directory = Workspace.setup_workspace(
-        settings=agent_settings, logger=client_logger
+    agent_settings = SimpleAgent.compile_settings(client_logger, {})
+    workspace = Workspace(
+        settings=agent_settings.workspace, logger=client_logger
     )
-    config.workspace_path = workspace_directory
-    Workspace.build_file_logger_path(config, workspace_directory)
+    config.workspace_path = workspace.root
+    Workspace.build_file_logger_path(config, workspace.root)
     ai_config = AIConfig(
         ai_name="Auto-GPT",
         ai_role="a multi-purpose AI assistant.",
@@ -44,7 +44,7 @@ def bootstrap_agent(task):
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=str(workspace_directory),
+        workspace=workspace
     )
 
 

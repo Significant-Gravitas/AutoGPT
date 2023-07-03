@@ -1,9 +1,8 @@
 import abc
 
-from autogpt.core.configuration import SystemConfiguration, UserConfigurable
+from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
-    LanguageModelMessage,
     LanguageModelPrompt,
 )
 

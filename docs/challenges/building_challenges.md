@@ -63,7 +63,7 @@ def kubernetes_agent(
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace.root,
+        workspace=workspace,
     )
 
     return agent

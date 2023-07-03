@@ -1,6 +1,6 @@
 import abc
 import enum
-from typing import Callable, ClassVar, Union
+from typing import Callable, ClassVar
 
 from pydantic import BaseModel, Field, SecretStr, validator
 

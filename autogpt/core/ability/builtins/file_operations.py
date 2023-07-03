@@ -36,7 +36,7 @@ class ReadFile(Ability):
     def _check_preconditions(self, filename: str) -> AbilityResult | None:
         message = ""
         try:
-            import unstructured
+            pass
         except ImportError:
             message = "Package charset_normalizer is not installed."
 

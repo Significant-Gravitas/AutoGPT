@@ -1,7 +1,6 @@
 import click
 
-from autogpt.core.agent import AgentSettings, SimpleAgent
-from autogpt.core.planning import LanguageModelResponse
+from autogpt.core.agent import SimpleAgent
 from autogpt.core.runner.client_lib.logging import get_client_logger
 
 
@@ -20,7 +19,7 @@ async def run_auto_gpt(user_configuration: dict):
         # Bootstrapping #
         #################
         # Step 1. Collate the user's settings with the default system settings.
-        agent_settings: AgentSettings = SimpleAgent.compile_settings(
+        agent_settings = SimpleAgent.compile_settings(
             client_logger,
             user_configuration,
         )
