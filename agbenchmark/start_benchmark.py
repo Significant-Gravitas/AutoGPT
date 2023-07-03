@@ -12,9 +12,8 @@ load_dotenv()
 
 CURRENT_DIRECTORY = Path(__file__).resolve().parent
 
-new_path = CURRENT_DIRECTORY / "config.json"
 
-CONFIG_PATH = str(new_path.resolve())
+CONFIG_PATH = str(Path(os.getcwd()) / "config.json")
 
 REGRESSION_TESTS_PATH = str(Path(os.getcwd()) / "regression_tests.json")
 
