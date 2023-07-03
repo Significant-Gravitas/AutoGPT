@@ -33,10 +33,7 @@ def workspace_root(tmp_path: Path) -> Path:
 @pytest.fixture()
 def workspace(workspace_root: Path) -> Workspace:
     client_logger = get_client_logger()
-    agent_settings: AgentSettings = SimpleAgent.compile_settings(
-        client_logger,
-        {}
-    )
+    agent_settings: AgentSettings = SimpleAgent.compile_settings(client_logger, {})
     agent_settings.workspace.configuration.parent = workspace_root
     return Workspace(settings=agent_settings.workspace, logger=client_logger)
 
