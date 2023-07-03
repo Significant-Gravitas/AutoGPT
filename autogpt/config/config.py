@@ -156,6 +156,9 @@ class ConfigBuilder(Configurable[Config]):
         authorise_key="y",
         redis_password="",
     )
+    
+    # TODO: Resolve difference between defaults and default_settings in implementations of Configurable
+    defaults = defaults_settings
 
     @classmethod
     def build_config_from_env(cls):

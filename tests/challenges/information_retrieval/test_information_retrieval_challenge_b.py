@@ -19,7 +19,7 @@ def test_information_retrieval_challenge_b(
     level_to_run: int,
     challenge_name: str,
     workspace: Workspace,
-    patched_make_workspace: pytest.fixture,
+    patched_setup_workspace: pytest.fixture,
 ) -> None:
     """
     Test the challenge_b function in a given agent by mocking user inputs and checking the output file content.

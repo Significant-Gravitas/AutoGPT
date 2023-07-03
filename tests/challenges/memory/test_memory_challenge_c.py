@@ -18,7 +18,7 @@ def test_memory_challenge_c(
     level_to_run: int,
     challenge_name: str,
     workspace: Workspace,
-    patched_make_workspace: pytest.fixture,
+    patched_setup_workspace: pytest.fixture,
 ) -> None:
     """
     Instead of reading task Ids from files as with the previous challenges, the agent now must remember

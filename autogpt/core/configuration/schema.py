@@ -3,8 +3,11 @@ import copy
 import typing
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+
+def UserConfigurable(*args, **kwargs):
+    return Field(*args, **kwargs, user_configurable=True)
 
 class SystemConfiguration(BaseModel):
     def get_user_config(self) -> dict[str, Any]:
@@ -34,20 +37,20 @@ class Configurable(abc.ABC, Generic[S]):
     """A base class for all configurable objects."""
 
     prefix: str = ""
-    defaults_settings: typing.ClassVar[S]
+    defaults: typing.ClassVar[S]
 
     @classmethod
     def get_user_config(cls) -> dict[str, Any]:
-        return _get_user_config_fields(cls.defaults_settings)
+        return _get_user_config_fields(cls.defaults)
 
     @classmethod
     def build_agent_configuration(cls, configuration: dict = {}) -> S:
         """Process the configuration for this object."""
 
-        defaults_settings = cls.defaults_settings.dict()
-        final_configuration = deep_update(defaults_settings, configuration)
+        defaults = cls.defaults.dict()
+        final_configuration = deep_update(defaults, configuration)
 
-        return cls.defaults_settings.__class__.parse_obj(final_configuration)
+        return cls.defaults.__class__.parse_obj(final_configuration)
 
 
 def _get_user_config_fields(instance: BaseModel) -> dict[str, Any]:

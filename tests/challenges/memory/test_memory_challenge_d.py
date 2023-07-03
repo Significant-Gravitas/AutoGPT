@@ -22,7 +22,7 @@ def test_memory_challenge_d(
     level_to_run: int,
     challenge_name: str,
     workspace: Workspace,
-    patched_make_workspace: pytest.fixture,
+    patched_setup_workspace: pytest.fixture,
 ) -> None:
     """
     The agent is given a series of events and must remember the respective beliefs of the characters.

@@ -65,7 +65,7 @@ class Agent:
         ai_config: AIConfig,
         system_prompt: str,
         triggering_prompt: str,
-        workspace_directory: str | Path,
+        workspace: Workspace,
         config: Config,
     ):
         self.ai_name = ai_name
@@ -77,7 +77,7 @@ class Agent:
         self.ai_config = ai_config
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
-        self.workspace = Workspace(workspace_directory, config.restrict_to_workspace)
+        self.workspace = workspace
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()

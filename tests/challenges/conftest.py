@@ -64,14 +64,14 @@ def check_beat_challenges(request: FixtureRequest) -> None:
 
 
 @pytest.fixture
-def patched_make_workspace(mocker: MockerFixture, workspace: Workspace) -> Generator:
-    def patched_make_workspace(*args: Any, **kwargs: Any) -> str:
+def patched_setup_workspace(mocker: MockerFixture, workspace: Workspace) -> Generator:
+    def patched_setup_workspace(*args: Any, **kwargs: Any) -> str:
         return workspace.root
 
     mocker.patch.object(
         Workspace,
-        "make_workspace",
-        new=patched_make_workspace,
+        "setup_workspace",
+        new=patched_setup_workspace,
     )
 
     yield

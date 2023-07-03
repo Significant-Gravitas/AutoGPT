@@ -1,0 +1,28 @@
+import enum
+from typing import Any, Union
+
+from pydantic import BaseModel
+
+
+class ContentType(str, enum.Enum):
+    # TBD what these actually are.
+    TEXT = "text"
+    CODE = "code"
+    IMAGE = "image"
+    VIDEO = "video"
+    AUDIO = "audio"
+
+
+class Knowledge(BaseModel):
+    content: str
+    content_type: ContentType
+    content_metadata: dict[str, Any]
+
+
+class AbilityResult(BaseModel):
+    """The AbilityResult is a standard response struct for an ability."""
+    ability_name: str
+    ability_args: dict[str, str]
+    success: bool
+    message: str
+    new_knowledge: Knowledge = None

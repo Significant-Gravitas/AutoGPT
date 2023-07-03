@@ -1,4 +1,5 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
+from datetime import datetime
 import logging
 import sys
 from pathlib import Path
@@ -8,6 +9,15 @@ from colorama import Fore, Style
 from autogpt.agent import Agent
 from autogpt.config.config import ConfigBuilder, check_openai_api_key
 from autogpt.configurator import create_config
+from autogpt.core.ability.simple import AbilityRegistrySettings
+from autogpt.core.agent.simple import AgentConfiguration, AgentSettings, AgentSystemSettings, AgentSystems, SimpleAgent
+from autogpt.core.embedding.simple import EmbeddingModelSettings
+from autogpt.core.memory.simple import MemorySettings
+from autogpt.core.planning.simple import PlannerSettings
+from autogpt.core.plugin.base import PluginLocation
+from autogpt.core.resource.model_providers.openai import OpenAISettings
+from autogpt.core.runner.client_lib.logging import get_client_logger
+from autogpt.core.workspace.simple import WorkspaceSettings
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
@@ -53,6 +63,9 @@ def run_auto_gpt(
     logger.set_level(logging.DEBUG if debug else logging.INFO)
     logger.speak_mode = speak
 
+    client_logger = get_client_logger()
+    client_logger.debug("Getting agent settings")
+    
     config = ConfigBuilder.build_config_from_env()
 
     # TODO: fill in llm values here
@@ -114,14 +127,6 @@ def run_auto_gpt(
     if install_plugin_deps:
         install_plugin_dependencies()
 
-    # TODO: have this directory live outside the repository (e.g. in a user's
-    #   home directory) and have it come in as a command line argument or part of
-    #   the env file.
-    workspace_directory = Workspace.get_workspace_directory(config, workspace_directory)
-
-    # HACK: doing this here to collect some globals that depend on the workspace.
-    Workspace.build_file_logger_path(config, workspace_directory)
-
     config.plugins = scan_plugins(config, config.debug_mode)
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
@@ -159,6 +164,22 @@ def run_auto_gpt(
     ai_config.command_registry = command_registry
     if ai_config.ai_name:
         ai_name = ai_config.ai_name
+        
+    # TODO: have this directory live outside the repository (e.g. in a user's
+    #   home directory) and have it come in as a command line argument or part of
+    #   the env file.
+    agent_settings: AgentSettings = SimpleAgent.compile_settings(
+        client_logger,
+        {}
+    )
+    
+    workspace_path = Workspace.setup_workspace(settings=agent_settings, logger=client_logger)
+    workspace = Workspace(agent_settings.workspace, logger=client_logger)
+    config.workspace_path = workspace_path
+
+    # HACK: doing this here to collect some globals that depend on the workspace.
+    Workspace.build_file_logger_path(config, workspace_path)
+    
     # print(prompt)
     # Initialize variables
     next_action_count = 0
@@ -189,7 +210,7 @@ def run_auto_gpt(
         command_registry=command_registry,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace_directory,
+        workspace=workspace,
         ai_config=ai_config,
         config=config,
     )

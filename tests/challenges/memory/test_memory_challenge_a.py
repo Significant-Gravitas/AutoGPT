@@ -17,7 +17,7 @@ def test_memory_challenge_a(
     level_to_run: int,
     challenge_name: str,
     workspace: Workspace,
-    patched_make_workspace: pytest.fixture,
+    patched_setup_workspace: pytest.fixture,
 ) -> None:
     """
     The agent reads a file containing a task_id. Then, it reads a series of other files.

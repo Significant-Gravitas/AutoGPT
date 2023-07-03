@@ -17,7 +17,7 @@ def test_browse_website(
     level_to_run: int,
     challenge_name: str,
     workspace: Workspace,
-    patched_make_workspace: pytest.fixture,
+    patched_setup_workspace: pytest.fixture,
 ) -> None:
     run_challenge(
         challenge_name,

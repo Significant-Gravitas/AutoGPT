@@ -9,6 +9,8 @@ from pytest_mock import MockerFixture
 from autogpt.agent.agent import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.config.ai_config import AIConfig
+from autogpt.core.agent.simple import AgentSettings, SimpleAgent
+from autogpt.core.runner.client_lib.logging import get_client_logger
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import TypingConsoleHandler
 from autogpt.memory.vector import get_memory
@@ -30,8 +32,13 @@ def workspace_root(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def workspace(workspace_root: Path) -> Workspace:
-    workspace_root = Workspace.make_workspace(workspace_root)
-    return Workspace(workspace_root, restrict_to_workspace=True)
+    client_logger = get_client_logger()
+    agent_settings: AgentSettings = SimpleAgent.compile_settings(
+        client_logger,
+        {}
+    )
+    agent_settings.workspace.configuration.parent = workspace_root
+    return Workspace(settings=agent_settings.workspace, logger=client_logger)
 
 
 @pytest.fixture
