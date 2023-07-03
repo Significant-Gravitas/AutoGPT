@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 def UserConfigurable(*args, **kwargs):
     return Field(*args, **kwargs, user_configurable=True)
 
+
 class SystemConfiguration(BaseModel):
     def get_user_config(self) -> dict[str, Any]:
         return _get_user_config_fields(self)

@@ -2,7 +2,7 @@ import logging
 import os
 
 from autogpt.core.ability.base import Ability, AbilityConfiguration
-from autogpt.core.ability.schema import AbilityResult, Knowledge, ContentType
+from autogpt.core.ability.schema import AbilityResult, ContentType, Knowledge
 from autogpt.core.workspace import Workspace
 
 

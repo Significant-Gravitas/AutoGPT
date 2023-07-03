@@ -75,15 +75,15 @@ def parse_agent_name_and_goals(name_and_goals: dict) -> str:
 
 def parse_agent_plan(plan: dict) -> str:
     parsed_response = f"Agent Plan:\n"
-    for i, task in enumerate(plan['task_list']):
+    for i, task in enumerate(plan["task_list"]):
         parsed_response += f"{i+1}. {task['objective']}\n"
         parsed_response += f"Task type: {task['type']}  "
         parsed_response += f"Priority: {task['priority']}\n"
         parsed_response += f"Ready Criteria:\n"
-        for j, criteria in enumerate(task['ready_criteria']):
+        for j, criteria in enumerate(task["ready_criteria"]):
             parsed_response += f"    {j+1}. {criteria}\n"
         parsed_response += f"Acceptance Criteria:\n"
-        for j, criteria in enumerate(task['acceptance_criteria']):
+        for j, criteria in enumerate(task["acceptance_criteria"]):
             parsed_response += f"    {j+1}. {criteria}\n"
         parsed_response += "\n"
 
@@ -92,7 +92,9 @@ def parse_agent_plan(plan: dict) -> str:
 
 def parse_next_ability(current_task, next_ability: dict) -> str:
     parsed_response = f"Current Task: {current_task.objective}\n"
-    ability_args = ', '.join(f'{k}={v}' for k, v in next_ability['ability_arguments'].items())
+    ability_args = ", ".join(
+        f"{k}={v}" for k, v in next_ability["ability_arguments"].items()
+    )
     parsed_response += f"Next Ability: {next_ability['next_ability']}({ability_args})\n"
     parsed_response += f"Motivation: {next_ability['motivation']}\n"
     parsed_response += f"Self-criticism: {next_ability['self_criticism']}\n"

@@ -5,17 +5,16 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from autogpt.core.ability import AbilityRegistrySettings, SimpleAbilityRegistry, AbilityResult
+from autogpt.core.ability import (
+    AbilityRegistrySettings,
+    AbilityResult,
+    SimpleAbilityRegistry,
+)
 from autogpt.core.agent.base import Agent
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.embedding import EmbeddingModelSettings, SimpleEmbeddingModel
 from autogpt.core.memory import MemorySettings, SimpleMemory
-from autogpt.core.planning import (
-    PlannerSettings,
-    SimplePlanner,
-    Task,
-    TaskStatus,
-)
+from autogpt.core.planning import PlannerSettings, SimplePlanner, Task, TaskStatus
 from autogpt.core.plugin.simple import (
     PluginLocation,
     PluginStorageFormat,
@@ -206,7 +205,7 @@ class SimpleAgent(Agent, Configurable):
 
     async def determine_next_ability(self, *args, **kwargs):
         if not self._task_queue:
-            return {'response': "I don't have any tasks to work on right now."}
+            return {"response": "I don't have any tasks to work on right now."}
 
         self._configuration.cycle_count += 1
         task = self._task_queue.pop()
@@ -222,9 +221,11 @@ class SimpleAgent(Agent, Configurable):
         return self._current_task, self._next_ability
 
     async def execute_next_ability(self, user_input: str, *args, **kwargs):
-        if user_input == 'y':
-            ability = self._ability_registry.get_ability(self._next_ability['next_ability'])
-            ability_response = await ability(**self._next_ability['ability_arguments'])
+        if user_input == "y":
+            ability = self._ability_registry.get_ability(
+                self._next_ability["next_ability"]
+            )
+            ability_response = await ability(**self._next_ability["ability_arguments"])
             await self._update_tasks_and_memory(ability_response)
             if self._current_task.context.status == TaskStatus.DONE:
                 self._completed_tasks.append(self._current_task)
@@ -260,7 +261,9 @@ class SimpleAgent(Agent, Configurable):
             # Don't ask the LLM, just set the next action as "breakdown_task" with an appropriate reason
             raise NotImplementedError
         else:
-            next_ability = await self._planning.determine_next_ability(task, ability_schema)
+            next_ability = await self._planning.determine_next_ability(
+                task, ability_schema
+            )
             return next_ability
 
     async def _update_tasks_and_memory(self, ability_result: AbilityResult):

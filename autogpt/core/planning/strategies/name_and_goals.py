@@ -49,9 +49,7 @@ class NameAndGoals(PromptStrategy):
 
     DEFAULT_CREATE_AGENT_FUNCTION = {
         "name": "create_agent",
-        "description": (
-            "Create a new autonomous AI agent to complete a given task."
-        ),
+        "description": ("Create a new autonomous AI agent to complete a given task."),
         "parameters": {
             "type": "object",
             "properties": {

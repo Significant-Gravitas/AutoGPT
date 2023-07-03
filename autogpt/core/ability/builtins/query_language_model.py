@@ -70,7 +70,7 @@ class QueryLanguageModel(Ability):
             ability_name=self.name(),
             ability_args={"query": query},
             success=True,
-            message=model_response.content['content'],
+            message=model_response.content["content"],
         )
 
     @staticmethod

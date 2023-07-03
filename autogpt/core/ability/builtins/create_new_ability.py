@@ -81,7 +81,14 @@ class CreateNewAbility(Ability):
 
     @classmethod
     def required_arguments(cls) -> list[str]:
-        return ["ability_name", "description", "arguments", "required_arguments", "package_requirements", "code"]
+        return [
+            "ability_name",
+            "description",
+            "arguments",
+            "required_arguments",
+            "package_requirements",
+            "code",
+        ]
 
     async def __call__(
         self,
@@ -93,4 +100,3 @@ class CreateNewAbility(Ability):
         code: str,
     ) -> AbilityResult:
         raise NotImplementedError
-

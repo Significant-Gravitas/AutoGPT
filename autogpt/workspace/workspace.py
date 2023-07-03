@@ -8,13 +8,16 @@ agent.
 
 """
 from __future__ import annotations
+
 from pathlib import Path
+
 from autogpt.config import Config
 from autogpt.core.workspace.simple import SimpleWorkspace
 
 
 class Workspace(SimpleWorkspace):
     """A class that represents a workspace for an AutoGPT agent."""
+
     @staticmethod
     def build_file_logger_path(config: Config, workspace_directory: Path):
         file_logger_path = workspace_directory / "file_logger.txt"

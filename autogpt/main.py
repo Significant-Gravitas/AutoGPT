@@ -1,7 +1,7 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
-from datetime import datetime
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from colorama import Fore, Style
@@ -10,7 +10,13 @@ from autogpt.agent import Agent
 from autogpt.config.config import ConfigBuilder, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.core.ability.simple import AbilityRegistrySettings
-from autogpt.core.agent.simple import AgentConfiguration, AgentSettings, AgentSystemSettings, AgentSystems, SimpleAgent
+from autogpt.core.agent.simple import (
+    AgentConfiguration,
+    AgentSettings,
+    AgentSystems,
+    AgentSystemSettings,
+    SimpleAgent,
+)
 from autogpt.core.embedding.simple import EmbeddingModelSettings
 from autogpt.core.memory.simple import MemorySettings
 from autogpt.core.planning.simple import PlannerSettings
@@ -65,7 +71,7 @@ def run_auto_gpt(
 
     client_logger = get_client_logger()
     client_logger.debug("Getting agent settings")
-    
+
     config = ConfigBuilder.build_config_from_env()
 
     # TODO: fill in llm values here
@@ -164,22 +170,21 @@ def run_auto_gpt(
     ai_config.command_registry = command_registry
     if ai_config.ai_name:
         ai_name = ai_config.ai_name
-        
+
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
-    agent_settings: AgentSettings = SimpleAgent.compile_settings(
-        client_logger,
-        {}
+    agent_settings: AgentSettings = SimpleAgent.compile_settings(client_logger, {})
+
+    workspace_path = Workspace.setup_workspace(
+        settings=agent_settings, logger=client_logger
     )
-    
-    workspace_path = Workspace.setup_workspace(settings=agent_settings, logger=client_logger)
     workspace = Workspace(agent_settings.workspace, logger=client_logger)
     config.workspace_path = workspace_path
 
     # HACK: doing this here to collect some globals that depend on the workspace.
     Workspace.build_file_logger_path(config, workspace_path)
-    
+
     # print(prompt)
     # Initialize variables
     next_action_count = 0
