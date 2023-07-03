@@ -5,7 +5,7 @@ from typing import List, Literal, Optional
 
 from colorama import Fore
 
-from autogpt.config import Config
+from autogpt.config import Config, get_azure_deployment_id_for_model 
 from autogpt.logs import logger
 
 from ..api_manager import ApiManager
@@ -74,7 +74,7 @@ def create_text_completion(
         temperature = config.temperature
 
     if config.use_azure:
-        kwargs = {"deployment_id": config.get_azure_deployment_id_for_model(model)}
+        kwargs = {"deployment_id": get_azure_deployment_id_for_model(config, model)}
     else:
         kwargs = {"model": model}
 
@@ -143,7 +143,7 @@ def create_chat_completion(
     if config.use_azure:
         chat_completion_kwargs[
             "deployment_id"
-        ] = config.get_azure_deployment_id_for_model(model)
+        ] = get_azure_deployment_id_for_model(config, model)
     if functions:
         chat_completion_kwargs["functions"] = [
             function.__dict__ for function in functions

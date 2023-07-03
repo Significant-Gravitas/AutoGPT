@@ -2,7 +2,7 @@ from typing import Any, overload
 
 import numpy as np
 
-from autogpt.config import Config
+from autogpt.config import Config, get_azure_deployment_id_for_model
 from autogpt.llm.base import TText
 from autogpt.llm.providers import openai as iopenai
 from autogpt.logs import logger
@@ -42,7 +42,7 @@ def get_embedding(
 
     model = config.embedding_model
     if config.use_azure:
-        kwargs = {"engine": config.get_azure_deployment_id_for_model(model)}
+        kwargs = {"engine": get_azure_deployment_id_for_model(config, model)}
     else:
         kwargs = {"model": model}
 
