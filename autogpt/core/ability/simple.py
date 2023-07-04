@@ -24,7 +24,7 @@ class AbilityRegistrySettings(SystemSettings):
 
 
 class SimpleAbilityRegistry(AbilityRegistry, Configurable):
-    defaults = AbilityRegistrySettings(
+    default_settings = AbilityRegistrySettings(
         name="simple_ability_registry",
         description="A simple ability registry.",
         configuration=AbilityRegistryConfiguration(

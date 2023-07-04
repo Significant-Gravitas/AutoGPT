@@ -118,7 +118,7 @@ class OpenAIProvider(
     LanguageModelProvider,
     EmbeddingModelProvider,
 ):
-    defaults = OpenAISettings(
+    default_settings = OpenAISettings(
         name="openai_provider",
         description="Provides access to OpenAI's API.",
         configuration=OpenAIConfiguration(

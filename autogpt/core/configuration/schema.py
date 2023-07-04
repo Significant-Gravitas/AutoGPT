@@ -33,20 +33,20 @@ class Configurable(abc.ABC):
     """A base class for all configurable objects."""
 
     prefix: str = ""
-    defaults: typing.ClassVar[SystemSettings]
+    default_settings: typing.ClassVar[SystemSettings]
 
     @classmethod
     def get_user_config(cls) -> dict[str, Any]:
-        return _get_user_config_fields(cls.defaults)
+        return _get_user_config_fields(cls.default_settings)
 
     @classmethod
     def build_agent_configuration(cls, configuration: dict) -> SystemSettings:
         """Process the configuration for this object."""
 
-        defaults = cls.defaults.dict()
+        defaults = cls.default_settings.dict()
         final_configuration = deep_update(defaults, configuration)
 
-        return cls.defaults.__class__.parse_obj(final_configuration)
+        return cls.default_settings.__class__.parse_obj(final_configuration)
 
 
 def _get_user_config_fields(instance: BaseModel) -> dict[str, Any]:

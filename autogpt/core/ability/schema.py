@@ -8,9 +8,6 @@ class ContentType(str, enum.Enum):
     # TBD what these actually are.
     TEXT = "text"
     CODE = "code"
-    IMAGE = "image"
-    VIDEO = "video"
-    AUDIO = "audio"
 
 
 class Knowledge(BaseModel):

@@ -29,7 +29,7 @@ class WorkspaceSettings(SystemSettings):
 
 
 class SimpleWorkspace(Configurable, Workspace):
-    defaults = WorkspaceSettings(
+    default_settings = WorkspaceSettings(
         name="workspace",
         description="The workspace is the root directory for all agent activity.",
         configuration=WorkspaceConfiguration(

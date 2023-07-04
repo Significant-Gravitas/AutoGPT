@@ -20,7 +20,7 @@ class MessageHistory:
 
 
 class SimpleMemory(Memory, Configurable):
-    defaults = MemorySettings(
+    default_settings = MemorySettings(
         name="simple_memory",
         description="A simple memory.",
         configuration=MemoryConfiguration(),

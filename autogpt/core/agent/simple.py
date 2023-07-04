@@ -50,7 +50,6 @@ class AgentSettings(BaseModel):
     agent: AgentSystemSettings
     ability_registry: AbilityRegistrySettings
     memory: MemorySettings
-    embedding_model: EmbeddingModelSettings
     openai_provider: OpenAISettings
     planning: PlannerSettings
     workspace: WorkspaceSettings
@@ -62,7 +61,7 @@ class AgentSettings(BaseModel):
 
 
 class SimpleAgent(Agent, Configurable):
-    defaults = AgentSystemSettings(
+    default_settings = AgentSystemSettings(
         name="simple_agent",
         description="A simple agent.",
         configuration=AgentConfiguration(
@@ -88,10 +87,6 @@ class SimpleAgent(Agent, Configurable):
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
                     storage_route="autogpt.core.memory.SimpleMemory",
                 ),
-                embedding_model=PluginLocation(
-                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.embedding.SimpleEmbeddingModel",
-                ),
                 openai_provider=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
                     storage_route="autogpt.core.resource.model_providers.OpenAIProvider",
@@ -114,7 +109,6 @@ class SimpleAgent(Agent, Configurable):
         logger: logging.Logger,
         ability_registry: SimpleAbilityRegistry,
         memory: SimpleMemory,
-        embedding_model: SimpleEmbeddingModel,
         openai_provider: OpenAIProvider,
         planning: SimplePlanner,
         workspace: SimpleWorkspace,
@@ -123,7 +117,6 @@ class SimpleAgent(Agent, Configurable):
         self._logger = logger
         self._ability_registry = ability_registry
         self._memory = memory
-        self._embedding_model = embedding_model
         # FIXME: Need some work to make this work as a dict of providers
         #  Getting the construction of the config to work is a bit tricky
         self._openai_provider = openai_provider
