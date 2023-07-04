@@ -111,26 +111,29 @@ class Agent:
     ) -> Optional[Any]:
         loop = asyncio.get_event_loop()
         # Run the synchronous function in an executor
-        pool = concurrent.futures.ThreadPoolExecutor()
-        try:
+        with concurrent.futures.ThreadPoolExecutor() as pool:
             task = loop.run_in_executor(pool, some_task, *args)
             event_task = loop.run_in_executor(pool, spn.ended.wait)
             # Wait for the task or the event to complete
             done, pending = await asyncio.wait(
                 {task, event_task}, return_when=asyncio.FIRST_COMPLETED
             )
+
+            spn.ended.set()  # just in case
+
             # Cancel any pending tasks
             for t in pending:
                 t.cancel()
+                await asyncio.sleep(
+                    0.1
+                )  # adding sleep seems to assure that it gets cancelled
+                if not t.cancelled:
+                    logger.warn("Task not cancelled: %s", t)
             # Check which task completed
             if task in done:
                 result = await task
                 return result
             return None
-
-        finally:
-            pool.shutdown(wait=False)
-            # dont want to use 'with' because it waits...
 
     def get_command_instance(
         self, assistant_reply_json: Dict, assistant_reply: ChatModelResponse
