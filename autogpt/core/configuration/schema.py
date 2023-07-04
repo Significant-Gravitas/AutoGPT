@@ -1,7 +1,7 @@
 import abc
 import copy
 import typing
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
 
@@ -22,22 +22,26 @@ class SystemSettings(BaseModel, abc.ABC):
     description: typing.Optional[str]
 
     class Config:
+        arbitrary_types_allowed = True
         extra = "forbid"
         use_enum_values = True
 
 
-class Configurable(abc.ABC):
+S = TypeVar("S", bound=SystemSettings)
+
+
+class Configurable(abc.ABC, Generic[S]):
     """A base class for all configurable objects."""
 
     prefix: str = ""
-    defaults_settings: typing.ClassVar[SystemSettings]
+    defaults_settings: typing.ClassVar[S]
 
     @classmethod
     def get_user_config(cls) -> dict[str, Any]:
         return _get_user_config_fields(cls.defaults_settings)
 
     @classmethod
-    def build_agent_configuration(cls, configuration: dict = {}) -> SystemSettings:
+    def build_agent_configuration(cls, configuration: dict = {}) -> S:
         """Process the configuration for this object."""
 
         defaults_settings = cls.defaults_settings.dict()

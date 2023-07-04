@@ -1,15 +1,19 @@
 """Logging module for Auto-GPT."""
+from __future__ import annotations
+
 import logging
 import os
 import random
 import re
 import time
 from logging import LogRecord
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from colorama import Fore, Style
 
-from autogpt.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
 from autogpt.speech import say_text
