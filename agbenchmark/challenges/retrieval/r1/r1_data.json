@@ -1,21 +1,21 @@
 {
-  "name": "retrieval1",
-  "category": ["basic"],
-  "task": "Print the the capital of America to a .txt file",
+  "name": "basic_information_retrieval",
+  "category": ["retrieval"],
+  "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
   "dependencies": [],
   "ground": {
-    "answer": "Washington",
-    "should_contain": ["Washington"],
-    "should_not_contain": ["New York", "Los Angeles", "San Francisco"],
+    "answer": "£25.89",
+    "should_contain": ["25.89"],
+    "should_not_contain": [],
     "files": [".txt"]
   },
   "mock": {
-    "mock_func": "basic_write_file_mock",
-    "mock_task": "What is the capital of America?"
+    "mock_func": "basic_retrieval_mock",
+    "mock_task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file."
   },
   "info": {
     "difficulty": "basic",
-    "description": "Tests the writing to file",
+    "description": "Tests ability to retrieve information from a website.",
     "side_effects": ["tests if there is in fact an LLM attached"]
   }
 }
