@@ -55,8 +55,8 @@ jobs:
       - name: Run regression tests
         run: |
           cd agent/mini-agi
-          make install
-          source venv/bin/activate
+          pip install -r requirements.txt
+          cp .env_example .env
           pip install ../../dist/agbenchmark-0.1.0-py3-none-any.whl
           agbenchmark start --reg
         env:
