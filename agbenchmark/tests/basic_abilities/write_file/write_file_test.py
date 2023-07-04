@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Any, Dict
+
 import pytest
 
 from agbenchmark.tests.basic_abilities.basic_challenge import BasicChallenge

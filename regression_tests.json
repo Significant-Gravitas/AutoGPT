@@ -1,7 +1,19 @@
 {
+    "TestRetrieval": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/retrieval/r1/r1_test.py"
+    },
     "TestWriteFile": {
         "difficulty": "basic",
         "dependencies": [],
         "test": "agbenchmark/tests/basic_abilities/write_file/write_file_test.py"
+    },
+    "TestReadFile": {
+        "difficulty": "basic",
+        "dependencies": [
+            "basic_write_file"
+        ],
+        "test": "agbenchmark/tests/basic_abilities/read_file/read_file_test.py"
     }
 }
