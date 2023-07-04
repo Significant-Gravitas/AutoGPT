@@ -1,4 +1,4 @@
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.main import COMMAND_CATEGORIES
 from autogpt.memory.vector import get_memory
@@ -28,15 +28,12 @@ def bootstrap_agent(task):
         ai_goals=[task.user_input],
     )
     ai_config.command_registry = command_registry
-    system_prompt = ai_config.construct_full_prompt(config)
     return Agent(
-        ai_name="Auto-GPT",
         memory=get_memory(config),
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,
         next_action_count=0,
-        system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=str(workspace_directory_path),
     )
