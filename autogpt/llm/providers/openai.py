@@ -13,7 +13,7 @@ from openai.error import APIError, RateLimitError, ServiceUnavailableError, Time
 from openai.openai_object import OpenAIObject
 
 if TYPE_CHECKING:
-    from autogpt.agent.agent import Agent
+    from autogpt.agents.agent import Agent
 
 from autogpt.llm.base import (
     ChatModelInfo,
