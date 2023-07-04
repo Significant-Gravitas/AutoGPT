@@ -33,14 +33,10 @@ class Agent(BaseAgent):
     """Agent class for interacting with Auto-GPT.
 
     Attributes:
-        ai_name: The name of the agent.
+        ai_config: AIConfig object encapsulating the agent's personality.
+        command_registry: CommandRegistry containing the agent's abilities.
         memory: The memory object to use.
         next_action_count: The number of actions to execute.
-        system_prompt: The system prompt is the initial prompt that defines everything
-          the AI needs to know to achieve its task successfully.
-        Currently, the dynamic and customizable information in the system prompt are
-          ai_name, description and goals.
-
         triggering_prompt: The last sentence the AI will see before answering.
             For Auto-GPT, this prompt is:
             Determine exactly one command to use, and respond using the format specified
@@ -53,8 +49,10 @@ class Agent(BaseAgent):
             CONTEXTUAL INFORMATION (memory, previous conversations, anything relevant)
             TRIGGERING PROMPT
 
-        The triggering prompt reminds the AI about its short term meta task
-        (defining the next task)
+            The triggering prompt reminds the AI about its short term meta task
+            (defining the next task)
+        workspace_directory: Workspace folder that the agent has access to, e.g. for
+            reading/writing files.
     """
 
     def __init__(
