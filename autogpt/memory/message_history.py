@@ -88,8 +88,8 @@ class MessageHistory:
         """
         Yields:
             Message: a message containing user input
-            Message: a message from the AI containing a proposed ability
-            Message: the message containing the result of the AI's proposed ability
+            Message: a message from the AI containing a proposed action
+            Message: the message containing the result of the AI's proposed action
         """
         messages = messages or self.messages
         for i in range(0, len(messages) - 1):
