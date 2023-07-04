@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from autogpt.core.ability import AbilityRegistrySettings, SimpleAbilityRegistry, AbilityResult
 from autogpt.core.agent.base import Agent
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
-from autogpt.core.embedding import EmbeddingModelSettings, SimpleEmbeddingModel
 from autogpt.core.memory import MemorySettings, SimpleMemory
 from autogpt.core.planning import (
     PlannerSettings,
