@@ -89,7 +89,7 @@ class Config(SystemSettings):
             self.plugins_config = PluginsConfig.load_config(self)
 
 
-class ConfigBuilder(Configurable[Config]):
+class ConfigBuilder(Configurable):
     default_plugins_config_file = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "..", "plugins_config.yaml"
     )
@@ -104,7 +104,7 @@ class ConfigBuilder(Configurable[Config]):
     else:
         default_tts_provider = "gtts"
 
-    defaults_settings = Config(
+    default_settings = Config(
         name="Default Server Config",
         description="This is a default server configuration",
         smart_llm_model="gpt-3.5-turbo",
@@ -114,7 +114,7 @@ class ConfigBuilder(Configurable[Config]):
         skip_news=False,
         debug_mode=False,
         plugins_dir="plugins",
-        plugins_config=PluginsConfig({}),
+        plugins_config=PluginsConfig(plugins={}),
         speak_mode=False,
         skip_reprompt=False,
         allow_downloads=False,
