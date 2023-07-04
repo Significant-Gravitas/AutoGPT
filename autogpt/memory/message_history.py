@@ -17,8 +17,12 @@ from autogpt.llm.utils import (
     count_string_tokens,
     create_chat_completion,
 )
-from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
 from autogpt.logs import logger
+from autogpt.logs.log_cycle import (
+    PROMPT_SUMMARY_FILE_NAME,
+    SUMMARY_FILE_NAME,
+    LogCycleHandler,
+)
 
 
 @dataclass

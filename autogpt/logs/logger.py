@@ -3,20 +3,15 @@ from __future__ import annotations
 
 import logging
 import os
-import random
-import re
-import time
-from logging import LogRecord
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from colorama import Fore, Style
+from colorama import Fore
 
-if TYPE_CHECKING:
-    from autogpt.config import Config
-
-from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
 from autogpt.speech import say_text
+
+from .formatters import AutoGptFormatter, JsonFormatter
+from .handlers import ConsoleHandler, JsonFileHandler, TypingConsoleHandler
 
 
 class Logger(metaclass=Singleton):
@@ -185,123 +180,4 @@ class Logger(metaclass=Singleton):
         return os.path.abspath(log_dir)
 
 
-"""
-Output stream to console using simulated typing
-"""
-
-
-class TypingConsoleHandler(logging.StreamHandler):
-    def emit(self, record):
-        min_typing_speed = 0.05
-        max_typing_speed = 0.01
-
-        msg = self.format(record)
-        try:
-            words = msg.split()
-            for i, word in enumerate(words):
-                print(word, end="", flush=True)
-                if i < len(words) - 1:
-                    print(" ", end="", flush=True)
-                typing_speed = random.uniform(min_typing_speed, max_typing_speed)
-                time.sleep(typing_speed)
-                # type faster after each word
-                min_typing_speed = min_typing_speed * 0.95
-                max_typing_speed = max_typing_speed * 0.95
-            print()
-        except Exception:
-            self.handleError(record)
-
-
-class ConsoleHandler(logging.StreamHandler):
-    def emit(self, record) -> None:
-        msg = self.format(record)
-        try:
-            print(msg)
-        except Exception:
-            self.handleError(record)
-
-
-class AutoGptFormatter(logging.Formatter):
-    """
-    Allows to handle custom placeholders 'title_color' and 'message_no_color'.
-    To use this formatter, make sure to pass 'color', 'title' as log extras.
-    """
-
-    def format(self, record: LogRecord) -> str:
-        if hasattr(record, "color"):
-            record.title_color = (
-                getattr(record, "color")
-                + getattr(record, "title", "")
-                + " "
-                + Style.RESET_ALL
-            )
-        else:
-            record.title_color = getattr(record, "title", "")
-
-        # Add this line to set 'title' to an empty string if it doesn't exist
-        record.title = getattr(record, "title", "")
-
-        if hasattr(record, "msg"):
-            record.message_no_color = remove_color_codes(getattr(record, "msg"))
-        else:
-            record.message_no_color = ""
-        return super().format(record)
-
-
-def remove_color_codes(s: str) -> str:
-    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
-    return ansi_escape.sub("", s)
-
-
-def remove_ansi_escape(s: str) -> str:
-    return s.replace("\x1B", "")
-
-
 logger = Logger()
-
-
-def print_assistant_thoughts(
-    ai_name: object,
-    assistant_reply_json_valid: object,
-    config: Config,
-) -> None:
-    assistant_thoughts_reasoning = None
-    assistant_thoughts_plan = None
-    assistant_thoughts_speak = None
-    assistant_thoughts_criticism = None
-
-    assistant_thoughts = assistant_reply_json_valid.get("thoughts", {})
-    assistant_thoughts_text = remove_ansi_escape(assistant_thoughts.get("text"))
-    if assistant_thoughts:
-        assistant_thoughts_reasoning = remove_ansi_escape(
-            assistant_thoughts.get("reasoning")
-        )
-        assistant_thoughts_plan = remove_ansi_escape(assistant_thoughts.get("plan"))
-        assistant_thoughts_criticism = remove_ansi_escape(
-            assistant_thoughts.get("criticism")
-        )
-        assistant_thoughts_speak = remove_ansi_escape(assistant_thoughts.get("speak"))
-    logger.typewriter_log(
-        f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
-    )
-    logger.typewriter_log("REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}")
-    if assistant_thoughts_plan:
-        logger.typewriter_log("PLAN:", Fore.YELLOW, "")
-        # If it's a list, join it into a string
-        if isinstance(assistant_thoughts_plan, list):
-            assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
-        elif isinstance(assistant_thoughts_plan, dict):
-            assistant_thoughts_plan = str(assistant_thoughts_plan)
-
-        # Split the input_string using the newline character and dashes
-        lines = assistant_thoughts_plan.split("\n")
-        for line in lines:
-            line = line.lstrip("- ")
-            logger.typewriter_log("- ", Fore.GREEN, line.strip())
-    logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
-    # Speak the assistant's thoughts
-    if assistant_thoughts_speak:
-        if config.speak_mode:
-            say_text(assistant_thoughts_speak, config)
-        else:
-            logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
