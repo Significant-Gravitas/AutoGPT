@@ -10,8 +10,7 @@ from autogpt.core.configuration import (
     SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.memory import Memory
-from autogpt.core.planning import strategies, templates
+from autogpt.core.planning import strategies
 from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
