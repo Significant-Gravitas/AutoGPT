@@ -89,7 +89,7 @@ class Config(SystemSettings):
             self.plugins_config = PluginsConfig.load_config(self)
 
 
-class ConfigBuilder(Configurable):
+class ConfigBuilder(Configurable[Config]):
     default_plugins_config_file = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "..", "plugins_config.yaml"
     )
@@ -158,7 +158,7 @@ class ConfigBuilder(Configurable):
     )
 
     @classmethod
-    def build_config_from_env(cls):
+    def build_config_from_env(cls) -> Config:
         """Initialize the Config class"""
         config_dict = {
             "authorise_key": os.getenv("AUTHORISE_COMMAND_KEY"),
