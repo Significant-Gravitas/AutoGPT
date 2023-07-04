@@ -38,7 +38,7 @@ def start(category: str, reg: bool, mock: bool) -> int:
             default=os.path.join(Path.home(), "workspace"),
         )
 
-        config["func_path"] = click.prompt(
+        config["entry_path"] = click.prompt(
             "Please enter a the path to your run_specific_agent function implementation",
             default="/benchmarks.py",
         )

@@ -1,4 +1,3 @@
-import importlib
 import os
 import subprocess
 import sys
@@ -29,18 +28,18 @@ def run_agent(
         mock_manager.delegate(mock_func)
     else:
         timeout = config["cutoff"]
-        print(f"Running Python function '{config['func_path']}' with timeout {timeout}")
+        print(
+            f"Running Python function '{config['entry_path']}' with timeout {timeout}"
+        )
 
         # Get the current working directory
         cwd = os.getcwd()
 
         # Add current directory to Python's import path
         sys.path.append(cwd)
+        sys.path.append(os.path.join(cwd, config["home_path"]))
 
-        module_name = config["func_path"].replace("/", ".").rstrip(".py")
-        module = importlib.import_module(module_name)
-
-        command = [sys.executable, "benchmarks.py", str(task)]
+        command = [sys.executable, config["entry_path"], str(task)]
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
