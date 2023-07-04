@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Union
 
 import yaml
 
 if TYPE_CHECKING:
     from autogpt.config import Config
 
+from pydantic import BaseModel
+
 from autogpt.logs import logger
 from autogpt.plugins.plugin_config import PluginConfig
-
-from pydantic import BaseModel
 
 
 class PluginsConfig(BaseModel):
