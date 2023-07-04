@@ -238,7 +238,9 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
         plugin = sys.modules[qualified_module_name]
 
         if not plugins_config.is_enabled(plugin_module_name):
-            logger.warn(f"Plugin folder {plugin_module_name} found but not configured. If this is a legitimate plugin, please add it to plugins_config.yaml (key: {plugin_module_name}).")
+            logger.warn(
+                f"Plugin folder {plugin_module_name} found but not configured. If this is a legitimate plugin, please add it to plugins_config.yaml (key: {plugin_module_name})."
+            )
             continue
 
         for _, class_obj in inspect.getmembers(plugin):
@@ -261,7 +263,7 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                 for key in dir(zipped_module):
                     if key.startswith("__"):
                         continue
-                    
+
                     a_module = getattr(zipped_module, key)
                     if not inspect.isclass(a_module):
                         continue
@@ -303,7 +305,9 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
             )
             for url, openai_plugin_meta in manifests_specs_clients.items():
                 if not plugins_config.is_enabled(url):
-                    logger.warn(f"OpenAI Plugin {plugin_module_name} found but not configured")
+                    logger.warn(
+                        f"OpenAI Plugin {plugin_module_name} found but not configured"
+                    )
                     continue
 
                 plugin = BaseOpenAIPlugin(openai_plugin_meta)
