@@ -2,9 +2,7 @@ import uuid
 
 from fastapi import APIRouter, FastAPI, Request
 
-from autogpt.core.runner.cli_web_app.server.schema import (
-    InteractRequestBody,
-)
+from autogpt.core.runner.cli_web_app.server.schema import InteractRequestBody
 
 router = APIRouter()
 
