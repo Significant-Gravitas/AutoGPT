@@ -115,3 +115,14 @@ Manually created, existing challenges within Auto-Gpt, https://osu-nlp-group.git
 | | |-- basic_abilities/ **every llm should pass these challenges**
 | | |-- regression/ **challenges that already passed**
 ```
+
+## How to add new agents to agbenchmark ?
+Example with smol developer.
+
+1- Create a github branch with your agent following the same pattern as this example:
+
+https://github.com/smol-ai/developer/pull/114/files
+
+2- Create the submodule and the github workflow by following the same pattern as this example:
+
+https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/pull/48/files
