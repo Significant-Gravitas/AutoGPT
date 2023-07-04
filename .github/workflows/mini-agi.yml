@@ -63,3 +63,4 @@ jobs:
           agbenchmark start --reg
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PROMPT_USER: false
