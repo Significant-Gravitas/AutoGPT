@@ -265,33 +265,35 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
 
                     if (
                         inspect.isclass(a_module)
-                        and issubclass(a_module, AutoGPTPluginTemplate)
-                        and a_module.__name__ != "AutoGPTPluginTemplate"
                     ):
-                        plugin_name = a_module.__name__
-                        plugin_configured = plugins_config.get(plugin_name) is not None
-                        plugin_enabled = plugins_config.is_enabled(plugin_name)
+                        if (
+                            issubclass(a_module, AutoGPTPluginTemplate)
+                            and a_module.__name__ != "AutoGPTPluginTemplate"
+                        ):
+                            plugin_name = a_module.__name__
+                            plugin_configured = plugins_config.get(plugin_name) is not None
+                            plugin_enabled = plugins_config.is_enabled(plugin_name)
 
-                        if plugin_configured and plugin_enabled:
+                            if plugin_configured and plugin_enabled:
+                                logger.debug(
+                                    f"Loading plugin {plugin_name} as it was enabled in config."
+                                )
+                                loaded_plugins.append(a_module())
+                            elif plugin_configured and not plugin_enabled:
+                                logger.debug(
+                                    f"Not loading plugin {plugin_name} as it was disabled in config."
+                                )
+                            elif not plugin_configured:
+                                logger.warn(
+                                    f"Not loading plugin {plugin_name} as it was not found in config. "
+                                    f"Please check your config. Starting with 0.4.1, plugins will not be loaded unless "
+                                    f"they are enabled in plugins_config.yaml. Zipped plugins should use the class "
+                                    f"name ({plugin_name}) as the key."
+                                )
+                        else:
                             logger.debug(
-                                f"Loading plugin {plugin_name} as it was enabled in config."
+                                f"Skipping {key}: {a_module.__name__} because it doesn't subclass AutoGPTPluginTemplate."
                             )
-                            loaded_plugins.append(a_module())
-                        elif plugin_configured and not plugin_enabled:
-                            logger.debug(
-                                f"Not loading plugin {plugin_name} as it was disabled in config."
-                            )
-                        elif not plugin_configured:
-                            logger.warn(
-                                f"Not loading plugin {plugin_name} as it was not found in config. "
-                                f"Please check your config. Starting with 0.4.1, plugins will not be loaded unless "
-                                f"they are enabled in plugins_config.yaml. Zipped plugins should use the class "
-                                f"name ({plugin_name}) as the key."
-                            )
-                    else:
-                        logger.debug(
-                            f"Skipping {key}: {a_module.__name__} because it doesn't subclass AutoGPTPluginTemplate."
-                        )
 
     # OpenAI plugins
     if config.plugins_openai:
