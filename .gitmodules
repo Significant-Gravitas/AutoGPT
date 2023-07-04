@@ -6,6 +6,10 @@
 	path = agent/gpt-engineer
 	url = https://github.com/merwanehamadi/gpt-engineer.git
 	branch = benchmark-integration
+[submodule "agent/mini-agi"]
+	path = agent/mini-agi
+	url = https://github.com/SilenNaihin/mini-agi.git
+	branch = benchmark-integration
 [submodule "agent/smol-developer"]
 	path = agent/smol-developer
 	url = https://github.com/merwanehamadi/developer.git

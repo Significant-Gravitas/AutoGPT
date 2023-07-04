@@ -1,0 +1,7 @@
+{
+  "TestWriteFile": {
+    "difficulty": "basic",
+    "dependencies": [],
+    "test": "agbenchmark/tests/basic_abilities/write_file/write_file_test.py"
+  }
+}
