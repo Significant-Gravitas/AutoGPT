@@ -3,11 +3,7 @@ import logging
 from autogpt.core.ability.base import Ability, AbilityConfiguration, AbilityRegistry
 from autogpt.core.ability.builtins import BUILTIN_ABILITIES
 from autogpt.core.ability.schema import AbilityResult
-from autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-)
+from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.memory.base import Memory
 from autogpt.core.plugin.simple import SimplePluginService
 from autogpt.core.resource.model_providers import (
@@ -82,7 +78,9 @@ class SimpleAbilityRegistry(AbilityRegistry, Configurable):
         self._abilities.append(ability)
 
     def list_abilities(self) -> list[str]:
-        return [f"{ability.name()}: {ability.description()}" for ability in self._abilities]
+        return [
+            f"{ability.name()}: {ability.description()}" for ability in self._abilities
+        ]
 
     def dump_abilities(self) -> list[dict]:
         return [ability.dump() for ability in self._abilities]

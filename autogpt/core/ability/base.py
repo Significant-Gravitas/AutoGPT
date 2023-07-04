@@ -12,6 +12,7 @@ from autogpt.core.planning.simple import LanguageModelConfiguration
 
 class AbilityConfiguration(SystemConfiguration):
     """Struct for model configuration."""
+
     from autogpt.core.plugin.base import PluginLocation
 
     location: PluginLocation

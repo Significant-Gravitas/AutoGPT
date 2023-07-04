@@ -5,8 +5,12 @@ from autogpt.core.planning.schema import (
     LanguageModelPrompt,
     Task,
 )
-from autogpt.core.planning.strategies.utils import to_numbered_list, json_loads
-from autogpt.core.resource.model_providers import LanguageModelMessage, LanguageModelFunction, MessageRole
+from autogpt.core.planning.strategies.utils import json_loads, to_numbered_list
+from autogpt.core.resource.model_providers import (
+    LanguageModelFunction,
+    LanguageModelMessage,
+    MessageRole,
+)
 
 
 class NextAbilityConfiguration(SystemConfiguration):
@@ -18,10 +22,7 @@ class NextAbilityConfiguration(SystemConfiguration):
 
 
 class NextAbility(PromptStrategy):
-
-    DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
-        "System Info:\n{system_info}"
-    )
+    DEFAULT_SYSTEM_PROMPT_TEMPLATE = "System Info:\n{system_info}"
 
     DEFAULT_SYSTEM_INFO = [
         "The OS you are running on is: {os_info}",
@@ -30,7 +31,7 @@ class NextAbility(PromptStrategy):
     ]
 
     DEFAULT_USER_PROMPT_TEMPLATE = (
-        "Your current task is is {task_objective}.\n"        
+        "Your current task is is {task_objective}.\n"
         "You have taken {cycle_count} actions on this task already. "
         "Here is the actions you have taken and their results:\n"
         "{action_history}\n\n"
@@ -52,12 +53,12 @@ class NextAbility(PromptStrategy):
         },
         "self_criticism": {
             "type": "string",
-            "description": "Thoughtful self-criticism that explains why this function may not be the best choice."
+            "description": "Thoughtful self-criticism that explains why this function may not be the best choice.",
         },
         "reasoning": {
             "type": "string",
-            "description": "Your reasoning for choosing this function taking into account the `motivation` and weighing the `self_criticism`."
-        }
+            "description": "Your reasoning for choosing this function taking into account the `motivation` and weighing the `self_criticism`.",
+        },
     }
 
     default_configuration = NextAbilityConfiguration(
@@ -103,8 +104,12 @@ class NextAbility(PromptStrategy):
         }
 
         for ability in ability_schema:
-            ability["parameters"]["properties"].update(self._additional_ability_arguments)
-            ability["parameters"]["required"] += list(self._additional_ability_arguments.keys())
+            ability["parameters"]["properties"].update(
+                self._additional_ability_arguments
+            )
+            ability["parameters"]["required"] += list(
+                self._additional_ability_arguments.keys()
+            )
 
         template_kwargs["task_objective"] = task.objective
         template_kwargs["cycle_count"] = task.context.cycle_count
@@ -142,7 +147,9 @@ class NextAbility(PromptStrategy):
             role=MessageRole.USER,
             content=self._user_prompt_template.format(**template_kwargs),
         )
-        functions = [LanguageModelFunction(json_schema=ability) for ability in ability_schema]
+        functions = [
+            LanguageModelFunction(json_schema=ability) for ability in ability_schema
+        ]
 
         return LanguageModelPrompt(
             messages=[system_prompt, user_prompt],

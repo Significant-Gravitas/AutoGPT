@@ -4,7 +4,7 @@ from autogpt.core.planning.schema import (
     LanguageModelPrompt,
     LanguageModelResponse,
     Task,
-    TaskType,
     TaskStatus,
+    TaskType,
 )
 from autogpt.core.planning.simple import PlannerSettings, SimplePlanner

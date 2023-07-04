@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING
 from importlib import import_module
+from typing import TYPE_CHECKING
 
 from autogpt.core.plugin.base import (
     PluginLocation,

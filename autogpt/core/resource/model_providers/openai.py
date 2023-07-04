@@ -98,7 +98,6 @@ OPEN_AI_MODELS = {
 }
 
 
-
 class OpenAIConfiguration(SystemConfiguration):
     retries_per_request: int = UserConfigurable()
 

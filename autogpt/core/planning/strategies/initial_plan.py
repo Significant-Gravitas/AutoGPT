@@ -3,11 +3,15 @@ from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
     LanguageModelPrompt,
-    TaskType,
     Task,
+    TaskType,
 )
-from autogpt.core.planning.strategies.utils import to_numbered_list, json_loads
-from autogpt.core.resource.model_providers import LanguageModelMessage, LanguageModelFunction, MessageRole
+from autogpt.core.planning.strategies.utils import json_loads, to_numbered_list
+from autogpt.core.resource.model_providers import (
+    LanguageModelFunction,
+    LanguageModelMessage,
+    MessageRole,
+)
 
 
 class InitialPlanConfiguration(SystemConfiguration):
@@ -19,7 +23,6 @@ class InitialPlanConfiguration(SystemConfiguration):
 
 
 class InitialPlan(PromptStrategy):
-
     DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
         "You are an expert project planner. You're responsibility is to create work plans for autonomous agents. "
         "You will be given a name, a role, set of goals for the agent to accomplish. Your job is to "
@@ -27,7 +30,7 @@ class InitialPlan(PromptStrategy):
         "Agents are resourceful, but require clear instructions. Each task you create should have clearly defined "
         "`ready_criteria` that the agent can check to see if the task is ready to be started. Each task should "
         "also have clearly defined `acceptance_criteria` that the agent can check to evaluate if the task is complete. "
-        "You should create as many tasks as you think is necessary to accomplish the goals.\n\n"        
+        "You should create as many tasks as you think is necessary to accomplish the goals.\n\n"
         "System Info:\n{system_info}"
     )
 
@@ -82,11 +85,17 @@ class InitialPlan(PromptStrategy):
                                 },
                             },
                         },
-                        "required": ["objective", "type", "acceptance_criteria", "priority", "ready_criteria"],
+                        "required": [
+                            "objective",
+                            "type",
+                            "acceptance_criteria",
+                            "priority",
+                            "ready_criteria",
+                        ],
                     },
                 },
             },
-        }
+        },
     }
 
     default_configuration = InitialPlanConfiguration(
@@ -134,9 +143,13 @@ class InitialPlan(PromptStrategy):
             "current_time": current_time,
             **kwargs,
         }
-        template_kwargs["agent_goals"] = to_numbered_list(agent_goals, **template_kwargs)
+        template_kwargs["agent_goals"] = to_numbered_list(
+            agent_goals, **template_kwargs
+        )
         template_kwargs["abilities"] = to_numbered_list(abilities, **template_kwargs)
-        template_kwargs["system_info"] = to_numbered_list(self._system_info, **template_kwargs)
+        template_kwargs["system_info"] = to_numbered_list(
+            self._system_info, **template_kwargs
+        )
 
         system_prompt = LanguageModelMessage(
             role=MessageRole.SYSTEM,

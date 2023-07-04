@@ -21,6 +21,7 @@ class Knowledge(BaseModel):
 
 class AbilityResult(BaseModel):
     """The AbilityResult is a standard response struct for an ability."""
+
     ability_name: str
     ability_args: dict[str, str]
     success: bool

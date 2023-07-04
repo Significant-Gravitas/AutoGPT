@@ -1,11 +1,10 @@
 import abc
 import enum
-from typing import Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Type
 
 from pydantic import BaseModel
 
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-
 
 if TYPE_CHECKING:
     from autogpt.core.ability import Ability, AbilityRegistry
