@@ -29,7 +29,7 @@ class SystemSettings(BaseModel):
         use_enum_values = True
 
 
-S = TypeVar('S', bound=SystemSettings)
+S = TypeVar("S", bound=SystemSettings)
 
 
 class Configurable(abc.ABC, Generic[S]):
