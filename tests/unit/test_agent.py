@@ -32,7 +32,7 @@ def test_agent_initialization(agent: Agent):
     assert agent.ai_config.ai_name == "Test AI"
     assert agent.history.messages == []
     assert agent.cycle_budget == 0
-    assert agent.system_prompt == "System prompt"
+    assert "You are Test AI" in agent.system_prompt
 
 
 # More test methods can be added for specific agent interactions

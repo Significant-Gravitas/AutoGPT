@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 from colorama import Fore
 
@@ -85,8 +85,13 @@ class Logger(metaclass=Singleton):
         self.chat_plugins = []
 
     def typewriter_log(
-        self, title="", title_color="", content="", speak_text=False, level=logging.INFO
-    ):
+        self,
+        title: str = "",
+        title_color: str = "",
+        content: str = "",
+        speak_text: bool = False,
+        level: int = logging.INFO,
+    ) -> None:
         if speak_text and self.speak_mode:
             say_text(f"{title}. {content}")
 
@@ -105,29 +110,29 @@ class Logger(metaclass=Singleton):
 
     def debug(
         self,
-        message,
-        title="",
-        title_color="",
-    ):
+        message: str,
+        title: str = "",
+        title_color: str = "",
+    ) -> None:
         self._log(title, title_color, message, logging.DEBUG)
 
     def info(
         self,
-        message,
-        title="",
-        title_color="",
-    ):
+        message: str,
+        title: str = "",
+        title_color: str = "",
+    ) -> None:
         self._log(title, title_color, message, logging.INFO)
 
     def warn(
         self,
-        message,
-        title="",
-        title_color="",
-    ):
+        message: str,
+        title: str = "",
+        title_color: str = "",
+    ) -> None:
         self._log(title, title_color, message, logging.WARN)
 
-    def error(self, title, message=""):
+    def error(self, title: str, message: str = "") -> None:
         self._log(title, Fore.RED, message, logging.ERROR)
 
     def _log(
@@ -135,8 +140,8 @@ class Logger(metaclass=Singleton):
         title: str = "",
         title_color: str = "",
         message: str = "",
-        level=logging.INFO,
-    ):
+        level: int = logging.INFO,
+    ) -> None:
         if message:
             if isinstance(message, list):
                 message = " ".join(message)
@@ -144,11 +149,11 @@ class Logger(metaclass=Singleton):
             level, message, extra={"title": str(title), "color": str(title_color)}
         )
 
-    def set_level(self, level):
+    def set_level(self, level: logging._Level) -> None:
         self.logger.setLevel(level)
         self.typing_logger.setLevel(level)
 
-    def double_check(self, additionalText=None):
+    def double_check(self, additionalText: Optional[str] = None) -> None:
         if not additionalText:
             additionalText = (
                 "Please ensure you've setup and configured everything"
@@ -174,9 +179,9 @@ class Logger(metaclass=Singleton):
         self.json_logger.debug(data)
         self.json_logger.removeHandler(json_data_handler)
 
-    def get_log_directory(self):
+    def get_log_directory(self) -> str:
         this_files_dir_path = os.path.dirname(__file__)
-        log_dir = os.path.join(this_files_dir_path, "../logs")
+        log_dir = os.path.join(this_files_dir_path, "../../logs")
         return os.path.abspath(log_dir)
 
 
