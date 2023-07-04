@@ -250,6 +250,8 @@ def remove_color_codes(s: str) -> str:
 
 
 def remove_ansi_escape(s: str) -> str:
+    if s is None:
+        return ""
     return s.replace("\x1B", "")
 
 
@@ -266,8 +268,8 @@ def print_assistant_thoughts(
     assistant_thoughts_speak = None
     assistant_thoughts_criticism = None
 
-    assistant_thoughts = assistant_reply_json_valid.get("thoughts", {})
-    assistant_thoughts_text = remove_ansi_escape(assistant_thoughts.get("text"))
+    assistant_thoughts = assistant_reply_json_valid.get("thoughts", None)
+    assistant_thoughts_text = remove_ansi_escape(assistant_thoughts.get("text")) if assistant_thoughts is not None else ""
     if assistant_thoughts:
         assistant_thoughts_reasoning = remove_ansi_escape(
             assistant_thoughts.get("reasoning")
