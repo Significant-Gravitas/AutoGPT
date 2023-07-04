@@ -15,31 +15,27 @@ from autogpt.memory.message_history import MessageHistory
 
 @pytest.fixture
 def agent(config: Config):
-    ai_name = "Test AI"
     memory = MagicMock()
     next_action_count = 0
     command_registry = MagicMock()
-    ai_config = AIConfig(ai_name=ai_name)
-    system_prompt = "System prompt"
+    ai_config = AIConfig(ai_name="Test AI")
     triggering_prompt = "Triggering prompt"
     workspace_directory = "workspace_directory"
 
     agent = Agent(
-        ai_name=ai_name,
         memory=memory,
         next_action_count=next_action_count,
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,
-        system_prompt=system_prompt,
         triggering_prompt=triggering_prompt,
         workspace_directory=workspace_directory,
     )
     return agent
 
 
-def test_message_history_batch_summary(mocker, agent, config):
-    history = MessageHistory(agent)
+def test_message_history_batch_summary(mocker, agent: Agent, config: Config):
+    history = MessageHistory.for_model(agent.llm.name, agent=agent)
     model = config.fast_llm_model
     message_tlength = 0
     message_count = 0
@@ -48,7 +44,7 @@ def test_message_history_batch_summary(mocker, agent, config):
     mock_summary_response = ChatModelResponse(
         model_info=OPEN_AI_CHAT_MODELS[model],
         content="I executed browse_website command for each of the websites returned from Google search, but none of them have any job openings.",
-        function_call={},
+        function_call=None,
     )
     mock_summary = mocker.patch(
         "autogpt.memory.message_history.create_chat_completion",
@@ -105,7 +101,7 @@ def test_message_history_batch_summary(mocker, agent, config):
         result = (
             "Command browse_website returned: Answer gathered from website: The text in job"
             + str(i)
-            + " does not provide information on specific job requirements or a job URL.]",
+            + " does not provide information on specific job requirements or a job URL.]"
         )
         msg = Message("system", result, "action_result")
         history.append(msg)
@@ -134,7 +130,7 @@ def test_message_history_batch_summary(mocker, agent, config):
     )
 
     expected_call_count = math.ceil(
-        message_tlength / (OPEN_AI_CHAT_MODELS.get(config.fast_llm_model).max_tokens)
+        message_tlength / (OPEN_AI_CHAT_MODELS[config.fast_llm_model].max_tokens)
     )
     # Expecting 2 batches because of over max token
     assert mock_summary.call_count == expected_call_count  # 2 at the time of writing

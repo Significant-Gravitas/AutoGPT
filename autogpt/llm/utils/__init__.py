@@ -9,7 +9,13 @@ from autogpt.config import Config
 from autogpt.logs import logger
 
 from ..api_manager import ApiManager
-from ..base import ChatModelResponse, ChatSequence, Message
+from ..base import (
+    ChatModelResponse,
+    ChatSequence,
+    FunctionCallDict,
+    Message,
+    ResponseMessageDict,
+)
 from ..providers import openai as iopenai
 from ..providers.openai import (
     OPEN_AI_CHAT_MODELS,
@@ -23,8 +29,8 @@ def call_ai_function(
     function: str,
     args: list,
     description: str,
+    config: Config,
     model: Optional[str] = None,
-    config: Optional[Config] = None,
 ) -> str:
     """Call an AI function
 
@@ -146,7 +152,7 @@ def create_chat_completion(
         ] = config.get_azure_deployment_id_for_model(model)
     if functions:
         chat_completion_kwargs["functions"] = [
-            function.__dict__ for function in functions
+            asdict(function) for function in functions
         ]
         logger.debug(f"Function dicts: {chat_completion_kwargs['functions']}")
 
@@ -160,19 +166,24 @@ def create_chat_completion(
         logger.error(response.error)
         raise RuntimeError(response.error)
 
-    first_message = response.choices[0].message
+    first_message: ResponseMessageDict = response.choices[0].message
     content: str | None = first_message.get("content")
-    function_call: OpenAIFunctionCall | None = first_message.get("function_call")
+    function_call: FunctionCallDict | None = first_message.get("function_call")
 
     for plugin in config.plugins:
         if not plugin.can_handle_on_response():
             continue
+        # TODO: function call support in plugin.on_response()
         content = plugin.on_response(content)
 
     return ChatModelResponse(
         model_info=OPEN_AI_CHAT_MODELS[model],
         content=content,
-        function_call=function_call,
+        function_call=OpenAIFunctionCall(
+            name=function_call["name"], arguments=function_call["arguments"]
+        )
+        if function_call
+        else None,
     )
 
 

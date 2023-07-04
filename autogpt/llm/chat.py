@@ -3,14 +3,13 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from autogpt.llm.providers.openai import get_openai_command_specs
-
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import ChatSequence, Message
+from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.logs import logger
 from autogpt.logs.log_cycle import CURRENT_CONTEXT_FILE_NAME
@@ -165,6 +164,8 @@ def chat_with_ai(
             logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
             break
         message_sequence.add("system", plugin_response)
+        current_tokens_used += tokens_to_add
+
     # Calculate remaining tokens
     tokens_remaining = token_limit - current_tokens_used
     # assert tokens_remaining >= 0, "Tokens remaining is negative.
@@ -184,7 +185,7 @@ def chat_with_ai(
         logger.debug("")
     logger.debug("----------- END OF CONTEXT ----------------")
     agent.log_cycle_handler.log_cycle(
-        agent.ai_name,
+        agent.ai_config.ai_name,
         agent.created_at,
         agent.cycle_count,
         message_sequence.raw(),

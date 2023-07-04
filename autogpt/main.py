@@ -154,11 +154,8 @@ def run_auto_gpt(
             f"reason - {command.disabled_reason or 'Disabled by current config.'}"
         )
 
-    ai_name = ""
     ai_config = construct_main_ai_config(config)
     ai_config.command_registry = command_registry
-    if ai_config.ai_name:
-        ai_name = ai_config.ai_name
     # print(prompt)
     # Initialize variables
     next_action_count = 0
@@ -178,16 +175,11 @@ def run_auto_gpt(
         "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
     logger.typewriter_log("Using Browser:", Fore.GREEN, config.selenium_web_browser)
-    system_prompt = ai_config.construct_full_prompt(config)
-    if config.debug_mode:
-        logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
 
     agent = Agent(
-        ai_name=ai_name,
         memory=memory,
         next_action_count=next_action_count,
         command_registry=command_registry,
-        system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
         ai_config=ai_config,

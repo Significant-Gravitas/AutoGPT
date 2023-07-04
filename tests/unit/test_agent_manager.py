@@ -31,13 +31,13 @@ def model():
 @pytest.fixture(autouse=True)
 def mock_create_chat_completion(mocker, config):
     mock_create_chat_completion = mocker.patch(
-        "autogpt.agent.agent_manager.create_chat_completion",
+        "autogpt.agents.agent_manager.create_chat_completion",
         wraps=create_chat_completion,
     )
     mock_create_chat_completion.return_value = ChatModelResponse(
         model_info=OPEN_AI_CHAT_MODELS[config.fast_llm_model],
         content="irrelevant",
-        function_call={},
+        function_call=None,
     )
     return mock_create_chat_completion
 

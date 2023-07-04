@@ -20,6 +20,17 @@ class MessageDict(TypedDict):
     content: str
 
 
+class ResponseMessageDict(TypedDict):
+    role: Literal["assistant"]
+    content: Optional[str]
+    function_call: Optional[FunctionCallDict]
+
+
+class FunctionCallDict(TypedDict):
+    name: str
+    arguments: str
+
+
 @dataclass
 class Message:
     """OpenAI Message object containing a role and the message content"""
@@ -160,8 +171,11 @@ class LLMResponse:
     """Standard response struct for a response from an LLM model."""
 
     model_info: ModelInfo
-    prompt_tokens_used: int = 0
-    completion_tokens_used: int = 0
+
+    ## Are these OpenAI-specific properties?
+    ## Also: default values here cause clashes in subclasses.
+    # prompt_tokens_used: int = 0
+    # completion_tokens_used: int = 0
 
 
 @dataclass
@@ -170,14 +184,14 @@ class EmbeddingModelResponse(LLMResponse):
 
     embedding: List[float] = field(default_factory=list)
 
-    def __post_init__(self):
-        if self.completion_tokens_used:
-            raise ValueError("Embeddings should not have completion tokens used.")
+    # def __post_init__(self):
+    #     if self.completion_tokens_used:
+    #         raise ValueError("Embeddings should not have completion tokens used.")
 
 
 @dataclass
 class ChatModelResponse(LLMResponse):
-    """Standard response struct for a response from an LLM model."""
+    """Standard response struct for a response from a chat LLM."""
 
-    content: Optional[str] = None
-    function_call: Optional[OpenAIFunctionCall] = None
+    content: Optional[str]
+    function_call: Optional[OpenAIFunctionCall]

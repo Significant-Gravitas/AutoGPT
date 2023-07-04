@@ -1,6 +1,6 @@
-import json
 import signal
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -8,10 +8,9 @@ from colorama import Fore, Style
 
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
-from autogpt.json_utils.utilities import extract_json_from_response, validate_json
-from autogpt.llm.base import ChatModelResponse
-from autogpt.llm.chat import chat_with_ai
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
+from autogpt.llm.api_manager import ApiManager
+from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
 from autogpt.llm.utils import count_string_tokens
 from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.logs.log_cycle import (
@@ -61,7 +60,6 @@ class Agent(BaseAgent):
     def __init__(
         self,
         ai_config: AIConfig,
-        system_prompt: str,
         command_registry: CommandRegistry,
         memory: VectorMemory,
         next_action_count: int,
@@ -70,32 +68,16 @@ class Agent(BaseAgent):
         config: Config,
     ):
         super().__init__(
-            ai_config, system_prompt, command_registry, config, next_action_count
+            ai_config=ai_config,
+            command_registry=command_registry,
+            config=config,
+            default_cycle_instruction=triggering_prompt,
+            cycle_budget=next_action_count,
         )
-        self.ai_config = ai_config
-        self.system_prompt = system_prompt
         self.memory = memory
-        self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, config.restrict_to_workspace)
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.log_cycle_handler = LogCycleHandler()
-        self.fast_token_limit = OPEN_AI_CHAT_MODELS.get(
-            config.fast_llm_model
-        ).max_tokens
-
-    def think_context(self):
-        return Spinner("Thinking... ", plain_output=self.config.plain_output)
-
-    def on_before_think(self):
-        super().on_before_think()
-        self.log_cycle_handler.log_count_within_cycle = 0
-        self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            self.history.raw(),
-            FULL_MESSAGE_HISTORY_FILE_NAME,
-        )
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -121,46 +103,104 @@ class Agent(BaseAgent):
             except StopIteration:
                 break
 
-    def on_response(self, assistant_reply: ChatModelResponse):
+    def think_context(self):
+        return Spinner("Thinking... ", plain_output=self.config.plain_output)
+
+    def construct_base_prompt(self, *args, **kwargs) -> ChatSequence:
+        if kwargs.get("append_messages") is None:
+            kwargs["append_messages"] = []
+
+        # Clock
+        kwargs["append_messages"].append(
+            Message("system", f"The current time and date is {time.strftime('%c')}"),
+        )
+
+        # Add budget information (if any) to prompt
+        budget_msg: Message | None = None
+        api_manager = ApiManager()
+        if api_manager.get_total_budget() > 0.0:
+            remaining_budget = (
+                api_manager.get_total_budget() - api_manager.get_total_cost()
+            )
+            if remaining_budget < 0:
+                remaining_budget = 0
+
+            budget_msg = Message(
+                "system",
+                f"Your remaining API budget is ${remaining_budget:.3f}"
+                + (
+                    " BUDGET EXCEEDED! SHUT DOWN!\n\n"
+                    if remaining_budget == 0
+                    else " Budget very nearly exceeded! Shut down gracefully!\n\n"
+                    if remaining_budget < 0.005
+                    else " Budget nearly exceeded. Finish up.\n\n"
+                    if remaining_budget < 0.01
+                    else ""
+                ),
+            )
+            logger.debug(budget_msg)
+            kwargs["append_messages"].append(budget_msg)
+
+        return super().construct_base_prompt(*args, **kwargs)
+
+    def on_before_think(self, *args, **kwargs):
+        super().on_before_think(*args, **kwargs)
+
+        self.log_cycle_handler.log_count_within_cycle = 0
+        self.log_cycle_handler.log_cycle(
+            self.ai_config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            self.history.raw(),
+            FULL_MESSAGE_HISTORY_FILE_NAME,
+        )
+
+    def parse_and_process_response(self, llm_response: ChatModelResponse) -> None:
         # Avoid circular imports
         from autogpt.app import execute_command, get_command
 
-        try:
-            assistant_reply_json = extract_json_from_response(assistant_reply.content)
-            validate_json(assistant_reply_json, self.config)
-        except json.JSONDecodeError as e:
-            logger.error(f"Exception while validating assistant reply JSON: {e}")
-            assistant_reply_json = {}
+        if not llm_response.content:
+            raise SyntaxError("Assistant response has no text content")
+
+        assistant_reply_dict = extract_dict_from_response(llm_response.content)
+
+        valid, errors = validate_dict(assistant_reply_dict, self.config)
+        if not valid:
+            raise SyntaxError(
+                "Validation of response failed:\n  "
+                + ";\n  ".join([str(e) for e in errors])
+            )
 
         for plugin in self.config.plugins:
             if not plugin.can_handle_post_planning():
                 continue
-            assistant_reply_json = plugin.post_planning(assistant_reply_json)
+            assistant_reply_dict = plugin.post_planning(assistant_reply_dict)
 
         command_name: str | None = None
         arguments: dict[str, str] | None = None
         user_input = ""
 
         # Print Assistant thoughts
-        if assistant_reply_json != {}:
+        if assistant_reply_dict != {}:
             # Get command name and arguments
             try:
                 print_assistant_thoughts(
-                    self.ai_config.ai_name, assistant_reply_json, self.config
+                    self.ai_config.ai_name, assistant_reply_dict, self.config
                 )
                 command_name, arguments = get_command(
-                    assistant_reply_json, assistant_reply, self.config
+                    assistant_reply_dict, llm_response, self.config
                 )
                 if self.config.speak_mode:
                     say_text(f"I want to execute {command_name}", self.config)
 
             except Exception as e:
                 logger.error("Error: \n", str(e))
+
         self.log_cycle_handler.log_cycle(
             self.ai_config.ai_name,
             self.created_at,
             self.cycle_count,
-            assistant_reply_json,
+            assistant_reply_dict,
             NEXT_ACTION_FILE_NAME,
         )
 
@@ -264,7 +304,7 @@ class Agent(BaseAgent):
             memory_tlength = count_string_tokens(
                 str(self.history.summary_message()), self.config.fast_llm_model
             )
-            if result_tlength + memory_tlength + 600 > self.fast_token_limit:
+            if result_tlength + memory_tlength > self.send_token_limit:
                 result = f"Failure: command {command_name} returned too much output. \
                     Do not execute this command again with the same arguments."
 
@@ -283,5 +323,3 @@ class Agent(BaseAgent):
         else:
             self.history.add("system", "Unable to execute command", "action_result")
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
-
-        super().on_response(assistant_reply)

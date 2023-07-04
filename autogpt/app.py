@@ -43,27 +43,29 @@ def get_command(
     """
     if config.openai_functions:
         if assistant_reply.function_call is None:
-            return "Error:", "No 'function_call' in assistant reply"
+            return "Error:", {"message": "No 'function_call' in assistant reply"}
         assistant_reply_json["command"] = {
             "name": assistant_reply.function_call.name,
             "args": json.loads(assistant_reply.function_call.arguments),
         }
     try:
         if "command" not in assistant_reply_json:
-            return "Error:", "Missing 'command' object in JSON"
+            return "Error:", {"message": "Missing 'command' object in JSON"}
 
         if not isinstance(assistant_reply_json, dict):
             return (
                 "Error:",
-                f"The previous message sent was not a dictionary {assistant_reply_json}",
+                {
+                    "message": f"The previous message sent was not a dictionary {assistant_reply_json}"
+                },
             )
 
         command = assistant_reply_json["command"]
         if not isinstance(command, dict):
-            return "Error:", "'command' object is not a dictionary"
+            return "Error:", {"message": "'command' object is not a dictionary"}
 
         if "name" not in command:
-            return "Error:", "Missing 'name' field in 'command' object"
+            return "Error:", {"message": "Missing 'name' field in 'command' object"}
 
         command_name = command["name"]
 
@@ -72,10 +74,10 @@ def get_command(
 
         return command_name, arguments
     except json.decoder.JSONDecodeError:
-        return "Error:", "Invalid JSON"
+        return "Error:", {"message": "Invalid JSON"}
     # All other errors, return "Error: + error message"
     except Exception as e:
-        return "Error:", str(e)
+        return "Error:", {"message": str(e)}
 
 
 def map_command_synonyms(command_name: str):

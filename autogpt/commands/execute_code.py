@@ -45,7 +45,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
     Returns:
         str: The STDOUT captured from the code when it ran
     """
-    ai_name = agent.ai_name
+    ai_name = agent.ai_config.ai_name
     code_dir = agent.workspace.get_path(Path(ai_name, "executed_code"))
     os.makedirs(code_dir, exist_ok=True)
 
@@ -62,7 +62,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
         with open(file_path, "w+", encoding="utf-8") as f:
             f.write(code)
 
-        return execute_python_file(str(file_path), agent)
+        return execute_python_file(str(file_path), agent=agent)
     except Exception as e:
         return f"Error: {str(e)}"
 
