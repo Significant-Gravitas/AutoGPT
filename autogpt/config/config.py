@@ -83,6 +83,13 @@ class Config(SystemSettings):
     plugins: list[str]
     authorise_key: str
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        # Hotfix: Call model_post_init explictly as it doesn't seem to be called for pydantic<2.0.0
+        # https://github.com/pydantic/pydantic/issues/1729#issuecomment-1300576214
+        self.model_post_init(**kwargs)
+
     # Executed immediately after init by Pydantic
     def model_post_init(self, **kwargs) -> None:
         if not self.plugins_config.plugins:
