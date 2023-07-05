@@ -59,7 +59,11 @@ def config(
     # avoid circular dependency
     from autogpt.plugins.plugins_config import PluginsConfig
 
-    config.plugins_config = PluginsConfig.load_config(global_config=config)
+    config.plugins_config = PluginsConfig.load_config(
+        plugins_config_file=config.plugins_config_file,
+        plugins_denylist=config.plugins_denylist,
+        plugins_allowlist=config.plugins_allowlist,
+    )
 
     # Do a little setup and teardown since the config object is a singleton
     mocker.patch.multiple(
