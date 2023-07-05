@@ -4,7 +4,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
-from typing import Dict
+from typing import Dict, Union
 
 import yaml
 from colorama import Fore
@@ -82,18 +82,6 @@ class Config(SystemSettings):
     elevenlabs_voice_id: Optional[str] = None
     plugins: list[str]
     authorise_key: str
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        # Hotfix: Call model_post_init explictly as it doesn't seem to be called for pydantic<2.0.0
-        # https://github.com/pydantic/pydantic/issues/1729#issuecomment-1300576214
-        self.model_post_init(**kwargs)
-
-    # Executed immediately after init by Pydantic
-    def model_post_init(self, **kwargs) -> None:
-        if not self.plugins_config.plugins:
-            self.plugins_config = PluginsConfig.load_config(self)
 
 
 class ConfigBuilder(Configurable[Config]):
@@ -213,21 +201,16 @@ class ConfigBuilder(Configurable[Config]):
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
         }
 
-        # Converting to a list from comma-separated string
-        disabled_command_categories = os.getenv("DISABLED_COMMAND_CATEGORIES")
-        if disabled_command_categories:
-            config_dict[
-                "disabled_command_categories"
-            ] = disabled_command_categories.split(",")
+        config_dict["disabled_command_categories"] = _safe_split(
+            os.getenv("DISABLED_COMMAND_CATEGORIES")
+        )
 
-        # Converting to a list from comma-separated string
-        shell_denylist = os.getenv("SHELL_DENYLIST", os.getenv("DENY_COMMANDS"))
-        if shell_denylist:
-            config_dict["shell_denylist"] = shell_denylist.split(",")
-
-        shell_allowlist = os.getenv("SHELL_ALLOWLIST", os.getenv("ALLOW_COMMANDS"))
-        if shell_allowlist:
-            config_dict["shell_allowlist"] = shell_allowlist.split(",")
+        config_dict["shell_denylist"] = _safe_split(
+            os.getenv("SHELL_DENYLIST", os.getenv("DENY_COMMANDS"))
+        )
+        config_dict["shell_allowlist"] = _safe_split(
+            os.getenv("SHELL_ALLOWLIST", os.getenv("ALLOW_COMMANDS"))
+        )
 
         config_dict["google_custom_search_engine_id"] = os.getenv(
             "GOOGLE_CUSTOM_SEARCH_ENGINE_ID", os.getenv("CUSTOM_SEARCH_ENGINE_ID")
@@ -237,13 +220,13 @@ class ConfigBuilder(Configurable[Config]):
             "ELEVENLABS_VOICE_ID", os.getenv("ELEVENLABS_VOICE_1_ID")
         )
 
-        plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
-        if plugins_allowlist:
-            config_dict["plugins_allowlist"] = plugins_allowlist.split(",")
-
-        plugins_denylist = os.getenv("DENYLISTED_PLUGINS")
-        if plugins_denylist:
-            config_dict["plugins_denylist"] = plugins_denylist.split(",")
+        config_dict["plugins_allowlist"] = _safe_split(os.getenv("ALLOWLISTED_PLUGINS"))
+        config_dict["plugins_denylist"] = _safe_split(os.getenv("DENYLISTED_PLUGINS"))
+        config_dict["plugins_config"] = PluginsConfig.load_config(
+            config_dict["plugins_config_file"],
+            config_dict["plugins_denylist"],
+            config_dict["plugins_allowlist"],
+        )
 
         with contextlib.suppress(TypeError):
             config_dict["image_size"] = int(os.getenv("IMAGE_SIZE"))
@@ -325,3 +308,10 @@ def check_openai_api_key(config: Config) -> None:
         else:
             print("Invalid OpenAI API key!")
             exit(1)
+
+
+def _safe_split(s: Union[str, None], sep: str = ",") -> list[str]:
+    """Split a string by a separator. Return an empty list if the string is None."""
+    if s is None:
+        return []
+    return s.split(sep)
