@@ -1,16 +1,15 @@
 """File operations for AutoGPT"""
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import os.path
+from pathlib import Path
 from typing import Generator, Literal
-
-from confection import Config
 
 from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
-from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
 
@@ -76,21 +75,26 @@ def file_operations_state(log_path: str) -> dict[str, str]:
     return state
 
 
+@sanitize_path_arg("filename")
 def is_duplicate_operation(
-    operation: Operation, filename: str, config: Config, checksum: str | None = None
+    operation: Operation, filename: str, agent: Agent, checksum: str | None = None
 ) -> bool:
     """Check if the operation has already been performed
 
     Args:
         operation: The operation to check for
         filename: The name of the file to check for
-        config: The agent config
+        agent: The agent
         checksum: The checksum of the contents to be written
 
     Returns:
         True if the operation has already been performed on the file
     """
-    state = file_operations_state(config.file_logger_path)
+    # Make the filename into a relative path if possible
+    with contextlib.suppress(ValueError):
+        filename = str(Path(filename).relative_to(agent.workspace.root))
+
+    state = file_operations_state(agent.config.file_logger_path)
     if operation == "delete" and filename not in state:
         return True
     if operation == "write" and state.get(filename) == checksum:
@@ -98,8 +102,9 @@ def is_duplicate_operation(
     return False
 
 
+@sanitize_path_arg("filename")
 def log_operation(
-    operation: str, filename: str, agent: Agent, checksum: str | None = None
+    operation: Operation, filename: str, agent: Agent, checksum: str | None = None
 ) -> None:
     """Log the file operation to the file_logger.txt
 
@@ -108,6 +113,10 @@ def log_operation(
         filename: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
+    # Make the filename into a relative path if possible
+    with contextlib.suppress(ValueError):
+        filename = str(Path(filename).relative_to(agent.workspace.root))
+
     log_entry = f"{operation}: {filename}"
     if checksum is not None:
         log_entry += f" #{checksum}"
@@ -205,7 +214,7 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
         str: A message indicating success or failure
     """
     checksum = text_checksum(text)
-    if is_duplicate_operation("write", filename, agent.config, checksum):
+    if is_duplicate_operation("write", filename, agent, checksum):
         return "Error: File has already been updated."
     try:
         directory = os.path.dirname(filename)
@@ -285,7 +294,7 @@ def delete_file(filename: str, agent: Agent) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    if is_duplicate_operation("delete", filename, agent.config):
+    if is_duplicate_operation("delete", filename, agent):
         return "Error: File has already been deleted."
     try:
         os.remove(filename)
