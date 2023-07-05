@@ -1,5 +1,6 @@
 import os
 import random
+import re
 import string
 import tempfile
 
@@ -88,13 +89,9 @@ def test_execute_python_file_invalid(agent: Agent):
 
 
 def test_execute_python_file_not_found(agent: Agent):
-    assert all(
-        s in sut.execute_python_file("notexist.py", agent).lower()
-        for s in [
-            "python: can't open file 'notexist.py'",
-            "[errno 2] no such file or directory",
-        ]
-    )
+    result = sut.execute_python_file("notexist.py", agent).lower()
+    assert re.match(r"python: can't open file '([A-Z]:)?[/\\\-\w]*notexist.py'", result)
+    assert "[errno 2] no such file or directory" in result
 
 
 def test_execute_shell(random_string: str, agent: Agent):
