@@ -37,7 +37,7 @@ class Agent(BaseAgent):
         ai_config: AIConfig object encapsulating the agent's personality.
         command_registry: CommandRegistry containing the agent's abilities.
         memory: The memory object to use.
-        next_action_count: The number of actions to execute.
+        cycle_budget: The number of actions to execute.
         triggering_prompt: The last sentence the AI will see before answering.
             For Auto-GPT, this prompt is:
             Determine exactly one command to use, and respond using the format specified
@@ -79,9 +79,6 @@ class Agent(BaseAgent):
         self.log_cycle_handler = LogCycleHandler()
 
     def start_interaction_loop(self):
-        # Interaction Loop
-        self.cycle_count = 0
-
         # Signal handler for interrupting y -N
         def signal_handler(signum, frame):
             if self.cycle_budget == 0:
@@ -214,7 +211,7 @@ class Agent(BaseAgent):
             f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
         )
 
-        if not self.config.continuous_mode and self.next_action_count == 0:
+        if not self.config.continuous_mode and self.cycle_budget is None:
             # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
             # Get key press: Prompt the user to press enter to continue or escape
             # to exit
@@ -241,7 +238,7 @@ class Agent(BaseAgent):
                     continue
                 elif console_input.lower().startswith(f"{self.config.authorise_key} -"):
                     try:
-                        self.next_action_count = abs(int(console_input.split(" ")[1]))
+                        self.reset_budget(abs(int(console_input.split(" ")[1])))
                         user_input = "GENERATE NEXT COMMAND JSON"
                     except ValueError:
                         logger.warn(
@@ -279,7 +276,7 @@ class Agent(BaseAgent):
             logger.typewriter_log("\n")
             # Print authorized commands left value
             logger.typewriter_log(
-                f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
+                f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.cycles_remaining}"
             )
 
         # Execute command
@@ -287,6 +284,9 @@ class Agent(BaseAgent):
             result = f"Could not execute command: {arguments}"
         elif command_name == "human_feedback":
             result = f"Human feedback: {user_input}"
+
+            if self.cycles_remaining is not None:
+                self.cycles_remaining += 1
         else:
             for plugin in self.config.plugins:
                 if not plugin.can_handle_pre_command():
@@ -313,8 +313,6 @@ class Agent(BaseAgent):
                 if not plugin.can_handle_post_command():
                     continue
                 result = plugin.post_command(command_name, result)
-            if self.next_action_count > 0:
-                self.next_action_count -= 1
 
         # Check if there's a result from the command append it to the message
         # history

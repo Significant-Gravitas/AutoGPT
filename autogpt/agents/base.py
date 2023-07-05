@@ -33,7 +33,7 @@ class BaseAgent(metaclass=ABCMeta):
         self.config = config
         self.big_brain = big_brain
         self.default_cycle_instruction = default_cycle_instruction
-        self.cycle_budget = cycle_budget
+        self.cycle_budget = self.cycles_remaining = cycle_budget
         self.cycle_count = 0
 
         self.system_prompt = ai_config.construct_full_prompt(config)
@@ -62,12 +62,14 @@ class BaseAgent(metaclass=ABCMeta):
         """
 
         # stop if cycle budget reached
-        if self.cycle_budget is not None and self.cycle_count >= self.cycle_budget:
+        if self.cycles_remaining is not None and self.cycles_remaining > 0:
             raise StopIteration
 
         self.think(self.default_cycle_instruction)
 
         self.cycle_count += 1
+        if self.cycles_remaining is not None:
+            self.cycles_remaining -= 1
 
     def think(self, instruction: str) -> None:
         """Runs the agent for one cycle.
@@ -233,6 +235,9 @@ class BaseAgent(metaclass=ABCMeta):
             instruction: The instruction for the current cycle, also used in constructing the prompt
         """
         pass
+
+    def reset_budget(self, new_budget: int | None = None) -> None:
+        self.cycle_budget = self.cycles_remaining = new_budget
 
 
 def add_history_upto_token_limit(
