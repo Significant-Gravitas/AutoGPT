@@ -62,7 +62,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
         with open(file_path, "w+", encoding="utf-8") as f:
             f.write(code)
 
-        return execute_python_file(str(file_path), agent=agent)
+        return execute_python_file(str(file_path), agent)
     except Exception as e:
         return f"Error: {str(e)}"
 

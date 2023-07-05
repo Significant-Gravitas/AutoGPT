@@ -82,14 +82,14 @@ def test_execute_python_code_overwrites_file(random_code: str, agent: Agent):
 
 def test_execute_python_file_invalid(agent: Agent):
     assert all(
-        s in sut.execute_python_file("not_python", agent=agent).lower()
+        s in sut.execute_python_file("not_python", agent).lower()
         for s in ["error:", "invalid", ".py"]
     )
 
 
 def test_execute_python_file_not_found(agent: Agent):
     assert all(
-        s in sut.execute_python_file("notexist.py", agent=agent).lower()
+        s in sut.execute_python_file("notexist.py", agent).lower()
         for s in [
             "python: can't open file 'notexist.py'",
             "[errno 2] no such file or directory",
@@ -98,26 +98,26 @@ def test_execute_python_file_not_found(agent: Agent):
 
 
 def test_execute_shell(random_string: str, agent: Agent):
-    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent=agent)
+    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert f"Hello {random_string}!" in result
 
 
 def test_execute_shell_local_commands_not_allowed(random_string: str, agent: Agent):
-    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent=agent)
+    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert f"Hello {random_string}!" in result
 
 
 def test_execute_shell_denylist_should_deny(agent: Agent, random_string: str):
     agent.config.shell_denylist = ["echo"]
 
-    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent=agent)
+    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert "Error:" in result and "not allowed" in result
 
 
 def test_execute_shell_denylist_should_allow(agent: Agent, random_string: str):
     agent.config.shell_denylist = ["cat"]
 
-    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent=agent)
+    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert "Hello" in result and random_string in result
     assert "Error" not in result
 
@@ -126,7 +126,7 @@ def test_execute_shell_allowlist_should_deny(agent: Agent, random_string: str):
     agent.config.shell_command_control = sut.ALLOWLIST_CONTROL
     agent.config.shell_allowlist = ["cat"]
 
-    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent=agent)
+    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert "Error:" in result and "not allowed" in result
 
 
@@ -134,6 +134,6 @@ def test_execute_shell_allowlist_should_allow(agent: Agent, random_string: str):
     agent.config.shell_command_control = sut.ALLOWLIST_CONTROL
     agent.config.shell_allowlist = ["echo"]
 
-    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent=agent)
+    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert "Hello" in result and random_string in result
     assert "Error" not in result

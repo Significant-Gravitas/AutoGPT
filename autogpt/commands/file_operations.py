@@ -113,7 +113,7 @@ def log_operation(
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
     append_to_file(
-        agent.config.file_logger_path, f"{log_entry}\n", agent=agent, should_log=False
+        agent.config.file_logger_path, f"{log_entry}\n", agent, should_log=False
     )
 
 
