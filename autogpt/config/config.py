@@ -9,7 +9,7 @@ from typing import Any, Dict
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
-from pydantic import validator
+from pydantic import Field, validator
 
 from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.plugins.plugins_config import PluginsConfig
@@ -18,7 +18,7 @@ AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml
 from typing import Optional
 
 
-class Config(SystemSettings):
+class Config(SystemSettings, arbitrary_types_allowed=True):
     fast_llm_model: str
     smart_llm_model: str
     continuous_mode: bool
@@ -82,7 +82,7 @@ class Config(SystemSettings):
     plugins_config_file: str
     chat_messages_enabled: bool
     elevenlabs_voice_id: Optional[str] = None
-    plugins: list[AutoGPTPluginTemplate]
+    plugins: list[AutoGPTPluginTemplate] = Field(default=[], exclude=True)
     authorise_key: str
 
     def __init__(self, **kwargs):
@@ -98,7 +98,7 @@ class Config(SystemSettings):
             self.plugins_config = PluginsConfig.load_config(self)
 
     @validator("plugins", each_item=True)
-    def validate_plugins(self, p: AutoGPTPluginTemplate | Any):
+    def validate_plugins(cls, p: AutoGPTPluginTemplate | Any):
         assert issubclass(
             p.__class__, AutoGPTPluginTemplate
         ), f"{p} does not subclass AutoGPTPluginTemplate"
