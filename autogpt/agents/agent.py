@@ -154,7 +154,9 @@ class Agent(BaseAgent):
             FULL_MESSAGE_HISTORY_FILE_NAME,
         )
 
-    def parse_and_process_response(self, llm_response: ChatModelResponse) -> None:
+    def parse_and_process_response(
+        self, llm_response: ChatModelResponse, *args, **kwargs
+    ) -> None:
         # Avoid circular imports
         from autogpt.app import execute_command, get_command
 
