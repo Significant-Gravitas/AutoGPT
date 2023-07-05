@@ -9,6 +9,7 @@ from typing import Dict
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
+from pydantic import SkipValidation
 
 from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.plugins.plugins_config import PluginsConfig
@@ -81,7 +82,7 @@ class Config(SystemSettings):
     plugins_config_file: str
     chat_messages_enabled: bool
     elevenlabs_voice_id: Optional[str] = None
-    plugins: list[AutoGPTPluginTemplate]
+    plugins: list[SkipValidation[AutoGPTPluginTemplate]]
     authorise_key: str
 
     def __init__(self, **kwargs):
