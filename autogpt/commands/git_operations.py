@@ -24,7 +24,7 @@ from .decorators import sanitize_path_arg
             "required": True,
         },
     },
-    lambda config: (config.github_username and config.github_api_key) is not None,
+    lambda config: bool(config.github_username and config.github_api_key),
     "Configure github_username and github_api_key.",
 )
 @sanitize_path_arg("clone_path")
