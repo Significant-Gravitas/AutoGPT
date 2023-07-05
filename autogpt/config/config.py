@@ -4,12 +4,12 @@ from __future__ import annotations
 import contextlib
 import os
 import re
-from typing import Dict
+from typing import Any, Dict
 
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
-from pydantic import SkipValidation
+from pydantic import validator
 
 from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.plugins.plugins_config import PluginsConfig
@@ -82,7 +82,7 @@ class Config(SystemSettings):
     plugins_config_file: str
     chat_messages_enabled: bool
     elevenlabs_voice_id: Optional[str] = None
-    plugins: list[SkipValidation[AutoGPTPluginTemplate]]
+    plugins: list[AutoGPTPluginTemplate]
     authorise_key: str
 
     def __init__(self, **kwargs):
@@ -96,6 +96,16 @@ class Config(SystemSettings):
     def model_post_init(self, **kwargs) -> None:
         if not self.plugins_config.plugins:
             self.plugins_config = PluginsConfig.load_config(self)
+
+    @validator("plugins", each_item=True)
+    def validate_plugins(self, p: AutoGPTPluginTemplate | Any):
+        assert issubclass(
+            p.__class__, AutoGPTPluginTemplate
+        ), f"{p} does not subclass AutoGPTPluginTemplate"
+        assert (
+            p.__class__.__name__ != "AutoGPTPluginTemplate"
+        ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
+        return p
 
 
 class ConfigBuilder(Configurable[Config]):
