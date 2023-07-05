@@ -1,12 +1,28 @@
 import json
 import os
 import shutil
+from pathlib import Path  # noqa
 from typing import Any, Dict, Generator, List
 
 import pytest
 
 from agbenchmark.start_benchmark import CONFIG_PATH, REGRESSION_TESTS_PATH
 from agbenchmark.tests.regression.RegressionManager import RegressionManager
+
+
+def get_dynamic_workspace(config: Dict[str, Any]) -> str:
+    # Extract the string inside ${...}
+    path_expr = config["workspace"][2:-1]
+
+    # Check if it starts with "os.path.join"
+    if path_expr.strip().startswith("os.path.join"):
+        # Evaluate the path string
+        path_value = eval(path_expr)
+
+        # Replace the original string with the evaluated result
+        return path_value
+    else:
+        raise ValueError("Invalid workspace path expression.")
 
 
 @pytest.fixture(scope="module")
@@ -17,11 +33,16 @@ def config(request: Any) -> None:
 
     if request.config.getoption("--mock"):
         config["workspace"] = "agbenchmark/mocks/workspace"
+    elif config.get("workspace", "").startswith("${") and config.get(
+        "workspace", ""
+    ).endswith("}"):
+        path = get_dynamic_workspace(config)
+        config["workspace"] = path
 
     return config
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="module", autouse=True)
 def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
     yield config["workspace"]
     # teardown after test function completes
