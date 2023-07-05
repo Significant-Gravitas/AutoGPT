@@ -62,7 +62,7 @@ class BaseAgent(metaclass=ABCMeta):
         """
 
         # stop if cycle budget reached
-        if self.cycles_remaining is not None and self.cycles_remaining > 0:
+        if self.cycles_remaining is not None and self.cycles_remaining <= 0:
             raise StopIteration
 
         self.think(self.default_cycle_instruction)
