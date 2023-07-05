@@ -157,8 +157,6 @@ def run_auto_gpt(
     ai_config = construct_main_ai_config(config)
     ai_config.command_registry = command_registry
     # print(prompt)
-    # Initialize variables
-    max_cycle_count = 0
 
     # add chat plugins capable of report to logger
     if config.chat_messages_enabled:
@@ -183,6 +181,5 @@ def run_auto_gpt(
         workspace_directory=workspace_directory,
         ai_config=ai_config,
         config=config,
-        cycle_budget=max_cycle_count,
     )
     agent.start_interaction_loop()

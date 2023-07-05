@@ -238,7 +238,7 @@ class Agent(BaseAgent):
                     continue
                 elif console_input.lower().startswith(f"{self.config.authorise_key} -"):
                     try:
-                        self.reset_budget(abs(int(console_input.split(" ")[1])))
+                        self.reset_cycle_budget(abs(int(console_input.split(" ")[1])))
                         user_input = "GENERATE NEXT COMMAND JSON"
                     except ValueError:
                         logger.warn(

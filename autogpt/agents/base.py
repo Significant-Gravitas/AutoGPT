@@ -61,6 +61,9 @@ class BaseAgent(metaclass=ABCMeta):
         Raises `StopIteration` if the `cycle_budget` is reached.
         """
 
+        logger.debug(
+            f"Cycle budget: {self.cycle_budget}; remaining: {self.cycles_remaining}"
+        )
         # stop if cycle budget reached
         if self.cycles_remaining is not None and self.cycles_remaining <= 0:
             raise StopIteration
@@ -236,7 +239,7 @@ class BaseAgent(metaclass=ABCMeta):
         """
         pass
 
-    def reset_budget(self, new_budget: int | None = None) -> None:
+    def reset_cycle_budget(self, new_budget: int | None = None) -> None:
         self.cycle_budget = self.cycles_remaining = new_budget
 
 
