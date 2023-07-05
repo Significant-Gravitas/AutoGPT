@@ -13,7 +13,7 @@ class TestRetrieval2(RetrievalChallenge):
     def get_file_path(self) -> str:  # all tests must implement this method
         return os.path.join(os.path.dirname(__file__), "r2_data.json")
 
-    @pytest.mark.depends(on=["basic_write_file"])
+    @pytest.mark.depends(on=["test_retrieval"], name="test_retrieval_2")
     def test_method(self, config: Dict[str, Any]) -> None:
         self.setup_challenge(config)
 
