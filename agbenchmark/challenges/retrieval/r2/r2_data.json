@@ -1,0 +1,21 @@
+{
+  "name": "basic_information_retrieval",
+  "category": ["retrieval"],
+  "task": "Write tesla's revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion).",
+  "dependencies": [],
+  "ground": {
+    "answer": "81,462",
+    "should_contain": ["81,462"],
+    "should_not_contain": [],
+    "files": [".txt"]
+  },
+  "mock": {
+    "mock_func": "basic_retrieval_2_mock",
+    "mock_task": "Write tesla's revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion)."
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Tests ability to retrieve information.",
+    "side_effects": ["tests if there is in fact an LLM attached"]
+  }
+}
