@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
 from contextlib import AbstractContextManager, nullcontext
-from typing import Callable, Optional
+from typing import Optional
 
 from colorama import Fore
 
@@ -17,10 +17,6 @@ from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 
 class BaseAgent(metaclass=ABCMeta):
-    think_context: Callable[
-        [BaseAgent], AbstractContextManager
-    ] = lambda _: nullcontext()
-
     def __init__(
         self,
         ai_config: AIConfig,
@@ -84,7 +80,7 @@ class BaseAgent(metaclass=ABCMeta):
 
         self.on_before_think(prompt, instruction)
 
-        with self.think_context(self):
+        with self.context_while_think():
             raw_response = create_chat_completion(prompt, self.config)
 
         self.on_response(raw_response, prompt, instruction)
@@ -184,6 +180,9 @@ class BaseAgent(metaclass=ABCMeta):
                 -1, message_to_add
             )  # HACK: assumes cycle instruction to be at the end
             current_tokens_used += tokens_to_add
+
+    def context_while_think(self) -> AbstractContextManager:
+        return nullcontext()
 
     def on_response(
         self, llm_response: ChatModelResponse, prompt: ChatSequence, instruction: str

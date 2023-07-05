@@ -102,7 +102,7 @@ class Agent(BaseAgent):
             except StopIteration:
                 break
 
-    def think_context(self):
+    def context_while_think(self):
         return Spinner("Thinking... ", plain_output=self.config.plain_output)
 
     def construct_base_prompt(self, *args, **kwargs) -> ChatSequence:
