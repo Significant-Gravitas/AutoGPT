@@ -112,7 +112,7 @@ class ConfigBuilder(Configurable[Config]):
     else:
         default_tts_provider = "gtts"
 
-    defaults_settings = Config(
+    default_settings = Config(
         name="Default Server Config",
         description="This is a default server configuration",
         smart_llm_model="gpt-3.5-turbo",
@@ -122,7 +122,7 @@ class ConfigBuilder(Configurable[Config]):
         skip_news=False,
         debug_mode=False,
         plugins_dir="plugins",
-        plugins_config=PluginsConfig({}),
+        plugins_config=PluginsConfig(plugins={}),
         speak_mode=False,
         skip_reprompt=False,
         allow_downloads=False,
@@ -166,7 +166,7 @@ class ConfigBuilder(Configurable[Config]):
     )
 
     @classmethod
-    def build_config_from_env(cls):
+    def build_config_from_env(cls) -> Config:
         """Initialize the Config class"""
         config_dict = {
             "authorise_key": os.getenv("AUTHORISE_COMMAND_KEY"),
