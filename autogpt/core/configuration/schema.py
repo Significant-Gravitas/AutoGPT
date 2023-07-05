@@ -47,7 +47,14 @@ class Configurable(abc.ABC, Generic[S]):
         defaults_settings = cls.defaults_settings.dict()
         final_configuration = deep_update(defaults_settings, configuration)
 
-        return cls.defaults_settings.__class__.parse_obj(final_configuration)
+        config_obj = cls.defaults_settings.__class__.parse_obj(final_configuration)
+
+        if hasattr(config_obj, "model_post_init"):
+            # HOTFIX: Call model_post_init explictly as it doesn't seem to be called for pydantic<2.0.0
+            # https://github.com/pydantic/pydantic/issues/1729#issuecomment-1300576214
+            config_obj.model_post_init()
+
+        return config_obj
 
 
 def _get_user_config_fields(instance: BaseModel) -> dict[str, Any]:
