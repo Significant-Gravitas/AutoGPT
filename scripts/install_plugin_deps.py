@@ -32,7 +32,7 @@ def install_plugin_dependencies():
             file_list = "\n  ".join(zfile.namelist())
             logger.debug(f"Archive contents:\n  {file_list}")
 
-            basedir = zfile.namelist()[0]
+            basedir = zfile.namelist()[0].rsplit("/", 1)[0]
             basereqs = os.path.join(basedir, "requirements.txt")
             logger.debug(f"Looking for requirements.txt in '{basedir}'")
             try:
