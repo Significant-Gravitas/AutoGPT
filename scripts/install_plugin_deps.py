@@ -29,12 +29,12 @@ def install_plugin_dependencies():
             if not zfile.namelist():
                 continue
 
-            file_list = "\n  ".join(zfile.namelist())
-            logger.debug(f"Archive contents:\n  {file_list}")
-
-            basedir = zfile.namelist()[0].rsplit("/", 1)[0]
-            basereqs = os.path.join(basedir, "requirements.txt")
+            # Assume the first entry in the list will be (in) the lowest common dir
+            first_entry = zfile.namelist()[0]
+            basedir = first_entry.rsplit("/", 1)[0] if "/" in first_entry else ""
             logger.debug(f"Looking for requirements.txt in '{basedir}'")
+
+            basereqs = os.path.join(basedir, "requirements.txt")
             try:
                 extracted = zfile.extract(basereqs, path=plugins_dir)
             except KeyError as e:
