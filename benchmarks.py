@@ -33,7 +33,6 @@ def bootstrap_agent(task):
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,
-        next_action_count=0,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=str(workspace_directory_path),
     )

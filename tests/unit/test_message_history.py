@@ -16,7 +16,6 @@ from autogpt.memory.message_history import MessageHistory
 @pytest.fixture
 def agent(config: Config):
     memory = MagicMock()
-    next_action_count = 0
     command_registry = MagicMock()
     ai_config = AIConfig(ai_name="Test AI")
     triggering_prompt = "Triggering prompt"
@@ -24,7 +23,6 @@ def agent(config: Config):
 
     agent = Agent(
         memory=memory,
-        next_action_count=next_action_count,
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,

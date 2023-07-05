@@ -3,6 +3,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from colorama import Fore, Style
 
@@ -60,17 +61,17 @@ class Agent(BaseAgent):
         ai_config: AIConfig,
         command_registry: CommandRegistry,
         memory: VectorMemory,
-        next_action_count: int,
         triggering_prompt: str,
         workspace_directory: str | Path,
         config: Config,
+        cycle_budget: Optional[int] = None,
     ):
         super().__init__(
             ai_config=ai_config,
             command_registry=command_registry,
             config=config,
             default_cycle_instruction=triggering_prompt,
-            cycle_budget=next_action_count,
+            cycle_budget=cycle_budget,
         )
         self.memory = memory
         self.workspace = Workspace(workspace_directory, config.restrict_to_workspace)

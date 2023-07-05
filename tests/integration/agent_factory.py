@@ -37,7 +37,6 @@ def dummy_agent(config: Config, memory_json_file, workspace: Workspace):
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,
-        next_action_count=0,
         triggering_prompt="dummy triggering prompt",
         workspace_directory=workspace.root,
     )

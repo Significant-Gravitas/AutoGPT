@@ -12,7 +12,6 @@ def agent(config: Config):
     ai_config = AIConfig(ai_name="Test AI")
     command_registry = MagicMock()
     memory = MagicMock()
-    next_action_count = 0
     triggering_prompt = "Triggering prompt"
     workspace_directory = "workspace_directory"
 
@@ -20,7 +19,6 @@ def agent(config: Config):
         ai_config=ai_config,
         command_registry=command_registry,
         memory=memory,
-        next_action_count=next_action_count,
         triggering_prompt=triggering_prompt,
         workspace_directory=workspace_directory,
         config=config,
@@ -31,7 +29,7 @@ def agent(config: Config):
 def test_agent_initialization(agent: Agent):
     assert agent.ai_config.ai_name == "Test AI"
     assert agent.history.messages == []
-    assert agent.cycle_budget == 0
+    assert agent.cycle_budget is None
     assert "You are Test AI" in agent.system_prompt
 
 
