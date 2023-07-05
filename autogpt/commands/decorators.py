@@ -22,14 +22,15 @@ def sanitize_path_arg(arg_name: str):
             raise TypeError(
                 f"Parameter 'agent' absent or not annotated on function '{func.__name__}'"
             )
-        logger.debug(f"Parameter 'agent' on function {func.__name__} at position {agent_arg_index}")
 
         def wrapper(*args, **kwargs):
             logger.debug(f"Sanitizing arg '{arg_name}' on function '{func.__name__}'")
             logger.debug(f"Function annotations: {func.__annotations__}")
 
             # Get Agent from the called function's arguments
-            agent = kwargs.get("agent", len(args) > agent_arg_index and args[agent_arg_index])
+            agent = kwargs.get(
+                "agent", len(args) > agent_arg_index and args[agent_arg_index]
+            )
             logger.debug(f"Args: {args}")
             logger.debug(f"KWArgs: {kwargs}")
             logger.debug(f"Agent argument lifted from function call: {agent}")
