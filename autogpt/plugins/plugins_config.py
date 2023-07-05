@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Union
+from typing import Union
 
 import yaml
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
-
 from pydantic import BaseModel
 
 from autogpt.logs import logger
@@ -30,11 +26,20 @@ class PluginsConfig(BaseModel):
         return plugin_config is not None and plugin_config.enabled
 
     @classmethod
-    def load_config(cls, global_config: Config) -> "PluginsConfig":
+    def load_config(
+        cls,
+        plugins_config_file: str,
+        plugins_denylist: list[str],
+        plugins_allowlist: list[str],
+    ) -> "PluginsConfig":
         empty_config = cls(plugins={})
 
         try:
-            config_data = cls.deserialize_config_file(global_config=global_config)
+            config_data = cls.deserialize_config_file(
+                plugins_config_file,
+                plugins_denylist,
+                plugins_allowlist,
+            )
             if type(config_data) != dict:
                 logger.error(
                     f"Expected plugins config to be a dict, got {type(config_data)}, continuing without plugins"
@@ -49,13 +54,21 @@ class PluginsConfig(BaseModel):
             return empty_config
 
     @classmethod
-    def deserialize_config_file(cls, global_config: Config) -> dict[str, PluginConfig]:
-        plugins_config_path = global_config.plugins_config_file
-        if not os.path.exists(plugins_config_path):
+    def deserialize_config_file(
+        cls,
+        plugins_config_file: str,
+        plugins_denylist: list[str],
+        plugins_allowlist: list[str],
+    ) -> dict[str, PluginConfig]:
+        if not os.path.exists(plugins_config_file):
             logger.warn("plugins_config.yaml does not exist, creating base config.")
-            cls.create_empty_plugins_config(global_config=global_config)
+            cls.create_empty_plugins_config(
+                plugins_config_file,
+                plugins_denylist,
+                plugins_allowlist,
+            )
 
-        with open(plugins_config_path, "r") as f:
+        with open(plugins_config_file, "r") as f:
             plugins_config = yaml.load(f, Loader=yaml.FullLoader)
 
         plugins = {}
@@ -73,23 +86,27 @@ class PluginsConfig(BaseModel):
         return plugins
 
     @staticmethod
-    def create_empty_plugins_config(global_config: Config):
+    def create_empty_plugins_config(
+        plugins_config_file: str,
+        plugins_denylist: list[str],
+        plugins_allowlist: list[str],
+    ):
         """Create an empty plugins_config.yaml file. Fill it with values from old env variables."""
         base_config = {}
 
-        logger.debug(f"Legacy plugin denylist: {global_config.plugins_denylist}")
-        logger.debug(f"Legacy plugin allowlist: {global_config.plugins_allowlist}")
+        logger.debug(f"Legacy plugin denylist: {plugins_denylist}")
+        logger.debug(f"Legacy plugin allowlist: {plugins_allowlist}")
 
         # Backwards-compatibility shim
-        for plugin_name in global_config.plugins_denylist:
+        for plugin_name in plugins_denylist:
             base_config[plugin_name] = {"enabled": False, "config": {}}
 
-        for plugin_name in global_config.plugins_allowlist:
+        for plugin_name in plugins_allowlist:
             base_config[plugin_name] = {"enabled": True, "config": {}}
 
         logger.debug(f"Constructed base plugins config: {base_config}")
 
-        logger.debug(f"Creating plugin config file {global_config.plugins_config_file}")
-        with open(global_config.plugins_config_file, "w+") as f:
+        logger.debug(f"Creating plugin config file {plugins_config_file}")
+        with open(plugins_config_file, "w+") as f:
             f.write(yaml.dump(base_config))
             return base_config
