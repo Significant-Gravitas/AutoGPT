@@ -29,6 +29,9 @@ def install_plugin_dependencies():
             if not zfile.namelist():
                 continue
 
+            file_list = "\n  ".join(zfile.namelist())
+            logger.debug(f"Archive contents:\n  {file_list}")
+
             basedir = zfile.namelist()[0]
             basereqs = os.path.join(basedir, "requirements.txt")
             logger.debug(f"Looking for requirements.txt in '{basedir}'")
