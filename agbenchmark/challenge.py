@@ -20,6 +20,8 @@ class Challenge(ABC):
     """The parent class to all specific challenges classes.
     Defines helper methods for running a challenge"""
 
+    _data_cache: Dict[str, ChallengeData] = {}
+
     @abstractmethod
     def get_file_path(self) -> str:
         """This should be implemented by any class which inherits from BasicChallenge"""
@@ -27,8 +29,13 @@ class Challenge(ABC):
 
     @property
     def data(self) -> ChallengeData:
-        # TODO: make it so that this is cached somewhere to just call self.deserialized_data
-        return ChallengeData.deserialize(self.get_file_path())
+        "Check if the data is already loaded, if not load it"
+        file_path = (
+            self.get_file_path()
+        )  # file_path serves as the key in the cache dictionary
+        if file_path not in Challenge._data_cache:
+            Challenge._data_cache[file_path] = ChallengeData.deserialize(file_path)
+        return Challenge._data_cache[file_path]
 
     @property
     def mock(self) -> Optional[str]:
