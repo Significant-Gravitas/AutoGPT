@@ -30,5 +30,10 @@
         "difficulty": "basic",
         "dependencies": [],
         "test": "agbenchmark/challenges/retrieval/r3/r3_test.py"
+    },
+    "TestRememberMultipleIds": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/memory/m2/remember_multiple_ids_test.py"
     }
 }
