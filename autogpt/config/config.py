@@ -86,6 +86,7 @@ class Config(SystemSettings):
     authorise_key: str
 
     def get_azure_kwargs(self, model: str) -> dict[str, str]:
+        """Get the kwargs for the Azure API."""
         deployment_id = {
             self.fast_llm_model: self.azure_model_to_deployment_id_map.get(
                 "fast_llm_model_deployment_id"
