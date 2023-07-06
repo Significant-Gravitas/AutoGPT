@@ -2,9 +2,9 @@ name: gpt-engineer Regression Test
 
 on:
   workflow_dispatch:
-    branches: [ master ]
+    branches: [master]
   push:
-    branches: [ stable, master, ci-test* ]
+    branches: [stable, master, ci-test*]
 
 jobs:
   regression-tests:
@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        python-version: ["3.10"]
+        python-version: ['3.10']
 
     steps:
       - name: Checkout repository
@@ -58,7 +58,7 @@ jobs:
           make install
           source venv/bin/activate
           pip install ../../dist/agbenchmark-0.1.0-py3-none-any.whl
-          agbenchmark start --reg
+          agbenchmark start --maintain
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
