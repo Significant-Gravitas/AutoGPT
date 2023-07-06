@@ -2,12 +2,14 @@
 Test cases for the config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
+import os
+import openai
 from unittest import mock
 from unittest.mock import patch
 
 import pytest
 
-from autogpt.config import Config, ConfigBuilder
+from autogpt.config import Config, ConfigBuilder, get_azure_deployment_id_for_model
 from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL, create_config
 from autogpt.workspace.workspace import Workspace
 
@@ -144,6 +146,74 @@ def test_missing_azure_config(workspace: Workspace):
     assert azure_config["openai_api_version"] == "2023-03-15-preview"
     assert azure_config["azure_model_to_deployment_id_map"] == {}
 
+
+def test_azure_config(workspace: Workspace) -> None:
+    yaml_content = """
+azure_api_type: azure
+azure_api_base: https://dummy.openai.azure.com
+azure_api_version: 2023-06-01-preview
+azure_model_map:
+    fast_llm_model_deployment_id: gpt-3.5-turbo
+    smart_llm_model_deployment_id: gpt-4
+    embedding_model_deployment_id: embedding-deployment-id-for-azure
+"""
+    config_file = workspace.get_path("azure.yaml")
+    config_file.write_text(yaml_content)
+    os.environ["USE_AZURE"] = "True"
+    os.environ["AZURE_CONFIG_FILE"] = str(config_file)
+    config = ConfigBuilder.build_config_from_env()
+    
+    assert config.openai_api_type == "azure"
+    assert config.openai_api_base == "https://dummy.openai.azure.com"
+    assert config.openai_api_version == "2023-06-01-preview"
+    assert config.azure_model_to_deployment_id_map == {
+        "fast_llm_model_deployment_id": "gpt-3.5-turbo",
+        "smart_llm_model_deployment_id": "gpt-4",
+        "embedding_model_deployment_id": "embedding-deployment-id-for-azure",
+    }
+
+    assert openai.api_type == config.openai_api_type
+    assert openai.api_base == config.openai_api_base
+    assert openai.api_version == config.openai_api_version
+
+    # Reset config
+    os.environ["USE_AZURE"] = "False"
+    ConfigBuilder.build_config_from_env()
+
+
+def test_azure_deployment_id_for_model(workspace: Workspace) -> None:
+    yaml_content = """
+azure_api_type: azure
+azure_api_base: https://dummy.openai.azure.com
+azure_api_version: 2023-06-01-preview
+azure_model_map:
+    fast_llm_model_deployment_id: gpt-3.5-turbo
+    smart_llm_model_deployment_id: gpt-4
+    embedding_model_deployment_id: embedding-deployment-id-for-azure
+"""
+    config_file = workspace.get_path("azure.yaml")
+    config_file.write_text(yaml_content)
+    os.environ["USE_AZURE"] = "True"
+    os.environ["AZURE_CONFIG_FILE"] = str(config_file)
+    config = ConfigBuilder.build_config_from_env()
+
+    fast_llm_model = config.fast_llm_model  # config backup
+    smart_llm_model = config.smart_llm_model   # config backup
+
+    config.fast_llm_model = "fast_llm_model"
+    config.smart_llm_model = "smart_llm_model"
+
+    assert get_azure_deployment_id_for_model(config, config.fast_llm_model) == "gpt-3.5-turbo"
+    assert get_azure_deployment_id_for_model(config, config.smart_llm_model) == "gpt-4"
+    assert get_azure_deployment_id_for_model(config, "text-embedding-ada-002") == "embedding-deployment-id-for-azure"
+    assert get_azure_deployment_id_for_model(config, "dummy") == ""
+
+    # Reset config
+    os.environ["USE_AZURE"] = "False"
+    ConfigBuilder.build_config_from_env()
+    config.fast_llm_model = fast_llm_model
+    config.smart_llm_model = smart_llm_model
+    
 
 def test_create_config_gpt4only(config: Config) -> None:
     fast_llm_model = config.fast_llm_model
