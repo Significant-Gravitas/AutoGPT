@@ -11,11 +11,11 @@ Running with `--help` lists all the possible command line arguments you can pass
 
 !!! info
     For use with Docker, replace the script in the examples with
-    `docker-compose run --rm auto-gpt`:
+    `docker compose run --rm auto-gpt`:
 
         :::shell
-        docker-compose run --rm auto-gpt --help
-        docker-compose run --rm auto-gpt --ai-settings <filename>
+        docker compose run --rm auto-gpt --help
+        docker compose run --rm auto-gpt --ai-settings <filename>
 
 !!! note
     Replace anything in angled brackets (<>) to a value you want to specify

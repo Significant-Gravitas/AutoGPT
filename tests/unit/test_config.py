@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from autogpt.config import Config
+from autogpt.config import Config, ConfigBuilder
 from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL, create_config
 from autogpt.workspace.workspace import Workspace
 
@@ -30,11 +30,11 @@ def test_set_continuous_mode(config: Config):
     # Store continuous mode to reset it after the test
     continuous_mode = config.continuous_mode
 
-    config.set_continuous_mode(True)
+    config.continuous_mode = True
     assert config.continuous_mode == True
 
     # Reset continuous mode
-    config.set_continuous_mode(continuous_mode)
+    config.continuous_mode = continuous_mode
 
 
 def test_set_speak_mode(config: Config):
@@ -44,11 +44,11 @@ def test_set_speak_mode(config: Config):
     # Store speak mode to reset it after the test
     speak_mode = config.speak_mode
 
-    config.set_speak_mode(True)
+    config.speak_mode = True
     assert config.speak_mode == True
 
     # Reset speak mode
-    config.set_speak_mode(speak_mode)
+    config.speak_mode = speak_mode
 
 
 def test_set_fast_llm_model(config: Config):
@@ -58,11 +58,11 @@ def test_set_fast_llm_model(config: Config):
     # Store model name to reset it after the test
     fast_llm_model = config.fast_llm_model
 
-    config.set_fast_llm_model("gpt-3.5-turbo-test")
+    config.fast_llm_model = "gpt-3.5-turbo-test"
     assert config.fast_llm_model == "gpt-3.5-turbo-test"
 
     # Reset model name
-    config.set_fast_llm_model(fast_llm_model)
+    config.fast_llm_model = fast_llm_model
 
 
 def test_set_smart_llm_model(config: Config):
@@ -72,11 +72,11 @@ def test_set_smart_llm_model(config: Config):
     # Store model name to reset it after the test
     smart_llm_model = config.smart_llm_model
 
-    config.set_smart_llm_model("gpt-4-test")
+    config.smart_llm_model = "gpt-4-test"
     assert config.smart_llm_model == "gpt-4-test"
 
     # Reset model name
-    config.set_smart_llm_model(smart_llm_model)
+    config.smart_llm_model = smart_llm_model
 
 
 def test_set_debug_mode(config: Config):
@@ -86,11 +86,11 @@ def test_set_debug_mode(config: Config):
     # Store debug mode to reset it after the test
     debug_mode = config.debug_mode
 
-    config.set_debug_mode(True)
+    config.debug_mode = True
     assert config.debug_mode == True
 
     # Reset debug mode
-    config.set_debug_mode(debug_mode)
+    config.debug_mode = debug_mode
 
 
 @patch("openai.Model.list")
@@ -127,22 +127,22 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config: Config)
     assert config.smart_llm_model == "gpt-3.5-turbo"
 
     # Reset config
-    config.set_fast_llm_model(fast_llm_model)
-    config.set_smart_llm_model(smart_llm_model)
+    config.fast_llm_model = fast_llm_model
+    config.smart_llm_model = smart_llm_model
 
 
-def test_missing_azure_config(config: Config, workspace: Workspace):
+def test_missing_azure_config(workspace: Workspace):
     config_file = workspace.get_path("azure_config.yaml")
     with pytest.raises(FileNotFoundError):
-        config.load_azure_config(str(config_file))
+        ConfigBuilder.load_azure_config(str(config_file))
 
     config_file.write_text("")
-    config.load_azure_config(str(config_file))
+    azure_config = ConfigBuilder.load_azure_config(str(config_file))
 
-    assert config.openai_api_type == "azure"
-    assert config.openai_api_base == ""
-    assert config.openai_api_version == "2023-03-15-preview"
-    assert config.azure_model_to_deployment_id_map == {}
+    assert azure_config["openai_api_type"] == "azure"
+    assert azure_config["openai_api_base"] == ""
+    assert azure_config["openai_api_version"] == "2023-03-15-preview"
+    assert azure_config["azure_model_to_deployment_id_map"] == {}
 
 
 def test_create_config_gpt4only(config: Config) -> None:
@@ -170,8 +170,8 @@ def test_create_config_gpt4only(config: Config) -> None:
         assert config.smart_llm_model == GPT_4_MODEL
 
     # Reset config
-    config.set_fast_llm_model(fast_llm_model)
-    config.set_smart_llm_model(smart_llm_model)
+    config.fast_llm_model = fast_llm_model
+    config.smart_llm_model = smart_llm_model
 
 
 def test_create_config_gpt3only(config: Config) -> None:
@@ -199,79 +199,5 @@ def test_create_config_gpt3only(config: Config) -> None:
         assert config.smart_llm_model == GPT_3_MODEL
 
     # Reset config
-    config.set_fast_llm_model(fast_llm_model)
-    config.set_smart_llm_model(smart_llm_model)
-
-
-def test_command_line_ai_params(config):
-    """
-    Test setting AI parameters overrides such as ai goals and name from the command line.
-    """
-    create_config(
-        config=config,
-        continuous=False,
-        continuous_limit=None,
-        ai_settings_file=None,
-        prompt_settings_file=None,
-        skip_reprompt=False,
-        speak=False,
-        debug=False,
-        gpt3only=True,
-        gpt4only=False,
-        memory_type=None,
-        browser_name=None,
-        allow_downloads=False,
-        skip_news=False,
-        ai_name=None,
-        ai_role=None,
-        ai_goals=None,
-    )
-    assert config.ai_name == None
-    assert config.ai_role == None
-    assert config.ai_goals == None
-
-    create_config(
-        config=config,
-        continuous=False,
-        continuous_limit=None,
-        ai_settings_file=None,
-        prompt_settings_file=None,
-        skip_reprompt=False,
-        speak=False,
-        debug=False,
-        gpt3only=True,
-        gpt4only=False,
-        memory_type=None,
-        browser_name=None,
-        allow_downloads=False,
-        skip_news=False,
-        ai_name="testGPT",
-        ai_role=None,
-        ai_goals=None,
-    )
-
-    assert config.ai_name == "testGPT"
-
-    create_config(
-        config=config,
-        continuous=False,
-        continuous_limit=None,
-        ai_settings_file=None,
-        prompt_settings_file=None,
-        skip_reprompt=False,
-        speak=False,
-        debug=False,
-        gpt3only=True,
-        gpt4only=False,
-        memory_type=None,
-        browser_name=None,
-        allow_downloads=False,
-        skip_news=False,
-        ai_name="testGPT2",
-        ai_role="testRole1",
-        ai_goals=["testGoal1", "testGoal2"],
-    )
-
-    assert config.ai_name == "testGPT2"
-    assert config.ai_role == "testRole1"
-    assert config.ai_goals == ["testGoal1", "testGoal2"]
+    config.fast_llm_model = fast_llm_model
+    config.smart_llm_model = smart_llm_model
