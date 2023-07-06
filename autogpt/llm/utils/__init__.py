@@ -74,7 +74,14 @@ def create_text_completion(
         temperature = config.temperature
 
     if config.use_azure:
-        kwargs = {"deployment_id": get_azure_deployment_id_for_model(config, model)}
+        kwargs = {
+            "deployment_id": get_azure_deployment_id_for_model(
+                model,
+                config.azure_model_to_deployment_id_map,
+                config.fast_llm_model,
+                config.smart_llm_model,
+            )
+        }
     else:
         kwargs = {"model": model}
 
@@ -142,7 +149,10 @@ def create_chat_completion(
     chat_completion_kwargs["api_key"] = config.openai_api_key
     if config.use_azure:
         chat_completion_kwargs["deployment_id"] = get_azure_deployment_id_for_model(
-            config, model
+            model,
+            config.azure_model_to_deployment_id_map,
+            config.fast_llm_model,
+            config.smart_llm_model,
         )
     if functions:
         chat_completion_kwargs["functions"] = [

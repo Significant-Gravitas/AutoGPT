@@ -204,15 +204,41 @@ azure_model_map:
     config.smart_llm_model = "smart_llm_model"
 
     assert (
-        get_azure_deployment_id_for_model(config, config.fast_llm_model)
+        get_azure_deployment_id_for_model(
+            config.fast_llm_model,
+            config.azure_model_to_deployment_id_map,
+            config.fast_llm_model,
+            config.smart_llm_model,
+        )
         == "gpt-3.5-turbo"
     )
-    assert get_azure_deployment_id_for_model(config, config.smart_llm_model) == "gpt-4"
     assert (
-        get_azure_deployment_id_for_model(config, "text-embedding-ada-002")
+        get_azure_deployment_id_for_model(
+            config.smart_llm_model,
+            config.azure_model_to_deployment_id_map,
+            config.fast_llm_model,
+            config.smart_llm_model,
+        )
+        == "gpt-4"
+    )
+    assert (
+        get_azure_deployment_id_for_model(
+            "text-embedding-ada-002",
+            config.azure_model_to_deployment_id_map,
+            config.fast_llm_model,
+            config.smart_llm_model,
+        )
         == "embedding-deployment-id-for-azure"
     )
-    assert get_azure_deployment_id_for_model(config, "dummy") == ""
+    assert (
+        get_azure_deployment_id_for_model(
+            "dummy",
+            config.azure_model_to_deployment_id_map,
+            config.fast_llm_model,
+            config.smart_llm_model,
+        )
+        is None
+    )
 
     # Reset config
     os.environ["USE_AZURE"] = "False"

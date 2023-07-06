@@ -45,13 +45,13 @@ class Config(SystemSettings):
     openai_organization: Optional[str] = None
     temperature: float
     use_azure: bool
-    azure_config_file: str
+    azure_config_file: Optional[str] = None
+    azure_model_to_deployment_id_map: Optional[Dict[str, str]] = None
     execute_local_commands: bool
     restrict_to_workspace: bool
     openai_api_type: Optional[str] = None
     openai_api_base: Optional[str] = None
     openai_api_version: Optional[str] = None
-    azure_model_to_deployment_id_map: Optional[Dict[str, str]] = None
     openai_functions: bool
     elevenlabs_api_key: Optional[str] = None
     streamelements_voice: str
@@ -322,31 +322,33 @@ def check_openai_api_key(config: Config) -> None:
             exit(1)
 
 
-def get_azure_deployment_id_for_model(config: Config, model: str) -> str:
+def get_azure_deployment_id_for_model(
+    model: str,
+    azure_model_to_deployment_id_map: Dict[str, str],
+    fast_llm_model: str,
+    smart_llm_model: str,
+) -> str | None:
     """
-    Returns the relevant deployment id for the model specified.
+    Returns the relevant Azure deployment id for the model specified.
 
     Parameters:
         model(str): The model to map to the deployment id.
+        azure_model_to_deployment_id_map(Dict[str, str]): A dictionary mapping model names to their corresponding Azure deployment ids.
+        fast_llm_model(str): The name of the fast LLM model.
+        smart_llm_model(str): The name of the smart LLM model.
 
     Returns:
-        The matching deployment id if found, otherwise an empty string.
+        The matching deployment id if found, otherwise None.
     """
 
-    if model == config.fast_llm_model:
-        return config.azure_model_to_deployment_id_map[
-            "fast_llm_model_deployment_id"
-        ]  # type: ignore
-    elif model == config.smart_llm_model:
-        return config.azure_model_to_deployment_id_map[
-            "smart_llm_model_deployment_id"
-        ]  # type: ignore
+    if model == fast_llm_model:
+        return azure_model_to_deployment_id_map.get("fast_llm_model_deployment_id")
+    elif model == smart_llm_model:
+        return azure_model_to_deployment_id_map.get("smart_llm_model_deployment_id")
     elif model == "text-embedding-ada-002":
-        return config.azure_model_to_deployment_id_map[
-            "embedding_model_deployment_id"
-        ]  # type: ignore
+        return azure_model_to_deployment_id_map.get("embedding_model_deployment_id")
     else:
-        return ""
+        return None
 
 
 def _safe_split(s: Union[str, None], sep: str = ",") -> list[str]:

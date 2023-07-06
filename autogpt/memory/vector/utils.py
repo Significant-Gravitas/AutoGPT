@@ -42,7 +42,14 @@ def get_embedding(
 
     model = config.embedding_model
     if config.use_azure:
-        kwargs = {"engine": get_azure_deployment_id_for_model(config, model)}
+        kwargs = {
+            "engine": get_azure_deployment_id_for_model(
+                model,
+                config.azure_model_to_deployment_id_map,
+                config.fast_llm_model,
+                config.smart_llm_model,
+            )
+        }
     else:
         kwargs = {"model": model}
 
