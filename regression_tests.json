@@ -4,11 +4,6 @@
         "dependencies": [],
         "test": "agbenchmark/challenges/memory/m1/m1_test.py"
     },
-    "TestRetrieval": {
-        "difficulty": "basic",
-        "dependencies": [],
-        "test": "agbenchmark/challenges/retrieval/r1/r1_test.py"
-    },
     "TestWriteFile": {
         "difficulty": "basic",
         "dependencies": [],
@@ -19,6 +14,16 @@
         "dependencies": [],
         "test": "agbenchmark/challenges/retrieval/r2/r2_test.py"
     },
+    "TestRetrieval3": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/retrieval/r3/r3_test.py"
+    },
+    "TestRetrieval": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/retrieval/r1/r1_test.py"
+    },
     "TestReadFile": {
         "difficulty": "basic",
         "dependencies": [
@@ -26,14 +31,14 @@
         ],
         "test": "agbenchmark/tests/basic_abilities/read_file/read_file_test.py"
     },
-    "TestRetrieval3": {
-        "difficulty": "basic",
-        "dependencies": [],
-        "test": "agbenchmark/challenges/retrieval/r3/r3_test.py"
-    },
     "TestRememberMultipleIds": {
         "difficulty": "basic",
         "dependencies": [],
         "test": "agbenchmark/challenges/memory/m2/remember_multiple_ids_test.py"
+    },
+    "TestRememberMultipleIdsWithNoise": {
+        "difficulty": "medium",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/memory/m3/remember_multiple_ids_with_noise_test.py"
     }
 }
