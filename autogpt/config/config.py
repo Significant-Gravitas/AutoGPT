@@ -6,7 +6,6 @@ import os
 import re
 from typing import Dict, Union
 
-import openai
 import yaml
 from colorama import Fore
 
@@ -85,6 +84,27 @@ class Config(SystemSettings):
     elevenlabs_voice_id: Optional[str] = None
     plugins: list[str]
     authorise_key: str
+
+    def get_azure_kwargs(self, model: str) -> dict[str, str]:
+        deployment_id = {
+            self.fast_llm_model: self.azure_model_to_deployment_id_map.get(
+                "fast_llm_model_deployment_id"
+            ),
+            self.smart_llm_model: self.azure_model_to_deployment_id_map.get(
+                "smart_llm_model_deployment_id"
+            ),
+            "text-embedding-ada-002": self.azure_model_to_deployment_id_map.get(
+                "embedding_model_deployment_id"
+            ),
+        }.get(model, None)
+
+        return {
+            "api_type": self.openai_api_type,
+            "api_base": self.openai_api_base,
+            "api_version": self.openai_api_version,
+            "deployment_id": deployment_id,  # Used for chat/text
+            "engine": deployment_id,  # Used for embedding
+        }
 
 
 class ConfigBuilder(Configurable[Config]):
@@ -249,10 +269,6 @@ class ConfigBuilder(Configurable[Config]):
                 "azure_model_to_deployment_id_map"
             ]
 
-            openai.api_type = azure_config["openai_api_type"]
-            openai.api_base = azure_config["openai_api_base"]
-            openai.api_version = azure_config["openai_api_version"]
-
         elif os.getenv("OPENAI_API_BASE_URL"):
             config_dict["openai_api_base"] = os.getenv("OPENAI_API_BASE_URL")
 
@@ -281,14 +297,15 @@ class ConfigBuilder(Configurable[Config]):
         with open(config_file) as file:
             config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
 
+        defaults = {
+            "openai_api_type": ("azure_api_type", "azure"),
+            "openai_api_base": ("azure_api_base", ""),
+            "openai_api_version": ("azure_api_version", "2023-03-15-preview"),
+            "azure_model_to_deployment_id_map": ("azure_model_map", {}),
+        }
         return {
-            "openai_api_type": config_params.get("azure_api_type") or "azure",
-            "openai_api_base": config_params.get("azure_api_base") or "",
-            "openai_api_version": config_params.get("azure_api_version")
-            or "2023-03-15-preview",
-            "azure_model_to_deployment_id_map": config_params.get(
-                "azure_model_map", {}
-            ),
+            main_config_name: config_params.get(azure_config_name, default)
+            for main_config_name, (azure_config_name, default) in defaults.items()
         }
 
 

@@ -6,10 +6,9 @@ import os
 from unittest import mock
 from unittest.mock import patch
 
-import openai
 import pytest
 
-from autogpt.config import Config, ConfigBuilder, get_azure_deployment_id_for_model
+from autogpt.config import Config, ConfigBuilder
 from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL, create_config
 from autogpt.workspace.workspace import Workspace
 
@@ -172,14 +171,6 @@ azure_model_map:
         "embedding_model_deployment_id": "embedding-deployment-id-for-azure",
     }
 
-    assert openai.api_type == config.openai_api_type
-    assert openai.api_base == config.openai_api_base
-    assert openai.api_version == config.openai_api_version
-
-    # Reset config
-    os.environ["USE_AZURE"] = "False"
-    ConfigBuilder.build_config_from_env()
-
 
 def test_azure_deployment_id_for_model(workspace: Workspace) -> None:
     yaml_content = """
@@ -197,54 +188,19 @@ azure_model_map:
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
     config = ConfigBuilder.build_config_from_env()
 
-    fast_llm_model = config.fast_llm_model  # config backup
-    smart_llm_model = config.smart_llm_model  # config backup
-
     config.fast_llm_model = "fast_llm_model"
     config.smart_llm_model = "smart_llm_model"
 
+    def _get_deployment_id(model):
+        return config.get_azure_kwargs(model)["deployment_id"]
+
+    assert _get_deployment_id(config.fast_llm_model) == "gpt-3.5-turbo"
+    assert _get_deployment_id(config.smart_llm_model) == "gpt-4"
     assert (
-        get_azure_deployment_id_for_model(
-            config.fast_llm_model,
-            config.azure_model_to_deployment_id_map,
-            config.fast_llm_model,
-            config.smart_llm_model,
-        )
-        == "gpt-3.5-turbo"
-    )
-    assert (
-        get_azure_deployment_id_for_model(
-            config.smart_llm_model,
-            config.azure_model_to_deployment_id_map,
-            config.fast_llm_model,
-            config.smart_llm_model,
-        )
-        == "gpt-4"
-    )
-    assert (
-        get_azure_deployment_id_for_model(
-            "text-embedding-ada-002",
-            config.azure_model_to_deployment_id_map,
-            config.fast_llm_model,
-            config.smart_llm_model,
-        )
+        _get_deployment_id("text-embedding-ada-002")
         == "embedding-deployment-id-for-azure"
     )
-    assert (
-        get_azure_deployment_id_for_model(
-            "dummy",
-            config.azure_model_to_deployment_id_map,
-            config.fast_llm_model,
-            config.smart_llm_model,
-        )
-        is None
-    )
-
-    # Reset config
-    os.environ["USE_AZURE"] = "False"
-    ConfigBuilder.build_config_from_env()
-    config.fast_llm_model = fast_llm_model
-    config.smart_llm_model = smart_llm_model
+    assert _get_deployment_id("dummy") is None
 
 
 def test_create_config_gpt4only(config: Config) -> None:
