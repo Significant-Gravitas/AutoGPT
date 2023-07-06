@@ -45,6 +45,7 @@ class Config(SystemSettings):
     openai_organization: Optional[str] = None
     temperature: float
     use_azure: bool
+    azure_config_file: str
     execute_local_commands: bool
     restrict_to_workspace: bool
     openai_api_type: Optional[str] = None
@@ -132,6 +133,7 @@ class ConfigBuilder(Configurable[Config]):
         browse_spacy_language_model="en_core_web_sm",
         temperature=0,
         use_azure=False,
+        azure_config_file=AZURE_CONFIG_FILE,
         execute_local_commands=False,
         restrict_to_workspace=True,
         openai_functions=False,
@@ -175,6 +177,7 @@ class ConfigBuilder(Configurable[Config]):
             "browse_spacy_language_model": os.getenv("BROWSE_SPACY_LANGUAGE_MODEL"),
             "openai_api_key": os.getenv("OPENAI_API_KEY"),
             "use_azure": os.getenv("USE_AZURE") == "True",
+            "azure_config_file": os.getenv("AZURE_CONFIG_FILE", AZURE_CONFIG_FILE),
             "execute_local_commands": os.getenv("EXECUTE_LOCAL_COMMANDS", "False")
             == "True",
             "restrict_to_workspace": os.getenv("RESTRICT_TO_WORKSPACE", "True")
@@ -248,7 +251,7 @@ class ConfigBuilder(Configurable[Config]):
             config_dict["temperature"] = float(os.getenv("TEMPERATURE"))
 
         if config_dict["use_azure"]:
-            azure_config = cls.load_azure_config()
+            azure_config = cls.load_azure_config(config_dict["azure_config_file"])
             config_dict["openai_api_type"] = azure_config["openai_api_type"]
             config_dict["openai_api_base"] = azure_config["openai_api_base"]
             config_dict["openai_api_version"] = azure_config["openai_api_version"]
@@ -260,7 +263,7 @@ class ConfigBuilder(Configurable[Config]):
             openai.api_base = azure_config["openai_api_base"]
             openai.api_version = azure_config["openai_api_version"]
 
-        if os.getenv("OPENAI_API_BASE_URL"):
+        elif os.getenv("OPENAI_API_BASE_URL"):
             config_dict["openai_api_base"] = os.getenv("OPENAI_API_BASE_URL")
 
         openai_organization = os.getenv("OPENAI_ORGANIZATION")
@@ -287,7 +290,7 @@ class ConfigBuilder(Configurable[Config]):
         """
         with open(config_file) as file:
             config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
-
+        
         return {
             "openai_api_type": config_params.get("azure_api_type") or "azure",
             "openai_api_base": config_params.get("azure_api_base") or "",
