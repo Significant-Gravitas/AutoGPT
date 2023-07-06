@@ -25,9 +25,9 @@ def cli() -> None:
 
 @cli.command()
 @click.option("--category", default=None, help="Specific category to run")
-@click.option("--reg", is_flag=True, help="Runs only regression tests")
+@click.option("--maintain", is_flag=True, help="Runs only regression tests")
 @click.option("--mock", is_flag=True, help="Run with mock")
-def start(category: str, reg: bool, mock: bool) -> int:
+def start(category: str, maintain: bool, mock: bool) -> int:
     """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
     # Check if configuration file exists and is not empty
     if not os.path.exists(CONFIG_PATH) or os.stat(CONFIG_PATH).st_size == 0:
@@ -76,7 +76,7 @@ def start(category: str, reg: bool, mock: bool) -> int:
     if category:
         pytest_args.extend(["-m", category])
     else:
-        if reg:
+        if maintain:
             print("Running all regression tests")
             tests_to_run = get_regression_tests()
         else:
