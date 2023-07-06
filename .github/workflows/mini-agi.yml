@@ -60,7 +60,7 @@ jobs:
           pip install -r requirements.txt
           cp .env_example .env
           pip install ../../dist/agbenchmark-0.1.0-py3-none-any.whl
-          agbenchmark start --reg
+          agbenchmark start --maintain
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PROMPT_USER: false

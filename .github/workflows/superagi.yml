@@ -1,4 +1,4 @@
-name: Auto-GPT Regression Test
+name: SuperAgi Regression Test
 
 on:
   workflow_dispatch:
@@ -54,11 +54,11 @@ jobs:
 
       - name: Run regression tests
         run: |
+          cd agent/SuperAgi
+          cp config_template.yaml config.yaml
+          sed -i 's/OPENAI_API_KEY:.*/OPENAI_API_KEY: "'"${{ secrets.OPENAI_API_KEY }}"'"/' config.yaml
           python -m venv venv
           source venv/bin/activate
-          cd agent/Auto-GPT
           pip install -r requirements.txt
           pip install ../../dist/agbenchmark-0.1.0-py3-none-any.whl
           agbenchmark start --maintain
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
