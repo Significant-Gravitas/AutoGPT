@@ -1,0 +1,26 @@
+{
+  "name": "remember_multiple_phrases_with_noise_mock",
+  "category": ["memory"],
+  "task": "Follow the instructions in the instructions_1.txt file",
+  "dependencies": [],
+  "ground": {
+    "answer": "The purple elephant danced on a rainbow while eating a taco\nThe sneaky toaster stole my socks and ran away to Hawaii\nMy pet rock sings better than Beyoncé on Tuesdays\nThe giant hamster rode a unicycle through the crowded mall",
+    "should_contain": [
+      "The purple elephant danced on a rainbow while eating a taco",
+      "The sneaky toaster stole my socks and ran away to Hawaii",
+      "My pet rock sings better than Beyoncé on Tuesdays",
+      "The giant hamster rode a unicycle through the crowded mall"
+    ],
+    "should_not_contain": [],
+    "files": ["file_to_check.txt"]
+  },
+  "mock": {
+    "mock_func": "remember_multiple_phrases_with_noise_mock",
+    "mock_task": "Follow the instructions in the instructions_1.txt file"
+  },
+  "info": {
+    "difficulty": "medium",
+    "description": "Tests ability for the agent to remember information between each action. Multiple phrases are presented in different files and the last file instructs the agent to write these phrases into another file. Some noise is also added to the files to test the agent's ability to filter out noise.",
+    "side_effects": ["tests if there is in fact an LLM attached"]
+  }
+}

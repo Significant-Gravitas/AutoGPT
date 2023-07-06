@@ -40,5 +40,10 @@
         "difficulty": "medium",
         "dependencies": [],
         "test": "agbenchmark/challenges/memory/m3/remember_multiple_ids_with_noise_test.py"
+    },
+    "TestRememberMultiplePhrasesWithNoise": {
+        "difficulty": "medium",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/memory/m4/remember_multiple_phrases_with_noise_test.py"
     }
 }

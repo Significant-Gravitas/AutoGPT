@@ -77,3 +77,14 @@ def remember_multiple_ids_mock(task: str, workspace: str) -> None:
         "file_to_check.txt",
         "3145\n3791\n9317\n9471",
     )
+
+
+def remember_multiple_phrases_with_noise_mock(task: str, workspace: str) -> None:
+    """
+    This mock writes to a file (creates one if it doesn't exist)
+    """
+    Challenge.write_to_file(
+        workspace,
+        "file_to_check.txt",
+        "The purple elephant danced on a rainbow while eating a taco\nThe sneaky toaster stole my socks and ran away to Hawaii\nMy pet rock sings better than Beyoncé on Tuesdays\nThe giant hamster rode a unicycle through the crowded mall",
+    )
