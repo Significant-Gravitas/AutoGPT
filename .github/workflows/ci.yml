@@ -106,3 +106,4 @@ jobs:
         run: |
           poetry install
           poetry run agbenchmark start --mock
+          poetry run agbenchmark start --mock --maintain
