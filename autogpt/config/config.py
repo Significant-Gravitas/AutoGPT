@@ -348,7 +348,7 @@ def get_azure_deployment_id_for_model(config: Config, model: str) -> str:
     else:
         return ""
 
-      
+
 def _safe_split(s: Union[str, None], sep: str = ",") -> list[str]:
     """Split a string by a separator. Return an empty list if the string is None."""
     if s is None:
