@@ -66,3 +66,14 @@ def basic_memory_mock(task: str, workspace: str) -> None:
         "file_to_check.txt",
         "2314",
     )
+
+
+def remember_multiple_ids_mock(task: str, workspace: str) -> None:
+    """
+    This mock writes to a file (creates one if it doesn't exist)
+    """
+    Challenge.write_to_file(
+        workspace,
+        "file_to_check.txt",
+        "3145\n3791\n9317\n9471",
+    )
