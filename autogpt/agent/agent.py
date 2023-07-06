@@ -196,8 +196,9 @@ class Agent:
                 # to exit
                 self.user_input = ""
                 logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
-                    "'n' to exit program, or enter feedback for "
+                    f"Enter '{self.config.authorise_key}' to authorise command, "
+                    f"'{self.config.authorise_key} -N' to run N continuous commands, "
+                    f"'{self.config.exit_key}' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
                 while True:
@@ -225,8 +226,8 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             logger.warn(
-                                "Invalid input format. Please enter 'y -n' where n is"
-                                " the number of continuous tasks."
+                                f"Invalid input format. Please enter '{self.config.authorise_key} -n' "
+                                "where n is the number of continuous tasks."
                             )
                             continue
                         break
