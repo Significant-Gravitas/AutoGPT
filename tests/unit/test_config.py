@@ -3,10 +3,10 @@ Test cases for the config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
 import os
-import openai
 from unittest import mock
 from unittest.mock import patch
 
+import openai
 import pytest
 
 from autogpt.config import Config, ConfigBuilder, get_azure_deployment_id_for_model
@@ -162,7 +162,7 @@ azure_model_map:
     os.environ["USE_AZURE"] = "True"
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
     config = ConfigBuilder.build_config_from_env()
-    
+
     assert config.openai_api_type == "azure"
     assert config.openai_api_base == "https://dummy.openai.azure.com"
     assert config.openai_api_version == "2023-06-01-preview"
@@ -198,14 +198,20 @@ azure_model_map:
     config = ConfigBuilder.build_config_from_env()
 
     fast_llm_model = config.fast_llm_model  # config backup
-    smart_llm_model = config.smart_llm_model   # config backup
+    smart_llm_model = config.smart_llm_model  # config backup
 
     config.fast_llm_model = "fast_llm_model"
     config.smart_llm_model = "smart_llm_model"
 
-    assert get_azure_deployment_id_for_model(config, config.fast_llm_model) == "gpt-3.5-turbo"
+    assert (
+        get_azure_deployment_id_for_model(config, config.fast_llm_model)
+        == "gpt-3.5-turbo"
+    )
     assert get_azure_deployment_id_for_model(config, config.smart_llm_model) == "gpt-4"
-    assert get_azure_deployment_id_for_model(config, "text-embedding-ada-002") == "embedding-deployment-id-for-azure"
+    assert (
+        get_azure_deployment_id_for_model(config, "text-embedding-ada-002")
+        == "embedding-deployment-id-for-azure"
+    )
     assert get_azure_deployment_id_for_model(config, "dummy") == ""
 
     # Reset config
@@ -213,7 +219,7 @@ azure_model_map:
     ConfigBuilder.build_config_from_env()
     config.fast_llm_model = fast_llm_model
     config.smart_llm_model = smart_llm_model
-    
+
 
 def test_create_config_gpt4only(config: Config) -> None:
     fast_llm_model = config.fast_llm_model

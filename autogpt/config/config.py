@@ -290,7 +290,7 @@ class ConfigBuilder(Configurable[Config]):
         """
         with open(config_file) as file:
             config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
-        
+
         return {
             "openai_api_type": config_params.get("azure_api_type") or "azure",
             "openai_api_base": config_params.get("azure_api_base") or "",
