@@ -298,15 +298,15 @@ class ConfigBuilder(Configurable[Config]):
         with open(config_file) as file:
             config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
 
-        defaults = {
-            "openai_api_type": ("azure_api_type", "azure"),
-            "openai_api_base": ("azure_api_base", ""),
-            "openai_api_version": ("azure_api_version", "2023-03-15-preview"),
-            "azure_model_to_deployment_id_map": ("azure_model_map", {}),
-        }
         return {
-            main_config_name: config_params.get(azure_config_name, default)
-            for main_config_name, (azure_config_name, default) in defaults.items()
+            "openai_api_type": config_params.get("azure_api_type", "azure"),
+            "openai_api_base": config_params.get("azure_api_base", ""),
+            "openai_api_version": config_params.get(
+                "azure_api_version", "2023-03-15-preview"
+            ),
+            "azure_model_to_deployment_id_map": config_params.get(
+                "azure_model_map", {}
+            ),
         }
 
 
