@@ -1,4 +1,9 @@
 {
+    "TestBasicMemory": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/memory/m1/m1_test.py"
+    },
     "TestRetrieval": {
         "difficulty": "basic",
         "dependencies": [],
@@ -9,17 +14,17 @@
         "dependencies": [],
         "test": "agbenchmark/tests/basic_abilities/write_file/write_file_test.py"
     },
+    "TestRetrieval2": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/retrieval/r2/r2_test.py"
+    },
     "TestReadFile": {
         "difficulty": "basic",
         "dependencies": [
             "basic_write_file"
         ],
         "test": "agbenchmark/tests/basic_abilities/read_file/read_file_test.py"
-    },
-    "TestRetrieval2": {
-        "difficulty": "basic",
-        "dependencies": [],
-        "test": "agbenchmark/challenges/retrieval/r2/r2_test.py"
     },
     "TestRetrieval3": {
         "difficulty": "basic",

@@ -1,13 +1,13 @@
-from typing import Any
+from typing import Any, Dict
 
 import agbenchmark.mocks.tests.basic_mocks as basic_mocks
 import agbenchmark.mocks.tests.retrieval_mocks as retrieval_mocks
 
 
 class MockManager:
-    def __init__(self, task: str):
+    def __init__(self, task: str, config: Dict[str, Any]) -> None:
         self.task = task
-        self.workspace = "agbenchmark/mocks/workspace"
+        self.workspace = config["workspace"]
         self.modules = [basic_mocks, retrieval_mocks]
 
     def delegate(self, mock_function_name: Any, *args: Any, **kwargs: Any) -> None:

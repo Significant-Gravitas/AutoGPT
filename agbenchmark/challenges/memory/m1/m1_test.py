@@ -3,16 +3,16 @@ from typing import Any, Dict
 
 import pytest
 
-from agbenchmark.tests.basic_abilities.basic_challenge import BasicChallenge
+from agbenchmark.challenges.memory.memory import MemoryChallenge
 
 
-class TestWriteFile(BasicChallenge):
-    """Testing if LLM can write to a file"""
+class TestBasicMemory(MemoryChallenge):
+    """The first memory challenge"""
 
     def get_file_path(self) -> str:  # all tests must implement this method
-        return os.path.join(os.path.dirname(__file__), "w_file_data.json")
+        return os.path.join(os.path.dirname(__file__), "m1_data.json")
 
-    @pytest.mark.depends(name="basic_write_file")
+    @pytest.mark.depends(name="test_basic_memory")
     def test_method(self, config: Dict[str, Any]) -> None:
         self.setup_challenge(config)
 

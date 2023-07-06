@@ -3,18 +3,11 @@ from typing import Any, Dict
 
 import pytest
 
-from agbenchmark.challenge import Challenge
 from agbenchmark.tests.basic_abilities.basic_challenge import BasicChallenge
 
 
 class TestReadFile(BasicChallenge):
     """Testing if LLM can read a file"""
-
-    @pytest.fixture(scope="module", autouse=True)
-    def setup_module(self, workspace: str) -> None:
-        Challenge.write_to_file(
-            workspace, self.data.ground.files[0], "this is how we're doing"
-        )
 
     def get_file_path(self) -> str:  # all tests must implement this method
         return os.path.join(os.path.dirname(__file__), "r_file_data.json")
