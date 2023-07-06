@@ -159,28 +159,28 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
 ### Run with Docker
 
-Easiest is to use `docker-compose`. 
+Easiest is to use `docker compose`. 
 
 Important: Docker Compose version 1.29.0 or later is required to use version 3.9 of the Compose file format.
 You can check the version of Docker Compose installed on your system by running the following command:
 
-	docker-compose version
+	docker compose version
 
 This will display the version of Docker Compose that is currently installed on your system.
 
 If you need to upgrade Docker Compose to a newer version, you can follow the installation instructions in the Docker documentation: https://docs.docker.com/compose/install/
 
-Once you have a recent version of docker-compose, run the commands below in your Auto-GPT folder.
+Once you have a recent version of Docker Compose, run the commands below in your Auto-GPT folder.
 
 1. Build the image. If you have pulled the image from Docker Hub, skip this step (NOTE: You *will* need to do this if you are modifying requirements.txt to add/remove dependencies like Python libs/frameworks) 
 
         :::shell
-        docker-compose build auto-gpt
+        docker compose build auto-gpt
 
 2. Run Auto-GPT
 
         :::shell
-        docker-compose run --rm auto-gpt
+        docker compose run --rm auto-gpt
 
     By default, this will also start and attach a Redis memory backend. If you do not
     want this, comment or remove the `depends: - redis` and `redis:` sections from
@@ -190,7 +190,7 @@ Once you have a recent version of docker-compose, run the commands below in your
 
 You can pass extra arguments, e.g. running with `--gpt3only` and `--continuous`:
 ``` shell
-docker-compose run --rm auto-gpt --gpt3only --continuous
+docker compose run --rm auto-gpt --gpt3only --continuous
 ```
 
 If you dare, you can also build and run it with "vanilla" docker commands:
@@ -200,7 +200,7 @@ docker run -it --env-file=.env -v $PWD:/app auto-gpt
 docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuous
 ```
 
-[docker-compose file]: https://github.com/Significant-Gravitas/Auto-GPT/blob/stable/docker-compose.yml
+[Docker Compose file]: https://github.com/Significant-Gravitas/Auto-GPT/blob/stable/docker-compose.yml
 
 
 ### Run with Dev Container
