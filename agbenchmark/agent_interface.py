@@ -22,7 +22,7 @@ def run_agent(
         print("No mock provided")
     elif MOCK_FLAG == "True":
         mock_manager = MockManager(
-            task
+            task, config
         )  # workspace doesn't need to be passed in, stays the same
         print("Server unavailable, using mock", mock_func)
         mock_manager.delegate(mock_func)

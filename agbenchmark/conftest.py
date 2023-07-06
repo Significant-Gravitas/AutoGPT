@@ -31,14 +31,13 @@ def config(request: Any) -> None:
     with open(CONFIG_PATH, "r") as f:
         config = json.load(f)
 
-    if request.config.getoption("--mock"):
-        config["workspace"] = "agbenchmark/mocks/workspace"
-    elif config.get("workspace", "").startswith("${") and config.get(
+    if config.get("workspace", "").startswith("${") and config.get(
         "workspace", ""
     ).endswith("}"):
         path = get_dynamic_workspace(config)
         config["workspace"] = path
-
+    else:
+        config["workspace"] = Path(os.getcwd()) / config["workspace"]
     return config
 
 

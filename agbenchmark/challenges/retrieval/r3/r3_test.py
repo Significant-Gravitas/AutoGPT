@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from typing import Any, Dict
 
 import pytest
@@ -17,8 +16,7 @@ class TestRetrieval3(RetrievalChallenge):
     def test_method(self, config: Dict[str, Any]) -> None:
         self.setup_challenge(config)
 
-        workspace = Path(os.getcwd()) / config["workspace"]
-        files_contents = self.open_files(workspace, self.data.ground.files)
+        files_contents = self.open_files(config["workspace"], self.data.ground.files)
 
         scores = []
         for file_content in files_contents:

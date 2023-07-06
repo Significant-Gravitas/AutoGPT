@@ -56,8 +56,6 @@ def start(category: str, reg: bool, mock: bool) -> int:
             config = json.load(f)
 
     set_key(".env", "MOCK_TEST", "True" if mock else "False")
-    if mock:
-        config["workspace"] = "agbenchmark/mocks/workspace"
 
     # create workspace directory if it doesn't exist
     workspace_path = os.path.abspath(config["workspace"])
