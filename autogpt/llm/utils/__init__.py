@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import List, Literal, Optional
 
 from colorama import Fore
@@ -21,6 +20,7 @@ from ..providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAIFunctionCall,
     OpenAIFunctionSpec,
+    format_function_specs_as_typescript_ns,
 )
 from .token_counter import *
 
@@ -122,7 +122,15 @@ def create_chat_completion(
     if temperature is None:
         temperature = config.temperature
     if max_tokens is None:
-        max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt.token_length
+        prompt_tlength = prompt.token_length
+        max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt_tlength
+        logger.debug(f"Prompt length: {prompt_tlength} tokens")
+        if functions:
+            functions_tlength = count_string_tokens(
+                format_function_specs_as_typescript_ns(functions), model
+            )
+            max_tokens -= functions_tlength
+            logger.debug(f"Functions take up {functions_tlength} tokens in API call")
 
     logger.debug(
         f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
@@ -152,7 +160,7 @@ def create_chat_completion(
         ] = config.get_azure_deployment_id_for_model(model)
     if functions:
         chat_completion_kwargs["functions"] = [
-            function.__dict__ for function in functions
+            function.schema for function in functions
         ]
         logger.debug(f"Function dicts: {chat_completion_kwargs['functions']}")
 
