@@ -11,11 +11,11 @@ Running with `--help` lists all the possible command line arguments you can pass
 
 !!! info
     For use with Docker, replace the script in the examples with
-    `docker-compose run --rm auto-gpt`:
+    `docker compose run --rm auto-gpt`:
 
         :::shell
-        docker-compose run --rm auto-gpt --help
-        docker-compose run --rm auto-gpt --ai-settings <filename>
+        docker compose run --rm auto-gpt --help
+        docker compose run --rm auto-gpt --ai-settings <filename>
 
 !!! note
     Replace anything in angled brackets (<>) to a value you want to specify
@@ -104,5 +104,5 @@ If you want to selectively disable some command groups, you can use the `DISABLE
 For example, to disable coding related features, set it to the value below:
 
 ```ini
-DISABLED_COMMAND_CATEGORIES=autogpt.commands.analyze_code,autogpt.commands.execute_code,autogpt.commands.git_operations,autogpt.commands.improve_code,autogpt.commands.write_tests
+DISABLED_COMMAND_CATEGORIES=autogpt.commands.execute_code
 ```

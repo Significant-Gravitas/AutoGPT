@@ -1,26 +1,26 @@
+from typing import Any, Dict
+
 import pytest
 import yaml
 from pytest_mock import MockerFixture
 
-from autogpt.agent import Agent
-from autogpt.commands.file_operations import read_file
-from autogpt.config import Config
+from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
-from tests.challenges.utils import run_interaction_loop
-from tests.utils import requires_api_key
+from tests.challenges.utils import get_workspace_path, run_challenge
 
 CYCLE_COUNT = 3
+OUTPUT_LOCATION = "kube.yaml"
+USER_INPUTS = ["Write a simple kubernetes deployment file and save it as a kube.yaml."]
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-@challenge
+@challenge()
 def test_kubernetes_template_challenge_a(
-    kubernetes_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
-    config: Config,
     level_to_run: int,
+    challenge_name: str,
+    workspace: Workspace,
+    patched_make_workspace: pytest.fixture,
 ) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs
@@ -29,17 +29,25 @@ def test_kubernetes_template_challenge_a(
     Args:
         kubernetes_agent (Agent)
         monkeypatch (pytest.MonkeyPatch)
-        config (Config)
         level_to_run (int)
     """
-    run_interaction_loop(monkeypatch, kubernetes_agent, CYCLE_COUNT)
+    run_challenge(
+        challenge_name,
+        level_to_run,
+        monkeypatch,
+        USER_INPUTS[level_to_run - 1],
+        CYCLE_COUNT,
+    )
 
-    file_path = str(kubernetes_agent.workspace.get_path("kube.yaml"))
-    content = read_file(file_path, config)
+    file_path = get_workspace_path(workspace, OUTPUT_LOCATION)
+    with open(file_path, "r") as file:
+        content_string = file.read()
 
     for word in ["apiVersion", "kind", "metadata", "spec"]:
-        assert word in content, f"Expected the file to contain {word}"
+        assert word in content_string, f"Expected the file to contain {word}"
 
-    content = yaml.safe_load(content)
+    yaml_as_dict: Dict[str, Any] = yaml.safe_load(content_string)
     for word in ["Service", "Deployment", "Pod"]:
-        assert word in content["kind"], f"Expected the file to contain {word}"
+        assert word in yaml_as_dict.get(
+            "kind", ""
+        ), f"Expected the file to contain {word}"
