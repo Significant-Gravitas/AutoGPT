@@ -192,7 +192,8 @@ azure_model_map:
     config.smart_llm_model = "smart_llm_model"
 
     def _get_deployment_id(model):
-        return config.get_azure_kwargs(model)["deployment_id"]
+        kwargs = config.get_azure_kwargs(model)
+        return kwargs.get("deployment_id", kwargs.get("engine"))
 
     assert _get_deployment_id(config.fast_llm_model) == "gpt-3.5-turbo"
     assert _get_deployment_id(config.smart_llm_model) == "gpt-4"
