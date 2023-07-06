@@ -8,7 +8,7 @@ from colorama import Fore
 
 from autogpt.config import AIConfig, Config
 from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.logs import logger
 from autogpt.memory.message_history import MessageHistory
@@ -86,7 +86,11 @@ class BaseAgent(metaclass=ABCMeta):
         self.on_before_think(prompt, instruction)
 
         with self.context_while_think():
-            raw_response = create_chat_completion(prompt, self.config)
+            raw_response = create_chat_completion(
+                prompt,
+                self.config,
+                functions=get_openai_command_specs(self.command_registry, self.config),
+            )
 
         self.on_response(raw_response, prompt, instruction)
 

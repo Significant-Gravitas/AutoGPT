@@ -197,7 +197,7 @@ def chat_with_ai(
     assistant_reply = create_chat_completion(
         prompt=message_sequence,
         config=agent.config,
-        functions=get_openai_command_specs(agent),
+        functions=get_openai_command_specs(agent.command_registry, agent.config),
         max_tokens=tokens_remaining,
     )
 

@@ -12,8 +12,10 @@ from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, ServiceUnavailableError, Timeout
 from openai.openai_object import OpenAIObject
 
+from autogpt.models.command_registry import CommandRegistry
+
 if TYPE_CHECKING:
-    from autogpt.agents.agent import Agent
+    from autogpt.config import Config
 
 from autogpt.llm.base import (
     ChatModelInfo,
@@ -327,11 +329,13 @@ class OpenAIFunctionSpec:
         }
 
 
-def get_openai_command_specs(agent: Agent) -> list[OpenAIFunctionSpec]:
+def get_openai_command_specs(
+    command_registry: CommandRegistry, config: Config
+) -> list[OpenAIFunctionSpec]:
     """Get OpenAI-consumable function specs for the agent's available commands.
     see https://platform.openai.com/docs/guides/gpt/function-calling
     """
-    if not agent.config.openai_functions:
+    if not config.openai_functions:
         return []
 
     return [
@@ -348,5 +352,5 @@ def get_openai_command_specs(agent: Agent) -> list[OpenAIFunctionSpec]:
                 for param in command.parameters
             },
         )
-        for command in agent.command_registry.commands.values()
+        for command in command_registry.commands.values()
     ]

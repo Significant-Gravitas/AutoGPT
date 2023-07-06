@@ -152,7 +152,7 @@ def create_chat_completion(
         ] = config.get_azure_deployment_id_for_model(model)
     if functions:
         chat_completion_kwargs["functions"] = [
-            asdict(function) for function in functions
+            function.__dict__ for function in functions
         ]
         logger.debug(f"Function dicts: {chat_completion_kwargs['functions']}")
 
