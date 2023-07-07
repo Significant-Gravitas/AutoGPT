@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agpt"
-version = "0.4.2"
+version = "0.4.3"
 authors = [
   { name="Torantulino", email="support@agpt.co" },
 ]
