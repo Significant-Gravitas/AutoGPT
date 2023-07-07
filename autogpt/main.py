@@ -55,7 +55,6 @@ def run_auto_gpt(
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
-    logger.speak_mode = speak
 
     config = ConfigBuilder.build_config_from_env()
     # HACK: This is a hack to allow the config into the logger without having to pass it around everywhere
