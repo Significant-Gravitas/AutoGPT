@@ -81,8 +81,8 @@ class Agent:
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
-        self.fast_token_limit = OPEN_AI_CHAT_MODELS.get(
-            config.fast_llm_model
+        self.smart_token_limit = OPEN_AI_CHAT_MODELS.get(
+            config.smart_llm_model
         ).max_tokens
 
     def start_interaction_loop(self):
@@ -138,8 +138,8 @@ class Agent:
                     self,
                     self.system_prompt,
                     self.triggering_prompt,
-                    self.fast_token_limit,
-                    self.config.fast_llm_model,
+                    self.smart_token_limit,
+                    self.config.smart_llm_model,
                 )
 
             try:
@@ -283,12 +283,12 @@ class Agent:
                 result = f"Command {command_name} returned: " f"{command_result}"
 
                 result_tlength = count_string_tokens(
-                    str(command_result), self.config.fast_llm_model
+                    str(command_result), self.config.smart_llm_model
                 )
                 memory_tlength = count_string_tokens(
-                    str(self.history.summary_message()), self.config.fast_llm_model
+                    str(self.history.summary_message()), self.config.smart_llm_model
                 )
-                if result_tlength + memory_tlength + 600 > self.fast_token_limit:
+                if result_tlength + memory_tlength + 600 > self.smart_token_limit:
                     result = f"Failure: command {command_name} returned too much output. \
                         Do not execute this command again with the same arguments."
 

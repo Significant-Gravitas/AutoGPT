@@ -102,7 +102,7 @@ class ConfigBuilder(Configurable[Config]):
     default_settings = Config(
         name="Default Server Config",
         description="This is a default server configuration",
-        smart_llm_model="gpt-3.5-turbo",
+        smart_llm_model="gpt-4",
         fast_llm_model="gpt-3.5-turbo",
         continuous_mode=False,
         continuous_limit=0,
