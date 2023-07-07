@@ -219,7 +219,7 @@ class SimpleAgent(Agent, Configurable):
             self._current_task = None
             self._next_ability = None
 
-            return ability_response
+            return ability_response.dict()
         else:
             raise NotImplementedError
 
