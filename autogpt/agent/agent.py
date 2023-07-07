@@ -165,7 +165,7 @@ class Agent:
                         assistant_reply_json, assistant_reply, self.config
                     )
                     if self.config.speak_mode:
-                        say_text(f"I want to execute {command_name}")
+                        say_text(f"I want to execute {command_name}", self.config)
 
                     arguments = self._resolve_pathlike_command_args(arguments)
 
