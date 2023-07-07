@@ -1,4 +1,3 @@
-import os
 from typing import Any, Dict
 
 import pytest
@@ -8,9 +7,6 @@ from agbenchmark.tests.basic_abilities.basic_challenge import BasicChallenge
 
 class TestReadFile(BasicChallenge):
     """Testing if LLM can read a file"""
-
-    def get_file_path(self) -> str:  # all tests must implement this method
-        return os.path.join(os.path.dirname(__file__), "r_file_data.json")
 
     @pytest.mark.depends(on=["basic_write_file"], name="basic_read_file")
     def test_method(self, config: Dict[str, Any]) -> None:

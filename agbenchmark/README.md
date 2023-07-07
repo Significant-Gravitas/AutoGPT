@@ -53,9 +53,6 @@ import os
 class TestWriteFile(BasicChallenge):
     """Testing if LLM can write to a file"""
 
-    def get_file_path(self) -> str:  # all tests must implement this method
-        return os.path.join(os.path.dirname(__file__), "w_file_data.json")
-
     @pytest.mark.depends(on=[], name="basic_write_file")
     def test_method(self, workspace):
         # implement scoring logic by looking at workspace
