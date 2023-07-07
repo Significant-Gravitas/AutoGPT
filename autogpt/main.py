@@ -54,7 +54,7 @@ def run_auto_gpt(
     logger.speak_mode = speak
 
     config = ConfigBuilder.build_config_from_env()
-    # HACK: This is a hack to allow the config into the logger without having to pass it around everywhere 
+    # HACK: This is a hack to allow the config into the logger without having to pass it around everywhere
     # or import it directly.
     logger.config = config
 
