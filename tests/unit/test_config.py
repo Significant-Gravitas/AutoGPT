@@ -152,9 +152,9 @@ azure_api_type: azure
 azure_api_base: https://dummy.openai.azure.com
 azure_api_version: 2023-06-01-preview
 azure_model_map:
-    fast_llm_model_deployment_id: gpt-3.5-turbo
-    smart_llm_model_deployment_id: gpt-4
-    embedding_model_deployment_id: embedding-deployment-id-for-azure
+    fast_llm_deployment_id: gpt-3.5-turbo
+    smart_llm_deployment_id: gpt-4
+    embedding_deployment_id: embedding-deployment-id-for-azure
 """
     config_file = workspace.get_path("azure.yaml")
     config_file.write_text(yaml_content)
@@ -166,8 +166,8 @@ azure_model_map:
     assert config.openai_api_base == "https://dummy.openai.azure.com"
     assert config.openai_api_version == "2023-06-01-preview"
     assert config.azure_model_to_deployment_id_map == {
-        "fast_llm_model_deployment_id": "gpt-3.5-turbo",
-        "smart_llm_model_deployment_id": "gpt-4",
+        "fast_llm_deployment_id": "gpt-3.5-turbo",
+        "smart_llm_deployment_id": "gpt-4",
         "embedding_model_deployment_id": "embedding-deployment-id-for-azure",
     }
 
@@ -181,8 +181,8 @@ azure_api_type: azure
 azure_api_base: https://dummy.openai.azure.com
 azure_api_version: 2023-06-01-preview
 azure_model_map:
-    fast_llm_model_deployment_id: gpt-3.5-turbo
-    smart_llm_model_deployment_id: gpt-4
+    fast_llm_deployment_id: gpt-3.5-turbo
+    smart_llm_deployment_id: gpt-4
     embedding_model_deployment_id: embedding-deployment-id-for-azure
 """
     config_file = workspace.get_path("azure.yaml")
@@ -191,15 +191,15 @@ azure_model_map:
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
     config = ConfigBuilder.build_config_from_env()
 
-    config.fast_llm_model = "fast_llm_model"
-    config.smart_llm_model = "smart_llm_model"
+    config.fast_llm = "fast_llm"
+    config.smart_llm = "smart_llm"
 
     def _get_deployment_id(model):
         kwargs = config.get_azure_kwargs(model)
         return kwargs.get("deployment_id", kwargs.get("engine"))
 
-    assert _get_deployment_id(config.fast_llm_model) == "gpt-3.5-turbo"
-    assert _get_deployment_id(config.smart_llm_model) == "gpt-4"
+    assert _get_deployment_id(config.fast_llm) == "gpt-3.5-turbo"
+    assert _get_deployment_id(config.smart_llm) == "gpt-4"
     assert (
         _get_deployment_id("text-embedding-ada-002")
         == "embedding-deployment-id-for-azure"

@@ -88,11 +88,11 @@ class Config(SystemSettings):
     def get_azure_kwargs(self, model: str) -> dict[str, str]:
         """Get the kwargs for the Azure API."""
         deployment_id = {
-            self.fast_llm_model: self.azure_model_to_deployment_id_map.get(
-                "fast_llm_model_deployment_id"
+            self.fast_llm: self.azure_model_to_deployment_id_map.get(
+                "fast_llm_deployment_id"
             ),
-            self.smart_llm_model: self.azure_model_to_deployment_id_map.get(
-                "smart_llm_model_deployment_id"
+            self.smart_llm: self.azure_model_to_deployment_id_map.get(
+                "smart_llm_deployment_id"
             ),
             "text-embedding-ada-002": self.azure_model_to_deployment_id_map.get(
                 "embedding_model_deployment_id"
