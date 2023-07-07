@@ -83,11 +83,6 @@ def create_config(
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         config.speak_mode = True
 
-    openai_credentials = {
-        'api_key': config.openai_api_key,
-    }
-    if config.use_azure:
-        openai_credentials.update(config.get_azure_kwargs())
     # Set the default LLM models
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
