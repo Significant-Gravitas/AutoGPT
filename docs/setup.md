@@ -34,40 +34,43 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 ### Set up with Docker
 
 1. Make sure you have Docker installed, see [requirements](#requirements)
-2. Pull the latest image from [Docker Hub]
+2. Create a project directory for Auto-GPT
 
         :::shell
-        docker pull significantgravitas/auto-gpt
+        mkdir Auto-GPT
+        cd Auto-GPT
 
-3. Create a folder for Auto-GPT
-4. In the folder, create a file called `docker-compose.yml` with the following contents:
+3. In the project directory, create a file called `docker-compose.yml` with the following contents:
 
         :::yaml
         version: "3.9"
         services:
           auto-gpt:
             image: significantgravitas/auto-gpt
-            depends_on:
-              - redis
             env_file:
               - .env
-            environment:
-              MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
-              REDIS_HOST: ${REDIS_HOST:-redis}
             profiles: ["exclude-from-up"]
             volumes:
               - ./auto_gpt_workspace:/app/autogpt/auto_gpt_workspace
               - ./data:/app/data
               ## allow auto-gpt to write logs to disk
               - ./logs:/app/logs
-              ## uncomment following lines if you have / want to make use of these files
-              #- ./azure.yaml:/app/azure.yaml
-              #- ./ai_settings.yaml:/app/ai_settings.yaml
-          redis:
-            image: "redis/redis-stack-server:latest"
+              ## uncomment following lines if you want to make use of these files
+              ## you must have them existing in the same folder as this docker-compose.yml
+              #- type: bind
+              #  source: ./azure.yaml
+              #  target: /app/azure.yaml
+              #- type: bind
+              #  source: ./ai_settings.yaml
+              #  target: /app/ai_settings.yaml
 
-5. Create the necessary [configuration](#configuration) files. If needed, you can find
+4. Create the necessary [configuration](#configuration) files. If needed, you can find
     templates in the [repository].
+5. Pull the latest image from [Docker Hub]
+
+        :::shell
+        docker pull significantgravitas/auto-gpt
+
 6. Continue to [Run with Docker](#run-with-docker)
 
 !!! note "Docker only supports headless browsing"
@@ -130,17 +133,17 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
     make an Azure configuration file:
 
     - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section:
-        - `fast_llm_model_deployment_id`: your gpt-3.5-turbo or gpt-4 deployment ID
-        - `smart_llm_model_deployment_id`: your gpt-4 deployment ID
+        - `fast_llm_deployment_id`: your gpt-3.5-turbo or gpt-4 deployment ID
+        - `smart_llm_deployment_id`: your gpt-4 deployment ID
         - `embedding_model_deployment_id`: your text-embedding-ada-002 v2 deployment ID
 
     Example:
 
         :::yaml
         # Please specify all of these values as double-quoted strings
-        # Replace string in angled brackets (<>) to your own ID
+        # Replace string in angled brackets (<>) to your own deployment Name
         azure_model_map:
-            fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
+            fast_llm_deployment_id: "<auto-gpt-deployment>"
                 ...
 
     Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.
@@ -156,28 +159,28 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
 ### Run with Docker
 
-Easiest is to use `docker-compose`. 
+Easiest is to use `docker compose`. 
 
 Important: Docker Compose version 1.29.0 or later is required to use version 3.9 of the Compose file format.
 You can check the version of Docker Compose installed on your system by running the following command:
 
-	docker-compose version
+	docker compose version
 
 This will display the version of Docker Compose that is currently installed on your system.
 
 If you need to upgrade Docker Compose to a newer version, you can follow the installation instructions in the Docker documentation: https://docs.docker.com/compose/install/
 
-Once you have a recent version of docker-compose, run the commands below in your Auto-GPT folder.
+Once you have a recent version of Docker Compose, run the commands below in your Auto-GPT folder.
 
-1. Build the image. If you have pulled the image from Docker Hub, skip this step (NOTE: You *will* need to do this if you are modifying requirements.txt to add/remove depedencies like Python libs/frameworks) 
+1. Build the image. If you have pulled the image from Docker Hub, skip this step (NOTE: You *will* need to do this if you are modifying requirements.txt to add/remove dependencies like Python libs/frameworks) 
 
         :::shell
-        docker-compose build auto-gpt
+        docker compose build auto-gpt
 
 2. Run Auto-GPT
 
         :::shell
-        docker-compose run --rm auto-gpt
+        docker compose run --rm auto-gpt
 
     By default, this will also start and attach a Redis memory backend. If you do not
     want this, comment or remove the `depends: - redis` and `redis:` sections from
@@ -187,7 +190,7 @@ Once you have a recent version of docker-compose, run the commands below in your
 
 You can pass extra arguments, e.g. running with `--gpt3only` and `--continuous`:
 ``` shell
-docker-compose run --rm auto-gpt --gpt3only --continuous
+docker compose run --rm auto-gpt --gpt3only --continuous
 ```
 
 If you dare, you can also build and run it with "vanilla" docker commands:
@@ -197,7 +200,7 @@ docker run -it --env-file=.env -v $PWD:/app auto-gpt
 docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuous
 ```
 
-[docker-compose file]: https://github.com/Significant-Gravitas/Auto-GPT/blob/stable/docker-compose.yml
+[Docker Compose file]: https://github.com/Significant-Gravitas/Auto-GPT/blob/stable/docker-compose.yml
 
 
 ### Run with Dev Container
@@ -210,6 +213,16 @@ docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuou
 
 
 ### Run without Docker
+
+#### Create a Virtual Environment
+
+Create a virtual environment to run in.
+
+``` shell
+python -m venv venvAutoGPT
+source venvAutoGPT/bin/activate
+pip3 install --upgrade pip
+```
 
 !!! warning
     Due to security reasons, certain features (like Python execution) will by default be disabled when running without docker. So, even if you want to run the program outside a docker container, you currently still need docker to actually run scripts.

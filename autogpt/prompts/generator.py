@@ -1,6 +1,12 @@
 """ A module for generating custom prompt strings."""
 import json
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+
+from autogpt.config import Config
+from autogpt.json_utils.utilities import llm_response_schema
+
+if TYPE_CHECKING:
+    from autogpt.models.command_registry import CommandRegistry
 
 
 class PromptGenerator:
@@ -19,19 +25,9 @@ class PromptGenerator:
         self.resources = []
         self.performance_evaluation = []
         self.goals = []
-        self.command_registry = None
+        self.command_registry: CommandRegistry | None = None
         self.name = "Bob"
         self.role = "AI"
-        self.response_format = {
-            "thoughts": {
-                "text": "thought",
-                "reasoning": "reasoning",
-                "plan": "- short bulleted\n- list that conveys\n- long-term plan",
-                "criticism": "constructive self-criticism",
-                "speak": "thoughts summary to say to user",
-            },
-            "command": {"name": "command name", "args": {"arg name": "value"}},
-        }
 
     def add_constraint(self, constraint: str) -> None:
         """
@@ -133,7 +129,7 @@ class PromptGenerator:
         else:
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
 
-    def generate_prompt_string(self) -> str:
+    def generate_prompt_string(self, config: Config) -> str:
         """
         Generate a prompt string based on the constraints, commands, resources,
             and performance evaluations.
@@ -141,15 +137,28 @@ class PromptGenerator:
         Returns:
             str: The generated prompt string.
         """
-        formatted_response_format = json.dumps(self.response_format, indent=4)
         return (
             f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
-            "Commands:\n"
-            f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
+            f"{generate_commands(self, config)}"
             f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             "Performance Evaluation:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
-            "You should only respond in JSON format as described below \nResponse"
-            f" Format: \n{formatted_response_format} \nEnsure the response can be"
-            " parsed by Python json.loads"
+            "Respond with only valid JSON conforming to the following schema: \n"
+            f"{json.dumps(llm_response_schema(config))}\n"
         )
+
+
+def generate_commands(self, config: Config) -> str:
+    """
+    Generate a prompt string based on the constraints, commands, resources,
+        and performance evaluations.
+
+    Returns:
+        str: The generated prompt string.
+    """
+    if config.openai_functions:
+        return ""
+    return (
+        "Commands:\n"
+        f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
+    )

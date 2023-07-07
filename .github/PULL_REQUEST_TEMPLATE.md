@@ -14,7 +14,7 @@ Provide clear documentation and explanations of the changes made.
 Ensure diffs are limited to the intended lines — no applying preferred formatting styles or line endings (unless that's what the PR is about).
 For guidance on committing only the specific lines you have changed, refer to this helpful video: https://youtu.be/8-hSNHHbiZg
 
-Check out our [wiki page on Contributing](https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing)
+Check out our [wiki page on Contributing](https://github.com/Significant-Gravitas/Nexus/wiki/Contributing)
 
 By following these guidelines, your PRs are more likely to be merged quickly after testing, as long as they align with the project's overall direction. -->
 
@@ -36,7 +36,13 @@ By following these guidelines, your PRs are more likely to be merged quickly aft
 - [ ] I have considered potential risks and mitigations for my changes.
 - [ ] I have documented my changes clearly and comprehensively.
 - [ ] I have not snuck in any "extra" small tweaks changes. <!-- Submit these as separate Pull Requests, they are the easiest to merge! -->
-- [ ] I have run `black .` and `isort .` against my code to ensure it passes our linter.
+- [ ] I have run the following commands against my code to ensure it passes our linters:
+    ```shell
+    black .
+    isort .
+    mypy
+    autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests --in-place
+    ```
 
 <!-- If you haven't added tests, please explain why. If you have, check the appropriate box. If you've ensured your PR is atomic and well-documented, check the corresponding boxes. -->
 

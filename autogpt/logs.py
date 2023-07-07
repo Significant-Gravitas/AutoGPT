@@ -1,17 +1,21 @@
 """Logging module for Auto-GPT."""
+from __future__ import annotations
+
 import logging
 import os
 import random
 import re
 import time
 from logging import LogRecord
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from colorama import Fore, Style
 
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
-from autogpt.speech import say_text
 
 
 class Logger(metaclass=Singleton):
@@ -81,14 +85,27 @@ class Logger(metaclass=Singleton):
         self.json_logger.addHandler(error_handler)
         self.json_logger.setLevel(logging.DEBUG)
 
-        self.speak_mode = False
+        self._config: Optional[Config] = None
         self.chat_plugins = []
+
+    @property
+    def config(self) -> Config | None:
+        return self._config
+
+    @config.setter
+    def config(self, config: Config):
+        self._config = config
+        if config.plain_output:
+            self.typing_logger.removeHandler(self.typing_console_handler)
+            self.typing_logger.addHandler(self.console_handler)
 
     def typewriter_log(
         self, title="", title_color="", content="", speak_text=False, level=logging.INFO
     ):
-        if speak_text and self.speak_mode:
-            say_text(f"{title}. {content}")
+        from autogpt.speech import say_text
+
+        if speak_text and self.config and self.config.speak_mode:
+            say_text(f"{title}. {content}", self.config)
 
         for plugin in self.chat_plugins:
             plugin.report(f"{title}. {content}")
@@ -248,26 +265,36 @@ def remove_color_codes(s: str) -> str:
     return ansi_escape.sub("", s)
 
 
+def remove_ansi_escape(s: str) -> str:
+    return s.replace("\x1B", "")
+
+
 logger = Logger()
 
 
 def print_assistant_thoughts(
     ai_name: object,
     assistant_reply_json_valid: object,
-    speak_mode: bool = False,
+    config: Config,
 ) -> None:
+    from autogpt.speech import say_text
+
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
     assistant_thoughts_speak = None
     assistant_thoughts_criticism = None
 
     assistant_thoughts = assistant_reply_json_valid.get("thoughts", {})
-    assistant_thoughts_text = assistant_thoughts.get("text")
+    assistant_thoughts_text = remove_ansi_escape(assistant_thoughts.get("text", ""))
     if assistant_thoughts:
-        assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
-        assistant_thoughts_plan = assistant_thoughts.get("plan")
-        assistant_thoughts_criticism = assistant_thoughts.get("criticism")
-        assistant_thoughts_speak = assistant_thoughts.get("speak")
+        assistant_thoughts_reasoning = remove_ansi_escape(
+            assistant_thoughts.get("reasoning")
+        )
+        assistant_thoughts_plan = remove_ansi_escape(assistant_thoughts.get("plan"))
+        assistant_thoughts_criticism = remove_ansi_escape(
+            assistant_thoughts.get("criticism")
+        )
+        assistant_thoughts_speak = remove_ansi_escape(assistant_thoughts.get("speak"))
     logger.typewriter_log(
         f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
     )
@@ -288,7 +315,7 @@ def print_assistant_thoughts(
     logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
     # Speak the assistant's thoughts
     if assistant_thoughts_speak:
-        if speak_mode:
-            say_text(assistant_thoughts_speak)
+        if config.speak_mode:
+            say_text(assistant_thoughts_speak, config)
         else:
             logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")

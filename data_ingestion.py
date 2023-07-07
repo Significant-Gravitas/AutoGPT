@@ -2,10 +2,10 @@ import argparse
 import logging
 
 from autogpt.commands.file_operations import ingest_file, list_files
-from autogpt.config import Config
-from autogpt.memory import get_memory
+from autogpt.config import ConfigBuilder
+from autogpt.memory.vector import VectorMemory, get_memory
 
-cfg = Config()
+config = ConfigBuilder.build_config_from_env()
 
 
 def configure_logging():
@@ -21,14 +21,14 @@ def configure_logging():
     return logging.getLogger("AutoGPT-Ingestion")
 
 
-def ingest_directory(directory, memory, args):
+def ingest_directory(directory: str, memory: VectorMemory, args):
     """
     Ingest all files in a directory by calling the ingest_file function for each file.
 
     :param directory: The directory containing the files to ingest
     :param memory: An object with an add() method to store the chunks in memory
     """
-    global logger
+    logger = logging.getLogger("AutoGPT-Ingestion")
     try:
         files = list_files(directory)
         for file in files:
@@ -70,7 +70,9 @@ def main() -> None:
     args = parser.parse_args()
 
     # Initialize memory
-    memory = get_memory(cfg, init=args.init)
+    memory = get_memory(config)
+    if args.init:
+        memory.clear()
     logger.debug("Using memory of type: " + memory.__class__.__name__)
 
     if args.file:
