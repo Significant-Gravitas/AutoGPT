@@ -1,28 +1,32 @@
 """Configuration class to store the state of bools for different scripts access."""
+from __future__ import annotations
+
 import contextlib
 import os
 import re
-from typing import Dict
+from typing import Dict, Optional, Union
 
 import yaml
 from colorama import Fore
 
 from autogpt.core.configuration.schema import Configurable, SystemSettings
+from autogpt.plugins.plugins_config import PluginsConfig
 
 AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
-from typing import Optional
+GPT_4_MODEL = "gpt-4"
+GPT_3_MODEL = "gpt-3.5-turbo"
 
 
-class ConfigSettings(SystemSettings):
-    fast_llm_model: str
-    smart_llm_model: str
+class Config(SystemSettings):
+    fast_llm: str
+    smart_llm: str
     continuous_mode: bool
     skip_news: bool
-    workspace_path: Optional[str]
-    file_logger_path: Optional[str]
+    workspace_path: Optional[str] = None
+    file_logger_path: Optional[str] = None
     debug_mode: bool
     plugins_dir: str
-    plugins_config: dict[str, str]
+    plugins_config: PluginsConfig
     continuous_limit: int
     speak_mode: bool
     skip_reprompt: bool
@@ -37,31 +41,33 @@ class ConfigSettings(SystemSettings):
     prompt_settings_file: str
     embedding_model: str
     browse_spacy_language_model: str
-    openai_api_key: Optional[str]
-    openai_organization: Optional[str]
+    openai_api_key: Optional[str] = None
+    openai_organization: Optional[str] = None
     temperature: float
     use_azure: bool
+    azure_config_file: Optional[str] = None
+    azure_model_to_deployment_id_map: Optional[Dict[str, str]] = None
     execute_local_commands: bool
     restrict_to_workspace: bool
-    openai_api_type: Optional[str]
-    openai_api_base: Optional[str]
-    openai_api_version: Optional[str]
+    openai_api_type: Optional[str] = None
+    openai_api_base: Optional[str] = None
+    openai_api_version: Optional[str] = None
     openai_functions: bool
-    elevenlabs_api_key: Optional[str]
+    elevenlabs_api_key: Optional[str] = None
     streamelements_voice: str
     text_to_speech_provider: str
-    github_api_key: Optional[str]
-    github_username: Optional[str]
-    google_api_key: Optional[str]
-    google_custom_search_engine_id: Optional[str]
-    image_provider: Optional[str]
+    github_api_key: Optional[str] = None
+    github_username: Optional[str] = None
+    google_api_key: Optional[str] = None
+    google_custom_search_engine_id: Optional[str] = None
+    image_provider: Optional[str] = None
     image_size: int
-    huggingface_api_token: Optional[str]
+    huggingface_api_token: Optional[str] = None
     huggingface_image_model: str
     audio_to_text_provider: str
-    huggingface_audio_to_text_model: Optional[str]
-    sd_webui_url: Optional[str]
-    sd_webui_auth: Optional[str]
+    huggingface_audio_to_text_model: Optional[str] = None
+    sd_webui_url: Optional[str] = None
+    sd_webui_auth: Optional[str] = None
     selenium_web_browser: str
     selenium_headless: bool
     user_agent: str
@@ -76,12 +82,62 @@ class ConfigSettings(SystemSettings):
     plugins_openai: list[str]
     plugins_config_file: str
     chat_messages_enabled: bool
-    elevenlabs_voice_id: Optional[str]
+    elevenlabs_voice_id: Optional[str] = None
     plugins: list[str]
     authorise_key: str
 
+    def get_azure_kwargs(self, model: str) -> dict[str, str]:
+        """Get the kwargs for the Azure API."""
 
-class Config(Configurable):
+        # Fix --gpt3only and --gpt4only in combination with Azure
+        fast_llm = (
+            self.fast_llm
+            if not (
+                self.fast_llm == self.smart_llm
+                and self.fast_llm.startswith(GPT_4_MODEL)
+            )
+            else f"not_{self.fast_llm}"
+        )
+        smart_llm = (
+            self.smart_llm
+            if not (
+                self.smart_llm == self.fast_llm
+                and self.smart_llm.startswith(GPT_3_MODEL)
+            )
+            else f"not_{self.smart_llm}"
+        )
+
+        deployment_id = {
+            fast_llm: self.azure_model_to_deployment_id_map.get(
+                "fast_llm_deployment_id",
+                self.azure_model_to_deployment_id_map.get(
+                    "fast_llm_model_deployment_id"  # backwards compatibility
+                ),
+            ),
+            smart_llm: self.azure_model_to_deployment_id_map.get(
+                "smart_llm_deployment_id",
+                self.azure_model_to_deployment_id_map.get(
+                    "smart_llm_model_deployment_id"  # backwards compatibility
+                ),
+            ),
+            self.embedding_model: self.azure_model_to_deployment_id_map.get(
+                "embedding_model_deployment_id"
+            ),
+        }.get(model, None)
+
+        kwargs = {
+            "api_type": self.openai_api_type,
+            "api_base": self.openai_api_base,
+            "api_version": self.openai_api_version,
+        }
+        if model == self.embedding_model:
+            kwargs["engine"] = deployment_id
+        else:
+            kwargs["deployment_id"] = deployment_id
+        return kwargs
+
+
+class ConfigBuilder(Configurable[Config]):
     default_plugins_config_file = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "..", "plugins_config.yaml"
     )
@@ -96,17 +152,17 @@ class Config(Configurable):
     else:
         default_tts_provider = "gtts"
 
-    defaults_settings = ConfigSettings(
+    default_settings = Config(
         name="Default Server Config",
         description="This is a default server configuration",
-        smart_llm_model="gpt-3.5-turbo",
-        fast_llm_model="gpt-3.5-turbo",
+        smart_llm="gpt-4",
+        fast_llm="gpt-3.5-turbo",
         continuous_mode=False,
         continuous_limit=0,
         skip_news=False,
         debug_mode=False,
         plugins_dir="plugins",
-        plugins_config={},
+        plugins_config=PluginsConfig(plugins={}),
         speak_mode=False,
         skip_reprompt=False,
         allow_downloads=False,
@@ -122,6 +178,7 @@ class Config(Configurable):
         browse_spacy_language_model="en_core_web_sm",
         temperature=0,
         use_azure=False,
+        azure_config_file=AZURE_CONFIG_FILE,
         execute_local_commands=False,
         restrict_to_workspace=True,
         openai_functions=False,
@@ -150,7 +207,7 @@ class Config(Configurable):
     )
 
     @classmethod
-    def build_config_from_env(cls):
+    def build_config_from_env(cls) -> Config:
         """Initialize the Config class"""
         config_dict = {
             "authorise_key": os.getenv("AUTHORISE_COMMAND_KEY"),
@@ -159,12 +216,13 @@ class Config(Configurable):
             "shell_command_control": os.getenv("SHELL_COMMAND_CONTROL"),
             "ai_settings_file": os.getenv("AI_SETTINGS_FILE"),
             "prompt_settings_file": os.getenv("PROMPT_SETTINGS_FILE"),
-            "fast_llm_model": os.getenv("FAST_LLM_MODEL"),
-            "smart_llm_model": os.getenv("SMART_LLM_MODEL"),
+            "fast_llm": os.getenv("FAST_LLM", os.getenv("FAST_LLM_MODEL")),
+            "smart_llm": os.getenv("SMART_LLM", os.getenv("SMART_LLM_MODEL")),
             "embedding_model": os.getenv("EMBEDDING_MODEL"),
             "browse_spacy_language_model": os.getenv("BROWSE_SPACY_LANGUAGE_MODEL"),
             "openai_api_key": os.getenv("OPENAI_API_KEY"),
             "use_azure": os.getenv("USE_AZURE") == "True",
+            "azure_config_file": os.getenv("AZURE_CONFIG_FILE", AZURE_CONFIG_FILE),
             "execute_local_commands": os.getenv("EXECUTE_LOCAL_COMMANDS", "False")
             == "True",
             "restrict_to_workspace": os.getenv("RESTRICT_TO_WORKSPACE", "True")
@@ -198,21 +256,16 @@ class Config(Configurable):
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
         }
 
-        # Converting to a list from comma-separated string
-        disabled_command_categories = os.getenv("DISABLED_COMMAND_CATEGORIES")
-        if disabled_command_categories:
-            config_dict[
-                "disabled_command_categories"
-            ] = disabled_command_categories.split(",")
+        config_dict["disabled_command_categories"] = _safe_split(
+            os.getenv("DISABLED_COMMAND_CATEGORIES")
+        )
 
-        # Converting to a list from comma-separated string
-        shell_denylist = os.getenv("SHELL_DENYLIST", os.getenv("DENY_COMMANDS"))
-        if shell_denylist:
-            config_dict["shell_denylist"] = shell_denylist.split(",")
-
-        shell_allowlist = os.getenv("SHELL_ALLOWLIST", os.getenv("ALLOW_COMMANDS"))
-        if shell_allowlist:
-            config_dict["shell_allowlist"] = shell_allowlist.split(",")
+        config_dict["shell_denylist"] = _safe_split(
+            os.getenv("SHELL_DENYLIST", os.getenv("DENY_COMMANDS"))
+        )
+        config_dict["shell_allowlist"] = _safe_split(
+            os.getenv("SHELL_ALLOWLIST", os.getenv("ALLOW_COMMANDS"))
+        )
 
         config_dict["google_custom_search_engine_id"] = os.getenv(
             "GOOGLE_CUSTOM_SEARCH_ENGINE_ID", os.getenv("CUSTOM_SEARCH_ENGINE_ID")
@@ -222,13 +275,13 @@ class Config(Configurable):
             "ELEVENLABS_VOICE_ID", os.getenv("ELEVENLABS_VOICE_1_ID")
         )
 
-        plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
-        if plugins_allowlist:
-            config_dict["plugins_allowlist"] = plugins_allowlist.split(",")
-
-        plugins_denylist = os.getenv("DENYLISTED_PLUGINS")
-        if plugins_denylist:
-            config_dict["plugins_denylist"] = plugins_denylist.split(",")
+        config_dict["plugins_allowlist"] = _safe_split(os.getenv("ALLOWLISTED_PLUGINS"))
+        config_dict["plugins_denylist"] = _safe_split(os.getenv("DENYLISTED_PLUGINS"))
+        config_dict["plugins_config"] = PluginsConfig.load_config(
+            config_dict["plugins_config_file"],
+            config_dict["plugins_denylist"],
+            config_dict["plugins_allowlist"],
+        )
 
         with contextlib.suppress(TypeError):
             config_dict["image_size"] = int(os.getenv("IMAGE_SIZE"))
@@ -238,12 +291,10 @@ class Config(Configurable):
             config_dict["temperature"] = float(os.getenv("TEMPERATURE"))
 
         if config_dict["use_azure"]:
-            azure_config = cls.load_azure_config()
-            config_dict["openai_api_type"] = azure_config["openai_api_type"]
-            config_dict["openai_api_base"] = azure_config["openai_api_base"]
-            config_dict["openai_api_version"] = azure_config["openai_api_version"]
+            azure_config = cls.load_azure_config(config_dict["azure_config_file"])
+            config_dict.update(azure_config)
 
-        if os.getenv("OPENAI_API_BASE_URL"):
+        elif os.getenv("OPENAI_API_BASE_URL"):
             config_dict["openai_api_base"] = os.getenv("OPENAI_API_BASE_URL")
 
         openai_organization = os.getenv("OPENAI_ORGANIZATION")
@@ -272,10 +323,11 @@ class Config(Configurable):
             config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
 
         return {
-            "openai_api_type": config_params.get("azure_api_type") or "azure",
-            "openai_api_base": config_params.get("azure_api_base") or "",
-            "openai_api_version": config_params.get("azure_api_version")
-            or "2023-03-15-preview",
+            "openai_api_type": config_params.get("azure_api_type", "azure"),
+            "openai_api_base": config_params.get("azure_api_base", ""),
+            "openai_api_version": config_params.get(
+                "azure_api_version", "2023-03-15-preview"
+            ),
             "azure_model_to_deployment_id_map": config_params.get(
                 "azure_model_map", {}
             ),
@@ -310,3 +362,10 @@ def check_openai_api_key(config: Config) -> None:
         else:
             print("Invalid OpenAI API key!")
             exit(1)
+
+
+def _safe_split(s: Union[str, None], sep: str = ",") -> list[str]:
+    """Split a string by a separator. Return an empty list if the string is None."""
+    if s is None:
+        return []
+    return s.split(sep)

@@ -1,9 +1,14 @@
 """Base class for all voice classes."""
+from __future__ import annotations
+
 import abc
 import re
 from threading import Lock
+from typing import TYPE_CHECKING
 
-from autogpt.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.singleton import AbstractSingleton
 
 
@@ -40,7 +45,7 @@ class VoiceBase(AbstractSingleton):
             return self._speech(text, voice_index)
 
     @abc.abstractmethod
-    def _setup(self) -> None:
+    def _setup(self, config: Config) -> None:
         """
         Setup the voices, API key, etc.
         """
