@@ -53,6 +53,7 @@ def create_config(
     config.continuous_mode = False
     config.speak_mode = False
 
+
     if debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
         config.debug_mode = True
@@ -82,21 +83,25 @@ def create_config(
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         config.speak_mode = True
 
+    openai_credentials = {
+        'api_key': config.openai_api_key,
+    }
+    if config.use_azure:
+        openai_credentials.update(config.get_azure_kwargs())
     # Set the default LLM models
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM config
         config.fast_llm = GPT_3_MODEL
         config.smart_llm = GPT_3_MODEL
-
-    elif gpt4only and check_model(GPT_4_MODEL, model_type="smart_llm") == GPT_4_MODEL:
+    elif gpt4only and check_model(GPT_4_MODEL, model_type="smart_llm", config=config) == GPT_4_MODEL:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         # --gpt4only should always use gpt-4, despite user's SMART_LLM config
         config.fast_llm = GPT_4_MODEL
         config.smart_llm = GPT_4_MODEL
     else:
-        config.fast_llm = check_model(config.fast_llm, "fast_llm")
-        config.smart_llm = check_model(config.smart_llm, "smart_llm")
+        config.fast_llm = check_model(config.fast_llm, "fast_llm", config=config)
+        config.smart_llm = check_model(config.smart_llm, "smart_llm", config=config)
 
     if memory_type:
         supported_memory = get_supported_memory_backends()

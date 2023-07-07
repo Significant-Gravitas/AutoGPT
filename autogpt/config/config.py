@@ -88,33 +88,14 @@ class Config(SystemSettings):
 
     def get_azure_kwargs(self, model: str) -> dict[str, str]:
         """Get the kwargs for the Azure API."""
-
-        # Fix --gpt3only and --gpt4only in combination with Azure
-        fast_llm = (
-            self.fast_llm
-            if not (
-                self.fast_llm == self.smart_llm
-                and self.fast_llm.startswith(GPT_4_MODEL)
-            )
-            else f"not_{self.fast_llm}"
-        )
-        smart_llm = (
-            self.smart_llm
-            if not (
-                self.smart_llm == self.fast_llm
-                and self.smart_llm.startswith(GPT_3_MODEL)
-            )
-            else f"not_{self.smart_llm}"
-        )
-
         deployment_id = {
-            fast_llm: self.azure_model_to_deployment_id_map.get(
+            self.fast_llm: self.azure_model_to_deployment_id_map.get(
                 "fast_llm_deployment_id",
                 self.azure_model_to_deployment_id_map.get(
                     "fast_llm_model_deployment_id"  # backwards compatibility
                 ),
             ),
-            smart_llm: self.azure_model_to_deployment_id_map.get(
+            self.smart_llm: self.azure_model_to_deployment_id_map.get(
                 "smart_llm_deployment_id",
                 self.azure_model_to_deployment_id_map.get(
                     "smart_llm_model_deployment_id"  # backwards compatibility
