@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 
 class Mock(BaseModel):
-    mock_func: str
+    mock_func: Optional[str] = None
     mock_task: Optional[str] = None
 
 
@@ -20,6 +20,7 @@ class Ground(BaseModel):
     should_contain: Optional[List[str]] = None
     should_not_contain: Optional[List[str]] = None
     files: List[str]
+    type: str
 
 
 class ChallengeData(BaseModel):

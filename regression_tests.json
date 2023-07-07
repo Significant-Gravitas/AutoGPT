@@ -1,8 +1,33 @@
 {
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/code/d1/debug_simple_typo_with_guidance_test.py"
+    },
     "TestBasicMemory": {
         "difficulty": "basic",
         "dependencies": [],
         "test": "agbenchmark/challenges/memory/m1/m1_test.py"
+    },
+    "TestRememberMultipleIds": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/memory/m2/remember_multiple_ids_test.py"
+    },
+    "TestRememberMultipleIdsWithNoise": {
+        "difficulty": "medium",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/memory/m3/remember_multiple_ids_with_noise_test.py"
+    },
+    "TestRememberMultiplePhrasesWithNoise": {
+        "difficulty": "medium",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/memory/m4/remember_multiple_phrases_with_noise_test.py"
+    },
+    "TestRetrieval": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/retrieval/r1/r1_test.py"
     },
     "TestWriteFile": {
         "difficulty": "basic",
@@ -19,31 +44,11 @@
         "dependencies": [],
         "test": "agbenchmark/challenges/retrieval/r3/r3_test.py"
     },
-    "TestRetrieval": {
-        "difficulty": "basic",
-        "dependencies": [],
-        "test": "agbenchmark/challenges/retrieval/r1/r1_test.py"
-    },
     "TestReadFile": {
         "difficulty": "basic",
         "dependencies": [
             "basic_write_file"
         ],
         "test": "agbenchmark/tests/basic_abilities/read_file/read_file_test.py"
-    },
-    "TestRememberMultipleIds": {
-        "difficulty": "basic",
-        "dependencies": [],
-        "test": "agbenchmark/challenges/memory/m2/remember_multiple_ids_test.py"
-    },
-    "TestRememberMultipleIdsWithNoise": {
-        "difficulty": "medium",
-        "dependencies": [],
-        "test": "agbenchmark/challenges/memory/m3/remember_multiple_ids_with_noise_test.py"
-    },
-    "TestRememberMultiplePhrasesWithNoise": {
-        "difficulty": "medium",
-        "dependencies": [],
-        "test": "agbenchmark/challenges/memory/m4/remember_multiple_phrases_with_noise_test.py"
     }
 }

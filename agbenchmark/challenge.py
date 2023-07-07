@@ -1,9 +1,10 @@
 import glob
 import inspect
 import os
-import shutil
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+import subprocess
+import types
+from abc import ABC, ABCMeta, abstractmethod
+from typing import Any, Dict, List, Optional, Tuple, Type, cast
 
 import pytest
 from dotenv import load_dotenv
@@ -16,7 +17,20 @@ mock_test_str = os.getenv("MOCK_TEST")
 MOCK_TEST = mock_test_str.lower() == "true" if mock_test_str else False
 
 
-class Challenge(ABC):
+class ChallengeMeta(ABCMeta):
+    def __init__(self, name: str, bases: Tuple[Type, ...], dct: Dict[str, Any]) -> None:
+
+        super().__init__(name, bases, dct)
+        try:
+            frame = cast(types.FrameType, inspect.currentframe())
+            assert frame.f_back is not None
+            self.CHALLENGE_LOCATION = os.path.dirname(inspect.getfile(frame.f_back))
+        except Exception as e:
+            print(f"Unable to get the file from 8 frames back due to: {str(e)}")
+            raise e
+
+
+class Challenge(ABC, metaclass=ChallengeMeta):
     """The parent class to all specific challenges classes.
     Defines helper methods for running a challenge"""
 
@@ -52,11 +66,13 @@ class Challenge(ABC):
         return self.data.dependencies
 
     def setup_challenge(self, config: Dict[str, Any]) -> None:
-        from agbenchmark.agent_interface import run_agent
+        from agbenchmark.agent_interface import copy_artifacts_into_workspace, run_agent
 
-        self.copy_artifacts_into_workspace(config["workspace"])
+        copy_artifacts_into_workspace(
+            config["workspace"], "artifacts_in", self.__class__.CHALLENGE_LOCATION
+        )
 
-        run_agent(self.task, self.mock, config)
+        run_agent(self.task, self.mock, config, self.__class__.CHALLENGE_LOCATION)
 
     @property
     def name(self) -> str:
@@ -77,8 +93,7 @@ class Challenge(ABC):
         with open(workspace_dir, "r") as f:
             return f.read()
 
-    @staticmethod
-    def open_files(workspace: str, file_patterns: list) -> List[str]:
+    def get_artifacts_out(self, workspace: str, file_patterns: list) -> List[str]:
         script_dir = os.path.abspath(workspace)
         files_contents = []
 
@@ -92,8 +107,17 @@ class Challenge(ABC):
                 matching_files = [os.path.join(script_dir, file_pattern)]
 
             for file_path in matching_files:
-                with open(file_path, "r") as f:
-                    files_contents.append(f.read())
+                if self.data.ground.type == "execute_python_code":
+                    result = subprocess.run(
+                        ["python3", file_path],
+                        cwd=os.path.abspath(workspace),
+                        capture_output=True,
+                        text=True,
+                    )
+                    files_contents.append(result.stdout)
+                else:
+                    with open(file_path, "r") as f:
+                        files_contents.append(f.read())
 
         return files_contents
 
@@ -135,19 +159,3 @@ class Challenge(ABC):
                     )
 
         return 1.0
-
-    def copy_artifacts_into_workspace(self, workspace: str) -> None:
-        curr_frame = inspect.currentframe()
-        outer_frame = inspect.getouterframes(curr_frame)[2]
-        caller_file_path = outer_frame.filename
-        caller_dir_path = os.path.dirname(os.path.abspath(caller_file_path))
-        source_dir = os.path.join(caller_dir_path, "artifacts")
-
-        # Check if source_dir exists, if not then return immediately.
-        if not os.path.exists(source_dir):
-            return
-
-        for file_name in os.listdir(source_dir):
-            full_file_name = os.path.join(source_dir, file_name)
-            if os.path.isfile(full_file_name):
-                shutil.copy(full_file_name, workspace)

@@ -38,6 +38,7 @@ markers = [
     "retrieval",
     "regression",
     "basic",
+    "code",
     "memory"
 ]
 
