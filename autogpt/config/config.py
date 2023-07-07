@@ -17,8 +17,8 @@ from typing import Optional
 
 
 class Config(SystemSettings):
-    fast_llm_model: str
-    smart_llm_model: str
+    fast_llm: str
+    smart_llm: str
     continuous_mode: bool
     skip_news: bool
     workspace_path: Optional[str] = None
@@ -102,8 +102,8 @@ class ConfigBuilder(Configurable[Config]):
     default_settings = Config(
         name="Default Server Config",
         description="This is a default server configuration",
-        smart_llm_model="gpt-4",
-        fast_llm_model="gpt-3.5-turbo",
+        smart_llm="gpt-4",
+        fast_llm="gpt-3.5-turbo",
         continuous_mode=False,
         continuous_limit=0,
         skip_news=False,
@@ -162,8 +162,8 @@ class ConfigBuilder(Configurable[Config]):
             "shell_command_control": os.getenv("SHELL_COMMAND_CONTROL"),
             "ai_settings_file": os.getenv("AI_SETTINGS_FILE"),
             "prompt_settings_file": os.getenv("PROMPT_SETTINGS_FILE"),
-            "fast_llm_model": os.getenv("FAST_LLM_MODEL"),
-            "smart_llm_model": os.getenv("SMART_LLM_MODEL"),
+            "fast_llm": os.getenv("FAST_LLM", os.getenv("FAST_LLM_MODEL")),
+            "smart_llm": os.getenv("SMART_LLM", os.getenv("SMART_LLM_MODEL")),
             "embedding_model": os.getenv("EMBEDDING_MODEL"),
             "browse_spacy_language_model": os.getenv("BROWSE_SPACY_LANGUAGE_MODEL"),
             "openai_api_key": os.getenv("OPENAI_API_KEY"),
