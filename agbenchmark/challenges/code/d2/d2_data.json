@@ -1,7 +1,7 @@
 {
-  "name": "debug_simple_typo_with_guidance",
+  "name": "debug_simple_typo_without_guidance",
   "category": ["code"],
-  "task": "1- Run test.py.\n2- Read code.py.\n3- Modify code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
+  "task": "Make test.py run without errors.",
   "dependencies": [],
   "ground": {
     "answer": "[0, 1] [2, 5] [0, 3]",
@@ -16,7 +16,7 @@
   },
   "info": {
     "difficulty": "basic",
-    "description": "Tests ability for the agent to debug python code with a simple typo in it.",
+    "description": "Tests ability for the agent to debug python code with a simple typo in it, using a very broad prompt without guidance",
     "side_effects": ["tests if there is in fact an LLM attached"]
   }
 }

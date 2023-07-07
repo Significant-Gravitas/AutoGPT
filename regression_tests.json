@@ -50,5 +50,10 @@
             "basic_write_file"
         ],
         "test": "agbenchmark/tests/basic_abilities/read_file/read_file_test.py"
+    },
+    "TestDebugSimpleTypoWithoutGuidance": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark/challenges/code/d2/d2_test.py"
     }
 }
