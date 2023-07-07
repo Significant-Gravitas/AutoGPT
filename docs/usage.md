@@ -72,7 +72,7 @@ If you don't have access to GPT-4, this mode allows you to use Auto-GPT!
 ./run.sh --gpt3only
 ```
 
-You can achieve the same by setting `SMART_LLM_MODEL` in `.env` to `gpt-3.5-turbo`.
+You can achieve the same by setting `SMART_LLM` in `.env` to `gpt-3.5-turbo`.
 
 ### GPT-4 ONLY Mode
 
