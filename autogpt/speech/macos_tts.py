@@ -3,10 +3,7 @@ import os
 
 from autogpt.speech.base import VoiceBase
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
+from autogpt.config import Config
 
 class MacOSTTS(VoiceBase):
     """MacOS TTS Voice."""

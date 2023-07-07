@@ -6,10 +6,8 @@ from playsound import playsound
 
 from autogpt.speech.base import VoiceBase
 
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from autogpt.config import Config
+from autogpt.config import Config
 
 class GTTSVoice(VoiceBase):
     """GTTS Voice."""
