@@ -84,18 +84,18 @@ def create_config(
     # Set the default LLM models
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM_MODEL config
-        config.fast_llm_model = "gpt-3.5-turbo"
-        config.smart_llm_model = "gpt-3.5-turbo"
+        # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM config
+        config.fast_llm = "gpt-3.5-turbo"
+        config.smart_llm = "gpt-3.5-turbo"
 
-    elif gpt4only and check_model("gpt-4", model_type="smart_llm_model") == "gpt-4":
+    elif gpt4only and check_model("gpt-4", model_type="smart_llm") == "gpt-4":
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
-        # --gpt4only should always use gpt-4, despite user's SMART_LLM_MODEL config
-        config.fast_llm_model = "gpt-4"
-        config.smart_llm_model = "gpt-4"
+        # --gpt4only should always use gpt-4, despite user's SMART_LLM config
+        config.fast_llm = "gpt-4"
+        config.smart_llm = "gpt-4"
     else:
-        config.fast_llm_model = check_model(config.fast_llm_model, "fast_llm_model")
-        config.smart_llm_model = check_model(config.smart_llm_model, "smart_llm_model")
+        config.fast_llm = check_model(config.fast_llm, "fast_llm")
+        config.smart_llm = check_model(config.smart_llm, "smart_llm")
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
