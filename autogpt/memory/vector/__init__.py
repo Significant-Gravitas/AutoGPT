@@ -39,12 +39,27 @@ supported_memory = ["json_file", "no_memory"]
 #     MilvusMemory = None
 
 
-def get_memory(cfg: Config, init=False) -> VectorMemory:
+def get_memory(config: Config) -> VectorMemory:
+    """Returns a memory object corresponding to the memory backend specified in the config.
+
+    The type of memory object returned depends on the value of the `memory_backend`
+    attribute in the configuration. E.g. if `memory_backend` is set to "pinecone", a
+    `PineconeMemory` object is returned. If it is set to "redis", a `RedisMemory`
+    object is returned.
+    By default, a `JSONFileMemory` object is returned.
+
+    Params:
+        config: A configuration object that contains information about the memory backend
+            to be used and other relevant parameters.
+
+    Returns:
+        VectorMemory: an instance of a memory object based on the configuration provided.
+    """
     memory = None
 
-    match cfg.memory_backend:
+    match config.memory_backend:
         case "json_file":
-            memory = JSONFileMemory(cfg)
+            memory = JSONFileMemory(config)
 
         case "pinecone":
             raise NotImplementedError(
@@ -59,8 +74,8 @@ def get_memory(cfg: Config, init=False) -> VectorMemory:
             #         " to use Pinecone as a memory backend."
             #     )
             # else:
-            #     memory = PineconeMemory(cfg)
-            #     if init:
+            #     memory = PineconeMemory(config)
+            #     if clear:
             #         memory.clear()
 
         case "redis":
@@ -74,7 +89,7 @@ def get_memory(cfg: Config, init=False) -> VectorMemory:
             #         " use Redis as a memory backend."
             #     )
             # else:
-            #     memory = RedisMemory(cfg)
+            #     memory = RedisMemory(config)
 
         case "weaviate":
             raise NotImplementedError(
@@ -89,7 +104,7 @@ def get_memory(cfg: Config, init=False) -> VectorMemory:
             #         " use Weaviate as a memory backend."
             #     )
             # else:
-            #     memory = WeaviateMemory(cfg)
+            #     memory = WeaviateMemory(config)
 
         case "milvus":
             raise NotImplementedError(
@@ -104,18 +119,18 @@ def get_memory(cfg: Config, init=False) -> VectorMemory:
             #         "Please install pymilvus to use Milvus or Zilliz Cloud as memory backend."
             #     )
             # else:
-            #     memory = MilvusMemory(cfg)
+            #     memory = MilvusMemory(config)
 
         case "no_memory":
             memory = NoMemory()
 
         case _:
             raise ValueError(
-                f"Unknown memory backend '{cfg.memory_backend}'. Please check your config."
+                f"Unknown memory backend '{config.memory_backend}'. Please check your config."
             )
 
     if memory is None:
-        memory = JSONFileMemory(cfg)
+        memory = JSONFileMemory(config)
 
     return memory
 

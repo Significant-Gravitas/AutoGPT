@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import time
-from random import shuffle
 from typing import TYPE_CHECKING
+
+from autogpt.llm.providers.openai import get_openai_command_specs
 
 if TYPE_CHECKING:
     from autogpt.agent.agent import Agent
@@ -13,31 +14,35 @@ from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
-from autogpt.memory.vector import MemoryItem, get_memory
-
-cfg = Config()
 
 
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
+    config: Config,
     agent: Agent,
     system_prompt: str,
-    user_input: str,
+    triggering_prompt: str,
     token_limit: int,
+    model: str | None = None,
 ):
     """
     Interact with the OpenAI API, sending the prompt, user input,
         message history, and permanent memory.
 
     Args:
+        config (Config): The config to use.
+        agent (Agent): The agent to use.
         system_prompt (str): The prompt explaining the rules to the AI.
-        user_input (str): The input from the user.
+        triggering_prompt (str): The input from the user.
         token_limit (int): The maximum number of tokens allowed in the API call.
+        model (str, optional): The model to use. By default, the config.smart_llm will be used.
 
     Returns:
     str: The AI's response.
     """
-    model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
+    if model is None:
+        model = config.smart_llm
+
     # Reserve 1000 tokens for the response
     logger.debug(f"Token limit: {token_limit}")
     send_token_limit = token_limit - 1000
@@ -87,13 +92,14 @@ def chat_with_ai(
     #     )
 
     # Account for user input (appended later)
-    user_input_msg = Message("user", user_input)
+    user_input_msg = Message("user", triggering_prompt)
     current_tokens_used += count_message_tokens([user_input_msg], model)
 
     current_tokens_used += 500  # Reserve space for new_summary_message
+    current_tokens_used += 500  # Reserve space for the openai functions TODO improve
 
     # Add Messages until the token limit is reached or there are no more messages to add.
-    for cycle in reversed(list(agent.history.per_cycle())):
+    for cycle in reversed(list(agent.history.per_cycle(agent.config))):
         messages_to_add = [msg for msg in cycle if msg is not None]
         tokens_to_add = count_message_tokens(messages_to_add, model)
         if current_tokens_used + tokens_to_add > send_token_limit:
@@ -107,14 +113,14 @@ def chat_with_ai(
     # Update & add summary of trimmed messages
     if len(agent.history) > 0:
         new_summary_message, trimmed_messages = agent.history.trim_messages(
-            current_message_chain=list(message_sequence),
+            current_message_chain=list(message_sequence), config=agent.config
         )
         tokens_to_add = count_message_tokens([new_summary_message], model)
         message_sequence.insert(insertion_index, new_summary_message)
         current_tokens_used += tokens_to_add - 500
 
         # FIXME: uncomment when memory is back in use
-        # memory_store = get_memory(cfg)
+        # memory_store = get_memory(config)
         # for _, ai_msg, result_msg in agent.history.per_cycle(trimmed_messages):
         #     memory_to_add = MemoryItem.from_ai_action(ai_msg, result_msg)
         #     logger.debug(f"Storing the following memory:\n{memory_to_add.dump()}")
@@ -142,12 +148,12 @@ def chat_with_ai(
     # Append user input, the length of this is accounted for above
     message_sequence.append(user_input_msg)
 
-    plugin_count = len(cfg.plugins)
-    for i, plugin in enumerate(cfg.plugins):
+    plugin_count = len(config.plugins)
+    for i, plugin in enumerate(config.plugins):
         if not plugin.can_handle_on_planning():
             continue
         plugin_response = plugin.on_planning(
-            agent.config.prompt_generator, message_sequence.raw()
+            agent.ai_config.prompt_generator, message_sequence.raw()
         )
         if not plugin_response or plugin_response == "":
             continue
@@ -159,7 +165,6 @@ def chat_with_ai(
             logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
             break
         message_sequence.add("system", plugin_response)
-
     # Calculate remaining tokens
     tokens_remaining = token_limit - current_tokens_used
     # assert tokens_remaining >= 0, "Tokens remaining is negative.
@@ -179,7 +184,7 @@ def chat_with_ai(
         logger.debug("")
     logger.debug("----------- END OF CONTEXT ----------------")
     agent.log_cycle_handler.log_cycle(
-        agent.config.ai_name,
+        agent.ai_name,
         agent.created_at,
         agent.cycle_count,
         message_sequence.raw(),
@@ -190,11 +195,13 @@ def chat_with_ai(
     # temperature and other settings we care about
     assistant_reply = create_chat_completion(
         prompt=message_sequence,
+        config=agent.config,
+        functions=get_openai_command_specs(agent),
         max_tokens=tokens_remaining,
     )
 
     # Update full message history
     agent.history.append(user_input_msg)
-    agent.history.add("assistant", assistant_reply, "ai_response")
+    agent.history.add("assistant", assistant_reply.content, "ai_response")
 
     return assistant_reply

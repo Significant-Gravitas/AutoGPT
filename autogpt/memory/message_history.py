@@ -9,12 +9,10 @@ if TYPE_CHECKING:
     from autogpt.agent import Agent
 
 from autogpt.config import Config
-from autogpt.json_utils.utilities import (
-    LLM_DEFAULT_RESPONSE_FORMAT,
-    is_string_valid_json,
-)
+from autogpt.json_utils.utilities import extract_json_from_response
 from autogpt.llm.base import ChatSequence, Message, MessageRole, MessageType
-from autogpt.llm.utils import create_chat_completion
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.llm.utils import count_string_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
 from autogpt.logs import logger
 
@@ -49,8 +47,7 @@ class MessageHistory:
         return self.messages.append(message)
 
     def trim_messages(
-        self,
-        current_message_chain: list[Message],
+        self, current_message_chain: list[Message], config: Config
     ) -> tuple[Message, list[Message]]:
         """
         Returns a list of trimmed messages: messages which are in the message history
@@ -58,6 +55,7 @@ class MessageHistory:
 
         Args:
             current_message_chain (list[Message]): The messages currently in the context.
+            config (Config): The config to use.
 
         Returns:
             Message: A message with the new running summary after adding the trimmed messages.
@@ -77,7 +75,7 @@ class MessageHistory:
             return self.summary_message(), []
 
         new_summary_message = self.update_running_summary(
-            new_events=new_messages_not_in_chain
+            new_events=new_messages_not_in_chain, config=config
         )
 
         # Find the index of the last message processed
@@ -86,7 +84,7 @@ class MessageHistory:
 
         return new_summary_message, new_messages_not_in_chain
 
-    def per_cycle(self, messages: list[Message] | None = None):
+    def per_cycle(self, config: Config, messages: list[Message] | None = None):
         """
         Yields:
             Message: a message containing user input
@@ -103,8 +101,8 @@ class MessageHistory:
             )
             result_message = messages[i + 1]
             try:
-                assert is_string_valid_json(
-                    ai_message.content, LLM_DEFAULT_RESPONSE_FORMAT
+                assert (
+                    extract_json_from_response(ai_message.content) != {}
                 ), "AI response is not a valid JSON object"
                 assert result_message.type == "action_result"
 
@@ -120,7 +118,9 @@ class MessageHistory:
             f"This reminds you of these events from your past: \n{self.summary}",
         )
 
-    def update_running_summary(self, new_events: list[Message]) -> Message:
+    def update_running_summary(
+        self, new_events: list[Message], config: Config
+    ) -> Message:
         """
         This function takes a list of dictionaries representing new events and combines them with the current summary,
         focusing on key and potentially important information to remember. The updated summary is returned in a message
@@ -137,8 +137,6 @@ class MessageHistory:
             update_running_summary(new_events)
             # Returns: "This reminds you of these events from your past: \nI entered the kitchen and found a scrawled note saying 7."
         """
-        cfg = Config()
-
         if not new_events:
             return self.summary_message()
 
@@ -152,13 +150,14 @@ class MessageHistory:
 
                 # Remove "thoughts" dictionary from "content"
                 try:
-                    content_dict = json.loads(event.content)
+                    content_dict = extract_json_from_response(event.content)
                     if "thoughts" in content_dict:
                         del content_dict["thoughts"]
                     event.content = json.dumps(content_dict)
-                except json.decoder.JSONDecodeError:
-                    if cfg.debug_mode:
-                        logger.error(f"Error: Invalid JSON: {event.content}\n")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error: Invalid JSON: {e}")
+                    if config.debug_mode:
+                        logger.error(f"{event.content}")
 
             elif event.role.lower() == "system":
                 event.role = "your computer"
@@ -167,9 +166,45 @@ class MessageHistory:
             elif event.role == "user":
                 new_events.remove(event)
 
+        # Summarize events and current summary in batch to a new running summary
+
+        # Assume an upper bound length for the summary prompt template, i.e. Your task is to create a concise running summary...., in summarize_batch func
+        # TODO make this default dynamic
+        prompt_template_length = 100
+        max_tokens = OPEN_AI_CHAT_MODELS.get(config.fast_llm).max_tokens
+        summary_tlength = count_string_tokens(str(self.summary), config.fast_llm)
+        batch = []
+        batch_tlength = 0
+
+        # TODO Can put a cap on length of total new events and drop some previous events to save API cost, but need to think thru more how to do it without losing the context
+        for event in new_events:
+            event_tlength = count_string_tokens(str(event), config.fast_llm)
+
+            if (
+                batch_tlength + event_tlength
+                > max_tokens - prompt_template_length - summary_tlength
+            ):
+                # The batch is full. Summarize it and start a new one.
+                self.summarize_batch(batch, config)
+                summary_tlength = count_string_tokens(
+                    str(self.summary), config.fast_llm
+                )
+                batch = [event]
+                batch_tlength = event_tlength
+            else:
+                batch.append(event)
+                batch_tlength += event_tlength
+
+        if batch:
+            # There's an unprocessed batch. Summarize it.
+            self.summarize_batch(batch, config)
+
+        return self.summary_message()
+
+    def summarize_batch(self, new_events_batch, config):
         prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
 
-You will receive the current summary and the your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
+You will receive the current summary and your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
 
 Summary So Far:
 """
@@ -178,27 +213,25 @@ Summary So Far:
 
 Latest Development:
 """
-{new_events or "Nothing new happened."}
+{new_events_batch or "Nothing new happened."}
 """
 '''
 
-        prompt = ChatSequence.for_model(cfg.fast_llm_model, [Message("user", prompt)])
+        prompt = ChatSequence.for_model(config.fast_llm, [Message("user", prompt)])
         self.agent.log_cycle_handler.log_cycle(
-            self.agent.config.ai_name,
+            self.agent.ai_name,
             self.agent.created_at,
             self.agent.cycle_count,
             prompt.raw(),
             PROMPT_SUMMARY_FILE_NAME,
         )
 
-        self.summary = create_chat_completion(prompt)
+        self.summary = create_chat_completion(prompt, config).content
 
         self.agent.log_cycle_handler.log_cycle(
-            self.agent.config.ai_name,
+            self.agent.ai_name,
             self.agent.created_at,
             self.agent.cycle_count,
             self.summary,
             SUMMARY_FILE_NAME,
         )
-
-        return self.summary_message()

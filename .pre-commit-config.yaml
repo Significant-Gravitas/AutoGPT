@@ -21,6 +21,7 @@ repos:
     hooks:
       - id: black
         language_version: python3.10
+
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: 'v1.3.0'
     hooks:
@@ -28,9 +29,14 @@ repos:
 
   - repo: local
     hooks:
+      - id: autoflake
+        name: autoflake
+        entry: autoflake --in-place --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests
+        language: python
+        types: [ python ]
       - id: pytest-check
         name: pytest-check
-        entry: pytest --cov=autogpt --without-integration --without-slow-integration
+        entry: pytest --cov=autogpt tests/unit
         language: system
         pass_filenames: false
         always_run: true

@@ -1,4 +1,3 @@
-import numpy
 import pytest
 
 from autogpt.memory.vector.memory_item import MemoryItem
