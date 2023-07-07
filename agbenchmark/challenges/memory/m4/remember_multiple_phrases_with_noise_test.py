@@ -1,4 +1,3 @@
-import os
 from typing import Any, Dict
 
 import pytest
@@ -8,11 +7,6 @@ from agbenchmark.challenges.memory.memory import MemoryChallenge
 
 class TestRememberMultiplePhrasesWithNoise(MemoryChallenge):
     """The first memory challenge"""
-
-    def get_file_path(self) -> str:  # all tests must implement this method
-        return os.path.join(
-            os.path.dirname(__file__), "remember_multiple_phrases_with_noise_data.json"
-        )
 
     @pytest.mark.depends(
         name="test_remember_multiple_phrases_with_noise",

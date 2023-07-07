@@ -3,7 +3,7 @@ import inspect
 import os
 import subprocess
 import types
-from abc import ABC, ABCMeta, abstractmethod
+from abc import ABC, ABCMeta
 from typing import Any, Dict, List, Optional, Tuple, Type, cast
 
 import pytest
@@ -35,20 +35,12 @@ class Challenge(ABC, metaclass=ChallengeMeta):
     Defines helper methods for running a challenge"""
 
     _data_cache: Dict[str, ChallengeData] = {}
-
-    @abstractmethod
-    def get_file_path(self) -> str:
-        """This should be implemented by any class which inherits from BasicChallenge"""
-        pass
+    CHALLENGE_LOCATION: str
 
     @property
     def data(self) -> ChallengeData:
-        "Check if the data is already loaded, if not load it"
-        file_path = (
-            self.get_file_path()
-        )  # file_path serves as the key in the cache dictionary
-        if file_path not in Challenge._data_cache:
-            Challenge._data_cache[file_path] = ChallengeData.deserialize(file_path)
+        file_path = f"{self.CHALLENGE_LOCATION}/data.json"
+        Challenge._data_cache[file_path] = ChallengeData.deserialize(file_path)
         return Challenge._data_cache[file_path]
 
     @property

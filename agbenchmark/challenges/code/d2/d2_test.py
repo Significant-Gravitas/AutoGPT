@@ -1,4 +1,3 @@
-import os
 from typing import Any, Dict
 
 import pytest
@@ -8,9 +7,6 @@ from agbenchmark.challenges.code.code import CodeChallenge
 
 class TestDebugSimpleTypoWithoutGuidance(CodeChallenge):
     """The first memory challenge"""
-
-    def get_file_path(self) -> str:  # all tests must implement this method
-        return os.path.join(os.path.dirname(__file__), "d2_data.json")
 
     @pytest.mark.depends(
         name="test_debug_simple_typo_without_guidance",
