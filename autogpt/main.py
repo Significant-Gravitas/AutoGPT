@@ -51,12 +51,10 @@ def run_auto_gpt(
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
+    logger.speak_mode = speak
 
     config = ConfigBuilder.build_config_from_env()
-    
-    logger.speak_mode = speak
-    if speak:
-        logger.tts_provider = config.text_to_speech_provider
+
     # TODO: fill in llm values here
     check_openai_api_key(config)
 

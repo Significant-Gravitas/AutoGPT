@@ -6,11 +6,15 @@ from playsound import playsound
 
 from autogpt.speech.base import VoiceBase
 
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from autogpt.config import Config
+    
 class StreamElementsSpeech(VoiceBase):
     """Streamelements speech module for autogpt"""
 
-    def _setup(self) -> None:
+    def _setup(self,config:Config) -> None:
         """Setup the voices, API key, etc."""
 
     def _speech(self, text: str, voice: str, _: int = 0) -> bool:

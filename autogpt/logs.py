@@ -87,14 +87,13 @@ class Logger(metaclass=Singleton):
         self.json_logger.setLevel(logging.DEBUG)
 
         self.speak_mode = False
-        self.tts_provider = "gtts"
         self.chat_plugins = []
 
     def typewriter_log(
-        self, title="", title_color="", content="", speak_text=False, level=logging.INFO,
+        self, title="", title_color="", content="", speak_text=False, level=logging.INFO
     ):
-        if speak_text and self.speak_mode:
-            say_text(f"{title}.{content}",self.tts_provider)
+        #if speak_text and self.speak_mode:
+            #say_text(f"{title}. {content}")
 
         for plugin in self.chat_plugins:
             plugin.report(f"{title}. {content}")
