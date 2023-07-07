@@ -53,7 +53,6 @@ def create_config(
     config.continuous_mode = False
     config.speak_mode = False
 
-
     if debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
         config.debug_mode = True
@@ -89,7 +88,11 @@ def create_config(
         # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM config
         config.fast_llm = GPT_3_MODEL
         config.smart_llm = GPT_3_MODEL
-    elif gpt4only and check_model(GPT_4_MODEL, model_type="smart_llm", config=config) == GPT_4_MODEL:
+    elif (
+        gpt4only
+        and check_model(GPT_4_MODEL, model_type="smart_llm", config=config)
+        == GPT_4_MODEL
+    ):
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         # --gpt4only should always use gpt-4, despite user's SMART_LLM config
         config.fast_llm = GPT_4_MODEL
