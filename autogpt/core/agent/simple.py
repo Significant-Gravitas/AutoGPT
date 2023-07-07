@@ -26,7 +26,6 @@ from autogpt.core.workspace.simple import SimpleWorkspace, WorkspaceSettings
 class AgentSystems(SystemConfiguration):
     ability_registry: PluginLocation
     memory: PluginLocation
-    embedding_model: PluginLocation
     openai_provider: PluginLocation
     planning: PluginLocation
     workspace: PluginLocation
