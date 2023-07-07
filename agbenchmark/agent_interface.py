@@ -33,11 +33,10 @@ def run_agent(
         )
 
         # Get the current working directory
-        cwd = os.getcwd()
+        cwd = os.path.join(os.getcwd(), config["home_path"])
 
         # Add current directory to Python's import path
         sys.path.append(cwd)
-        sys.path.append(os.path.join(cwd, config["home_path"]))
 
         command = [sys.executable, config["entry_path"], str(task)]
         process = subprocess.Popen(
@@ -67,6 +66,7 @@ def run_agent(
                 print(
                     "The Python function has exceeded the time limit and was terminated."
                 )
+                # Terminate the process group
                 process.terminate()
                 break
 

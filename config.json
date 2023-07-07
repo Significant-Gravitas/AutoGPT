@@ -1,6 +1,6 @@
 {
-  "workspace": "projects/my-new-project/workspace",
+  "workspace": "${os.path.join(Path.home(), 'miniagi')}",
   "entry_path": "benchmarks.py",
-  "home_path": "",
+  "home_path": "agent/mini-agi/",
   "cutoff": 60
 }
