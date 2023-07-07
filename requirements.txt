@@ -30,6 +30,10 @@ en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_
 prompt_toolkit>=3.0.38
 pydantic
 
+# web server
+fastapi
+uvicorn
+
 ##Dev
 coverage
 flake8

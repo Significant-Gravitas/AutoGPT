@@ -1,13 +1,18 @@
 """ Text to speech module """
+from __future__ import annotations
+
 import threading
 from threading import Semaphore
+from typing import TYPE_CHECKING
 
-from autogpt.config.config import Config
-from autogpt.speech.base import VoiceBase
-from autogpt.speech.eleven_labs import ElevenLabsSpeech
-from autogpt.speech.gtts import GTTSVoice
-from autogpt.speech.macos_tts import MacOSTTS
-from autogpt.speech.stream_elements_speech import StreamElementsSpeech
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
+from .base import VoiceBase
+from .eleven_labs import ElevenLabsSpeech
+from .gtts import GTTSVoice
+from .macos_tts import MacOSTTS
+from .stream_elements_speech import StreamElementsSpeech
 
 _QUEUE_SEMAPHORE = Semaphore(
     1
@@ -36,10 +41,10 @@ def _get_voice_engine(config: Config) -> tuple[VoiceBase, VoiceBase]:
     if tts_provider == "elevenlabs":
         voice_engine = ElevenLabsSpeech(config)
     elif tts_provider == "macos":
-        voice_engine = MacOSTTS()
+        voice_engine = MacOSTTS(config)
     elif tts_provider == "streamelements":
-        voice_engine = StreamElementsSpeech()
+        voice_engine = StreamElementsSpeech(config)
     else:
-        voice_engine = GTTSVoice()
+        voice_engine = GTTSVoice(config)
 
-    return GTTSVoice(), voice_engine
+    return GTTSVoice(config), voice_engine

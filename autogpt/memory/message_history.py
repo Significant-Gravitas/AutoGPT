@@ -171,14 +171,14 @@ class MessageHistory:
         # Assume an upper bound length for the summary prompt template, i.e. Your task is to create a concise running summary...., in summarize_batch func
         # TODO make this default dynamic
         prompt_template_length = 100
-        max_tokens = OPEN_AI_CHAT_MODELS.get(config.fast_llm_model).max_tokens
-        summary_tlength = count_string_tokens(str(self.summary), config.fast_llm_model)
+        max_tokens = OPEN_AI_CHAT_MODELS.get(config.fast_llm).max_tokens
+        summary_tlength = count_string_tokens(str(self.summary), config.fast_llm)
         batch = []
         batch_tlength = 0
 
         # TODO Can put a cap on length of total new events and drop some previous events to save API cost, but need to think thru more how to do it without losing the context
         for event in new_events:
-            event_tlength = count_string_tokens(str(event), config.fast_llm_model)
+            event_tlength = count_string_tokens(str(event), config.fast_llm)
 
             if (
                 batch_tlength + event_tlength
@@ -187,7 +187,7 @@ class MessageHistory:
                 # The batch is full. Summarize it and start a new one.
                 self.summarize_batch(batch, config)
                 summary_tlength = count_string_tokens(
-                    str(self.summary), config.fast_llm_model
+                    str(self.summary), config.fast_llm
                 )
                 batch = [event]
                 batch_tlength = event_tlength
@@ -217,9 +217,7 @@ Latest Development:
 """
 '''
 
-        prompt = ChatSequence.for_model(
-            config.fast_llm_model, [Message("user", prompt)]
-        )
+        prompt = ChatSequence.for_model(config.fast_llm, [Message("user", prompt)])
         self.agent.log_cycle_handler.log_cycle(
             self.agent.ai_name,
             self.agent.created_at,

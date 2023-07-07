@@ -35,13 +35,13 @@ def chat_with_ai(
         system_prompt (str): The prompt explaining the rules to the AI.
         triggering_prompt (str): The input from the user.
         token_limit (int): The maximum number of tokens allowed in the API call.
-        model (str, optional): The model to use. If None, the config.fast_llm_model will be used. Defaults to None.
+        model (str, optional): The model to use. By default, the config.smart_llm will be used.
 
     Returns:
     str: The AI's response.
     """
     if model is None:
-        model = config.fast_llm_model
+        model = config.smart_llm
 
     # Reserve 1000 tokens for the response
     logger.debug(f"Token limit: {token_limit}")

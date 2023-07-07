@@ -7,8 +7,8 @@ import yaml
 from pytest_mock import MockerFixture
 
 from autogpt.agent.agent import Agent
+from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.config.ai_config import AIConfig
-from autogpt.config.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import TypingConsoleHandler
 from autogpt.memory.vector import get_memory
@@ -49,7 +49,7 @@ def temp_plugins_config_file():
 def config(
     temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace
 ) -> Config:
-    config = Config.build_config_from_env()
+    config = ConfigBuilder.build_config_from_env()
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
 
@@ -59,7 +59,11 @@ def config(
     # avoid circular dependency
     from autogpt.plugins.plugins_config import PluginsConfig
 
-    config.plugins_config = PluginsConfig.load_config(global_config=config)
+    config.plugins_config = PluginsConfig.load_config(
+        plugins_config_file=config.plugins_config_file,
+        plugins_denylist=config.plugins_denylist,
+        plugins_allowlist=config.plugins_allowlist,
+    )
 
     # Do a little setup and teardown since the config object is a singleton
     mocker.patch.multiple(
