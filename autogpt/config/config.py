@@ -18,73 +18,112 @@ GPT_3_MODEL = "gpt-3.5-turbo"
 
 
 class Config(SystemSettings):
-    fast_llm: str
-    smart_llm: str
-    continuous_mode: bool
+    ########################
+    # Application Settings #
+    ########################
     skip_news: bool
-    workspace_path: Optional[str] = None
-    file_logger_path: Optional[str] = None
-    debug_mode: bool
-    plugins_dir: str
-    plugins_config: PluginsConfig
-    continuous_limit: int
-    speak_mode: bool
     skip_reprompt: bool
-    allow_downloads: bool
+    authorise_key: str
     exit_key: str
+    debug_mode: bool
     plain_output: bool
-    disabled_command_categories: list[str]
-    shell_command_control: str
-    shell_denylist: list[str]
-    shell_allowlist: list[str]
+    chat_messages_enabled: bool
+    # TTS configuration
+    speak_mode: bool
+    text_to_speech_provider: str
+    streamelements_voice: str
+    elevenlabs_voice_id: Optional[str] = None
+
+    ##########################
+    # Agent Control Settings #
+    ##########################
+    # Paths
     ai_settings_file: str
     prompt_settings_file: str
+    workspace_path: Optional[str] = None
+    file_logger_path: Optional[str] = None
+    # Model configuration
+    fast_llm: str
+    smart_llm: str
+    temperature: float
+    openai_functions: bool
     embedding_model: str
     browse_spacy_language_model: str
-    openai_api_key: Optional[str] = None
-    openai_organization: Optional[str] = None
-    temperature: float
-    use_azure: bool
-    azure_config_file: Optional[str] = None
-    azure_model_to_deployment_id_map: Optional[Dict[str, str]] = None
-    execute_local_commands: bool
-    restrict_to_workspace: bool
-    openai_api_type: Optional[str] = None
-    openai_api_base: Optional[str] = None
-    openai_api_version: Optional[str] = None
-    openai_functions: bool
-    elevenlabs_api_key: Optional[str] = None
-    streamelements_voice: str
-    text_to_speech_provider: str
-    github_api_key: Optional[str] = None
-    github_username: Optional[str] = None
-    google_api_key: Optional[str] = None
-    google_custom_search_engine_id: Optional[str] = None
-    image_provider: Optional[str] = None
-    image_size: int
-    huggingface_api_token: Optional[str] = None
-    huggingface_image_model: str
-    audio_to_text_provider: str
-    huggingface_audio_to_text_model: Optional[str] = None
-    sd_webui_url: Optional[str] = None
-    sd_webui_auth: Optional[str] = None
-    selenium_web_browser: str
-    selenium_headless: bool
-    user_agent: str
+    # Run loop configuration
+    continuous_mode: bool
+    continuous_limit: int
+
+    ##########
+    # Memory #
+    ##########
     memory_backend: str
     memory_index: str
     redis_host: str
     redis_port: int
     redis_password: str
     wipe_redis_on_start: bool
+
+    ############
+    # Commands #
+    ############
+    # General
+    disabled_command_categories: list[str]
+    # File ops
+    restrict_to_workspace: bool
+    allow_downloads: bool
+    # Shell commands
+    shell_command_control: str
+    execute_local_commands: bool
+    shell_denylist: list[str]
+    shell_allowlist: list[str]
+    # Text to image
+    image_provider: Optional[str] = None
+    huggingface_image_model: str
+    sd_webui_url: Optional[str] = None
+    image_size: int
+    # Audio to text
+    audio_to_text_provider: str
+    huggingface_audio_to_text_model: Optional[str] = None
+    # Web browsing
+    selenium_web_browser: str
+    selenium_headless: bool
+    user_agent: str
+
+    ###################
+    # Plugin Settings #
+    ###################
+    plugins_dir: str
+    plugins_config_file: str
+    plugins_config: PluginsConfig
+    plugins: list[str]
     plugins_allowlist: list[str]
     plugins_denylist: list[str]
     plugins_openai: list[str]
-    plugins_config_file: str
-    chat_messages_enabled: bool
-    elevenlabs_voice_id: Optional[str] = None
-    plugins: list[str]
-    authorise_key: str
+
+    ###############
+    # Credentials #
+    ###############
+    # OpenAI
+    openai_api_key: Optional[str] = None
+    openai_api_type: Optional[str] = None
+    openai_api_base: Optional[str] = None
+    openai_api_version: Optional[str] = None
+    openai_organization: Optional[str] = None
+    use_azure: bool
+    azure_config_file: Optional[str] = None
+    azure_model_to_deployment_id_map: Optional[Dict[str, str]] = None
+    # Elevenlabs
+    elevenlabs_api_key: Optional[str] = None
+    # Github
+    github_api_key: Optional[str] = None
+    github_username: Optional[str] = None
+    # Google
+    google_api_key: Optional[str] = None
+    google_custom_search_engine_id: Optional[str] = None
+    # Huggingface
+    huggingface_api_token: Optional[str] = None
+    # Stable Diffusion
+    sd_webui_auth: Optional[str] = None
 
     def get_azure_kwargs(self, model: str) -> dict[str, str]:
         """Get the kwargs for the Azure API."""
