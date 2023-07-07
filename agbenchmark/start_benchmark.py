@@ -57,11 +57,6 @@ def start(category: str, maintain: bool, mock: bool) -> int:
 
     set_key(".env", "MOCK_TEST", "True" if mock else "False")
 
-    # create workspace directory if it doesn't exist
-    workspace_path = os.path.abspath(config["workspace"])
-    if not os.path.exists(workspace_path):
-        os.makedirs(workspace_path, exist_ok=True)
-
     if not os.path.exists(REGRESSION_TESTS_PATH):
         with open(REGRESSION_TESTS_PATH, "a"):
             pass
