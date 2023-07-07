@@ -1,6 +1,6 @@
 import logging
-from abc import ABC, abstractmethod
-from dataclasses import InitVar, dataclass, field
+from abc import ABC
+from dataclasses import InitVar, dataclass
 from typing import Any, Callable, Optional, Type
 
 from autogpt.config import Config
@@ -161,7 +161,7 @@ class CommandInstance(GenericCommandInstance):
 
     @property
     def is_void(self):
-        return True
+        return False
 
     @property
     def should_ignore(self) -> bool:
@@ -188,7 +188,7 @@ class VoidCommandInstance(GenericCommandInstance):
         return self.CMD
 
     @property
-    def arguments():
+    def arguments(self):
         return {}
 
     @property

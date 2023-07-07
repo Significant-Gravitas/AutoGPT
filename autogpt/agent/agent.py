@@ -104,7 +104,6 @@ class Agent:
             config.fast_llm_model
         ).max_tokens
         self.loopwatcher = LoopWatcher()
-        self.cleanupExecuter = concurrent.futures.ThreadPoolExecutor()
 
     async def async_task_and_spin(
         self, spn: Spinner, some_task: Callable, args: Tuple
@@ -328,7 +327,7 @@ class Agent:
                     and (status != InteractionResult.ExceptionInValidation)
                 )
 
-            if cmd.should_ignore:
+            if (cmd.should_ignore and not tostop): #tostop take presedence
                 user_input = "GENERATE NEXT COMMAND JSON"
             elif (
                 (not self.config.continuous_mode and self.next_action_count == 0)

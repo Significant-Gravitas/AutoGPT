@@ -147,9 +147,6 @@ class Spinner:
                     sys.stdin.read(1)
                 termios.tcsetattr(self.stdin_no, termios.TCSADRAIN, self.oldtty)
 
-        sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
-        sys.stdout.flush()
-
     def update_message(self, new_message: str, delay: float = 0.1) -> None:
         """Update the spinner message
         Args:

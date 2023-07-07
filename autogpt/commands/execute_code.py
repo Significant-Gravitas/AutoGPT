@@ -1,5 +1,4 @@
 """Execute code in a Docker container"""
-import hashlib
 import logging
 import os
 import subprocess
@@ -13,7 +12,6 @@ from autogpt.agent.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.models.command import CommandInstance
 from common.common import calculate_sha256
 
 ALLOWLIST_CONTROL = "allowlist"

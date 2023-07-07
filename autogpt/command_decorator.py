@@ -1,5 +1,5 @@
 import functools
-from typing import Any, Callable, Optional, Type, TypedDict, overload
+from typing import Any, Callable, Optional, Type, TypedDict
 
 from autogpt.config import Config
 from autogpt.models.command import Command, CommandInstance, CommandParameter

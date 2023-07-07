@@ -1,6 +1,6 @@
 import importlib
 import inspect
-from typing import Any, Callable
+from typing import Any
 
 from autogpt.command_decorator import AUTO_GPT_COMMAND_IDENTIFIER
 from autogpt.logs import logger

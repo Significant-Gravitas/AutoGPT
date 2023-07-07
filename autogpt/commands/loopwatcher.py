@@ -1,7 +1,7 @@
 import collections
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, NamedTuple
+from typing import Dict
 
 from autogpt.logs import logger
 from autogpt.models.command import CommandInstance
@@ -29,7 +29,6 @@ class LoopWatcher:
     @simple_exception_handling(return_on_exc=True)
     def should_stop_on_command(self, cmd: CommandInstance):
         tostop = False
-        from frozendict import frozendict
 
         var = self.executed_dict[hash(cmd)]
         var.number += 1
