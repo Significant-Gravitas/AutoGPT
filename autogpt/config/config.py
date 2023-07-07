@@ -89,10 +89,16 @@ class Config(SystemSettings):
         """Get the kwargs for the Azure API."""
         deployment_id = {
             self.fast_llm: self.azure_model_to_deployment_id_map.get(
-                "fast_llm_deployment_id"
+                "fast_llm_deployment_id",
+                self.azure_model_to_deployment_id_map.get(
+                    "fast_llm_model_deployment_id"  # backwards compatibility
+                ),
             ),
             self.smart_llm: self.azure_model_to_deployment_id_map.get(
-                "smart_llm_deployment_id"
+                "smart_llm_deployment_id",
+                self.azure_model_to_deployment_id_map.get(
+                    "smart_llm_model_deployment_id" # backwards compatibility
+                ),
             ),
             "text-embedding-ada-002": self.azure_model_to_deployment_id_map.get(
                 "embedding_model_deployment_id"
