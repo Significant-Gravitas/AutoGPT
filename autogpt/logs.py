@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from colorama import Fore, Style
 
-if TYPE_CHECKING:
-    from autogpt.config import Config
+#if TYPE_CHECKING:
+from autogpt.config import Config
 
 from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
@@ -87,13 +87,14 @@ class Logger(metaclass=Singleton):
         self.json_logger.setLevel(logging.DEBUG)
 
         self.speak_mode = False
+        self.tts_provider = "gtts"
         self.chat_plugins = []
 
     def typewriter_log(
-        self, title="", title_color="", content="", speak_text=False, level=logging.INFO
+        self, title="", title_color="", content="", speak_text=False, level=logging.INFO,
     ):
         if speak_text and self.speak_mode:
-            say_text(f"{title}. {content}")
+            say_text(f"{title}.{content}",self.tts_provider)
 
         for plugin in self.chat_plugins:
             plugin.report(f"{title}. {content}")
