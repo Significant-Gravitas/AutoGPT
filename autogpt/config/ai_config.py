@@ -57,23 +57,14 @@ class AIConfig:
         self.command_registry: CommandRegistry | None = None
 
     @staticmethod
-    def load(
-        ai_settings_file: str = SAVE_FILE,
-        ai_name: str = None,
-        ai_role: str = None,
-        ai_goals: list[str] = [],
-    ) -> "AIConfig":
+    def load(ai_settings_file: str = SAVE_FILE) -> "AIConfig":
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
-          command line overrides if supplied, then yaml file if yaml file exists,
-        else returns class with no parameters.
+        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget)
+        loaded from yaml file if yaml file exists, else returns class with no parameters.
 
         Parameters:
-           ai_settings_file (int): The path to the config yaml file.
-             DEFAULT: "../ai_settings.yaml"
-            ai_name (str): AI name override, if supplied by the user via command line.
-            ai_role (str): AI role override, if supplied by the user via command line.
-            ai_goals (list): AI goals override, if supplied by the user via command line.
+            ai_settings_file (int): The path to the config yaml file.
+              DEFAULT: "../ai_settings.yaml"
 
         Returns:
             cls (object): An instance of given cls object
@@ -84,15 +75,6 @@ class AIConfig:
                 config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
         except FileNotFoundError:
             config_params = {}
-            
-        ai_name = ai_name if ai_name else config_params.get("ai_name", "")
-        ai_role = ai_role if ai_role else config_params.get("ai_role", "")
-        ai_goals = ai_goals if ai_goals else [
-            str(goal).strip("{}").replace("'", "").replace('"', "")
-            if isinstance(goal, dict)
-            else str(goal)
-            for goal in config_params.get("ai_goals", [])
-        ]
 
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")

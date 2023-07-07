@@ -1,3 +1,5 @@
+from typing import Optional
+
 from colorama import Fore
 
 from autogpt.config.ai_config import AIConfig
@@ -42,14 +44,32 @@ def build_default_prompt_generator(config: Config) -> PromptGenerator:
     return prompt_generator
 
 
-def construct_main_ai_config(config: Config) -> AIConfig:
+def construct_main_ai_config(
+    config: Config,
+    name: Optional[str] = None,
+    role: Optional[str] = None,
+    goals: tuple[str] = tuple(),
+) -> AIConfig:
     """Construct the prompt for the AI to respond to
 
     Returns:
         str: The prompt string
     """
-    ai_config = AIConfig.load(config.ai_settings_file, config.ai_name, config.ai_role, config.ai_goals)
-    if config.skip_reprompt and all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals]):
+    ai_config = AIConfig.load(config.ai_settings_file)
+
+    # Apply overrides
+    if name:
+        ai_config.ai_name = name
+    if role:
+        ai_config.ai_role = role
+    if goals:
+        ai_config.ai_goals = list(goals)
+
+    if (
+        all([name, role, goals])
+        or config.skip_reprompt
+        and all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals])
+    ):
         logger.typewriter_log("Name :", Fore.GREEN, ai_config.ai_name)
         logger.typewriter_log("Role :", Fore.GREEN, ai_config.ai_role)
         logger.typewriter_log("Goals:", Fore.GREEN, f"{ai_config.ai_goals}")

@@ -1,4 +1,6 @@
 """Main script for the autogpt package."""
+from typing import Optional
+
 import click
 
 
@@ -99,9 +101,9 @@ def main(
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
-    ai_name: str,
-    ai_role: str,
-    ai_goal: list[str],
+    ai_name: Optional[str],
+    ai_role: Optional[str],
+    ai_goal: tuple[str],
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.

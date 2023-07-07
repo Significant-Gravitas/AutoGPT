@@ -1,5 +1,6 @@
 """Set up the AI and its goals"""
 import re
+from typing import Optional
 
 from colorama import Fore, Style
 from jinja2 import Template
@@ -17,8 +18,9 @@ from autogpt.prompts.default_prompts import (
 )
 
 
-
-def prompt_user(config: Config, ai_config_template: AIConfig = None) -> AIConfig:
+def prompt_user(
+    config: Config, ai_config_template: Optional[AIConfig] = None
+) -> AIConfig:
     """Prompt the user for input
 
     Params:
@@ -28,8 +30,6 @@ def prompt_user(config: Config, ai_config_template: AIConfig = None) -> AIConfig
     Returns:
         AIConfig: The AIConfig object tailored to the user's input
     """
-    ai_name = ""
-    ai_config = None
 
     # Construct the prompt
     logger.typewriter_log(
@@ -39,11 +39,13 @@ def prompt_user(config: Config, ai_config_template: AIConfig = None) -> AIConfig
         speak_text=True,
     )
 
-    ai_config_template_provided = False
-    if ai_config_template is not None and any(
-        [ai_config_template.ai_goals, ai_config_template.ai_name, ai_config_template.ai_role]
-    ):
-        ai_config_template_provided = True
+    ai_config_template_provided = ai_config_template is not None and any(
+        [
+            ai_config_template.ai_goals,
+            ai_config_template.ai_name,
+            ai_config_template.ai_role,
+        ]
+    )
 
     user_desire = ""
     if not ai_config_template_provided:
@@ -85,7 +87,9 @@ def prompt_user(config: Config, ai_config_template: AIConfig = None) -> AIConfig
             return generate_aiconfig_manual(config)
 
 
-def generate_aiconfig_manual(config: Config, ai_config_template: AIConfig = None) -> AIConfig:
+def generate_aiconfig_manual(
+    config: Config, ai_config_template: Optional[AIConfig] = None
+) -> AIConfig:
     """
     Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
 
