@@ -92,12 +92,12 @@ class Config(SystemSettings):
         # Fix --gpt3only and --gpt4only in combination with Azure
         fast_llm = (
             self.fast_llm
-            if not (self.fast_llm == self.smart_llm and self.fast_llm == GPT_4_MODEL)
+            if not (self.fast_llm == self.smart_llm and self.fast_llm.startswith(GPT_4_MODEL))
             else f"not_{self.fast_llm}"
         )
         smart_llm = (
             self.smart_llm
-            if not (self.smart_llm == self.fast_llm and self.smart_llm == GPT_3_MODEL)
+            if not (self.smart_llm == self.fast_llm and self.smart_llm.startswith(GPT_3_MODEL))
             else f"not_{self.smart_llm}"
         )
 
