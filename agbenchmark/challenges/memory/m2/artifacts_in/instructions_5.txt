@@ -1,1 +1,1 @@
-Write the ids previously mentioned to a file called file_to_check.txt.
+Write the ids previously mentioned to a .txt file.
