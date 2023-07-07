@@ -9,12 +9,12 @@ from typing import Dict, Optional, Union
 import yaml
 from colorama import Fore
 
-from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL
 from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.plugins.plugins_config import PluginsConfig
 
 AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
-from typing import Optional
+GPT_4_MODEL = "gpt-4"
+GPT_3_MODEL = "gpt-3.5-turbo"
 
 
 class Config(SystemSettings):
