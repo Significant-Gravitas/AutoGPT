@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from colorama import Fore, Style
 
-#if TYPE_CHECKING:
-from autogpt.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
 
 from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
