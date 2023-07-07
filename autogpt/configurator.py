@@ -7,15 +7,13 @@ import click
 from colorama import Back, Fore, Style
 
 from autogpt import utils
+from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
 from autogpt.llm.utils import check_model
 from autogpt.logs import logger
 from autogpt.memory.vector import get_supported_memory_backends
 
 if TYPE_CHECKING:
     from autogpt.config import Config
-
-GPT_4_MODEL = "gpt-4"
-GPT_3_MODEL = "gpt-3.5-turbo"
 
 
 def create_config(
