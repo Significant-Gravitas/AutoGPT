@@ -154,7 +154,7 @@ azure_api_version: 2023-06-01-preview
 azure_model_map:
     fast_llm_deployment_id: gpt-3.5-turbo
     smart_llm_deployment_id: gpt-4
-    embedding_deployment_id: embedding-deployment-id-for-azure
+    embedding_model_deployment_id: embedding-deployment-id-for-azure
 """
     config_file = workspace.get_path("azure.yaml")
     config_file.write_text(yaml_content)
