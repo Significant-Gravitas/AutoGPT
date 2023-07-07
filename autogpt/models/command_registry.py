@@ -32,7 +32,7 @@ class CommandRegistry:
                 f"Command '{cmd.name}' already registered and will be overwritten!"
             )
         self.commands[cmd.name] = cmd
-        for command_name_alias in cmd.name_alias:
+        for command_name_alias in cmd.aliases:
             if command_name_alias == cmd.name:
                 continue
             self.commands[command_name_alias] = cmd
@@ -40,7 +40,7 @@ class CommandRegistry:
     def unregister(self, command_name: str):
         if command_name in self.commands:
             cmd = self.commands[command_name]
-            for command_name_alias in cmd.name_alias:
+            for command_name_alias in cmd.aliases:
                 if command_name_alias not in self.commands:
                     continue
                 del self.commands[command_name_alias]

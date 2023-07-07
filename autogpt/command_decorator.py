@@ -20,7 +20,7 @@ def command(
     parameters: dict[str, CommandParameterSpec],
     enabled: bool | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
-    name_alias: Optional[str | list] = None,
+    aliases: list[str] = [],
 ) -> Callable[..., Any]:
     """The command decorator is used to create Command objects from ordinary functions."""
 
@@ -41,7 +41,7 @@ def command(
             parameters=typed_parameters,
             enabled=enabled,
             disabled_reason=disabled_reason,
-            name_alias=name_alias,
+            aliases=aliases,
         )
 
         @functools.wraps(func)

@@ -23,7 +23,7 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
             "required": True,
         }
     },
-    name_alias=["search"],
+    aliases=["search"],
 )
 def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     """Return the results of a Google search
@@ -68,7 +68,7 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     lambda config: bool(config.google_api_key)
     and bool(config.google_custom_search_engine_id),
     "Configure google_api_key and custom_search_engine_id.",
-    name_alias=["search"],
+    aliases=["search"],
 )
 def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
     """Return the results of a Google search using the official Google API
