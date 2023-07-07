@@ -21,8 +21,8 @@ def call_ai_function(
     function: str,
     args: list,
     description: str,
+    config: Config,
     model: Optional[str] = None,
-    config: Optional[Config] = None,
 ) -> str:
     """Call an AI function
 
@@ -39,7 +39,7 @@ def call_ai_function(
         str: The response from the function
     """
     if model is None:
-        model = config.smart_llm_model
+        model = config.smart_llm
     # For each arg, if any are None, convert to "None":
     args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma separated string
@@ -67,7 +67,7 @@ def create_text_completion(
     max_output_tokens: Optional[int],
 ) -> str:
     if model is None:
-        model = config.fast_llm_model
+        model = config.fast_llm
     if temperature is None:
         temperature = config.temperature
 
@@ -173,9 +173,7 @@ def create_chat_completion(
     )
 
 
-def check_model(
-    model_name: str, model_type: Literal["smart_llm_model", "fast_llm_model"]
-) -> str:
+def check_model(model_name: str, model_type: Literal["smart_llm", "fast_llm"]) -> str:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
     api_manager = ApiManager()
     models = api_manager.get_models()

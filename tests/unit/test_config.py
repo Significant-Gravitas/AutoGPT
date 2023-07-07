@@ -20,8 +20,8 @@ def test_initial_values(config: Config):
     assert config.debug_mode == False
     assert config.continuous_mode == False
     assert config.speak_mode == False
-    assert config.fast_llm_model == "gpt-3.5-turbo"
-    assert config.smart_llm_model == "gpt-3.5-turbo"
+    assert config.fast_llm == "gpt-3.5-turbo"
+    assert config.smart_llm == "gpt-4"
 
 
 def test_set_continuous_mode(config: Config):
@@ -52,32 +52,32 @@ def test_set_speak_mode(config: Config):
     config.speak_mode = speak_mode
 
 
-def test_set_fast_llm_model(config: Config):
+def test_set_fast_llm(config: Config):
     """
-    Test if the set_fast_llm_model() method updates the fast_llm_model attribute.
-    """
-    # Store model name to reset it after the test
-    fast_llm_model = config.fast_llm_model
-
-    config.fast_llm_model = "gpt-3.5-turbo-test"
-    assert config.fast_llm_model == "gpt-3.5-turbo-test"
-
-    # Reset model name
-    config.fast_llm_model = fast_llm_model
-
-
-def test_set_smart_llm_model(config: Config):
-    """
-    Test if the set_smart_llm_model() method updates the smart_llm_model attribute.
+    Test if the set_fast_llm() method updates the fast_llm attribute.
     """
     # Store model name to reset it after the test
-    smart_llm_model = config.smart_llm_model
+    fast_llm = config.fast_llm
 
-    config.smart_llm_model = "gpt-4-test"
-    assert config.smart_llm_model == "gpt-4-test"
+    config.fast_llm = "gpt-3.5-turbo-test"
+    assert config.fast_llm == "gpt-3.5-turbo-test"
 
     # Reset model name
-    config.smart_llm_model = smart_llm_model
+    config.fast_llm = fast_llm
+
+
+def test_set_smart_llm(config: Config):
+    """
+    Test if the set_smart_llm() method updates the smart_llm attribute.
+    """
+    # Store model name to reset it after the test
+    smart_llm = config.smart_llm
+
+    config.smart_llm = "gpt-4-test"
+    assert config.smart_llm == "gpt-4-test"
+
+    # Reset model name
+    config.smart_llm = smart_llm
 
 
 def test_set_debug_mode(config: Config):
@@ -95,15 +95,15 @@ def test_set_debug_mode(config: Config):
 
 
 @patch("openai.Model.list")
-def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config: Config):
+def test_smart_and_fast_llms_set_to_gpt4(mock_list_models, config: Config):
     """
     Test if models update to gpt-3.5-turbo if both are set to gpt-4.
     """
-    fast_llm_model = config.fast_llm_model
-    smart_llm_model = config.smart_llm_model
+    fast_llm = config.fast_llm
+    smart_llm = config.smart_llm
 
-    config.fast_llm_model = "gpt-4"
-    config.smart_llm_model = "gpt-4"
+    config.fast_llm = "gpt-4"
+    config.smart_llm = "gpt-4"
 
     mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
 
@@ -124,12 +124,12 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config: Config)
         skip_news=False,
     )
 
-    assert config.fast_llm_model == "gpt-3.5-turbo"
-    assert config.smart_llm_model == "gpt-3.5-turbo"
+    assert config.fast_llm == "gpt-3.5-turbo"
+    assert config.smart_llm == "gpt-3.5-turbo"
 
     # Reset config
-    config.fast_llm_model = fast_llm_model
-    config.smart_llm_model = smart_llm_model
+    config.fast_llm = fast_llm
+    config.smart_llm = smart_llm
 
 
 def test_missing_azure_config(workspace: Workspace):
@@ -152,8 +152,8 @@ azure_api_type: azure
 azure_api_base: https://dummy.openai.azure.com
 azure_api_version: 2023-06-01-preview
 azure_model_map:
-    fast_llm_model_deployment_id: gpt-3.5-turbo
-    smart_llm_model_deployment_id: gpt-4
+    fast_llm_deployment_id: gpt-3.5-turbo
+    smart_llm_deployment_id: gpt-4
     embedding_model_deployment_id: embedding-deployment-id-for-azure
 """
     config_file = workspace.get_path("azure.yaml")
@@ -166,8 +166,8 @@ azure_model_map:
     assert config.openai_api_base == "https://dummy.openai.azure.com"
     assert config.openai_api_version == "2023-06-01-preview"
     assert config.azure_model_to_deployment_id_map == {
-        "fast_llm_model_deployment_id": "gpt-3.5-turbo",
-        "smart_llm_model_deployment_id": "gpt-4",
+        "fast_llm_deployment_id": "gpt-3.5-turbo",
+        "smart_llm_deployment_id": "gpt-4",
         "embedding_model_deployment_id": "embedding-deployment-id-for-azure",
     }
 
@@ -181,8 +181,8 @@ azure_api_type: azure
 azure_api_base: https://dummy.openai.azure.com
 azure_api_version: 2023-06-01-preview
 azure_model_map:
-    fast_llm_model_deployment_id: gpt-3.5-turbo
-    smart_llm_model_deployment_id: gpt-4
+    fast_llm_deployment_id: gpt-3.5-turbo
+    smart_llm_deployment_id: gpt-4
     embedding_model_deployment_id: embedding-deployment-id-for-azure
 """
     config_file = workspace.get_path("azure.yaml")
@@ -191,15 +191,15 @@ azure_model_map:
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
     config = ConfigBuilder.build_config_from_env()
 
-    config.fast_llm_model = "fast_llm_model"
-    config.smart_llm_model = "smart_llm_model"
+    config.fast_llm = "fast_llm"
+    config.smart_llm = "smart_llm"
 
     def _get_deployment_id(model):
         kwargs = config.get_azure_kwargs(model)
         return kwargs.get("deployment_id", kwargs.get("engine"))
 
-    assert _get_deployment_id(config.fast_llm_model) == "gpt-3.5-turbo"
-    assert _get_deployment_id(config.smart_llm_model) == "gpt-4"
+    assert _get_deployment_id(config.fast_llm) == "gpt-3.5-turbo"
+    assert _get_deployment_id(config.smart_llm) == "gpt-4"
     assert (
         _get_deployment_id("text-embedding-ada-002")
         == "embedding-deployment-id-for-azure"
@@ -211,8 +211,8 @@ azure_model_map:
 
 
 def test_create_config_gpt4only(config: Config) -> None:
-    fast_llm_model = config.fast_llm_model
-    smart_llm_model = config.smart_llm_model
+    fast_llm = config.fast_llm
+    smart_llm = config.smart_llm
     with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
         mock_get_models.return_value = [{"id": GPT_4_MODEL}]
         create_config(
@@ -231,17 +231,17 @@ def test_create_config_gpt4only(config: Config) -> None:
             allow_downloads=False,
             skip_news=False,
         )
-        assert config.fast_llm_model == GPT_4_MODEL
-        assert config.smart_llm_model == GPT_4_MODEL
+        assert config.fast_llm == GPT_4_MODEL
+        assert config.smart_llm == GPT_4_MODEL
 
     # Reset config
-    config.fast_llm_model = fast_llm_model
-    config.smart_llm_model = smart_llm_model
+    config.fast_llm = fast_llm
+    config.smart_llm = smart_llm
 
 
 def test_create_config_gpt3only(config: Config) -> None:
-    fast_llm_model = config.fast_llm_model
-    smart_llm_model = config.smart_llm_model
+    fast_llm = config.fast_llm
+    smart_llm = config.smart_llm
     with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
         mock_get_models.return_value = [{"id": GPT_3_MODEL}]
         create_config(
@@ -260,9 +260,9 @@ def test_create_config_gpt3only(config: Config) -> None:
             allow_downloads=False,
             skip_news=False,
         )
-        assert config.fast_llm_model == GPT_3_MODEL
-        assert config.smart_llm_model == GPT_3_MODEL
+        assert config.fast_llm == GPT_3_MODEL
+        assert config.smart_llm == GPT_3_MODEL
 
     # Reset config
-    config.fast_llm_model = fast_llm_model
-    config.smart_llm_model = smart_llm_model
+    config.fast_llm = fast_llm
+    config.smart_llm = smart_llm
