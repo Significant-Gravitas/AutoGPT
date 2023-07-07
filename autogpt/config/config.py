@@ -286,12 +286,7 @@ class ConfigBuilder(Configurable[Config]):
 
         if config_dict["use_azure"]:
             azure_config = cls.load_azure_config(config_dict["azure_config_file"])
-            config_dict["openai_api_type"] = azure_config["openai_api_type"]
-            config_dict["openai_api_base"] = azure_config["openai_api_base"]
-            config_dict["openai_api_version"] = azure_config["openai_api_version"]
-            config_dict["azure_model_to_deployment_id_map"] = azure_config[
-                "azure_model_to_deployment_id_map"
-            ]
+            config_dict.update(azure_config)
 
         elif os.getenv("OPENAI_API_BASE_URL"):
             config_dict["openai_api_base"] = os.getenv("OPENAI_API_BASE_URL")
