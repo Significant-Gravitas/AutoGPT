@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import List, Literal, Optional
 
 from colorama import Fore
 
 from autogpt.config import Config
-from autogpt.logs import logger
 
 from ..api_manager import ApiManager
 from ..base import ChatModelResponse, ChatSequence, Message
@@ -74,7 +72,7 @@ def create_text_completion(
         temperature = config.temperature
 
     if config.use_azure:
-        kwargs = {"deployment_id": config.get_azure_deployment_id_for_model(model)}
+        kwargs = config.get_azure_kwargs(model)
     else:
         kwargs = {"model": model}
 
@@ -141,9 +139,8 @@ def create_chat_completion(
 
     chat_completion_kwargs["api_key"] = config.openai_api_key
     if config.use_azure:
-        chat_completion_kwargs[
-            "deployment_id"
-        ] = config.get_azure_deployment_id_for_model(model)
+        chat_completion_kwargs.update(config.get_azure_kwargs(model))
+
     if functions:
         chat_completion_kwargs["functions"] = [
             function.__dict__ for function in functions
