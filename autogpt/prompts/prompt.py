@@ -1,3 +1,5 @@
+from typing import Optional
+
 from colorama import Fore
 
 from autogpt.config.ai_config import AIConfig
@@ -42,14 +44,32 @@ def build_default_prompt_generator(config: Config) -> PromptGenerator:
     return prompt_generator
 
 
-def construct_main_ai_config(config: Config) -> AIConfig:
+def construct_main_ai_config(
+    config: Config,
+    name: Optional[str] = None,
+    role: Optional[str] = None,
+    goals: tuple[str] = tuple(),
+) -> AIConfig:
     """Construct the prompt for the AI to respond to
 
     Returns:
         str: The prompt string
     """
     ai_config = AIConfig.load(config.ai_settings_file)
-    if config.skip_reprompt and ai_config.ai_name:
+
+    # Apply overrides
+    if name:
+        ai_config.ai_name = name
+    if role:
+        ai_config.ai_role = role
+    if goals:
+        ai_config.ai_goals = list(goals)
+
+    if (
+        all([name, role, goals])
+        or config.skip_reprompt
+        and all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals])
+    ):
         logger.typewriter_log("Name :", Fore.GREEN, ai_config.ai_name)
         logger.typewriter_log("Role :", Fore.GREEN, ai_config.ai_role)
         logger.typewriter_log("Goals:", Fore.GREEN, f"{ai_config.ai_goals}")
@@ -58,7 +78,7 @@ def construct_main_ai_config(config: Config) -> AIConfig:
             Fore.GREEN,
             "infinite" if ai_config.api_budget <= 0 else f"${ai_config.api_budget}",
         )
-    elif ai_config.ai_name:
+    elif all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals]):
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
@@ -77,7 +97,7 @@ Continue ({config.authorise_key}/{config.exit_key}): """,
         if should_continue.lower() == config.exit_key:
             ai_config = AIConfig()
 
-    if not ai_config.ai_name:
+    if any([not ai_config.ai_name, not ai_config.ai_role, not ai_config.ai_goals]):
         ai_config = prompt_user(config)
         ai_config.save(config.ai_settings_file)
 
