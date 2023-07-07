@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from autogpt.config import Config
 
-from autogpt.singleton import AbstractSingleton
-
 
 class VoiceBase(AbstractSingleton):
     """
