@@ -217,9 +217,7 @@ Latest Development:
 """
 '''
 
-        prompt = ChatSequence.for_model(
-            config.fast_llm, [Message("user", prompt)]
-        )
+        prompt = ChatSequence.for_model(config.fast_llm, [Message("user", prompt)])
         self.agent.log_cycle_handler.log_cycle(
             self.agent.ai_name,
             self.agent.created_at,

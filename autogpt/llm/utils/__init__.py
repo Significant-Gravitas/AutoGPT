@@ -176,9 +176,7 @@ def create_chat_completion(
     )
 
 
-def check_model(
-    model_name: str, model_type: Literal["smart_llm", "fast_llm"]
-) -> str:
+def check_model(model_name: str, model_type: Literal["smart_llm", "fast_llm"]) -> str:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
     api_manager = ApiManager()
     models = api_manager.get_models()

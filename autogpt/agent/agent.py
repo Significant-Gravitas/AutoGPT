@@ -81,9 +81,7 @@ class Agent:
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
-        self.smart_token_limit = OPEN_AI_CHAT_MODELS.get(
-            config.smart_llm
-        ).max_tokens
+        self.smart_token_limit = OPEN_AI_CHAT_MODELS.get(config.smart_llm).max_tokens
 
     def start_interaction_loop(self):
         # Avoid circular imports

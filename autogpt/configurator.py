@@ -91,10 +91,7 @@ def create_config(
         config.fast_llm = GPT_3_MODEL
         config.smart_llm = GPT_3_MODEL
 
-    elif (
-        gpt4only
-        and check_model(GPT_4_MODEL, model_type="smart_llm") == GPT_4_MODEL
-    ):
+    elif gpt4only and check_model(GPT_4_MODEL, model_type="smart_llm") == GPT_4_MODEL:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         # --gpt4only should always use gpt-4, despite user's SMART_LLM config
         config.fast_llm = GPT_4_MODEL
