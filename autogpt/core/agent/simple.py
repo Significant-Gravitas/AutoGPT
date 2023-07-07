@@ -147,12 +147,6 @@ class SimpleAgent(Agent, Configurable):
             agent_settings,
             logger,
         )
-        agent_args["embedding_model"] = cls._get_system_instance(
-            "embedding_model",
-            agent_settings,
-            logger,
-            model_providers={"openai": agent_args["openai_provider"]},
-        )
         agent_args["planning"] = cls._get_system_instance(
             "planning",
             agent_settings,
