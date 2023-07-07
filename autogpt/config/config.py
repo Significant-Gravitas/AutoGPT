@@ -4,7 +4,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 import yaml
 from colorama import Fore
