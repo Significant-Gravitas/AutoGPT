@@ -17,8 +17,8 @@ from typing import Optional
 
 
 class Config(SystemSettings):
-    fast_llm_model: str
-    smart_llm_model: str
+    fast_llm: str
+    smart_llm: str
     continuous_mode: bool
     skip_news: bool
     workspace_path: Optional[str] = None
@@ -88,11 +88,17 @@ class Config(SystemSettings):
     def get_azure_kwargs(self, model: str) -> dict[str, str]:
         """Get the kwargs for the Azure API."""
         deployment_id = {
-            self.fast_llm_model: self.azure_model_to_deployment_id_map.get(
-                "fast_llm_model_deployment_id"
+            self.fast_llm: self.azure_model_to_deployment_id_map.get(
+                "fast_llm_deployment_id",
+                self.azure_model_to_deployment_id_map.get(
+                    "fast_llm_model_deployment_id"  # backwards compatibility
+                ),
             ),
-            self.smart_llm_model: self.azure_model_to_deployment_id_map.get(
-                "smart_llm_model_deployment_id"
+            self.smart_llm: self.azure_model_to_deployment_id_map.get(
+                "smart_llm_deployment_id",
+                self.azure_model_to_deployment_id_map.get(
+                    "smart_llm_model_deployment_id"  # backwards compatibility
+                ),
             ),
             "text-embedding-ada-002": self.azure_model_to_deployment_id_map.get(
                 "embedding_model_deployment_id"
@@ -129,8 +135,8 @@ class ConfigBuilder(Configurable[Config]):
     default_settings = Config(
         name="Default Server Config",
         description="This is a default server configuration",
-        smart_llm_model="gpt-3.5-turbo",
-        fast_llm_model="gpt-3.5-turbo",
+        smart_llm="gpt-4",
+        fast_llm="gpt-3.5-turbo",
         continuous_mode=False,
         continuous_limit=0,
         skip_news=False,
@@ -190,8 +196,8 @@ class ConfigBuilder(Configurable[Config]):
             "shell_command_control": os.getenv("SHELL_COMMAND_CONTROL"),
             "ai_settings_file": os.getenv("AI_SETTINGS_FILE"),
             "prompt_settings_file": os.getenv("PROMPT_SETTINGS_FILE"),
-            "fast_llm_model": os.getenv("FAST_LLM_MODEL"),
-            "smart_llm_model": os.getenv("SMART_LLM_MODEL"),
+            "fast_llm": os.getenv("FAST_LLM", os.getenv("FAST_LLM_MODEL")),
+            "smart_llm": os.getenv("SMART_LLM", os.getenv("SMART_LLM_MODEL")),
             "embedding_model": os.getenv("EMBEDDING_MODEL"),
             "browse_spacy_language_model": os.getenv("BROWSE_SPACY_LANGUAGE_MODEL"),
             "openai_api_key": os.getenv("OPENAI_API_KEY"),
