@@ -35,7 +35,7 @@ def mock_create_chat_completion(mocker, config):
         wraps=create_chat_completion,
     )
     mock_create_chat_completion.return_value = ChatModelResponse(
-        model_info=OPEN_AI_CHAT_MODELS[config.fast_llm_model],
+        model_info=OPEN_AI_CHAT_MODELS[config.fast_llm],
         content="irrelevant",
         function_call={},
     )

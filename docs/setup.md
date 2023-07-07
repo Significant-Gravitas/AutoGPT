@@ -133,8 +133,8 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
     make an Azure configuration file:
 
     - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section:
-        - `fast_llm_model_deployment_id`: your gpt-3.5-turbo or gpt-4 deployment ID
-        - `smart_llm_model_deployment_id`: your gpt-4 deployment ID
+        - `fast_llm_deployment_id`: your gpt-3.5-turbo or gpt-4 deployment ID
+        - `smart_llm_deployment_id`: your gpt-4 deployment ID
         - `embedding_model_deployment_id`: your text-embedding-ada-002 v2 deployment ID
 
     Example:
@@ -143,7 +143,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
         # Please specify all of these values as double-quoted strings
         # Replace string in angled brackets (<>) to your own deployment Name
         azure_model_map:
-            fast_llm_model_deployment_id: "<auto-gpt-deployment>"
+            fast_llm_deployment_id: "<auto-gpt-deployment>"
                 ...
 
     Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.

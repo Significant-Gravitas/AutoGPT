@@ -178,7 +178,7 @@ def generate_aiconfig_automatic(user_prompt: str, config: Config) -> AIConfig:
     # Call LLM with the string as user input
     output = create_chat_completion(
         ChatSequence.for_model(
-            config.fast_llm_model,
+            config.fast_llm,
             [
                 Message("system", system_prompt),
                 Message("user", prompt_ai_config_automatic),
