@@ -82,7 +82,7 @@ def summarize_text(
     if instruction and question:
         raise ValueError("Parameters 'question' and 'instructions' cannot both be set")
 
-    model = config.fast_llm_model
+    model = config.fast_llm
 
     if question:
         instruction = (
