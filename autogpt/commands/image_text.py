@@ -1,16 +1,29 @@
-"""Image to Text model for AutoGPT."""
+from pathlib import Path
 
 import requests
 
+from autogpt.agent.agent import Agent
+from autogpt.command_decorator import command
 from autogpt.config import Config
-from autogpt.workspace import path_in_workspace
-
-cfg = Config()
 
 
-def summarize_image_from_file(image_path):
-    """
-    Summarize an image from a file path.
+@command(
+    "summarize_image_from_file",
+    "Generates a caption for an image",
+    {
+        "filename": {
+            "type": "string",
+            "description": "The filename of the image to describe",
+            "required": True,
+        },
+    },
+    lambda config: bool(
+        config.huggingface_api_token and config.huggingface_image_to_text_model
+    ),
+    "Requires a HuggingFace API token and image-to-text model to be set.",
+)
+def summarize_image_from_file(image_path: str | Path, agent: Agent):
+    """Summarize an image from a file path.
 
     Args:
         image_path (str): The path to the image file.
@@ -18,15 +31,14 @@ def summarize_image_from_file(image_path):
     Returns:
         str: The summary of the image.
     """
-    image_path = path_in_workspace(image_path)
+    image_path = agent.workspace.get_path(image_path)
     with open(image_path, "rb") as image_file:
         image = image_file.read()
-    return summarize_image(image)
+    return summarize_image(image, agent.config)
 
 
-def summarize_image(image):
-    """
-    Summarize a image as a binary.
+def summarize_image(image: bytes, config: Config):
+    """Summarize a image as a binary.
 
     Args:
         image (bytes): The image as a binary.
@@ -34,15 +46,15 @@ def summarize_image(image):
     Returns:
         str: The summary of the image.
     """
-    model = cfg.huggingface_image_to_text_model
-    api_url = f"https://api-inference.huggingface.co/models/{model}"
-    api_token = cfg.huggingface_api_token
-    headers = {"Authorization": f"Bearer {api_token}"}
 
-    if api_token is None:
-        raise ValueError(
+    if config.huggingface_api_token is None:
+        raise RuntimeError(
             "You need to set your Hugging Face API token in the config file."
         )
+
+    model = config.huggingface_image_to_text_model
+    api_url = f"https://api-inference.huggingface.co/models/{model}"
+    headers = {"Authorization": f"Bearer {config.huggingface_api_token}"}
 
     response = requests.post(
         api_url,
