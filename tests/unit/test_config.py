@@ -171,6 +171,11 @@ azure_model_map:
         "embedding_model_deployment_id": "embedding-deployment-id-for-azure",
     }
 
+    del os.environ["USE_AZURE"]
+    del os.environ["AZURE_CONFIG_FILE"]
+
+
+
 
 def test_azure_deployment_id_for_model(workspace: Workspace) -> None:
     yaml_content = """
@@ -202,6 +207,9 @@ azure_model_map:
         == "embedding-deployment-id-for-azure"
     )
     assert _get_deployment_id("dummy") is None
+
+    del os.environ["USE_AZURE"]
+    del os.environ["AZURE_CONFIG_FILE"]
 
 
 def test_create_config_gpt4only(config: Config) -> None:
