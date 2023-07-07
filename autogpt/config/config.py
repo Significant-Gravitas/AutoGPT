@@ -13,7 +13,8 @@ from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.plugins.plugins_config import PluginsConfig
 
 AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
-from typing import Optional
+GPT_4_MODEL = "gpt-4"
+GPT_3_MODEL = "gpt-3.5-turbo"
 
 
 class Config(SystemSettings):
@@ -87,20 +88,39 @@ class Config(SystemSettings):
 
     def get_azure_kwargs(self, model: str) -> dict[str, str]:
         """Get the kwargs for the Azure API."""
+
+        # Fix --gpt3only and --gpt4only in combination with Azure
+        fast_llm = (
+            self.fast_llm
+            if not (
+                self.fast_llm == self.smart_llm
+                and self.fast_llm.startswith(GPT_4_MODEL)
+            )
+            else f"not_{self.fast_llm}"
+        )
+        smart_llm = (
+            self.smart_llm
+            if not (
+                self.smart_llm == self.fast_llm
+                and self.smart_llm.startswith(GPT_3_MODEL)
+            )
+            else f"not_{self.smart_llm}"
+        )
+
         deployment_id = {
-            self.fast_llm: self.azure_model_to_deployment_id_map.get(
+            fast_llm: self.azure_model_to_deployment_id_map.get(
                 "fast_llm_deployment_id",
                 self.azure_model_to_deployment_id_map.get(
                     "fast_llm_model_deployment_id"  # backwards compatibility
                 ),
             ),
-            self.smart_llm: self.azure_model_to_deployment_id_map.get(
+            smart_llm: self.azure_model_to_deployment_id_map.get(
                 "smart_llm_deployment_id",
                 self.azure_model_to_deployment_id_map.get(
                     "smart_llm_model_deployment_id"  # backwards compatibility
                 ),
             ),
-            "text-embedding-ada-002": self.azure_model_to_deployment_id_map.get(
+            self.embedding_model: self.azure_model_to_deployment_id_map.get(
                 "embedding_model_deployment_id"
             ),
         }.get(model, None)
@@ -110,7 +130,7 @@ class Config(SystemSettings):
             "api_base": self.openai_api_base,
             "api_version": self.openai_api_version,
         }
-        if model == "text-embedding-ada-002":
+        if model == self.embedding_model:
             kwargs["engine"] = deployment_id
         else:
             kwargs["deployment_id"] = deployment_id
@@ -272,12 +292,7 @@ class ConfigBuilder(Configurable[Config]):
 
         if config_dict["use_azure"]:
             azure_config = cls.load_azure_config(config_dict["azure_config_file"])
-            config_dict["openai_api_type"] = azure_config["openai_api_type"]
-            config_dict["openai_api_base"] = azure_config["openai_api_base"]
-            config_dict["openai_api_version"] = azure_config["openai_api_version"]
-            config_dict["azure_model_to_deployment_id_map"] = azure_config[
-                "azure_model_to_deployment_id_map"
-            ]
+            config_dict.update(azure_config)
 
         elif os.getenv("OPENAI_API_BASE_URL"):
             config_dict["openai_api_base"] = os.getenv("OPENAI_API_BASE_URL")

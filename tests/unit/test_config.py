@@ -146,18 +146,19 @@ def test_missing_azure_config(workspace: Workspace):
     assert azure_config["azure_model_to_deployment_id_map"] == {}
 
 
-def test_azure_config(workspace: Workspace) -> None:
-    yaml_content = """
+def test_azure_config(config: Config, workspace: Workspace) -> None:
+    config_file = workspace.get_path("azure_config.yaml")
+    yaml_content = f"""
 azure_api_type: azure
 azure_api_base: https://dummy.openai.azure.com
 azure_api_version: 2023-06-01-preview
 azure_model_map:
-    fast_llm_deployment_id: gpt-3.5-turbo
-    smart_llm_deployment_id: gpt-4
+    fast_llm_deployment_id: FAST-LLM_ID
+    smart_llm_deployment_id: SMART-LLM_ID
     embedding_model_deployment_id: embedding-deployment-id-for-azure
 """
-    config_file = workspace.get_path("azure.yaml")
     config_file.write_text(yaml_content)
+
     os.environ["USE_AZURE"] = "True"
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
     config = ConfigBuilder.build_config_from_env()
@@ -166,53 +167,31 @@ azure_model_map:
     assert config.openai_api_base == "https://dummy.openai.azure.com"
     assert config.openai_api_version == "2023-06-01-preview"
     assert config.azure_model_to_deployment_id_map == {
-        "fast_llm_deployment_id": "gpt-3.5-turbo",
-        "smart_llm_deployment_id": "gpt-4",
+        "fast_llm_deployment_id": "FAST-LLM_ID",
+        "smart_llm_deployment_id": "SMART-LLM_ID",
         "embedding_model_deployment_id": "embedding-deployment-id-for-azure",
     }
 
-    del os.environ["USE_AZURE"]
-    del os.environ["AZURE_CONFIG_FILE"]
+    fast_llm = config.fast_llm
+    smart_llm = config.smart_llm
+    assert config.get_azure_kwargs(config.fast_llm)["deployment_id"] == "FAST-LLM_ID"
+    assert config.get_azure_kwargs(config.smart_llm)["deployment_id"] == "SMART-LLM_ID"
 
+    # Emulate --gpt4only
+    config.fast_llm = smart_llm
+    assert config.get_azure_kwargs(config.fast_llm)["deployment_id"] == "SMART-LLM_ID"
+    assert config.get_azure_kwargs(config.smart_llm)["deployment_id"] == "SMART-LLM_ID"
 
-def test_azure_deployment_id_for_model(workspace: Workspace) -> None:
-    yaml_content = """
-azure_api_type: azure
-azure_api_base: https://dummy.openai.azure.com
-azure_api_version: 2023-06-01-preview
-azure_model_map:
-    fast_llm_deployment_id: gpt-3.5-turbo
-    smart_llm_deployment_id: gpt-4
-    embedding_model_deployment_id: embedding-deployment-id-for-azure
-"""
-    config_file = workspace.get_path("azure.yaml")
-    config_file.write_text(yaml_content)
-    os.environ["USE_AZURE"] = "True"
-    os.environ["AZURE_CONFIG_FILE"] = str(config_file)
-    config = ConfigBuilder.build_config_from_env()
-
-    config.fast_llm = "fast_llm"
-    config.smart_llm = "smart_llm"
-
-    def _get_deployment_id(model):
-        kwargs = config.get_azure_kwargs(model)
-        return kwargs.get("deployment_id", kwargs.get("engine"))
-
-    assert _get_deployment_id(config.fast_llm) == "gpt-3.5-turbo"
-    assert _get_deployment_id(config.smart_llm) == "gpt-4"
-    assert (
-        _get_deployment_id("text-embedding-ada-002")
-        == "embedding-deployment-id-for-azure"
-    )
-    assert _get_deployment_id("dummy") is None
+    # Emulate --gpt3only
+    config.fast_llm = config.smart_llm = fast_llm
+    assert config.get_azure_kwargs(config.fast_llm)["deployment_id"] == "FAST-LLM_ID"
+    assert config.get_azure_kwargs(config.smart_llm)["deployment_id"] == "FAST-LLM_ID"
 
     del os.environ["USE_AZURE"]
     del os.environ["AZURE_CONFIG_FILE"]
 
 
 def test_create_config_gpt4only(config: Config) -> None:
-    fast_llm = config.fast_llm
-    smart_llm = config.smart_llm
     with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
         mock_get_models.return_value = [{"id": GPT_4_MODEL}]
         create_config(
@@ -234,14 +213,8 @@ def test_create_config_gpt4only(config: Config) -> None:
         assert config.fast_llm == GPT_4_MODEL
         assert config.smart_llm == GPT_4_MODEL
 
-    # Reset config
-    config.fast_llm = fast_llm
-    config.smart_llm = smart_llm
-
 
 def test_create_config_gpt3only(config: Config) -> None:
-    fast_llm = config.fast_llm
-    smart_llm = config.smart_llm
     with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
         mock_get_models.return_value = [{"id": GPT_3_MODEL}]
         create_config(
@@ -262,7 +235,3 @@ def test_create_config_gpt3only(config: Config) -> None:
         )
         assert config.fast_llm == GPT_3_MODEL
         assert config.smart_llm == GPT_3_MODEL
-
-    # Reset config
-    config.fast_llm = fast_llm
-    config.smart_llm = smart_llm
