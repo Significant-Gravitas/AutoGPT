@@ -209,12 +209,9 @@ class TypingConsoleHandler(logging.StreamHandler):
 
         msg = self.format(record)
         try:
-            words = re.split("[ \t]+", msg)
+            words = msg.split()
             for i, word in enumerate(words):
-                if word.endswith("\n"):
-                    print(word, end="\n", flush=True)
-                else:
-                    print(word, end="", flush=True)
+                print(word, end="", flush=True)
                 if i < len(words) - 1:
                     print(" ", end="", flush=True)
                 typing_speed = random.uniform(min_typing_speed, max_typing_speed)
