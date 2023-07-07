@@ -21,7 +21,9 @@ class TestRememberMultipleIdsWithNoise(MemoryChallenge):
     def test_method(self, config: Dict[str, Any]) -> None:
         self.setup_challenge(config)
 
-        files_contents = self.open_files(config["workspace"], self.data.ground.files)
+        files_contents = self.get_artifacts_out(
+            config["workspace"], self.data.ground.files
+        )
 
         scores = []
         for file_content in files_contents:

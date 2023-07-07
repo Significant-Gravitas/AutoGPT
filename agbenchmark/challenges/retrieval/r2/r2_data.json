@@ -7,7 +7,8 @@
     "answer": "81,462",
     "should_contain": ["81,462"],
     "should_not_contain": [],
-    "files": [".txt"]
+    "files": [".txt"],
+    "type": "file"
   },
   "mock": {
     "mock_func": "basic_retrieval_2_mock",

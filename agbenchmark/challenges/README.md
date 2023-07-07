@@ -33,7 +33,8 @@ Example:
     "answer": "Washington",
     "should_contain": ["Washington"],
     "should_not_contain": ["New York", "Los Angeles", "San Francisco"],
-    "files": [".txt"]
+    "files": [".txt"],
+    "type": "file"
   },
   "mock": {
     "mock_func": "basic_write_file_mock",

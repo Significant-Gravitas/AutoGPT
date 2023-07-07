@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -14,13 +15,20 @@ MOCK_FLAG = os.getenv("MOCK_TEST")
 
 
 def run_agent(
-    task: Optional[str], mock_func: Optional[str], config: Dict[str, Any]
+    task: Optional[str],
+    mock_func: Optional[str],
+    config: Dict[str, Any],
+    challenge_location: str,
 ) -> None:
     """Calling to get a response"""
 
-    if mock_func == None and MOCK_FLAG == "True":
-        print("No mock provided")
-    elif MOCK_FLAG == "True":
+    if MOCK_FLAG == "True":
+        copy_artifacts_into_workspace(
+            config["workspace"], "artifacts_out", challenge_location
+        )
+        if mock_func is None:
+            print("No mock provided")
+            return
         mock_manager = MockManager(
             task, config
         )  # workspace doesn't need to be passed in, stays the same
@@ -75,6 +83,21 @@ def run_agent(
 
         # Wait for process to terminate, then get return code
         process.wait()
+
+
+def copy_artifacts_into_workspace(
+    workspace: str, artifact_folder_name: str, challenge_dir_path: str
+) -> None:
+    source_dir = os.path.join(challenge_dir_path, artifact_folder_name)
+
+    # Check if source_dir exists, if not then return immediately.
+    if not os.path.exists(source_dir):
+        return
+
+    for file_name in os.listdir(source_dir):
+        full_file_name = os.path.join(source_dir, file_name)
+        if os.path.isfile(full_file_name):
+            shutil.copy(full_file_name, workspace)
 
 
 ENVIRONMENT = os.getenv("ENVIRONMENT") or "production"

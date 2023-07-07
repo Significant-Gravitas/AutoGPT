@@ -3,16 +3,18 @@ from typing import Any, Dict
 
 import pytest
 
-from agbenchmark.challenges.retrieval.retrieval import RetrievalChallenge
+from agbenchmark.challenges.code.code import CodeChallenge
 
 
-class TestRetrieval(RetrievalChallenge):
-    """The first information-retrieval challenge"""
+class TestDebugSimpleTypoWithGuidance(CodeChallenge):
+    """The first memory challenge"""
 
     def get_file_path(self) -> str:  # all tests must implement this method
-        return os.path.join(os.path.dirname(__file__), "r1_data.json")
+        return os.path.join(
+            os.path.dirname(__file__), "debug_simple_typo_with_guidance_data.json"
+        )
 
-    @pytest.mark.depends(name="test_retrieval")
+    @pytest.mark.depends(name="test_debug_simple_typo_with_guidance")
     def test_method(self, config: Dict[str, Any]) -> None:
         self.setup_challenge(config)
 

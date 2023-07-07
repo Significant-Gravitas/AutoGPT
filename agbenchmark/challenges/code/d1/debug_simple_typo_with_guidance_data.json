@@ -1,0 +1,22 @@
+{
+  "name": "debug_simple_typo_with_guidance",
+  "category": ["code"],
+  "task": "1- Run test.py.\n2- Read code.py.\n3- Modify code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
+  "dependencies": [],
+  "ground": {
+    "answer": "2314",
+    "should_contain": ["[0, 1]", "[2, 5]", "[0, 3]"],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "type": "execute_python_code"
+  },
+  "mock": {
+    "mock_func": null,
+    "mock_task": null
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Tests ability for the agent to debug python code with a simple typo in it.",
+    "side_effects": ["tests if there is in fact an LLM attached"]
+  }
+}
