@@ -61,8 +61,9 @@ def run_agent(
         while True:
             if process.stdout is None:
                 continue
-            output = process.stdout.readline()
-            print(output.strip())
+
+            while output := process.stdout.readline():
+                print(output.strip())
 
             # Check if process has ended
             if process.poll() is not None:
