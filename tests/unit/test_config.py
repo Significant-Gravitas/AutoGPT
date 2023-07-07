@@ -175,8 +175,6 @@ azure_model_map:
     del os.environ["AZURE_CONFIG_FILE"]
 
 
-
-
 def test_azure_deployment_id_for_model(workspace: Workspace) -> None:
     yaml_content = """
 azure_api_type: azure
