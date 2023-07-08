@@ -155,7 +155,7 @@ class Agent(BaseAgent):
         self, llm_response: ChatModelResponse, *args, **kwargs
     ) -> None:
         # Avoid circular imports
-        from autogpt.app import execute_command, get_command
+        from autogpt.app import execute_command, extract_command
 
         if not llm_response.content:
             raise SyntaxError("Assistant response has no text content")
@@ -185,7 +185,7 @@ class Agent(BaseAgent):
                 print_assistant_thoughts(
                     self.ai_config.ai_name, assistant_reply_dict, self.config
                 )
-                command_name, arguments = get_command(
+                command_name, arguments = extract_command(
                     assistant_reply_dict, llm_response, self.config
                 )
                 if self.config.speak_mode:

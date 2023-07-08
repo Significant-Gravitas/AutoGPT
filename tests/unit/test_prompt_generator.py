@@ -17,13 +17,13 @@ def test_add_command():
     """
     command_label = "Command Label"
     command_name = "command_name"
-    args = {"arg1": "value1", "arg2": "value2"}
+    params = {"arg1": "value1", "arg2": "value2"}
     generator = PromptGenerator()
-    generator.add_command(command_label, command_name, args)
+    generator.add_command(command_label, command_name, params)
     command = {
         "label": command_label,
         "name": command_name,
-        "args": args,
+        "params": params,
         "function": None,
     }
     assert command in generator.commands
@@ -62,12 +62,12 @@ def test_generate_prompt_string(config):
         {
             "label": "Command1",
             "name": "command_name1",
-            "args": {"arg1": "value1"},
+            "params": {"arg1": "value1"},
         },
         {
             "label": "Command2",
             "name": "command_name2",
-            "args": {},
+            "params": {},
         },
     ]
     resources = ["Resource1", "Resource2"]
@@ -78,7 +78,7 @@ def test_generate_prompt_string(config):
     for constraint in constraints:
         generator.add_constraint(constraint)
     for command in commands:
-        generator.add_command(command["label"], command["name"], command["args"])
+        generator.add_command(command["label"], command["name"], command["params"])
     for resource in resources:
         generator.add_resource(resource)
     for evaluation in evaluations:
@@ -93,7 +93,7 @@ def test_generate_prompt_string(config):
         assert constraint in prompt_string
     for command in commands:
         assert command["name"] in prompt_string
-        for key, value in command["args"].items():
+        for key, value in command["params"].items():
             assert f'"{key}": "{value}"' in prompt_string
     for resource in resources:
         assert resource in prompt_string

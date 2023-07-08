@@ -201,6 +201,7 @@ def ingest_file(
             "required": True,
         },
     },
+    aliases=["write_file", "create_file"],
 )
 @sanitize_path_arg("filename")
 def write_to_file(filename: str, text: str, agent: Agent) -> str:
