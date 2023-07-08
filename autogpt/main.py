@@ -154,7 +154,7 @@ def run_auto_gpt(
             incompatible_commands.append(command)
 
     for command in incompatible_commands:
-        command_registry.unregister(command.name)
+        command_registry.unregister(command)
         logger.debug(
             f"Unregistering incompatible command: {command.name}, "
             f"reason - {command.disabled_reason or 'Disabled by current config.'}"

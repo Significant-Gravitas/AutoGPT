@@ -22,6 +22,7 @@ class Command:
         parameters: list[CommandParameter],
         enabled: bool | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
+        aliases: list[str] = [],
     ):
         self.name = name
         self.description = description
@@ -29,6 +30,7 @@ class Command:
         self.parameters = parameters
         self.enabled = enabled
         self.disabled_reason = disabled_reason
+        self.aliases = aliases
 
     def __call__(self, *args, **kwargs) -> Any:
         if hasattr(kwargs, "config") and callable(self.enabled):

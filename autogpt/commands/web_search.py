@@ -23,6 +23,7 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
             "required": True,
         }
     },
+    aliases=["search"],
 )
 def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     """Return the results of a Google search
@@ -67,6 +68,7 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     lambda config: bool(config.google_api_key)
     and bool(config.google_custom_search_engine_id),
     "Configure google_api_key and custom_search_engine_id.",
+    aliases=["search"],
 )
 def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
     """Return the results of a Google search using the official Google API
@@ -124,7 +126,7 @@ def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
 
 def safe_google_results(results: str | list) -> str:
     """
-        Return the results of a google search in a safe format.
+        Return the results of a Google search in a safe format.
 
     Args:
         results (str | list): The search results.
