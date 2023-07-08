@@ -41,10 +41,10 @@ def _get_voice_engine(config: Config) -> tuple[VoiceBase, VoiceBase]:
     if tts_provider == "elevenlabs":
         voice_engine = ElevenLabsSpeech(config)
     elif tts_provider == "macos":
-        voice_engine = MacOSTTS()
+        voice_engine = MacOSTTS(config)
     elif tts_provider == "streamelements":
-        voice_engine = StreamElementsSpeech()
+        voice_engine = StreamElementsSpeech(config)
     else:
-        voice_engine = GTTSVoice()
+        voice_engine = GTTSVoice(config)
 
-    return GTTSVoice(), voice_engine
+    return GTTSVoice(config), voice_engine
