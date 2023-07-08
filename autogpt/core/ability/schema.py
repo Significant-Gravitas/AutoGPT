@@ -24,3 +24,7 @@ class AbilityResult(BaseModel):
     success: bool
     message: str
     new_knowledge: Knowledge = None
+
+    def summary(self) -> str:
+        kwargs = ", ".join(f"{k}={v}" for k, v in self.ability_args.items())
+        return f"{self.ability_name}({kwargs}): {self.message}"
