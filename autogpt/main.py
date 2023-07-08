@@ -55,7 +55,6 @@ def run_auto_gpt(
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
-    logger.speak_mode = speak
 
     config = ConfigBuilder.build_config_from_env()
     # HACK: This is a hack to allow the config into the logger without having to pass it around everywhere
@@ -155,7 +154,7 @@ def run_auto_gpt(
             incompatible_commands.append(command)
 
     for command in incompatible_commands:
-        command_registry.unregister(command.name)
+        command_registry.unregister(command)
         logger.debug(
             f"Unregistering incompatible command: {command.name}, "
             f"reason - {command.disabled_reason or 'Disabled by current config.'}"
