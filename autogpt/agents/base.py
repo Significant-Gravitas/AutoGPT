@@ -42,11 +42,7 @@ class BaseAgent(metaclass=ABCMeta):
                 f"{ai_config.ai_name} System Prompt:", Fore.GREEN, self.system_prompt
             )
 
-        llm_name = (
-            self.config.smart_llm
-            if self.big_brain
-            else self.config.fast_llm
-        )
+        llm_name = self.config.smart_llm if self.big_brain else self.config.fast_llm
         self.llm = OPEN_AI_CHAT_MODELS[llm_name]
         self.send_token_limit = send_token_limit or self.llm.max_tokens * 3 // 4
 

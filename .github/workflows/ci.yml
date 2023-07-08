@@ -148,7 +148,8 @@ jobs:
 
       - name: Run pytest with coverage
         run: |
-          pytest -n auto --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+          pytest -v --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+            --numprocesses=4 --durations=10 \
             tests/unit tests/integration tests/challenges
           python tests/challenges/utils/build_current_score.py
         env:
