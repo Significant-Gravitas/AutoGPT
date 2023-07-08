@@ -26,7 +26,6 @@ from autogpt.core.workspace.simple import SimpleWorkspace, WorkspaceSettings
 class AgentSystems(SystemConfiguration):
     ability_registry: PluginLocation
     memory: PluginLocation
-    embedding_model: PluginLocation
     openai_provider: PluginLocation
     planning: PluginLocation
     workspace: PluginLocation
@@ -148,12 +147,6 @@ class SimpleAgent(Agent, Configurable):
             agent_settings,
             logger,
         )
-        agent_args["embedding_model"] = cls._get_system_instance(
-            "embedding_model",
-            agent_settings,
-            logger,
-            model_providers={"openai": agent_args["openai_provider"]},
-        )
         agent_args["planning"] = cls._get_system_instance(
             "planning",
             agent_settings,
@@ -226,7 +219,7 @@ class SimpleAgent(Agent, Configurable):
             self._current_task = None
             self._next_ability = None
 
-            return ability_response
+            return ability_response.dict()
         else:
             raise NotImplementedError
 

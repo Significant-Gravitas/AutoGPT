@@ -173,10 +173,20 @@ def create_chat_completion(
     )
 
 
-def check_model(model_name: str, model_type: Literal["smart_llm", "fast_llm"]) -> str:
+def check_model(
+    model_name: str,
+    model_type: Literal["smart_llm", "fast_llm"],
+    config: Config,
+) -> str:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
+    openai_credentials = {
+        "api_key": config.openai_api_key,
+    }
+    if config.use_azure:
+        openai_credentials.update(config.get_azure_kwargs(model_name))
+
     api_manager = ApiManager()
-    models = api_manager.get_models()
+    models = api_manager.get_models(**openai_credentials)
 
     if any(model_name in m["id"] for m in models):
         return model_name
