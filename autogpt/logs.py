@@ -7,7 +7,7 @@ import random
 import re
 import time
 from logging import LogRecord
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from colorama import Fore, Style
 
@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
-from autogpt.speech import say_text
 
 
 class Logger(metaclass=Singleton):
@@ -86,14 +85,27 @@ class Logger(metaclass=Singleton):
         self.json_logger.addHandler(error_handler)
         self.json_logger.setLevel(logging.DEBUG)
 
-        self.speak_mode = False
+        self._config: Optional[Config] = None
         self.chat_plugins = []
+
+    @property
+    def config(self) -> Config | None:
+        return self._config
+
+    @config.setter
+    def config(self, config: Config):
+        self._config = config
+        if config.plain_output:
+            self.typing_logger.removeHandler(self.typing_console_handler)
+            self.typing_logger.addHandler(self.console_handler)
 
     def typewriter_log(
         self, title="", title_color="", content="", speak_text=False, level=logging.INFO
     ):
-        if speak_text and self.speak_mode:
-            say_text(f"{title}. {content}")
+        from autogpt.speech import say_text
+
+        if speak_text and self.config and self.config.speak_mode:
+            say_text(f"{title}. {content}", self.config)
 
         for plugin in self.chat_plugins:
             plugin.report(f"{title}. {content}")
@@ -265,6 +277,8 @@ def print_assistant_thoughts(
     assistant_reply_json_valid: object,
     config: Config,
 ) -> None:
+    from autogpt.speech import say_text
+
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
     assistant_thoughts_speak = None
