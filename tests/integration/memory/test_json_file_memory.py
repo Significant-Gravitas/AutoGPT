@@ -8,12 +8,6 @@ from autogpt.memory.vector import JSONFileMemory, MemoryItem
 from autogpt.workspace import Workspace
 
 
-@pytest.fixture(autouse=True)
-def cleanup_sut_singleton():
-    if JSONFileMemory in JSONFileMemory._instances:
-        del JSONFileMemory._instances[JSONFileMemory]
-
-
 def test_json_memory_init_without_backing_file(config: Config, workspace: Workspace):
     index_file = workspace.root / f"{config.memory_index}.json"
 
