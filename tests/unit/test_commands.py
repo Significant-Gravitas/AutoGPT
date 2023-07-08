@@ -102,7 +102,7 @@ class TestCommandRegistry:
         )
 
         registry.register(cmd)
-        registry.unregister(cmd.name)
+        registry.unregister(cmd)
 
         assert cmd.name not in registry.commands
 
@@ -135,7 +135,7 @@ class TestCommandRegistry:
         )
 
         registry.register(cmd)
-        registry.unregister(cmd.name)
+        registry.unregister(cmd)
 
         assert len(registry.commands) == 0
 
@@ -173,7 +173,7 @@ class TestCommandRegistry:
         )
 
         registry.register(cmd)
-        registry.unregister(cmd.name)
+        registry.unregister(cmd)
 
         assert len(registry.commands) == 0
 
