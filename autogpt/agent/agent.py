@@ -85,7 +85,7 @@ class Agent:
 
     def start_interaction_loop(self):
         # Avoid circular imports
-        from autogpt.app import execute_command, get_command
+        from autogpt.app import execute_command, extract_command
 
         # Interaction Loop
         self.cycle_count = 0
@@ -161,7 +161,7 @@ class Agent:
                     print_assistant_thoughts(
                         self.ai_name, assistant_reply_json, self.config
                     )
-                    command_name, arguments = get_command(
+                    command_name, arguments = extract_command(
                         assistant_reply_json, assistant_reply, self.config
                     )
                     if self.config.speak_mode:
