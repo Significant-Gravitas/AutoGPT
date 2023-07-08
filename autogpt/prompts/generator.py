@@ -1,6 +1,8 @@
 """ A module for generating custom prompt strings."""
+from __future__ import annotations
+
 import json
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, TypedDict
 
 from autogpt.config import Config
 from autogpt.json_utils.utilities import llm_response_schema
@@ -15,19 +17,33 @@ class PromptGenerator:
         resources, and performance evaluations.
     """
 
-    def __init__(self) -> None:
-        """
-        Initialize the PromptGenerator object with empty lists of constraints,
-            commands, resources, and performance evaluations.
-        """
+    class Command(TypedDict):
+        label: str
+        name: str
+        params: dict[str, str]
+        function: Optional[Callable]
+
+    constraints: list[str]
+    commands: list[Command]
+    resources: list[str]
+    performance_evaluation: list[str]
+    command_registry: CommandRegistry | None
+
+    # TODO: replace with AIConfig
+    name: str
+    role: str
+    goals: list[str]
+
+    def __init__(self):
         self.constraints = []
         self.commands = []
         self.resources = []
         self.performance_evaluation = []
-        self.goals = []
-        self.command_registry: CommandRegistry | None = None
+        self.command_registry = None
+
         self.name = "Bob"
         self.role = "AI"
+        self.goals = []
 
     def add_constraint(self, constraint: str) -> None:
         """
@@ -42,29 +58,29 @@ class PromptGenerator:
         self,
         command_label: str,
         command_name: str,
-        args=None,
+        params: dict[str, str] = {},
         function: Optional[Callable] = None,
     ) -> None:
         """
         Add a command to the commands list with a label, name, and optional arguments.
 
+        *Should only be used by plugins.* Native commands should be added
+        directly to the CommandRegistry.
+
         Args:
             command_label (str): The label of the command.
             command_name (str): The name of the command.
-            args (dict, optional): A dictionary containing argument names and their
+            params (dict, optional): A dictionary containing argument names and their
               values. Defaults to None.
             function (callable, optional): A callable function to be called when
                 the command is executed. Defaults to None.
         """
-        if args is None:
-            args = {}
+        command_params = {name: type for name, type in params.items()}
 
-        command_args = {arg_key: arg_value for arg_key, arg_value in args.items()}
-
-        command = {
+        command: PromptGenerator.Command = {
             "label": command_label,
             "name": command_name,
-            "args": command_args,
+            "params": command_params,
             "function": function,
         }
 
@@ -80,10 +96,10 @@ class PromptGenerator:
         Returns:
             str: The formatted command string.
         """
-        args_string = ", ".join(
-            f'"{key}": "{value}"' for key, value in command["args"].items()
+        params_string = ", ".join(
+            f'"{key}": "{value}"' for key, value in command["params"].items()
         )
-        return f'{command["label"]}: "{command["name"]}", args: {args_string}'
+        return f'{command["label"]}: "{command["name"]}", params: {params_string}'
 
     def add_resource(self, resource: str) -> None:
         """
