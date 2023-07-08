@@ -10,19 +10,24 @@ from agbenchmark.start_benchmark import CONFIG_PATH, REGRESSION_TESTS_PATH
 from agbenchmark.tests.regression.RegressionManager import RegressionManager
 
 
-def get_dynamic_workspace(config: Dict[str, Any]) -> str:
-    # Extract the string inside ${...}
-    path_expr = config["workspace"][2:-1]
+def resolve_workspace(config: Dict[str, Any]) -> str:
+    if config.get("workspace", "").startswith("${") and config.get(
+        "workspace", ""
+    ).endswith("}"):
+        # Extract the string inside ${...}
+        path_expr = config["workspace"][2:-1]
 
-    # Check if it starts with "os.path.join"
-    if path_expr.strip().startswith("os.path.join"):
-        # Evaluate the path string
-        path_value = eval(path_expr)
+        # Check if it starts with "os.path.join"
+        if path_expr.strip().startswith("os.path.join"):
+            # Evaluate the path string
+            path_value = eval(path_expr)
 
-        # Replace the original string with the evaluated result
-        return path_value
+            # Replace the original string with the evaluated result
+            return path_value
+        else:
+            raise ValueError("Invalid workspace path expression.")
     else:
-        raise ValueError("Invalid workspace path expression.")
+        return os.path.abspath(Path(os.getcwd()) / config["workspace"])
 
 
 @pytest.fixture(scope="module")
@@ -31,22 +36,36 @@ def config(request: Any) -> None:
     with open(CONFIG_PATH, "r") as f:
         config = json.load(f)
 
-    if config.get("workspace", "").startswith("${") and config.get(
-        "workspace", ""
-    ).endswith("}"):
-        path = get_dynamic_workspace(config)
-        config["workspace"] = path
-    else:
-        config["workspace"] = Path(os.getcwd()) / config["workspace"]
+    if request.config.getoption("--mock"):
+        config["workspace"] = "agbenchmark/mocks/workspace"
+    elif isinstance(config["workspace"], str):
+        config["workspace"] = resolve_workspace(config)
+    else:  # it's a input output dict
+        config["workspace"]["input"] = resolve_workspace(config)
+        config["workspace"]["output"] = resolve_workspace(config)
+
     return config
 
 
 @pytest.fixture(scope="module", autouse=True)
 def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
+    output_path = config["workspace"]
+
+    # checks if its an input output paradigm
+    if not isinstance(config["workspace"], str):
+        output_path = config["workspace"]["output"]
+        if not os.path.exists(config["workspace"]["input"]):
+            os.makedirs(config["workspace"]["input"], exist_ok=True)
+
+    # create output directory if it doesn't exist
+    if not os.path.exists(output_path):
+        os.makedirs(output_path, exist_ok=True)
+
     yield config["workspace"]
     # teardown after test function completes
-    for filename in os.listdir(config["workspace"]):
-        file_path = os.path.join(config["workspace"], filename)
+
+    for filename in os.listdir(output_path):
+        file_path = os.path.join(output_path, filename)
         try:
             if os.path.isfile(file_path) or os.path.islink(file_path):
                 os.unlink(file_path)
