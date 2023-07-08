@@ -18,7 +18,3 @@
 	path = agent/SuperAGI
 	url = https://github.com/SilenNaihin/SuperAGI.git
 	branch = benchmark-integration
-[submodule "agent/AgentGPT"]
-	path = agent/AgentGPT
-	url = https://github.com/SilenNaihin/AgentGPT.git
-	branch = benchmark-integration
