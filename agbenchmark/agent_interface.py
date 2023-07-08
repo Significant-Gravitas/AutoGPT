@@ -15,7 +15,7 @@ MOCK_FLAG = os.getenv("MOCK_TEST")
 
 
 def run_agent(
-    task: Optional[str],
+    task: str,
     mock_func: Optional[str],
     config: Dict[str, Any],
     challenge_location: str,

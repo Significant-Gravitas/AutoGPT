@@ -48,8 +48,8 @@ class Challenge(ABC, metaclass=ChallengeMeta):
         return self.data.mock.mock_func if self.data.mock else None
 
     @property
-    def task(self) -> Optional[str]:
-        return (
+    def task(self) -> str:
+        return str(
             self.data.mock.mock_task if self.data.mock and MOCK_TEST else self.data.task
         )
 
@@ -80,13 +80,13 @@ class Challenge(ABC, metaclass=ChallengeMeta):
 
     @staticmethod
     def open_file(workspace: str, filename: str) -> str:
-        script_dir = os.path.abspath(workspace)
+        script_dir = workspace
         workspace_dir = os.path.join(script_dir, filename)
         with open(workspace_dir, "r") as f:
             return f.read()
 
     def get_artifacts_out(self, workspace: str, file_patterns: list) -> List[str]:
-        script_dir = os.path.abspath(workspace)
+        script_dir = workspace
         files_contents = []
 
         for file_pattern in file_patterns:
@@ -115,7 +115,7 @@ class Challenge(ABC, metaclass=ChallengeMeta):
 
     @staticmethod
     def write_to_file(workspace: str, filename: str, content: str) -> None:
-        script_dir = os.path.abspath(workspace)
+        script_dir = workspace
         print("Writing file at", script_dir)
         workspace_dir = os.path.join(script_dir, filename)
 

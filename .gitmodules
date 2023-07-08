@@ -14,3 +14,7 @@
 	path = agent/smol-developer
 	url = https://github.com/merwanehamadi/developer.git
 	branch = benchmark-integration
+[submodule "agent/SuperAGI"]
+	path = agent/SuperAGI
+	url = https://github.com/SilenNaihin/SuperAGI.git
+	branch = benchmark-integration
