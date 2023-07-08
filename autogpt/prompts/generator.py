@@ -23,16 +23,27 @@ class PromptGenerator:
         params: dict[str, str]
         function: Optional[Callable]
 
-    constraints: list[str] = []
-    commands: list[Command] = []
-    resources: list[str] = []
-    performance_evaluation: list[str] = []
-    command_registry: CommandRegistry | None = None
+    constraints: list[str]
+    commands: list[Command]
+    resources: list[str]
+    performance_evaluation: list[str]
+    command_registry: CommandRegistry | None
 
     # TODO: replace with AIConfig
-    name = "Bob"
-    role = "AI"
-    goals: list[str] = []
+    name: str
+    role: str
+    goals: list[str]
+
+    def __init__(self):
+        self.constraints = []
+        self.commands = []
+        self.resources = []
+        self.performance_evaluation = []
+        self.command_registry = None
+
+        self.name = "Bob"
+        self.role = "AI"
+        self.goals = []
 
     def add_constraint(self, constraint: str) -> None:
         """
