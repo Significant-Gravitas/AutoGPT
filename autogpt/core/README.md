@@ -11,18 +11,26 @@ The first app is a straight CLI application.  I have not done anything yet to po
 - [Entry Point](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_app/cli.py)
 - [Client Application](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_app/main.py)
 
-To run, you first need a settings file.  Run
+Auto-GPT must be installed in your python environment to run this application.  To do so, run
+
+```
+pip install -e REPOSITORY_ROOT
+```
+
+where `REPOSITORY_ROOT` is the root of the Auto-GPT repository on your machine.
+
+You'll then need a settings file.  Run
 
 ```
  python REPOSITORY_ROOT/autogpt/core/runner/cli_app/cli.py make-settings
  ```
 
-where `REPOSITORY_ROOT` is the root of the Auto-GPT repository on your machine.  This will write a file called `default_agent_settings.yaml` with all the user-modifiable configuration keys to `~/auto-gpt/default_agent_settings.yml` and make the `auto-gpt` directory in your user directory if it doesn't exist).  At a bare minimum, you'll need to set `openai.credentials.api_key` to your OpenAI API Key to run the model.
+This will write a file called `default_agent_settings.yaml` with all the user-modifiable configuration keys to `~/auto-gpt/default_agent_settings.yml` and make the `auto-gpt` directory in your user directory if it doesn't exist).  At a bare minimum, you'll need to set `openai.credentials.api_key` to your OpenAI API Key to run the model.
 
 You can then run Auto-GPT with 
 
 ```
-python REPOSITORY_ROOT/autogpt/core/runner/cli_app/cli.py make-settings
+python REPOSITORY_ROOT/autogpt/core/runner/cli_app/cli.py run
 ```
 
 to launch the interaction loop.
