@@ -14,271 +14,205 @@ PARAMETERS = [
 ]
 
 
-class TestCommand:
-    """Test cases for the Command class."""
-
-    @staticmethod
-    def example_command_method(arg1: int, arg2: str) -> str:
-        """Example function for testing the Command class."""
-        # This function is static because it is not used by any other test cases.
-        return f"{arg1} - {arg2}"
-
-    def test_command_creation(self):
-        """Test that a Command object can be created with the correct attributes."""
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_command_method,
-            parameters=PARAMETERS,
-        )
-
-        assert cmd.name == "example"
-        assert cmd.description == "Example command"
-        assert cmd.method == self.example_command_method
-        assert (
-            str(cmd)
-            == "example: Example command, params: (arg1: int, arg2: Optional[str])"
-        )
-
-    def test_command_call(self):
-        """Test that Command(*args) calls and returns the result of method(*args)."""
-        # Create a Command object with the example_command_method.
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_command_method,
-            parameters=[
-                CommandParameter(
-                    name="prompt",
-                    type="string",
-                    description="The prompt used to generate the image",
-                    required=True,
-                ),
-            ],
-        )
-        result = cmd(arg1=1, arg2="test")
-        assert result == "1 - test"
-
-    def test_command_call_with_invalid_arguments(self):
-        """Test that calling a Command object with invalid arguments raises a TypeError."""
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_command_method,
-            parameters=PARAMETERS,
-        )
-        with pytest.raises(TypeError):
-            cmd(arg1="invalid", does_not_exist="test")
+def example_command_method(arg1: int, arg2: str) -> str:
+    """Example function for testing the Command class."""
+    # This function is static because it is not used by any other test cases.
+    return f"{arg1} - {arg2}"
 
 
-class TestCommandRegistry:
-    @staticmethod
-    def example_command_method(arg1: int, arg2: str) -> str:
-        return f"{arg1} - {arg2}"
+def test_command_creation():
+    """Test that a Command object can be created with the correct attributes."""
+    cmd = Command(
+        name="example",
+        description="Example command",
+        method=example_command_method,
+        parameters=PARAMETERS,
+    )
 
-    def test_register_command(self):
-        """Test that a command can be registered to the registry."""
-        registry = CommandRegistry()
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_command_method,
-            parameters=PARAMETERS,
-        )
+    assert cmd.name == "example"
+    assert cmd.description == "Example command"
+    assert cmd.method == example_command_method
+    assert (
+        str(cmd) == "example: Example command, params: (arg1: int, arg2: Optional[str])"
+    )
 
-        registry.register(cmd)
 
-        assert cmd.name in registry.commands
-        assert registry.commands[cmd.name] == cmd
+@pytest.fixture
+def example_command():
+    yield Command(
+        name="example",
+        description="Example command",
+        method=example_command_method,
+        parameters=PARAMETERS,
+    )
 
-    def test_unregister_command(self):
-        """Test that a command can be unregistered from the registry."""
-        registry = CommandRegistry()
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_command_method,
-            parameters=PARAMETERS,
-        )
 
-        registry.register(cmd)
-        registry.unregister(cmd)
+def test_command_call(example_command: Command):
+    """Test that Command(*args) calls and returns the result of method(*args)."""
+    result = example_command(arg1=1, arg2="test")
+    assert result == "1 - test"
 
-        assert cmd.name not in registry.commands
 
-    def test_register_command_plus_alias(self):
-        """Test that a command can be registered to the registry."""
-        registry = CommandRegistry()
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_function,
-            aliases=["example_alias"],
-        )
+def test_command_call_with_invalid_arguments(example_command: Command):
+    """Test that calling a Command object with invalid arguments raises a TypeError."""
+    with pytest.raises(TypeError):
+        example_command(arg1="invalid", does_not_exist="test")
 
-        registry.register(cmd)
-        assert len(registry.commands) == 2
 
-        assert cmd.name in registry.commands
-        assert cmd.aliases[0] in registry.commands
-        assert registry.commands[cmd.name] == cmd
-        assert registry.commands[cmd.aliases[0]] == cmd
+def test_register_command(example_command: Command):
+    """Test that a command can be registered to the registry."""
+    registry = CommandRegistry()
 
-    def test_unregister_command_plus_alias(self):
-        """Test that a command can be unregistered from the registry."""
-        registry = CommandRegistry()
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_function,
-            aliases=["example_alias"],
-        )
+    registry.register(example_command)
 
-        registry.register(cmd)
-        registry.unregister(cmd)
+    assert registry.get_command(example_command.name) == example_command
+    assert len(registry.commands) == 1
 
-        assert len(registry.commands) == 0
 
-        assert cmd.name not in registry.commands
-        assert cmd.aliases[0] not in registry.commands
+def test_unregister_command(example_command: Command):
+    """Test that a command can be unregistered from the registry."""
+    registry = CommandRegistry()
 
-    def test_register_command_plus_alias_list(self):
-        """Test that a command can be registered to the registry."""
-        registry = CommandRegistry()
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_function,
-            aliases=["example_alias", "example_alias_2"],
-        )
+    registry.register(example_command)
+    registry.unregister(example_command)
 
-        registry.register(cmd)
-        assert len(registry.commands) == 3
+    assert len(registry.commands) == 0
+    assert example_command.name not in registry.commands
 
-        assert cmd.name in registry.commands
-        assert cmd.aliases[0] in registry.commands
-        assert cmd.aliases[1] in registry.commands
-        assert registry.commands[cmd.name] == cmd
-        assert registry.commands[cmd.aliases[0]] == cmd
-        assert registry.commands[cmd.aliases[1]] == cmd
 
-    def test_unregister_command_plus_alias(self):
-        """Test that a command can be unregistered from the registry."""
-        registry = CommandRegistry()
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_function,
-            aliases=["example_alias", "example_alias_2"],
-        )
+@pytest.fixture
+def example_command_with_aliases(example_command: Command):
+    example_command.aliases = ["example_alias", "example_alias_2"]
+    return example_command
 
-        registry.register(cmd)
-        registry.unregister(cmd)
 
-        assert len(registry.commands) == 0
+def test_register_command_aliases(example_command_with_aliases: Command):
+    """Test that a command can be registered to the registry."""
+    registry = CommandRegistry()
+    cmd = example_command_with_aliases
 
-        assert cmd.name not in registry.commands
-        assert cmd.aliases[0] not in registry.commands
-        assert cmd.aliases[1] not in registry.commands
+    registry.register(cmd)
 
-    def test_get_command(self):
-        """Test that a command can be retrieved from the registry."""
-        registry = CommandRegistry()
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_command_method,
-            parameters=PARAMETERS,
-        )
+    assert cmd.name in registry.commands
+    assert registry.get_command(cmd.name) == cmd
+    assert registry.get_command(cmd.aliases[0]) == cmd
+    assert registry.get_command(cmd.aliases[1]) == cmd
+    assert len(registry.commands) == 1
 
-        registry.register(cmd)
-        retrieved_cmd = registry.get_command(cmd.name)
 
-        assert retrieved_cmd == cmd
+def test_unregister_command_aliases(example_command_with_aliases: Command):
+    """Test that a command can be unregistered from the registry."""
+    registry = CommandRegistry()
+    cmd = example_command_with_aliases
 
-    def test_get_nonexistent_command(self):
-        """Test that attempting to get a nonexistent command raises a KeyError."""
-        registry = CommandRegistry()
+    registry.register(cmd)
+    registry.unregister(cmd)
 
-        with pytest.raises(KeyError):
-            registry.get_command("nonexistent_command")
+    assert len(registry.commands) == 0
+    assert cmd.name not in registry.commands
 
-    def test_call_command(self):
-        """Test that a command can be called through the registry."""
-        registry = CommandRegistry()
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_command_method,
-            parameters=PARAMETERS,
-        )
+    with pytest.raises(KeyError):
+        registry.get_command(cmd.name)
+        registry.get_command(cmd.aliases[0])
+        registry.get_command(cmd.aliases[1])
 
-        registry.register(cmd)
-        result = registry.call("example", arg1=1, arg2="test")
 
-        assert result == "1 - test"
+def test_get_command(example_command: Command):
+    """Test that a command can be retrieved from the registry."""
+    registry = CommandRegistry()
 
-    def test_call_nonexistent_command(self):
-        """Test that attempting to call a nonexistent command raises a KeyError."""
-        registry = CommandRegistry()
+    registry.register(example_command)
+    retrieved_cmd = registry.get_command(example_command.name)
 
-        with pytest.raises(KeyError):
-            registry.call("nonexistent_command", arg1=1, arg2="test")
+    assert retrieved_cmd == example_command
 
-    def test_get_command_prompt(self):
-        """Test that the command prompt is correctly formatted."""
-        registry = CommandRegistry()
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_command_method,
-            parameters=PARAMETERS,
-        )
 
-        registry.register(cmd)
-        command_prompt = registry.command_prompt()
+def test_get_nonexistent_command():
+    """Test that attempting to get a nonexistent command raises a KeyError."""
+    registry = CommandRegistry()
 
-        assert f"(arg1: int, arg2: Optional[str])" in command_prompt
+    with pytest.raises(KeyError):
+        registry.get_command("nonexistent_command")
 
-    def test_import_mock_commands_module(self):
-        """Test that the registry can import a module with mock command plugins."""
-        registry = CommandRegistry()
-        mock_commands_module = "tests.mocks.mock_commands"
 
-        registry.import_commands(mock_commands_module)
+def test_call_command():
+    """Test that a command can be called through the registry."""
+    registry = CommandRegistry()
+    cmd = Command(
+        name="example",
+        description="Example command",
+        method=example_command_method,
+        parameters=PARAMETERS,
+    )
 
-        assert "function_based" in registry.commands
-        assert registry.commands["function_based"].name == "function_based"
-        assert (
-            registry.commands["function_based"].description
-            == "Function-based test command"
-        )
+    registry.register(cmd)
+    result = registry.call("example", arg1=1, arg2="test")
 
-    def test_import_temp_command_file_module(self, tmp_path):
-        """
-        Test that the registry can import a command plugins module from a temp file.
-        Args:
-            tmp_path (pathlib.Path): Path to a temporary directory.
-        """
-        registry = CommandRegistry()
+    assert result == "1 - test"
 
-        # Create a temp command file
-        src = Path(os.getcwd()) / "tests/mocks/mock_commands.py"
-        temp_commands_file = tmp_path / "mock_commands.py"
-        shutil.copyfile(src, temp_commands_file)
 
-        # Add the temp directory to sys.path to make the module importable
-        sys.path.append(str(tmp_path))
+def test_call_nonexistent_command():
+    """Test that attempting to call a nonexistent command raises a KeyError."""
+    registry = CommandRegistry()
 
-        temp_commands_module = "mock_commands"
-        registry.import_commands(temp_commands_module)
+    with pytest.raises(KeyError):
+        registry.call("nonexistent_command", arg1=1, arg2="test")
 
-        # Remove the temp directory from sys.path
-        sys.path.remove(str(tmp_path))
 
-        assert "function_based" in registry.commands
-        assert registry.commands["function_based"].name == "function_based"
-        assert (
-            registry.commands["function_based"].description
-            == "Function-based test command"
-        )
+def test_get_command_prompt():
+    """Test that the command prompt is correctly formatted."""
+    registry = CommandRegistry()
+    cmd = Command(
+        name="example",
+        description="Example command",
+        method=example_command_method,
+        parameters=PARAMETERS,
+    )
+
+    registry.register(cmd)
+    command_prompt = registry.command_prompt()
+
+    assert f"(arg1: int, arg2: Optional[str])" in command_prompt
+
+
+def test_import_mock_commands_module():
+    """Test that the registry can import a module with mock command plugins."""
+    registry = CommandRegistry()
+    mock_commands_module = "tests.mocks.mock_commands"
+
+    registry.import_commands(mock_commands_module)
+
+    assert "function_based" in registry.commands
+    assert registry.commands["function_based"].name == "function_based"
+    assert (
+        registry.commands["function_based"].description == "Function-based test command"
+    )
+
+
+def test_import_temp_command_file_module(tmp_path: Path):
+    """
+    Test that the registry can import a command plugins module from a temp file.
+    Args:
+        tmp_path (pathlib.Path): Path to a temporary directory.
+    """
+    registry = CommandRegistry()
+
+    # Create a temp command file
+    src = Path(os.getcwd()) / "tests/mocks/mock_commands.py"
+    temp_commands_file = tmp_path / "mock_commands.py"
+    shutil.copyfile(src, temp_commands_file)
+
+    # Add the temp directory to sys.path to make the module importable
+    sys.path.append(str(tmp_path))
+
+    temp_commands_module = "mock_commands"
+    registry.import_commands(temp_commands_module)
+
+    # Remove the temp directory from sys.path
+    sys.path.remove(str(tmp_path))
+
+    assert "function_based" in registry.commands
+    assert registry.commands["function_based"].name == "function_based"
+    assert (
+        registry.commands["function_based"].description == "Function-based test command"
+    )
