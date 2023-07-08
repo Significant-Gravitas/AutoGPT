@@ -54,9 +54,9 @@ jobs:
 
       - name: Run regression tests
         run: |
-          cd agent/SuperAgi
+          cd agent/SuperAGI
           cp config_template.yaml config.yaml
           sed -i 's/OPENAI_API_KEY:.*/OPENAI_API_KEY: "'"${{ secrets.OPENAI_API_KEY }}"'"/' config.yaml
-          docker-compose up --build
+          docker-compose up -d --build
           pip install ../../dist/agbenchmark-0.1.0-py3-none-any.whl
-          agbenchmark start --reg
+          agbenchmark start --maintain
