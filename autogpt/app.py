@@ -95,8 +95,8 @@ def execute_command(
     """
     try:
         # Execute a native command with the same name or alias, if it exists
-        if cmd := agent.command_registry.get_command(command_name):
-            return cmd(**arguments, agent=agent)
+        if command := agent.command_registry.get_command(command_name):
+            return command(**arguments, agent=agent)
 
         # Handle non-native commands (e.g. from plugins)
         for command in agent.ai_config.prompt_generator.commands:

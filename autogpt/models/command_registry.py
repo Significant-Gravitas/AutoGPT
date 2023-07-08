@@ -18,6 +18,9 @@ class CommandRegistry:
     commands: dict[str, Command] = {}
     commands_aliases: dict[str, Command] = {}
 
+    def __contains__(self, command_name: str):
+        return command_name in self.commands or command_name in self.commands_aliases
+
     def _import_module(self, module_name: str) -> Any:
         return importlib.import_module(module_name)
 
@@ -56,17 +59,17 @@ class CommandRegistry:
             if hasattr(reloaded_module, "register"):
                 reloaded_module.register(self)
 
-    def get_command(self, name: str) -> Command:
+    def get_command(self, name: str) -> Command | None:
         if name in self.commands:
             return self.commands[name]
 
         if name in self.commands_aliases:
             return self.commands_aliases[name]
 
-        raise KeyError(f"Command '{name}' not found in registry")
-
     def call(self, command_name: str, **kwargs) -> Any:
-        return self.get_command(command_name)(**kwargs)
+        if command := self.get_command(command_name):
+            return command(**kwargs)
+        raise KeyError(f"Command '{command_name}' not found in registry")
 
     def command_prompt(self) -> str:
         """

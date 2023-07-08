@@ -77,7 +77,7 @@ def test_unregister_command(example_command: Command):
     registry.unregister(example_command)
 
     assert len(registry.commands) == 0
-    assert example_command.name not in registry.commands
+    assert example_command.name not in registry
 
 
 @pytest.fixture
@@ -89,32 +89,45 @@ def example_command_with_aliases(example_command: Command):
 def test_register_command_aliases(example_command_with_aliases: Command):
     """Test that a command can be registered to the registry."""
     registry = CommandRegistry()
-    cmd = example_command_with_aliases
+    command = example_command_with_aliases
 
-    registry.register(cmd)
+    registry.register(command)
 
-    assert cmd.name in registry.commands
-    assert registry.get_command(cmd.name) == cmd
-    assert registry.get_command(cmd.aliases[0]) == cmd
-    assert registry.get_command(cmd.aliases[1]) == cmd
+    assert command.name in registry
+    assert registry.get_command(command.name) == command
+    for alias in command.aliases:
+        assert registry.get_command(alias) == command
     assert len(registry.commands) == 1
 
 
 def test_unregister_command_aliases(example_command_with_aliases: Command):
     """Test that a command can be unregistered from the registry."""
     registry = CommandRegistry()
-    cmd = example_command_with_aliases
+    command = example_command_with_aliases
 
-    registry.register(cmd)
-    registry.unregister(cmd)
+    registry.register(command)
+    registry.unregister(command)
 
     assert len(registry.commands) == 0
-    assert cmd.name not in registry.commands
+    assert command.name not in registry
+    for alias in command.aliases:
+        assert alias not in registry
 
-    with pytest.raises(KeyError):
-        registry.get_command(cmd.name)
-        registry.get_command(cmd.aliases[0])
-        registry.get_command(cmd.aliases[1])
+
+def test_command_in_registry(example_command_with_aliases: Command):
+    """Test that `command_name in registry` works."""
+    registry = CommandRegistry()
+    command = example_command_with_aliases
+
+    assert command.name not in registry
+    assert "nonexistent_command" not in registry
+
+    registry.register(command)
+
+    assert command.name in registry
+    assert "nonexistent_command" not in registry
+    for alias in command.aliases:
+        assert alias in registry
 
 
 def test_get_command(example_command: Command):
@@ -131,8 +144,8 @@ def test_get_nonexistent_command():
     """Test that attempting to get a nonexistent command raises a KeyError."""
     registry = CommandRegistry()
 
-    with pytest.raises(KeyError):
-        registry.get_command("nonexistent_command")
+    assert registry.get_command("nonexistent_command") is None
+    assert "nonexistent_command" not in registry
 
 
 def test_call_command():
@@ -182,7 +195,7 @@ def test_import_mock_commands_module():
 
     registry.import_commands(mock_commands_module)
 
-    assert "function_based" in registry.commands
+    assert "function_based" in registry
     assert registry.commands["function_based"].name == "function_based"
     assert (
         registry.commands["function_based"].description == "Function-based test command"
@@ -211,7 +224,7 @@ def test_import_temp_command_file_module(tmp_path: Path):
     # Remove the temp directory from sys.path
     sys.path.remove(str(tmp_path))
 
-    assert "function_based" in registry.commands
+    assert "function_based" in registry
     assert registry.commands["function_based"].name == "function_based"
     assert (
         registry.commands["function_based"].description == "Function-based test command"
