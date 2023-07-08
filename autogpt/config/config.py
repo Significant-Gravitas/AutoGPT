@@ -22,7 +22,7 @@ GPT_4_MODEL = "gpt-4"
 GPT_3_MODEL = "gpt-3.5-turbo"
 
 
-class Config(SystemSettings):
+class Config(SystemSettings, arbitrary_types_allowed=True):
     name: str = "Auto-GPT configuration"
     description: str = "Default configuration for the Auto-GPT application."
     ########################
