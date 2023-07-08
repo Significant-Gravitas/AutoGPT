@@ -106,10 +106,9 @@ def execute_command(
             ):
                 return command["function"](**arguments)
 
-        return (
-            f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
-            " list for available commands and only respond in the specified JSON"
-            " format."
+        raise RuntimeError(
+            f"Cannot execute '{command_name}': unknown command."
+            " Do not try to use this command again."
         )
     except Exception as e:
         return f"Error: {str(e)}"
