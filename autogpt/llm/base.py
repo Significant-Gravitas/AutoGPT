@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from math import ceil, floor
-from typing import TYPE_CHECKING, List, Literal, Optional, TypedDict
+from typing import TYPE_CHECKING, List, Literal, Optional, TypedDict, overload
 
 if TYPE_CHECKING:
     from autogpt.llm.providers.openai import OpenAIFunctionCall
 
-MessageRole = Literal["system", "user", "assistant"]
+MessageRole = Literal["system", "user", "assistant", "function"]
 MessageType = Literal["ai_response", "action_result"]
 
 TText = list[int]
@@ -73,16 +74,36 @@ class ChatSequence:
     """Utility container for a chat sequence"""
 
     model: ChatModelInfo
-    messages: list[Message] = field(default_factory=list)
+    messages: list[Message] = field(default_factory=list[Message])
 
-    def __getitem__(self, i: int):
-        return self.messages[i]
+    @overload
+    def __getitem__(self, key: int) -> Message:
+        ...
+
+    @overload
+    def __getitem__(self, key: slice) -> ChatSequence:
+        ...
+
+    def __getitem__(self, key: int | slice):
+        if isinstance(key, slice):
+            copy = deepcopy(self)
+            copy.messages = self.messages[key]
+            return copy
+        return self.messages[key]
 
     def __iter__(self):
         return iter(self.messages)
 
     def __len__(self):
         return len(self.messages)
+
+    def add(
+        self,
+        message_role: MessageRole,
+        content: str,
+        type: MessageType | None = None,
+    ):
+        self.messages.append(Message(message_role, content, type))
 
     def append(self, message: Message):
         return self.messages.append(message)
@@ -95,18 +116,17 @@ class ChatSequence:
             self.messages.insert(index, message)
 
     @classmethod
-    def for_model(cls, model_name: str, messages: list[Message] | ChatSequence = []):
+    def for_model(
+        cls, model_name: str, messages: list[Message] | ChatSequence = [], **kwargs
+    ):
         from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 
         if not model_name in OPEN_AI_CHAT_MODELS:
             raise ValueError(f"Unknown chat model '{model_name}'")
 
-        return ChatSequence(
-            model=OPEN_AI_CHAT_MODELS[model_name], messages=list(messages)
+        return cls(
+            model=OPEN_AI_CHAT_MODELS[model_name], messages=list(messages), **kwargs
         )
-
-    def add(self, message_role: MessageRole, content: str):
-        self.messages.append(Message(message_role, content))
 
     @property
     def token_length(self):
@@ -128,7 +148,7 @@ class ChatSequence:
             [f"{separator(m.role)}\n{m.content}" for m in self.messages]
         )
         return f"""
-============== ChatSequence ==============
+============== {__class__.__name__} ==============
 Length: {self.token_length} tokens; {len(self.messages)} messages
 {formatted_messages}
 ==========================================
