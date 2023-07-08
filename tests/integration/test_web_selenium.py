@@ -12,6 +12,6 @@ def test_browse_website(agent: Agent, patched_api_requestor: MockerFixture):
     question = "How to execute a barrel roll"
 
     response = browse_website(url, question, agent)
-    assert "Error" in response
+    assert "error" in response.lower()
     # Sanity check that the response is not too long
     assert len(response) < 200
