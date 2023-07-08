@@ -189,6 +189,7 @@ def ingest_file(
             "required": True,
         },
     },
+    aliases=["write_file", "create_file"],
 )
 def write_to_file(filename: str, text: str, agent: Agent) -> str:
     """Write text to a file
