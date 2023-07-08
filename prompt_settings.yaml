@@ -7,7 +7,6 @@ constraints: [
 resources: [
   'Internet access for searches and information gathering.',
   'Long Term memory management.',
-  'GPT-3.5 powered Agents for delegation of simple tasks.',
   'File output.'
 ]
 performance_evaluations: [
