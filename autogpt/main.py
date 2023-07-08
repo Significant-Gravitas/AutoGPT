@@ -2,6 +2,7 @@
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 from colorama import Fore, Style
 
@@ -48,12 +49,17 @@ def run_auto_gpt(
     skip_news: bool,
     workspace_directory: str | Path,
     install_plugin_deps: bool,
+    ai_name: Optional[str] = None,
+    ai_role: Optional[str] = None,
+    ai_goals: tuple[str] = tuple(),
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
-    logger.speak_mode = speak
 
     config = ConfigBuilder.build_config_from_env()
+    # HACK: This is a hack to allow the config into the logger without having to pass it around everywhere
+    # or import it directly.
+    logger.config = config
 
     # TODO: fill in llm values here
     check_openai_api_key(config)
@@ -154,7 +160,12 @@ def run_auto_gpt(
             f"reason - {command.disabled_reason or 'Disabled by current config.'}"
         )
 
-    ai_config = construct_main_ai_config(config)
+    ai_config = construct_main_ai_config(
+        config,
+        name=ai_name,
+        role=ai_role,
+        goals=ai_goals,
+    )
     ai_config.command_registry = command_registry
     # print(prompt)
 

@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from colorama import Fore
 
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.singleton import Singleton
-from autogpt.speech import say_text
 
 from .formatters import AutoGptFormatter, JsonFormatter
 from .handlers import ConsoleHandler, JsonFileHandler, TypingConsoleHandler
@@ -81,8 +83,19 @@ class Logger(metaclass=Singleton):
         self.json_logger.addHandler(error_handler)
         self.json_logger.setLevel(logging.DEBUG)
 
-        self.speak_mode = False
+        self._config: Optional[Config] = None
         self.chat_plugins = []
+
+    @property
+    def config(self) -> Config | None:
+        return self._config
+
+    @config.setter
+    def config(self, config: Config):
+        self._config = config
+        if config.plain_output:
+            self.typing_logger.removeHandler(self.typing_console_handler)
+            self.typing_logger.addHandler(self.console_handler)
 
     def typewriter_log(
         self,
@@ -92,8 +105,10 @@ class Logger(metaclass=Singleton):
         speak_text: bool = False,
         level: int = logging.INFO,
     ) -> None:
-        if speak_text and self.speak_mode:
-            say_text(f"{title}. {content}")
+        from autogpt.speech import say_text
+
+        if speak_text and self.config and self.config.speak_mode:
+            say_text(f"{title}. {content}", self.config)
 
         for plugin in self.chat_plugins:
             plugin.report(f"{title}. {content}")

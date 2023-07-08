@@ -7,8 +7,6 @@ from colorama import Fore
 if TYPE_CHECKING:
     from autogpt.config import Config
 
-from autogpt.speech.say import say_text
-
 from .logger import logger
 
 
@@ -17,6 +15,8 @@ def print_assistant_thoughts(
     assistant_reply_json_valid: dict,
     config: Config,
 ) -> None:
+    from autogpt.speech import say_text
+
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
     assistant_thoughts_speak = None

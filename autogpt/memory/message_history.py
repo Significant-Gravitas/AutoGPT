@@ -169,7 +169,7 @@ Latest Development:
             elif event.role == "user":
                 new_events.remove(event)
 
-        summ_model = OPEN_AI_CHAT_MODELS[config.fast_llm_model]
+        summ_model = OPEN_AI_CHAT_MODELS[config.fast_llm]
 
         # Determine token lengths for use in batching
         prompt_template_length = len(
@@ -183,7 +183,7 @@ Latest Development:
         # TODO: Put a cap on length of total new events and drop some previous events to
         # save API cost. Need to think thru more how to do it without losing the context.
         for event in new_events:
-            event_tlength = count_message_tokens([event], summ_model.name)
+            event_tlength = count_message_tokens(event, summ_model.name)
 
             if (
                 batch_tlength + event_tlength
@@ -211,9 +211,7 @@ Latest Development:
             summary=self.summary, new_events=new_events_batch
         )
 
-        prompt = ChatSequence.for_model(
-            config.fast_llm_model, [Message("user", prompt)]
-        )
+        prompt = ChatSequence.for_model(config.fast_llm, [Message("user", prompt)])
         if self.agent is not None and isinstance(
             getattr(self.agent, "log_cycle_handler", None), LogCycleHandler
         ):

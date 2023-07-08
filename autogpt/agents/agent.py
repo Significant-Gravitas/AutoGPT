@@ -217,8 +217,9 @@ class Agent(BaseAgent):
             # to exit
             self.user_input = ""
             logger.info(
-                "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
-                "'n' to exit program, or enter feedback for "
+                f"Enter '{self.config.authorise_key}' to authorise command, "
+                f"'{self.config.authorise_key} -N' to run N continuous commands, "
+                f"'{self.config.exit_key}' to exit program, or enter feedback for "
                 f"{self.ai_config.ai_name}..."
             )
             while True:
@@ -242,8 +243,9 @@ class Agent(BaseAgent):
                         user_input = "GENERATE NEXT COMMAND JSON"
                     except ValueError:
                         logger.warn(
-                            "Invalid input format. Please enter 'y -n' where n is"
-                            " the number of continuous tasks."
+                            f"Invalid input format. "
+                            f"Please enter '{self.config.authorise_key} -N'"
+                            " where N is the number of continuous tasks."
                         )
                         continue
                     break
@@ -299,11 +301,9 @@ class Agent(BaseAgent):
             )
             result = f"Command {command_name} returned: " f"{command_result}"
 
-            result_tlength = count_string_tokens(
-                str(command_result), self.config.fast_llm_model
-            )
+            result_tlength = count_string_tokens(str(command_result), self.llm.name)
             memory_tlength = count_string_tokens(
-                str(self.history.summary_message()), self.config.fast_llm_model
+                str(self.history.summary_message()), self.llm.name
             )
             if result_tlength + memory_tlength > self.send_token_limit:
                 result = f"Failure: command {command_name} returned too much output. \

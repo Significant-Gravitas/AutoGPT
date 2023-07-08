@@ -4,7 +4,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
@@ -15,12 +15,13 @@ from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.plugins.plugins_config import PluginsConfig
 
 AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
-from typing import Optional
+GPT_4_MODEL = "gpt-4"
+GPT_3_MODEL = "gpt-3.5-turbo"
 
 
 class Config(SystemSettings, arbitrary_types_allowed=True):
-    fast_llm_model: str
-    smart_llm_model: str
+    fast_llm: str
+    smart_llm: str
     continuous_mode: bool
     skip_news: bool
     workspace_path: Optional[str] = None
@@ -46,6 +47,8 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     openai_organization: Optional[str] = None
     temperature: float
     use_azure: bool
+    azure_config_file: Optional[str] = None
+    azure_model_to_deployment_id_map: Optional[Dict[str, str]] = None
     execute_local_commands: bool
     restrict_to_workspace: bool
     openai_api_type: Optional[str] = None
@@ -95,6 +98,56 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
         return p
 
+    def get_azure_kwargs(self, model: str) -> dict[str, str]:
+        """Get the kwargs for the Azure API."""
+
+        # Fix --gpt3only and --gpt4only in combination with Azure
+        fast_llm = (
+            self.fast_llm
+            if not (
+                self.fast_llm == self.smart_llm
+                and self.fast_llm.startswith(GPT_4_MODEL)
+            )
+            else f"not_{self.fast_llm}"
+        )
+        smart_llm = (
+            self.smart_llm
+            if not (
+                self.smart_llm == self.fast_llm
+                and self.smart_llm.startswith(GPT_3_MODEL)
+            )
+            else f"not_{self.smart_llm}"
+        )
+
+        deployment_id = {
+            fast_llm: self.azure_model_to_deployment_id_map.get(
+                "fast_llm_deployment_id",
+                self.azure_model_to_deployment_id_map.get(
+                    "fast_llm_model_deployment_id"  # backwards compatibility
+                ),
+            ),
+            smart_llm: self.azure_model_to_deployment_id_map.get(
+                "smart_llm_deployment_id",
+                self.azure_model_to_deployment_id_map.get(
+                    "smart_llm_model_deployment_id"  # backwards compatibility
+                ),
+            ),
+            self.embedding_model: self.azure_model_to_deployment_id_map.get(
+                "embedding_model_deployment_id"
+            ),
+        }.get(model, None)
+
+        kwargs = {
+            "api_type": self.openai_api_type,
+            "api_base": self.openai_api_base,
+            "api_version": self.openai_api_version,
+        }
+        if model == self.embedding_model:
+            kwargs["engine"] = deployment_id
+        else:
+            kwargs["deployment_id"] = deployment_id
+        return kwargs
+
 
 class ConfigBuilder(Configurable[Config]):
     default_plugins_config_file = os.path.join(
@@ -114,8 +167,8 @@ class ConfigBuilder(Configurable[Config]):
     default_settings = Config(
         name="Default Server Config",
         description="This is a default server configuration",
-        smart_llm_model="gpt-3.5-turbo",
-        fast_llm_model="gpt-3.5-turbo",
+        smart_llm="gpt-4",
+        fast_llm="gpt-3.5-turbo",
         continuous_mode=False,
         continuous_limit=0,
         skip_news=False,
@@ -137,6 +190,7 @@ class ConfigBuilder(Configurable[Config]):
         browse_spacy_language_model="en_core_web_sm",
         temperature=0,
         use_azure=False,
+        azure_config_file=AZURE_CONFIG_FILE,
         execute_local_commands=False,
         restrict_to_workspace=True,
         openai_functions=False,
@@ -174,12 +228,13 @@ class ConfigBuilder(Configurable[Config]):
             "shell_command_control": os.getenv("SHELL_COMMAND_CONTROL"),
             "ai_settings_file": os.getenv("AI_SETTINGS_FILE"),
             "prompt_settings_file": os.getenv("PROMPT_SETTINGS_FILE"),
-            "fast_llm_model": os.getenv("FAST_LLM_MODEL"),
-            "smart_llm_model": os.getenv("SMART_LLM_MODEL"),
+            "fast_llm": os.getenv("FAST_LLM", os.getenv("FAST_LLM_MODEL")),
+            "smart_llm": os.getenv("SMART_LLM", os.getenv("SMART_LLM_MODEL")),
             "embedding_model": os.getenv("EMBEDDING_MODEL"),
             "browse_spacy_language_model": os.getenv("BROWSE_SPACY_LANGUAGE_MODEL"),
             "openai_api_key": os.getenv("OPENAI_API_KEY"),
             "use_azure": os.getenv("USE_AZURE") == "True",
+            "azure_config_file": os.getenv("AZURE_CONFIG_FILE", AZURE_CONFIG_FILE),
             "execute_local_commands": os.getenv("EXECUTE_LOCAL_COMMANDS", "False")
             == "True",
             "restrict_to_workspace": os.getenv("RESTRICT_TO_WORKSPACE", "True")
@@ -248,12 +303,10 @@ class ConfigBuilder(Configurable[Config]):
             config_dict["temperature"] = float(os.getenv("TEMPERATURE"))
 
         if config_dict["use_azure"]:
-            azure_config = cls.load_azure_config()
-            config_dict["openai_api_type"] = azure_config["openai_api_type"]
-            config_dict["openai_api_base"] = azure_config["openai_api_base"]
-            config_dict["openai_api_version"] = azure_config["openai_api_version"]
+            azure_config = cls.load_azure_config(config_dict["azure_config_file"])
+            config_dict.update(azure_config)
 
-        if os.getenv("OPENAI_API_BASE_URL"):
+        elif os.getenv("OPENAI_API_BASE_URL"):
             config_dict["openai_api_base"] = os.getenv("OPENAI_API_BASE_URL")
 
         openai_organization = os.getenv("OPENAI_ORGANIZATION")
@@ -282,10 +335,11 @@ class ConfigBuilder(Configurable[Config]):
             config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
 
         return {
-            "openai_api_type": config_params.get("azure_api_type") or "azure",
-            "openai_api_base": config_params.get("azure_api_base") or "",
-            "openai_api_version": config_params.get("azure_api_version")
-            or "2023-03-15-preview",
+            "openai_api_type": config_params.get("azure_api_type", "azure"),
+            "openai_api_base": config_params.get("azure_api_base", ""),
+            "openai_api_version": config_params.get(
+                "azure_api_version", "2023-03-15-preview"
+            ),
             "azure_model_to_deployment_id_map": config_params.get(
                 "azure_model_map", {}
             ),
