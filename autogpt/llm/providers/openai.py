@@ -13,7 +13,7 @@ from openai.error import APIError, RateLimitError, ServiceUnavailableError, Time
 from openai.openai_object import OpenAIObject
 
 if TYPE_CHECKING:
-    from autogpt.agent.agent import Agent
+    from autogpt.config import Config
 
 from autogpt.llm.base import (
     ChatModelInfo,
@@ -23,6 +23,7 @@ from autogpt.llm.base import (
     TText,
 )
 from autogpt.logs import logger
+from autogpt.models.command_registry import CommandRegistry
 
 OPEN_AI_CHAT_MODELS = {
     info.name: info
@@ -301,13 +302,13 @@ class OpenAIFunctionSpec:
     @dataclass
     class ParameterSpec:
         name: str
-        type: str
+        type: str  # TODO: add enum support
         description: Optional[str]
         required: bool = False
 
     @property
-    def __dict__(self):
-        """Output an OpenAI-consumable function specification"""
+    def schema(self):
+        """Returns an OpenAI-consumable function specification"""
         return {
             "name": self.name,
             "description": self.description,
@@ -327,11 +328,13 @@ class OpenAIFunctionSpec:
         }
 
 
-def get_openai_command_specs(agent: Agent) -> list[OpenAIFunctionSpec]:
+def get_openai_command_specs(
+    command_registry: CommandRegistry, config: Config
+) -> list[OpenAIFunctionSpec]:
     """Get OpenAI-consumable function specs for the agent's available commands.
     see https://platform.openai.com/docs/guides/gpt/function-calling
     """
-    if not agent.config.openai_functions:
+    if not config.openai_functions:
         return []
 
     return [
@@ -348,5 +351,74 @@ def get_openai_command_specs(agent: Agent) -> list[OpenAIFunctionSpec]:
                 for param in command.parameters
             },
         )
-        for command in agent.command_registry.commands.values()
+        for command in command_registry.commands.values()
     ]
+
+
+def count_openai_functions_tokens(
+    functions: list[OpenAIFunctionSpec], for_model: str
+) -> int:
+    """Returns the number of tokens taken up by a set of function definitions
+
+    Reference: https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
+    """
+    from autogpt.llm.utils import count_string_tokens
+
+    return count_string_tokens(
+        f"# Tools\n\n## functions\n\n{format_function_specs_as_typescript_ns(functions)}",
+        for_model,
+    )
+
+
+def format_function_specs_as_typescript_ns(functions: list[OpenAIFunctionSpec]) -> str:
+    """Returns a function signature block in the format used by OpenAI internally:
+    https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/6
+
+    Accurate to within 5 tokens when used with count_string_tokens :)
+
+    Example given by OpenAI engineer:
+    ```ts
+    namespace functions {
+      type x = (_: {
+        location: string,
+        unit?: "celsius" | "fahrenheit",
+      }) => any;
+    } // namespace functions
+    ```
+
+    Format found by further experimentation: (seems accurate to within 5 tokens)
+    ```ts
+    namespace functions {
+
+    // Get the current weather in a given location
+    type get_current_weather = (_: {
+    location: string, // The city and state, e.g. San Francisco, CA
+    unit?: "celsius" | "fahrenheit",
+    }) => any;
+
+    } // namespace functions
+    ```
+    The `namespace` statement doesn't seem to count towards total token length.
+    """
+
+    def param_signature(p_spec: OpenAIFunctionSpec.ParameterSpec) -> str:
+        # TODO: enum type support
+        return (
+            f"// {p_spec.description}\n" if p_spec.description else ""
+        ) + f"{p_spec.name}{'' if p_spec.required else '?'}: {p_spec.type},"
+
+    def function_signature(f_spec: OpenAIFunctionSpec) -> str:
+        return "\n".join(
+            [
+                f"// {f_spec.description}",
+                f"type {f_spec.name} = (_ :{{",
+                *[param_signature(p) for p in f_spec.parameters.values()],
+                "}) => any;",
+            ]
+        )
+
+    return (
+        "namespace functions {\n\n"
+        + "\n\n".join(function_signature(f) for f in functions)
+        + "\n\n} // namespace functions"
+    )
