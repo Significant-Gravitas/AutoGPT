@@ -88,15 +88,18 @@ def create_config(
         # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM config
         config.fast_llm = GPT_3_MODEL
         config.smart_llm = GPT_3_MODEL
-
-    elif gpt4only and check_model(GPT_4_MODEL, model_type="smart_llm") == GPT_4_MODEL:
+    elif (
+        gpt4only
+        and check_model(GPT_4_MODEL, model_type="smart_llm", config=config)
+        == GPT_4_MODEL
+    ):
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         # --gpt4only should always use gpt-4, despite user's SMART_LLM config
         config.fast_llm = GPT_4_MODEL
         config.smart_llm = GPT_4_MODEL
     else:
-        config.fast_llm = check_model(config.fast_llm, "fast_llm")
-        config.smart_llm = check_model(config.smart_llm, "smart_llm")
+        config.fast_llm = check_model(config.fast_llm, "fast_llm", config=config)
+        config.smart_llm = check_model(config.smart_llm, "smart_llm", config=config)
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
