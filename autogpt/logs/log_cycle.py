@@ -2,7 +2,7 @@ import json
 import os
 from typing import Any, Dict, Union
 
-from autogpt.logs import logger
+from .logger import logger
 
 DEFAULT_PREFIX = "agent"
 FULL_MESSAGE_HISTORY_FILE_NAME = "full_message_history.json"
@@ -42,7 +42,7 @@ class LogCycleHandler:
 
         return outer_folder_path
 
-    def get_agent_short_name(self, ai_name):
+    def get_agent_short_name(self, ai_name: str) -> str:
         return ai_name[:15].rstrip() if ai_name else DEFAULT_PREFIX
 
     def create_inner_directory(self, outer_folder_path: str, cycle_count: int) -> str:

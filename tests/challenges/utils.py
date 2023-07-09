@@ -6,7 +6,7 @@ from typing import Any, Generator
 
 import pytest
 
-from autogpt.log_cycle.log_cycle import LogCycleHandler
+from autogpt.logs import LogCycleHandler
 from autogpt.workspace import Workspace
 from benchmarks import run_task
 from tests.challenges.schema import Task
