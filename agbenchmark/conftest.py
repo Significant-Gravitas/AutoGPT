@@ -40,9 +40,7 @@ def config(request: Any) -> None:
     with open(CONFIG_PATH, "r") as f:
         config = json.load(f)
 
-    if request.config.getoption("--mock"):
-        config["workspace"] = "agbenchmark/workspace"
-    elif isinstance(config["workspace"], str):
+    if isinstance(config["workspace"], str):
         config["workspace"] = resolve_workspace(config)
     else:  # it's a input output dict
         config["workspace"]["input"] = resolve_workspace(config)
