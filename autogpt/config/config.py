@@ -4,11 +4,12 @@ from __future__ import annotations
 import contextlib
 import os
 import re
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import yaml
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
-from pydantic import Field
+from pydantic import Field, validator
 
 from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.plugins.plugins_config import PluginsConfig
@@ -21,7 +22,7 @@ GPT_4_MODEL = "gpt-4"
 GPT_3_MODEL = "gpt-3.5-turbo"
 
 
-class Config(SystemSettings):
+class Config(SystemSettings, arbitrary_types_allowed=True):
     name: str = "Auto-GPT configuration"
     description: str = "Default configuration for the Auto-GPT application."
     ########################
@@ -103,7 +104,7 @@ class Config(SystemSettings):
     plugins_config: PluginsConfig = Field(
         default_factory=lambda: PluginsConfig(plugins={})
     )
-    plugins: list[str] = Field(default_factory=list)
+    plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
     plugins_allowlist: list[str] = Field(default_factory=list)
     plugins_denylist: list[str] = Field(default_factory=list)
     plugins_openai: list[str] = Field(default_factory=list)
@@ -132,6 +133,16 @@ class Config(SystemSettings):
     huggingface_api_token: Optional[str] = None
     # Stable Diffusion
     sd_webui_auth: Optional[str] = None
+
+    @validator("plugins", each_item=True)
+    def validate_plugins(cls, p: AutoGPTPluginTemplate | Any):
+        assert issubclass(
+            p.__class__, AutoGPTPluginTemplate
+        ), f"{p} does not subclass AutoGPTPluginTemplate"
+        assert (
+            p.__class__.__name__ != "AutoGPTPluginTemplate"
+        ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
+        return p
 
     def get_azure_kwargs(self, model: str) -> dict[str, str]:
         """Get the kwargs for the Azure API."""
