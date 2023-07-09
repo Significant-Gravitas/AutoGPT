@@ -33,7 +33,7 @@ def agent(config: Config):
 
 
 def test_message_history_batch_summary(mocker, agent: Agent, config: Config):
-    history = MessageHistory.for_model(agent.llm.name, agent=agent)
+    history = MessageHistory(agent.llm, agent=agent)
     model = config.fast_llm
     message_tlength = 0
     message_count = 0

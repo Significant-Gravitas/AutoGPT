@@ -5,7 +5,7 @@ import time
 
 
 class ConsoleHandler(logging.StreamHandler):
-    def emit(self, record) -> None:
+    def emit(self, record: logging.LogRecord) -> None:
         msg = self.format(record)
         try:
             print(msg)
@@ -16,7 +16,7 @@ class ConsoleHandler(logging.StreamHandler):
 class TypingConsoleHandler(logging.StreamHandler):
     """Output stream to console using simulated typing"""
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord):
         min_typing_speed = 0.05
         max_typing_speed = 0.01
 
@@ -38,10 +38,10 @@ class TypingConsoleHandler(logging.StreamHandler):
 
 
 class JsonFileHandler(logging.FileHandler):
-    def __init__(self, filename, mode="a", encoding=None, delay=False):
+    def __init__(self, filename: str, mode="a", encoding=None, delay=False):
         super().__init__(filename, mode, encoding, delay)
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord):
         json_data = json.loads(self.format(record))
         with open(self.baseFilename, "w", encoding="utf-8") as f:
             json.dump(json_data, f, ensure_ascii=False, indent=4)

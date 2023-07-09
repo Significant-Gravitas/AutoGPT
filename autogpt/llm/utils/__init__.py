@@ -19,7 +19,7 @@ from ..providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAIFunctionCall,
     OpenAIFunctionSpec,
-    format_function_specs_as_typescript_ns,
+    count_openai_functions_tokens,
 )
 from .token_counter import *
 
@@ -125,9 +125,7 @@ def create_chat_completion(
         max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt_tlength
         logger.debug(f"Prompt length: {prompt_tlength} tokens")
         if functions:
-            functions_tlength = count_string_tokens(
-                format_function_specs_as_typescript_ns(functions), model
-            )
+            functions_tlength = count_openai_functions_tokens(functions, model)
             max_tokens -= functions_tlength
             logger.debug(f"Functions take up {functions_tlength} tokens in API call")
 
@@ -160,7 +158,6 @@ def create_chat_completion(
         chat_completion_kwargs["functions"] = [
             function.schema for function in functions
         ]
-        logger.debug(f"Function dicts: {chat_completion_kwargs['functions']}")
 
     response = iopenai.create_chat_completion(
         messages=prompt.raw(),

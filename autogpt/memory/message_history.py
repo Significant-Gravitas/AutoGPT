@@ -17,11 +17,11 @@ from autogpt.llm.utils import (
     count_string_tokens,
     create_chat_completion,
 )
-from autogpt.logs import logger
-from autogpt.logs.log_cycle import (
+from autogpt.logs import (
     PROMPT_SUMMARY_FILE_NAME,
     SUMMARY_FILE_NAME,
     LogCycleHandler,
+    logger,
 )
 
 
@@ -120,7 +120,10 @@ Latest Development:
         )
 
     def update_running_summary(
-        self, new_events: list[Message], config: Config, max_summary_length=500
+        self,
+        new_events: list[Message],
+        config: Config,
+        max_summary_length: Optional[int] = None,
     ) -> Message:
         """
         This function takes a list of Message objects and updates the running summary
@@ -142,6 +145,8 @@ Latest Development:
         """
         if not new_events:
             return self.summary_message()
+        if not max_summary_length:
+            max_summary_length = self.max_summary_tlength
 
         # Create a copy of the new_events list to prevent modifying the original list
         new_events = copy.deepcopy(new_events)

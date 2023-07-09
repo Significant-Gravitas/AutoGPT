@@ -85,7 +85,9 @@ class BaseAgent(metaclass=ABCMeta):
             raw_response = create_chat_completion(
                 prompt,
                 self.config,
-                functions=get_openai_command_specs(self.command_registry, self.config),
+                functions=get_openai_command_specs(self.command_registry)
+                if self.config.openai_functions
+                else None,
             )
 
         self.on_response(raw_response, prompt, instruction)
