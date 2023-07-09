@@ -329,14 +329,11 @@ class OpenAIFunctionSpec:
 
 
 def get_openai_command_specs(
-    command_registry: CommandRegistry, config: Config
+    command_registry: CommandRegistry,
 ) -> list[OpenAIFunctionSpec]:
     """Get OpenAI-consumable function specs for the agent's available commands.
     see https://platform.openai.com/docs/guides/gpt/function-calling
     """
-    if not config.openai_functions:
-        return []
-
     return [
         OpenAIFunctionSpec(
             name=command.name,

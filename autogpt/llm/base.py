@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import ceil, floor
-from typing import TYPE_CHECKING, List, Literal, Optional, TypedDict
+from typing import TYPE_CHECKING, Literal, Optional, TypedDict
 
 if TYPE_CHECKING:
     from autogpt.llm.providers.openai import OpenAIFunctionCall
@@ -152,21 +152,12 @@ class LLMResponse:
 
     model_info: ModelInfo
 
-    ## Are these OpenAI-specific properties?
-    ## Also: default values here cause clashes in subclasses.
-    # prompt_tokens_used: int = 0
-    # completion_tokens_used: int = 0
-
 
 @dataclass
 class EmbeddingModelResponse(LLMResponse):
     """Standard response struct for a response from an embedding model."""
 
-    embedding: List[float] = field(default_factory=list)
-
-    # def __post_init__(self):
-    #     if self.completion_tokens_used:
-    #         raise ValueError("Embeddings should not have completion tokens used.")
+    embedding: list[float] = field(default_factory=list)
 
 
 @dataclass

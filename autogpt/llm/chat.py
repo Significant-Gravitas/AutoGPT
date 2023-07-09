@@ -80,8 +80,9 @@ def chat_with_ai(
     insertion_index = len(message_sequence)
 
     # Account for tokens used by OpenAI functions
-    openai_functions = get_openai_command_specs(agent.command_registry, agent.config)
-    if openai_functions:
+    openai_functions = None
+    if agent.config.openai_functions:
+        openai_functions = get_openai_command_specs(agent.command_registry)
         functions_tlength = count_openai_functions_tokens(openai_functions, model)
         current_tokens_used += functions_tlength
         logger.debug(f"OpenAI Functions take up {functions_tlength} tokens in API call")
