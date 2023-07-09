@@ -3,14 +3,16 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from autogpt.llm.providers.openai import get_openai_command_specs
-
 if TYPE_CHECKING:
     from autogpt.agent.agent import Agent
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import ChatSequence, Message
+from autogpt.llm.providers.openai import (
+    count_openai_functions_tokens,
+    get_openai_command_specs,
+)
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.logs import CURRENT_CONTEXT_FILE_NAME, logger
 
@@ -72,23 +74,17 @@ def chat_with_ai(
         ],
     )
 
-    # Add messages from the full message history until we reach the token limit
-    next_message_to_add_index = len(agent.history) - 1
-    insertion_index = len(message_sequence)
     # Count the currently used tokens
     current_tokens_used = message_sequence.token_length
+    insertion_index = len(message_sequence)
 
-    # while current_tokens_used > 2500:
-    #     # remove memories until we are under 2500 tokens
-    #     relevant_memory = relevant_memory[:-1]
-    #     (
-    #         next_message_to_add_index,
-    #         current_tokens_used,
-    #         insertion_index,
-    #         current_context,
-    #     ) = generate_context(
-    #         prompt, relevant_memory, agent.history, model
-    #     )
+    # Account for tokens used by OpenAI functions
+    openai_functions = None
+    if agent.config.openai_functions:
+        openai_functions = get_openai_command_specs(agent.command_registry)
+        functions_tlength = count_openai_functions_tokens(openai_functions, model)
+        current_tokens_used += functions_tlength
+        logger.debug(f"OpenAI Functions take up {functions_tlength} tokens in API call")
 
     # Account for user input (appended later)
     user_input_msg = Message("user", triggering_prompt)
@@ -97,7 +93,8 @@ def chat_with_ai(
     current_tokens_used += agent.history.max_summary_tlength  # Reserve space
     current_tokens_used += 500  # Reserve space for the openai functions TODO improve
 
-    # Add Messages until the token limit is reached or there are no more messages to add.
+    # Add historical Messages until the token limit is reached
+    #  or there are no more messages to add.
     for cycle in reversed(list(agent.history.per_cycle())):
         messages_to_add = [msg for msg in cycle if msg is not None]
         tokens_to_add = count_message_tokens(messages_to_add, model)
@@ -162,6 +159,8 @@ def chat_with_ai(
             logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
             break
         message_sequence.add("system", plugin_response)
+        current_tokens_used += tokens_to_add
+
     # Calculate remaining tokens
     tokens_remaining = token_limit - current_tokens_used
     # assert tokens_remaining >= 0, "Tokens remaining is negative.
@@ -193,7 +192,7 @@ def chat_with_ai(
     assistant_reply = create_chat_completion(
         prompt=message_sequence,
         config=agent.config,
-        functions=get_openai_command_specs(agent),
+        functions=openai_functions,
         max_tokens=tokens_remaining,
     )
 
