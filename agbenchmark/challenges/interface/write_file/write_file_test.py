@@ -3,8 +3,8 @@ from typing import Any, Dict
 from agbenchmark.challenge import Challenge
 
 
-class TestRememberMultipleIdsWithNoise(Challenge):
-    """The first memory challenge"""
+class TestWriteFile(Challenge):
+    """Testing if LLM can write to a file"""
 
     def test_method(self, config: Dict[str, Any]) -> None:
         self.setup_challenge(config)

@@ -1,8 +1,7 @@
 {
-  "name": "debug_simple_typo_without_guidance",
   "category": ["code"],
   "task": "Make test.py run without errors.",
-  "dependencies": [],
+  "dependencies": ["TestDebugSimpleTypoWithGuidance"],
   "ground": {
     "answer": "[0, 1] [2, 5] [0, 3]",
     "should_contain": ["[0, 1]", "[2, 5]", "[0, 3]"],
@@ -10,12 +9,8 @@
     "files": ["test.py"],
     "type": "execute_python_code"
   },
-  "mock": {
-    "mock_func": null,
-    "mock_task": null
-  },
   "info": {
-    "difficulty": "basic",
+    "difficulty": "medium",
     "description": "Tests ability for the agent to debug python code with a simple typo in it, using a very broad prompt without guidance",
     "side_effects": ["tests if there is in fact an LLM attached"]
   }

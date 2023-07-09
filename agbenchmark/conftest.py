@@ -2,12 +2,16 @@ import json
 import os
 import shutil
 from pathlib import Path  # noqa
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, Generator
 
 import pytest
 
-from agbenchmark.start_benchmark import CONFIG_PATH, REGRESSION_TESTS_PATH
-from agbenchmark.tests.regression.RegressionManager import RegressionManager
+from agbenchmark.RegressionManager import RegressionManager
+from agbenchmark.start_benchmark import (
+    CONFIG_PATH,
+    REGRESSION_TESTS_PATH,
+    get_regression_data,
+)
 
 
 def resolve_workspace(config: Dict[str, Any]) -> str:
@@ -37,7 +41,7 @@ def config(request: Any) -> None:
         config = json.load(f)
 
     if request.config.getoption("--mock"):
-        config["workspace"] = "agbenchmark/mocks/workspace"
+        config["workspace"] = "agbenchmark/workspace"
     elif isinstance(config["workspace"], str):
         config["workspace"] = resolve_workspace(config)
     else:  # it's a input output dict
@@ -77,15 +81,31 @@ def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
 
 def pytest_addoption(parser: Any) -> None:
     parser.addoption("--mock", action="store_true", default=False)
+    parser.addoption("--improve", action="store_true", default=False)
+    parser.addoption("--maintain", action="store_true", default=False)
 
 
-regression_manager = RegressionManager(REGRESSION_TESTS_PATH)
+@pytest.fixture(autouse=True)
+def check_regression(request: Any) -> None:
+    test_name = request.node.parent.name
+    data = get_regression_data()
+
+    # Check if the test name exists in the regression tests
+    if request.config.getoption("--improve") and data.get(test_name, None):
+        pytest.skip("Skipping test because it's a regression test and --improve is set")
+    elif request.config.getoption("--maintain") and not data.get(test_name, None):
+        pytest.skip(
+            "Skipping test because it's not a regression test and --maintain is set"
+        )
 
 
 # this is to get the challenge_data from every test
 @pytest.fixture(autouse=True)
 def challenge_data(request: Any) -> None:
     return request.param
+
+
+regression_manager = RegressionManager(REGRESSION_TESTS_PATH)
 
 
 def pytest_runtest_makereport(item: Any, call: Any) -> None:
@@ -109,16 +129,6 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
             regression_manager.remove_test(item.nodeid.split("::")[1])
 
 
-def pytest_collection_modifyitems(items: List[Any]) -> None:
-    """Called once all test items are collected. Used
-    to add regression and depends markers to collected test items."""
-    for item in items:
-        # regression add
-        if item.nodeid.split("::")[1] in regression_manager.tests:
-            print(regression_manager.tests)
-            item.add_marker(pytest.mark.regression)
-
-
 def pytest_sessionfinish() -> None:
     """Called at the end of the session to save regression tests"""
     regression_manager.save()
@@ -135,3 +145,29 @@ def pytest_generate_tests(metafunc: Any) -> None:
 
         # Add the parameters to the test function
         metafunc.parametrize("challenge_data", [params], indirect=True)
+
+
+# this is adding the dependency marker and category markers automatically from the json
+def pytest_collection_modifyitems(items: Any, config: Any) -> None:
+    data = get_regression_data()
+
+    for item in items:
+        # Assuming item.cls is your test class
+        test_class_instance = item.cls()
+
+        # Then you can access your properties
+        name = item.parent.cls.__name__
+        dependencies = test_class_instance.data.dependencies
+
+        # Filter dependencies if they exist in regression data if its an improvement test
+        if config.getoption("--improve"):
+            dependencies = [dep for dep in dependencies if not data.get(dep, None)]
+
+        categories = test_class_instance.data.category
+
+        # Add depends marker dynamically
+        item.add_marker(pytest.mark.depends(on=dependencies, name=name))
+
+        # Add category marker dynamically
+        for category in categories:
+            item.add_marker(getattr(pytest.mark, category))

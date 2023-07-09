@@ -53,8 +53,7 @@ import os
 class TestWriteFile(BasicChallenge):
     """Testing if LLM can write to a file"""
 
-    @pytest.mark.depends(on=[], name="basic_write_file")
-    def test_method(self, workspace):
+    def test_method(self, config):
         # implement scoring logic by looking at workspace
 ```
 
@@ -82,7 +81,7 @@ Add the below to create a file in the workspace prior to running a challenge. On
 
 ## Workspace
 
-If `--mock` flag is used it is at `agbenchmark/mocks/workspace`. Otherwise for mini-agi it is at `C:/Users/<name>/miniagi` - it will be automitcally set on config
+If `--mock` flag is used it is at `agbenchmark/workspace`. Otherwise for mini-agi it is at `C:/Users/<name>/miniagi` - it will be automitcally set on config
 
 #### Dataset
 

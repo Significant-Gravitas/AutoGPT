@@ -1,6 +1,6 @@
 {
-  "name": "basic_write_file",
-  "category": ["basic"],
+  "name": "WriteFile",
+  "category": ["interface"],
   "task": "Print the the capital of America to a .txt file",
   "dependencies": [],
   "ground": {
@@ -9,10 +9,6 @@
     "should_not_contain": ["New York", "Los Angeles", "San Francisco"],
     "files": [".txt"],
     "type": "file"
-  },
-  "mock": {
-    "mock_func": "basic_write_file_mock",
-    "mock_task": "What is the capital of America?"
   },
   "info": {
     "difficulty": "basic",
