@@ -5,6 +5,8 @@ on:
     branches: [master]
   push:
     branches: [stable, master, ci-test*]
+  pull_request:
+    branches: [stable, master, ci-test*]
 
 jobs:
   regression-tests:
@@ -52,14 +54,30 @@ jobs:
           poetry install --only main
           poetry build
 
-      - name: Run regression tests
+      - name: Run regression tests (push)
+        if: ${{ github.event_name != 'pull_request' }}
         run: |
           cd agent/gpt-engineer
           make install
           source venv/bin/activate
-          pip install ../../dist/agbenchmark-0.1.0-py3-none-any.whl
-          agbenchmark start --maintain
+          pip install ../../dist/*.whl
+          
+          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then
+            agbenchmark start --maintain
+          else
+            agbenchmark start --maintain --mock
+            agbenchmark start --improve --mock
+            agbenchmark start --mock
+            agbenchmark start --mock --category=retrieval
+            agbenchmark start --mock --category=regression
+            agbenchmark start --mock --category=interface
+            agbenchmark start --mock --category=code
+            agbenchmark start --mock --category=memory
+            agbenchmark start --mock --category=memory --category=code
+          fi
+
         env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Upload logs as artifact
