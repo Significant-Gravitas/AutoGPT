@@ -52,7 +52,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
     if not name.endswith(".py"):
         name = name + ".py"
 
-    # The `name` arg is not covered by Agent._resolve_pathlike_command_args(),
+    # The `name` arg is not covered by @sanitize_path_arg,
     # so sanitization must be done here to prevent path traversal.
     file_path = agent.workspace.get_path(code_dir / name)
     if not file_path.is_relative_to(code_dir):
