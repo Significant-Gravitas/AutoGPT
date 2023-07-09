@@ -1,3 +1,4 @@
+import functools
 from pathlib import Path
 from typing import Callable
 
@@ -23,6 +24,7 @@ def sanitize_path_arg(arg_name: str):
                 f"Parameter 'agent' absent or not annotated on function '{func.__name__}'"
             )
 
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             logger.debug(f"Sanitizing arg '{arg_name}' on function '{func.__name__}'")
             logger.debug(f"Function annotations: {func.__annotations__}")
