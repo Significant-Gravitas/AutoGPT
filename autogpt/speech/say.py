@@ -21,7 +21,7 @@ _QUEUE_SEMAPHORE = Semaphore(
 
 class TextToSpeechProvider:
     def __init__(self, config: Config):
-        self._enabled = config.speak_mode
+        self._config = config
         self._default_voice_engine, self._voice_engine = self._get_voice_engine(config)
 
     def say(self, text, voice_index: int = 0) -> None:
@@ -31,13 +31,13 @@ class TextToSpeechProvider:
                 self._default_voice_engine.say(text, voice_index)
             _QUEUE_SEMAPHORE.release()
 
-        if self._enabled:
+        if self._config.speak_mode:
             _QUEUE_SEMAPHORE.acquire(True)
             thread = threading.Thread(target=_speak)
             thread.start()
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(enabled={self._enabled}, provider={self._voice_engine.__class__.__name__}"
+        return f"{self.__class__.__name__}(enabled={self._config.speak_mode}, provider={self._voice_engine.__class__.__name__})"
 
     @staticmethod
     def _get_voice_engine(config: Config) -> tuple[VoiceBase, VoiceBase]:
