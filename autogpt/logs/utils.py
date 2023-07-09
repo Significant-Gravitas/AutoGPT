@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from colorama import Fore
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
 
 from .logger import logger
 
@@ -13,10 +8,8 @@ from .logger import logger
 def print_assistant_thoughts(
     ai_name: str,
     assistant_reply_json_valid: dict,
-    config: Config,
+    command_name: str,
 ) -> None:
-    from autogpt.speech import say_text
-
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
     assistant_thoughts_speak = None
@@ -55,10 +48,10 @@ def print_assistant_thoughts(
     logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
     # Speak the assistant's thoughts
     if assistant_thoughts_speak:
-        if config.speak_mode:
-            say_text(assistant_thoughts_speak, config)
-        else:
-            logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
+        logger.say(assistant_thoughts_speak)
+        logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
+
+    logger.say(f"I want to execute {command_name}")
 
 
 def remove_ansi_escape(s: str) -> str:

@@ -9,6 +9,7 @@ from colorama import Fore
 
 if TYPE_CHECKING:
     from autogpt.config import Config
+    from autogpt.speech import TextToSpeechProvider
 
 from autogpt.singleton import Singleton
 
@@ -84,6 +85,7 @@ class Logger(metaclass=Singleton):
         self.json_logger.setLevel(logging.DEBUG)
 
         self._config: Optional[Config] = None
+        self._tts_provider: Optional[TextToSpeechProvider] = None
         self.chat_plugins = []
 
     @property
@@ -97,6 +99,11 @@ class Logger(metaclass=Singleton):
             self.typing_logger.removeHandler(self.typing_console_handler)
             self.typing_logger.addHandler(self.console_handler)
 
+        # Avoiding cyclic import
+        from autogpt.speech import TextToSpeechProvider
+
+        self._tts_provider = TextToSpeechProvider(config)
+
     def typewriter_log(
         self,
         title: str = "",
@@ -105,10 +112,8 @@ class Logger(metaclass=Singleton):
         speak_text: bool = False,
         level: int = logging.INFO,
     ) -> None:
-        from autogpt.speech import say_text
-
-        if speak_text and self.config and self.config.speak_mode:
-            say_text(f"{title}. {content}", self.config)
+        if speak_text:
+            self.say(f"{title}. {content}")
 
         for plugin in self.chat_plugins:
             plugin.report(f"{title}. {content}")
@@ -122,6 +127,10 @@ class Logger(metaclass=Singleton):
         self.typing_logger.log(
             level, content, extra={"title": title, "color": title_color}
         )
+
+    def say(self, text: str) -> None:
+        if self._tts_provider:
+            self._tts_provider.say(text)
 
     def debug(
         self,

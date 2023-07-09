@@ -24,7 +24,6 @@ from autogpt.logs import (
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
 from autogpt.models.command_registry import CommandRegistry
-from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
@@ -160,14 +159,12 @@ class Agent:
             if assistant_reply_json != {}:
                 # Get command name and arguments
                 try:
-                    print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, self.config
-                    )
                     command_name, arguments = extract_command(
                         assistant_reply_json, assistant_reply, self.config
                     )
-                    if self.config.speak_mode:
-                        say_text(f"I want to execute {command_name}", self.config)
+                    print_assistant_thoughts(
+                        self.ai_name, assistant_reply_json, command_name
+                    )
 
                 except Exception as e:
                     logger.error("Error: \n", str(e))
