@@ -37,7 +37,7 @@ testpaths = [
 markers = [
     "retrieval",
     "regression",
-    "basic",
+    "interface",
     "code",
     "memory"
 ]

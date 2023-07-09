@@ -4,9 +4,8 @@ import os
 import subprocess
 import types
 from abc import ABC, ABCMeta
-from typing import Any, Dict, List, Optional, Tuple, Type, cast
+from typing import Any, Dict, List, Tuple, Type, cast
 
-import pytest
 from dotenv import load_dotenv
 
 from agbenchmark.challenges.define_task_types import ChallengeData, Ground
@@ -19,7 +18,6 @@ MOCK_TEST = mock_test_str.lower() == "true" if mock_test_str else False
 
 class ChallengeMeta(ABCMeta):
     def __init__(self, name: str, bases: Tuple[Type, ...], dct: Dict[str, Any]) -> None:
-
         super().__init__(name, bases, dct)
         try:
             frame = cast(types.FrameType, inspect.currentframe())
@@ -40,18 +38,13 @@ class Challenge(ABC, metaclass=ChallengeMeta):
     @property
     def data(self) -> ChallengeData:
         file_path = f"{self.CHALLENGE_LOCATION}/data.json"
-        Challenge._data_cache[file_path] = ChallengeData.deserialize(file_path)
+        if file_path not in Challenge._data_cache:
+            Challenge._data_cache[file_path] = ChallengeData.deserialize(file_path)
         return Challenge._data_cache[file_path]
 
     @property
-    def mock(self) -> Optional[str]:
-        return self.data.mock.mock_func if self.data.mock else None
-
-    @property
     def task(self) -> str:
-        return str(
-            self.data.mock.mock_task if self.data.mock and MOCK_TEST else self.data.task
-        )
+        return self.data.task
 
     @property
     def dependencies(self) -> list:
@@ -64,17 +57,8 @@ class Challenge(ABC, metaclass=ChallengeMeta):
             config["workspace"], "artifacts_in", self.__class__.CHALLENGE_LOCATION
         )
 
-        run_agent(self.task, self.mock, config, self.__class__.CHALLENGE_LOCATION)
+        run_agent(self.task, config, self.__class__.CHALLENGE_LOCATION)
 
-    @property
-    def name(self) -> str:
-        return self.data.name
-
-    @pytest.mark.parametrize(
-        "challenge_data",
-        [data],
-        indirect=True,
-    )
     def test_method(self, config: Dict[str, Any]) -> None:
         raise NotImplementedError
 
@@ -151,3 +135,16 @@ class Challenge(ABC, metaclass=ChallengeMeta):
                     )
 
         return 1.0
+
+    def get_scores(self, config: Dict[str, Any]) -> List[float]:
+        files_contents = self.get_artifacts_out(
+            config["workspace"], self.data.ground.files
+        )
+
+        scores = []
+        for file_content in files_contents:
+            score = self.scoring(file_content, self.data.ground)
+            print("Your score is:", score)
+            scores.append(score)
+
+        return scores

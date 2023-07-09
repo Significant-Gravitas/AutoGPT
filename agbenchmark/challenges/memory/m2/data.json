@@ -1,18 +1,13 @@
 {
-  "name": "remember_multiple_ids",
   "category": ["memory"],
   "task": "Follow the instructions in the instructions_1.txt file",
-  "dependencies": [],
+  "dependencies": ["TestBasicMemory"],
   "ground": {
     "answer": "3145\n3791\n9317\n9471",
     "should_contain": ["3145", "3791", "9317", "9471"],
     "should_not_contain": [],
     "files": [".txt"],
     "type": "file"
-  },
-  "mock": {
-    "mock_func": "remember_multiple_ids_mock",
-    "mock_task": "Follow the instructions in the instructions_1.txt file"
   },
   "info": {
     "difficulty": "basic",

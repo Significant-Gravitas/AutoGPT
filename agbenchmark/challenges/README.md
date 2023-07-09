@@ -25,20 +25,15 @@ Example:
 
 ```python
 {
-  "name": "basic_write_file",
   "category": ["basic"],
   "task": "Print the the capital of America to a .txt file",
-  "dependencies": [],
+  "dependencies": ["TestWriteFile"], # the class name of the test
   "ground": {
     "answer": "Washington",
     "should_contain": ["Washington"],
     "should_not_contain": ["New York", "Los Angeles", "San Francisco"],
     "files": [".txt"],
     "type": "file"
-  },
-  "mock": {
-    "mock_func": "basic_write_file_mock",
-    "mock_task": "What is the capital of America?"
   },
   "info": {
     "difficulty": "basic",
