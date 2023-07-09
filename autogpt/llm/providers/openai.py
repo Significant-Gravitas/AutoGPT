@@ -187,13 +187,19 @@ def retry_api(
                     if attempt == num_attempts:
                         raise
 
+                    if (
+                        isinstance(e, RateLimitError)
+                        and getattr(e, "error", {}).get("code") == "insufficient_quota"
+                    ):
+                        raise
+
                     error_msg = error_messages[type(e)]
                     logger.warn(error_msg)
                     if not user_warned:
                         logger.double_check(api_key_error_msg)
-                        logger.debug(f"Headers: {e.headers}")
                         logger.debug(f"Status: {e.http_status}")
-                        logger.debug(f"JSON body: {e.json_body}")
+                        logger.debug(f"Response body: {e.json_body}")
+                        logger.debug(f"Response headers: {e.headers}")
                         user_warned = True
 
                 except (APIError, Timeout) as e:
