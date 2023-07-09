@@ -70,7 +70,7 @@ class Agent:
     ):
         self.ai_name = ai_name
         self.memory = memory
-        self.history = MessageHistory(self)
+        self.history = MessageHistory.for_model(config.smart_llm, agent=self)
         self.next_action_count = next_action_count
         self.command_registry = command_registry
         self.config = config
