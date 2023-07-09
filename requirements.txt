@@ -67,4 +67,5 @@ pytest-integration
 pytest-mock
 vcrpy @ git+https://github.com/Significant-Gravitas/vcrpy.git@master
 pytest-recording
+pytest-timestamper
 pytest-xdist
