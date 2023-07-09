@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Callable, List, Optional
 from unittest.mock import patch
 
 import openai
@@ -112,7 +112,7 @@ OPEN_AI_MODELS: dict[str, ChatModelInfo | EmbeddingModelInfo | TextModelInfo] = 
 }
 
 
-def meter_api(func):
+def meter_api(func: Callable):
     """Adds ApiManager metering to functions which make OpenAI API calls"""
     from autogpt.llm.api_manager import ApiManager
 
@@ -170,11 +170,9 @@ def retry_api(
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
         f"read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
     )
-    backoff_msg = (
-        f"{Fore.RED}Waiting {{backoff}} seconds...{Fore.RESET}"
-    )
+    backoff_msg = f"{Fore.RED}Waiting {{backoff}} seconds...{Fore.RESET}"
 
-    def _wrapper(func):
+    def _wrapper(func: Callable):
         @functools.wraps(func)
         def _wrapped(*args, **kwargs):
             user_warned = not warn_user
@@ -184,11 +182,9 @@ def retry_api(
                     return func(*args, **kwargs)
 
                 except (RateLimitError, ServiceUnavailableError) as e:
-                    if attempt == num_attempts:
-                        raise
-
                     if (
-                        isinstance(e, RateLimitError)
+                        attempt == num_attempts
+                        or isinstance(e, RateLimitError)
                         and getattr(e, "error", {}).get("code") == "insufficient_quota"
                     ):
                         raise
