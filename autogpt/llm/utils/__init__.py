@@ -78,10 +78,8 @@ def create_text_completion(
     if temperature is None:
         temperature = config.temperature
 
-    if config.use_azure:
-        kwargs = config.get_azure_kwargs(model)
-    else:
-        kwargs = {"model": model}
+    kwargs = {"model": model}
+    kwargs.update(config.get_openai_credentials(model))
 
     response = iopenai.create_text_completion(
         prompt=prompt,
@@ -150,9 +148,7 @@ def create_chat_completion(
             if message is not None:
                 return message
 
-    chat_completion_kwargs["api_key"] = config.openai_api_key
-    if config.use_azure:
-        chat_completion_kwargs.update(config.get_azure_kwargs(model))
+    chat_completion_kwargs.update(config.get_openai_credentials(model))
 
     if functions:
         chat_completion_kwargs["functions"] = [
@@ -196,11 +192,7 @@ def check_model(
     config: Config,
 ) -> str:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
-    openai_credentials = {
-        "api_key": config.openai_api_key,
-    }
-    if config.use_azure:
-        openai_credentials.update(config.get_azure_kwargs(model_name))
+    openai_credentials = config.get_openai_credentials(model_name)
 
     api_manager = ApiManager()
     models = api_manager.get_models(**openai_credentials)

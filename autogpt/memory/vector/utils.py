@@ -41,10 +41,8 @@ def get_embedding(
         input = [text.replace("\n", " ") for text in input]
 
     model = config.embedding_model
-    if config.use_azure:
-        kwargs = config.get_azure_kwargs(model)
-    else:
-        kwargs = {"model": model}
+    kwargs = {"model": model}
+    kwargs.update(config.get_openai_credentials(model))
 
     logger.debug(
         f"Getting embedding{f's for {len(input)} inputs' if multiple else ''}"
