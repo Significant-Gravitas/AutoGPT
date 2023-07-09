@@ -89,6 +89,9 @@ def start(category: str, maintain: bool, improve: bool, mock: bool) -> int:
     if mock:
         pytest_args.append("--mock")
 
+    # when used as a library, the pytest directory to execute is in the CURRENT_DIRECTORY
+    pytest_args.append(str(CURRENT_DIRECTORY))
+
     return sys.exit(pytest.main(pytest_args))
 
 
