@@ -12,13 +12,15 @@ from autogpt.json_utils.utilities import extract_json_from_response, validate_js
 from autogpt.llm.chat import chat_with_ai
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens
-from autogpt.log_cycle.log_cycle import (
+from autogpt.logs import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
+    logger,
+    print_assistant_thoughts,
+    remove_ansi_escape,
 )
-from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
 from autogpt.models.command_registry import CommandRegistry
