@@ -286,7 +286,10 @@ class Agent:
                 memory_tlength = count_string_tokens(
                     str(self.history.summary_message()), self.config.smart_llm
                 )
-                if result_tlength + memory_tlength + 600 > self.smart_token_limit:
+                if str(command_result).startswith("Unknown command"):
+                    result = f"Failure: command {command_name} not found. \
+                        Do not execute this command again."
+                elif result_tlength + memory_tlength + 600 > self.smart_token_limit:
                     result = f"Failure: command {command_name} returned too much output. \
                         Do not execute this command again with the same arguments."
 
