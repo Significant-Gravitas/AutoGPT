@@ -12,6 +12,8 @@ from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.logs import logger
 
+from .decorators import sanitize_path_arg
+
 ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"
 
@@ -43,14 +45,14 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
     Returns:
         str: The STDOUT captured from the code when it ran
     """
-    ai_name = agent.ai_name
+    ai_name = agent.ai_config.ai_name
     code_dir = agent.workspace.get_path(Path(ai_name, "executed_code"))
     os.makedirs(code_dir, exist_ok=True)
 
     if not name.endswith(".py"):
         name = name + ".py"
 
-    # The `name` arg is not covered by Agent._resolve_pathlike_command_args(),
+    # The `name` arg is not covered by @sanitize_path_arg,
     # so sanitization must be done here to prevent path traversal.
     file_path = agent.workspace.get_path(code_dir / name)
     if not file_path.is_relative_to(code_dir):
@@ -76,6 +78,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
         },
     },
 )
+@sanitize_path_arg("filename")
 def execute_python_file(filename: str, agent: Agent) -> str:
     """Execute a Python file in a Docker container and return the output
 
