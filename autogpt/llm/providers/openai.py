@@ -185,7 +185,8 @@ def retry_api(
                     if (
                         attempt == num_attempts
                         or isinstance(e, RateLimitError)
-                        and getattr(e, "error", {}).get("code") == "insufficient_quota"
+                        and (err := getattr(e, "error", {}))
+                        and err.get("code") == "insufficient_quota"
                     ):
                         raise
 
