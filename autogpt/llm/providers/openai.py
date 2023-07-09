@@ -162,8 +162,8 @@ def retry_api(
         warn_user bool: Whether to warn the user. Defaults to True.
     """
     error_messages = {
-        ServiceUnavailableError: f"{Fore.RED}Error: The OpenAI API engine is currently overloaded, passing...{Fore.RESET}",
-        RateLimitError: f"{Fore.RED}Error: Reached rate limit, passing...{Fore.RESET}",
+        ServiceUnavailableError: f"{Fore.RED}Error: The OpenAI API engine is currently overloaded{Fore.RESET}",
+        RateLimitError: f"{Fore.RED}Error: Reached rate limit{Fore.RESET}",
     }
     api_key_error_msg = (
         f"Please double check that you have setup a "
@@ -171,7 +171,7 @@ def retry_api(
         f"read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
     )
     backoff_msg = (
-        f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
+        f"{Fore.RED}Waiting {{backoff}} seconds...{Fore.RESET}"
     )
 
     def _wrapper(func):
@@ -188,9 +188,12 @@ def retry_api(
                         raise
 
                     error_msg = error_messages[type(e)]
-                    logger.debug(error_msg)
+                    logger.warn(error_msg)
                     if not user_warned:
                         logger.double_check(api_key_error_msg)
+                        logger.debug(f"Headers: {e.headers}")
+                        logger.debug(f"Status: {e.http_status}")
+                        logger.debug(f"JSON body: {e.json_body}")
                         user_warned = True
 
                 except (APIError, Timeout) as e:
@@ -198,7 +201,7 @@ def retry_api(
                         raise
 
                 backoff = backoff_base ** (attempt + 2)
-                logger.debug(backoff_msg.format(backoff=backoff))
+                logger.warn(backoff_msg.format(backoff=backoff))
                 time.sleep(backoff)
 
         return _wrapped
