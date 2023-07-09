@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional
 from unittest.mock import patch
 
 import openai
@@ -11,9 +11,6 @@ import openai.api_resources.abstract.engine_api_resource as engine_api_resource
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, ServiceUnavailableError, Timeout
 from openai.openai_object import OpenAIObject
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
 
 from autogpt.llm.base import (
     ChatModelInfo,
@@ -307,7 +304,7 @@ class OpenAIFunctionSpec:
         required: bool = False
 
     @property
-    def schema(self):
+    def schema(self) -> dict[str, str | dict | list]:
         """Returns an OpenAI-consumable function specification"""
         return {
             "name": self.name,
@@ -326,6 +323,37 @@ class OpenAIFunctionSpec:
                 ],
             },
         }
+
+    @property
+    def prompt_format(self) -> str:
+        """Returns the function formatted similarly to the way OpenAI does it internally:
+        https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
+
+        Example:
+        ```ts
+        // Get the current weather in a given location
+        type get_current_weather = (_: {
+        // The city and state, e.g. San Francisco, CA
+        location: string,
+        unit?: "celsius" | "fahrenheit",
+        }) => any;
+        ```
+        """
+
+        def param_signature(p_spec: OpenAIFunctionSpec.ParameterSpec) -> str:
+            # TODO: enum type support
+            return (
+                f"// {p_spec.description}\n" if p_spec.description else ""
+            ) + f"{p_spec.name}{'' if p_spec.required else '?'}: {p_spec.type},"
+
+        return "\n".join(
+            [
+                f"// {self.description}",
+                f"type {self.name} = (_ :{{",
+                *[param_signature(p) for p in self.parameters.values()],
+                "}) => any;",
+            ]
+        )
 
 
 def get_openai_command_specs(
@@ -369,53 +397,27 @@ def count_openai_functions_tokens(
 
 def format_function_specs_as_typescript_ns(functions: list[OpenAIFunctionSpec]) -> str:
     """Returns a function signature block in the format used by OpenAI internally:
-    https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/6
+    https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
 
-    Accurate to within 5 tokens when used with count_string_tokens :)
+    For use with `count_string_tokens` to determine token usage of provided functions.
 
-    Example given by OpenAI engineer:
-    ```ts
-    namespace functions {
-      type x = (_: {
-        location: string,
-        unit?: "celsius" | "fahrenheit",
-      }) => any;
-    } // namespace functions
-    ```
-
-    Format found by further experimentation: (seems accurate to within 5 tokens)
+    Example:
     ```ts
     namespace functions {
 
     // Get the current weather in a given location
     type get_current_weather = (_: {
-    location: string, // The city and state, e.g. San Francisco, CA
+    // The city and state, e.g. San Francisco, CA
+    location: string,
     unit?: "celsius" | "fahrenheit",
     }) => any;
 
     } // namespace functions
     ```
-    The `namespace` statement doesn't seem to count towards total token length.
     """
-
-    def param_signature(p_spec: OpenAIFunctionSpec.ParameterSpec) -> str:
-        # TODO: enum type support
-        return (
-            f"// {p_spec.description}\n" if p_spec.description else ""
-        ) + f"{p_spec.name}{'' if p_spec.required else '?'}: {p_spec.type},"
-
-    def function_signature(f_spec: OpenAIFunctionSpec) -> str:
-        return "\n".join(
-            [
-                f"// {f_spec.description}",
-                f"type {f_spec.name} = (_ :{{",
-                *[param_signature(p) for p in f_spec.parameters.values()],
-                "}) => any;",
-            ]
-        )
 
     return (
         "namespace functions {\n\n"
-        + "\n\n".join(function_signature(f) for f in functions)
+        + "\n\n".join(f.prompt_format for f in functions)
         + "\n\n} // namespace functions"
     )
