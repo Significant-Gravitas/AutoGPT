@@ -2,49 +2,46 @@ from __future__ import annotations
 
 import copy
 import json
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from autogpt.agent import Agent
 
 from autogpt.config import Config
 from autogpt.json_utils.utilities import extract_json_from_response
-from autogpt.llm.base import ChatSequence, Message, MessageRole, MessageType
+from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
-from autogpt.llm.utils import count_string_tokens, create_chat_completion
+from autogpt.llm.utils import (
+    count_message_tokens,
+    count_string_tokens,
+    create_chat_completion,
+)
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
 from autogpt.logs import logger
 
 
 @dataclass
-class MessageHistory:
-    agent: Agent
-
-    messages: list[Message] = field(default_factory=list)
+class MessageHistory(ChatSequence):
+    max_summary_tlength: int = 500
+    agent: Optional[Agent] = None
     summary: str = "I was created"
-
     last_trimmed_index: int = 0
 
-    def __getitem__(self, i: int):
-        return self.messages[i]
+    SUMMARIZATION_PROMPT = '''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
 
-    def __iter__(self):
-        return iter(self.messages)
+You will receive the current summary and your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
 
-    def __len__(self):
-        return len(self.messages)
+Summary So Far:
+"""
+{summary}
+"""
 
-    def add(
-        self,
-        role: MessageRole,
-        content: str,
-        type: MessageType | None = None,
-    ):
-        return self.append(Message(role, content, type))
-
-    def append(self, message: Message):
-        return self.messages.append(message)
+Latest Development:
+"""
+{new_events}
+"""
+'''
 
     def trim_messages(
         self, current_message_chain: list[Message], config: Config
@@ -84,7 +81,7 @@ class MessageHistory:
 
         return new_summary_message, new_messages_not_in_chain
 
-    def per_cycle(self, config: Config, messages: list[Message] | None = None):
+    def per_cycle(self, messages: list[Message] | None = None):
         """
         Yields:
             Message: a message containing user input
@@ -119,26 +116,33 @@ class MessageHistory:
         )
 
     def update_running_summary(
-        self, new_events: list[Message], config: Config
+        self,
+        new_events: list[Message],
+        config: Config,
+        max_summary_length: Optional[int] = None,
     ) -> Message:
         """
-        This function takes a list of dictionaries representing new events and combines them with the current summary,
-        focusing on key and potentially important information to remember. The updated summary is returned in a message
-        formatted in the 1st person past tense.
+        This function takes a list of Message objects and updates the running summary
+        to include the events they describe. The updated summary is returned
+        in a Message formatted in the 1st person past tense.
 
         Args:
-            new_events (List[Dict]): A list of dictionaries containing the latest events to be added to the summary.
+            new_events: A list of Messages containing the latest events to be added to the summary.
 
         Returns:
-            str: A message containing the updated summary of actions, formatted in the 1st person past tense.
+            Message: a Message containing the updated running summary.
 
         Example:
+            ```py
             new_events = [{"event": "entered the kitchen."}, {"event": "found a scrawled note with the number 7"}]
             update_running_summary(new_events)
             # Returns: "This reminds you of these events from your past: \nI entered the kitchen and found a scrawled note saying 7."
+            ```
         """
         if not new_events:
             return self.summary_message()
+        if not max_summary_length:
+            max_summary_length = self.max_summary_tlength
 
         # Create a copy of the new_events list to prevent modifying the original list
         new_events = copy.deepcopy(new_events)
@@ -166,29 +170,29 @@ class MessageHistory:
             elif event.role == "user":
                 new_events.remove(event)
 
-        # Summarize events and current summary in batch to a new running summary
+        summ_model = OPEN_AI_CHAT_MODELS[config.fast_llm]
 
-        # Assume an upper bound length for the summary prompt template, i.e. Your task is to create a concise running summary...., in summarize_batch func
-        # TODO make this default dynamic
-        prompt_template_length = 100
-        max_tokens = OPEN_AI_CHAT_MODELS.get(config.fast_llm).max_tokens
-        summary_tlength = count_string_tokens(str(self.summary), config.fast_llm)
+        # Determine token lengths for use in batching
+        prompt_template_length = len(
+            MessageHistory.SUMMARIZATION_PROMPT.format(summary="", new_events="")
+        )
+        max_input_tokens = summ_model.max_tokens - max_summary_length
+        summary_tlength = count_string_tokens(self.summary, summ_model.name)
         batch = []
         batch_tlength = 0
 
-        # TODO Can put a cap on length of total new events and drop some previous events to save API cost, but need to think thru more how to do it without losing the context
+        # TODO: Put a cap on length of total new events and drop some previous events to
+        # save API cost. Need to think thru more how to do it without losing the context.
         for event in new_events:
-            event_tlength = count_string_tokens(str(event), config.fast_llm)
+            event_tlength = count_message_tokens(event, summ_model.name)
 
             if (
                 batch_tlength + event_tlength
-                > max_tokens - prompt_template_length - summary_tlength
+                > max_input_tokens - prompt_template_length - summary_tlength
             ):
                 # The batch is full. Summarize it and start a new one.
-                self.summarize_batch(batch, config)
-                summary_tlength = count_string_tokens(
-                    str(self.summary), config.fast_llm
-                )
+                self.summarize_batch(batch, config, max_summary_length)
+                summary_tlength = count_string_tokens(self.summary, summ_model.name)
                 batch = [event]
                 batch_tlength = event_tlength
             else:
@@ -197,41 +201,36 @@ class MessageHistory:
 
         if batch:
             # There's an unprocessed batch. Summarize it.
-            self.summarize_batch(batch, config)
+            self.summarize_batch(batch, config, max_summary_length)
 
         return self.summary_message()
 
-    def summarize_batch(self, new_events_batch, config):
-        prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
-
-You will receive the current summary and your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
-
-Summary So Far:
-"""
-{self.summary}
-"""
-
-Latest Development:
-"""
-{new_events_batch or "Nothing new happened."}
-"""
-'''
+    def summarize_batch(
+        self, new_events_batch: list[Message], config: Config, max_output_length: int
+    ):
+        prompt = MessageHistory.SUMMARIZATION_PROMPT.format(
+            summary=self.summary, new_events=new_events_batch
+        )
 
         prompt = ChatSequence.for_model(config.fast_llm, [Message("user", prompt)])
-        self.agent.log_cycle_handler.log_cycle(
-            self.agent.ai_name,
-            self.agent.created_at,
-            self.agent.cycle_count,
-            prompt.raw(),
-            PROMPT_SUMMARY_FILE_NAME,
-        )
+        if self.agent:
+            self.agent.log_cycle_handler.log_cycle(
+                self.agent.ai_config.ai_name,
+                self.agent.created_at,
+                self.agent.cycle_count,
+                prompt.raw(),
+                PROMPT_SUMMARY_FILE_NAME,
+            )
 
-        self.summary = create_chat_completion(prompt, config).content
+        self.summary = create_chat_completion(
+            prompt, config, max_tokens=max_output_length
+        ).content
 
-        self.agent.log_cycle_handler.log_cycle(
-            self.agent.ai_name,
-            self.agent.created_at,
-            self.agent.cycle_count,
-            self.summary,
-            SUMMARY_FILE_NAME,
-        )
+        if self.agent:
+            self.agent.log_cycle_handler.log_cycle(
+                self.agent.ai_config.ai_name,
+                self.agent.created_at,
+                self.agent.cycle_count,
+                self.summary,
+                SUMMARY_FILE_NAME,
+            )

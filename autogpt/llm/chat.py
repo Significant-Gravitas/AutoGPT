@@ -93,13 +93,13 @@ def chat_with_ai(
 
     # Account for user input (appended later)
     user_input_msg = Message("user", triggering_prompt)
-    current_tokens_used += count_message_tokens([user_input_msg], model)
+    current_tokens_used += count_message_tokens(user_input_msg, model)
 
-    current_tokens_used += 500  # Reserve space for new_summary_message
+    current_tokens_used += agent.history.max_summary_tlength  # Reserve space
     current_tokens_used += 500  # Reserve space for the openai functions TODO improve
 
     # Add Messages until the token limit is reached or there are no more messages to add.
-    for cycle in reversed(list(agent.history.per_cycle(agent.config))):
+    for cycle in reversed(list(agent.history.per_cycle())):
         messages_to_add = [msg for msg in cycle if msg is not None]
         tokens_to_add = count_message_tokens(messages_to_add, model)
         if current_tokens_used + tokens_to_add > send_token_limit:
@@ -115,9 +115,9 @@ def chat_with_ai(
         new_summary_message, trimmed_messages = agent.history.trim_messages(
             current_message_chain=list(message_sequence), config=agent.config
         )
-        tokens_to_add = count_message_tokens([new_summary_message], model)
+        tokens_to_add = count_message_tokens(new_summary_message, model)
         message_sequence.insert(insertion_index, new_summary_message)
-        current_tokens_used += tokens_to_add - 500
+        current_tokens_used += tokens_to_add - agent.history.max_summary_tlength
 
         # FIXME: uncomment when memory is back in use
         # memory_store = get_memory(config)
@@ -143,7 +143,7 @@ def chat_with_ai(
         )
         logger.debug(budget_message)
         message_sequence.add("system", budget_message)
-        current_tokens_used += count_message_tokens([message_sequence[-1]], model)
+        current_tokens_used += count_message_tokens(message_sequence[-1], model)
 
     # Append user input, the length of this is accounted for above
     message_sequence.append(user_input_msg)
@@ -157,9 +157,7 @@ def chat_with_ai(
         )
         if not plugin_response or plugin_response == "":
             continue
-        tokens_to_add = count_message_tokens(
-            [Message("system", plugin_response)], model
-        )
+        tokens_to_add = count_message_tokens(Message("system", plugin_response), model)
         if current_tokens_used + tokens_to_add > send_token_limit:
             logger.debug(f"Plugin response too long, skipping: {plugin_response}")
             logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
