@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from math import ceil, floor
-from typing import TYPE_CHECKING, List, Literal, Optional, TypedDict, overload
+from typing import TYPE_CHECKING, Literal, Optional, Type, TypedDict, TypeVar, overload
 
 if TYPE_CHECKING:
     from autogpt.llm.providers.openai import OpenAIFunctionCall
@@ -69,6 +69,10 @@ class EmbeddingModelInfo(ModelInfo):
     embedding_dimensions: int
 
 
+# Can be replaced by Self in Python 3.11
+TChatSequence = TypeVar("TChatSequence", bound="ChatSequence")
+
+
 @dataclass
 class ChatSequence:
     """Utility container for a chat sequence"""
@@ -81,10 +85,10 @@ class ChatSequence:
         ...
 
     @overload
-    def __getitem__(self, key: slice) -> ChatSequence:
+    def __getitem__(self: TChatSequence, key: slice) -> TChatSequence:
         ...
 
-    def __getitem__(self, key: int | slice):
+    def __getitem__(self: TChatSequence, key: int | slice) -> Message | TChatSequence:
         if isinstance(key, slice):
             copy = deepcopy(self)
             copy.messages = self.messages[key]
@@ -102,8 +106,8 @@ class ChatSequence:
         message_role: MessageRole,
         content: str,
         type: MessageType | None = None,
-    ):
-        self.messages.append(Message(message_role, content, type))
+    ) -> None:
+        self.append(Message(message_role, content, type))
 
     def append(self, message: Message):
         return self.messages.append(message)
@@ -117,8 +121,11 @@ class ChatSequence:
 
     @classmethod
     def for_model(
-        cls, model_name: str, messages: list[Message] | ChatSequence = [], **kwargs
-    ):
+        cls: Type[TChatSequence],
+        model_name: str,
+        messages: list[Message] | ChatSequence = [],
+        **kwargs,
+    ) -> TChatSequence:
         from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 
         if not model_name in OPEN_AI_CHAT_MODELS:
@@ -129,7 +136,7 @@ class ChatSequence:
         )
 
     @property
-    def token_length(self):
+    def token_length(self) -> int:
         from autogpt.llm.utils import count_message_tokens
 
         return count_message_tokens(self.messages, self.model.name)
@@ -168,7 +175,7 @@ class LLMResponse:
 class EmbeddingModelResponse(LLMResponse):
     """Standard response struct for a response from an embedding model."""
 
-    embedding: List[float] = field(default_factory=list)
+    embedding: list[float] = field(default_factory=list)
 
     def __post_init__(self):
         if self.completion_tokens_used:
