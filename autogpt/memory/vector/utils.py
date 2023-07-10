@@ -55,7 +55,6 @@ def get_embedding(
     embeddings = iopenai.create_embedding(
         input,
         **kwargs,
-        api_key=config.openai_api_key,
     ).data
 
     if not multiple:
