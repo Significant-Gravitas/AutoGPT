@@ -54,7 +54,8 @@ def freeze_request_body(json_body: str | bytes) -> bytes:
     if "messages" not in body:
         return json_body if type(json_body) == bytes else json_body.encode()
 
-    body["max_tokens"] = 0
+    if "max_tokens" in body:
+        del body["max_tokens"]
 
     for message in body["messages"]:
         if "content" in message and "role" in message:
