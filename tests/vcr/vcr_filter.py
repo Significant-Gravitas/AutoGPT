@@ -63,7 +63,7 @@ def freeze_request_body(json_body: str | bytes) -> bytes:
                     message["content"], REPLACEMENTS
                 )
 
-    return json.dumps(body).encode()
+    return json.dumps(body, sort_keys=True).encode()
 
 
 def freeze_request(request: Request) -> Request:
