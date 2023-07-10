@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import Callable, List, Optional
 from unittest.mock import patch
 
 import openai
@@ -11,9 +11,6 @@ import openai.api_resources.abstract.engine_api_resource as engine_api_resource
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, ServiceUnavailableError, Timeout
 from openai.openai_object import OpenAIObject
-
-if TYPE_CHECKING:
-    from autogpt.agent.agent import Agent
 
 from autogpt.llm.base import (
     ChatModelInfo,
@@ -23,6 +20,7 @@ from autogpt.llm.base import (
     TText,
 )
 from autogpt.logs import logger
+from autogpt.models.command_registry import CommandRegistry
 
 OPEN_AI_CHAT_MODELS = {
     info.name: info
@@ -114,7 +112,7 @@ OPEN_AI_MODELS: dict[str, ChatModelInfo | EmbeddingModelInfo | TextModelInfo] = 
 }
 
 
-def meter_api(func):
+def meter_api(func: Callable):
     """Adds ApiManager metering to functions which make OpenAI API calls"""
     from autogpt.llm.api_manager import ApiManager
 
@@ -152,7 +150,7 @@ def meter_api(func):
 
 
 def retry_api(
-    num_retries: int = 10,
+    max_retries: int = 10,
     backoff_base: float = 2.0,
     warn_user: bool = True,
 ):
@@ -164,43 +162,49 @@ def retry_api(
         warn_user bool: Whether to warn the user. Defaults to True.
     """
     error_messages = {
-        ServiceUnavailableError: f"{Fore.RED}Error: The OpenAI API engine is currently overloaded, passing...{Fore.RESET}",
-        RateLimitError: f"{Fore.RED}Error: Reached rate limit, passing...{Fore.RESET}",
+        ServiceUnavailableError: f"{Fore.RED}Error: The OpenAI API engine is currently overloaded{Fore.RESET}",
+        RateLimitError: f"{Fore.RED}Error: Reached rate limit{Fore.RESET}",
     }
     api_key_error_msg = (
         f"Please double check that you have setup a "
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
         f"read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
     )
-    backoff_msg = (
-        f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
-    )
+    backoff_msg = f"{Fore.RED}Waiting {{backoff}} seconds...{Fore.RESET}"
 
-    def _wrapper(func):
+    def _wrapper(func: Callable):
         @functools.wraps(func)
         def _wrapped(*args, **kwargs):
             user_warned = not warn_user
-            num_attempts = num_retries + 1  # +1 for the first attempt
-            for attempt in range(1, num_attempts + 1):
+            max_attempts = max_retries + 1  # +1 for the first attempt
+            for attempt in range(1, max_attempts + 1):
                 try:
                     return func(*args, **kwargs)
 
                 except (RateLimitError, ServiceUnavailableError) as e:
-                    if attempt == num_attempts:
+                    if attempt >= max_attempts or (
+                        # User's API quota exceeded
+                        isinstance(e, RateLimitError)
+                        and (err := getattr(e, "error", {}))
+                        and err.get("code") == "insufficient_quota"
+                    ):
                         raise
 
                     error_msg = error_messages[type(e)]
-                    logger.debug(error_msg)
+                    logger.warn(error_msg)
                     if not user_warned:
                         logger.double_check(api_key_error_msg)
+                        logger.debug(f"Status: {e.http_status}")
+                        logger.debug(f"Response body: {e.json_body}")
+                        logger.debug(f"Response headers: {e.headers}")
                         user_warned = True
 
                 except (APIError, Timeout) as e:
-                    if (e.http_status not in [429, 502]) or (attempt == num_attempts):
+                    if (e.http_status not in [429, 502]) or (attempt == max_attempts):
                         raise
 
                 backoff = backoff_base ** (attempt + 2)
-                logger.debug(backoff_msg.format(backoff=backoff))
+                logger.warn(backoff_msg.format(backoff=backoff))
                 time.sleep(backoff)
 
         return _wrapped
@@ -301,13 +305,13 @@ class OpenAIFunctionSpec:
     @dataclass
     class ParameterSpec:
         name: str
-        type: str
+        type: str  # TODO: add enum support
         description: Optional[str]
         required: bool = False
 
     @property
-    def __dict__(self):
-        """Output an OpenAI-consumable function specification"""
+    def schema(self) -> dict[str, str | dict | list]:
+        """Returns an OpenAI-consumable function specification"""
         return {
             "name": self.name,
             "description": self.description,
@@ -326,14 +330,44 @@ class OpenAIFunctionSpec:
             },
         }
 
+    @property
+    def prompt_format(self) -> str:
+        """Returns the function formatted similarly to the way OpenAI does it internally:
+        https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
 
-def get_openai_command_specs(agent: Agent) -> list[OpenAIFunctionSpec]:
+        Example:
+        ```ts
+        // Get the current weather in a given location
+        type get_current_weather = (_: {
+        // The city and state, e.g. San Francisco, CA
+        location: string,
+        unit?: "celsius" | "fahrenheit",
+        }) => any;
+        ```
+        """
+
+        def param_signature(p_spec: OpenAIFunctionSpec.ParameterSpec) -> str:
+            # TODO: enum type support
+            return (
+                f"// {p_spec.description}\n" if p_spec.description else ""
+            ) + f"{p_spec.name}{'' if p_spec.required else '?'}: {p_spec.type},"
+
+        return "\n".join(
+            [
+                f"// {self.description}",
+                f"type {self.name} = (_ :{{",
+                *[param_signature(p) for p in self.parameters.values()],
+                "}) => any;",
+            ]
+        )
+
+
+def get_openai_command_specs(
+    command_registry: CommandRegistry,
+) -> list[OpenAIFunctionSpec]:
     """Get OpenAI-consumable function specs for the agent's available commands.
     see https://platform.openai.com/docs/guides/gpt/function-calling
     """
-    if not agent.config.openai_functions:
-        return []
-
     return [
         OpenAIFunctionSpec(
             name=command.name,
@@ -348,5 +382,48 @@ def get_openai_command_specs(agent: Agent) -> list[OpenAIFunctionSpec]:
                 for param in command.parameters
             },
         )
-        for command in agent.command_registry.commands.values()
+        for command in command_registry.commands.values()
     ]
+
+
+def count_openai_functions_tokens(
+    functions: list[OpenAIFunctionSpec], for_model: str
+) -> int:
+    """Returns the number of tokens taken up by a set of function definitions
+
+    Reference: https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
+    """
+    from autogpt.llm.utils import count_string_tokens
+
+    return count_string_tokens(
+        f"# Tools\n\n## functions\n\n{format_function_specs_as_typescript_ns(functions)}",
+        for_model,
+    )
+
+
+def format_function_specs_as_typescript_ns(functions: list[OpenAIFunctionSpec]) -> str:
+    """Returns a function signature block in the format used by OpenAI internally:
+    https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
+
+    For use with `count_string_tokens` to determine token usage of provided functions.
+
+    Example:
+    ```ts
+    namespace functions {
+
+    // Get the current weather in a given location
+    type get_current_weather = (_: {
+    // The city and state, e.g. San Francisco, CA
+    location: string,
+    unit?: "celsius" | "fahrenheit",
+    }) => any;
+
+    } // namespace functions
+    ```
+    """
+
+    return (
+        "namespace functions {\n\n"
+        + "\n\n".join(f.prompt_format for f in functions)
+        + "\n\n} // namespace functions"
+    )

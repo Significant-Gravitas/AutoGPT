@@ -148,8 +148,8 @@ jobs:
 
       - name: Run pytest with coverage
         run: |
-          pytest -v --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
-            --numprocesses=4 --durations=10 \
+          pytest -vv --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+            --numprocesses=logical --durations=10 \
             tests/unit tests/integration tests/challenges
           python tests/challenges/utils/build_current_score.py
         env:
@@ -247,7 +247,7 @@ jobs:
             gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
 
-      - name: Upload logs as artifact
+      - name: Upload logs to artifact
         if: always()
         uses: actions/upload-artifact@v3
         with:
