@@ -159,14 +159,15 @@ jobs:
           AGENT_TYPE: ${{ secrets.AGENT_TYPE }}
           PLAIN_OUTPUT: True
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
-
-      - name: Upload logs as artifact
+      - name: Upload profiling data to artifact
+        if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: profiling-data
           path: prof/
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v3
 
       - id: setup_git_auth
         name: Set up git token authentication
@@ -253,7 +254,7 @@ jobs:
             gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
 
-      - name: Upload logs as artifact
+      - name: Upload logs to artifact
         if: always()
         uses: actions/upload-artifact@v3
         with:
