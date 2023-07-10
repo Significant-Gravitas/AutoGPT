@@ -1,6 +1,10 @@
-name: Python CI
+name: CI
 
 on:
+  workflow_dispatch:
+    branches: [ master ]
+  schedule:
+    - cron: '0 8 * * *'
   push:
     branches: [ master, ci-test* ]
   pull_request:
@@ -20,6 +24,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
+          submodules: true
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
@@ -68,10 +73,18 @@ jobs:
         if: success() || failure()
 
   tests:
-
+    name: ${{ matrix.agent-name }}
     runs-on: ubuntu-latest
     env:
       min-python-version: "3.10"
+    strategy:
+      fail-fast: false
+      matrix:
+        agent-name:
+          - "gpt-engineer"
+          - "Auto-GPT"
+          - "mini-agi"
+          - "smol-developer"
 
     steps:
       - name: Checkout repository
@@ -80,6 +93,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
+          submodules: true
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
@@ -107,3 +121,61 @@ jobs:
           poetry install
           poetry run agbenchmark start --mock
           poetry run agbenchmark start --mock --maintain
+          poetry build
+
+      - name: Run regression tests
+        run: |
+          cd agent/$AGENT_NAME
+          if [ "$AGENT_NAME" == "gpt-engineer" ]; then
+            make install
+            source venv/bin/activate
+          elif [ "$AGENT_NAME" == "Auto-GPT" ]; then
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+          elif [ "$AGENT_NAME" == "mini-agi" ]; then
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+            cp .env_example .env
+          elif [ "$AGENT_NAME" == "smol-developer" ]; then
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+          elif [ "$AGENT_NAME" == "SuperAGI" ]; then
+            cp config_template.yaml config.yaml
+            sed -i 's/OPENAI_API_KEY:.*/OPENAI_API_KEY: "'"${{ secrets.OPENAI_API_KEY }}"'"/' config.yaml
+            docker-compose up -d --build
+          else
+            echo "Unknown agent name: $AGENT_NAME"
+            exit 1
+          fi
+          
+          pip install ../../dist/*.whl
+
+          if [ "${GITHUB_EVENT_NAME}" == "schedule" ] || [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]; then
+            agbenchmark start --maintain
+          else
+            exit 0
+            agbenchmark start --maintain --mock
+            agbenchmark start --improve --mock
+            agbenchmark start --mock
+            agbenchmark start --mock --category=retrieval
+            agbenchmark start --mock --category=regression
+            agbenchmark start --mock --category=interface
+            agbenchmark start --mock --category=code
+            agbenchmark start --mock --category=memory
+            agbenchmark start --mock --category=memory --category=code
+          fi
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AGENT_NAME: ${{ matrix.agent-name }}
+          PROMPT_USER: false # For mini-agi. TODO: Remove this once mini-agi follows the standards.
+
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: gpt-engineer-projects
+          path: agent/gpt-engineer/projects
