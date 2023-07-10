@@ -2,7 +2,7 @@
   "name": "TestBasicRetrieval",
   "category": ["retrieval"],
   "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
-  "dependencies": ["TestWriteFile"],
+  "dependencies": ["TestWriteFile", "TestSearch"],
   "ground": {
     "answer": "£25.89",
     "should_contain": ["25.89"],

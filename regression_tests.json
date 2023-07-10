@@ -60,5 +60,10 @@
             "TestRememberMultipleIdsWithNoise"
         ],
         "test": "agbenchmark\\challenges\\memory\\m4"
+    },
+    "TestSearch": {
+        "difficulty": "basic",
+        "dependencies": [],
+        "test": "agbenchmark\\challenges\\interface\\search"
     }
 }
