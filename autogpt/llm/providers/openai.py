@@ -150,7 +150,7 @@ def meter_api(func: Callable):
 
 
 def retry_api(
-    num_retries: int = 10,
+    max_retries: int = 10,
     backoff_base: float = 2.0,
     warn_user: bool = True,
 ):
@@ -176,15 +176,15 @@ def retry_api(
         @functools.wraps(func)
         def _wrapped(*args, **kwargs):
             user_warned = not warn_user
-            num_attempts = num_retries + 1  # +1 for the first attempt
-            for attempt in range(1, num_attempts + 1):
+            max_attempts = max_retries + 1  # +1 for the first attempt
+            for attempt in range(1, max_attempts + 1):
                 try:
                     return func(*args, **kwargs)
 
                 except (RateLimitError, ServiceUnavailableError) as e:
-                    if (
-                        attempt == num_attempts
-                        or isinstance(e, RateLimitError)
+                    if attempt >= max_attempts or (
+                        # User's API quota exceeded
+                        isinstance(e, RateLimitError)
                         and (err := getattr(e, "error", {}))
                         and err.get("code") == "insufficient_quota"
                     ):
@@ -200,7 +200,7 @@ def retry_api(
                         user_warned = True
 
                 except (APIError, Timeout) as e:
-                    if (e.http_status not in [429, 502]) or (attempt == num_attempts):
+                    if (e.http_status not in [429, 502]) or (attempt == max_attempts):
                         raise
 
                 backoff = backoff_base ** (attempt + 2)

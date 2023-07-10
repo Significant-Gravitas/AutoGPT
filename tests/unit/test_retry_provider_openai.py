@@ -20,7 +20,7 @@ def error_factory(error_instance, error_count, retry_count, warn_user=True):
             self.count = 0
 
         @openai.retry_api(
-            num_retries=retry_count, backoff_base=0.001, warn_user=warn_user
+            max_retries=retry_count, backoff_base=0.001, warn_user=warn_user
         )
         def __call__(self):
             self.count += 1
