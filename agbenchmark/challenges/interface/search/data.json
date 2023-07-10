@@ -1,0 +1,18 @@
+{
+  "name": "TestSearch",
+  "category": ["interface"],
+  "task": "Open 'https://silennaihin.com/random/plain.html' and paste the text on the page in a .txt file",
+  "dependencies": [],
+  "ground": {
+    "answer": "This is a Heading\nThis is a paragraph.",
+    "should_contain": ["Heading", "paragraph"],
+    "should_not_contain": ["The", "the"],
+    "files": [".txt"],
+    "type": "file"
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Tests if an llm can search",
+    "side_effects": [""]
+  }
+}
