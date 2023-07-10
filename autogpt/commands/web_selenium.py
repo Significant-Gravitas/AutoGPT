@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from sys import platform
-from typing import Optional, Type
+from typing import Optional, Type, Callable
 
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import WebDriverException
@@ -31,7 +31,7 @@ from autogpt.agent.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, get_memory
-from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpt.processing.html import extract_hyperlinks, extract_image_links, extract_tag_links, format_links
 from autogpt.url_utils.validators import validate_url
 
 BrowserOptions = ChromeOptions | EdgeOptions | FirefoxOptions | SafariOptions
@@ -63,33 +63,25 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
     """
     try:
-        driver, text = scrape_text_with_selenium(url, agent)
+        webdriver = get_webdriver(agent)
+        webdriver, text = scrape_text_with_selenium(url, agent, webdriver)
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
         msg = e.msg.split("\n")[0]
         return f"Error: {msg}"
 
-    add_header(driver)
-    summary = summarize_memorize_webpage(url, text, question, agent, driver)
-    links = scrape_links_with_selenium(driver, url)
-
+    add_header(webdriver)
+    summary = summarize_memorize_webpage(url, text, question, agent, webdriver)
+    links = scrape_links_with_selenium(url, agent, webdriver=webdriver)
+    
     # Limit links to 5
     if len(links) > 5:
         links = links[:5]
-    close_browser(driver)
+    close_browser(webdriver)
     return f"Answer gathered from website: {summary}\n\nLinks: {links}"
 
-
-def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
-    """Scrape text from a website using selenium
-
-    Args:
-        url (str): The url of the website to scrape
-
-    Returns:
-        Tuple[WebDriver, str]: The webdriver and the text scraped from the website
-    """
+def get_webdriver(agent: Agent) -> WebDriver:
     logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
     options_available: dict[str, Type[BrowserOptions]] = {
@@ -137,14 +129,29 @@ def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
             else ChromeDriverService(ChromeDriverManager().install()),
             options=options,
         )
-    driver.get(url)
+    return driver
 
-    WebDriverWait(driver, 10).until(
+def scrape_text_with_selenium(url: str, agent: Agent, webdriver: Optional[WebDriver]=None) -> tuple[WebDriver, str]:
+    """Scrape text from a website using selenium
+
+    Args:
+        url (str): The url of the website to scrape
+        agent (Agent): The agent to use
+        webdriver (Optional[WebDriver], optional): The webdriver to use. Defaults to None.
+    Returns:
+        Tuple[WebDriver, str]: The webdriver and the text scraped from the website
+    """
+    if webdriver is None:
+        webdriver = get_webdriver(agent)
+        
+    webdriver.get(url)
+
+    WebDriverWait(webdriver, 10).until(
         EC.presence_of_element_located((By.TAG_NAME, "body"))
     )
 
     # Get the HTML content directly from the browser's DOM
-    page_source = driver.execute_script("return document.body.outerHTML;")
+    page_source = webdriver.execute_script("return document.body.outerHTML;")
     soup = BeautifulSoup(page_source, "html.parser")
 
     for script in soup(["script", "style"]):
@@ -154,28 +161,79 @@ def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
     lines = (line.strip() for line in text.splitlines())
     chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
     text = "\n".join(chunk for chunk in chunks if chunk)
-    return driver, text
+    return webdriver, text
 
-
-def scrape_links_with_selenium(driver: WebDriver, url: str) -> list[str]:
-    """Scrape links from a website using selenium
-
-    Args:
-        driver (WebDriver): The webdriver to use to scrape the links
-
-    Returns:
-        List[str]: The links scraped from the website
+@command(
+    "scrape_tags",
+    "Scrapes a Website for Image or Link Tags",
+    {
+        "url": {"type": "string", "description": "The URL to visit", "required": True},
+        "tag_type": {"type": "string", "description": "The tag to scrape (img or a)", "required": True},
+        "include_keywords": {"type": "list", "description": "Keywords, any of which must appear in the image srcs", "required": False},
+        "exclude_keywords": {"type": "list", "description": "Keywords, none of which may appear in the image srcs", "required": False},
+    },
+)
+@validate_url
+def scrape_tags_with_selenium(url: str, tag_type: str, agent: Agent, include_keywords: list[str]=[], exclude_keywords: list[str]=[], webdriver: Optional[WebDriver]=None) -> list[str]:
     """
-    page_source = driver.page_source
+    Scrape elements from a website using selenium
+    
+    Args:
+        url (str): The url of the website to scrape
+        agent (Agent): The agent to use
+        extraction_func (Callable): The function to use to extract elements from the website
+        formatting_func (Callable): The function to use to format the elements
+        include_keywords (list[str], optional): Keywords, any of which must appear in the element text. Defaults to [].
+        exclude_keywords (list[str], optional): Keywords, none of which may appear in the element text. Defaults to [].
+        webdriver (Optional[WebDriver], optional): The webdriver to use. Defaults to None.
+    """
+    if webdriver is None:
+        webdriver = get_webdriver(agent)
+        
+    webdriver.get(url)
+    
+    WebDriverWait(webdriver, 10).until(
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
+    )
+
+    page_source = webdriver.execute_script("return document.body.outerHTML;")
     soup = BeautifulSoup(page_source, "html.parser")
 
     for script in soup(["script", "style"]):
         script.extract()
+        
+    elements = extract_tag_links(soup, url, tag_type, include_keywords, exclude_keywords)
+    return format_links(elements)
 
-    hyperlinks = extract_hyperlinks(soup, url)
+def scrape_images_with_selenium(url: str, agent: Agent, include_keywords: list[str]=[], exclude_keywords: list[str]=[], webdriver: Optional[WebDriver]=None) -> list[str]:
+    """Scrape images from a website using selenium
+    
+    Args:
+        url (str): The url of the website to scrape
+        agent (Agent): The agent to use
+        include_keywords (list[str], optional): Keywords, any of which must appear in the links. Defaults to [].
+        exclude_keywords (list[str], optional): Keywords, none of which may appear in the links. Defaults to [].
+        webdriver (WebDriver): The webdriver to use to scrape the links
+    
+    Returns:
+        List[str]: The image links scraped from the website
+    """
+    return scrape_tags_with_selenium(url, "img", agent, extract_image_links, format_links, include_keywords, exclude_keywords, webdriver)
 
-    return format_hyperlinks(hyperlinks)
+def scrape_links_with_selenium(url: str, agent: Agent, include_keywords: list[str]=[], exclude_keywords: list[str]=[], webdriver: Optional[WebDriver]=None) -> list[str]:
+    """Scrape links from a website using selenium
 
+    Args:
+        url (str): The url of the website to scrape
+        agent (Agent): The agent to use
+        include_keywords (list[str], optional): Keywords, any of which must appear in the links. Defaults to [].
+        exclude_keywords (list[str], optional): Keywords, none of which may appear in the links. Defaults to [].
+        webdriver (WebDriver): The webdriver to use to scrape the links
+
+    Returns:
+        List[str]: The links scraped from the website
+    """
+    return scrape_tags_with_selenium(url, "a", agent, extract_hyperlinks, format_links, include_keywords, exclude_keywords, webdriver)
 
 def close_browser(driver: WebDriver) -> None:
     """Close the browser
