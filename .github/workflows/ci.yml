@@ -149,7 +149,7 @@ jobs:
       - name: Run pytest with coverage
         run: |
           pytest -o log_cli=true -vv --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
-            --durations=10 \
+            --durations=10 --profile \
             tests/unit tests/integration tests/challenges
           python tests/challenges/utils/build_current_score.py
         env:
@@ -161,6 +161,12 @@ jobs:
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
+
+      - name: Upload logs as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: profiling-data
+          path: prof/
 
       - id: setup_git_auth
         name: Set up git token authentication
