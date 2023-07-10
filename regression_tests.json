@@ -1,59 +1,64 @@
 {
-    "TestBasicMemory": {
-        "difficulty": "basic",
-        "dependencies": [],
-        "test": "agbenchmark/challenges/memory/m1/m1_test.py"
-    },
-    "TestRememberMultipleIds": {
-        "difficulty": "basic",
-        "dependencies": [
-            "TestBasicMemory"
-        ],
-        "test": "agbenchmark/challenges/memory/m2/remember_multiple_ids_test.py"
-    },
-    "TestRememberMultipleIdsWithNoise": {
-        "difficulty": "medium",
-        "dependencies": [
-            "TestRememberMultipleIds"
-        ],
-        "test": "agbenchmark/challenges/memory/m3/remember_multiple_ids_with_noise_test.py"
-    },
-    "TestRememberMultiplePhrasesWithNoise": {
-        "difficulty": "medium",
-        "dependencies": [
-            "TestRememberMultipleIdsWithNoise"
-        ],
-        "test": "agbenchmark/challenges/memory/m4/remember_multiple_phrases_with_noise_test.py"
-    },
-    "TestRetrieval": {
-        "difficulty": "basic",
-        "dependencies": [],
-        "test": "agbenchmark/challenges/retrieval/r1/r1_test.py"
-    },
-    "TestRetrieval2": {
-        "difficulty": "basic",
-        "dependencies": [
-            "TestRetrieval"
-        ],
-        "test": "agbenchmark/challenges/retrieval/r2/r2_test.py"
-    },
-    "TestRetrieval3": {
-        "difficulty": "basic",
-        "dependencies": [
-            "TestRetrieval2"
-        ],
-        "test": "agbenchmark/challenges/retrieval/r3/r3_test.py"
-    },
     "TestWriteFile": {
         "difficulty": "basic",
         "dependencies": [],
-        "test": "agbenchmark/challenges/interface/write_file/write_file_test.py"
+        "test": "agbenchmark\\challenges\\interface\\write_file"
     },
     "TestReadFile": {
         "difficulty": "basic",
         "dependencies": [
             "TestWriteFile"
         ],
-        "test": "agbenchmark/challenges/interface/read_file/read_file_test.py"
+        "test": "agbenchmark\\challenges\\interface\\read_file"
+    },
+    "TestBasicMemory": {
+        "difficulty": "basic",
+        "dependencies": [
+            "TestReadFile",
+            "TestWriteFile"
+        ],
+        "test": "agbenchmark\\challenges\\memory\\m1"
+    },
+    "TestBasicRetrieval": {
+        "difficulty": "basic",
+        "dependencies": [
+            "TestWriteFile"
+        ],
+        "test": "agbenchmark\\challenges\\retrieval\\r1"
+    },
+    "TestRememberMultipleIds": {
+        "difficulty": "basic",
+        "dependencies": [
+            "TestBasicMemory"
+        ],
+        "test": "agbenchmark\\challenges\\memory\\m2"
+    },
+    "TestRetrieval2": {
+        "difficulty": "basic",
+        "dependencies": [
+            "TestBasicRetrieval"
+        ],
+        "test": "agbenchmark\\challenges\\retrieval\\r2"
+    },
+    "TestRememberMultipleIdsWithNoise": {
+        "difficulty": "medium",
+        "dependencies": [
+            "TestRememberMultipleIds"
+        ],
+        "test": "agbenchmark\\challenges\\memory\\m3"
+    },
+    "TestRetrieval3": {
+        "difficulty": "basic",
+        "dependencies": [
+            "TestRetrieval2"
+        ],
+        "test": "agbenchmark\\challenges\\retrieval\\r3"
+    },
+    "TestRememberMultiplePhrasesWithNoise": {
+        "difficulty": "medium",
+        "dependencies": [
+            "TestRememberMultipleIdsWithNoise"
+        ],
+        "test": "agbenchmark\\challenges\\memory\\m4"
     }
 }

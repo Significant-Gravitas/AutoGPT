@@ -19,6 +19,7 @@ class Ground(BaseModel):
 
 
 class ChallengeData(BaseModel):
+    name: str
     category: List[str]
     task: str
     dependencies: List[str]

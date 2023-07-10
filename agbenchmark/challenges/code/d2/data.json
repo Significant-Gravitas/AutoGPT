@@ -1,4 +1,5 @@
 {
+  "name": "TestDebugSimpleTypoWithoutGuidance",
   "category": ["code"],
   "task": "Make test.py run without errors.",
   "dependencies": ["TestDebugSimpleTypoWithGuidance"],
