@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 
 from agbenchmark.challenges.define_task_types import ChallengeData, Ground
+from agbenchmark.start_benchmark import CURRENT_DIRECTORY
 
 load_dotenv()
 
@@ -23,7 +24,7 @@ class Challenge(ABC):
 
     @property
     def data(self) -> ChallengeData:
-        file_path = f"{self.CHALLENGE_LOCATION}/data.json"
+        file_path = f"{CURRENT_DIRECTORY}/../{self.CHALLENGE_LOCATION}/data.json"
         if file_path not in Challenge._data_cache:
             Challenge._data_cache[file_path] = ChallengeData.deserialize(file_path)
         return Challenge._data_cache[file_path]
