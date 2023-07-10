@@ -149,7 +149,7 @@ jobs:
       - name: Run pytest with coverage
         run: |
           pytest -vv --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
-            --numprocesses=4 --durations=10 --profile \
+            --numprocesses=4 --durations=10 \
             tests/unit tests/integration tests/challenges
           python tests/challenges/utils/build_current_score.py
         env:
@@ -158,13 +158,6 @@ jobs:
           AGENT_MODE: ${{ secrets.AGENT_MODE }}
           AGENT_TYPE: ${{ secrets.AGENT_TYPE }}
           PLAIN_OUTPUT: True
-
-      - name: Upload profiling data to artifact
-        if: success() || failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: profiling-data
-          path: prof/
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
