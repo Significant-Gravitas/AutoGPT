@@ -1,4 +1,5 @@
 {
+  "name": "TestRememberMultipleIds",
   "category": ["memory"],
   "task": "Follow the instructions in the instructions_1.txt file",
   "dependencies": ["TestBasicMemory"],

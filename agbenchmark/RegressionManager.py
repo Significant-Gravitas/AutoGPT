@@ -11,9 +11,18 @@ class RegressionManager:
     def load(self) -> None:
         try:
             with open(self.filename, "r") as f:
-                self.tests = json.load(f)
-        except (FileNotFoundError, json.decoder.JSONDecodeError):
+                file_content = (
+                    f.read().strip()
+                )  # read the content and remove any leading/trailing whitespace
+                if file_content:  # if file is not empty, load the json
+                    self.tests = json.loads(file_content)
+                else:  # if file is empty, assign an empty dictionary
+                    self.tests = {}
+        except FileNotFoundError:
             self.tests = {}
+        except json.decoder.JSONDecodeError:  # If JSON is invalid
+            self.tests = {}
+        self.save()
 
     def save(self) -> None:
         with open(self.filename, "w") as f:

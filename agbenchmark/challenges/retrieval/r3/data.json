@@ -1,4 +1,5 @@
 {
+  "name": "TestRetrieval3",
   "category": ["retrieval"],
   "task": "Write tesla's revenue every year since its creation into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion).",
   "dependencies": ["TestRetrieval2"],

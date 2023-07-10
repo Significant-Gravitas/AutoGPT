@@ -88,13 +88,16 @@ def check_regression(request: Any) -> None:
     test_name = request.node.parent.name
     data = get_regression_data()
 
+    # Get the true location of the test
+    challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
+
+    skip_string = f"Skipping {test_name} at {challenge_location}"
+
     # Check if the test name exists in the regression tests
     if request.config.getoption("--improve") and data.get(test_name, None):
-        pytest.skip("Skipping test because it's a regression test and --improve is set")
+        pytest.skip(f"{skip_string} because it's a regression test")
     elif request.config.getoption("--maintain") and not data.get(test_name, None):
-        pytest.skip(
-            "Skipping test because it's not a regression test and --maintain is set"
-        )
+        pytest.skip(f"{skip_string} because it's not a regression test")
 
 
 # this is to get the challenge_data from every test
@@ -109,15 +112,19 @@ regression_manager = RegressionManager(REGRESSION_TESTS_PATH)
 def pytest_runtest_makereport(item: Any, call: Any) -> None:
     if call.when == "call":
         challenge_data = item.funcargs.get("challenge_data", None)
-        difficulty = challenge_data.info.difficulty if challenge_data else "unknown"
-        dependencies = challenge_data.dependencies if challenge_data else []
-        parts = item.nodeid.split("::")[0].split("/")
-        agbenchmark_index = parts.index("agbenchmark")
-        file_path = "/".join(parts[agbenchmark_index:])
+        difficulty = (
+            challenge_data["info"]["difficulty"] if challenge_data else "unknown"
+        )
+        dependencies = dependencies = (
+            challenge_data["dependencies"] if challenge_data else []
+        )
+        # Extract the challenge_location from the class
+        challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
+
         test_details = {
             "difficulty": difficulty,
             "dependencies": dependencies,
-            "test": file_path,
+            "test": challenge_location,
         }
 
         print("pytest_runtest_makereport", test_details)
@@ -130,19 +137,6 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
 def pytest_sessionfinish() -> None:
     """Called at the end of the session to save regression tests"""
     regression_manager.save()
-
-
-# this is so that all tests can inherit from the Challenge class
-def pytest_generate_tests(metafunc: Any) -> None:
-    if "challenge_data" in metafunc.fixturenames:
-        # Get the instance of the test class
-        test_class = metafunc.cls()
-
-        # Generate the parameters
-        params = test_class.data
-
-        # Add the parameters to the test function
-        metafunc.parametrize("challenge_data", [params], indirect=True)
 
 
 # this is adding the dependency marker and category markers automatically from the json

@@ -1,5 +1,5 @@
 {
-  "name": "WriteFile",
+  "name": "TestWriteFile",
   "category": ["interface"],
   "task": "Print the the capital of America to a .txt file",
   "dependencies": [],
