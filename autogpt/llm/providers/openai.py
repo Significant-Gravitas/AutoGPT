@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Callable, List, Optional
 from unittest.mock import patch
 
 import openai
@@ -112,7 +112,7 @@ OPEN_AI_MODELS: dict[str, ChatModelInfo | EmbeddingModelInfo | TextModelInfo] = 
 }
 
 
-def meter_api(func):
+def meter_api(func: Callable):
     """Adds ApiManager metering to functions which make OpenAI API calls"""
     from autogpt.llm.api_manager import ApiManager
 
@@ -150,7 +150,7 @@ def meter_api(func):
 
 
 def retry_api(
-    num_retries: int = 10,
+    max_retries: int = 10,
     backoff_base: float = 2.0,
     warn_user: bool = True,
 ):
@@ -162,43 +162,49 @@ def retry_api(
         warn_user bool: Whether to warn the user. Defaults to True.
     """
     error_messages = {
-        ServiceUnavailableError: f"{Fore.RED}Error: The OpenAI API engine is currently overloaded, passing...{Fore.RESET}",
-        RateLimitError: f"{Fore.RED}Error: Reached rate limit, passing...{Fore.RESET}",
+        ServiceUnavailableError: f"{Fore.RED}Error: The OpenAI API engine is currently overloaded{Fore.RESET}",
+        RateLimitError: f"{Fore.RED}Error: Reached rate limit{Fore.RESET}",
     }
     api_key_error_msg = (
         f"Please double check that you have setup a "
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
         f"read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
     )
-    backoff_msg = (
-        f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
-    )
+    backoff_msg = f"{Fore.RED}Waiting {{backoff}} seconds...{Fore.RESET}"
 
-    def _wrapper(func):
+    def _wrapper(func: Callable):
         @functools.wraps(func)
         def _wrapped(*args, **kwargs):
             user_warned = not warn_user
-            num_attempts = num_retries + 1  # +1 for the first attempt
-            for attempt in range(1, num_attempts + 1):
+            max_attempts = max_retries + 1  # +1 for the first attempt
+            for attempt in range(1, max_attempts + 1):
                 try:
                     return func(*args, **kwargs)
 
                 except (RateLimitError, ServiceUnavailableError) as e:
-                    if attempt == num_attempts:
+                    if attempt >= max_attempts or (
+                        # User's API quota exceeded
+                        isinstance(e, RateLimitError)
+                        and (err := getattr(e, "error", {}))
+                        and err.get("code") == "insufficient_quota"
+                    ):
                         raise
 
                     error_msg = error_messages[type(e)]
-                    logger.debug(error_msg)
+                    logger.warn(error_msg)
                     if not user_warned:
                         logger.double_check(api_key_error_msg)
+                        logger.debug(f"Status: {e.http_status}")
+                        logger.debug(f"Response body: {e.json_body}")
+                        logger.debug(f"Response headers: {e.headers}")
                         user_warned = True
 
                 except (APIError, Timeout) as e:
-                    if (e.http_status not in [429, 502]) or (attempt == num_attempts):
+                    if (e.http_status not in [429, 502]) or (attempt == max_attempts):
                         raise
 
                 backoff = backoff_base ** (attempt + 2)
-                logger.debug(backoff_msg.format(backoff=backoff))
+                logger.warn(backoff_msg.format(backoff=backoff))
                 time.sleep(backoff)
 
         return _wrapped
