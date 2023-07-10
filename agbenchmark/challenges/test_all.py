@@ -10,13 +10,14 @@ import pytest
 from dotenv import load_dotenv
 
 from agbenchmark.challenge import Challenge
+from agbenchmark.start_benchmark import CURRENT_DIRECTORY
 
 load_dotenv()
 
 IMPROVE = os.getenv("IMPROVE", "False")
 
 
-json_files = glob.glob("agbenchmark/challenges/**/data.json", recursive=True)
+json_files = glob.glob(f"{CURRENT_DIRECTORY}/challenges/**/data.json", recursive=True)
 
 
 def get_test_path(json_file: str) -> str:

@@ -172,6 +172,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
           PROMPT_USER: false # For mini-agi. TODO: Remove this once mini-agi follows the standards.
+          HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
 
       - name: Upload logs as artifact
         if: always()
