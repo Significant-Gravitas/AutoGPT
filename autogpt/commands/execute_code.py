@@ -120,7 +120,6 @@ def execute_python_file(filename: str, agent: Agent) -> str:
     logger.debug("Auto-GPT is not running in a Docker container")
     try:
         client = docker.from_env()
-        logger.debug("Client constructed")
         # You can replace this with the desired Python image/version
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
