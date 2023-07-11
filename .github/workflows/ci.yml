@@ -75,6 +75,7 @@ jobs:
   tests:
     name: ${{ matrix.agent-name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       min-python-version: "3.10"
     strategy:
@@ -156,16 +157,10 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" == "schedule" ] || [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]; then
             agbenchmark start --maintain
           else
-            exit 0
             agbenchmark start --maintain --mock
             agbenchmark start --improve --mock
             agbenchmark start --mock
             agbenchmark start --mock --category=retrieval
-            agbenchmark start --mock --category=regression
-            agbenchmark start --mock --category=interface
-            agbenchmark start --mock --category=code
-            agbenchmark start --mock --category=memory
-            agbenchmark start --mock --category=memory --category=code
           fi
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}

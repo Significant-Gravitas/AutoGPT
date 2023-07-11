@@ -49,19 +49,6 @@ def generate_tests() -> None:
             class_name = data.get("name", "")
 
         challenge_location = get_test_path(json_file)
-        if data["ground"]["type"] == "custom_python":
-            custom_python_location = (
-                f"{CURRENT_DIRECTORY}/../{challenge_location}/custom_python"
-            )
-            sys.path.append(str(custom_python_location))
-
-            for module_loader, name, ispkg in pkgutil.iter_modules(
-                [str(custom_python_location)]
-            ):
-                module = importlib.import_module(name)
-
-                if hasattr(module, "make_assertion"):
-                    make_assertion = getattr(module, "make_assertion")
 
         # Define test class dynamically
         challenge_class = types.new_class(class_name, (Challenge,))
@@ -75,11 +62,20 @@ def generate_tests() -> None:
             scores = self.get_scores(config)
 
             # Check if make_assertion is defined and use it
-            if "make_assertion" in locals():
-                try:
-                    make_assertion()
-                except AssertionError as error:
-                    print(error)  # Or handle this in another way
+            if self.data.ground.type == "custom_python":
+                custom_python_location = (
+                    f"{CURRENT_DIRECTORY}/../{challenge_location}/custom_python"
+                )
+                sys.path.append(str(custom_python_location))
+
+                for (module_loader, name, ispkg) in pkgutil.iter_modules(
+                    [str(custom_python_location)]
+                ):
+                    module = importlib.import_module(name)
+
+                    if hasattr(module, "make_assertion"):
+                        make_assertion = getattr(module, "make_assertion")
+                        make_assertion()
             else:
                 assert 1 in scores
 

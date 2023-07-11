@@ -3,10 +3,11 @@ import shutil
 import subprocess
 import sys
 import time
-from pathlib import Path
 from typing import Any, Dict
 
 from dotenv import load_dotenv
+
+from agbenchmark.start_benchmark import CURRENT_DIRECTORY
 
 load_dotenv()
 
@@ -76,8 +77,9 @@ def copy_artifacts_into_workspace(
     workspace: str, artifact_folder_name: str, challenge_dir_path: str
 ) -> None:
     # this file is at agbenchmark\agent_interface.py
-    script_dir = Path(__file__).resolve().parent.parent
-    source_dir = os.path.join(script_dir, challenge_dir_path, artifact_folder_name)
+    source_dir = os.path.join(
+        CURRENT_DIRECTORY, "..", challenge_dir_path, artifact_folder_name
+    )
 
     # Check if source_dir exists, if not then return immediately.
     if not os.path.exists(source_dir):
