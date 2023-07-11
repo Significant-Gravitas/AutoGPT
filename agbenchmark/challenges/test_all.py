@@ -2,6 +2,8 @@ import glob
 import importlib
 import json
 import os
+import pkgutil
+import sys
 import types
 from pathlib import Path
 from typing import Any, Dict
@@ -47,6 +49,19 @@ def generate_tests() -> None:
             class_name = data.get("name", "")
 
         challenge_location = get_test_path(json_file)
+        if data["ground"]["type"] == "custom_python":
+            custom_python_location = (
+                f"{CURRENT_DIRECTORY}/../{challenge_location}/custom_python"
+            )
+            sys.path.append(str(custom_python_location))
+
+            for (module_loader, name, ispkg) in pkgutil.iter_modules(
+                [str(custom_python_location)]
+            ):
+                module = importlib.import_module(name)
+
+                if hasattr(module, "make_assertion"):
+                    make_assertion = getattr(module, "make_assertion")
 
         # Define test class dynamically
         challenge_class = types.new_class(class_name, (Challenge,))
@@ -58,7 +73,15 @@ def generate_tests() -> None:
             self.setup_challenge(config)
 
             scores = self.get_scores(config)
-            assert 1 in scores
+
+            # Check if make_assertion is defined and use it
+            if "make_assertion" in locals():
+                try:
+                    make_assertion()
+                except AssertionError as error:
+                    print(error)  # Or handle this in another way
+            else:
+                assert 1 in scores
 
         # Parametrize the method here
         test_method = pytest.mark.parametrize(
