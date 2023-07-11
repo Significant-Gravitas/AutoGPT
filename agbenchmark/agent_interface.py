@@ -32,8 +32,7 @@ def run_agent(
         print(
             f"Running Python function '{config['entry_path']}' with timeout {timeout}"
         )
-
-        command = [sys.executable, config["entry_path"], str(task)]
+        command = [sys.executable, "-m", config["entry_path"], str(task)]
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
