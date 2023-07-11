@@ -1,6 +1,5 @@
 {
   "workspace": "autogpt/workspace/auto_gpt_workspace",
-  "entry_path": "benchmarks.py",
-  "home_path": "",
+  "entry_path": "agbenchmark/benchmarks.py",
   "cutoff": 60
 }
