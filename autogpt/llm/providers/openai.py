@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import os
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
@@ -224,8 +225,14 @@ def create_chat_completion(
         OpenAIObject: The ChatCompletion response from OpenAI
 
     """
+    openai.api_base = "https://oai.hconeai.com/v1"
+    helicone_api_key = os.environ.get("HELICONE_API_KEY")
+
     completion: OpenAIObject = openai.ChatCompletion.create(
         messages=messages,
+        headers={
+            "Helicone-Auth": f"Bearer {helicone_api_key}",
+        },
         **kwargs,
     )
     if not hasattr(completion, "error"):
