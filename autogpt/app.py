@@ -23,7 +23,7 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(
+def extract_command(
     assistant_reply_json: Dict, assistant_reply: ChatModelResponse, config: Config
 ):
     """Parse the response and return the command name and arguments
@@ -78,21 +78,6 @@ def get_command(
         return "Error:", str(e)
 
 
-def map_command_synonyms(command_name: str):
-    """Takes the original command name given by the AI, and checks if the
-    string matches a list of common/known hallucinations
-    """
-    synonyms = [
-        ("write_file", "write_to_file"),
-        ("create_file", "write_to_file"),
-        ("search", "google"),
-    ]
-    for seen_command, actual_command_name in synonyms:
-        if command_name == seen_command:
-            return actual_command_name
-    return command_name
-
-
 def execute_command(
     command_name: str,
     arguments: dict[str, str],
@@ -109,28 +94,21 @@ def execute_command(
         str: The result of the command
     """
     try:
-        cmd = agent.command_registry.commands.get(command_name)
+        # Execute a native command with the same name or alias, if it exists
+        if command := agent.command_registry.get_command(command_name):
+            return command(**arguments, agent=agent)
 
-        # If the command is found, call it with the provided arguments
-        if cmd:
-            return cmd(**arguments, agent=agent)
-
-        # TODO: Remove commands below after they are moved to the command registry.
-        command_name = map_command_synonyms(command_name.lower())
-
-        # TODO: Change these to take in a file rather than pasted code, if
-        # non-file is given, return instructions "Input should be a python
-        # filepath, write your code to file and try again
+        # Handle non-native commands (e.g. from plugins)
         for command in agent.ai_config.prompt_generator.commands:
             if (
                 command_name == command["label"].lower()
                 or command_name == command["name"].lower()
             ):
                 return command["function"](**arguments)
-        return (
-            f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
-            " list for available commands and only respond in the specified JSON"
-            " format."
+
+        raise RuntimeError(
+            f"Cannot execute '{command_name}': unknown command."
+            " Do not try to use this command again."
         )
     except Exception as e:
         return f"Error: {str(e)}"
