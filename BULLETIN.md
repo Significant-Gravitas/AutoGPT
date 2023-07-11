@@ -5,7 +5,7 @@
 👩 *Contributors Wiki*: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing.
 
 # v0.4.4 RELEASE HIGHLIGHTS! 🚀
-# ------------------------------
+# -----------------------------
 ## GPT-4 is back!
 Following OpenAI's recent GPT-4 GA announcement, the SMART_LLM .env setting 
 now defaults to GPT-4, and Auto-GPT will use GPT-4 by default in its main loop.
