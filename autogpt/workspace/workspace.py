@@ -123,7 +123,7 @@ class Workspace:
         logger.debug(f"Resolved root as '{root}'")
 
         # Allow exception for absolute paths if they are contained in your workspace directory.
-        if relative_path.is_absolute() and not relative_path.is_relative_to(root):
+        if relative_path.is_absolute() and not relative_path.is_relative_to(root) and restrict_to_root:
             raise ValueError(
                 f"Attempted to access absolute path '{relative_path}' in workspace '{root}'."
             )
