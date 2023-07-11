@@ -1,9 +1,12 @@
 import abc
-import copy
 import typing
-from typing import Any
+from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+def UserConfigurable(*args, **kwargs):
+    return Field(*args, **kwargs, user_configurable=True)
 
 
 class SystemConfiguration(BaseModel):
@@ -15,42 +18,47 @@ class SystemConfiguration(BaseModel):
         use_enum_values = True
 
 
-class SystemSettings(BaseModel, abc.ABC):
+class SystemSettings(BaseModel):
     """A base class for all system settings."""
 
     name: str
-    description: typing.Optional[str]
+    description: str
 
     class Config:
         extra = "forbid"
         use_enum_values = True
 
 
-class Configurable(abc.ABC):
+S = TypeVar("S", bound=SystemSettings)
+
+
+class Configurable(abc.ABC, Generic[S]):
     """A base class for all configurable objects."""
 
     prefix: str = ""
-    defaults_settings: typing.ClassVar[SystemSettings]
+    default_settings: typing.ClassVar[S]
 
     @classmethod
     def get_user_config(cls) -> dict[str, Any]:
-        return _get_user_config_fields(cls.defaults_settings)
+        return _get_user_config_fields(cls.default_settings)
 
     @classmethod
-    def build_agent_configuration(cls, configuration: dict = {}) -> SystemSettings:
+    def build_agent_configuration(cls, configuration: dict) -> S:
         """Process the configuration for this object."""
 
-        defaults_settings = cls.defaults_settings.dict()
-        final_configuration = deep_update(defaults_settings, configuration)
+        defaults = cls.default_settings.dict()
+        final_configuration = deep_update(defaults, configuration)
 
-        return cls.defaults_settings.__class__.parse_obj(final_configuration)
+        return cls.default_settings.__class__.parse_obj(final_configuration)
 
 
 def _get_user_config_fields(instance: BaseModel) -> dict[str, Any]:
     """
     Get the user config fields of a Pydantic model instance.
+
     Args:
         instance: The Pydantic model instance.
+
     Returns:
         The user config fields of the instance.
     """
@@ -79,13 +87,14 @@ def _get_user_config_fields(instance: BaseModel) -> dict[str, Any]:
 def deep_update(original_dict: dict, update_dict: dict) -> dict:
     """
     Recursively update a dictionary.
+
     Args:
         original_dict (dict): The dictionary to be updated.
         update_dict (dict): The dictionary to update with.
+
     Returns:
         dict: The updated dictionary.
     """
-    original_dict = copy.deepcopy(original_dict)
     for key, value in update_dict.items():
         if (
             key in original_dict

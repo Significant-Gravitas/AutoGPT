@@ -1,4 +1,5 @@
 """Handles loading of plugins."""
+from __future__ import annotations
 
 import importlib.util
 import inspect
@@ -7,7 +8,7 @@ import os
 import sys
 import zipfile
 from pathlib import Path
-from typing import List
+from typing import TYPE_CHECKING, List
 from urllib.parse import urlparse
 from zipimport import zipimporter
 
@@ -16,7 +17,9 @@ import requests
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from openapi_python_client.config import Config as OpenAPIConfig
 
-from autogpt.config.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.logs import logger
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
@@ -218,7 +221,7 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
     """
     loaded_plugins = []
     # Generic plugins
-    plugins_path_path = Path(config.plugins_dir)
+    plugins_path = Path(config.plugins_dir)
 
     plugins_config = config.plugins_config
     # Directory-based plugins
@@ -235,7 +238,9 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
         plugin = sys.modules[qualified_module_name]
 
         if not plugins_config.is_enabled(plugin_module_name):
-            logger.warn(f"Plugin {plugin_module_name} found but not configured")
+            logger.warn(
+                f"Plugin folder {plugin_module_name} found but not configured. If this is a legitimate plugin, please add it to plugins_config.yaml (key: {plugin_module_name})."
+            )
             continue
 
         for _, class_obj in inspect.getmembers(plugin):
@@ -246,23 +251,25 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                 loaded_plugins.append(class_obj())
 
     # Zip-based plugins
-    for plugin in plugins_path_path.glob("*.zip"):
+    for plugin in plugins_path.glob("*.zip"):
         if moduleList := inspect_zip_for_modules(str(plugin), debug):
             for module in moduleList:
                 plugin = Path(plugin)
                 module = Path(module)
-                logger.debug(f"Plugin: {plugin} Module: {module}")
+                logger.debug(f"Zipped Plugin: {plugin}, Module: {module}")
                 zipped_package = zipimporter(str(plugin))
                 zipped_module = zipped_package.load_module(str(module.parent))
 
                 for key in dir(zipped_module):
                     if key.startswith("__"):
                         continue
+
                     a_module = getattr(zipped_module, key)
+                    if not inspect.isclass(a_module):
+                        continue
 
                     if (
-                        inspect.isclass(a_module)
-                        and issubclass(a_module, AutoGPTPluginTemplate)
+                        issubclass(a_module, AutoGPTPluginTemplate)
                         and a_module.__name__ != "AutoGPTPluginTemplate"
                     ):
                         plugin_name = a_module.__name__
@@ -271,24 +278,23 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
 
                         if plugin_configured and plugin_enabled:
                             logger.debug(
-                                f"Loading plugin {plugin_name} as it was enabled in config."
+                                f"Loading plugin {plugin_name}. Enabled in plugins_config.yaml."
                             )
                             loaded_plugins.append(a_module())
                         elif plugin_configured and not plugin_enabled:
                             logger.debug(
-                                f"Not loading plugin {plugin_name} as it was disabled in config."
+                                f"Not loading plugin {plugin_name}. Disabled in plugins_config.yaml."
                             )
                         elif not plugin_configured:
                             logger.warn(
-                                f"Not loading plugin {plugin_name} as it was not found in config. "
-                                f"Please check your config. Starting with 0.4.1, plugins will not be loaded unless "
-                                f"they are enabled in plugins_config.yaml. Zipped plugins should use the class "
-                                f"name ({plugin_name}) as the key."
+                                f"Not loading plugin {plugin_name}. Key '{plugin_name}' was not found in plugins_config.yaml. "
+                                f"Zipped plugins should use the class name ({plugin_name}) as the key."
                             )
                     else:
-                        logger.debug(
-                            f"Skipping {key}: {a_module.__name__} because it doesn't subclass AutoGPTPluginTemplate."
-                        )
+                        if a_module.__name__ != "AutoGPTPluginTemplate":
+                            logger.debug(
+                                f"Skipping '{key}' because it doesn't subclass AutoGPTPluginTemplate."
+                            )
 
     # OpenAI plugins
     if config.plugins_openai:
@@ -299,7 +305,9 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
             )
             for url, openai_plugin_meta in manifests_specs_clients.items():
                 if not plugins_config.is_enabled(url):
-                    logger.warn(f"Plugin {plugin_module_name} found but not configured")
+                    logger.warn(
+                        f"OpenAI Plugin {plugin_module_name} found but not configured"
+                    )
                     continue
 
                 plugin = BaseOpenAIPlugin(openai_plugin_meta)

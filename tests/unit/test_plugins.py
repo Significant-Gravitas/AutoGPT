@@ -70,7 +70,11 @@ def test_create_base_config(config: Config):
     config.plugins_denylist = ["c", "d"]
 
     os.remove(config.plugins_config_file)
-    plugins_config = PluginsConfig.load_config(global_config=config)
+    plugins_config = PluginsConfig.load_config(
+        plugins_config_file=config.plugins_config_file,
+        plugins_denylist=config.plugins_denylist,
+        plugins_allowlist=config.plugins_allowlist,
+    )
 
     # Check the structure of the plugins config data
     assert len(plugins_config.plugins) == 4
@@ -102,7 +106,11 @@ def test_load_config(config: Config):
         f.write(yaml.dump(test_config))
 
     # Load the config from disk
-    plugins_config = PluginsConfig.load_config(global_config=config)
+    plugins_config = PluginsConfig.load_config(
+        plugins_config_file=config.plugins_config_file,
+        plugins_denylist=config.plugins_denylist,
+        plugins_allowlist=config.plugins_allowlist,
+    )
 
     # Check that the loaded config is equal to the test config
     assert len(plugins_config.plugins) == 2
