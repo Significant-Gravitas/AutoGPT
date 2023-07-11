@@ -108,22 +108,27 @@ jobs:
         if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
           cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+          cassette_base_branch="${{ github.event.pull_request.base.ref }}"
           cd tests/Auto-GPT-test-cassettes
+
+          if ! git ls-remote --exit-code --heads origin $cassette_base_branch ; then
+            cassette_base_branch="master"
+          fi
 
           if git ls-remote --exit-code --heads origin $cassette_branch ; then
             git fetch origin $cassette_branch
-            git fetch origin ${{ github.event.pull_request.base.ref }}
+            git fetch origin $cassette_base_branch
 
             git checkout $cassette_branch
 
             # Pick non-conflicting cassette updates from the base branch
-            git merge --no-commit --strategy-option=ours origin/${{ github.event.pull_request.base.ref }}
+            git merge --no-commit --strategy-option=ours origin/$cassette_base_branch
             echo "Using cassettes from mirror branch '$cassette_branch'," \
-              "synced to upstream branch '${{ github.event.pull_request.base.ref }}'."
+              "synced to upstream branch '$cassette_base_branch'."
           else
             git checkout -b $cassette_branch
             echo "Branch '$cassette_branch' does not exist in cassette submodule." \
-              "Using cassettes from '${{ github.event.pull_request.base.ref }}'."
+              "Using cassettes from '$cassette_base_branch'."
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
