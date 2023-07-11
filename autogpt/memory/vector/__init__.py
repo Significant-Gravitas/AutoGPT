@@ -40,6 +40,21 @@ supported_memory = ["json_file", "no_memory"]
 
 
 def get_memory(config: Config) -> VectorMemory:
+    """Returns a memory object corresponding to the memory backend specified in the config.
+
+    The type of memory object returned depends on the value of the `memory_backend`
+    attribute in the configuration. E.g. if `memory_backend` is set to "pinecone", a
+    `PineconeMemory` object is returned. If it is set to "redis", a `RedisMemory`
+    object is returned.
+    By default, a `JSONFileMemory` object is returned.
+
+    Params:
+        config: A configuration object that contains information about the memory backend
+            to be used and other relevant parameters.
+
+    Returns:
+        VectorMemory: an instance of a memory object based on the configuration provided.
+    """
     memory = None
 
     match config.memory_backend:

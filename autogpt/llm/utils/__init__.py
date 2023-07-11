@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import List, Literal, Optional
 
 from colorama import Fore
 
 from autogpt.config import Config
-from autogpt.logs import logger
 
 from ..api_manager import ApiManager
 from ..base import ChatModelResponse, ChatSequence, Message
@@ -23,8 +21,8 @@ def call_ai_function(
     function: str,
     args: list,
     description: str,
+    config: Config,
     model: Optional[str] = None,
-    config: Optional[Config] = None,
 ) -> str:
     """Call an AI function
 
@@ -41,7 +39,7 @@ def call_ai_function(
         str: The response from the function
     """
     if model is None:
-        model = config.smart_llm_model
+        model = config.smart_llm
     # For each arg, if any are None, convert to "None":
     args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma separated string
@@ -69,21 +67,18 @@ def create_text_completion(
     max_output_tokens: Optional[int],
 ) -> str:
     if model is None:
-        model = config.fast_llm_model
+        model = config.fast_llm
     if temperature is None:
         temperature = config.temperature
 
-    if config.use_azure:
-        kwargs = {"deployment_id": config.get_azure_deployment_id_for_model(model)}
-    else:
-        kwargs = {"model": model}
+    kwargs = {"model": model}
+    kwargs.update(config.get_openai_credentials(model))
 
     response = iopenai.create_text_completion(
         prompt=prompt,
         **kwargs,
         temperature=temperature,
         max_tokens=max_output_tokens,
-        api_key=config.openai_api_key,
     )
     logger.debug(f"Response: {response}")
 
@@ -115,6 +110,8 @@ def create_chat_completion(
         model = prompt.model.name
     if temperature is None:
         temperature = config.temperature
+    if max_tokens is None:
+        max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt.token_length
 
     logger.debug(
         f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
@@ -137,11 +134,8 @@ def create_chat_completion(
             if message is not None:
                 return message
 
-    chat_completion_kwargs["api_key"] = config.openai_api_key
-    if config.use_azure:
-        chat_completion_kwargs[
-            "deployment_id"
-        ] = config.get_azure_deployment_id_for_model(model)
+    chat_completion_kwargs.update(config.get_openai_credentials(model))
+
     if functions:
         chat_completion_kwargs["functions"] = [
             function.__dict__ for function in functions
@@ -175,11 +169,14 @@ def create_chat_completion(
 
 
 def check_model(
-    model_name: str, model_type: Literal["smart_llm_model", "fast_llm_model"]
+    model_name: str,
+    model_type: Literal["smart_llm", "fast_llm"],
+    config: Config,
 ) -> str:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
+    openai_credentials = config.get_openai_credentials(model_name)
     api_manager = ApiManager()
-    models = api_manager.get_models()
+    models = api_manager.get_models(**openai_credentials)
 
     if any(model_name in m["id"] for m in models):
         return model_name

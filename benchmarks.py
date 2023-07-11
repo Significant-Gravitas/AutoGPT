@@ -1,5 +1,5 @@
 from autogpt.agent import Agent
-from autogpt.config import AIConfig, Config
+from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.main import COMMAND_CATEGORIES
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
@@ -13,7 +13,7 @@ def run_task(task) -> None:
 
 
 def bootstrap_agent(task):
-    config = Config.build_config_from_env()
+    config = ConfigBuilder.build_config_from_env()
     config.continuous_mode = False
     config.temperature = 0
     config.plain_output = True
@@ -42,7 +42,7 @@ def bootstrap_agent(task):
     )
 
 
-def get_command_registry(config):
+def get_command_registry(config: Config):
     command_registry = CommandRegistry()
     enabled_command_categories = [
         x for x in COMMAND_CATEGORIES if x not in config.disabled_command_categories

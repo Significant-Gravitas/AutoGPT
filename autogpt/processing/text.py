@@ -82,7 +82,7 @@ def summarize_text(
     if instruction and question:
         raise ValueError("Parameters 'question' and 'instructions' cannot both be set")
 
-    model = config.fast_llm_model
+    model = config.fast_llm
 
     if question:
         instruction = (
@@ -136,7 +136,7 @@ def summarize_text(
 
     logger.info(f"Summarized {len(chunks)} chunks")
 
-    summary, _ = summarize_text("\n\n".join(summaries), config, instruction)
+    summary, _ = summarize_text("\n\n".join(summaries), config)
     return summary.strip(), [
         (summaries[i], chunks[i][0]) for i in range(0, len(chunks))
     ]

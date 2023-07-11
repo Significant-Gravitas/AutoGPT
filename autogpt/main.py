@@ -1,11 +1,13 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
 import logging
 import sys
+from pathlib import Path
+from typing import Optional
 
 from colorama import Fore, Style
 
 from autogpt.agent import Agent
-from autogpt.config.config import Config, check_openai_api_key
+from autogpt.config.config import ConfigBuilder, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
@@ -45,14 +47,19 @@ def run_auto_gpt(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
-    workspace_directory: str,
+    workspace_directory: str | Path,
     install_plugin_deps: bool,
+    ai_name: Optional[str] = None,
+    ai_role: Optional[str] = None,
+    ai_goals: tuple[str] = tuple(),
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
-    logger.speak_mode = speak
 
-    config = Config.build_config_from_env()
+    config = ConfigBuilder.build_config_from_env()
+    # HACK: This is a hack to allow the config into the logger without having to pass it around everywhere
+    # or import it directly.
+    logger.config = config
 
     # TODO: fill in llm values here
     check_openai_api_key(config)
@@ -147,17 +154,20 @@ def run_auto_gpt(
             incompatible_commands.append(command)
 
     for command in incompatible_commands:
-        command_registry.unregister(command.name)
+        command_registry.unregister(command)
         logger.debug(
             f"Unregistering incompatible command: {command.name}, "
             f"reason - {command.disabled_reason or 'Disabled by current config.'}"
         )
 
-    ai_name = ""
-    ai_config = construct_main_ai_config(config)
+    ai_config = construct_main_ai_config(
+        config,
+        name=ai_name,
+        role=ai_role,
+        goals=ai_goals,
+    )
     ai_config.command_registry = command_registry
-    if ai_config.ai_name:
-        ai_name = ai_config.ai_name
+    ai_name = ai_config.ai_name
     # print(prompt)
     # Initialize variables
     next_action_count = 0
