@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import List, Optional
 
 from pydantic import BaseModel
@@ -32,7 +33,12 @@ class ChallengeData(BaseModel):
 
     @staticmethod
     def deserialize(path: str) -> "ChallengeData":
+        # this script is in root/agbenchmark/challenges/define_task_types.py
+        script_dir = Path(__file__).resolve().parent.parent.parent
+        path = str(script_dir / path)
+
         print("Deserializing", path)
+
         with open(path, "r") as file:
             data = json.load(file)
         return ChallengeData(**data)

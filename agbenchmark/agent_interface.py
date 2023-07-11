@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any, Dict
 
 from dotenv import load_dotenv
@@ -21,6 +22,7 @@ def run_agent(
     """Calling to get a response"""
 
     if MOCK_FLAG:
+        print("ITS A MOCK TEST", challenge_location)
         copy_artifacts_into_workspace(
             config["workspace"], "artifacts_out", challenge_location
         )
@@ -30,19 +32,13 @@ def run_agent(
             f"Running Python function '{config['entry_path']}' with timeout {timeout}"
         )
 
-        # Get the current working directory
-        cwd = os.path.join(os.getcwd(), config["home_path"])
-
-        # Add current directory to Python's import path
-        sys.path.append(cwd)
-
         command = [sys.executable, config["entry_path"], str(task)]
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
-            cwd=cwd,
+            cwd=os.getcwd(),
         )
 
         start_time = time.time()
@@ -79,7 +75,9 @@ def run_agent(
 def copy_artifacts_into_workspace(
     workspace: str, artifact_folder_name: str, challenge_dir_path: str
 ) -> None:
-    source_dir = os.path.join(challenge_dir_path, artifact_folder_name)
+    # this file is at agbenchmark\agent_interface.py
+    script_dir = Path(__file__).resolve().parent.parent
+    source_dir = os.path.join(script_dir, challenge_dir_path, artifact_folder_name)
 
     # Check if source_dir exists, if not then return immediately.
     if not os.path.exists(source_dir):

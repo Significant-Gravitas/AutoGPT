@@ -1,0 +1,109 @@
+{
+    "command": "agbenchmark start --mock",
+    "completion_time": "2023-07-10-21:19",
+    "time_elapsed": "8.75 seconds",
+    "tests": {
+        "TestWriteFile": {
+            "difficulty": "basic",
+            "dependencies": [],
+            "test": "agbenchmark/challenges/interface/write_file",
+            "success": true
+        },
+        "TestReadFile": {
+            "difficulty": "basic",
+            "dependencies": [
+                "TestWriteFile"
+            ],
+            "test": "agbenchmark/challenges/interface/read_file",
+            "success": true
+        },
+        "TestSearch": {
+            "difficulty": "basic",
+            "dependencies": [
+                "TestWriteFile"
+            ],
+            "test": "agbenchmark/challenges/interface/search",
+            "success": true
+        },
+        "TestDebugSimpleTypoWithGuidance": {
+            "difficulty": "basic",
+            "dependencies": [
+                "TestReadFile",
+                "TestWriteFile"
+            ],
+            "test": "agbenchmark/challenges/code/d1",
+            "success": true
+        },
+        "TestBasicMemory": {
+            "difficulty": "basic",
+            "dependencies": [
+                "TestReadFile",
+                "TestWriteFile"
+            ],
+            "test": "agbenchmark/challenges/memory/m1",
+            "success": true
+        },
+        "TestBasicRetrieval": {
+            "difficulty": "basic",
+            "dependencies": [
+                "TestWriteFile",
+                "TestSearch"
+            ],
+            "test": "agbenchmark/challenges/retrieval/r1",
+            "success": true
+        },
+        "TestDebugSimpleTypoWithoutGuidance": {
+            "difficulty": "medium",
+            "dependencies": [
+                "TestDebugSimpleTypoWithGuidance"
+            ],
+            "test": "agbenchmark/challenges/code/d2",
+            "success": true
+        },
+        "TestRememberMultipleIds": {
+            "difficulty": "basic",
+            "dependencies": [
+                "TestBasicMemory"
+            ],
+            "test": "agbenchmark/challenges/memory/m2",
+            "success": true
+        },
+        "TestRetrieval2": {
+            "difficulty": "basic",
+            "dependencies": [
+                "TestBasicRetrieval"
+            ],
+            "test": "agbenchmark/challenges/retrieval/r2",
+            "success": true
+        },
+        "TestRememberMultipleIdsWithNoise": {
+            "difficulty": "medium",
+            "dependencies": [
+                "TestRememberMultipleIds"
+            ],
+            "test": "agbenchmark/challenges/memory/m3",
+            "success": true
+        },
+        "TestRetrieval3": {
+            "difficulty": "basic",
+            "dependencies": [
+                "TestRetrieval2"
+            ],
+            "test": "agbenchmark/challenges/retrieval/r3",
+            "success": true
+        },
+        "TestRememberMultiplePhrasesWithNoise": {
+            "difficulty": "medium",
+            "dependencies": [
+                "TestRememberMultipleIdsWithNoise"
+            ],
+            "test": "agbenchmark/challenges/memory/m4",
+            "success": true
+        }
+    },
+    "config": {
+        "workspace": "${os.path.join(Path.home(), 'miniagi')}",
+        "entry_path": "agbenchmark/benchmarks.py",
+        "cutoff": 60
+    }
+}

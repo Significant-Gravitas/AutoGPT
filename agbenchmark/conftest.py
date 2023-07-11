@@ -6,9 +6,10 @@ from typing import Any, Dict, Generator
 
 import pytest
 
-from agbenchmark.RegressionManager import RegressionManager
+from agbenchmark.ReportManager import ReportManager
 from agbenchmark.start_benchmark import (
     CONFIG_PATH,
+    INFO_TESTS_PATH,
     REGRESSION_TESTS_PATH,
     get_regression_data,
 )
@@ -106,7 +107,8 @@ def challenge_data(request: Any) -> None:
     return request.param
 
 
-regression_manager = RegressionManager(REGRESSION_TESTS_PATH)
+regression_manager = ReportManager(REGRESSION_TESTS_PATH)
+info_manager = ReportManager(INFO_TESTS_PATH)
 
 
 def pytest_runtest_makereport(item: Any, call: Any) -> None:
@@ -130,12 +132,21 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
         print("pytest_runtest_makereport", test_details)
         if call.excinfo is None:
             regression_manager.add_test(item.nodeid.split("::")[1], test_details)
+            test_details["success"] = True
         else:
             regression_manager.remove_test(item.nodeid.split("::")[1])
+            test_details["success"] = False
+            test_details["fail_reason"] = str(call.excinfo.value)
+
+        info_manager.add_test(item.nodeid.split("::")[1], test_details)
 
 
-def pytest_sessionfinish() -> None:
-    """Called at the end of the session to save regression tests"""
+def pytest_sessionfinish(session: Any) -> None:
+    """Called at the end of the session to save regression tests and info"""
+    with open(CONFIG_PATH, "r") as f:
+        config = json.load(f)
+
+    info_manager.end_info_report(config)
     regression_manager.save()
 
 
