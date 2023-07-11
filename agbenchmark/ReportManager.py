@@ -1,12 +1,17 @@
 import json
-from typing import Union
+import os
+import sys
+import time
+from datetime import datetime
+from typing import Any, Dict, Union
 
 
-class RegressionManager:
+class ReportManager:
     """Abstracts interaction with the regression tests file"""
 
     def __init__(self, filename: str):
         self.filename = filename
+        self.start_time = time.time()
         self.load()
 
     def load(self) -> None:
@@ -39,6 +44,18 @@ class RegressionManager:
         if test_name in self.tests:
             del self.tests[test_name]
             self.save()
+
+    def end_info_report(self, config: Dict[str, Any]) -> None:
+        command = " ".join(sys.argv)
+        self.tests = {
+            "command": command.split(os.sep)[-1],
+            "completion_time": datetime.now().strftime("%Y-%m-%d-%H:%M"),
+            "time_elapsed": str(round(time.time() - self.start_time, 2)) + " seconds",
+            "tests": self.tests,
+            "config": config,
+        }
+
+        self.save()
 
     def replace_backslash(self, value: str) -> Union[str, list[str], dict]:
         if isinstance(value, str):

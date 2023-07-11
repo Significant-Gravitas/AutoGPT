@@ -1,6 +1,5 @@
 {
   "workspace": "projects/my-new-project/workspace",
-  "entry_path": "benchmarks.py",
-  "home_path": "",
+  "entry_path": "agbenchmark/benchmarks.py",
   "cutoff": 60
 }

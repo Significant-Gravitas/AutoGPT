@@ -19,7 +19,7 @@ load_dotenv()
 IMPROVE = os.getenv("IMPROVE", "False")
 
 
-json_files = glob.glob(f"{CURRENT_DIRECTORY}/challenges/**/data.json", recursive=True)
+json_files = glob.glob(f"{CURRENT_DIRECTORY}/**/data.json", recursive=True)
 
 
 def get_test_path(json_file: str) -> str:
@@ -55,7 +55,7 @@ def generate_tests() -> None:
             )
             sys.path.append(str(custom_python_location))
 
-            for (module_loader, name, ispkg) in pkgutil.iter_modules(
+            for module_loader, name, ispkg in pkgutil.iter_modules(
                 [str(custom_python_location)]
             ):
                 module = importlib.import_module(name)
