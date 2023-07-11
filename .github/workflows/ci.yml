@@ -2,17 +2,16 @@ name: CI
 
 on:
   workflow_dispatch:
-    branches: [ master ]
+    branches: [master]
   schedule:
-    - cron: '0 8 * * *'
+    - cron: "0 8 * * *"
   push:
-    branches: [ master, ci-test* ]
+    branches: [master, ci-test*]
   pull_request:
-    branches: [ stable, master, release-* ]
+    branches: [stable, master, release-*]
 
 jobs:
   lint:
-
     runs-on: ubuntu-latest
     env:
       min-python-version: "3.10"
@@ -83,10 +82,9 @@ jobs:
       matrix:
         agent-name:
           - "gpt-engineer"
+          - "smol-developer"
           - "Auto-GPT"
           - "mini-agi"
-          - "smol-developer"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -151,10 +149,11 @@ jobs:
             echo "Unknown agent name: $AGENT_NAME"
             exit 1
           fi
-          
+
           pip install ../../dist/*.whl
 
           if [ "${GITHUB_EVENT_NAME}" == "schedule" ] || [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]; then
+            curl -s https://raw.githubusercontent.com/Helicone/helicone/main/mitmproxy.sh | bash -s start
             agbenchmark start --maintain
           else
             agbenchmark start --maintain --mock
@@ -168,6 +167,8 @@ jobs:
           AGENT_NAME: ${{ matrix.agent-name }}
           PROMPT_USER: false # For mini-agi. TODO: Remove this once mini-agi follows the standards.
           HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
+          REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+          HELICONE_CACHE_ENABLED: false
 
       - name: Upload logs as artifact
         if: always()
