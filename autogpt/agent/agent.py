@@ -12,13 +12,15 @@ from autogpt.json_utils.utilities import extract_json_from_response, validate_js
 from autogpt.llm.chat import chat_with_ai
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens
-from autogpt.log_cycle.log_cycle import (
+from autogpt.logs import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
+    logger,
+    print_assistant_thoughts,
+    remove_ansi_escape,
 )
-from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
 from autogpt.models.command_registry import CommandRegistry
@@ -70,7 +72,7 @@ class Agent:
     ):
         self.ai_name = ai_name
         self.memory = memory
-        self.history = MessageHistory(self)
+        self.history = MessageHistory.for_model(config.smart_llm, agent=self)
         self.next_action_count = next_action_count
         self.command_registry = command_registry
         self.config = config
@@ -166,8 +168,6 @@ class Agent:
                     )
                     if self.config.speak_mode:
                         say_text(f"I want to execute {command_name}", self.config)
-
-                    arguments = self._resolve_pathlike_command_args(arguments)
 
                 except Exception as e:
                     logger.error("Error: \n", str(e))
@@ -307,14 +307,3 @@ class Agent:
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
-
-    def _resolve_pathlike_command_args(self, command_args):
-        if "directory" in command_args and command_args["directory"] in {"", "/"}:
-            command_args["directory"] = str(self.workspace.root)
-        else:
-            for pathlike in ["filename", "directory", "clone_path"]:
-                if pathlike in command_args:
-                    command_args[pathlike] = str(
-                        self.workspace.get_path(command_args[pathlike])
-                    )
-        return command_args

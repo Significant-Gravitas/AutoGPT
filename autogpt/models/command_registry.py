@@ -15,8 +15,12 @@ class CommandRegistry:
     directory.
     """
 
-    commands: dict[str, Command] = {}
-    commands_aliases: dict[str, Command] = {}
+    commands: dict[str, Command]
+    commands_aliases: dict[str, Command]
+
+    def __init__(self):
+        self.commands = {}
+        self.commands_aliases = {}
 
     def __contains__(self, command_name: str):
         return command_name in self.commands or command_name in self.commands_aliases
