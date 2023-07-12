@@ -11,8 +11,8 @@
     "type": "file"
   },
   "info": {
-    "difficulty": "basic",
+    "difficulty": "novice",
     "description": "Tests ability for the agent to remember information between each action. Multiple ids are presented in different files and the last file instructs the agent to write these ids into another file.",
-    "side_effects": ["tests if there is in fact an LLM attached"]
+    "side_effects": []
   }
 }

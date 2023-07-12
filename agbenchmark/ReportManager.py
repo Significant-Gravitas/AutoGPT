@@ -3,7 +3,9 @@ import os
 import sys
 import time
 from datetime import datetime
-from typing import Any, Dict, Union
+from typing import Any, Dict
+
+from agbenchmark.utils import get_highest_success_difficulty
 
 
 class ReportManager:
@@ -23,7 +25,6 @@ class ReportManager:
                 if file_content:  # if file is not empty, load the json
                     data = json.loads(file_content)
                     self.tests = {k: data[k] for k in sorted(data)}
-                    data = self.replace_backslash(data)
                 else:  # if file is empty, assign an empty dictionary
                     self.tests = {}
         except FileNotFoundError:
@@ -36,8 +37,9 @@ class ReportManager:
         with open(self.filename, "w") as f:
             json.dump(self.tests, f, indent=4)
 
-    def add_test(self, test_name: str, test_details: dict) -> None:
+    def add_test(self, test_name: str, test_details: dict | list) -> None:
         self.tests[test_name] = test_details
+
         self.save()
 
     def remove_test(self, test_name: str) -> None:
@@ -50,19 +52,12 @@ class ReportManager:
         self.tests = {
             "command": command.split(os.sep)[-1],
             "completion_time": datetime.now().strftime("%Y-%m-%d-%H:%M"),
-            "time_elapsed": str(round(time.time() - self.start_time, 2)) + " seconds",
+            "metrics": {
+                "run_time": str(round(time.time() - self.start_time, 2)) + " seconds",
+                "highest_difficulty": get_highest_success_difficulty(self.tests),
+            },
             "tests": self.tests,
             "config": config,
         }
 
         self.save()
-
-    def replace_backslash(self, value: str) -> Union[str, list[str], dict]:
-        if isinstance(value, str):
-            return value.replace("\\\\", "/")  # escape \ with \\
-        elif isinstance(value, list):
-            return [self.replace_backslash(i) for i in value]
-        elif isinstance(value, dict):
-            return {k: self.replace_backslash(v) for k, v in value.items()}
-        else:
-            return value

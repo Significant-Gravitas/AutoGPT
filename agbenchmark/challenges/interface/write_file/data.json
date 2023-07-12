@@ -11,7 +11,7 @@
     "type": "file"
   },
   "info": {
-    "difficulty": "basic",
+    "difficulty": "interface",
     "description": "Tests the writing to file",
     "side_effects": ["tests if there is in fact an LLM attached"]
   }

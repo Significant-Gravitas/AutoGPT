@@ -9,15 +9,10 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pytest
-from dotenv import load_dotenv
 
 from agbenchmark.challenge import Challenge
 from agbenchmark.start_benchmark import CURRENT_DIRECTORY
-
-load_dotenv()
-
-IMPROVE = os.getenv("IMPROVE", "False")
-
+from agbenchmark.utils import replace_backslash
 
 json_files = glob.glob(f"{CURRENT_DIRECTORY}/**/data.json", recursive=True)
 
@@ -36,7 +31,11 @@ def get_test_path(json_file: str) -> str:
     # Create the path from "agbenchmark" onwards
     challenge_location = Path(*path.parts[agbenchmark_index:])
 
-    return str(challenge_location)
+    formatted_location = replace_backslash(str(challenge_location))
+    if isinstance(formatted_location, str):
+        return formatted_location
+    else:
+        return str(challenge_location)
 
 
 def generate_tests() -> None:
@@ -68,7 +67,7 @@ def generate_tests() -> None:
                 )
                 sys.path.append(str(custom_python_location))
 
-                for (module_loader, name, ispkg) in pkgutil.iter_modules(
+                for module_loader, name, ispkg in pkgutil.iter_modules(
                     [str(custom_python_location)]
                 ):
                     module = importlib.import_module(name)

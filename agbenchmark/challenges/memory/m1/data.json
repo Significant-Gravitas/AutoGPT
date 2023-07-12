@@ -10,13 +10,9 @@
     "files": [".txt"],
     "type": "file"
   },
-  "mock": {
-    "mock_func": "basic_memory_mock",
-    "mock_task": "Follow the instructions in the instructions_1.txt file"
-  },
   "info": {
     "difficulty": "basic",
     "description": "Tests ability for the agent to remember information between each action. An id is presented initially and the agent has to remember it after reading 4 other files",
-    "side_effects": ["tests if there is in fact an LLM attached"]
+    "side_effects": []
   }
 }
