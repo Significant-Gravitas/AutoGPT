@@ -15,6 +15,7 @@ nav:
   - Contributing:
     - Contribution guide: contributing.md
     - Running tests: testing.md
+    - Share your logs with us: share_logs.md
     - Code of Conduct: code-of-conduct.md
 
   - Challenges:
