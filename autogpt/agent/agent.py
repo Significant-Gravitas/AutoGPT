@@ -12,13 +12,15 @@ from autogpt.json_utils.utilities import extract_json_from_response, validate_js
 from autogpt.llm.chat import chat_with_ai
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens
-from autogpt.log_cycle.log_cycle import (
+from autogpt.logs import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
+    logger,
+    print_assistant_thoughts,
+    remove_ansi_escape,
 )
-from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.message_history import MessageHistory
 from autogpt.memory.vector import VectorMemory
 from autogpt.models.command_registry import CommandRegistry
@@ -70,7 +72,7 @@ class Agent:
     ):
         self.ai_name = ai_name
         self.memory = memory
-        self.history = MessageHistory(self)
+        self.history = MessageHistory.for_model(config.smart_llm, agent=self)
         self.next_action_count = next_action_count
         self.command_registry = command_registry
         self.config = config
@@ -81,13 +83,11 @@ class Agent:
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
-        self.fast_token_limit = OPEN_AI_CHAT_MODELS.get(
-            config.fast_llm_model
-        ).max_tokens
+        self.smart_token_limit = OPEN_AI_CHAT_MODELS.get(config.smart_llm).max_tokens
 
     def start_interaction_loop(self):
         # Avoid circular imports
-        from autogpt.app import execute_command, get_command
+        from autogpt.app import execute_command, extract_command
 
         # Interaction Loop
         self.cycle_count = 0
@@ -138,8 +138,8 @@ class Agent:
                     self,
                     self.system_prompt,
                     self.triggering_prompt,
-                    self.fast_token_limit,
-                    self.config.fast_llm_model,
+                    self.smart_token_limit,
+                    self.config.smart_llm,
                 )
 
             try:
@@ -163,13 +163,11 @@ class Agent:
                     print_assistant_thoughts(
                         self.ai_name, assistant_reply_json, self.config
                     )
-                    command_name, arguments = get_command(
+                    command_name, arguments = extract_command(
                         assistant_reply_json, assistant_reply, self.config
                     )
                     if self.config.speak_mode:
-                        say_text(f"I want to execute {command_name}")
-
-                    arguments = self._resolve_pathlike_command_args(arguments)
+                        say_text(f"I want to execute {command_name}", self.config)
 
                 except Exception as e:
                     logger.error("Error: \n", str(e))
@@ -196,8 +194,9 @@ class Agent:
                 # to exit
                 self.user_input = ""
                 logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
-                    "'n' to exit program, or enter feedback for "
+                    f"Enter '{self.config.authorise_key}' to authorise command, "
+                    f"'{self.config.authorise_key} -N' to run N continuous commands, "
+                    f"'{self.config.exit_key}' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
                 while True:
@@ -225,8 +224,8 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             logger.warn(
-                                "Invalid input format. Please enter 'y -n' where n is"
-                                " the number of continuous tasks."
+                                f"Invalid input format. Please enter '{self.config.authorise_key} -n' "
+                                "where n is the number of continuous tasks."
                             )
                             continue
                         break
@@ -282,12 +281,12 @@ class Agent:
                 result = f"Command {command_name} returned: " f"{command_result}"
 
                 result_tlength = count_string_tokens(
-                    str(command_result), self.config.fast_llm_model
+                    str(command_result), self.config.smart_llm
                 )
                 memory_tlength = count_string_tokens(
-                    str(self.history.summary_message()), self.config.fast_llm_model
+                    str(self.history.summary_message()), self.config.smart_llm
                 )
-                if result_tlength + memory_tlength + 600 > self.fast_token_limit:
+                if result_tlength + memory_tlength + 600 > self.smart_token_limit:
                     result = f"Failure: command {command_name} returned too much output. \
                         Do not execute this command again with the same arguments."
 
@@ -308,14 +307,3 @@ class Agent:
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
-
-    def _resolve_pathlike_command_args(self, command_args):
-        if "directory" in command_args and command_args["directory"] in {"", "/"}:
-            command_args["directory"] = str(self.workspace.root)
-        else:
-            for pathlike in ["filename", "directory", "clone_path"]:
-                if pathlike in command_args:
-                    command_args[pathlike] = str(
-                        self.workspace.get_path(command_args[pathlike])
-                    )
-        return command_args

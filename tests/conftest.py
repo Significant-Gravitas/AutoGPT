@@ -10,7 +10,7 @@ from autogpt.agent.agent import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.config.ai_config import AIConfig
 from autogpt.llm.api_manager import ApiManager
-from autogpt.logs import TypingConsoleHandler
+from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
@@ -53,6 +53,9 @@ def config(
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
 
+    # HACK: this is necessary to ensure PLAIN_OUTPUT takes effect
+    logger.config = config
+
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
 
@@ -79,18 +82,6 @@ def api_manager() -> ApiManager:
     if ApiManager in ApiManager._instances:
         del ApiManager._instances[ApiManager]
     return ApiManager()
-
-
-@pytest.fixture(autouse=True)
-def patch_emit(monkeypatch):
-    # convert plain_output to a boolean
-
-    if bool(os.environ.get("PLAIN_OUTPUT")):
-
-        def quick_emit(self, record: str):
-            print(self.format(record))
-
-        monkeypatch.setattr(TypingConsoleHandler, "emit", quick_emit)
 
 
 @pytest.fixture

@@ -38,9 +38,9 @@ def agent(config: Config):
     return agent
 
 
-def test_message_history_batch_summary(mocker, agent, config):
-    history = MessageHistory(agent)
-    model = config.fast_llm_model
+def test_message_history_batch_summary(mocker, agent: Agent, config: Config):
+    history = MessageHistory.for_model(agent.config.smart_llm, agent=agent)
+    model = config.fast_llm
     message_tlength = 0
     message_count = 0
 
@@ -48,7 +48,7 @@ def test_message_history_batch_summary(mocker, agent, config):
     mock_summary_response = ChatModelResponse(
         model_info=OPEN_AI_CHAT_MODELS[model],
         content="I executed browse_website command for each of the websites returned from Google search, but none of them have any job openings.",
-        function_call={},
+        function_call=None,
     )
     mock_summary = mocker.patch(
         "autogpt.memory.message_history.create_chat_completion",
@@ -73,7 +73,7 @@ def test_message_history_batch_summary(mocker, agent, config):
     assistant_reply = '{\n    "thoughts": {\n        "text": "I will use the \'google_search\' command to find more websites with job openings for software engineering manager role.",\n        "reasoning": "Since the previous website did not provide any relevant information, I will use the \'google_search\' command to find more websites with job openings for software engineer role.",\n        "plan": "- Use \'google_search\' command to find more websites with job openings for software engineer role",\n        "criticism": "I need to ensure that I am able to extract the relevant information from each website and job opening.",\n        "speak": "I will now use the \'google_search\' command to find more websites with job openings for software engineer role."\n    },\n    "command": {\n        "name": "google_search",\n        "args": {\n            "query": "software engineer job openings"\n        }\n    }\n}'
     msg = Message("assistant", assistant_reply, "ai_response")
     history.append(msg)
-    message_tlength += count_string_tokens(str(msg), config.fast_llm_model)
+    message_tlength += count_string_tokens(str(msg), config.fast_llm)
     message_count += 1
 
     # mock some websites returned from google search command in the past
@@ -83,7 +83,7 @@ def test_message_history_batch_summary(mocker, agent, config):
     result += "]"
     msg = Message("system", result, "action_result")
     history.append(msg)
-    message_tlength += count_string_tokens(str(msg), config.fast_llm_model)
+    message_tlength += count_string_tokens(str(msg), config.fast_llm)
     message_count += 1
 
     user_input = "Determine which next command to use, and respond using the format specified above:'"
@@ -99,17 +99,17 @@ def test_message_history_batch_summary(mocker, agent, config):
         )
         msg = Message("assistant", assistant_reply, "ai_response")
         history.append(msg)
-        message_tlength += count_string_tokens(str(msg), config.fast_llm_model)
+        message_tlength += count_string_tokens(str(msg), config.fast_llm)
         message_count += 1
 
         result = (
             "Command browse_website returned: Answer gathered from website: The text in job"
             + str(i)
-            + " does not provide information on specific job requirements or a job URL.]",
+            + " does not provide information on specific job requirements or a job URL.]"
         )
         msg = Message("system", result, "action_result")
         history.append(msg)
-        message_tlength += count_string_tokens(str(msg), config.fast_llm_model)
+        message_tlength += count_string_tokens(str(msg), config.fast_llm)
         message_count += 1
 
         user_input = "Determine which next command to use, and respond using the format specified above:'"
@@ -117,7 +117,7 @@ def test_message_history_batch_summary(mocker, agent, config):
         history.append(user_input_msg)
 
     # only take the last cycle of the message history,  trim the rest of previous messages, and generate a summary for them
-    for cycle in reversed(list(history.per_cycle(config))):
+    for cycle in reversed(list(history.per_cycle())):
         messages_to_add = [msg for msg in cycle if msg is not None]
         message_sequence.insert(insertion_index, *messages_to_add)
         break
@@ -125,7 +125,7 @@ def test_message_history_batch_summary(mocker, agent, config):
     # count the expected token length of the trimmed message by reducing the token length of messages in the last cycle
     for message in messages_to_add:
         if message.role != "user":
-            message_tlength -= count_string_tokens(str(message), config.fast_llm_model)
+            message_tlength -= count_string_tokens(str(message), config.fast_llm)
             message_count -= 1
 
     # test the main trim_message function
@@ -134,7 +134,7 @@ def test_message_history_batch_summary(mocker, agent, config):
     )
 
     expected_call_count = math.ceil(
-        message_tlength / (OPEN_AI_CHAT_MODELS.get(config.fast_llm_model).max_tokens)
+        message_tlength / (OPEN_AI_CHAT_MODELS[config.fast_llm].max_tokens)
     )
     # Expecting 2 batches because of over max token
     assert mock_summary.call_count == expected_call_count  # 2 at the time of writing

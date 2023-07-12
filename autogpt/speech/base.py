@@ -45,7 +45,7 @@ class VoiceBase(AbstractSingleton):
             return self._speech(text, voice_index)
 
     @abc.abstractmethod
-    def _setup(self) -> None:
+    def _setup(self, config: Config) -> None:
         """
         Setup the voices, API key, etc.
         """
