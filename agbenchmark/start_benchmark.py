@@ -94,7 +94,7 @@ def start(category: str, test: str, maintain: bool, improve: bool, mock: bool) -
     pytest_args = ["-vs"]
     if test:
         print("Running specific test:", test)
-        pytest_args.extend(["-k", test])
+        pytest_args.extend(["-k", test, "--test"])
     else:
         if category:
             pytest_args.extend(["-m", category])
