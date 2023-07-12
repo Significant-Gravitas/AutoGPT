@@ -38,14 +38,6 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python -
 
-      - name: Set up Poetry cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cache/pypoetry
-            .venv
-          key: ${{ runner.os }}-poetry-${{ hashFiles('**/pyproject.toml') }}-${{ hashFiles('**/poetry.lock') }}-${{ steps.get_date.outputs.date }}
-
       - name: Install dependencies
         run: |
           poetry install
@@ -106,14 +98,6 @@ jobs:
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python -
-
-      - name: Set up Poetry cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cache/pypoetry
-            .venv
-          key: ${{ runner.os }}-poetry-${{ hashFiles('**/pyproject.toml') }}-${{ hashFiles('**/poetry.lock') }}-${{ steps.get_date.outputs.date }}
 
       - name: Install dependencies
         run: |
