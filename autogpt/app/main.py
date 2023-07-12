@@ -7,13 +7,15 @@ from typing import Optional
 from colorama import Fore, Style
 
 from autogpt.agent import Agent
+from autogpt.app.configurator import create_config
+from autogpt.app.prompt import construct_full_prompt, construct_main_ai_config
+from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config.config import ConfigBuilder, check_openai_api_key
-from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
+from autogpt.prompts.default_prompts import DEFAULT_TRIGGERING_PROMPT
 from autogpt.utils import (
     get_current_git_branch,
     get_latest_bulletin,
@@ -22,14 +24,6 @@ from autogpt.utils import (
 )
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
-
-COMMAND_CATEGORIES = [
-    "autogpt.commands.execute_code",
-    "autogpt.commands.file_operations",
-    "autogpt.commands.web_search",
-    "autogpt.commands.web_selenium",
-    "autogpt.commands.task_statuses",
-]
 
 
 def run_auto_gpt(
@@ -186,7 +180,7 @@ def run_auto_gpt(
         "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
     logger.typewriter_log("Using Browser:", Fore.GREEN, config.selenium_web_browser)
-    system_prompt = ai_config.construct_full_prompt(config)
+    system_prompt = construct_full_prompt(config, ai_config, command_registry)
     if config.debug_mode:
         logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
 

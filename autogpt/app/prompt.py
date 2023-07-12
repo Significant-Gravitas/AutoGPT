@@ -1,20 +1,21 @@
+import platform
 from typing import Optional
 
+import distro
 from colorama import Fore
 
-from autogpt.config.ai_config import AIConfig
-from autogpt.config.config import Config
-from autogpt.config.prompt_config import PromptConfig
+from autogpt.app.setup import prompt_user
+from autogpt.config import AIConfig, Config, PromptConfig
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import logger
+from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.generator import PromptGenerator
-from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
-DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond using the JSON schema specified previously:"
 
-
-def build_default_prompt_generator(config: Config) -> PromptGenerator:
+def build_default_prompt_generator(
+    config: Config, ai_config: AIConfig, command_registry: CommandRegistry
+) -> PromptGenerator:
     """
     This function generates a prompt string that includes various constraints,
         commands, resources, and performance evaluations.
@@ -40,6 +41,11 @@ def build_default_prompt_generator(config: Config) -> PromptGenerator:
     # Add performance evaluations to the PromptGenerator object
     for performance_evaluation in prompt_config.performance_evaluations:
         prompt_generator.add_performance_evaluation(performance_evaluation)
+
+    prompt_generator.goals = ai_config.ai_goals
+    prompt_generator.name = ai_config.ai_name
+    prompt_generator.role = ai_config.ai_role
+    prompt_generator.command_registry = command_registry
 
     return prompt_generator
 
@@ -130,3 +136,61 @@ Continue ({config.authorise_key}/{config.exit_key}): """,
         logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
 
     return ai_config
+
+
+def construct_full_prompt(
+    config: Config,
+    ai_config: AIConfig,
+    command_registry: CommandRegistry,
+    prompt_generator: Optional[PromptGenerator] = None,
+) -> str:
+    """
+    Returns a prompt to the user with the class information in an organized fashion.
+
+    Parameters:
+        config (Config): The main config object.
+        ai_config (AIConfig): The AI config object.
+        prompt_generator (PromptGenerator): The prompt generator object.
+
+    Returns:
+        full_prompt (str): A string containing the initial prompt for the user
+          including the ai_name, ai_role, ai_goals, and api_budget.
+    """
+
+    prompt_start = (
+        "Your decisions must always be made independently without"
+        " seeking user assistance. Play to your strengths as an LLM and pursue"
+        " simple strategies with no legal complications."
+        ""
+    )
+
+    if prompt_generator is None:
+        prompt_generator = build_default_prompt_generator(
+            config, ai_config, command_registry
+        )
+
+    for plugin in config.plugins:
+        if not plugin.can_handle_post_prompt():
+            continue
+        prompt_generator = plugin.post_prompt(prompt_generator)
+
+    if config.execute_local_commands:
+        # add OS info to prompt
+        os_name = platform.system()
+        os_info = (
+            platform.platform(terse=True)
+            if os_name != "Linux"
+            else distro.name(pretty=True)
+        )
+
+        prompt_start += f"\nThe OS you are running on is: {os_info}"
+
+    # Construct full prompt
+    full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
+    for i, goal in enumerate(ai_config.ai_goals):
+        full_prompt += f"{i+1}. {goal}\n"
+    if ai_config.api_budget > 0.0:
+        full_prompt += f"\nIt takes money to let you run. Your API budget is ${ai_config.api_budget:.3f}"
+    ai_config.prompt_generator = prompt_generator
+    full_prompt += f"\n\n{prompt_generator.generate_prompt_string(config)}"
+    return full_prompt
