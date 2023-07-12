@@ -33,7 +33,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ env.min-python-version }}
 
@@ -132,7 +132,7 @@ jobs:
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
