@@ -1,22 +1,29 @@
-# Website and Documentation Site 📰📖
-Check out *https://agpt.co*, the official news & updates site for Auto-GPT!
-The documentation also has a place here, at *https://docs.agpt.co*
+# QUICK LINKS 🔗
+# --------------
+🌎 *Official Website*: https://agpt.co.
+📖 *User Guide*: https://docs.agpt.co.
+👩 *Contributors Wiki*: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing.
 
-# For contributors 👷🏼
-Since releasing v0.3.0, whave been working on re-architecting the Auto-GPT core to make it more extensible and make room for structural performance-oriented R&D.
+# v0.4.4 RELEASE HIGHLIGHTS! 🚀
+# -----------------------------
+## GPT-4 is back!
+Following OpenAI's recent GPT-4 GA announcement, the SMART_LLM .env setting 
+now defaults to GPT-4, and Auto-GPT will use GPT-4 by default in its main loop.
 
-Check out the contribution guide on our wiki:
-https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing
+### !! High Costs Warning !! 💰💀🚨
+GPT-4 costs ~20x more than GPT-3.5-turbo. 
+Please take note of this before using SMART_LLM. You can use `--gpt3only` 
+or `--gpt4only` to force the use of GPT-3.5-turbo or GPT-4, respectively, 
+at runtime.
 
-# 🚀 v0.4.3 Release 🚀
-We're happy to announce the 0.4.3 maintenance release, which primarily focuses on refining the LLM command execution,
-extending support for OpenAI's latest models (including the powerful GPT-3 16k model), and laying the groundwork 
-for future compatibility with OpenAI's function calling feature.
+## Re-arch v1 preview release!
+We've released a preview version of the re-arch code, under `autogpt/core`. 
+This is a major milestone for us, and we're excited to continue working on it. 
+We look forward to your feedback. Follow the process here: 
+https://github.com/Significant-Gravitas/Auto-GPT/issues/4770.
 
-Key Highlights:
-- OpenAI API Key Prompt: Auto-GPT will now courteously prompt users for their OpenAI API key, if it's not already provided.
-- Summarization Enhancements: We've optimized Auto-GPT's use of the LLM context window even further.
-- JSON Memory Reading: Support for reading memories from JSON files has been improved, resulting in enhanced task execution.
-- Deprecated commands, removed for a leaner, more performant LLM: analyze_code, write_tests, improve_code, audio_text, web_playwright, web_requests
-## Take a look at the Release Notes on Github for the full changelog!
-https://github.com/Significant-Gravitas/Auto-GPT/releases
+## Other highlights
+Other fixes include plugins regressions, Azure config and security patches.
+
+Take a look at the Release Notes on Github for the full changelog! 
+https://github.com/Significant-Gravitas/Auto-GPT/releases.
