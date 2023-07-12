@@ -85,6 +85,7 @@ def pytest_addoption(parser: Any) -> None:
     parser.addoption("--mock", action="store_true", default=False)
     parser.addoption("--improve", action="store_true", default=False)
     parser.addoption("--maintain", action="store_true", default=False)
+    parser.addoption("--test", action="store_true", default=None)
 
 
 @pytest.fixture(autouse=True)
@@ -232,6 +233,8 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         # Filter dependencies if they exist in regression data if its an improvement test
         if config.getoption("--improve"):
             dependencies = [dep for dep in dependencies if not data.get(dep, None)]
+        elif config.getoption("--test"):
+            dependencies = []
 
         categories = test_class_instance.data.category
 
