@@ -11,7 +11,7 @@
     "type": "file"
   },
   "info": {
-    "difficulty": "basic",
+    "difficulty": "novice",
     "description": "Tests ability to retrieve information.",
     "side_effects": ["tests if there is in fact an LLM attached"]
   }

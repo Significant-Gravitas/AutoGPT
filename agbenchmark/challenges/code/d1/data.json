@@ -13,6 +13,6 @@
   "info": {
     "difficulty": "basic",
     "description": "Tests ability for the agent to debug python code with a simple typo in it.",
-    "side_effects": ["tests if there is in fact an LLM attached"]
+    "side_effects": []
   }
 }

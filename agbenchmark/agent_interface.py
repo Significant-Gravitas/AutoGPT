@@ -23,26 +23,10 @@ def run_agent(
     """Calling to get a response"""
 
     if MOCK_FLAG:
-        print("ITS A MOCK TEST", challenge_location)
         copy_artifacts_into_workspace(
             config["workspace"], "artifacts_out", challenge_location
         )
     else:
-        timeout = config["cutoff"]
-        print(
-            f"Running Python function '{config['entry_path']}' with timeout {timeout}"
-        )
-        command = [sys.executable, "-m", config["entry_path"], str(task)]
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            cwd=os.getcwd(),
-        )
-
-        start_time = time.time()
-
         print(
             f"Running Python function '{config['entry_path']}' with timeout {config['cutoff']}"
         )

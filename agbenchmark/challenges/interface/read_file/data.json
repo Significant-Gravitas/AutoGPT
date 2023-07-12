@@ -11,7 +11,7 @@
   },
   "info": {
     "description": "This reads the file quickly",
-    "difficulty": "basic",
+    "difficulty": "interface",
     "side_effects": [""]
   }
 }

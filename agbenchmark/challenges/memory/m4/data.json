@@ -16,8 +16,8 @@
     "type": "file"
   },
   "info": {
-    "difficulty": "medium",
+    "difficulty": "advanced",
     "description": "Tests ability for the agent to remember information between each action. Multiple phrases are presented in different files and the last file instructs the agent to write these phrases into another file. Some noise is also added to the files to test the agent's ability to filter out noise.",
-    "side_effects": ["tests if there is in fact an LLM attached"]
+    "side_effects": []
   }
 }

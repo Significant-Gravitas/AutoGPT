@@ -1,6 +1,8 @@
 import json
 import os
 import shutil
+import sys
+import time
 from pathlib import Path  # noqa
 from typing import Any, Dict, Generator
 
@@ -13,6 +15,7 @@ from agbenchmark.start_benchmark import (
     REGRESSION_TESTS_PATH,
     get_regression_data,
 )
+from agbenchmark.utils import calculate_success_percentage
 
 
 def resolve_workspace(config: Dict[str, Any]) -> str:
@@ -107,8 +110,28 @@ def challenge_data(request: Any) -> None:
     return request.param
 
 
+@pytest.fixture(autouse=True, scope="session")
+def mock(request: Any) -> None:
+    return request.config.getoption("--mock")
+
+
+@pytest.fixture(autouse=True, scope="function")
+def timer(request: Any) -> Any:
+    start_time = time.time()
+    yield
+    run_time = time.time() - start_time
+    request.node.user_properties.append(("run_time", run_time))
+
+
+# tests that consistently pass are considered regression tests
 regression_manager = ReportManager(REGRESSION_TESTS_PATH)
+
+# user facing reporting information
 info_manager = ReportManager(INFO_TESTS_PATH)
+
+INTERNAL_LOGS = Path(__file__).resolve().parent  # agbenchmark/conftest.py
+# internal db step in replacement track pass/fail rate
+internal_info = ReportManager(str(INTERNAL_LOGS / "internal_info.json"))
 
 
 def pytest_runtest_makereport(item: Any, call: Any) -> None:
@@ -122,23 +145,66 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
         )
         # Extract the challenge_location from the class
         challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
+        test_name = item.nodeid.split("::")[1]
+        item.test_name = test_name
 
         test_details = {
             "difficulty": difficulty,
             "dependencies": dependencies,
-            "test": challenge_location,
+            "data_path": challenge_location,
         }
 
-        print("pytest_runtest_makereport", test_details)
-        if call.excinfo is None:
-            regression_manager.add_test(item.nodeid.split("::")[1], test_details)
-            test_details["success"] = True
-        else:
-            regression_manager.remove_test(item.nodeid.split("::")[1])
-            test_details["success"] = False
-            test_details["fail_reason"] = str(call.excinfo.value)
+        info_details: Any = {
+            "data_path": challenge_location,
+            "is_regression": False,
+            "metrics": {
+                "difficulty": difficulty,
+                "success": False,
+            },
+        }
 
-        info_manager.add_test(item.nodeid.split("::")[1], test_details)
+        mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
+
+        if call.excinfo is None:
+            info_details["metrics"]["success"] = True
+        else:
+            if not mock:  # don't remove if it's a mock test
+                regression_manager.remove_test(test_name)
+            info_details["metrics"]["fail_reason"] = str(call.excinfo.value)
+
+        prev_test_results: list[bool] = []
+
+        if not mock:
+            # only add if it's an actual test
+            prev_test_results = internal_info.tests.get(test_name, [])
+            prev_test_results.append(info_details["metrics"]["success"])
+            internal_info.add_test(test_name, prev_test_results)
+
+        # can calculate success rate regardless of mock
+        info_details["metrics"]["success_%"] = calculate_success_percentage(
+            prev_test_results
+        )
+
+        if len(prev_test_results) >= 3 and prev_test_results[-3:] == [True, True, True]:
+            # if the last 3 tests were successful, add to the regression tests
+            info_details["is_regression"] = True
+            regression_manager.add_test(test_name, test_details)
+
+        # user facing reporting
+        item.info_details = info_details
+    if call.when == "teardown":
+        run_time = dict(item.user_properties).get("run_time")
+
+        info_details = getattr(item, "info_details", {})
+        test_name = getattr(item, "test_name", "")
+
+        if info_details and test_name:
+            if run_time:
+                info_details["metrics"][
+                    "run_time"
+                ] = f"{str(round(run_time, 3))} seconds"
+
+            info_manager.add_test(test_name, info_details)
 
 
 def pytest_sessionfinish(session: Any) -> None:
@@ -146,6 +212,7 @@ def pytest_sessionfinish(session: Any) -> None:
     with open(CONFIG_PATH, "r") as f:
         config = json.load(f)
 
+    internal_info.save()
     info_manager.end_info_report(config)
     regression_manager.save()
 

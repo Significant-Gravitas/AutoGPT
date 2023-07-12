@@ -13,6 +13,6 @@
   "info": {
     "difficulty": "basic",
     "description": "Tests ability to retrieve information from a website.",
-    "side_effects": ["tests if there is in fact an LLM attached"]
+    "side_effects": []
   }
 }

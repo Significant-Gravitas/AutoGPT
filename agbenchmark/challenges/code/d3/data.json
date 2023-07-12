@@ -11,7 +11,7 @@
     "type": "custom_python"
   },
   "info": {
-    "difficulty": "medium",
+    "difficulty": "advanced",
     "description": "Tests ability for the agent to build a simple web server locally",
     "side_effects": []
   }
