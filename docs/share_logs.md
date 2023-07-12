@@ -1,6 +1,6 @@
-### Share your logs with us to help improve Auto-GPT
+## Share your logs with us to help improve Auto-GPT
 
-## Enable Debug Logs
+### Enable Debug Logs
 Activity and error logs are located in the `./output/logs`
 
 To print out debug logs:
