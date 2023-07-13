@@ -1,119 +1,35 @@
 from __future__ import annotations
 
-import functools
-import time
 from typing import List, Literal, Optional
-from unittest.mock import patch
 
-import openai
-import openai.api_resources.abstract.engine_api_resource as engine_api_resource
-import openai.util
-from colorama import Fore, Style
-from openai.error import APIError, RateLimitError
-from openai.openai_object import OpenAIObject
+from colorama import Fore
 
 from autogpt.config import Config
-from autogpt.logs import logger
 
 from ..api_manager import ApiManager
-from ..base import ChatSequence, Message
+from ..base import (
+    ChatModelResponse,
+    ChatSequence,
+    FunctionCallDict,
+    Message,
+    ResponseMessageDict,
+)
+from ..providers import openai as iopenai
+from ..providers.openai import (
+    OPEN_AI_CHAT_MODELS,
+    OpenAIFunctionCall,
+    OpenAIFunctionSpec,
+    count_openai_functions_tokens,
+)
 from .token_counter import *
-
-
-def metered(func):
-    """Adds ApiManager metering to functions which make OpenAI API calls"""
-    api_manager = ApiManager()
-
-    openai_obj_processor = openai.util.convert_to_openai_object
-
-    def update_usage_with_response(response: OpenAIObject):
-        try:
-            usage = response.usage
-            logger.debug(f"Reported usage from call to model {response.model}: {usage}")
-            api_manager.update_cost(
-                response.usage.prompt_tokens,
-                response.usage.completion_tokens if "completion_tokens" in usage else 0,
-                response.model,
-            )
-        except Exception as err:
-            logger.warn(f"Failed to update API costs: {err.__class__.__name__}: {err}")
-
-    def metering_wrapper(*args, **kwargs):
-        openai_obj = openai_obj_processor(*args, **kwargs)
-        if isinstance(openai_obj, OpenAIObject) and "usage" in openai_obj:
-            update_usage_with_response(openai_obj)
-        return openai_obj
-
-    def metered_func(*args, **kwargs):
-        with patch.object(
-            engine_api_resource.util,
-            "convert_to_openai_object",
-            side_effect=metering_wrapper,
-        ):
-            return func(*args, **kwargs)
-
-    return metered_func
-
-
-def retry_openai_api(
-    num_retries: int = 10,
-    backoff_base: float = 2.0,
-    warn_user: bool = True,
-):
-    """Retry an OpenAI API call.
-
-    Args:
-        num_retries int: Number of retries. Defaults to 10.
-        backoff_base float: Base for exponential backoff. Defaults to 2.
-        warn_user bool: Whether to warn the user. Defaults to True.
-    """
-    retry_limit_msg = f"{Fore.RED}Error: " f"Reached rate limit, passing...{Fore.RESET}"
-    api_key_error_msg = (
-        f"Please double check that you have setup a "
-        f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
-        f"read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
-    )
-    backoff_msg = (
-        f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
-    )
-
-    def _wrapper(func):
-        @functools.wraps(func)
-        def _wrapped(*args, **kwargs):
-            user_warned = not warn_user
-            num_attempts = num_retries + 1  # +1 for the first attempt
-            for attempt in range(1, num_attempts + 1):
-                try:
-                    return func(*args, **kwargs)
-
-                except RateLimitError:
-                    if attempt == num_attempts:
-                        raise
-
-                    logger.debug(retry_limit_msg)
-                    if not user_warned:
-                        logger.double_check(api_key_error_msg)
-                        user_warned = True
-
-                except APIError as e:
-                    if (e.http_status not in [502, 429]) or (attempt == num_attempts):
-                        raise
-
-                backoff = backoff_base ** (attempt + 2)
-                logger.debug(backoff_msg.format(backoff=backoff))
-                time.sleep(backoff)
-
-        return _wrapped
-
-    return _wrapper
 
 
 def call_ai_function(
     function: str,
     args: list,
     description: str,
-    model: str | None = None,
-    config: Config = None,
+    config: Config,
+    model: Optional[str] = None,
 ) -> str:
     """Call an AI function
 
@@ -130,7 +46,7 @@ def call_ai_function(
         str: The response from the function
     """
     if model is None:
-        model = config.smart_llm_model
+        model = config.smart_llm
     # For each arg, if any are None, convert to "None":
     args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma separated string
@@ -147,48 +63,44 @@ def call_ai_function(
             Message("user", arg_str),
         ],
     )
-    return create_chat_completion(prompt=prompt, temperature=0)
+    return create_chat_completion(prompt=prompt, temperature=0, config=config).content
 
 
-@metered
-@retry_openai_api()
 def create_text_completion(
     prompt: str,
+    config: Config,
     model: Optional[str],
     temperature: Optional[float],
     max_output_tokens: Optional[int],
 ) -> str:
-    cfg = Config()
     if model is None:
-        model = cfg.fast_llm_model
+        model = config.fast_llm
     if temperature is None:
-        temperature = cfg.temperature
+        temperature = config.temperature
 
-    if cfg.use_azure:
-        kwargs = {"deployment_id": cfg.get_azure_deployment_id_for_model(model)}
-    else:
-        kwargs = {"model": model}
+    kwargs = {"model": model}
+    kwargs.update(config.get_openai_credentials(model))
 
-    response = openai.Completion.create(
-        **kwargs,
+    response = iopenai.create_text_completion(
         prompt=prompt,
+        **kwargs,
         temperature=temperature,
         max_tokens=max_output_tokens,
-        api_key=cfg.openai_api_key,
     )
+    logger.debug(f"Response: {response}")
+
     return response.choices[0].text
 
 
 # Overly simple abstraction until we create something better
-# simple retry mechanism when getting a rate error or a bad gateway
-@metered
-@retry_openai_api()
 def create_chat_completion(
     prompt: ChatSequence,
+    config: Config,
+    functions: Optional[List[OpenAIFunctionSpec]] = None,
     model: Optional[str] = None,
-    temperature: float = None,
+    temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-) -> str:
+) -> ChatModelResponse:
     """Create a chat completion using the OpenAI API
 
     Args:
@@ -200,59 +112,88 @@ def create_chat_completion(
     Returns:
         str: The response from the chat completion
     """
-    cfg = Config()
+
     if model is None:
         model = prompt.model.name
     if temperature is None:
-        temperature = cfg.temperature
+        temperature = config.temperature
+    if max_tokens is None:
+        prompt_tlength = prompt.token_length
+        max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt_tlength
+        logger.debug(f"Prompt length: {prompt_tlength} tokens")
+        if functions:
+            functions_tlength = count_openai_functions_tokens(functions, model)
+            max_tokens -= functions_tlength
+            logger.debug(f"Functions take up {functions_tlength} tokens in API call")
 
     logger.debug(
         f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
     )
-    for plugin in cfg.plugins:
+    chat_completion_kwargs = {
+        "model": model,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    for plugin in config.plugins:
         if plugin.can_handle_chat_completion(
             messages=prompt.raw(),
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
+            **chat_completion_kwargs,
         ):
             message = plugin.handle_chat_completion(
                 messages=prompt.raw(),
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
+                **chat_completion_kwargs,
             )
             if message is not None:
                 return message
-    api_manager = ApiManager()
-    response = None
 
-    if cfg.use_azure:
-        kwargs = {"deployment_id": cfg.get_azure_deployment_id_for_model(model)}
-    else:
-        kwargs = {"model": model}
+    chat_completion_kwargs.update(config.get_openai_credentials(model))
 
-    response = api_manager.create_chat_completion(
-        **kwargs,
+    if functions:
+        chat_completion_kwargs["functions"] = [
+            function.schema for function in functions
+        ]
+
+    response = iopenai.create_chat_completion(
         messages=prompt.raw(),
-        temperature=temperature,
-        max_tokens=max_tokens,
+        **chat_completion_kwargs,
     )
+    logger.debug(f"Response: {response}")
 
-    resp = response.choices[0].message["content"]
-    for plugin in cfg.plugins:
+    if hasattr(response, "error"):
+        logger.error(response.error)
+        raise RuntimeError(response.error)
+
+    first_message: ResponseMessageDict = response.choices[0].message
+    content: str | None = first_message.get("content")
+    function_call: FunctionCallDict | None = first_message.get("function_call")
+
+    for plugin in config.plugins:
         if not plugin.can_handle_on_response():
             continue
-        resp = plugin.on_response(resp)
-    return resp
+        # TODO: function call support in plugin.on_response()
+        content = plugin.on_response(content)
+
+    return ChatModelResponse(
+        model_info=OPEN_AI_CHAT_MODELS[model],
+        content=content,
+        function_call=OpenAIFunctionCall(
+            name=function_call["name"], arguments=function_call["arguments"]
+        )
+        if function_call
+        else None,
+    )
 
 
 def check_model(
-    model_name: str, model_type: Literal["smart_llm_model", "fast_llm_model"]
+    model_name: str,
+    model_type: Literal["smart_llm", "fast_llm"],
+    config: Config,
 ) -> str:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
+    openai_credentials = config.get_openai_credentials(model_name)
     api_manager = ApiManager()
-    models = api_manager.get_models()
+    models = api_manager.get_models(**openai_credentials)
 
     if any(model_name in m["id"] for m in models):
         return model_name

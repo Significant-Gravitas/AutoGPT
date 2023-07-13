@@ -3,8 +3,11 @@ name: Docker CI
 on:
   push:
     branches: [ master ]
+    paths-ignore:
+      - 'tests/Auto-GPT-test-cassettes'
+      - 'tests/challenges/current_score.json'
   pull_request:
-    branches: [ master, stable ]
+    branches: [ master, release-*, stable ]
 
 concurrency:
   group: ${{ format('docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
@@ -70,16 +73,13 @@ jobs:
       run: .github/workflows/scripts/docker-ci-summary.sh >> $GITHUB_STEP_SUMMARY
       continue-on-error: true
 
-  # Docker setup needs fixing before this is going to work: #1843
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: build
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
           submodules: true
 
       - name: Set up Docker Buildx
@@ -100,20 +100,25 @@ jobs:
         name: Run tests
         env:
           CI: true
+          PLAIN_OUTPUT: True
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set +e
           test_output=$(
             docker run --env CI --env OPENAI_API_KEY --entrypoint python ${{ env.IMAGE_NAME }} -m \
-            pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term 2>&1
+            pytest -v --cov=autogpt --cov-branch --cov-report term-missing \
+              --numprocesses=4 --durations=10 \
+              tests/unit tests/integration 2>&1
           )
           test_failure=$?
-  
+
           echo "$test_output"
-  
+
           cat << $EOF >> $GITHUB_STEP_SUMMARY
           # Tests $([ $test_failure = 0 ] && echo '✅' || echo '❌')
           \`\`\`
           $test_output
           \`\`\`
           $EOF
+
+          exit $test_failure

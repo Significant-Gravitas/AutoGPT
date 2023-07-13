@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from sys import platform
-from typing import TYPE_CHECKING, Optional, Type
+from typing import Optional, Type
 
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import WebDriverException
@@ -27,14 +27,12 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-from autogpt.commands.command import command
+from autogpt.agents.agent import Agent
+from autogpt.command_decorator import command
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
 
 BrowserOptions = ChromeOptions | EdgeOptions | FirefoxOptions | SafariOptions
 
@@ -43,11 +41,18 @@ FILE_DIR = Path(__file__).parent.parent
 
 @command(
     "browse_website",
-    "Browse Website",
-    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+    "Browses a Website",
+    {
+        "url": {"type": "string", "description": "The URL to visit", "required": True},
+        "question": {
+            "type": "string",
+            "description": "What you want to find on the website",
+            "required": True,
+        },
+    },
 )
 @validate_url
-def browse_website(url: str, question: str, config: Config) -> str:
+def browse_website(url: str, question: str, agent: Agent) -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -58,7 +63,7 @@ def browse_website(url: str, question: str, config: Config) -> str:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
     """
     try:
-        driver, text = scrape_text_with_selenium(url, config)
+        driver, text = scrape_text_with_selenium(url, agent)
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
@@ -66,7 +71,7 @@ def browse_website(url: str, question: str, config: Config) -> str:
         return f"Error: {msg}"
 
     add_header(driver)
-    summary = summarize_memorize_webpage(url, text, question, config, driver)
+    summary = summarize_memorize_webpage(url, text, question, agent, driver)
     links = scrape_links_with_selenium(driver, url)
 
     # Limit links to 5
@@ -76,7 +81,7 @@ def browse_website(url: str, question: str, config: Config) -> str:
     return f"Answer gathered from website: {summary}\n\nLinks: {links}"
 
 
-def scrape_text_with_selenium(url: str, config: Config) -> tuple[WebDriver, str]:
+def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
     """Scrape text from a website using selenium
 
     Args:
@@ -94,23 +99,23 @@ def scrape_text_with_selenium(url: str, config: Config) -> tuple[WebDriver, str]
         "safari": SafariOptions,
     }
 
-    options: BrowserOptions = options_available[config.selenium_web_browser]()
+    options: BrowserOptions = options_available[agent.config.selenium_web_browser]()
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
 
-    if config.selenium_web_browser == "firefox":
-        if config.selenium_headless:
+    if agent.config.selenium_web_browser == "firefox":
+        if agent.config.selenium_headless:
             options.headless = True
             options.add_argument("--disable-gpu")
         driver = FirefoxDriver(
             service=GeckoDriverService(GeckoDriverManager().install()), options=options
         )
-    elif config.selenium_web_browser == "edge":
+    elif agent.config.selenium_web_browser == "edge":
         driver = EdgeDriver(
             service=EdgeDriverService(EdgeDriverManager().install()), options=options
         )
-    elif config.selenium_web_browser == "safari":
+    elif agent.config.selenium_web_browser == "safari":
         # Requires a bit more setup on the users end
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = SafariDriver(options=options)
@@ -120,7 +125,7 @@ def scrape_text_with_selenium(url: str, config: Config) -> tuple[WebDriver, str]
             options.add_argument("--remote-debugging-port=9222")
 
         options.add_argument("--no-sandbox")
-        if config.selenium_headless:
+        if agent.config.selenium_headless:
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
 
@@ -205,7 +210,7 @@ def summarize_memorize_webpage(
     url: str,
     text: str,
     question: str,
-    config: Config,
+    agent: Agent,
     driver: Optional[WebDriver] = None,
 ) -> str:
     """Summarize text using the OpenAI API
@@ -225,8 +230,8 @@ def summarize_memorize_webpage(
     text_length = len(text)
     logger.info(f"Text length: {text_length} characters")
 
-    memory = get_memory(config)
+    memory = get_memory(agent.config)
 
-    new_memory = MemoryItem.from_webpage(text, url, question=question)
+    new_memory = MemoryItem.from_webpage(text, url, agent.config, question=question)
     memory.add(new_memory)
     return new_memory.summary

@@ -7,15 +7,13 @@ import click
 from colorama import Back, Fore, Style
 
 from autogpt import utils
+from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
 from autogpt.llm.utils import check_model
 from autogpt.logs import logger
 from autogpt.memory.vector import get_supported_memory_backends
 
 if TYPE_CHECKING:
     from autogpt.config import Config
-
-GPT_4_MODEL = "gpt-4"
-GPT_3_MODEL = "gpt-3.5-turbo"
 
 
 def create_config(
@@ -51,13 +49,13 @@ def create_config(
         allow_downloads (bool): Whether to allow Auto-GPT to download files natively
         skips_news (bool): Whether to suppress the output of latest news on startup
     """
-    config.set_debug_mode(False)
-    config.set_continuous_mode(False)
-    config.set_speak_mode(False)
+    config.debug_mode = False
+    config.continuous_mode = False
+    config.speak_mode = False
 
     if debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
-        config.set_debug_mode(True)
+        config.debug_mode = True
 
     if continuous:
         logger.typewriter_log("Continuous Mode: ", Fore.RED, "ENABLED")
@@ -68,13 +66,13 @@ def create_config(
             " cause your AI to run forever or carry out actions you would not usually"
             " authorise. Use at your own risk.",
         )
-        config.set_continuous_mode(True)
+        config.continuous_mode = True
 
         if continuous_limit:
             logger.typewriter_log(
                 "Continuous Limit: ", Fore.GREEN, f"{continuous_limit}"
             )
-            config.set_continuous_limit(continuous_limit)
+            config.continuous_limit = continuous_limit
 
     # Check if continuous limit is used without continuous mode
     if continuous_limit and not continuous:
@@ -82,28 +80,26 @@ def create_config(
 
     if speak:
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
-        config.set_speak_mode(True)
+        config.speak_mode = True
 
     # Set the default LLM models
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM_MODEL config
-        config.set_fast_llm_model(GPT_3_MODEL)
-        config.set_smart_llm_model(GPT_3_MODEL)
-
+        # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM config
+        config.fast_llm = GPT_3_MODEL
+        config.smart_llm = GPT_3_MODEL
     elif (
         gpt4only
-        and check_model(GPT_4_MODEL, model_type="smart_llm_model") == GPT_4_MODEL
+        and check_model(GPT_4_MODEL, model_type="smart_llm", config=config)
+        == GPT_4_MODEL
     ):
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
-        # --gpt4only should always use gpt-4, despite user's SMART_LLM_MODEL config
-        config.set_fast_llm_model(GPT_4_MODEL)
-        config.set_smart_llm_model(GPT_4_MODEL)
+        # --gpt4only should always use gpt-4, despite user's SMART_LLM config
+        config.fast_llm = GPT_4_MODEL
+        config.smart_llm = GPT_4_MODEL
     else:
-        config.set_fast_llm_model(check_model(config.fast_llm_model, "fast_llm_model"))
-        config.set_smart_llm_model(
-            check_model(config.smart_llm_model, "smart_llm_model")
-        )
+        config.fast_llm = check_model(config.fast_llm, "fast_llm", config=config)
+        config.smart_llm = check_model(config.smart_llm, "smart_llm", config=config)
 
     if memory_type:
         supported_memory = get_supported_memory_backends()

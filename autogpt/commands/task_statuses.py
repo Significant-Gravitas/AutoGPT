@@ -1,26 +1,30 @@
 """Task Statuses module."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NoReturn
+from typing import NoReturn
 
-from autogpt.commands.command import command
+from autogpt.agents.agent import Agent
+from autogpt.command_decorator import command
 from autogpt.logs import logger
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
 
 
 @command(
-    "task_complete",
-    "Task Complete (Shutdown)",
-    '"reason": "<reason>"',
+    "goals_accomplished",
+    "Goals are accomplished and there is nothing left to do",
+    {
+        "reason": {
+            "type": "string",
+            "description": "A summary to the user of how the goals were accomplished",
+            "required": True,
+        }
+    },
 )
-def task_complete(reason: str, config: Config) -> NoReturn:
+def task_complete(reason: str, agent: Agent) -> NoReturn:
     """
     A function that takes in a string and exits the program
 
     Parameters:
-        reason (str): The reason for shutting down.
+        reason (str): A summary to the user of how the goals were accomplished.
     Returns:
         A result string from create chat completion. A list of suggestions to
             improve the code.
