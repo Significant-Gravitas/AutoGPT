@@ -17,7 +17,12 @@ from autogpt.llm.utils import (
     count_string_tokens,
     create_chat_completion,
 )
-from autogpt.logs import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME, logger
+from autogpt.logs import (
+    PROMPT_SUMMARY_FILE_NAME,
+    SUMMARY_FILE_NAME,
+    LogCycleHandler,
+    logger,
+)
 
 
 @dataclass
@@ -212,7 +217,13 @@ Latest Development:
         )
 
         prompt = ChatSequence.for_model(config.fast_llm, [Message("user", prompt)])
-        if self.agent is not None and isinstance(self.agent, Agent):
+        if (
+            self.agent is not None
+            and hasattr(self.agent, "created_at")
+            and isinstance(
+                getattr(self.agent, "log_cycle_handler", None), LogCycleHandler
+            )
+        ):
             self.agent.log_cycle_handler.log_cycle(
                 self.agent.ai_config.ai_name,
                 self.agent.created_at,
@@ -225,7 +236,13 @@ Latest Development:
             prompt, config, max_tokens=max_output_length
         ).content
 
-        if self.agent is not None and isinstance(self.agent, Agent):
+        if (
+            self.agent is not None
+            and hasattr(self.agent, "created_at")
+            and isinstance(
+                getattr(self.agent, "log_cycle_handler", None), LogCycleHandler
+            )
+        ):
             self.agent.log_cycle_handler.log_cycle(
                 self.agent.ai_config.ai_name,
                 self.agent.created_at,
