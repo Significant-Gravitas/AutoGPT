@@ -174,18 +174,32 @@ azure_model_map:
 
     fast_llm = config.fast_llm
     smart_llm = config.smart_llm
-    assert config.get_azure_kwargs(config.fast_llm)["deployment_id"] == "FAST-LLM_ID"
-    assert config.get_azure_kwargs(config.smart_llm)["deployment_id"] == "SMART-LLM_ID"
+    assert (
+        config.get_azure_credentials(config.fast_llm)["deployment_id"] == "FAST-LLM_ID"
+    )
+    assert (
+        config.get_azure_credentials(config.smart_llm)["deployment_id"]
+        == "SMART-LLM_ID"
+    )
 
     # Emulate --gpt4only
     config.fast_llm = smart_llm
-    assert config.get_azure_kwargs(config.fast_llm)["deployment_id"] == "SMART-LLM_ID"
-    assert config.get_azure_kwargs(config.smart_llm)["deployment_id"] == "SMART-LLM_ID"
+    assert (
+        config.get_azure_credentials(config.fast_llm)["deployment_id"] == "SMART-LLM_ID"
+    )
+    assert (
+        config.get_azure_credentials(config.smart_llm)["deployment_id"]
+        == "SMART-LLM_ID"
+    )
 
     # Emulate --gpt3only
     config.fast_llm = config.smart_llm = fast_llm
-    assert config.get_azure_kwargs(config.fast_llm)["deployment_id"] == "FAST-LLM_ID"
-    assert config.get_azure_kwargs(config.smart_llm)["deployment_id"] == "FAST-LLM_ID"
+    assert (
+        config.get_azure_credentials(config.fast_llm)["deployment_id"] == "FAST-LLM_ID"
+    )
+    assert (
+        config.get_azure_credentials(config.smart_llm)["deployment_id"] == "FAST-LLM_ID"
+    )
 
     del os.environ["USE_AZURE"]
     del os.environ["AZURE_CONFIG_FILE"]
