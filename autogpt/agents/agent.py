@@ -3,7 +3,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import ContextManager, Optional
 
 from colorama import Fore, Style
 
@@ -78,10 +78,10 @@ class Agent(BaseAgent):
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.log_cycle_handler = LogCycleHandler()
 
-    def start_interaction_loop(self):
+    def start_interaction_loop(self) -> None:
         # Signal handler for interrupting y -N
-        def signal_handler(signum, frame):
-            if self.cycle_budget == 0:
+        def signal_handler(*_) -> None:
+            if self.cycle_budget == 0 or self.cycles_remaining == 0:
                 sys.exit()
             else:
                 print(
@@ -89,7 +89,7 @@ class Agent(BaseAgent):
                     + "Interrupt signal received. Stopping continuous command execution."
                     + Style.RESET_ALL
                 )
-                self.cycle_budget = 0
+                self.cycles_remaining = 0
 
         signal.signal(signal.SIGINT, signal_handler)
 
@@ -99,7 +99,7 @@ class Agent(BaseAgent):
             except StopIteration:
                 break
 
-    def context_while_think(self):
+    def context_while_think(self) -> ContextManager:
         return Spinner("Thinking... ", plain_output=self.config.plain_output)
 
     def construct_base_prompt(self, *args, **kwargs) -> ChatSequence:
@@ -211,7 +211,7 @@ class Agent(BaseAgent):
             f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
         )
 
-        if not self.config.continuous_mode and self.cycle_budget is None:
+        if self.cycles_remaining == 0:
             # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
             # Get key press: Prompt the user to press enter to continue or escape
             # to exit
@@ -233,6 +233,10 @@ class Agent(BaseAgent):
                     )
                 if console_input.lower().strip() == self.config.authorise_key:
                     user_input = "GENERATE NEXT COMMAND JSON"
+
+                    # Case 1: Continuous iteration was interrupted -> resume
+                    # Case 2: The agent used up its cycle budget -> reset
+                    self.cycles_remaining = self.cycle_budget
                     break
                 elif console_input.lower().strip() == "":
                     logger.warn("Invalid input format.")
@@ -276,10 +280,13 @@ class Agent(BaseAgent):
         else:
             # First log new-line so user can differentiate sections better in console
             logger.typewriter_log("\n")
-            # Print authorized commands left value
-            logger.typewriter_log(
-                f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.cycles_remaining}"
-            )
+
+            if self.cycles_remaining is not None:
+                # Print authorized commands left value
+                logger.typewriter_log(
+                    f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}"
+                    f"{self.cycles_remaining}"
+                )
 
         # Execute command
         if command_name is not None and command_name.lower().startswith("error"):
