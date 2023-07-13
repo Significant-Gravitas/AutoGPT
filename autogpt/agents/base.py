@@ -2,17 +2,20 @@ from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
 from contextlib import nullcontext
-from typing import ContextManager, Optional
+from typing import TYPE_CHECKING, ContextManager, Optional
 
 from colorama import Fore
 
-from autogpt.config import AIConfig, Config
-from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
+if TYPE_CHECKING:
+    from autogpt.config import AIConfig, Config
+    from autogpt.llm.base import ChatModelResponse, ChatSequence
+    from autogpt.models.command_registry import CommandRegistry
+
+from autogpt.llm.base import Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.logs import logger
 from autogpt.memory.message_history import MessageHistory
-from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 

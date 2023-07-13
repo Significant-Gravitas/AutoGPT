@@ -1,18 +1,24 @@
+from __future__ import annotations
+
 import json
 import signal
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import ContextManager, Optional
+from typing import TYPE_CHECKING, Any, ContextManager, Optional
 
 from colorama import Fore, Style
 
-from autogpt.config import Config
-from autogpt.config.ai_config import AIConfig
+if TYPE_CHECKING:
+    from autogpt.config import AIConfig, Config
+    from autogpt.llm.base import ChatModelResponse, ChatSequence
+    from autogpt.memory.vector import VectorMemory
+    from autogpt.models.command_registry import CommandRegistry
+
 from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
+from autogpt.llm.base import Message
 from autogpt.llm.utils import count_string_tokens
 from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.logs.log_cycle import (
@@ -21,8 +27,6 @@ from autogpt.logs.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
-from autogpt.memory.vector import VectorMemory
-from autogpt.models.command_registry import CommandRegistry
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
@@ -375,7 +379,7 @@ def execute_command(
     command_name: str,
     arguments: dict[str, str],
     agent: Agent,
-):
+) -> Any:
     """Execute the command and return the result
 
     Args:

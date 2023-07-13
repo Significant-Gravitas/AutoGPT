@@ -3,12 +3,12 @@ from __future__ import annotations
 import copy
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Iterator, Optional
 
 if TYPE_CHECKING:
     from autogpt.agents import Agent, BaseAgent
+    from autogpt.config import Config
 
-from autogpt.config import Config
 from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
@@ -85,7 +85,9 @@ Latest Development:
 
         return new_summary_message, new_messages_not_in_chain
 
-    def per_cycle(self, messages: list[Message] | None = None):
+    def per_cycle(
+        self, messages: Optional[list[Message]] = None
+    ) -> Iterator[tuple[Message | None, Message, Message]]:
         """
         Yields:
             Message: a message containing user input
@@ -182,7 +184,7 @@ Latest Development:
         )
         max_input_tokens = summ_model.max_tokens - max_summary_length
         summary_tlength = count_string_tokens(self.summary, summ_model.name)
-        batch = []
+        batch: list[Message] = []
         batch_tlength = 0
 
         # TODO: Put a cap on length of total new events and drop some previous events to
@@ -195,7 +197,7 @@ Latest Development:
                 > max_input_tokens - prompt_template_length - summary_tlength
             ):
                 # The batch is full. Summarize it and start a new one.
-                self.summarize_batch(batch, config, max_summary_length)
+                self._update_summary_with_batch(batch, config, max_summary_length)
                 summary_tlength = count_string_tokens(self.summary, summ_model.name)
                 batch = [event]
                 batch_tlength = event_tlength
@@ -205,13 +207,13 @@ Latest Development:
 
         if batch:
             # There's an unprocessed batch. Summarize it.
-            self.summarize_batch(batch, config, max_summary_length)
+            self._update_summary_with_batch(batch, config, max_summary_length)
 
         return self.summary_message()
 
-    def summarize_batch(
+    def _update_summary_with_batch(
         self, new_events_batch: list[Message], config: Config, max_output_length: int
-    ):
+    ) -> None:
         prompt = MessageHistory.SUMMARIZATION_PROMPT.format(
             summary=self.summary, new_events=new_events_batch
         )
