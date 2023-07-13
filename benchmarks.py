@@ -1,4 +1,4 @@
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.main import COMMAND_CATEGORIES
 from autogpt.memory.vector import get_memory
