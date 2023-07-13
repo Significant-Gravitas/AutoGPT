@@ -84,7 +84,7 @@ def is_duplicate_operation(
     Args:
         operation: The operation to check for
         filename: The name of the file to check for
-        agent: The agents
+        agent: The agent
         checksum: The checksum of the contents to be written
 
     Returns:

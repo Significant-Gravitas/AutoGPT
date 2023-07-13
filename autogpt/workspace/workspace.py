@@ -4,7 +4,7 @@ Workspace
 =========
 
 The workspace is a directory containing configuration and working files for an AutoGPT
-agents.
+agent.
 
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from autogpt.logs import logger
 
 
 class Workspace:
-    """A class that represents a workspace for an AutoGPT agents."""
+    """A class that represents a workspace for an AutoGPT agent."""
 
     NULL_BYTES = ["\0", "\000", "\x00", r"\z", "\u0000", "%00"]
 
@@ -156,7 +156,7 @@ class Workspace:
         elif type(workspace_directory) == str:
             workspace_directory = Path(workspace_directory)
         # TODO: pass in the ai_settings file and the env file and have them cloned into
-        #   the workspace directory so we can bind them to the agents.
+        #   the workspace directory so we can bind them to the agent.
         workspace_directory = Workspace.make_workspace(workspace_directory)
         config.workspace_path = str(workspace_directory)
         return workspace_directory

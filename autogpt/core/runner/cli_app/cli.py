@@ -33,8 +33,8 @@ autogpt.add_command(make_settings)
 )
 @coroutine
 async def run(settings_file: str, pdb: bool) -> None:
-    """Run the Auto-GPT agents."""
-    click.echo("Running Auto-GPT agents...")
+    """Run the Auto-GPT agent."""
+    click.echo("Running Auto-GPT agent...")
     settings_file = Path(settings_file)
     settings = {}
     if settings_file.exists():

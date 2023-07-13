@@ -35,16 +35,16 @@ Create your agent fixture.
 def kubernetes_agent(
     agent_test_config, memory_json_file, workspace: Workspace
 ):
-    # Please choose the commands your agents will need to beat the challenges, the full list is available in the main.py
+    # Please choose the commands your agent will need to beat the challenges, the full list is available in the main.py
     # (we 're working on a better way to design this, for now you have to look at main.py)
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
 
-    # Define all the settings of our challenged agents
+    # Define all the settings of our challenged agent
     ai_config = AIConfig(
         ai_name="Kubernetes",
-        ai_role="an autonomous agents that specializes in creating Kubernetes deployment templates.",
+        ai_role="an autonomous agent that specializes in creating Kubernetes deployment templates.",
         ai_goals=[
             "Write a simple kubernetes deployment file and save it as a kube.yaml.",
         ],
@@ -101,10 +101,10 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 @pytest.mark.requires_openai_api_key
 def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> None:
     """
-    Test the challenge_a function in a given agents by mocking user inputs
+    Test the challenge_a function in a given agent by mocking user inputs
     and checking the output file content.
 
-    :param get_company_revenue_agent: The agents to test.
+    :param get_company_revenue_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
     """
     input_sequence = ["s", "s", "s", "s", "s", "EXIT"]

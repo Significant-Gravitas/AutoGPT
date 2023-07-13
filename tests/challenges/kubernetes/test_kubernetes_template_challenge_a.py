@@ -23,7 +23,7 @@ def test_kubernetes_template_challenge_a(
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
-    Test the challenge_a function in a given agents by mocking user inputs
+    Test the challenge_a function in a given agent by mocking user inputs
     and checking the output file content.
 
     Args:

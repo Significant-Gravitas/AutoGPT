@@ -23,7 +23,7 @@ class AbilityConfiguration(SystemConfiguration):
 
 
 class Ability(abc.ABC):
-    """A class representing an agents ability."""
+    """A class representing an agent ability."""
 
     default_configuration: ClassVar[AbilityConfiguration]
 

@@ -7,7 +7,7 @@ from autogpt.core.planning.schema import (
 )
 
 # class Planner(abc.ABC):
-#     """Manages the agents's planning and goal-setting by constructing language model prompts."""
+#     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 #
 #     @staticmethod
 #     @abc.abstractmethod
@@ -17,10 +17,10 @@ from autogpt.core.planning.schema import (
 #         """Decide the name and goals of an Agent from a user-defined objective.
 #
 #         Args:
-#             user_objective: The user-defined objective for the agents.
+#             user_objective: The user-defined objective for the agent.
 #
 #         Returns:
-#             The agents name and goals as a response from the language model.
+#             The agent name and goals as a response from the language model.
 #
 #         """
 #         ...
@@ -30,12 +30,12 @@ from autogpt.core.planning.schema import (
 #         """Plan the next ability for the Agent.
 #
 #         Args:
-#             context: A context object containing information about the agents's
+#             context: A context object containing information about the agent's
 #                        progress, result, memories, and feedback.
 #
 #
 #         Returns:
-#             The next ability the agents should take along with thoughts and reasoning.
+#             The next ability the agent should take along with thoughts and reasoning.
 #
 #         """
 #         ...
@@ -49,11 +49,11 @@ from autogpt.core.planning.schema import (
 #
 #
 #         Args:
-#             context: A context object containing information about the agents's
+#             context: A context object containing information about the agent's
 #                        reasoning, plan, thoughts, and criticism.
 #
 #         Returns:
-#             Self-criticism about the agents's plan.
+#             Self-criticism about the agent's plan.
 #
 #         """
 #         ...

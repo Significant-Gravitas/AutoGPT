@@ -20,8 +20,8 @@ def test_memory_challenge_b(
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
-    The agents reads a series of files, each containing a task_id and noise. After reading 'n' files,
-    the agents must write all the task_ids into a new file, filtering out the noise.
+    The agent reads a series of files, each containing a task_id and noise. After reading 'n' files,
+    the agent must write all the task_ids into a new file, filtering out the noise.
 
     Args:
         workspace (Workspace)

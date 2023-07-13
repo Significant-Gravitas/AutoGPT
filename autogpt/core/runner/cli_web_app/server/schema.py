@@ -12,7 +12,7 @@ class AgentInfo(BaseModel):
 
 
 class AgentConfiguration(BaseModel):
-    """Configuration for creation of a new agents."""
+    """Configuration for creation of a new agent."""
 
     # We'll want to get this schema from the configuration, so it needs to be dynamic.
     user_configuration: dict

@@ -16,12 +16,12 @@ def sanitize_path_arg(arg_name: str):
                 f"Sanitized parameter '{arg_name}' absent or not annotated on function '{func.__name__}'"
             )
 
-        # Get position of agents parameter, in case it is passed as a positional argument
+        # Get position of agent parameter, in case it is passed as a positional argument
         try:
-            agent_arg_index = list(func.__annotations__.keys()).index("agents")
+            agent_arg_index = list(func.__annotations__.keys()).index("agent")
         except ValueError:
             raise TypeError(
-                f"Parameter 'agents' absent or not annotated on function '{func.__name__}'"
+                f"Parameter 'agent' absent or not annotated on function '{func.__name__}'"
             )
 
         @functools.wraps(func)
@@ -31,7 +31,7 @@ def sanitize_path_arg(arg_name: str):
 
             # Get Agent from the called function's arguments
             agent = kwargs.get(
-                "agents", len(args) > agent_arg_index and args[agent_arg_index]
+                "agent", len(args) > agent_arg_index and args[agent_arg_index]
             )
             logger.debug(f"Args: {args}")
             logger.debug(f"KWArgs: {kwargs}")
