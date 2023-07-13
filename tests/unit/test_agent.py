@@ -1,4 +1,4 @@
-from autogpt.agent.agent import Agent, execute_command
+from autogpt.agents.agent import Agent, execute_command
 
 
 def test_agent_initialization(agent: Agent):

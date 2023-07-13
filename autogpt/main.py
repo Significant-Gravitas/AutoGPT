@@ -6,7 +6,7 @@ from typing import Optional
 
 from colorama import Fore, Style
 
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.config.config import ConfigBuilder, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
