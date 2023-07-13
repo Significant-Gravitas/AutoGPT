@@ -56,7 +56,7 @@ import click
 )
 @click.option(
     # TODO: this is a hidden option for now, necessary for integration testing.
-    #   We should make this public once we're ready to roll out agent specific workspaces.
+    #   We should make this public once we're ready to roll out agents specific workspaces.
     "--workspace-directory",
     "-w",
     type=click.Path(),

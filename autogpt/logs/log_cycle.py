@@ -4,7 +4,7 @@ from typing import Any, Dict, Union
 
 from .logger import logger
 
-DEFAULT_PREFIX = "agent"
+DEFAULT_PREFIX = "agents"
 FULL_MESSAGE_HISTORY_FILE_NAME = "full_message_history.json"
 CURRENT_CONTEXT_FILE_NAME = "current_context.json"
 NEXT_ACTION_FILE_NAME = "next_action.json"

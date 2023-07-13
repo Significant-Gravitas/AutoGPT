@@ -8,13 +8,13 @@ async def run_auto_gpt(user_configuration: dict):
     """Run the Auto-GPT CLI client."""
 
     client_logger = get_client_logger()
-    client_logger.debug("Getting agent settings")
+    client_logger.debug("Getting agents settings")
 
     agent_workspace = (
         user_configuration.get("workspace", {}).get("configuration", {}).get("root", "")
     )
 
-    if not agent_workspace:  # We don't have an agent yet.
+    if not agent_workspace:  # We don't have an agents yet.
         #################
         # Bootstrapping #
         #################
@@ -24,30 +24,30 @@ async def run_auto_gpt(user_configuration: dict):
             user_configuration,
         )
 
-        # Step 2. Get a name and goals for the agent.
-        # First we need to figure out what the user wants to do with the agent.
+        # Step 2. Get a name and goals for the agents.
+        # First we need to figure out what the user wants to do with the agents.
         # We'll do this by asking the user for a prompt.
         user_objective = click.prompt("What do you want Auto-GPT to do?")
-        # Ask a language model to determine a name and goals for a suitable agent.
+        # Ask a language model to determine a name and goals for a suitable agents.
         name_and_goals = await SimpleAgent.determine_agent_name_and_goals(
             user_objective,
             agent_settings,
             client_logger,
         )
         print(parse_agent_name_and_goals(name_and_goals))
-        # Finally, update the agent settings with the name and goals.
+        # Finally, update the agents settings with the name and goals.
         agent_settings.update_agent_name_and_goals(name_and_goals)
 
-        # Step 3. Provision the agent.
+        # Step 3. Provision the agents.
         agent_workspace = SimpleAgent.provision_agent(agent_settings, client_logger)
-        print("agent is provisioned")
+        print("agents is provisioned")
 
-    # launch agent interaction loop
+    # launch agents interaction loop
     agent = SimpleAgent.from_workspace(
         agent_workspace,
         client_logger,
     )
-    print("agent is loaded")
+    print("agents is loaded")
 
     plan = await agent.build_initial_plan()
     print(parse_agent_plan(plan))
@@ -56,7 +56,7 @@ async def run_auto_gpt(user_configuration: dict):
         current_task, next_ability = await agent.determine_next_ability(plan)
         print(parse_next_ability(current_task, next_ability))
         user_input = click.prompt(
-            "Should the agent proceed with this ability?",
+            "Should the agents proceed with this ability?",
             default="y",
         )
         ability_result = await agent.execute_next_ability(user_input)

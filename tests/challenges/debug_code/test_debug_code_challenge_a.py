@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.commands.execute_code import execute_python_file
 from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
@@ -36,9 +36,9 @@ def test_debug_code_challenge_a(
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
-    Test whether the agent can debug a simple code snippet.
+    Test whether the agents can debug a simple code snippet.
 
-    :param debug_code_agent: The agent to test.
+    :param debug_code_agent: The agents to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
     :patched_api_requestor: Sends api requests to our API CI pipeline
     :level_to_run: The level to run.

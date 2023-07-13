@@ -1,4 +1,4 @@
-from autogpt.agent.agent import Agent, execute_command
+from autogpt.agents.agent import Agent, execute_command
 
 
 def test_agent_initialization(agent: Agent):
@@ -24,5 +24,5 @@ def test_execute_command_plugin(agent: Agent):
     assert command_result == "hi"
 
 
-# More test methods can be added for specific agent interactions
-# For example, mocking chat_with_ai and testing the agent's interaction loop
+# More test methods can be added for specific agents interactions
+# For example, mocking chat_with_ai and testing the agents's interaction loop

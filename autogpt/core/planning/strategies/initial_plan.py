@@ -25,11 +25,11 @@ class InitialPlanConfiguration(SystemConfiguration):
 class InitialPlan(PromptStrategy):
     DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
         "You are an expert project planner. You're responsibility is to create work plans for autonomous agents. "
-        "You will be given a name, a role, set of goals for the agent to accomplish. Your job is to "
-        "break down those goals into a set of tasks that the agent can accomplish to achieve those goals. "
+        "You will be given a name, a role, set of goals for the agents to accomplish. Your job is to "
+        "break down those goals into a set of tasks that the agents can accomplish to achieve those goals. "
         "Agents are resourceful, but require clear instructions. Each task you create should have clearly defined "
-        "`ready_criteria` that the agent can check to see if the task is ready to be started. Each task should "
-        "also have clearly defined `acceptance_criteria` that the agent can check to evaluate if the task is complete. "
+        "`ready_criteria` that the agents can check to see if the task is ready to be started. Each task should "
+        "also have clearly defined `acceptance_criteria` that the agents can check to evaluate if the task is complete. "
         "You should create as many tasks as you think is necessary to accomplish the goals.\n\n"
         "System Info:\n{system_info}"
     )
@@ -46,7 +46,7 @@ class InitialPlan(PromptStrategy):
 
     DEFAULT_CREATE_PLAN_FUNCTION = {
         "name": "create_initial_agent_plan",
-        "description": "Creates a set of tasks that forms the initial plan for an autonomous agent.",
+        "description": "Creates a set of tasks that forms the initial plan for an autonomous agents.",
         "parameters": {
             "type": "object",
             "properties": {

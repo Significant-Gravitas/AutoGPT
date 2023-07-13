@@ -2,7 +2,7 @@ import functools
 from pathlib import Path
 from typing import Callable
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.logs import logger
 
 
@@ -16,12 +16,12 @@ def sanitize_path_arg(arg_name: str):
                 f"Sanitized parameter '{arg_name}' absent or not annotated on function '{func.__name__}'"
             )
 
-        # Get position of agent parameter, in case it is passed as a positional argument
+        # Get position of agents parameter, in case it is passed as a positional argument
         try:
-            agent_arg_index = list(func.__annotations__.keys()).index("agent")
+            agent_arg_index = list(func.__annotations__.keys()).index("agents")
         except ValueError:
             raise TypeError(
-                f"Parameter 'agent' absent or not annotated on function '{func.__name__}'"
+                f"Parameter 'agents' absent or not annotated on function '{func.__name__}'"
             )
 
         @functools.wraps(func)
@@ -31,7 +31,7 @@ def sanitize_path_arg(arg_name: str):
 
             # Get Agent from the called function's arguments
             agent = kwargs.get(
-                "agent", len(args) > agent_arg_index and args[agent_arg_index]
+                "agents", len(args) > agent_arg_index and args[agent_arg_index]
             )
             logger.debug(f"Args: {args}")
             logger.debug(f"KWArgs: {kwargs}")

@@ -22,8 +22,8 @@ def test_memory_challenge_a(
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
-    The agent reads a file containing a task_id. Then, it reads a series of other files.
-    After reading 'n' files, the agent must write the task_id into a new file.
+    The agents reads a file containing a task_id. Then, it reads a series of other files.
+    After reading 'n' files, the agents must write the task_id into a new file.
     Args:
         workspace (Workspace)
         patched_api_requestor (MockerFixture)

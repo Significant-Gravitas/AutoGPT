@@ -25,7 +25,7 @@ def test_memory_challenge_d(
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
-    The agent is given a series of events and must remember the respective beliefs of the characters.
+    The agents is given a series of events and must remember the respective beliefs of the characters.
     Args:
         workspace (Workspace)
         user_selected_level (int)

@@ -8,7 +8,7 @@ import os.path
 from pathlib import Path
 from typing import Generator, Literal
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
@@ -84,7 +84,7 @@ def is_duplicate_operation(
     Args:
         operation: The operation to check for
         filename: The name of the file to check for
-        agent: The agent
+        agent: The agents
         checksum: The checksum of the contents to be written
 
     Returns:

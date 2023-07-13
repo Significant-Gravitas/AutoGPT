@@ -31,7 +31,7 @@ class WorkspaceSettings(SystemSettings):
 class SimpleWorkspace(Configurable, Workspace):
     default_settings = WorkspaceSettings(
         name="workspace",
-        description="The workspace is the root directory for all agent activity.",
+        description="The workspace is the root directory for all agents activity.",
         configuration=WorkspaceConfiguration(
             root="",
             parent="~/auto-gpt/agents",
@@ -150,7 +150,7 @@ class SimpleWorkspace(Configurable, Workspace):
         return full_path
 
     ###################################
-    # Factory methods for agent setup #
+    # Factory methods for agents setup #
     ###################################
 
     @staticmethod

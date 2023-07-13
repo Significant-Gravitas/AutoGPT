@@ -22,8 +22,8 @@ class NameAndGoalsConfiguration(SystemConfiguration):
 class NameAndGoals(PromptStrategy):
     DEFAULT_SYSTEM_PROMPT = (
         "Your job is to respond to a user-defined task by invoking the `create_agent` function "
-        "to generate an autonomous agent to complete the task. You should supply a role-based "
-        "name for the agent, an informative description for what the agent does, and 1 to 5 "
+        "to generate an autonomous agents to complete the task. You should supply a role-based "
+        "name for the agents, an informative description for what the agents does, and 1 to 5 "
         "goals that are optimally aligned with the successful completion of its assigned task.\n\n"
         "Example Input:\n"
         "Help me with marketing my business\n\n"
@@ -47,17 +47,17 @@ class NameAndGoals(PromptStrategy):
 
     DEFAULT_CREATE_AGENT_FUNCTION = {
         "name": "create_agent",
-        "description": ("Create a new autonomous AI agent to complete a given task."),
+        "description": ("Create a new autonomous AI agents to complete a given task."),
         "parameters": {
             "type": "object",
             "properties": {
                 "agent_name": {
                     "type": "string",
-                    "description": "A short role-based name for an autonomous agent.",
+                    "description": "A short role-based name for an autonomous agents.",
                 },
                 "agent_role": {
                     "type": "string",
-                    "description": "An informative one sentence description of what the AI agent does",
+                    "description": "An informative one sentence description of what the AI agents does",
                 },
                 "agent_goals": {
                     "type": "array",
@@ -69,7 +69,7 @@ class NameAndGoals(PromptStrategy):
                     "description": (
                         "One to five highly effective goals that are optimally aligned with the completion of a "
                         "specific task. The number and complexity of the goals should correspond to the "
-                        "complexity of the agent's primary objective."
+                        "complexity of the agents's primary objective."
                     ),
                 },
             },

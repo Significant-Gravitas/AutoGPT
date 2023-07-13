@@ -21,8 +21,8 @@ def test_memory_challenge_c(
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
-    Instead of reading task Ids from files as with the previous challenges, the agent now must remember
-    phrases which may have semantically similar meaning and the agent must write the phrases to a file
+    Instead of reading task Ids from files as with the previous challenges, the agents now must remember
+    phrases which may have semantically similar meaning and the agents must write the phrases to a file
     after seeing several of them.
 
     Args:

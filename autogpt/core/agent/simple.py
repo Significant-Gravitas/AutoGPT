@@ -62,7 +62,7 @@ class AgentSettings(BaseModel):
 class SimpleAgent(Agent, Configurable):
     default_settings = AgentSystemSettings(
         name="simple_agent",
-        description="A simple agent.",
+        description="A simple agents.",
         configuration=AgentConfiguration(
             name="Entrepreneur-GPT",
             role=(
@@ -262,17 +262,17 @@ class SimpleAgent(Agent, Configurable):
         return "SimpleAgent()"
 
     ################################################################
-    # Factory interface for agent bootstrapping and initialization #
+    # Factory interface for agents bootstrapping and initialization #
     ################################################################
 
     @classmethod
     def build_user_configuration(cls) -> dict[str, Any]:
         """Build the user's configuration."""
         configuration_dict = {
-            "agent": cls.get_user_config(),
+            "agents": cls.get_user_config(),
         }
 
-        system_locations = configuration_dict["agent"]["configuration"]["systems"]
+        system_locations = configuration_dict["agents"]["configuration"]["systems"]
         for system_name, system_location in system_locations.items():
             system_class = SimplePluginService.get_plugin(system_location)
             configuration_dict[system_name] = system_class.get_user_config()
@@ -284,14 +284,14 @@ class SimpleAgent(Agent, Configurable):
         cls, logger: logging.Logger, user_configuration: dict
     ) -> AgentSettings:
         """Compile the user's configuration with the defaults."""
-        logger.debug("Processing agent system configuration.")
+        logger.debug("Processing agents system configuration.")
         configuration_dict = {
-            "agent": cls.build_agent_configuration(
-                user_configuration.get("agent", {})
+            "agents": cls.build_agent_configuration(
+                user_configuration.get("agents", {})
             ).dict(),
         }
 
-        system_locations = configuration_dict["agent"]["configuration"]["systems"]
+        system_locations = configuration_dict["agents"]["configuration"]["systems"]
 
         # Build up default configuration
         for system_name, system_location in system_locations.items():
@@ -316,14 +316,14 @@ class SimpleAgent(Agent, Configurable):
             agent_settings,
             logger=logger,
         )
-        logger.debug("Loading agent planner.")
+        logger.debug("Loading agents planner.")
         agent_planner: SimplePlanner = cls._get_system_instance(
             "planning",
             agent_settings,
             logger=logger,
             model_providers={"openai": provider},
         )
-        logger.debug("determining agent name and goals.")
+        logger.debug("determining agents name and goals.")
         model_response = await agent_planner.decide_name_and_goals(
             user_objective,
         )

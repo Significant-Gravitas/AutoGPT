@@ -9,22 +9,22 @@ router = APIRouter()
 
 @router.post("/agents")
 async def create_agent(request: Request):
-    """Create a new agent."""
+    """Create a new agents."""
     agent_id = uuid.uuid4().hex
     return {"agent_id": agent_id}
 
 
 @router.post("/agents/{agent_id}")
 async def interact(request: Request, agent_id: str, body: InteractRequestBody):
-    """Interact with an agent."""
+    """Interact with an agents."""
 
     # check headers
 
     # check if agent_id exists
 
-    # get agent object from somewhere, e.g. a database/disk/global dict
+    # get agents object from somewhere, e.g. a database/disk/global dict
 
-    # continue agent interaction with user input
+    # continue agents interaction with user input
 
     return {
         "thoughts": {

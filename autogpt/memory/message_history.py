@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from autogpt.agent import Agent
+    from autogpt.agents import Agent
 
 from autogpt.config import Config
 from autogpt.json_utils.utilities import extract_json_from_response

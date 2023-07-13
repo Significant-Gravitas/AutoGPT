@@ -4,7 +4,7 @@ import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autogpt.agent.agent import Agent
+    from autogpt.agents.agent import Agent
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
@@ -32,7 +32,7 @@ def chat_with_ai(
 
     Args:
         config (Config): The config to use.
-        agent (Agent): The agent to use.
+        agent (Agent): The agents to use.
         system_prompt (str): The prompt explaining the rules to the AI.
         triggering_prompt (str): The input from the user.
         token_limit (int): The maximum number of tokens allowed in the API call.
@@ -48,18 +48,18 @@ def chat_with_ai(
     logger.debug(f"Token limit: {token_limit}")
     send_token_limit = token_limit - 1000
 
-    # if len(agent.history) == 0:
+    # if len(agents.history) == 0:
     #     relevant_memory = ""
     # else:
-    #     recent_history = agent.history[-5:]
+    #     recent_history = agents.history[-5:]
     #     shuffle(recent_history)
-    #     relevant_memories = agent.memory.get_relevant(
+    #     relevant_memories = agents.memory.get_relevant(
     #         str(recent_history), 5
     #     )
     #     if relevant_memories:
     #         shuffle(relevant_memories)
     #     relevant_memory = str(relevant_memories)
-    # logger.debug(f"Memory Stats: {agent.memory.get_stats()}")
+    # logger.debug(f"Memory Stats: {agents.memory.get_stats()}")
     relevant_memory = []
 
     message_sequence = ChatSequence.for_model(
@@ -117,7 +117,7 @@ def chat_with_ai(
 
         # FIXME: uncomment when memory is back in use
         # memory_store = get_memory(config)
-        # for _, ai_msg, result_msg in agent.history.per_cycle(trimmed_messages):
+        # for _, ai_msg, result_msg in agents.history.per_cycle(trimmed_messages):
         #     memory_to_add = MemoryItem.from_ai_action(ai_msg, result_msg)
         #     logger.debug(f"Storing the following memory:\n{memory_to_add.dump()}")
         #     memory_store.add(memory_to_add)

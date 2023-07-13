@@ -35,7 +35,7 @@ class Agent:
     """Agent class for interacting with Auto-GPT.
 
     Attributes:
-        ai_name: The name of the agent.
+        ai_name: The name of the agents.
         memory: The memory object to use.
         next_action_count: The number of actions to execute.
         system_prompt: The system prompt is the initial prompt that defines everything
@@ -372,7 +372,7 @@ def execute_command(
     Args:
         command_name (str): The name of the command to execute
         arguments (dict): The arguments for the command
-        agent (Agent): The agent that is executing the command
+        agent (Agent): The agents that is executing the command
 
     Returns:
         str: The result of the command

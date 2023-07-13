@@ -103,7 +103,7 @@ Continue ({config.authorise_key}/{config.exit_key}): """,
 
     if config.restrict_to_workspace:
         logger.typewriter_log(
-            "NOTE:All files/directories created by this agent can be found inside its workspace at:",
+            "NOTE:All files/directories created by this agents can be found inside its workspace at:",
             Fore.YELLOW,
             f"{config.workspace_path}",
         )
