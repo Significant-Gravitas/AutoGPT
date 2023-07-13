@@ -26,7 +26,7 @@ You can inspect and share logs via [e2b](https://e2b.dev)
 2. You'll see logs from other members of the AutoGPT team that you can inspect
 3. Or you upload your own logs. Click on the "Upload log folder" button and select the debug logs dir that you generated. Wait a 1-2 seconds and the page reloads.
 4. You can share logs via sharing the URL in you browses
-<img src="./imgs/e2b-log-url.png" alt="E2b log URL" width="400"/>
+<img src="../imgs/e2b-log-url.png" alt="E2b log URL" width="400"/>
 
 
 
@@ -43,10 +43,10 @@ You can name your tag any way you want.
 #### How to add a tag
 1. Click on the "plus" button on the left from the logs folder name
 
-<img src="./imgs/e2b-tag-button.png" alt="E2b tag button" width="400"/>
+<img src="../imgs/e2b-tag-button.png" alt="E2b tag button" width="400"/>
 
 2. Type the name of a new tag
 
 3. Select the severity
 
-<img src="./imgs/e2b-tag-severity.png" alt="E2b new tag" width="200"/>
+<img src="../imgs/e2b-tag-severity.png" alt="E2b new tag" width="200"/>
