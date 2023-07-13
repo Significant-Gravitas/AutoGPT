@@ -1,46 +1,27 @@
-from unittest.mock import MagicMock
-
-import pytest
-
-from autogpt.agent import Agent
-from autogpt.config import AIConfig
-from autogpt.config.config import Config
-
-
-@pytest.fixture
-def agent(config: Config):
-    ai_name = "Test AI"
-    memory = MagicMock()
-    next_action_count = 0
-    command_registry = MagicMock()
-    ai_config = AIConfig(ai_name=ai_name)
-    system_prompt = "System prompt"
-    triggering_prompt = "Triggering prompt"
-    workspace_directory = "workspace_directory"
-
-    agent = Agent(
-        ai_name=ai_name,
-        memory=memory,
-        next_action_count=next_action_count,
-        command_registry=command_registry,
-        ai_config=ai_config,
-        config=config,
-        system_prompt=system_prompt,
-        triggering_prompt=triggering_prompt,
-        workspace_directory=workspace_directory,
-    )
-    return agent
+from autogpt.agent.agent import Agent, execute_command
 
 
 def test_agent_initialization(agent: Agent):
-    assert agent.ai_name == "Test AI"
-    assert agent.memory == agent.memory
+    assert agent.ai_name == "Base"
     assert agent.history.messages == []
     assert agent.next_action_count == 0
-    assert agent.command_registry == agent.command_registry
-    assert agent.ai_config == agent.ai_config
-    assert agent.system_prompt == "System prompt"
-    assert agent.triggering_prompt == "Triggering prompt"
+
+
+def test_execute_command_plugin(agent: Agent):
+    """Test that executing a command that came from a plugin works as expected"""
+    command_name = "check_plan"
+    agent.ai_config.prompt_generator.add_command(
+        command_name,
+        "Read the plan.md with the next goals to achieve",
+        {},
+        lambda: "hi",
+    )
+    command_result = execute_command(
+        command_name=command_name,
+        arguments={},
+        agent=agent,
+    )
+    assert command_result == "hi"
 
 
 # More test methods can be added for specific agent interactions
