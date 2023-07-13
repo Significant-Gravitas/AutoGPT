@@ -12,7 +12,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 import autogpt.commands.file_operations as file_ops
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.config import Config
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding

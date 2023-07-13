@@ -33,7 +33,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ env.min-python-version }}
 
@@ -132,7 +132,7 @@ jobs:
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -159,9 +159,10 @@ jobs:
           python tests/challenges/utils/build_current_score.py
         env:
           CI: true
-          PROXY: ${{ secrets.PROXY }}
-          AGENT_MODE: ${{ secrets.AGENT_MODE }}
-          AGENT_TYPE: ${{ secrets.AGENT_TYPE }}
+          PROXY: ${{ github.event_name == 'pull_request_target' && secrets.PROXY || '' }}
+          AGENT_MODE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_MODE || '' }}
+          AGENT_TYPE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_TYPE || '' }}
+          OPENAI_API_KEY: ${{ github.event_name == 'pull_request' && secrets.OPENAI_API_KEY || '' }}
           PLAIN_OUTPUT: True
 
       - name: Upload coverage reports to Codecov
