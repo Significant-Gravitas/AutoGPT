@@ -27,8 +27,8 @@ jobs:
         with:
           ref: master
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+      - name: Set up Python ${{ matrix.config.python-version }}
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.config.python-version }}
 
