@@ -74,6 +74,7 @@ class MemoryItem:
             if len(chunks) == 1
             else summarize_text(
                 "\n\n".join(chunk_summaries),
+                config,
                 instruction=how_to_summarize,
                 question=question_for_summary,
             )[0]

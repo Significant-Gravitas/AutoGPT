@@ -6,11 +6,11 @@ import pytest
 import yaml
 from pytest_mock import MockerFixture
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.config.ai_config import AIConfig
 from autogpt.llm.api_manager import ApiManager
-from autogpt.logs import TypingConsoleHandler
+from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
@@ -53,13 +53,20 @@ def config(
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
 
+    # HACK: this is necessary to ensure PLAIN_OUTPUT takes effect
+    logger.config = config
+
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
 
     # avoid circular dependency
     from autogpt.plugins.plugins_config import PluginsConfig
 
-    config.plugins_config = PluginsConfig.load_config(global_config=config)
+    config.plugins_config = PluginsConfig.load_config(
+        plugins_config_file=config.plugins_config_file,
+        plugins_denylist=config.plugins_denylist,
+        plugins_allowlist=config.plugins_allowlist,
+    )
 
     # Do a little setup and teardown since the config object is a singleton
     mocker.patch.multiple(
@@ -75,18 +82,6 @@ def api_manager() -> ApiManager:
     if ApiManager in ApiManager._instances:
         del ApiManager._instances[ApiManager]
     return ApiManager()
-
-
-@pytest.fixture(autouse=True)
-def patch_emit(monkeypatch):
-    # convert plain_output to a boolean
-
-    if bool(os.environ.get("PLAIN_OUTPUT")):
-
-        def quick_emit(self, record: str):
-            print(self.format(record))
-
-        monkeypatch.setattr(TypingConsoleHandler, "emit", quick_emit)
 
 
 @pytest.fixture
