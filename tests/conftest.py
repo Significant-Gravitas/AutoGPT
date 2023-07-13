@@ -6,7 +6,7 @@ import pytest
 import yaml
 from pytest_mock import MockerFixture
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.app.prompt import construct_full_prompt
 from autogpt.config import Config, ConfigBuilder
 from autogpt.config.ai_config import AIConfig

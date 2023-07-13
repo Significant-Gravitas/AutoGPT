@@ -1,4 +1,4 @@
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.app.prompt import construct_full_prompt
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder

@@ -6,7 +6,7 @@ from typing import Optional
 
 from colorama import Fore, Style
 
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.app.configurator import create_config
 from autogpt.app.prompt import construct_full_prompt, construct_main_ai_config
 from autogpt.commands import COMMAND_CATEGORIES

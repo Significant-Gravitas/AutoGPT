@@ -7,7 +7,7 @@ import tempfile
 import pytest
 
 import autogpt.commands.execute_code as sut  # system under testing
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.config import Config
 
 
