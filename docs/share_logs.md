@@ -34,21 +34,15 @@ You can add custom tags to logs for other members of your team. This is useful i
 
 E2b offers 3 types of severity:
 
-1. Success
-
-2. Warning
-
-3. Error
+- Success
+- Warning
+- Error
 
 You can name your tag any way you want.
 
 #### How to add a tag
 1. Click on the "plus" button on the left from the logs folder name
-
 ![E2b tag button](./imgs/e2b-tag-button.png)
-
 2. Type the name of a new tag
-
 3. Select the severity
-
 ![E2b new tag](./imgs/e2b-new-tag.png)
