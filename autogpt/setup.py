@@ -53,7 +53,6 @@ def prompt_user(
         logger.typewriter_log(
             "Create an AI-Assistant:",
             Fore.GREEN,
-            "input '--manual' to enter manual mode.",
             speak_text=True,
         )
 
