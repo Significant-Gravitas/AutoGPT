@@ -89,7 +89,7 @@ This may give your bot increased intelligence.
 
 ## Logs
 
-Activity and error logs are located in the `./output/logs`
+Activity, Error, and Debug logs are located in `./logs`
 
 To print out debug logs:
 
