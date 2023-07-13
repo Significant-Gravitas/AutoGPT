@@ -103,6 +103,9 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         )
 
     if we_are_running_in_a_docker_container():
+        logger.debug(
+            f"Auto-GPT is running in a Docker container; executing {file_path} directly..."
+        )
         result = subprocess.run(
             ["python", str(file_path)],
             capture_output=True,
@@ -114,6 +117,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         else:
             return f"Error: {result.stderr}"
 
+    logger.debug("Auto-GPT is not running in a Docker container")
     try:
         client = docker.from_env()
         # You can replace this with the desired Python image/version
@@ -122,10 +126,10 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         image_name = "python:3-alpine"
         try:
             client.images.get(image_name)
-            logger.warn(f"Image '{image_name}' found locally")
+            logger.debug(f"Image '{image_name}' found locally")
         except ImageNotFound:
             logger.info(
-                f"Image '{image_name}' not found locally, pulling from Docker Hub"
+                f"Image '{image_name}' not found locally, pulling from Docker Hub..."
             )
             # Use the low-level API to stream the pull response
             low_level_client = docker.APIClient()
@@ -138,6 +142,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
                 elif status:
                     logger.info(status)
 
+        logger.debug(f"Running {file_path} in a {image_name} container...")
         container: DockerContainer = client.containers.run(
             image_name,
             ["python", str(file_path.relative_to(agent.workspace.root))],

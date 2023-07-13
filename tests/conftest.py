@@ -8,7 +8,6 @@ from pytest_mock import MockerFixture
 
 from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
-from autogpt.config.ai_config import AIConfig
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
