@@ -2,7 +2,7 @@ import functools
 from pathlib import Path
 from typing import Callable
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.logs import logger
 
 

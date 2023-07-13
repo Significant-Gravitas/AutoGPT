@@ -4,7 +4,7 @@ import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autogpt.agent.agent import Agent
+    from autogpt.agents.agent import Agent
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
