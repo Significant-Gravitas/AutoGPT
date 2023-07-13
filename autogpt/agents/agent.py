@@ -31,30 +31,7 @@ from .base import BaseAgent
 
 
 class Agent(BaseAgent):
-    """Agent class for interacting with Auto-GPT.
-
-    Attributes:
-        ai_config: AIConfig object encapsulating the agent's personality.
-        command_registry: CommandRegistry containing the agent's abilities.
-        memory: The memory object to use.
-        cycle_budget: The number of actions to execute.
-        triggering_prompt: The last sentence the AI will see before answering.
-            For Auto-GPT, this prompt is:
-            Determine exactly one command to use, and respond using the format specified
-              above:
-            The triggering prompt is not part of the system prompt because between the
-              system prompt and the triggering
-            prompt we have contextual information that can distract the AI and make it
-              forget that its goal is to find the next task to achieve.
-            SYSTEM PROMPT
-            CONTEXTUAL INFORMATION (memory, previous conversations, anything relevant)
-            TRIGGERING PROMPT
-
-            The triggering prompt reminds the AI about its short term meta task
-            (defining the next task)
-        workspace_directory: Workspace folder that the agent has access to, e.g. for
-            reading/writing files.
-    """
+    """Agent class for interacting with Auto-GPT."""
 
     def __init__(
         self,
@@ -73,13 +50,21 @@ class Agent(BaseAgent):
             default_cycle_instruction=triggering_prompt,
             cycle_budget=cycle_budget,
         )
+
         self.memory = memory
+        """VectorMemoryProvider used to manage the agent's context (TODO)"""
+
         self.workspace = Workspace(workspace_directory, config.restrict_to_workspace)
+        """Workspace that the agent has access to, e.g. for reading/writing files."""
+
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+        """Timestamp the agent was created; only used for structured debug logging."""
+
         self.log_cycle_handler = LogCycleHandler()
+        """LogCycleHandler for structured debug logging."""
 
     def start_interaction_loop(self) -> None:
-        # Signal handler for interrupting y -N
+        # Signal handler for interrupting y -N or continuous mode
         def signal_handler(*_) -> None:
             if self.cycle_budget == 0 or self.cycles_remaining == 0:
                 sys.exit()
