@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
-from contextlib import AbstractContextManager, nullcontext
-from typing import Optional
+from contextlib import nullcontext
+from typing import ContextManager, Optional
 
 from colorama import Fore
 
@@ -17,26 +17,58 @@ from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 
 class BaseAgent(metaclass=ABCMeta):
+    """Base class for all Auto-GPT agents."""
+
     def __init__(
         self,
         ai_config: AIConfig,
         command_registry: CommandRegistry,
         config: Config,
-        big_brain=True,
+        big_brain: bool = True,
         default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT,
-        cycle_budget: Optional[int] = None,
+        cycle_budget: Optional[int] = 1,
         send_token_limit: Optional[int] = None,
         summary_max_tlength: Optional[int] = None,
     ):
         self.ai_config = ai_config
+        """The AIConfig or "personality" object associated with this agent."""
+
         self.command_registry = command_registry
+        """The registry containing all commands available to the agent."""
+
         self.config = config
+        """The applicable application configuration."""
+
         self.big_brain = big_brain
+        """
+        Whether this agent uses the configured smart LLM (default) to think,
+        as opposed to the configured fast LLM.
+        """
+
         self.default_cycle_instruction = default_cycle_instruction
-        self.cycle_budget = self.cycles_remaining = cycle_budget
+        """The default instruction passed to the AI for a thinking cycle."""
+
+        self.cycle_budget = cycle_budget
+        """
+        The number of cycles that the agent is allowed to run unsupervised.
+
+        `None` for unlimited continuous execution,
+        `1` to require user approval for every step,
+        `0` to stop the agent.
+        """
+
+        self.cycles_remaining = cycle_budget
+        """The number of cycles remaining within the `cycle_budget`."""
+
         self.cycle_count = 0
+        """The number of cycles that the agent has run since its initialization."""
 
         self.system_prompt = ai_config.construct_full_prompt(config)
+        """
+        The system prompt sets up the AI's personality and explains its goals,
+        available resources, and restrictions.
+        """
+
         if config.debug_mode:
             logger.typewriter_log(
                 f"{ai_config.ai_name} System Prompt:", Fore.GREEN, self.system_prompt
@@ -44,7 +76,13 @@ class BaseAgent(metaclass=ABCMeta):
 
         llm_name = self.config.smart_llm if self.big_brain else self.config.fast_llm
         self.llm = OPEN_AI_CHAT_MODELS[llm_name]
+        """The LLM that the agent uses to think."""
+
         self.send_token_limit = send_token_limit or self.llm.max_tokens * 3 // 4
+        """
+        The token limit for prompt construction. Should leave room for the completion;
+        defaults to 75% of `llm.max_tokens`.
+        """
 
         self.history = MessageHistory(
             self.llm,
@@ -60,8 +98,8 @@ class BaseAgent(metaclass=ABCMeta):
         logger.debug(
             f"Cycle budget: {self.cycle_budget}; remaining: {self.cycles_remaining}"
         )
-        # stop if cycle budget reached
-        if self.cycles_remaining is not None and self.cycles_remaining <= 0:
+        # Stop before exceeding cycle budget
+        if self.cycles_remaining is not None and self.cycles_remaining < 0:
             raise StopIteration
 
         self.think(self.default_cycle_instruction)
@@ -188,7 +226,7 @@ class BaseAgent(metaclass=ABCMeta):
             )  # HACK: assumes cycle instruction to be at the end
             current_tokens_used += tokens_to_add
 
-    def context_while_think(self) -> AbstractContextManager:
+    def context_while_think(self) -> ContextManager:
         return nullcontext()
 
     def on_response(
@@ -228,7 +266,7 @@ class BaseAgent(metaclass=ABCMeta):
     @abstractmethod
     def parse_and_process_response(
         self, llm_response: ChatModelResponse, prompt: ChatSequence, instruction: str
-    ):
+    ) -> None:
         """Validate, parse & process the LLM's response.
 
         Must be implemented by derivative classes: no base implementation is provided,
@@ -247,7 +285,7 @@ class BaseAgent(metaclass=ABCMeta):
 
 def add_history_upto_token_limit(
     prompt: ChatSequence, history: MessageHistory, t_limit: int
-):
+) -> list[Message]:
     current_prompt_length = prompt.token_length
     insertion_index = len(prompt)
     limit_reached = False
