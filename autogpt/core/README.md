@@ -6,6 +6,12 @@ a work in progress and is not yet feature complete.  In particular, it does not 
 have many of the Auto-GPT commands implemented and is pending ongoing work to 
 [re-incorporate vector-based memory and knowledge retrieval](https://github.com/Significant-Gravitas/Auto-GPT/issues/3536).
 
+## [Overview](ARCHITECTURE_NOTES.md)
+
+The Auto-GPT Re-arch is a re-implementation of the Auto-GPT agent that is designed to be more modular,
+more extensible, and more maintainable than the original Auto-GPT agent.  It is also designed to be
+more accessible to new developers and to be easier to contribute to. The re-arch is a work in progress
+and is not yet feature complete.  It is also not yet ready for production use.
 
 ## Running the Re-arch Code
 
