@@ -1,6 +1,6 @@
 import pytest
 
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry

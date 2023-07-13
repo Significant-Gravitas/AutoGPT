@@ -11,11 +11,11 @@ Running with `--help` lists all the possible command line arguments you can pass
 
 !!! info
     For use with Docker, replace the script in the examples with
-    `docker-compose run --rm auto-gpt`:
+    `docker compose run --rm auto-gpt`:
 
         :::shell
-        docker-compose run --rm auto-gpt --help
-        docker-compose run --rm auto-gpt --ai-settings <filename>
+        docker compose run --rm auto-gpt --help
+        docker compose run --rm auto-gpt --ai-settings <filename>
 
 !!! note
     Replace anything in angled brackets (<>) to a value you want to specify
@@ -72,7 +72,7 @@ If you don't have access to GPT-4, this mode allows you to use Auto-GPT!
 ./run.sh --gpt3only
 ```
 
-You can achieve the same by setting `SMART_LLM_MODEL` in `.env` to `gpt-3.5-turbo`.
+You can achieve the same by setting `SMART_LLM` in `.env` to `gpt-3.5-turbo`.
 
 ### GPT-4 ONLY Mode
 
