@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import NoReturn
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.logs import logger
 
