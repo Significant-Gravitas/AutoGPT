@@ -19,6 +19,7 @@ google-api-python-client #(https://developers.google.com/custom-search/v1/overvi
 pinecone-client==2.2.1
 redis
 orjson==3.8.10
+ftfy>=6.1.1
 Pillow
 selenium==4.1.4
 webdriver-manager
