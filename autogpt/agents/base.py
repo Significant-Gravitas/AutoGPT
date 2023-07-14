@@ -101,7 +101,8 @@ class BaseAgent(metaclass=ABCMeta):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
-        prompt = self.on_before_think(instruction)
+        prompt: ChatSequence = self.construct_prompt(instruction)
+        prompt = self.on_before_think(prompt, instruction)
 
         raw_response = create_chat_completion(
             prompt,
@@ -197,7 +198,7 @@ class BaseAgent(metaclass=ABCMeta):
 
         return prompt
 
-    def on_before_think(self, instruction: str) -> ChatSequence:
+    def on_before_think(self, prompt: ChatSequence, instruction: str) -> ChatSequence:
         """Called after constructing the prompt but before executing it.
 
         Calls the `on_planning` hook of any enabled and capable plugins, adding their
@@ -209,7 +210,6 @@ class BaseAgent(metaclass=ABCMeta):
         Returns:
             The prompt to execute
         """
-        prompt: ChatSequence = self.construct_prompt(instruction)
         current_tokens_used = prompt.token_length
         plugin_count = len(self.config.plugins)
         for i, plugin in enumerate(self.config.plugins):
