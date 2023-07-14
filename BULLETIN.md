@@ -1,24 +1,29 @@
-# Website and Documentation Site 📰📖
-Check out *https://agpt.co*, the official news & updates site for Auto-GPT!
-The documentation also has a place here, at *https://docs.agpt.co*
+# QUICK LINKS 🔗
+# --------------
+🌎 *Official Website*: https://agpt.co.
+📖 *User Guide*: https://docs.agpt.co.
+👩 *Contributors Wiki*: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing.
 
-# 🚀 v0.3.0 Release 🚀
-Over a week and 275 pull requests have passed since v0.2.2, and we are happy to announce
-the release of v0.3.0! *From now on, we will be focusing on major improvements* rather
-than bugfixes, as we feel stability has reached a reasonable level. Most remaining
-issues relate to limitations in prompt generation and the memory system, which will be
-the focus of our efforts for the next release.
+# v0.4.4 RELEASE HIGHLIGHTS! 🚀
+# -----------------------------
+## GPT-4 is back!
+Following OpenAI's recent GPT-4 GA announcement, the SMART_LLM .env setting 
+now defaults to GPT-4, and Auto-GPT will use GPT-4 by default in its main loop.
 
-Highlights and notable changes in this release:
+### !! High Costs Warning !! 💰💀🚨
+GPT-4 costs ~20x more than GPT-3.5-turbo. 
+Please take note of this before using SMART_LLM. You can use `--gpt3only` 
+or `--gpt4only` to force the use of GPT-3.5-turbo or GPT-4, respectively, 
+at runtime.
 
-## Plugin support 🔌
-Auto-GPT now has support for plugins! With plugins, you can extend Auto-GPT's abilities,
-adding support for third-party services and more.
-See https://github.com/Significant-Gravitas/Auto-GPT-Plugins for instructions and available plugins.
+## Re-arch v1 preview release!
+We've released a preview version of the re-arch code, under `autogpt/core`. 
+This is a major milestone for us, and we're excited to continue working on it. 
+We look forward to your feedback. Follow the process here: 
+https://github.com/Significant-Gravitas/Auto-GPT/issues/4770.
 
-## Changes to Docker configuration 🐋
-The workdir has been changed from */home/appuser* to */app*.
-Be sure to update any volume mounts accordingly!
+## Other highlights
+Other fixes include plugins regressions, Azure config and security patches.
 
-# ⚠️ Command `send_tweet` is DEPRECATED, and will be removed in v0.4.0 ⚠️
-Twitter functionality (and more) is now covered by plugins, see [Plugin support 🔌]
+Take a look at the Release Notes on Github for the full changelog! 
+https://github.com/Significant-Gravitas/Auto-GPT/releases.

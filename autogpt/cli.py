@@ -1,4 +1,6 @@
 """Main script for the autogpt package."""
+from typing import Optional
+
 import click
 
 
@@ -14,6 +16,11 @@ import click
     "--ai-settings",
     "-C",
     help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
+)
+@click.option(
+    "--prompt-settings",
+    "-P",
+    help="Specifies which prompt_settings.yaml file to use.",
 )
 @click.option(
     "-l",
@@ -60,12 +67,29 @@ import click
     is_flag=True,
     help="Installs external dependencies for 3rd party plugins.",
 )
+@click.option(
+    "--ai-name",
+    type=str,
+    help="AI name override",
+)
+@click.option(
+    "--ai-role",
+    type=str,
+    help="AI role override",
+)
+@click.option(
+    "--ai-goal",
+    type=str,
+    multiple=True,
+    help="AI goal override; may be used multiple times to pass multiple goals",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
     ai_settings: str,
+    prompt_settings: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -77,6 +101,9 @@ def main(
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
+    ai_name: Optional[str],
+    ai_role: Optional[str],
+    ai_goal: tuple[str],
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -91,6 +118,7 @@ def main(
             continuous,
             continuous_limit,
             ai_settings,
+            prompt_settings,
             skip_reprompt,
             speak,
             debug,
@@ -102,6 +130,9 @@ def main(
             skip_news,
             workspace_directory,
             install_plugin_deps,
+            ai_name,
+            ai_role,
+            ai_goal,
         )
 
 

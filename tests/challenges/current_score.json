@@ -1,0 +1,56 @@
+{
+    "basic_abilities": {
+        "browse_website": {
+            "max_level": 1,
+            "max_level_beaten": null
+        },
+        "write_file": {
+            "max_level": 2,
+            "max_level_beaten": 1
+        }
+    },
+    "debug_code": {
+        "debug_code_challenge_a": {
+            "max_level": 2,
+            "max_level_beaten": 1
+        }
+    },
+    "information_retrieval": {
+        "information_retrieval_challenge_a": {
+            "max_level": 3,
+            "max_level_beaten": null
+        },
+        "information_retrieval_challenge_b": {
+            "max_level": 1,
+            "max_level_beaten": null
+        },
+        "information_retrieval_challenge_c": {
+            "max_level": 3,
+            "max_level_beaten": null
+        }
+    },
+    "kubernetes": {
+        "kubernetes_template_challenge_a": {
+            "max_level": 1,
+            "max_level_beaten": null
+        }
+    },
+    "memory": {
+        "memory_challenge_a": {
+            "max_level": 3,
+            "max_level_beaten": 3
+        },
+        "memory_challenge_b": {
+            "max_level": 5,
+            "max_level_beaten": null
+        },
+        "memory_challenge_c": {
+            "max_level": 5,
+            "max_level_beaten": null
+        },
+        "memory_challenge_d": {
+            "max_level": 5,
+            "max_level_beaten": null
+        }
+    }
+}
