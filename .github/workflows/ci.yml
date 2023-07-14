@@ -135,15 +135,15 @@ jobs:
           fi
 
           pip install ../../dist/*.whl
-
-          if [ "${GITHUB_EVENT_NAME}" == "schedule" ] || [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]; then
-            curl -s https://raw.githubusercontent.com/Helicone/helicone/main/mitmproxy.sh | bash -s start
-            agbenchmark start --maintain
-          else
+          
+          if [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
             agbenchmark start --maintain --mock
             agbenchmark start --improve --mock
             agbenchmark start --mock
             agbenchmark start --mock --category=retrieval
+          else
+            curl -s https://raw.githubusercontent.com/Helicone/helicone/main/mitmproxy.sh | bash -s start
+            agbenchmark start --maintain
           fi
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -155,9 +155,10 @@ jobs:
           HELICONE_CACHE_ENABLED: true
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
 
-      - name: Upload logs as artifact
+
+      - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: gpt-engineer-projects
-          path: agent/gpt-engineer/projects
+          name: ${{ matrix.agent-name }}
+          path: agent/${{ matrix.agent-name }}/agbenchmark
