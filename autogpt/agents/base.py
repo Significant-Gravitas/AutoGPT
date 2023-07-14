@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
-from contextlib import nullcontext
-from typing import TYPE_CHECKING, ContextManager, Optional
-
-from colorama import Fore
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from autogpt.config import AIConfig, Config
-    from autogpt.llm.base import ChatModelResponse, ChatSequence
+
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.llm.base import Message
+from autogpt.llm.base import Message, ChatSequence, ChatModelResponse
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.logs import logger
@@ -72,11 +69,6 @@ class BaseAgent(metaclass=ABCMeta):
         available resources, and restrictions.
         """
 
-        if config.debug_mode:
-            logger.typewriter_log(
-                f"{ai_config.ai_name} System Prompt:", Fore.GREEN, self.system_prompt
-            )
-
         llm_name = self.config.smart_llm if self.big_brain else self.config.fast_llm
         self.llm = OPEN_AI_CHAT_MODELS[llm_name]
         """The LLM that the agent uses to think."""
@@ -92,46 +84,35 @@ class BaseAgent(metaclass=ABCMeta):
             max_summary_tlength=summary_max_tlength or self.send_token_limit // 6,
         )
 
-    def __next__(self) -> None:
-        """Runs the agent for one cycle using its `default_cycle_instruction`.
-
-        Raises `StopIteration` if the `cycle_budget` is reached.
-        """
-
-        logger.debug(
-            f"Cycle budget: {self.cycle_budget}; remaining: {self.cycles_remaining}"
-        )
-        # Stop before exceeding cycle budget
-        if self.cycles_remaining is not None and self.cycles_remaining < 0:
-            raise StopIteration
-
-        self.think(self.default_cycle_instruction)
-
-        self.cycle_count += 1
-        if self.cycles_remaining is not None:
-            self.cycles_remaining -= 1
-
-    def think(self, instruction: str) -> None:
+    def think(
+        self,
+        prompt: ChatSequence,
+        instruction: str,
+    ) -> tuple[str | None, dict[str, str] | None, dict[str, Any]]:
         """Runs the agent for one cycle.
 
         Params:
             instruction: The instruction to put at the end of the prompt.
         """
+        raw_response = create_chat_completion(
+            prompt,
+            self.config,
+            functions=get_openai_command_specs(self.command_registry)
+            if self.config.openai_functions
+            else None,
+        )
+        self.cycle_count += 1
 
-        prompt: ChatSequence = self.construct_prompt(instruction)
+        return self.on_response(raw_response, prompt, instruction)
 
-        self.on_before_think(prompt, instruction)
-
-        with self.context_while_think():
-            raw_response = create_chat_completion(
-                prompt,
-                self.config,
-                functions=get_openai_command_specs(self.command_registry)
-                if self.config.openai_functions
-                else None,
-            )
-
-        self.on_response(raw_response, prompt, instruction)
+    @abstractmethod
+    def execute(
+        self,
+        command_name: str | None,
+        command_args: dict[str, str] | None,
+        user_input: str | None,
+    ):
+        ...
 
     def construct_base_prompt(
         self,
@@ -197,7 +178,7 @@ class BaseAgent(metaclass=ABCMeta):
 
         return prompt
 
-    def on_before_think(self, prompt: ChatSequence, instruction: str) -> None:
+    def on_before_think(self, instruction: str) -> ChatSequence:
         """Called after constructing the prompt but before executing it.
 
         Calls the `on_planning` hook of any enabled and capable plugins, adding their
@@ -207,7 +188,7 @@ class BaseAgent(metaclass=ABCMeta):
             prompt: The prompt that is about to be executed
             instruction: The instruction for the current cycle, also used in constructing the prompt
         """
-
+        prompt: ChatSequence = self.construct_prompt(instruction)
         current_tokens_used = prompt.token_length
         plugin_count = len(self.config.plugins)
         for i, plugin in enumerate(self.config.plugins):
@@ -228,13 +209,11 @@ class BaseAgent(metaclass=ABCMeta):
                 -1, message_to_add
             )  # HACK: assumes cycle instruction to be at the end
             current_tokens_used += tokens_to_add
-
-    def context_while_think(self) -> ContextManager:
-        return nullcontext()
+        return prompt
 
     def on_response(
         self, llm_response: ChatModelResponse, prompt: ChatSequence, instruction: str
-    ) -> None:
+    ) -> tuple[str | None, dict[str, str] | None, dict[str, Any]]:
         """Called upon receiving a response from the chat model.
 
         Adds the last/newest message in the prompt and the response to `history`,
@@ -253,7 +232,7 @@ class BaseAgent(metaclass=ABCMeta):
         )  # FIXME: support function calls
 
         try:
-            self.parse_and_process_response(llm_response, prompt, instruction)
+            return self.parse_and_process_response(llm_response, prompt, instruction)
         except SyntaxError as e:
             logger.error(f"Response could not be parsed: {e}")
             # TODO: tune this message
@@ -262,14 +241,14 @@ class BaseAgent(metaclass=ABCMeta):
                 f"Your response could not be parsed: {e}"
                 "\n\nRemember to only respond using the specified format above!",
             )
-            return
+            return None, None, {}
 
         # TODO: update memory/context
 
     @abstractmethod
     def parse_and_process_response(
         self, llm_response: ChatModelResponse, prompt: ChatSequence, instruction: str
-    ) -> None:
+    ) -> tuple[str | None, dict[str, str] | None, dict[str, Any]]:
         """Validate, parse & process the LLM's response.
 
         Must be implemented by derivative classes: no base implementation is provided,
@@ -281,9 +260,6 @@ class BaseAgent(metaclass=ABCMeta):
             instruction: The instruction for the current cycle, also used in constructing the prompt
         """
         pass
-
-    def reset_cycle_budget(self, new_budget: int | None = None) -> None:
-        self.cycle_budget = self.cycles_remaining = new_budget
 
 
 def add_history_upto_token_limit(
