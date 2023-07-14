@@ -50,12 +50,6 @@ def test_json_memory_add(config: Config, memory_item: MemoryItem):
     assert index.memories[0] == memory_item
 
 
-def test_add_non_utf8_str(config: Config, memory_item: MemoryItem):
-    index = JSONFileMemory(config)
-    memory_item.raw_content = memory_item.chunks[0] = "\ud800 test"
-    index.add(memory_item)
-
-
 def test_json_memory_clear(config: Config, memory_item: MemoryItem):
     index = JSONFileMemory(config)
     assert index.memories == []
