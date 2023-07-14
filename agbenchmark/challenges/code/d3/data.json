@@ -6,9 +6,9 @@
   "ground": {
     "answer": "GET localhost:8079/health responds with a 200 OK",
     "should_contain": [],
-    "should_not_contain": [],
-    "files": [],
-    "type": "custom_python"
+    "should_not_contain": ["AssertionError"],
+    "files": ["test.py"],
+    "type": "execute_python_code"
   },
   "info": {
     "difficulty": "advanced",

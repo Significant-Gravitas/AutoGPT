@@ -5,6 +5,15 @@ from unittest.mock import Mock, patch
 import requests
 
 
+def test_make_request_and_assert() -> None:
+    result = make_request_and_assert()
+    print(result)
+    expected_result = {"status": "OK"}
+    error_message = f"AssertionError: Expected the output to be {expected_result}"
+    print(error_message)
+    assert result == expected_result, error_message
+
+
 def make_assertion() -> None:
     if os.environ.get("MOCK_TEST", "False").lower() == "true":
         mock_response = Mock(requests.Response)
@@ -25,3 +34,8 @@ def make_request_and_assert() -> Dict[str, Any]:
         )
 
     return response.json()
+
+
+if __name__ == "__main__":
+    # test for the case when server is healthy
+    test_make_request_and_assert()
