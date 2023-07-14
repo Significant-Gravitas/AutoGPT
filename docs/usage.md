@@ -89,12 +89,20 @@ This may give your bot increased intelligence.
 
 ## Logs
 
-Activity and error logs are located in the `./output/logs`
+Activity, Error, and Debug logs are located in `./logs`
+
+!!! tip 
+    Do you notice weird behavior with your agent? Do you have an interesting use case? Do you have a bug you want to report?
+    Follow the step below to enable your logs. You can include these logs when making an issue report or discussing an issue with us.
 
 To print out debug logs:
 
 ``` shell
-./run.sh --debug
+./run.sh --debug     # on Linux / macOS
+
+.\run.bat --debug    # on Windows
+
+docker-compose run --rm auto-gpt --debug    # in Docker
 ```
 
 ## Disabling Command Categories
