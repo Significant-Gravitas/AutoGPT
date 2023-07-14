@@ -12,7 +12,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 import autogpt.commands.file_operations as file_ops
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.config import Config
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
@@ -44,8 +44,13 @@ def mock_MemoryItem_from_text(
 
 
 @pytest.fixture()
-def test_file_path(workspace: Workspace):
-    return workspace.get_path("test_file.txt")
+def test_file_name():
+    return Path("test_file.txt")
+
+
+@pytest.fixture
+def test_file_path(test_file_name: Path, workspace: Workspace):
+    return workspace.get_path(test_file_name)
 
 
 @pytest.fixture()
@@ -130,42 +135,34 @@ def test_is_duplicate_operation(agent: Agent, mocker: MockerFixture):
     # Test cases with write operations
     assert (
         file_ops.is_duplicate_operation(
-            "write", "path/to/file1.txt", agent.config, "checksum1"
+            "write", "path/to/file1.txt", agent, "checksum1"
         )
         is True
     )
     assert (
         file_ops.is_duplicate_operation(
-            "write", "path/to/file1.txt", agent.config, "checksum2"
+            "write", "path/to/file1.txt", agent, "checksum2"
         )
         is False
     )
     assert (
         file_ops.is_duplicate_operation(
-            "write", "path/to/file3.txt", agent.config, "checksum3"
+            "write", "path/to/file3.txt", agent, "checksum3"
         )
         is False
     )
     # Test cases with append operations
     assert (
         file_ops.is_duplicate_operation(
-            "append", "path/to/file1.txt", agent.config, "checksum1"
+            "append", "path/to/file1.txt", agent, "checksum1"
         )
         is False
     )
     # Test cases with delete operations
     assert (
-        file_ops.is_duplicate_operation(
-            "delete", "path/to/file1.txt", config=agent.config
-        )
-        is False
+        file_ops.is_duplicate_operation("delete", "path/to/file1.txt", agent) is False
     )
-    assert (
-        file_ops.is_duplicate_operation(
-            "delete", "path/to/file3.txt", config=agent.config
-        )
-        is True
-    )
+    assert file_ops.is_duplicate_operation("delete", "path/to/file3.txt", agent) is True
 
 
 # Test logging a file operation
@@ -206,7 +203,15 @@ def test_read_file_not_found(agent: Agent):
     assert "Error:" in content and filename in content and "no such file" in content
 
 
-def test_write_to_file(test_file_path: Path, agent: Agent):
+def test_write_to_file_relative_path(test_file_name: Path, agent: Agent):
+    new_content = "This is new content.\n"
+    file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
+    with open(agent.workspace.get_path(test_file_name), "r", encoding="utf-8") as f:
+        content = f.read()
+    assert content == new_content
+
+
+def test_write_to_file_absolute_path(test_file_path: Path, agent: Agent):
     new_content = "This is new content.\n"
     file_ops.write_to_file(str(test_file_path), new_content, agent=agent)
     with open(test_file_path, "r", encoding="utf-8") as f:
@@ -214,24 +219,24 @@ def test_write_to_file(test_file_path: Path, agent: Agent):
     assert content == new_content
 
 
-def test_write_file_logs_checksum(test_file_path: Path, agent: Agent):
+def test_write_file_logs_checksum(test_file_name: Path, agent: Agent):
     new_content = "This is new content.\n"
     new_checksum = file_ops.text_checksum(new_content)
-    file_ops.write_to_file(str(test_file_path), new_content, agent=agent)
+    file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
     with open(agent.config.file_logger_path, "r", encoding="utf-8") as f:
         log_entry = f.read()
-    assert log_entry == f"write: {test_file_path} #{new_checksum}\n"
+    assert log_entry == f"write: {test_file_name} #{new_checksum}\n"
 
 
-def test_write_file_fails_if_content_exists(test_file_path: Path, agent: Agent):
+def test_write_file_fails_if_content_exists(test_file_name: Path, agent: Agent):
     new_content = "This is new content.\n"
     file_ops.log_operation(
         "write",
-        str(test_file_path),
+        str(test_file_name),
         agent=agent,
         checksum=file_ops.text_checksum(new_content),
     )
-    result = file_ops.write_to_file(str(test_file_path), new_content, agent=agent)
+    result = file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
     assert result == "Error: File has already been updated."
 
 
@@ -258,11 +263,11 @@ def test_append_to_file(test_nested_file: Path, agent: Agent):
 
 
 def test_append_to_file_uses_checksum_from_appended_file(
-    test_file_path: Path, agent: Agent
+    test_file_name: Path, agent: Agent
 ):
     append_text = "This is appended text.\n"
-    file_ops.append_to_file(test_file_path, append_text, agent=agent)
-    file_ops.append_to_file(test_file_path, append_text, agent=agent)
+    file_ops.append_to_file(test_file_name, append_text, agent=agent)
+    file_ops.append_to_file(test_file_name, append_text, agent=agent)
     with open(agent.config.file_logger_path, "r", encoding="utf-8") as f:
         log_contents = f.read()
 
@@ -272,8 +277,8 @@ def test_append_to_file_uses_checksum_from_appended_file(
     digest.update(append_text.encode("utf-8"))
     checksum2 = digest.hexdigest()
     assert log_contents == (
-        f"append: {test_file_path} #{checksum1}\n"
-        f"append: {test_file_path} #{checksum2}\n"
+        f"append: {test_file_name} #{checksum1}\n"
+        f"append: {test_file_name} #{checksum2}\n"
     )
 
 
@@ -288,7 +293,7 @@ def test_delete_missing_file(agent: Agent):
     # confuse the log
     file_ops.log_operation("write", filename, agent=agent, checksum="fake")
     try:
-        os.remove(filename)
+        os.remove(agent.workspace.get_path(filename))
     except FileNotFoundError as err:
         assert str(err) in file_ops.delete_file(filename, agent=agent)
         return

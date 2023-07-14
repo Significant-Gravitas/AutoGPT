@@ -6,7 +6,7 @@ from typing import Optional
 
 from colorama import Fore, Style
 
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.config.config import ConfigBuilder, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
@@ -28,7 +28,6 @@ COMMAND_CATEGORIES = [
     "autogpt.commands.file_operations",
     "autogpt.commands.web_search",
     "autogpt.commands.web_selenium",
-    "autogpt.app",
     "autogpt.commands.task_statuses",
 ]
 
@@ -154,7 +153,7 @@ def run_auto_gpt(
             incompatible_commands.append(command)
 
     for command in incompatible_commands:
-        command_registry.unregister(command.name)
+        command_registry.unregister(command)
         logger.debug(
             f"Unregistering incompatible command: {command.name}, "
             f"reason - {command.disabled_reason or 'Disabled by current config.'}"

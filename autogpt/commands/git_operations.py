@@ -2,9 +2,11 @@
 
 from git.repo import Repo
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.url_utils.validators import validate_url
+
+from .decorators import sanitize_path_arg
 
 
 @command(
@@ -22,9 +24,10 @@ from autogpt.url_utils.validators import validate_url
             "required": True,
         },
     },
-    lambda config: config.github_username and config.github_api_key,
+    lambda config: bool(config.github_username and config.github_api_key),
     "Configure github_username and github_api_key.",
 )
+@sanitize_path_arg("clone_path")
 @validate_url
 def clone_repository(url: str, clone_path: str, agent: Agent) -> str:
     """Clone a GitHub repository locally.
