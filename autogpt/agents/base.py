@@ -86,7 +86,6 @@ class BaseAgent(metaclass=ABCMeta):
 
     def think(
         self,
-        prompt: ChatSequence,
         instruction: str,
     ) -> tuple[str | None, dict[str, str] | None, dict[str, Any]]:
         """Runs the agent for one cycle.
@@ -94,6 +93,8 @@ class BaseAgent(metaclass=ABCMeta):
         Params:
             instruction: The instruction to put at the end of the prompt.
         """
+        prompt = self.on_before_think(instruction)
+
         raw_response = create_chat_completion(
             prompt,
             self.config,

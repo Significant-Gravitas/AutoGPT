@@ -201,13 +201,25 @@ def run_auto_gpt(
     run_interaction_loop(agent)
 
 
+SignalHandler = Callable[[int, Optional[FrameType]], None]
 
 
 def graceful_agent_interrupt(
     agent: Agent,
     logger_: Logger,
-) -> Callable[[int, Optional[FrameType]], None]:
-    """Create a signal handler to interrupt an agent executing multiple steps."""
+) -> SignalHandler:
+    """Create a signal handler to interrupt an agent executing multiple steps.
+
+    This is used to allow the agent to finish its current step before exiting.
+
+    Args:
+        agent (Agent): The agent to interrupt.
+        logger_ (Logger): The logger to use to print a message.
+
+    Returns:
+
+
+    """
 
     def signal_handler(signum: int, frame: Optional[FrameType]) -> None:
         if agent.cycle_budget == 0 or agent.cycles_remaining == 0:
@@ -224,7 +236,14 @@ def graceful_agent_interrupt(
 
 def run_interaction_loop(
     agent: Agent,
-):
+) -> None:
+    """Run the main interaction loop for the agent.
+
+    Args:
+        agent (Agent): The agent to run the interaction loop for.
+
+    """
+    # These contain both application config and agent config, so grab them here.
     config = agent.config
     ai_config = agent.ai_config
 
@@ -240,6 +259,9 @@ def run_interaction_loop(
             f"{ai_config.ai_name} System Prompt:", Fore.GREEN, agent.system_prompt
         )
 
+    # Translate from the continuous_mode/continuous_limit config
+    # to a cycle_budget (maximum number of cycles to run without checking in with the
+    # user) and a count of cycles_remaining before we check in..
     if config.continuous_mode:
         if config.continuous_limit:
             cycle_budget = config.continuous_limit
@@ -256,14 +278,19 @@ def run_interaction_loop(
 
         logger.debug(f"Cycle budget: {cycle_budget}; remaining: {cycles_remaining}")
 
-        prompt = agent.on_before_think(DEFAULT_TRIGGERING_PROMPT)
-
+        ########
+        # Plan #
+        ########
+        # Have the agent determine the next action to take.
         with Spinner("Thinking... ", plain_output=config.plain_output):
             command_name, command_args, assistant_reply_dict = agent.think(
-                prompt,
                 DEFAULT_TRIGGERING_PROMPT,
             )
 
+        ###############
+        # Update User #
+        ###############
+        # Print the assistant's thoughts and the next command to the user.
         print_assistant_thoughts(ai_config.ai_name, assistant_reply_dict, config)
 
         if command_name is not None:
@@ -294,6 +321,9 @@ def run_interaction_loop(
                 f"The Agent failed to select an action.",
             )
 
+        ##################
+        # Get user input #
+        ##################
         user_input = ""
         if cycles_remaining == 0:
             # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
@@ -359,9 +389,11 @@ def run_interaction_loop(
                     "AUTHORISED COMMANDS LEFT: ", Fore.CYAN, f"{cycles_remaining}"
                 )
 
+        ###################
+        # Execute Command #
+        ###################
         result = agent.execute(command_name, command_args, user_input)
 
-        # history
         if result is not None:
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
         else:
