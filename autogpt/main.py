@@ -1,20 +1,25 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
 import logging
+import signal
 import sys
 from pathlib import Path
-from typing import Optional
+from types import FrameType
+from typing import Callable, Optional
 
 from colorama import Fore, Style
 
 from autogpt.agents import Agent
-from autogpt.config.config import ConfigBuilder, check_openai_api_key
+from autogpt.config import ConfigBuilder, check_openai_api_key, Config, AIConfig
 from autogpt.configurator import create_config
-from autogpt.logs import logger
+from autogpt.logs import Logger, logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
+from autogpt.speech import say_text
+from autogpt.spinner import Spinner
 from autogpt.utils import (
+    clean_input,
     get_current_git_branch,
     get_latest_bulletin,
     get_legal_warning,
@@ -192,4 +197,205 @@ def run_auto_gpt(
         ai_config=ai_config,
         config=config,
     )
-    agent.start_interaction_loop()
+
+    run_interaction_loop(agent)
+
+
+SignalHandler = Callable[[int, Optional[FrameType]], None]
+
+
+def graceful_agent_interrupt(
+    agent: Agent,
+    logger_: Logger,
+) -> SignalHandler:
+    """Create a signal handler to interrupt an agent executing multiple steps.
+
+    This is used to allow the agent to finish its current step before exiting.
+
+    Args:
+        agent: The agent to interrupt.
+        logger_: The logger to use to print a message.
+
+    Returns:
+        A signal handler that can be used to interrupt the agent.
+    """
+
+    def signal_handler(signum: int, frame: Optional[FrameType]) -> None:
+        if agent.cycle_budget == 0 or agent.cycles_remaining == 0:
+            sys.exit()
+        else:
+            logger_.typewriter_log(
+                "Interrupt signal received. Stopping continuous command execution.",
+                Fore.RED,
+            )
+            agent.cycles_remaining = 0
+
+    return signal_handler
+
+
+def run_interaction_loop(
+    agent: Agent,
+) -> None:
+    """Run the main interaction loop for the agent.
+
+    Args:
+        agent: The agent to run the interaction loop for.
+
+    Returns:
+        None
+    """
+    # These contain both application config and agent config, so grab them here.
+    config = agent.config
+    ai_config = agent.ai_config
+
+    #########################
+    # Application Main Loop #
+    #########################
+
+    # Set up an interrupt signal for the agent.
+    signal.signal(signal.SIGINT, graceful_agent_interrupt(agent, logger))
+
+    if config.debug_mode:
+        logger.typewriter_log(
+            f"{ai_config.ai_name} System Prompt:", Fore.GREEN, agent.system_prompt
+        )
+
+    # Translate from the continuous_mode/continuous_limit config
+    # to a cycle_budget (maximum number of cycles to run without checking in with the
+    # user) and a count of cycles_remaining before we check in..
+    if config.continuous_mode:
+        if config.continuous_limit:
+            cycle_budget = config.continuous_limit
+        else:
+            cycle_budget = None
+    else:
+        cycle_budget = 1
+
+    cycles_remaining = cycle_budget
+
+    while True:
+        if cycles_remaining is not None and cycles_remaining < 0:
+            break
+
+        logger.debug(f"Cycle budget: {cycle_budget}; remaining: {cycles_remaining}")
+
+        ########
+        # Plan #
+        ########
+        # Have the agent determine the next action to take.
+        with Spinner("Thinking... ", plain_output=config.plain_output):
+            command_name, command_args, assistant_reply_dict = agent.think(
+                DEFAULT_TRIGGERING_PROMPT,
+            )
+
+        ###############
+        # Update User #
+        ###############
+        # Print the assistant's thoughts and the next command to the user.
+        print_assistant_thoughts(ai_config.ai_name, assistant_reply_dict, config)
+
+        if command_name is not None:
+            if config.speak_mode:
+                say_text(f"I want to execute {command_name}", config)
+
+            # First log new-line so user can differentiate sections better in console
+            logger.typewriter_log("\n")
+            logger.typewriter_log(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
+                f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
+            )
+            if cycles_remaining is not None:
+                cycles_remaining -= 1
+        elif command_name.lower().startswith("error"):
+            logger.typewriter_log(
+                "ERROR: ",
+                Fore.RED,
+                f"The Agent failed to select an action. "
+                f"Error message: {command_name}",
+            )
+        else:
+            logger.typewriter_log(
+                "NO ACTION SELECTED: ",
+                Fore.RED,
+                f"The Agent failed to select an action.",
+            )
+
+        ##################
+        # Get user input #
+        ##################
+        user_input = ""
+        if cycles_remaining == 0:
+            # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+            # Get key press: Prompt the user to press enter to continue or escape
+            # to exit
+            logger.info(
+                f"Enter '{config.authorise_key}' to authorise command, "
+                f"'{config.authorise_key} -N' to run N continuous commands, "
+                f"'{config.exit_key}' to exit program, or enter feedback for "
+                f"{ai_config.ai_name}..."
+            )
+            while not user_input:
+                # Get input from user
+                if config.chat_messages_enabled:
+                    console_input = clean_input(config, "Waiting for your response...")
+                else:
+                    console_input = clean_input(
+                        config, Fore.MAGENTA + "Input:" + Style.RESET_ALL
+                    )
+
+                # Parse user input
+                if console_input.lower().strip() == config.authorise_key:
+                    user_input = "GENERATE NEXT COMMAND JSON"
+                    # Case 1: Continuous iteration was interrupted -> resume
+                    # Case 2: The agent used up its cycle budget -> reset
+                    cycles_remaining = cycle_budget
+                elif console_input.lower().strip() == "":
+                    logger.warn("Invalid input format.")
+                elif console_input.lower().startswith(f"{config.authorise_key} -"):
+                    try:
+                        new_cycle_budget = abs(int(console_input.split(" ")[1]))
+                        cycle_budget = cycles_remaining = new_cycle_budget
+                        user_input = "GENERATE NEXT COMMAND JSON"
+                    except ValueError:
+                        logger.warn(
+                            f"Invalid input format. "
+                            f"Please enter '{config.authorise_key} -N'"
+                            " where N is the number of continuous tasks."
+                        )
+                elif console_input.lower() == config.exit_key:
+                    user_input = "EXIT"
+                else:
+                    user_input = console_input
+                    command_name = "human_feedback"
+                    if cycles_remaining is not None:
+                        cycles_remaining += 1
+
+            if user_input == "GENERATE NEXT COMMAND JSON":
+                logger.typewriter_log(
+                    "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                    Fore.MAGENTA,
+                    "",
+                )
+            elif user_input == "EXIT":
+                logger.info("Exiting...")
+                exit()
+        else:
+            # First log new-line so user can differentiate sections better in console
+            logger.typewriter_log("\n")
+            if cycles_remaining is not None:
+                # Print authorized commands left value
+                logger.typewriter_log(
+                    "AUTHORISED COMMANDS LEFT: ", Fore.CYAN, f"{cycles_remaining}"
+                )
+
+        ###################
+        # Execute Command #
+        ###################
+        result = agent.execute(command_name, command_args, user_input)
+
+        if result is not None:
+            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
+        else:
+            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
