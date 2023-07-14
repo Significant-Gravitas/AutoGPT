@@ -198,6 +198,8 @@ def run_auto_gpt(
         config=config,
     )
 
+    run_interaction_loop(agent)
+
 
 
 
