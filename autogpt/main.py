@@ -218,7 +218,6 @@ def graceful_agent_interrupt(
 
     Returns:
         A signal handler that can be used to interrupt the agent.
-
     """
 
     def signal_handler(signum: int, frame: Optional[FrameType]) -> None:
@@ -244,7 +243,6 @@ def run_interaction_loop(
 
     Returns:
         None
-
     """
     # These contain both application config and agent config, so grab them here.
     config = agent.config

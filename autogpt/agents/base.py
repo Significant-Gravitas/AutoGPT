@@ -95,12 +95,11 @@ class BaseAgent(metaclass=ABCMeta):
     ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
         """Runs the agent for one cycle.
 
-        Args:
+        Params:
             instruction: The instruction to put at the end of the prompt.
 
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
-
         """
         prompt = self.on_before_think(instruction)
 
@@ -124,14 +123,13 @@ class BaseAgent(metaclass=ABCMeta):
     ) -> str:
         """Executes the given command, if any, and returns the agent's response.
 
-        Args:
+        Params:
             command_name: The name of the command to execute, if any.
             command_args: The arguments to pass to the command, if any.
             user_input: The user's input, if any.
 
         Returns:
             The results of the command.
-
         """
         ...
 
@@ -210,7 +208,6 @@ class BaseAgent(metaclass=ABCMeta):
 
         Returns:
             The prompt to execute
-
         """
         prompt: ChatSequence = self.construct_prompt(instruction)
         current_tokens_used = prompt.token_length
@@ -250,7 +247,6 @@ class BaseAgent(metaclass=ABCMeta):
 
         Returns:
             The parsed command name and command args, if any, and the agent thoughts.
-
         """
 
         # Save assistant reply to message history
@@ -289,7 +285,6 @@ class BaseAgent(metaclass=ABCMeta):
 
         Returns:
             The parsed command name and command args, if any, and the agent thoughts.
-
         """
         pass
 
