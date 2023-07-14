@@ -46,6 +46,13 @@ class Challenge(ABC):
 
         run_agent(self.task, config, self.CHALLENGE_LOCATION)
 
+        # hidden files are added after the agent runs. Hidden files can be python test files.
+        # We copy them in the workspace to make it easy to import the code produced by the agent
+
+        copy_artifacts_into_workspace(
+            config["workspace"], "hidden_files", self.CHALLENGE_LOCATION
+        )
+
     def test_method(self, config: Dict[str, Any]) -> None:
         raise NotImplementedError
 
