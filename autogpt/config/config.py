@@ -367,7 +367,7 @@ def check_openai_api_key(config: Config) -> None:
             print(
                 Fore.GREEN
                 + "OpenAI API key successfully set!\n"
-                + Fore.ORANGE
+                + Fore.YELLOW
                 + "NOTE: The API key you've set is only temporary.\n"
                 + "For longer sessions, please set it in .env file"
                 + Fore.RESET
