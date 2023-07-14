@@ -15,6 +15,7 @@ from autogpt.command_decorator import command
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
 from autogpt.models.command import Command
+
 from .decorators import sanitize_path_arg
 from .file_operations_utils import read_textual_file
 
