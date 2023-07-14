@@ -213,11 +213,11 @@ def graceful_agent_interrupt(
     This is used to allow the agent to finish its current step before exiting.
 
     Args:
-        agent (Agent): The agent to interrupt.
-        logger_ (Logger): The logger to use to print a message.
+        agent: The agent to interrupt.
+        logger_: The logger to use to print a message.
 
     Returns:
-
+        A signal handler that can be used to interrupt the agent.
 
     """
 
@@ -240,7 +240,10 @@ def run_interaction_loop(
     """Run the main interaction loop for the agent.
 
     Args:
-        agent (Agent): The agent to run the interaction loop for.
+        agent: The agent to run the interaction loop for.
+
+    Returns:
+        None
 
     """
     # These contain both application config and agent config, so grab them here.

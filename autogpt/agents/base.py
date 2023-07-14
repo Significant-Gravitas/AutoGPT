@@ -16,6 +16,11 @@ from autogpt.memory.message_history import MessageHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 
+CommandName = str
+CommandArgs = dict[str, str]
+AgentThoughts = dict[str, Any]
+
+
 class BaseAgent(metaclass=ABCMeta):
     """Base class for all Auto-GPT agents."""
 
@@ -87,11 +92,15 @@ class BaseAgent(metaclass=ABCMeta):
     def think(
         self,
         instruction: str,
-    ) -> tuple[str | None, dict[str, str] | None, dict[str, Any]]:
+    ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
         """Runs the agent for one cycle.
 
-        Params:
+        Args:
             instruction: The instruction to put at the end of the prompt.
+
+        Returns:
+            The command name and arguments, if any, and the agent's thoughts.
+
         """
         prompt = self.on_before_think(instruction)
 
@@ -112,7 +121,18 @@ class BaseAgent(metaclass=ABCMeta):
         command_name: str | None,
         command_args: dict[str, str] | None,
         user_input: str | None,
-    ):
+    ) -> str:
+        """Executes the given command, if any, and returns the agent's response.
+
+        Args:
+            command_name: The name of the command to execute, if any.
+            command_args: The arguments to pass to the command, if any.
+            user_input: The user's input, if any.
+
+        Returns:
+            The results of the command.
+
+        """
         ...
 
     def construct_base_prompt(
@@ -186,8 +206,11 @@ class BaseAgent(metaclass=ABCMeta):
         output to the prompt.
 
         Params:
-            prompt: The prompt that is about to be executed
             instruction: The instruction for the current cycle, also used in constructing the prompt
+
+        Returns:
+            The prompt to execute
+
         """
         prompt: ChatSequence = self.construct_prompt(instruction)
         current_tokens_used = prompt.token_length
@@ -214,7 +237,7 @@ class BaseAgent(metaclass=ABCMeta):
 
     def on_response(
         self, llm_response: ChatModelResponse, prompt: ChatSequence, instruction: str
-    ) -> tuple[str | None, dict[str, str] | None, dict[str, Any]]:
+    ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
         """Called upon receiving a response from the chat model.
 
         Adds the last/newest message in the prompt and the response to `history`,
@@ -224,6 +247,10 @@ class BaseAgent(metaclass=ABCMeta):
             llm_response: The raw response from the chat model
             prompt: The prompt that was executed
             instruction: The instruction for the current cycle, also used in constructing the prompt
+
+        Returns:
+            The parsed command name and command args, if any, and the agent thoughts.
+
         """
 
         # Save assistant reply to message history
@@ -249,7 +276,7 @@ class BaseAgent(metaclass=ABCMeta):
     @abstractmethod
     def parse_and_process_response(
         self, llm_response: ChatModelResponse, prompt: ChatSequence, instruction: str
-    ) -> tuple[str | None, dict[str, str] | None, dict[str, Any]]:
+    ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
         """Validate, parse & process the LLM's response.
 
         Must be implemented by derivative classes: no base implementation is provided,
@@ -259,6 +286,10 @@ class BaseAgent(metaclass=ABCMeta):
             llm_response: The raw response from the chat model
             prompt: The prompt that was executed
             instruction: The instruction for the current cycle, also used in constructing the prompt
+
+        Returns:
+            The parsed command name and command args, if any, and the agent thoughts.
+
         """
         pass
 

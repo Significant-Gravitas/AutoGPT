@@ -26,7 +26,7 @@ from autogpt.logs.log_cycle import (
 )
 from autogpt.workspace import Workspace
 
-from .base import BaseAgent
+from .base import BaseAgent, CommandName, CommandArgs, AgentThoughts
 
 
 class Agent(BaseAgent):
@@ -72,7 +72,6 @@ class Agent(BaseAgent):
         )
 
         # Add budget information (if any) to prompt
-        budget_msg: Message | None = None
         api_manager = ApiManager()
         if api_manager.get_total_budget() > 0.0:
             remaining_budget = (
@@ -117,7 +116,7 @@ class Agent(BaseAgent):
         command_name: str | None,
         command_args: dict[str, str] | None,
         user_input: str | None,
-    ):
+    ) -> str:
         # Execute command
         if command_name is not None and command_name.lower().startswith("error"):
             result = f"Could not execute command: {command_name}{command_args}"
@@ -165,7 +164,7 @@ class Agent(BaseAgent):
 
     def parse_and_process_response(
         self, llm_response: ChatModelResponse, *args, **kwargs
-    ) -> tuple[str | None, dict[str, str] | None, dict[str, Any]]:
+    ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
         if not llm_response.content:
             raise SyntaxError("Assistant response has no text content")
 
