@@ -141,6 +141,10 @@ jobs:
             agbenchmark start --improve --mock
             agbenchmark start --mock
             agbenchmark start --mock --category=retrieval
+            agbenchmark start --mock --category=interface
+            agbenchmark start --mock --category=code
+            agbenchmark start --mock --category=memory
+            agbenchmark start --mock --category=iterate
           else
             curl -s https://raw.githubusercontent.com/Helicone/helicone/main/mitmproxy.sh | bash -s start
             agbenchmark start --maintain

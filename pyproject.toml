@@ -38,10 +38,10 @@ testpaths = [
 ]
 markers = [
     "retrieval",
-    "regression",
     "interface",
     "code",
-    "memory"
+    "memory",
+    "iterate"
 ]
 
 [tool.poetry.scripts]
