@@ -28,7 +28,7 @@ python -m pytest
         :::shell
         pytest --cov=autogpt --without-integration --without-slow-integration
 
-## Runing the linter
+## Running the linter
 
 This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting.
 We currently use the following rules: `E303,W293,W291,W292,E305,E231,E302`.

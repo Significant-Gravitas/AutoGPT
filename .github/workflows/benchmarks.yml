@@ -1,31 +1,73 @@
-name: Run Benchmarks
+name: Benchmarks
 
 on:
+  schedule:
+    - cron: '0 8 * * *'
   workflow_dispatch:
 
 jobs:
-  build:
+  Benchmark:
+    name: ${{ matrix.config.task-name }}
     runs-on: ubuntu-latest
-
-    env:
-      python-version: '3.10'
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - python-version: "3.10"
+            task: "tests/challenges"
+            task-name: "Mandatory Tasks"
+          - python-version: "3.10"
+            task: "--beat-challenges -ra tests/challenges"
+            task-name: "Challenging Tasks"
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          ref: master
 
-    - name: Set up Python ${{ env.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ env.python-version }}
+      - name: Set up Python ${{ matrix.config.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.config.python-version }}
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - id: get_date
+        name: Get date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-    - name: benchmark
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      run: |
-         python benchmark/benchmark_entrepreneur_gpt_with_undecisive_user.py
+      - name: Set up Python dependency cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ steps.get_date.outputs.date }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pytest with coverage
+        run: |
+          rm -rf tests/Auto-GPT-test-cassettes
+          pytest -n auto --record-mode=all ${{ matrix.config.task }}
+        env:
+          CI: true
+          PROXY: ${{ secrets.PROXY }}
+          AGENT_MODE: ${{ secrets.AGENT_MODE }}
+          AGENT_TYPE: ${{ secrets.AGENT_TYPE }}
+          PLAIN_OUTPUT: True
+
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-logs-${{ matrix.config.task-name }}
+          path: logs/
+
+      - name: Upload cassettes as artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: cassettes-${{ matrix.config.task-name }}
+          path: tests/Auto-GPT-test-cassettes/
