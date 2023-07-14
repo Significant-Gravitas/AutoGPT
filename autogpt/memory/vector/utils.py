@@ -1,3 +1,4 @@
+from contextlib import suppress
 from typing import Any, overload
 
 import numpy as np
@@ -12,12 +13,12 @@ Embedding = list[np.float32] | np.ndarray[Any, np.dtype[np.float32]]
 
 
 @overload
-def get_embedding(input: str | TText) -> Embedding:
+def get_embedding(input: str | TText, config: Config) -> Embedding:
     ...
 
 
 @overload
-def get_embedding(input: list[str] | list[TText]) -> list[Embedding]:
+def get_embedding(input: list[str] | list[TText], config: Config) -> list[Embedding]:
     ...
 
 
@@ -37,8 +38,15 @@ def get_embedding(
 
     if isinstance(input, str):
         input = input.replace("\n", " ")
+
+        with suppress(NotImplementedError):
+            return _get_embedding_with_plugin(input, config)
+
     elif multiple and isinstance(input[0], str):
         input = [text.replace("\n", " ") for text in input]
+
+        with suppress(NotImplementedError):
+            return [_get_embedding_with_plugin(i, config) for i in input]
 
     model = config.embedding_model
     kwargs = {"model": model}
@@ -62,3 +70,13 @@ def get_embedding(
 
     embeddings = sorted(embeddings, key=lambda x: x["index"])
     return [d["embedding"] for d in embeddings]
+
+
+def _get_embedding_with_plugin(text: str, config: Config) -> Embedding:
+    for plugin in config.plugins:
+        if plugin.can_handle_text_embedding(text):
+            embedding = plugin.handle_text_embedding(text)
+            if embedding is not None:
+                return embedding
+
+    raise NotImplementedError
