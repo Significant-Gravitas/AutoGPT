@@ -8,13 +8,12 @@ if TYPE_CHECKING:
 
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.llm.base import Message, ChatSequence, ChatModelResponse
+from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.logs import logger
 from autogpt.memory.message_history import MessageHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
-
 
 CommandName = str
 CommandArgs = dict[str, str]
@@ -91,7 +90,7 @@ class BaseAgent(metaclass=ABCMeta):
 
     def think(
         self,
-        instruction: str,
+        instruction: Optional[str] = None,
     ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
         """Runs the agent for one cycle.
 
@@ -101,6 +100,9 @@ class BaseAgent(metaclass=ABCMeta):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
+
+        instruction = instruction or self.default_cycle_instruction
+
         prompt: ChatSequence = self.construct_prompt(instruction)
         prompt = self.on_before_think(prompt, instruction)
 
@@ -187,6 +189,10 @@ class BaseAgent(metaclass=ABCMeta):
         Params:
             cycle_instruction: The final instruction for a thinking cycle
         """
+
+        if not cycle_instruction:
+            raise ValueError("No instruction given")
+
         cycle_instruction_msg = Message("user", cycle_instruction)
         cycle_instruction_tlength = count_message_tokens(
             cycle_instruction_msg, self.llm.name

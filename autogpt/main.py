@@ -9,7 +9,7 @@ from typing import Callable, Optional
 from colorama import Fore, Style
 
 from autogpt.agents import Agent
-from autogpt.config import ConfigBuilder, check_openai_api_key, Config, AIConfig
+from autogpt.config import ConfigBuilder, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import Logger, logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.vector import get_memory
@@ -284,9 +284,7 @@ def run_interaction_loop(
         ########
         # Have the agent determine the next action to take.
         with Spinner("Thinking... ", plain_output=config.plain_output):
-            command_name, command_args, assistant_reply_dict = agent.think(
-                DEFAULT_TRIGGERING_PROMPT,
-            )
+            command_name, command_args, assistant_reply_dict = agent.think()
 
         ###############
         # Update User #
