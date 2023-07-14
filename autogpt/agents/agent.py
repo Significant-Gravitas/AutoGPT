@@ -6,7 +6,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-
 if TYPE_CHECKING:
     from autogpt.config import AIConfig, Config
     from autogpt.llm.base import ChatModelResponse, ChatSequence
@@ -26,7 +25,7 @@ from autogpt.logs.log_cycle import (
 )
 from autogpt.workspace import Workspace
 
-from .base import BaseAgent, CommandName, CommandArgs, AgentThoughts
+from .base import AgentThoughts, BaseAgent, CommandArgs, CommandName
 
 
 class Agent(BaseAgent):
