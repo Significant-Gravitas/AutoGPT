@@ -344,7 +344,7 @@ def list_files(directory: str, agent: Agent) -> list[str]:
 
 def file_search_args(input_args: dict[str, any], agent: Agent):
     # Force only searching in the workspace root
-    input_args["dir_path"] = str(agent.workspace.root)
+    input_args["dir_path"] = str(agent.workspace.get_path(input_args["dir_path"]))
 
     return input_args
 
