@@ -1,5 +1,4 @@
 {
   "workspace": "autogpt/workspace/auto_gpt_workspace",
-  "entry_path": "agbenchmark.benchmarks",
-  "cutoff": 60
+  "entry_path": "agbenchmark.benchmarks"
 }

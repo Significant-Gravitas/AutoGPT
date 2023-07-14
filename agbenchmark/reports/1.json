@@ -1,19 +1,17 @@
 {
-    "command": "agbenchmark start --test TestWriteFile --mock",
-    "completion_time": "2023-07-10-21:32",
-    "time_elapsed": "0.29 seconds",
-    "tests": {
-        "TestWriteFile": {
-            "difficulty": "basic",
-            "dependencies": [],
-            "test": "agbenchmark\\challenges\\interface\\write_file",
-            "success": true
-        }
-    },
-    "config": {
-        "workspace": "autogpt/workspace/auto_gpt_workspace",
-        "entry_path": "benchmarks.py",
-        "home_path": "",
-        "cutoff": 60
+  "command": "agbenchmark start --test TestWriteFile --mock",
+  "completion_time": "2023-07-10-21:32",
+  "time_elapsed": "0.29 seconds",
+  "tests": {
+    "TestWriteFile": {
+      "difficulty": "basic",
+      "dependencies": [],
+      "test": "agbenchmark\\challenges\\interface\\write_file",
+      "success": true
     }
+  },
+  "config": {
+    "workspace": "autogpt/workspace/auto_gpt_workspace",
+    "entry_path": "agbenchmark/benchmarks.py"
+  }
 }
