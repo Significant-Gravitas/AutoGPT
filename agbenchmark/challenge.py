@@ -50,7 +50,7 @@ class Challenge(ABC):
         # We copy them in the workspace to make it easy to import the code produced by the agent
 
         copy_artifacts_into_workspace(
-            config["workspace"], "hidden_files", self.CHALLENGE_LOCATION
+            config["workspace"], "custom_python", self.CHALLENGE_LOCATION
         )
 
     def test_method(self, config: Dict[str, Any]) -> None:

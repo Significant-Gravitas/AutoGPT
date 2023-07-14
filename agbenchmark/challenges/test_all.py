@@ -2,8 +2,6 @@ import glob
 import importlib
 import json
 import os
-import pkgutil
-import sys
 import types
 from pathlib import Path
 from typing import Any, Dict
@@ -60,23 +58,7 @@ def generate_tests() -> None:
 
             scores = self.get_scores(config)
 
-            # Check if make_assertion is defined and use it
-            if self.data.ground.type == "custom_python":
-                custom_python_location = (
-                    f"{CURRENT_DIRECTORY}/../{challenge_location}/custom_python"
-                )
-                sys.path.append(str(custom_python_location))
-
-                for module_loader, name, ispkg in pkgutil.iter_modules(
-                    [str(custom_python_location)]
-                ):
-                    module = importlib.import_module(name)
-
-                    if hasattr(module, "make_assertion"):
-                        make_assertion = getattr(module, "make_assertion")
-                        make_assertion()
-            else:
-                assert 1 in scores
+            assert 1 in scores
 
         # Parametrize the method here
         test_method = pytest.mark.parametrize(
