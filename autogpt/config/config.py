@@ -146,7 +146,18 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
         return p
 
-    def get_azure_kwargs(self, model: str) -> dict[str, str]:
+    def get_openai_credentials(self, model: str) -> dict[str, str]:
+        credentials = {
+            "api_key": self.openai_api_key,
+            "api_base": self.openai_api_base,
+            "organization": self.openai_organization,
+        }
+        if self.use_azure:
+            azure_credentials = self.get_azure_credentials(model)
+            credentials.update(azure_credentials)
+        return credentials
+
+    def get_azure_credentials(self, model: str) -> dict[str, str]:
         """Get the kwargs for the Azure API."""
 
         # Fix --gpt3only and --gpt4only in combination with Azure
@@ -361,7 +372,7 @@ def check_openai_api_key(config: Config) -> None:
             print(
                 Fore.GREEN
                 + "OpenAI API key successfully set!\n"
-                + Fore.ORANGE
+                + Fore.YELLOW
                 + "NOTE: The API key you've set is only temporary.\n"
                 + "For longer sessions, please set it in .env file"
                 + Fore.RESET
