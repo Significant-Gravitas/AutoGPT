@@ -9,7 +9,7 @@ from typing import Callable, Optional
 from colorama import Fore, Style
 
 from autogpt.agents import Agent
-from autogpt.config.config import ConfigBuilder, check_openai_api_key
+from autogpt.config import ConfigBuilder, check_openai_api_key, Config, AIConfig
 from autogpt.configurator import create_config
 from autogpt.logs import Logger, logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.vector import get_memory
@@ -198,6 +198,34 @@ def run_auto_gpt(
         config=config,
     )
 
+
+
+
+def graceful_agent_interrupt(
+    agent: Agent,
+    logger_: Logger,
+) -> Callable[[int, Optional[FrameType]], None]:
+    """Create a signal handler to interrupt an agent executing multiple steps."""
+
+    def signal_handler(signum: int, frame: Optional[FrameType]) -> None:
+        if agent.cycle_budget == 0 or agent.cycles_remaining == 0:
+            sys.exit()
+        else:
+            logger_.typewriter_log(
+                "Interrupt signal received. Stopping continuous command execution.",
+                Fore.RED,
+            )
+            agent.cycles_remaining = 0
+
+    return signal_handler
+
+
+def run_interaction_loop(
+    agent: Agent,
+):
+    config = agent.config
+    ai_config = agent.ai_config
+
     #########################
     # Application Main Loop #
     #########################
@@ -336,22 +364,3 @@ def run_auto_gpt(
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
         else:
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
-
-
-def graceful_agent_interrupt(
-    agent: Agent,
-    logger_: Logger,
-) -> Callable[[int, Optional[FrameType]], None]:
-    """Create a signal handler to interrupt an agent executing multiple steps."""
-
-    def signal_handler(signum: int, frame: Optional[FrameType]) -> None:
-        if agent.cycle_budget == 0 or agent.cycles_remaining == 0:
-            sys.exit()
-        else:
-            logger_.typewriter_log(
-                "Interrupt signal received. Stopping continuous command execution.",
-                Fore.RED,
-            )
-            agent.cycles_remaining = 0
-
-    return signal_handler

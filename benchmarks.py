@@ -1,6 +1,6 @@
 from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
-from autogpt.main import COMMAND_CATEGORIES
+from autogpt.main import COMMAND_CATEGORIES, run_interaction_loop
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
@@ -9,7 +9,7 @@ from autogpt.workspace import Workspace
 
 def run_task(task) -> None:
     agent = bootstrap_agent(task)
-    agent.start_interaction_loop()
+    run_interaction_loop(agent)
 
 
 def bootstrap_agent(task):
