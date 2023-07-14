@@ -1,11 +1,15 @@
 """ElevenLabs speech module"""
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING
 
 import requests
 from playsound import playsound
 
-from autogpt.config import Config
-from autogpt.speech.base import VoiceBase
+if TYPE_CHECKING:
+    from autogpt.config import Config
+from .base import VoiceBase
 
 PLACEHOLDERS = {"your-voice-id"}
 
@@ -13,14 +17,13 @@ PLACEHOLDERS = {"your-voice-id"}
 class ElevenLabsSpeech(VoiceBase):
     """ElevenLabs speech class"""
 
-    def _setup(self) -> None:
+    def _setup(self, config: Config) -> None:
         """Set up the voices, API key, etc.
 
         Returns:
             None: None
         """
 
-        cfg = Config()
         default_voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
         voice_options = {
             "Rachel": "21m00Tcm4TlvDq8ikWAM",
@@ -35,15 +38,15 @@ class ElevenLabsSpeech(VoiceBase):
         }
         self._headers = {
             "Content-Type": "application/json",
-            "xi-api-key": cfg.elevenlabs_api_key,
+            "xi-api-key": config.elevenlabs_api_key,
         }
         self._voices = default_voices.copy()
-        if cfg.elevenlabs_voice_1_id in voice_options:
-            cfg.elevenlabs_voice_1_id = voice_options[cfg.elevenlabs_voice_1_id]
-        if cfg.elevenlabs_voice_2_id in voice_options:
-            cfg.elevenlabs_voice_2_id = voice_options[cfg.elevenlabs_voice_2_id]
-        self._use_custom_voice(cfg.elevenlabs_voice_1_id, 0)
-        self._use_custom_voice(cfg.elevenlabs_voice_2_id, 1)
+        if config.elevenlabs_voice_id in voice_options:
+            config.elevenlabs_voice_id = voice_options[config.elevenlabs_voice_id]
+        if config.elevenlabs_voice_2_id in voice_options:
+            config.elevenlabs_voice_2_id = voice_options[config.elevenlabs_voice_2_id]
+        self._use_custom_voice(config.elevenlabs_voice_id, 0)
+        self._use_custom_voice(config.elevenlabs_voice_2_id, 1)
 
     def _use_custom_voice(self, voice, voice_index) -> None:
         """Use a custom voice if provided and not a placeholder
