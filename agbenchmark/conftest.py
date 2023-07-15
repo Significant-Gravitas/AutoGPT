@@ -53,7 +53,7 @@ def config(request: Any) -> None:
     return config
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(autouse=True)
 def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
     output_path = config["workspace"]
 
