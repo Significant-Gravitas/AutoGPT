@@ -64,7 +64,7 @@ jobs:
         if: success() || failure()
 
   tests:
-    name: ${{ matrix.agent-name }}
+    name: "${{ matrix.agent-name }} (Cache: ${{ matrix.cache-enabled }})"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -77,6 +77,8 @@ jobs:
           - "smol-developer"
           - "Auto-GPT"
           - "mini-agi"
+        cache-enabled: [ true, false ]
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -156,7 +158,7 @@ jobs:
           PROMPT_USER: false # For mini-agi. TODO: Remove this once mini-agi follows the standards.
           HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
-          HELICONE_CACHE_ENABLED: true
+          HELICONE_CACHE_ENABLED: ${{ matrix.cache-enabled }}
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
 
 
@@ -164,5 +166,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.agent-name }}
+          name:
+            ${{ matrix.agent-name }} (Cache: ${{ matrix.cache-enabled }})
           path: agent/${{ matrix.agent-name }}/agbenchmark
