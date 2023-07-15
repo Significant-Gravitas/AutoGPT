@@ -1,6 +1,6 @@
 {
   "name": "TestDebugSimpleTypoWithoutGuidance",
-  "category": ["code"],
+  "category": ["code", "iterate"],
   "task": "Make test.py run without errors.",
   "dependencies": ["TestDebugSimpleTypoWithGuidance"],
   "ground": {
