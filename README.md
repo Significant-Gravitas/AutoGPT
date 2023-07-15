@@ -9,9 +9,43 @@ Spider chart for each agent coming soon !
 :warning: These results are constantly evolving at the moment. We will publish an official benchmark result very soon.
 
 ### Auto-GPT
-Coming Soon!
+Interface
+
+| Task         | Results             |
+|--------------|---------------------|
+| Write File   | :white_check_mark:  |
+| Read File    | :white_check_mark:  |
+| Search File  | :x:                 |
+
+Code
+
+| Task                              | Results              |
+|-----------------------------------|----------------------|
+| Debug Simple Typo With Guidance   | :x:                  |
+| Debug Simple Typo Without Guidance| :x:                  |
+| Basic Code Generation             | :white_check_mark:   |
+| Create Simple Web Server          | :x:                  |
+
+Memory
+
+| Task                                       | Results            |
+|--------------------------------------------|--------------------|
+| Basic Memory                               | :white_check_mark: |
+| Remember Multiple Ids                      | :x:                |
+| Remember Multiple Ids With Noise           | :x:                |
+| Remember Multiple Phrases With Noise       | :x:                |
 
 ### gpt-engineer
+
+Interface
+
+| Task        | Results            |
+|-------------|--------------------|
+| Write File  | :white_check_mark: |
+| Read File   | :white_check_mark: |
+| Search File | :x:                |
+
+Code
 
 | Task                              | Results              |
 |-----------------------------------|----------------------|
