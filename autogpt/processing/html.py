@@ -1,71 +1,11 @@
 """HTML processing functions"""
 from __future__ import annotations
+
 import random
 import re
 
 from bs4 import BeautifulSoup
 from requests.compat import urljoin
-
-
-def extract_hyperlinks(
-    soup: BeautifulSoup,
-    base_url: str,
-    include_keywords: list[str] = [],
-    exclude_keywords: list[str] = [],
-) -> list[tuple[str, str]]:
-    """Extract hyperlinks from a BeautifulSoup object
-
-    Args:
-        soup (BeautifulSoup): The BeautifulSoup object
-        base_url (str): The base URL
-        include_keywords (List[str], optional): List of keyword to include in the results. Defaults to [].
-        exclude_keywords (List[str], optional): List of keyword to exclude from the results. Defaults to [].
-
-    Returns:
-        List[Tuple[str, str]]: The extracted hyperlinks
-    """
-    return extract_tag_links(
-        soup, base_url, "a", include_keywords, exclude_keywords
-    )
-
-
-def format_links(links: list[tuple[str, str]]) -> list[str]:
-    """Format links to be displayed to the user
-
-    Args:
-        links (List[Tuple[str, str]]): The links to format
-
-    Returns:
-        List[str]: The first 50 formatted links
-    """
-    formatted_links = list(
-        set([f"{link_text} ({link_url})" for link_text, link_url in links])
-    )
-    if len(formatted_links) > 50:
-        formatted_links = formatted_links[:50]
-    return formatted_links
-
-
-def extract_image_links(
-    soup: BeautifulSoup,
-    base_url: str,
-    include_keywords: list[str] = [],
-    exclude_keywords: list[str] = [],
-) -> list[tuple[str, str]]:
-    """Extract linked images from a BeautifulSoup object
-
-    Args:
-        soup (BeautifulSoup): The BeautifulSoup object
-        base_url (str): The base URL
-        include_keywords (List[str], optional): List of keyword to include in the results. Defaults to [].
-        exclude_keywords (List[str], optional): List of keyword to exclude from the results. Defaults to [].
-
-    Returns:
-        list[Tuple[str, str]]: The extracted image links
-    """
-    return extract_tag_links(
-        soup, base_url, "img", include_keywords, exclude_keywords
-    )
 
 
 def extract_tag_links(
@@ -75,7 +15,7 @@ def extract_tag_links(
     include_keywords: list[str] = [],
     exclude_keywords: list[str] = [],
 ) -> list[tuple[str, str]]:
-    """Extract linked images from a BeautifulSoup object
+    """Extract image links and hyperlinks from a BeautifulSoup object
 
     Args:
         soup (BeautifulSoup): The BeautifulSoup object
@@ -85,7 +25,7 @@ def extract_tag_links(
         exclude_keywords (List[str], optional): List of keyword to exclude from the results. Defaults to [].
 
     Returns:
-        list[Tuple[str, str]]: The extracted image links
+        list[Tuple[str, str]]: The extracted links
     """
 
     exclude_full_keywords = ["blank", "transparent"]
@@ -107,7 +47,7 @@ def extract_tag_links(
             return ""
 
     link_attr = "src" if tag_type == "img" else "href"
-    
+
     links = [
         (get_link_text(tag), urljoin(base_url, tag[link_attr]))
         for tag in soup.find_all(tag_type, {link_attr: True})
@@ -119,3 +59,20 @@ def extract_tag_links(
     random.shuffle(links)
 
     return links
+
+
+def format_links(links: list[tuple[str, str]]) -> list[str]:
+    """Format links to be displayed to the user
+
+    Args:
+        links (List[Tuple[str, str]]): The links to format
+
+    Returns:
+        List[str]: The first 50 formatted links
+    """
+    formatted_links = list(
+        set([f"{link_text} ({link_url})" for link_text, link_url in links])
+    )
+    if len(formatted_links) > 50:
+        formatted_links = formatted_links[:50]
+    return formatted_links
