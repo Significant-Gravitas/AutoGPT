@@ -17,15 +17,20 @@ from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 PROJECT_DIR = Path().resolve()
 
 =======
 def run_specific_agent(task) -> Tuple[str, int]:
+=======
+>>>>>>> 8f6e811a (Fix Auto-GPT/benchmark integration)
 
+def run_specific_agent(task) -> Tuple[str, int]:
     cycle_count = 0
 >>>>>>> c29ec925 (WIP)
 
     agent = bootstrap_agent(task)
+<<<<<<< HEAD
 <<<<<<< HEAD
     run_interaction_loop(agent)
 
@@ -42,6 +47,9 @@ def bootstrap_agent(task):
 
 
     return response, 1
+=======
+    agent.start_interaction_loop()
+>>>>>>> 8f6e811a (Fix Auto-GPT/benchmark integration)
 
 
 def bootstrap_agent(task):
@@ -79,6 +87,7 @@ def get_command_registry(config: Config):
     for command_category in enabled_command_categories:
         command_registry.import_commands(command_category)
     return command_registry
+
 
 if __name__ == "__main__":
     # The first argument is the script name itself, second is the task
