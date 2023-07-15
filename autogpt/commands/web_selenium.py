@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from sys import platform
-from typing import Callable, Optional, Type
+from typing import Optional, Type
 
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import WebDriverException
