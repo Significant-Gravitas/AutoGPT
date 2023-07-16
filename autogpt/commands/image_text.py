@@ -1,10 +1,13 @@
 from pathlib import Path
+import json
+import time
 
 import requests
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.config import Config
+from autogpt.logs import logger
 
 
 @command(
@@ -48,18 +51,44 @@ def summarize_image(image: bytes, config: Config):
     """
 
     if config.huggingface_api_token is None:
-        raise RuntimeError(
+        raise ValueError(
             "You need to set your Hugging Face API token in the config file."
         )
 
     model = config.huggingface_image_to_text_model
     api_url = f"https://api-inference.huggingface.co/models/{model}"
-    headers = {"Authorization": f"Bearer {config.huggingface_api_token}"}
+    headers = {
+        "Authorization": f"Bearer {config.huggingface_api_token}",
+    }
 
-    response = requests.post(
-        api_url,
-        headers=headers,
-        data=image,
-    )
-
-    return "The image is about: " + response.json()[0]["generated_text"]
+    retry_count = 0
+    while retry_count < 10:
+        response = requests.post(
+            api_url,
+            headers=headers,
+            data=image,
+        )
+        if response.ok:
+            try:
+                description = response.json()[0]["generated_text"]
+                return "The image is about: " + description
+            except Exception as e:
+                logger.error(e)
+                break
+        else:
+            try:
+                error = json.loads(response.text)
+                if "estimated_time" in error:
+                    delay = error["estimated_time"]
+                    logger.debug(response.text)
+                    logger.info("Retrying in", delay)
+                    time.sleep(delay)
+                else:
+                    break
+            except Exception as e:
+                logger.error(e)
+                break
+            
+        retry_count += 1
+        
+    return "Error describing image."
