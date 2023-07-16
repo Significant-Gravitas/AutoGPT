@@ -61,6 +61,7 @@ class ChallengeData(BaseModel):
     category: List[str]
     task: str
     dependencies: List[str]
+    cutoff: int
     ground: Ground
     info: Info
 

@@ -3,6 +3,7 @@
   "category": ["interface"],
   "task": "Write the string 'random string' before any existing text to the file called file_to_check.txt",
   "dependencies": ["TestWriteFile"],
+  "cutoff": 60,
   "ground": {
     "answer": "random string Hello World!",
     "should_contain": ["random string", "Hello World!"],

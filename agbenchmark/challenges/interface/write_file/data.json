@@ -3,6 +3,7 @@
   "category": ["interface"],
   "task": "Print the the capital of America to a .txt file",
   "dependencies": [],
+  "cutoff": 60,
   "ground": {
     "answer": "Washington",
     "should_contain": ["Washington"],

@@ -1,5 +1,4 @@
 {
   "workspace": "${os.path.join(Path.home(), 'miniagi')}",
-  "entry_path": "agbenchmark.benchmarks",
-  "cutoff": 60
+  "entry_path": "agbenchmark.benchmarks"
 }

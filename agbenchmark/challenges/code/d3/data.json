@@ -3,6 +3,7 @@
   "category": ["code"],
   "task": "Build a basic web server that responds to a GET localhost:8079/health with a 200 OK. Deploy this web server locally at the port 8079. ",
   "dependencies": ["TestDebugSimpleTypoWithGuidance"],
+  "cutoff": 60,
   "ground": {
     "answer": "GET localhost:8079/health responds with a 200 OK",
     "should_contain": [],

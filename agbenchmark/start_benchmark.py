@@ -62,7 +62,7 @@ def start(category: str, test: str, maintain: bool, improve: bool, mock: bool) -
 
         config["entry_path"] = click.prompt(
             "Please enter a the path to your run_specific_agent function implementation within the benchmarks folder",
-            default="benchmarks.py",
+            default="agbenchmark/benchmarks.py",
         )
 
         config["cutoff"] = click.prompt(

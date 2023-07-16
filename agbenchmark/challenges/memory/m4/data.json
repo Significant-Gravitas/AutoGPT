@@ -3,6 +3,7 @@
   "category": ["memory"],
   "task": "Follow the instructions in the instructions_1.txt file",
   "dependencies": ["TestRememberMultipleIdsWithNoise"],
+  "cutoff": 60,
   "ground": {
     "answer": "The purple elephant danced on a rainbow while eating a taco\nThe sneaky toaster stole my socks and ran away to Hawaii\nMy pet rock sings better than Beyoncé on Tuesdays\nThe giant hamster rode a unicycle through the crowded mall",
     "should_contain": [
