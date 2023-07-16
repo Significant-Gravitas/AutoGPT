@@ -64,6 +64,7 @@ jobs:
         if: success() || failure()
 
   tests:
+    if: github.event_name != 'pull_request' || matrix.cache-enabled == false
     name: "${{ matrix.agent-name }} (Cache: ${{ matrix.cache-enabled }})"
     runs-on: ubuntu-latest
     timeout-minutes: 10
