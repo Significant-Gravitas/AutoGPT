@@ -1,5 +1,6 @@
 # radio charts, logs, helper functions for tests, anything else relevant.
 import glob
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -9,7 +10,10 @@ from agbenchmark.challenges.define_task_types import DIFFICULTY_MAP, DifficultyL
 
 
 def calculate_info_test_path(benchmarks_folder_path: Path) -> str:
-    INFO_TESTS_PATH = benchmarks_folder_path / "reports"
+
+    INFO_TESTS_PATH = (
+        benchmarks_folder_path / os.getenv("REPORT_LOCATION", ".") / "reports"
+    )
 
     if not INFO_TESTS_PATH.exists():
         INFO_TESTS_PATH.mkdir(parents=True, exist_ok=True)
