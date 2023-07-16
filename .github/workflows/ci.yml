@@ -149,7 +149,7 @@ jobs:
             agbenchmark start --mock --category=iterate
           else
             curl -s https://raw.githubusercontent.com/Helicone/helicone/main/mitmproxy.sh | bash -s start
-            agbenchmark start | echo "This command will always return a non zero exit code unless all the challenges are solved."
+            agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
           fi
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
