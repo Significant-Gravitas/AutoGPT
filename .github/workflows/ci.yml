@@ -64,7 +64,6 @@ jobs:
         if: success() || failure()
 
   tests:
-    if: github.event_name != 'pull_request' || matrix.cache-enabled == false
     name: "${{ matrix.agent-name }} (Cache: ${{ matrix.cache-enabled }})"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -161,12 +160,12 @@ jobs:
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
           HELICONE_CACHE_ENABLED: ${{ matrix.cache-enabled }}
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
+          REPORT_LOCATION:  ${{ matrix.cache-enabled == true && format('../../../benchmark_runs/{0}', matrix.agent-name) || '.' }}
 
 
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name:
-            "${{ matrix.agent-name }} (Cache ${{ matrix.cache-enabled }})"
-          path: agent/${{ matrix.agent-name }}/agbenchmark
+          name: ${{ matrix.agent-name }}
+          path: benchmark_runs/${{ matrix.agent-name }}
