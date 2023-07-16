@@ -234,7 +234,11 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
         plugin_module_name = plugin_module_path[-1]
         qualified_module_name = ".".join(plugin_module_path)
 
-        __import__(qualified_module_name)
+        try:
+            __import__(qualified_module_name)
+        except:
+            logger.error(f"Failed to load {qualified_module_name}")
+            continue
         plugin = sys.modules[qualified_module_name]
 
         if not plugins_config.is_enabled(plugin_module_name):
@@ -258,7 +262,10 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                 module = Path(module)
                 logger.debug(f"Zipped Plugin: {plugin}, Module: {module}")
                 zipped_package = zipimporter(str(plugin))
-                zipped_module = zipped_package.load_module(str(module.parent))
+                try:
+                    zipped_module = zipped_package.load_module(str(module.parent))
+                except:
+                    logger.error(f"failed loading {str(module.parent)}")
 
                 for key in dir(zipped_module):
                     if key.startswith("__"):
@@ -291,7 +298,12 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                                 f"Zipped plugins should use the class name ({plugin_name}) as the key."
                             )
                     else:
-                        if a_module.__name__ != "AutoGPTPluginTemplate":
+                        module_name = (
+                            a_module.__name__
+                            if hasattr(a_module, "__name__")
+                            else str(a_module)
+                        )
+                        if module_name != "AutoGPTPluginTemplate":
                             logger.debug(
                                 f"Skipping '{key}' because it doesn't subclass AutoGPTPluginTemplate."
                             )
