@@ -18,12 +18,10 @@ from agbenchmark.start_benchmark import (
 from agbenchmark.utils import calculate_success_percentage
 
 
-def resolve_workspace(config: Dict[str, Any]) -> str:
-    if config.get("workspace", "").startswith("${") and config.get(
-        "workspace", ""
-    ).endswith("}"):
+def resolve_workspace(workspace: str) -> str:
+    if workspace.startswith("${") and workspace.endswith("}"):
         # Extract the string inside ${...}
-        path_expr = config["workspace"][2:-1]
+        path_expr = workspace[2:-1]
 
         # Check if it starts with "os.path.join"
         if path_expr.strip().startswith("os.path.join"):
@@ -35,7 +33,7 @@ def resolve_workspace(config: Dict[str, Any]) -> str:
         else:
             raise ValueError("Invalid workspace path expression.")
     else:
-        return os.path.abspath(Path(os.getcwd()) / config["workspace"])
+        return os.path.abspath(Path(os.getcwd()) / workspace)
 
 
 @pytest.fixture(scope="module")
@@ -45,10 +43,10 @@ def config(request: Any) -> None:
         config = json.load(f)
 
     if isinstance(config["workspace"], str):
-        config["workspace"] = resolve_workspace(config)
+        config["workspace"] = resolve_workspace(config["workspace"])
     else:  # it's a input output dict
-        config["workspace"]["input"] = resolve_workspace(config)
-        config["workspace"]["output"] = resolve_workspace(config)
+        config["workspace"]["input"] = resolve_workspace(config["workspace"]["input"])
+        config["workspace"]["output"] = resolve_workspace(config["workspace"]["output"])
 
     return config
 
@@ -173,18 +171,21 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
                 regression_manager.remove_test(test_name)
             info_details["metrics"]["fail_reason"] = str(call.excinfo.value)
 
-        prev_test_results: list[bool] = []
-
+        prev_test_results: list[bool] = internal_info.tests.get(test_name, [])
         if not mock:
             # only add if it's an actual test
-            prev_test_results = internal_info.tests.get(test_name, [])
             prev_test_results.append(info_details["metrics"]["success"])
             internal_info.add_test(test_name, prev_test_results)
 
-        # can calculate success rate regardless of mock
-        info_details["metrics"]["success_%"] = calculate_success_percentage(
-            prev_test_results
-        )
+            # can calculate success rate regardless of mock
+            info_details["metrics"]["success_%"] = calculate_success_percentage(
+                prev_test_results
+            )
+        else:
+            # can calculate success rate regardless of mock
+            info_details["metrics"][
+                "non_mock_success_%"
+            ] = calculate_success_percentage(prev_test_results)
 
         if len(prev_test_results) >= 3 and prev_test_results[-3:] == [True, True, True]:
             # if the last 3 tests were successful, add to the regression tests

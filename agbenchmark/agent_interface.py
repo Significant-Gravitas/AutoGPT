@@ -16,9 +16,7 @@ MOCK_FLAG = mock_test_str.lower() == "true" if mock_test_str else False
 
 
 def run_agent(
-    task: str,
-    config: Dict[str, Any],
-    challenge_location: str,
+    task: str, config: Dict[str, Any], challenge_location: str, cutoff: int
 ) -> None:
     """Calling to get a response"""
 
@@ -27,9 +25,7 @@ def run_agent(
             config["workspace"], "artifacts_out", challenge_location
         )
     else:
-        print(
-            f"Running Python function '{config['entry_path']}' with timeout {config['cutoff']}"
-        )
+        print(f"Running Python function '{config['entry_path']}' with timeout {cutoff}")
         command = [sys.executable, "-m", config["entry_path"], str(task)]
         process = subprocess.Popen(
             command,
@@ -50,11 +46,11 @@ def run_agent(
             if (
                 process.poll() is not None
                 or output == ""
-                or (time.time() - start_time > config["cutoff"])
+                or (time.time() - start_time > cutoff)
             ):
                 break
 
-        if time.time() - start_time > config["cutoff"]:
+        if time.time() - start_time > cutoff:
             print("The Python function has exceeded the time limit and was terminated.")
             process.kill()
         else:

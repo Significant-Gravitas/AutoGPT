@@ -1,6 +1,7 @@
 # radio charts, logs, helper functions for tests, anything else relevant.
 import glob
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,11 +13,13 @@ def calculate_info_test_path(benchmarks_folder_path: Path) -> str:
 
     if not INFO_TESTS_PATH.exists():
         INFO_TESTS_PATH.mkdir(parents=True, exist_ok=True)
-        return str(INFO_TESTS_PATH / "1.json")
+        return str(
+            INFO_TESTS_PATH / f"file1_{datetime.now().strftime('%m-%d-%H-%M')}.json"
+        )
     else:
         json_files = glob.glob(str(INFO_TESTS_PATH / "*.json"))
         file_count = len(json_files)
-        run_name = f"{file_count + 1}.json"
+        run_name = f"file{file_count + 1}_{datetime.now().strftime('%m-%d-%H-%M')}.json"
         new_file_path = INFO_TESTS_PATH / run_name
         return str(new_file_path)
 
@@ -35,8 +38,10 @@ def replace_backslash(value: Any) -> Any:
 
 
 def calculate_success_percentage(results: list[bool]) -> float:
-    success_count = results.count(True)
-    total_count = len(results)
+    # Take the last 10 results or all if less than 10
+    last_results = results[-10:] if len(results) > 10 else results
+    success_count = last_results.count(True)
+    total_count = len(last_results)
     if total_count == 0:
         return 0
     success_percentage = (success_count / total_count) * 100  # as a percentage
@@ -45,7 +50,7 @@ def calculate_success_percentage(results: list[bool]) -> float:
 
 def get_highest_success_difficulty(data: dict) -> str:
     highest_difficulty = None
-    highest_difficulty_level = -1
+    highest_difficulty_level = 0
 
     for test_name, test_data in data.items():
         if test_data["metrics"]["success"]:

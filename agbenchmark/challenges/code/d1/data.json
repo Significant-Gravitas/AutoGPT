@@ -3,6 +3,7 @@
   "category": ["code", "iterate"],
   "task": "1- Run test.py.\n2- Read code.py.\n3- Modify code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
   "dependencies": ["TestReadFile", "TestWriteFile"],
+  "cutoff": 60,
   "ground": {
     "answer": "[0, 1] [2, 5] [0, 3]",
     "should_contain": ["[0, 1]", "[2, 5]", "[0, 3]"],

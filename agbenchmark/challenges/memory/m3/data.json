@@ -3,6 +3,7 @@
   "category": ["memory"],
   "task": "Follow the instructions in the instructions_1.txt file",
   "dependencies": ["TestRememberMultipleIds"],
+  "cutoff": 60,
   "ground": {
     "answer": "3145\n3791\n9317\n9471",
     "should_contain": ["3145", "3791", "9317", "9471"],
