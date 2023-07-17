@@ -11,9 +11,9 @@ class MacOSTTS(VoiceBase):
         pass
 
     def _speech(self, text: str, voice: int = 0) -> bool:
-        voice1 = os.getenv("MAC_OS_VOICE_1") or "Allison"
-        voice2 = os.getenv("MAC_OS_VOICE_2") or "Ava"
-        voice3 = os.getenv("MAC_OS_VOICE_3") or "Samantha"
+        voice1 = os.getenv("MAC_OS_VOICE_1", "Allison")
+        voice2 = os.getenv("MAC_OS_VOICE_2", "Ava")
+        voice3 = os.getenv("MAC_OS_VOICE_3", "Samantha")
         """Play the given text."""
         if voice == 2:
             os.system(f'say -v {voice3} "{text}"')
