@@ -4,13 +4,14 @@ import os
 import requests
 from playsound import playsound
 
+from autogpt.config import Config
 from autogpt.speech.base import VoiceBase
 
 
 class StreamElementsSpeech(VoiceBase):
     """Streamelements speech module for autogpt"""
 
-    def _setup(self) -> None:
+    def _setup(self, config: Config) -> None:
         """Setup the voices, API key, etc."""
 
     def _speech(self, text: str, voice: str, _: int = 0) -> bool:

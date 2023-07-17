@@ -2,14 +2,14 @@
 import os
 import subprocess
 
-from autogpt.config.config import Config
+from autogpt.config import Config
 from autogpt.speech.base import VoiceBase
 
 
 class MacOSTTS(VoiceBase):
     """MacOS TTS Voice."""
 
-    def _setup(self) -> None:
+    def _setup(self, config: Config) -> None:
         pass
 
     def _speech(self, text: str, voice: int = 0) -> bool:
