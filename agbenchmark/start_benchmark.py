@@ -6,20 +6,17 @@ from typing import Any
 
 import click
 import pytest
-from dotenv import load_dotenv
 
-load_dotenv()
-
-from agbenchmark.utils import calculate_info_test_path
+from agbenchmark.utils import calculate_dynamic_paths
 
 CURRENT_DIRECTORY = Path(__file__).resolve().parent
 
-benchmarks_folder_path = Path(os.getcwd()) / "agbenchmark"
-
-CONFIG_PATH = str(benchmarks_folder_path / "config.json")
-REGRESSION_TESTS_PATH = str(benchmarks_folder_path / "regression_tests.json")
-
-INFO_TESTS_PATH = calculate_info_test_path(benchmarks_folder_path)
+(
+    HOME_DIRECTORY,
+    CONFIG_PATH,
+    REGRESSION_TESTS_PATH,
+    INFO_TESTS_PATH,
+) = calculate_dynamic_paths()
 
 
 @click.group()
@@ -47,9 +44,6 @@ def start(category: str, test: str, maintain: bool, improve: bool, mock: bool) -
             "Error: If you're running a specific test make sure no other options are selected. Please just pass the --test."
         )
         return 1
-
-    if not benchmarks_folder_path.exists():
-        benchmarks_folder_path.mkdir(exist_ok=True)
 
     print(CONFIG_PATH, os.path.exists(CONFIG_PATH), os.stat(CONFIG_PATH).st_size)
     if not os.path.exists(CONFIG_PATH) or os.stat(CONFIG_PATH).st_size == 0:

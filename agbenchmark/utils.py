@@ -6,25 +6,28 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from agbenchmark.challenges.define_task_types import DIFFICULTY_MAP, DifficultyLevel
 
+AGENT_NAME = os.getenv("AGENT_NAME")
+HOME_ENV = os.getenv("HOME_ENV")
 
-def calculate_info_test_path(benchmarks_folder_path: Path) -> str:
 
-    INFO_TESTS_PATH = (
-        benchmarks_folder_path / os.getenv("REPORT_LOCATION", ".") / "reports"
-    )
-
-    if not INFO_TESTS_PATH.exists():
-        INFO_TESTS_PATH.mkdir(parents=True, exist_ok=True)
+def calculate_info_test_path(reports_path: Path) -> str:
+    print("reports_pathreports_pathreports_pathreports_path", reports_path)
+    if not reports_path.exists():
+        reports_path.mkdir(parents=True, exist_ok=True)
         return str(
-            INFO_TESTS_PATH / f"file1_{datetime.now().strftime('%m-%d-%H-%M')}.json"
+            reports_path / f"file1_{datetime.now().strftime('%m-%d-%H-%M')}.json"
         )
     else:
-        json_files = glob.glob(str(INFO_TESTS_PATH / "*.json"))
+        json_files = glob.glob(str(reports_path / "*.json"))
         file_count = len(json_files)
         run_name = f"file{file_count + 1}_{datetime.now().strftime('%m-%d-%H-%M')}.json"
-        new_file_path = INFO_TESTS_PATH / run_name
+        new_file_path = reports_path / run_name
         return str(new_file_path)
 
 
@@ -79,3 +82,61 @@ def get_highest_success_difficulty(data: dict) -> str:
         highest_difficulty_str = ""
 
     return f"{highest_difficulty_str}: {highest_difficulty_level}"
+
+
+def assign_paths(folder_path: Path) -> tuple[str, str, str]:
+    CONFIG_PATH = str(folder_path / "config.json")
+    REGRESSION_TESTS_PATH = str(folder_path / "regression_tests.json")
+
+    if HOME_ENV == "ci" and AGENT_NAME:
+        INFO_TESTS_PATH = calculate_info_test_path(
+            Path(os.getcwd()) / "agbenchmark" / "reports" / AGENT_NAME
+        )
+    else:
+        INFO_TESTS_PATH = calculate_info_test_path(folder_path / "reports")
+
+    return CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH
+
+
+def calculate_dynamic_paths() -> tuple[Path, str, str, str]:
+    # the default home is where you're running from
+    HOME_DIRECTORY = Path(os.getcwd())
+    benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
+
+    if AGENT_NAME and HOME_ENV == "ci":
+        if "/Auto-GPT-Benchmarks/agent" in str(HOME_DIRECTORY):
+            raise Exception("Must run from root of benchmark repo if HOME_ENV is ci")
+
+        # however if the env is local and the agent name is defined, we want to run that agent from the repo and then get the data in the internal agbenchmark directory
+        # this is for the ci/cd pipeline
+        benchmarks_folder_path = HOME_DIRECTORY / "agent" / AGENT_NAME / "agbenchmark"
+
+        CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH = assign_paths(
+            benchmarks_folder_path
+        )
+
+        # we want to run the agent from the submodule
+        HOME_DIRECTORY = Path(os.getcwd()) / "agent" / AGENT_NAME
+
+    elif AGENT_NAME and not os.path.join("Auto-GPT-Benchmarks", "agent") in str(
+        HOME_DIRECTORY
+    ):
+        # if the agent name is defined but the run is not from the agent repo, then home is the agent repo
+        # used for development of both a benchmark and an agent
+        HOME_DIRECTORY = Path(os.getcwd()) / "agent" / AGENT_NAME
+        benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
+
+        CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH = assign_paths(
+            benchmarks_folder_path
+        )
+    else:
+        # otherwise the default is when home is an agent (running agbenchmark from agent/agent_repo)
+        # used when its just a pip install
+        CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH = assign_paths(
+            benchmarks_folder_path
+        )
+
+    if not benchmarks_folder_path.exists():
+        benchmarks_folder_path.mkdir(exist_ok=True)
+
+    return HOME_DIRECTORY, CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH
