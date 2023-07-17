@@ -56,6 +56,7 @@ class Spinner:
 
     def __enter__(self):
         """Start the spinner"""
+        self.start()
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:

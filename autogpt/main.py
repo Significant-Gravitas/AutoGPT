@@ -1,17 +1,17 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
 import enum
 import logging
+import math
 import signal
 import sys
-import math
 from pathlib import Path
 from types import FrameType
-from typing import Optional, Union, Any
+from typing import Optional, Union
 
 from colorama import Fore, Style
 
-from autogpt.agents import Agent, CommandName, CommandArgs, AgentThoughts
-from autogpt.config import ConfigBuilder, check_openai_api_key, Config, AIConfig
+from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
+from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
 from autogpt.memory.vector import get_memory
@@ -217,6 +217,7 @@ def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> Union[int
 
 class UserFeedback(str, enum.Enum):
     """Enum for user feedback."""
+
     AUTHORIZE = "GENERATE NEXT COMMAND JSON"
     EXIT = "EXIT"
     TEXT = "TEXT"
@@ -279,9 +280,8 @@ def run_interaction_loop(
         # Plan #
         ########
         # Have the agent determine the next action to take.
-        spinner.start()
-        command_name, command_args, assistant_reply_dict = agent.think()
-        spinner.stop()
+        with spinner:
+            command_name, command_args, assistant_reply_dict = agent.think()
 
         ###############
         # Update User #
@@ -294,7 +294,8 @@ def run_interaction_loop(
         ##################
         if cycles_remaining == 1:  # Last cycle
             user_feedback, user_input, new_cycles_remaining = get_user_feedback(
-                config, ai_config,
+                config,
+                ai_config,
             )
 
             if user_feedback == UserFeedback.AUTHORIZE:
@@ -386,8 +387,7 @@ def update_user(
         logger.typewriter_log(
             "ERROR: ",
             Fore.RED,
-            f"The Agent failed to select an action. "
-            f"Error message: {command_name}",
+            f"The Agent failed to select an action. " f"Error message: {command_name}",
         )
     else:
         logger.typewriter_log(
