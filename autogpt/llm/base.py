@@ -137,14 +137,12 @@ class ChatSequence:
         messages: list[Message] | ChatSequence = [],
         **kwargs,
     ) -> TChatSequence:
-        from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+        from autogpt.llm.providers.openai_models import OPEN_AI_MODELS
 
-        if not model_name in OPEN_AI_CHAT_MODELS:
+        if not model_name in OPEN_AI_MODELS:
             raise ValueError(f"Unknown chat model '{model_name}'")
 
-        return cls(
-            model=OPEN_AI_CHAT_MODELS[model_name], messages=list(messages), **kwargs
-        )
+        return cls(model=OPEN_AI_MODELS[model_name], messages=list(messages), **kwargs)
 
     @property
     def token_length(self) -> int:

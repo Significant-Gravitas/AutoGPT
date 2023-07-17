@@ -8,7 +8,7 @@ from autogpt.agents import Agent
 from autogpt.config import AIConfig
 from autogpt.config.config import Config
 from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.llm.providers.openai_models import openai_models
 from autogpt.llm.utils import count_string_tokens
 from autogpt.memory.message_history import MessageHistory
 
@@ -46,7 +46,7 @@ def test_message_history_batch_summary(mocker, agent: Agent, config: Config):
 
     # Setting the mock output and inputs
     mock_summary_response = ChatModelResponse(
-        model_info=OPEN_AI_CHAT_MODELS[model],
+        model_info=openai_models[model],
         content="I executed browse_website command for each of the websites returned from Google search, but none of them have any job openings.",
         function_call=None,
     )
@@ -134,7 +134,7 @@ def test_message_history_batch_summary(mocker, agent: Agent, config: Config):
     )
 
     expected_call_count = math.ceil(
-        message_tlength / (OPEN_AI_CHAT_MODELS[config.fast_llm].max_tokens)
+        message_tlength / (openai_models[config.fast_llm].max_tokens)
     )
     # Expecting 2 batches because of over max token
     assert mock_summary.call_count == expected_call_count  # 2 at the time of writing

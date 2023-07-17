@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+from autogpt.llm.utils.token_counter import count_string_tokens
+
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
@@ -41,6 +43,8 @@ def chat_with_ai(
     Returns:
     str: The AI's response.
     """
+    import time
+
     if model is None:
         model = config.smart_llm
 
@@ -161,6 +165,8 @@ def chat_with_ai(
         message_sequence.add("system", plugin_response)
         current_tokens_used += tokens_to_add
 
+    api_manager.update_rates(current_tokens_used)
+
     # Calculate remaining tokens
     tokens_remaining = token_limit - current_tokens_used
     # assert tokens_remaining >= 0, "Tokens remaining is negative.
@@ -199,5 +205,8 @@ def chat_with_ai(
     # Update full message history
     agent.history.append(user_input_msg)
     agent.history.add("assistant", assistant_reply.content, "ai_response")
+    api_manager.update_rates(
+        count_string_tokens(assistant_reply.content, model_name=model)
+    )
 
     return assistant_reply

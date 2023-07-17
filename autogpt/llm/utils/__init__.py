@@ -5,6 +5,7 @@ from typing import List, Literal, Optional
 from colorama import Fore
 
 from autogpt.config import Config
+from ..providers.openai_models import OPEN_AI_MODELS
 
 from ..api_manager import ApiManager
 from ..base import (
@@ -16,7 +17,6 @@ from ..base import (
 )
 from ..providers import openai as iopenai
 from ..providers.openai import (
-    OPEN_AI_CHAT_MODELS,
     OpenAIFunctionCall,
     OpenAIFunctionSpec,
     count_openai_functions_tokens,
@@ -112,14 +112,15 @@ def create_chat_completion(
     Returns:
         str: The response from the chat completion
     """
+    prompt_tlength = prompt.token_length
+    ApiManager().update_rates(prompt_tlength)
 
     if model is None:
         model = prompt.model.name
     if temperature is None:
         temperature = config.temperature
     if max_tokens is None:
-        prompt_tlength = prompt.token_length
-        max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt_tlength
+        max_tokens = OPEN_AI_MODELS[model].max_tokens - prompt_tlength
         logger.debug(f"Prompt length: {prompt_tlength} tokens")
         if functions:
             functions_tlength = count_openai_functions_tokens(functions, model)
@@ -175,7 +176,7 @@ def create_chat_completion(
         content = plugin.on_response(content)
 
     return ChatModelResponse(
-        model_info=OPEN_AI_CHAT_MODELS[model],
+        model_info=OPEN_AI_MODELS[model],
         content=content,
         function_call=OpenAIFunctionCall(
             name=function_call["name"], arguments=function_call["arguments"]

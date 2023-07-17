@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 from autogpt.config import Config
 from autogpt.json_utils.utilities import extract_json_from_response
 from autogpt.llm.base import ChatSequence, Message
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.llm.providers.openai_models import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import (
     count_message_tokens,
     count_string_tokens,

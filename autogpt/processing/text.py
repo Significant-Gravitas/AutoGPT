@@ -11,6 +11,7 @@ from autogpt.llm.providers.openai import OPEN_AI_MODELS
 from autogpt.llm.utils import count_string_tokens, create_chat_completion
 from autogpt.logs import logger
 from autogpt.utils import batch
+from autogpt.llm.utils.token_counter import count_message_tokens
 
 
 def _max_chunk_length(model: str, max: Optional[int] = None) -> int:
@@ -113,6 +114,7 @@ def summarize_text(
         )
 
         logger.debug(f"Summarizing with {model}:\n{summarization_prompt.dump()}\n")
+
         summary = create_chat_completion(
             prompt=summarization_prompt, config=config, temperature=0, max_tokens=500
         ).content

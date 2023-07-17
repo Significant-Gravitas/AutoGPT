@@ -4,7 +4,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, OPEN_AI_EMBEDDING_MODELS
+from autogpt.llm.providers.openai_models import OPEN_AI_MODELS,OPEN_AI_EMBEDDING_MODELS
 
 api_manager = ApiManager()
 
@@ -18,7 +18,7 @@ def reset_api_manager():
 @pytest.fixture(autouse=True)
 def mock_costs(mocker: MockerFixture):
     mocker.patch.multiple(
-        OPEN_AI_CHAT_MODELS["gpt-3.5-turbo"],
+        OPEN_AI_MODELS["gpt-3.5-turbo"],
         prompt_token_cost=0.0013,
         completion_token_cost=0.0025,
     )
