@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from autogpt.agents.agent import Agent, execute_command
-from autogpt.config import AIConfig
+from autogpt.config import AIConfig, Config
 from autogpt.logs import Logger
 
 
@@ -14,36 +14,10 @@ def test_agent_initialization(agent: Agent):
     assert agent.next_action_count == 0
 
 
-@pytest.fixture
-def agent():
-    ai_name = "Test AI"
-    memory = MagicMock()
-    full_message_history = []
-    next_action_count = 0
-    command_registry = MagicMock()
-    config = AIConfig()
-    system_prompt = "System prompt"
-    triggering_prompt = "Triggering prompt"
-    workspace_directory = "workspace_directory"
-
-    agent = Agent(
-        ai_name,
-        memory,
-        full_message_history,
-        next_action_count,
-        command_registry,
-        config,
-        system_prompt,
-        triggering_prompt,
-        workspace_directory,
-    )
-    return agent
-
-
 def single_agent_loop_setup(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        config = kwargs.get("config")
+        config: Config = kwargs.get("config")
         original_continuous_limit = config.continuous_limit
         original_speak_mode = config.speak_mode
         original_continuous_mode = config.continuous_mode
@@ -62,7 +36,7 @@ def single_agent_loop_setup(func):
 def setup_with_chat(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        config = kwargs.get("config")
+        config: Config = kwargs.get("config")
         original_chat_messages_enabled = config.chat_messages_enabled
         config.chat_messages_enabled = True
         result = func(*args, **kwargs)
