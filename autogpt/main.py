@@ -6,7 +6,7 @@ import signal
 import sys
 from pathlib import Path
 from types import FrameType
-from typing import Optional, Union
+from typing import Optional
 
 from colorama import Fore, Style
 
