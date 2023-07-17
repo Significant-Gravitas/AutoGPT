@@ -203,7 +203,7 @@ def run_auto_gpt(
     run_interaction_loop(agent)
 
 
-def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> Union[int, None]:
+def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | None:
     # Translate from the continuous_mode/continuous_limit config
     # to a cycle_budget (maximum number of cycles to run without checking in with the
     # user) and a count of cycles_remaining before we check in..
