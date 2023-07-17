@@ -123,6 +123,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         # You can replace this with the desired Python image/version
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
+        # TODO: handle windows Python images.
         image_name = "python:3-alpine"
         try:
             client.images.get(image_name)
@@ -145,7 +146,10 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         logger.debug(f"Running {file_path} in a {image_name} container...")
         container: DockerContainer = client.containers.run(
             image_name,
-            ["python", str(file_path.relative_to(agent.workspace.root)).replace("\\","/")],
+            [
+                "python",
+                str(file_path.relative_to(agent.workspace.root)).replace("\\", "/"),
+            ],
             volumes={
                 agent.config.workspace_path: {
                     "bind": "/workspace",
