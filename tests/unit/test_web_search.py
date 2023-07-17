@@ -3,7 +3,7 @@ import json
 import pytest
 from googleapiclient.errors import HttpError
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.commands.web_search import google, safe_google_results, web_search
 
 

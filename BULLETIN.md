@@ -1,27 +1,29 @@
-# Website and Documentation Site 📰📖
-Check out *https://agpt.co*, the official news & updates site for Auto-GPT!
-The documentation also has a place here, at *https://docs.agpt.co*
+# QUICK LINKS 🔗
+# --------------
+🌎 *Official Website*: https://agpt.co.
+📖 *User Guide*: https://docs.agpt.co.
+👩 *Contributors Wiki*: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing.
 
-# For contributors 👷🏼
-Since releasing v0.3.0, whave been working on re-architecting the Auto-GPT core to make it more extensible and make room for structural performance-oriented R&D.
+# v0.4.4 RELEASE HIGHLIGHTS! 🚀
+# -----------------------------
+## GPT-4 is back!
+Following OpenAI's recent GPT-4 GA announcement, the SMART_LLM .env setting 
+now defaults to GPT-4, and Auto-GPT will use GPT-4 by default in its main loop.
 
-Check out the contribution guide on our wiki:
-https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing
+### !! High Costs Warning !! 💰💀🚨
+GPT-4 costs ~20x more than GPT-3.5-turbo. 
+Please take note of this before using SMART_LLM. You can use `--gpt3only` 
+or `--gpt4only` to force the use of GPT-3.5-turbo or GPT-4, respectively, 
+at runtime.
 
-# 🚀 v0.4.1 Release 🚀
-Two weeks and 50+ pull requests have passed since v0.4.0, and we are happy to announce the release of v0.4.1!
+## Re-arch v1 preview release!
+We've released a preview version of the re-arch code, under `autogpt/core`. 
+This is a major milestone for us, and we're excited to continue working on it. 
+We look forward to your feedback. Follow the process here: 
+https://github.com/Significant-Gravitas/Auto-GPT/issues/4770.
 
-Highlights and notable changes since v0.4.0:
-- The .env.template is more readable and better explains the purpose of each environment variable.
-- More dependable search
-    - The CUSTOM_SEARCH_ENGINE_ID variable has been replaced to GOOGLE_CUSTOM_SEARCH_ENGINE_ID, make sure you update it.
-- Better read_file
-- More reliable python code execution
-- Lots of JSON error fixes
-- Directory-based plugins
+## Other highlights
+Other fixes include plugins regressions, Azure config and security patches.
 
-## Further fixes and changes 🛠️
-Under the hood, we've done a bunch of work improving architectures and streamlining code. Most of that won't be user-visible
-
-## Take a look at the Release Notes on Github for the full changelog!
-https://github.com/Significant-Gravitas/Auto-GPT/releases
+Take a look at the Release Notes on Github for the full changelog! 
+https://github.com/Significant-Gravitas/Auto-GPT/releases.

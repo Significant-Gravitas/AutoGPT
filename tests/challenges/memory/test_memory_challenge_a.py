@@ -1,6 +1,7 @@
 import pytest
 from pytest_mock import MockerFixture
 
+from autogpt.config import Config
 from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_challenge
@@ -12,6 +13,7 @@ USER_INPUT = "Use the command read_file to read the instructions_1.txt file\nFol
 
 @challenge()
 def test_memory_challenge_a(
+    config: Config,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
