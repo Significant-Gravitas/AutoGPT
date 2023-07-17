@@ -40,45 +40,6 @@ Let people know what beautiful code you write does, document everything well
 
 Share your progress :)
 
-### Pytest
-
-an example of a test is below, use it as a template and change the class name, the .json name, what the test depends on and it's name, and the scoring logic
-
-```python
-import pytest
-from agbenchmark.tests.basic_abilities.BasicChallenge import BasicChallenge
-import os
-
-
-class TestWriteFile(BasicChallenge):
-    """Testing if LLM can write to a file"""
-
-    def test_method(self, config):
-        # implement scoring logic by looking at workspace
-```
-
-All challenges will inherit from parent class which has the mark and any specific methods for their category
-
-```python
-@pytest.mark.basic
-class BasicChallenge(Challenge):
-    pass
-```
-
-Add the below to create a file in the workspace prior to running a challenge. Only use when a file is needed to be created in the workspace prior to a test, such as with the read_file_test.
-
-```python
-@pytest.fixture(
-        scope="module", autouse=True
-    )  # this is specific to setting up a file for the test, not all tests have this
-    def setup_module(self, workspace):
-        Challenge.write_to_file(
-            workspace, self.data.ground.files[0], "this is how we're doing"
-        )
-```
-
-#### The main Challenge class has all the parametrization and loading logic so that all tests can inherit from it. It lives within [this file](https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/blob/master/agbenchmark/Challenge.py)
-
 ## Workspace
 
 If `--mock` flag is used it is at `agbenchmark/workspace`. Otherwise for mini-agi it is at `C:/Users/<name>/miniagi` - it will be automitcally set on config
@@ -87,29 +48,7 @@ If `--mock` flag is used it is at `agbenchmark/workspace`. Otherwise for mini-ag
 
 Manually created, existing challenges within Auto-Gpt, https://osu-nlp-group.github.io/Mind2Web/
 
-## Repo
-
-```
-|-- auto-gpt-benchmarks/ **main project directory**
-| |-- metrics.py **combining scores, metrics, final evaluation**
-| |-- start_benchmark.py **entry point from cli**
-| |-- conftest.py **config, workspace creation + teardown, regression tesst markers, parameterization**
-| |-- Challenge.py **easy challenge creation class**
-| |-- config.json **workspace folder**
-| |-- challenges/ **challenges across different domains**
-| | |-- adaptability/
-| | |-- basic_abilities/
-| | |-- code/
-| | |-- memory/
-| | |-- retrieval/
-| | |-- web_navigation/
-| | |-- writing/
-| |-- tests/
-| | |-- basic_abilities/ **every llm should pass these challenges**
-| | |-- regression/ **challenges that already passed**
-```
-
-## How to add new agents to agbenchmark ?
+## How do I add new agents to agbenchmark ?
 
 Example with smol developer.
 
@@ -120,3 +59,12 @@ https://github.com/smol-ai/developer/pull/114/files
 2- Create the submodule and the github workflow by following the same pattern as this example:
 
 https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/pull/48/files
+
+## How do I run agent in different environments?
+
+**To just use as the benchmark for your agent**. `pip install` the package and run `agbenchmark start`
+
+**For internal Auto-GPT ci runs**, specify the `AGENT_NAME` you want you use and set the `HOME_ENV`.
+Ex. `HOME_ENV=ci AGENT_NAME=mini-agi`
+
+**To develop agent alongside benchmark**, you can specify the `AGENT_NAME` you want you use and add as a submodule to the repo

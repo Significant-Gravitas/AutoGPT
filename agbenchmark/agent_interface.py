@@ -7,7 +7,7 @@ from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from agbenchmark.start_benchmark import CURRENT_DIRECTORY
+from agbenchmark.start_benchmark import CURRENT_DIRECTORY, HOME_DIRECTORY
 
 load_dotenv()
 
@@ -25,13 +25,16 @@ def run_agent(
             config["workspace"], "artifacts_out", challenge_location
         )
     else:
-        print(f"Running Python function '{config['entry_path']}' with timeout {cutoff}")
-        command = [sys.executable, "-m", config["entry_path"], str(task)]
+        entry_path = "agbenchmark.benchmarks"
+
+        print(f"Running Python function '{entry_path}' with timeout {cutoff}")
+        command = [sys.executable, "-m", entry_path, str(task)]
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
+            cwd=HOME_DIRECTORY,
         )
 
         start_time = time.time()

@@ -17,6 +17,8 @@
     "TestDebugSimpleTypoWithGuidance": [
         false,
         false,
+        false,
+        false,
         false
     ],
     "TestDebugSimpleTypoWithoutGuidance": [
@@ -25,6 +27,7 @@
         false
     ],
     "TestReadFile": [
+        true,
         true,
         true,
         true
@@ -57,6 +60,7 @@
     "TestSearch": [
         true,
         true,
+        true,
         true
     ],
     "TestWriteFile": [
@@ -68,6 +72,12 @@
         false,
         false,
         true,
-        false
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true
     ]
 }
