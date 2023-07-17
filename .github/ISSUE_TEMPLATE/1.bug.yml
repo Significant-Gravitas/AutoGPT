@@ -16,7 +16,7 @@ body:
         [discussions]: https://github.com/Significant-Gravitas/Auto-GPT/discussions
         [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
         [existing issues]: https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue
-        [wiki page on Contributing]: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing
+        [wiki page on Contributing]: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
 
   - type: checkboxes
     attributes:
@@ -140,8 +140,8 @@ body:
         ⚠️The following is OPTIONAL, please keep in mind that the log files may contain personal information such as credentials.⚠️
         
         "The log files are located in the folder 'logs' inside the main auto-gpt folder."
-        
-  - type: input
+
+  - type: textarea
     attributes:
       label: Upload Activity Log Content
       description: |
@@ -152,7 +152,7 @@ body:
     validations:
       required: false
 
-  - type: input
+  - type: textarea
     attributes:
       label: Upload Error Log Content
       description: |

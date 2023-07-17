@@ -4,39 +4,55 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from sys import platform
+from typing import Optional, Type
 
 from bs4 import BeautifulSoup
-from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.service import Service as ChromeDriverService
+from selenium.webdriver.chrome.webdriver import WebDriver as ChromeDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.webdriver.edge.service import Service as EdgeDriverService
+from selenium.webdriver.edge.webdriver import WebDriver as EdgeDriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.firefox.service import Service as GeckoDriverService
+from selenium.webdriver.firefox.webdriver import WebDriver as FirefoxDriver
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.safari.options import Options as SafariOptions
+from selenium.webdriver.safari.webdriver import WebDriver as SafariDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
-from webdriver_manager.microsoft import EdgeChromiumDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-import autogpt.processing.text as summary
-from autogpt.commands.command import command
-from autogpt.config import Config
+from autogpt.agents.agent import Agent
+from autogpt.command_decorator import command
+from autogpt.logs import logger
+from autogpt.memory.vector import MemoryItem, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
 
+BrowserOptions = ChromeOptions | EdgeOptions | FirefoxOptions | SafariOptions
+
 FILE_DIR = Path(__file__).parent.parent
-CFG = Config()
 
 
 @command(
     "browse_website",
-    "Browse Website",
-    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+    "Browses a Website",
+    {
+        "url": {"type": "string", "description": "The URL to visit", "required": True},
+        "question": {
+            "type": "string",
+            "description": "What you want to find on the website",
+            "required": True,
+        },
+    },
 )
 @validate_url
-def browse_website(url: str, question: str) -> str:
+def browse_website(url: str, question: str, agent: Agent) -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -47,7 +63,7 @@ def browse_website(url: str, question: str) -> str:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
     """
     try:
-        driver, text = scrape_text_with_selenium(url)
+        driver, text = scrape_text_with_selenium(url, agent)
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
@@ -55,17 +71,17 @@ def browse_website(url: str, question: str) -> str:
         return f"Error: {msg}"
 
     add_header(driver)
-    summary_text = summary.summarize_text(url, text, question, driver)
+    summary = summarize_memorize_webpage(url, text, question, agent, driver)
     links = scrape_links_with_selenium(driver, url)
 
     # Limit links to 5
     if len(links) > 5:
         links = links[:5]
     close_browser(driver)
-    return f"Answer gathered from website: {summary_text} \n \n Links: {links}"
+    return f"Answer gathered from website: {summary}\n\nLinks: {links}"
 
 
-def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
+def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
     """Scrape text from a website using selenium
 
     Args:
@@ -76,49 +92,49 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     """
     logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
-    options_available = {
+    options_available: dict[str, Type[BrowserOptions]] = {
         "chrome": ChromeOptions,
-        "safari": SafariOptions,
-        "firefox": FirefoxOptions,
         "edge": EdgeOptions,
+        "firefox": FirefoxOptions,
+        "safari": SafariOptions,
     }
 
-    options = options_available[CFG.selenium_web_browser]()
+    options: BrowserOptions = options_available[agent.config.selenium_web_browser]()
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
 
-    if CFG.selenium_web_browser == "firefox":
-        if CFG.selenium_headless:
+    if agent.config.selenium_web_browser == "firefox":
+        if agent.config.selenium_headless:
             options.headless = True
             options.add_argument("--disable-gpu")
-        driver = webdriver.Firefox(
-            executable_path=GeckoDriverManager().install(), options=options
+        driver = FirefoxDriver(
+            service=GeckoDriverService(GeckoDriverManager().install()), options=options
         )
-    elif CFG.selenium_web_browser == "safari":
+    elif agent.config.selenium_web_browser == "edge":
+        driver = EdgeDriver(
+            service=EdgeDriverService(EdgeDriverManager().install()), options=options
+        )
+    elif agent.config.selenium_web_browser == "safari":
         # Requires a bit more setup on the users end
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
-        driver = webdriver.Safari(options=options)
-    elif CFG.selenium_web_browser == "edge":
-        driver = webdriver.Edge(
-            executable_path=EdgeChromiumDriverManager().install(), options=options
-        )
+        driver = SafariDriver(options=options)
     else:
         if platform == "linux" or platform == "linux2":
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--remote-debugging-port=9222")
 
         options.add_argument("--no-sandbox")
-        if CFG.selenium_headless:
+        if agent.config.selenium_headless:
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
 
         chromium_driver_path = Path("/usr/bin/chromedriver")
 
-        driver = webdriver.Chrome(
-            executable_path=chromium_driver_path
+        driver = ChromeDriver(
+            service=ChromeDriverService(str(chromium_driver_path))
             if chromium_driver_path.exists()
-            else ChromeDriverManager().install(),
+            else ChromeDriverService(ChromeDriverManager().install()),
             options=options,
         )
     driver.get(url)
@@ -188,3 +204,34 @@ def add_header(driver: WebDriver) -> None:
         driver.execute_script(overlay_script)
     except Exception as e:
         print(f"Error executing overlay.js: {e}")
+
+
+def summarize_memorize_webpage(
+    url: str,
+    text: str,
+    question: str,
+    agent: Agent,
+    driver: Optional[WebDriver] = None,
+) -> str:
+    """Summarize text using the OpenAI API
+
+    Args:
+        url (str): The url of the text
+        text (str): The text to summarize
+        question (str): The question to ask the model
+        driver (WebDriver): The webdriver to use to scroll the page
+
+    Returns:
+        str: The summary of the text
+    """
+    if not text:
+        return "Error: No text to summarize"
+
+    text_length = len(text)
+    logger.info(f"Text length: {text_length} characters")
+
+    memory = get_memory(agent.config)
+
+    new_memory = MemoryItem.from_webpage(text, url, agent.config, question=question)
+    memory.add(new_memory)
+    return new_memory.summary

@@ -7,12 +7,14 @@ from __future__ import annotations
 import os
 import platform
 from pathlib import Path
-from typing import Any, Optional, Type
+from typing import TYPE_CHECKING, Optional
 
 import distro
 import yaml
 
-from autogpt.prompts.generator import PromptGenerator
+if TYPE_CHECKING:
+    from autogpt.models.command_registry import CommandRegistry
+    from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
@@ -33,7 +35,7 @@ class AIConfig:
         self,
         ai_name: str = "",
         ai_role: str = "",
-        ai_goals: list | None = None,
+        ai_goals: list[str] = [],
         api_budget: float = 0.0,
     ) -> None:
         """
@@ -47,32 +49,29 @@ class AIConfig:
         Returns:
             None
         """
-        if ai_goals is None:
-            ai_goals = []
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
         self.api_budget = api_budget
-        self.prompt_generator = None
-        self.command_registry = None
+        self.prompt_generator: PromptGenerator | None = None
+        self.command_registry: CommandRegistry | None = None
 
     @staticmethod
-    def load(config_file: str = SAVE_FILE) -> "AIConfig":
+    def load(ai_settings_file: str = SAVE_FILE) -> "AIConfig":
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
-          yaml file if yaml file exists,
-        else returns class with no parameters.
+        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget)
+        loaded from yaml file if yaml file exists, else returns class with no parameters.
 
         Parameters:
-           config_file (int): The path to the config yaml file.
-             DEFAULT: "../ai_settings.yaml"
+            ai_settings_file (int): The path to the config yaml file.
+              DEFAULT: "../ai_settings.yaml"
 
         Returns:
             cls (object): An instance of given cls object
         """
 
         try:
-            with open(config_file, encoding="utf-8") as file:
+            with open(ai_settings_file, encoding="utf-8") as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
         except FileNotFoundError:
             config_params = {}
@@ -89,12 +88,12 @@ class AIConfig:
         # type: Type[AIConfig]
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
-    def save(self, config_file: str = SAVE_FILE) -> None:
+    def save(self, ai_settings_file: str = SAVE_FILE) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
         Parameters:
-            config_file(str): The path to the config yaml file.
+            ai_settings_file(str): The path to the config yaml file.
               DEFAULT: "../ai_settings.yaml"
 
         Returns:
@@ -107,11 +106,11 @@ class AIConfig:
             "ai_goals": self.ai_goals,
             "api_budget": self.api_budget,
         }
-        with open(config_file, "w", encoding="utf-8") as file:
+        with open(ai_settings_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
 
     def construct_full_prompt(
-        self, prompt_generator: Optional[PromptGenerator] = None
+        self, config, prompt_generator: Optional[PromptGenerator] = None
     ) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
@@ -131,22 +130,20 @@ class AIConfig:
             ""
         )
 
-        from autogpt.config import Config
         from autogpt.prompts.prompt import build_default_prompt_generator
 
-        cfg = Config()
         if prompt_generator is None:
-            prompt_generator = build_default_prompt_generator()
+            prompt_generator = build_default_prompt_generator(config)
         prompt_generator.goals = self.ai_goals
         prompt_generator.name = self.ai_name
         prompt_generator.role = self.ai_role
         prompt_generator.command_registry = self.command_registry
-        for plugin in cfg.plugins:
+        for plugin in config.plugins:
             if not plugin.can_handle_post_prompt():
                 continue
             prompt_generator = plugin.post_prompt(prompt_generator)
 
-        if cfg.execute_local_commands:
+        if config.execute_local_commands:
             # add OS info to prompt
             os_name = platform.system()
             os_info = (
@@ -164,5 +161,5 @@ class AIConfig:
         if self.api_budget > 0.0:
             full_prompt += f"\nIt takes money to let you run. Your API budget is ${self.api_budget:.3f}"
         self.prompt_generator = prompt_generator
-        full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
+        full_prompt += f"\n\n{prompt_generator.generate_prompt_string(config)}"
         return full_prompt

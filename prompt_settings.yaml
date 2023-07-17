@@ -7,13 +7,11 @@ constraints: [
 resources: [
   'Internet access for searches and information gathering.',
   'Long Term memory management.',
-  'GPT-3.5 powered Agents for delegation of simple tasks.',
   'File output.'
 ]
 performance_evaluations: [
   'Continuously review and analyze your actions to ensure you are performing to the best of your abilities.',
   'Constructively self-criticize your big-picture behavior constantly.',
   'Reflect on past decisions and strategies to refine your approach.',
-  'Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps.',
-  'Write all code to a file.'
+  'Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps.'
 ]

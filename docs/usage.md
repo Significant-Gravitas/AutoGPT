@@ -11,11 +11,11 @@ Running with `--help` lists all the possible command line arguments you can pass
 
 !!! info
     For use with Docker, replace the script in the examples with
-    `docker-compose run --rm auto-gpt`:
+    `docker compose run --rm auto-gpt`:
 
         :::shell
-        docker-compose run --rm auto-gpt --help
-        docker-compose run --rm auto-gpt --ai-settings <filename>
+        docker compose run --rm auto-gpt --help
+        docker compose run --rm auto-gpt --ai-settings <filename>
 
 !!! note
     Replace anything in angled brackets (<>) to a value you want to specify
@@ -72,7 +72,7 @@ If you don't have access to GPT-4, this mode allows you to use Auto-GPT!
 ./run.sh --gpt3only
 ```
 
-You can achieve the same by setting `SMART_LLM_MODEL` in `.env` to `gpt-3.5-turbo`.
+You can achieve the same by setting `SMART_LLM` in `.env` to `gpt-3.5-turbo`.
 
 ### GPT-4 ONLY Mode
 
@@ -89,12 +89,20 @@ This may give your bot increased intelligence.
 
 ## Logs
 
-Activity and error logs are located in the `./output/logs`
+Activity, Error, and Debug logs are located in `./logs`
+
+!!! tip 
+    Do you notice weird behavior with your agent? Do you have an interesting use case? Do you have a bug you want to report?
+    Follow the step below to enable your logs. You can include these logs when making an issue report or discussing an issue with us.
 
 To print out debug logs:
 
 ``` shell
-./run.sh --debug
+./run.sh --debug     # on Linux / macOS
+
+.\run.bat --debug    # on Windows
+
+docker-compose run --rm auto-gpt --debug    # in Docker
 ```
 
 ## Disabling Command Categories
@@ -104,5 +112,5 @@ If you want to selectively disable some command groups, you can use the `DISABLE
 For example, to disable coding related features, set it to the value below:
 
 ```ini
-DISABLED_COMMAND_CATEGORIES=autogpt.commands.analyze_code,autogpt.commands.execute_code,autogpt.commands.git_operations,autogpt.commands.improve_code,autogpt.commands.write_tests
+DISABLED_COMMAND_CATEGORIES=autogpt.commands.execute_code
 ```

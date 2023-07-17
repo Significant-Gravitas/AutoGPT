@@ -1,22 +1,20 @@
+from typing import Optional
+
 from colorama import Fore
 
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.config.prompt_config import PromptConfig
-from autogpt.llm import ApiManager
+from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
-CFG = Config()
-
-DEFAULT_TRIGGERING_PROMPT = (
-    "Determine which next command to use, and respond using the format specified above:"
-)
+DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond using the JSON schema specified previously:"
 
 
-def build_default_prompt_generator() -> PromptGenerator:
+def build_default_prompt_generator(config: Config) -> PromptGenerator:
     """
     This function generates a prompt string that includes various constraints,
         commands, resources, and performance evaluations.
@@ -29,7 +27,7 @@ def build_default_prompt_generator() -> PromptGenerator:
     prompt_generator = PromptGenerator()
 
     # Initialize the PromptConfig object and load the file set in the main config (default: prompts_settings.yaml)
-    prompt_config = PromptConfig(CFG.prompt_settings_file)
+    prompt_config = PromptConfig(config.prompt_settings_file)
 
     # Add constraints to the PromptGenerator object
     for constraint in prompt_config.constraints:
@@ -46,70 +44,89 @@ def build_default_prompt_generator() -> PromptGenerator:
     return prompt_generator
 
 
-def construct_main_ai_config() -> AIConfig:
+def construct_main_ai_config(
+    config: Config,
+    name: Optional[str] = None,
+    role: Optional[str] = None,
+    goals: tuple[str] = tuple(),
+) -> AIConfig:
     """Construct the prompt for the AI to respond to
 
     Returns:
         str: The prompt string
     """
-    config = AIConfig.load(CFG.ai_settings_file)
-    if CFG.skip_reprompt and config.ai_name:
-        logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
-        logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
-        logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
+    ai_config = AIConfig.load(config.ai_settings_file)
+
+    # Apply overrides
+    if name:
+        ai_config.ai_name = name
+    if role:
+        ai_config.ai_role = role
+    if goals:
+        ai_config.ai_goals = list(goals)
+
+    if (
+        all([name, role, goals])
+        or config.skip_reprompt
+        and all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals])
+    ):
+        logger.typewriter_log("Name :", Fore.GREEN, ai_config.ai_name)
+        logger.typewriter_log("Role :", Fore.GREEN, ai_config.ai_role)
+        logger.typewriter_log("Goals:", Fore.GREEN, f"{ai_config.ai_goals}")
         logger.typewriter_log(
             "API Budget:",
             Fore.GREEN,
-            "infinite" if config.api_budget <= 0 else f"${config.api_budget}",
+            "infinite" if ai_config.api_budget <= 0 else f"${ai_config.api_budget}",
         )
-    elif config.ai_name:
+    elif all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals]):
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
-            f"Would you like me to return to being {config.ai_name}?",
+            f"Would you like me to return to being {ai_config.ai_name}?",
             speak_text=True,
         )
         should_continue = clean_input(
+            config,
             f"""Continue with the last settings?
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}
-API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-Continue ({CFG.authorise_key}/{CFG.exit_key}): """
+Name:  {ai_config.ai_name}
+Role:  {ai_config.ai_role}
+Goals: {ai_config.ai_goals}
+API Budget: {"infinite" if ai_config.api_budget <= 0 else f"${ai_config.api_budget}"}
+Continue ({config.authorise_key}/{config.exit_key}): """,
         )
-        if should_continue.lower() == CFG.exit_key:
-            config = AIConfig()
+        if should_continue.lower() == config.exit_key:
+            ai_config = AIConfig()
 
-    if not config.ai_name:
-        config = prompt_user()
-        config.save(CFG.ai_settings_file)
+    if any([not ai_config.ai_name, not ai_config.ai_role, not ai_config.ai_goals]):
+        ai_config = prompt_user(config)
+        ai_config.save(config.ai_settings_file)
 
-    if CFG.restrict_to_workspace:
+    if config.restrict_to_workspace:
         logger.typewriter_log(
             "NOTE:All files/directories created by this agent can be found inside its workspace at:",
             Fore.YELLOW,
-            f"{CFG.workspace_path}",
+            f"{config.workspace_path}",
         )
     # set the total api budget
     api_manager = ApiManager()
-    api_manager.set_total_budget(config.api_budget)
+    api_manager.set_total_budget(ai_config.api_budget)
 
     # Agent Created, print message
     logger.typewriter_log(
-        config.ai_name,
+        ai_config.ai_name,
         Fore.LIGHTBLUE_EX,
         "has been created with the following details:",
         speak_text=True,
     )
 
-    # Print the ai config details
+    # Print the ai_config details
     # Name
-    logger.typewriter_log("Name:", Fore.GREEN, config.ai_name, speak_text=False)
+    logger.typewriter_log("Name:", Fore.GREEN, ai_config.ai_name, speak_text=False)
     # Role
-    logger.typewriter_log("Role:", Fore.GREEN, config.ai_role, speak_text=False)
+    logger.typewriter_log("Role:", Fore.GREEN, ai_config.ai_role, speak_text=False)
     # Goals
     logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
-    for goal in config.ai_goals:
+    for goal in ai_config.ai_goals:
         logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
 
-    return config
+    return ai_config

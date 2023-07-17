@@ -1,24 +1,20 @@
 """File operations for AutoGPT"""
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import os.path
-from typing import Dict, Generator, Literal, Tuple
+from pathlib import Path
+from typing import Generator, Literal
 
-import charset_normalizer
-import requests
-from colorama import Back, Fore
-from requests.adapters import HTTPAdapter, Retry
-
-from autogpt.commands.command import command
-from autogpt.commands.file_operations_utils import read_textual_file
-from autogpt.config import Config
+from autogpt.agents.agent import Agent
+from autogpt.command_decorator import command
 from autogpt.logs import logger
-from autogpt.spinner import Spinner
-from autogpt.utils import readable_file_size
+from autogpt.memory.vector import MemoryItem, VectorMemory
 
-CFG = Config()
+from .decorators import sanitize_path_arg
+from .file_operations_utils import read_textual_file
 
 Operation = Literal["write", "append", "delete"]
 
@@ -28,7 +24,9 @@ def text_checksum(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
-def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | None]]:
+def operations_from_log(
+    log_path: str,
+) -> Generator[tuple[Operation, str, str | None], None, None]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
         log = open(log_path, "r", encoding="utf-8")
@@ -45,6 +43,7 @@ def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | 
             try:
                 path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
             except ValueError:
+                logger.warn(f"File log entry lacks checksum: '{line}'")
                 path, checksum = tail.strip(), None
             yield (operation, path, checksum)
         elif operation == "delete":
@@ -53,10 +52,10 @@ def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | 
     log.close()
 
 
-def file_operations_state(log_path: str) -> Dict:
+def file_operations_state(log_path: str) -> dict[str, str]:
     """Iterates over the operations log and returns the expected state.
 
-    Parses a log file at CFG.file_logger_path to construct a dictionary that maps
+    Parses a log file at config.file_logger_path to construct a dictionary that maps
     each file path written or appended to its checksum. Deleted files are removed
     from the dictionary.
 
@@ -64,7 +63,7 @@ def file_operations_state(log_path: str) -> Dict:
         A dictionary mapping file paths to their checksums.
 
     Raises:
-        FileNotFoundError: If CFG.file_logger_path is not found.
+        FileNotFoundError: If config.file_logger_path is not found.
         ValueError: If the log file content is not in the expected format.
     """
     state = {}
@@ -76,20 +75,26 @@ def file_operations_state(log_path: str) -> Dict:
     return state
 
 
+@sanitize_path_arg("filename")
 def is_duplicate_operation(
-    operation: Operation, filename: str, checksum: str | None = None
+    operation: Operation, filename: str, agent: Agent, checksum: str | None = None
 ) -> bool:
     """Check if the operation has already been performed
 
     Args:
         operation: The operation to check for
         filename: The name of the file to check for
+        agent: The agent
         checksum: The checksum of the contents to be written
 
     Returns:
         True if the operation has already been performed on the file
     """
-    state = file_operations_state(CFG.file_logger_path)
+    # Make the filename into a relative path if possible
+    with contextlib.suppress(ValueError):
+        filename = str(Path(filename).relative_to(agent.workspace.root))
+
+    state = file_operations_state(agent.config.file_logger_path)
     if operation == "delete" and filename not in state:
         return True
     if operation == "write" and state.get(filename) == checksum:
@@ -97,7 +102,10 @@ def is_duplicate_operation(
     return False
 
 
-def log_operation(operation: str, filename: str, checksum: str | None = None) -> None:
+@sanitize_path_arg("filename")
+def log_operation(
+    operation: Operation, filename: str, agent: Agent, checksum: str | None = None
+) -> None:
     """Log the file operation to the file_logger.txt
 
     Args:
@@ -105,47 +113,32 @@ def log_operation(operation: str, filename: str, checksum: str | None = None) ->
         filename: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
+    # Make the filename into a relative path if possible
+    with contextlib.suppress(ValueError):
+        filename = str(Path(filename).relative_to(agent.workspace.root))
+
     log_entry = f"{operation}: {filename}"
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
-    append_to_file(CFG.file_logger_path, f"{log_entry}\n", should_log=False)
+    append_to_file(
+        agent.config.file_logger_path, f"{log_entry}\n", agent, should_log=False
+    )
 
 
-def split_file(
-    content: str, max_length: int = 4000, overlap: int = 0
-) -> Generator[str, None, None]:
-    """
-    Split text into chunks of a specified maximum length with a specified overlap
-    between chunks.
-
-    :param content: The input text to be split into chunks
-    :param max_length: The maximum length of each chunk,
-        default is 4000 (about 1k token)
-    :param overlap: The number of overlapping characters between chunks,
-        default is no overlap
-    :return: A generator yielding chunks of text
-    """
-    start = 0
-    content_length = len(content)
-
-    while start < content_length:
-        end = start + max_length
-        if end + overlap < content_length:
-            chunk = content[start : end + max(overlap - 1, 0)]
-        else:
-            chunk = content[start:content_length]
-
-            # Account for the case where the last chunk is shorter than the overlap, so it has already been consumed
-            if len(chunk) <= overlap:
-                break
-
-        yield chunk
-        start += max_length - overlap
-
-
-@command("read_file", "Read a file", '"filename": "<filename>"')
-def read_file(filename: str) -> str:
+@command(
+    "read_file",
+    "Read an existing file",
+    {
+        "filename": {
+            "type": "string",
+            "description": "The path of the file to read",
+            "required": True,
+        }
+    },
+)
+@sanitize_path_arg("filename")
+def read_file(filename: str, agent: Agent) -> str:
     """Read a file and return the contents
 
     Args:
@@ -156,47 +149,62 @@ def read_file(filename: str) -> str:
     """
     try:
         content = read_textual_file(filename, logger)
+
+        # TODO: invalidate/update memory when file is edited
+        file_memory = MemoryItem.from_text_file(content, filename, agent.config)
+        if len(file_memory.chunks) > 1:
+            return file_memory.summary
+
         return content
     except Exception as e:
         return f"Error: {str(e)}"
 
 
 def ingest_file(
-    filename: str, memory, max_length: int = 4000, overlap: int = 200
+    filename: str,
+    memory: VectorMemory,
 ) -> None:
     """
     Ingest a file by reading its content, splitting it into chunks with a specified
     maximum length and overlap, and adding the chunks to the memory storage.
 
-    :param filename: The name of the file to ingest
-    :param memory: An object with an add() method to store the chunks in memory
-    :param max_length: The maximum length of each chunk, default is 4000
-    :param overlap: The number of overlapping characters between chunks, default is 200
+    Args:
+        filename: The name of the file to ingest
+        memory: An object with an add() method to store the chunks in memory
     """
     try:
-        logger.info(f"Working with file {filename}")
+        logger.info(f"Ingesting file {filename}")
         content = read_file(filename)
-        content_length = len(content)
-        logger.info(f"File length: {content_length} characters")
 
-        chunks = list(split_file(content, max_length=max_length, overlap=overlap))
+        # TODO: differentiate between different types of files
+        file_memory = MemoryItem.from_text_file(content, filename)
+        logger.debug(f"Created memory: {file_memory.dump(True)}")
+        memory.add(file_memory)
 
-        num_chunks = len(chunks)
-        for i, chunk in enumerate(chunks):
-            logger.info(f"Ingesting chunk {i + 1} / {num_chunks} into memory")
-            memory_to_add = (
-                f"Filename: {filename}\n" f"Content part#{i + 1}/{num_chunks}: {chunk}"
-            )
-
-            memory.add(memory_to_add)
-
-        logger.info(f"Done ingesting {num_chunks} chunks from {filename}.")
+        logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
     except Exception as err:
-        logger.info(f"Error while ingesting file '{filename}': {err}")
+        logger.warn(f"Error while ingesting file '{filename}': {err}")
 
 
-@command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
-def write_to_file(filename: str, text: str) -> str:
+@command(
+    "write_to_file",
+    "Writes to a file",
+    {
+        "filename": {
+            "type": "string",
+            "description": "The name of the file to write to",
+            "required": True,
+        },
+        "text": {
+            "type": "string",
+            "description": "The text to write to the file",
+            "required": True,
+        },
+    },
+    aliases=["write_file", "create_file"],
+)
+@sanitize_path_arg("filename")
+def write_to_file(filename: str, text: str, agent: Agent) -> str:
     """Write text to a file
 
     Args:
@@ -207,23 +215,39 @@ def write_to_file(filename: str, text: str) -> str:
         str: A message indicating success or failure
     """
     checksum = text_checksum(text)
-    if is_duplicate_operation("write", filename, checksum):
+    if is_duplicate_operation("write", filename, agent, checksum):
         return "Error: File has already been updated."
     try:
         directory = os.path.dirname(filename)
         os.makedirs(directory, exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:
             f.write(text)
-        log_operation("write", filename, checksum)
+        log_operation("write", filename, agent, checksum)
         return "File written to successfully."
     except Exception as err:
         return f"Error: {err}"
 
 
 @command(
-    "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
+    "append_to_file",
+    "Appends to a file",
+    {
+        "filename": {
+            "type": "string",
+            "description": "The name of the file to write to",
+            "required": True,
+        },
+        "text": {
+            "type": "string",
+            "description": "The text to write to the file",
+            "required": True,
+        },
+    },
 )
-def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
+@sanitize_path_arg("filename")
+def append_to_file(
+    filename: str, text: str, agent: Agent, should_log: bool = True
+) -> str:
     """Append text to a file
 
     Args:
@@ -243,15 +267,26 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
         if should_log:
             with open(filename, "r", encoding="utf-8") as f:
                 checksum = text_checksum(f.read())
-            log_operation("append", filename, checksum=checksum)
+            log_operation("append", filename, agent, checksum=checksum)
 
         return "Text appended successfully."
     except Exception as err:
         return f"Error: {err}"
 
 
-@command("delete_file", "Delete file", '"filename": "<filename>"')
-def delete_file(filename: str) -> str:
+@command(
+    "delete_file",
+    "Deletes a file",
+    {
+        "filename": {
+            "type": "string",
+            "description": "The name of the file to delete",
+            "required": True,
+        }
+    },
+)
+@sanitize_path_arg("filename")
+def delete_file(filename: str, agent: Agent) -> str:
     """Delete a file
 
     Args:
@@ -260,18 +295,29 @@ def delete_file(filename: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    if is_duplicate_operation("delete", filename):
+    if is_duplicate_operation("delete", filename, agent):
         return "Error: File has already been deleted."
     try:
         os.remove(filename)
-        log_operation("delete", filename)
+        log_operation("delete", filename, agent)
         return "File deleted successfully."
     except Exception as err:
         return f"Error: {err}"
 
 
-@command("list_files", "List Files in Directory", '"directory": "<directory>"')
-def list_files(directory: str) -> list[str]:
+@command(
+    "list_files",
+    "Lists Files in a Directory",
+    {
+        "directory": {
+            "type": "string",
+            "description": "The directory to list files in",
+            "required": True,
+        }
+    },
+)
+@sanitize_path_arg("directory")
+def list_files(directory: str, agent: Agent) -> list[str]:
     """lists files in a directory recursively
 
     Args:
@@ -287,56 +333,8 @@ def list_files(directory: str) -> list[str]:
             if file.startswith("."):
                 continue
             relative_path = os.path.relpath(
-                os.path.join(root, file), CFG.workspace_path
+                os.path.join(root, file), agent.config.workspace_path
             )
             found_files.append(relative_path)
 
     return found_files
-
-
-@command(
-    "download_file",
-    "Download File",
-    '"url": "<url>", "filename": "<filename>"',
-    CFG.allow_downloads,
-    "Error: You do not have user authorization to download files locally.",
-)
-def download_file(url, filename):
-    """Downloads a file
-    Args:
-        url (str): URL of the file to download
-        filename (str): Filename to save the file as
-    """
-    try:
-        directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
-        message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
-        with Spinner(message) as spinner:
-            session = requests.Session()
-            retry = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
-            adapter = HTTPAdapter(max_retries=retry)
-            session.mount("http://", adapter)
-            session.mount("https://", adapter)
-
-            total_size = 0
-            downloaded_size = 0
-
-            with session.get(url, allow_redirects=True, stream=True) as r:
-                r.raise_for_status()
-                total_size = int(r.headers.get("Content-Length", 0))
-                downloaded_size = 0
-
-                with open(filename, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                        downloaded_size += len(chunk)
-
-                        # Update the progress message
-                        progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
-                        spinner.update_message(f"{message} {progress}")
-
-            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(downloaded_size)})'
-    except requests.HTTPError as err:
-        return f"Got an HTTP Error whilst trying to download file: {err}"
-    except Exception as err:
-        return f"Error: {err}"

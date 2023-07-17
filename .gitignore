@@ -1,12 +1,7 @@
 ## Original ignores
 autogpt/keys.py
-autogpt/*json
-autogpt/node_modules/
-autogpt/__pycache__/keys.cpython-310.pyc
-autogpt/auto_gpt_workspace
-package-lock.json
-*.pyc
-auto_gpt_workspace/*
+autogpt/*.json
+**/auto_gpt_workspace/*
 *.mpeg
 .env
 azure.yaml
@@ -17,7 +12,7 @@ last_run_ai_settings.yaml
 auto-gpt.json
 log.txt
 log-ingestion.txt
-logs
+/logs
 *.log
 *.mp3
 mem.sqlite3
@@ -36,7 +31,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
-plugins/
+/plugins/
+plugins_config.yaml
 downloads/
 eggs/
 .eggs/

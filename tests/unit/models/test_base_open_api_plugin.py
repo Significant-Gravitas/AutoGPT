@@ -1,18 +1,10 @@
-from typing import Any, Dict, List, Optional, Tuple
-
 import pytest
 
-from autogpt.models.base_open_ai_plugin import (
-    BaseOpenAIPlugin,
-    Message,
-    PromptGenerator,
-)
+from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
 
 class DummyPlugin(BaseOpenAIPlugin):
     """A dummy plugin for testing purposes."""
-
-    pass
 
 
 @pytest.fixture
@@ -62,6 +54,7 @@ def test_dummy_plugin_default_methods(dummy_plugin):
     assert not dummy_plugin.can_handle_pre_command()
     assert not dummy_plugin.can_handle_post_command()
     assert not dummy_plugin.can_handle_chat_completion(None, None, None, None)
+    assert not dummy_plugin.can_handle_text_embedding(None)
 
     assert dummy_plugin.on_response("hello") == "hello"
     assert dummy_plugin.post_prompt(None) is None
@@ -85,3 +78,4 @@ def test_dummy_plugin_default_methods(dummy_plugin):
     assert isinstance(post_command, str)
     assert post_command == "upgraded successfully!"
     assert dummy_plugin.handle_chat_completion(None, None, None, None) is None
+    assert dummy_plugin.handle_text_embedding(None) is None

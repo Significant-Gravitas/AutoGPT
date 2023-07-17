@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agpt"
-version = "0.3.0"
+version = "0.4.4"
 authors = [
   { name="Torantulino", email="support@agpt.co" },
 ]
@@ -55,3 +55,9 @@ skip = '''
     dist/*
 
 '''
+
+[tool.pytest.ini_options]
+markers = [
+    "requires_openai_api_key",
+    "requires_huggingface_api_key"
+]
