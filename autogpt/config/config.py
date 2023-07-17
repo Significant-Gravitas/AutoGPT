@@ -255,7 +255,7 @@ class ConfigBuilder(Configurable[Config]):
             "redis_password": os.getenv("REDIS_PASSWORD"),
             "wipe_redis_on_start": os.getenv("WIPE_REDIS_ON_START", "True") == "True",
             "plugins_dir": os.getenv("PLUGINS_DIR"),
-            "plugins_config_file": os.getenv("PLUGINS_CONFIG_FILE"),
+            "plugins_config_file": os.getenv("PLUGINS_CONFIG_FILE", PLUGINS_CONFIG_FILE),
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
         }
 
