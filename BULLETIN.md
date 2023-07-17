@@ -4,26 +4,23 @@
 📖 *User Guide*: https://docs.agpt.co.
 👩 *Contributors Wiki*: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing.
 
-# v0.4.4 RELEASE HIGHLIGHTS! 🚀
+# v0.4.5 RELEASE HIGHLIGHTS! 🚀
 # -----------------------------
-## GPT-4 is back!
-Following OpenAI's recent GPT-4 GA announcement, the SMART_LLM .env setting 
-now defaults to GPT-4, and Auto-GPT will use GPT-4 by default in its main loop.
+This release includes under-the-hood improvements and bug fixes, such as more 
+accurate token counts for OpenAI functions, faster CI builds, improved plugin 
+handling, and refactoring of the Config class for better maintainability.
 
-### !! High Costs Warning !! 💰💀🚨
-GPT-4 costs ~20x more than GPT-3.5-turbo. 
-Please take note of this before using SMART_LLM. You can use `--gpt3only` 
-or `--gpt4only` to force the use of GPT-3.5-turbo or GPT-4, respectively, 
-at runtime.
+Other noteworthy changes follow:
 
-## Re-arch v1 preview release!
-We've released a preview version of the re-arch code, under `autogpt/core`. 
-This is a major milestone for us, and we're excited to continue working on it. 
-We look forward to your feedback. Follow the process here: 
-https://github.com/Significant-Gravitas/Auto-GPT/issues/4770.
+## Sharing your logs
+The documentation now provides instructions on how to share logs with us
+via E2B. Visit docs/share-your-logs.md for more information.
+For more info about E2B, visit https://github.com/e2b-dev/e2b
 
-## Other highlights
-Other fixes include plugins regressions, Azure config and security patches.
+## Re-arch docs
+We have included documentation for the re-architecture of Auto-GPT 
+released last cycle. Check out autogpt/core/README.md and 
+autogpt/core/ARCHITECTURE_NOTES.md to learn more about the re-architecture.
 
 Take a look at the Release Notes on Github for the full changelog! 
 https://github.com/Significant-Gravitas/Auto-GPT/releases.
