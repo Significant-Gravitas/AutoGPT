@@ -15,7 +15,7 @@ from agbenchmark.start_benchmark import (
     REGRESSION_TESTS_PATH,
     get_regression_data,
 )
-from agbenchmark.utils import calculate_success_percentage
+from agbenchmark.utils import AGENT_NAME, calculate_success_percentage
 
 
 def resolve_workspace(workspace: str) -> str:
@@ -128,9 +128,10 @@ regression_manager = ReportManager(REGRESSION_TESTS_PATH)
 # user facing reporting information
 info_manager = ReportManager(INFO_TESTS_PATH)
 
-INTERNAL_LOGS = Path(__file__).resolve().parent  # agbenchmark/conftest.py
+INTERNAL_LOGS_PATH = Path(__file__).resolve().parent / "reports"
+
 # internal db step in replacement track pass/fail rate
-internal_info = ReportManager(str(INTERNAL_LOGS / "internal_info.json"))
+internal_info = ReportManager(str(INTERNAL_LOGS_PATH / "internal_info.json"))
 
 
 def pytest_runtest_makereport(item: Any, call: Any) -> None:
@@ -171,11 +172,22 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
                 regression_manager.remove_test(test_name)
             info_details["metrics"]["fail_reason"] = str(call.excinfo.value)
 
-        prev_test_results: list[bool] = internal_info.tests.get(test_name, [])
+        prev_test_results: list[bool]
+        agent_tests: dict[str, list[bool]] = {}
+
+        # if the structure is nested inside of the agent name
+        if AGENT_NAME:
+            agent_tests = internal_info.tests.get(AGENT_NAME, {})
+
+        if agent_tests:
+            prev_test_results = agent_tests.get(test_name, [])
+        else:
+            prev_test_results = internal_info.tests.get(test_name, [])
+
         if not mock:
             # only add if it's an actual test
             prev_test_results.append(info_details["metrics"]["success"])
-            internal_info.add_test(test_name, prev_test_results)
+            internal_info.add_test(test_name, prev_test_results, AGENT_NAME)
 
             # can calculate success rate regardless of mock
             info_details["metrics"]["success_%"] = calculate_success_percentage(

@@ -17,7 +17,6 @@ HOME_ENV = os.getenv("HOME_ENV")
 
 
 def calculate_info_test_path(reports_path: Path) -> str:
-    print("reports_pathreports_pathreports_pathreports_path", reports_path)
     if not reports_path.exists():
         reports_path.mkdir(parents=True, exist_ok=True)
         return str(
@@ -129,6 +128,7 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str]:
         CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH = assign_paths(
             benchmarks_folder_path
         )
+
     else:
         # otherwise the default is when home is an agent (running agbenchmark from agent/agent_repo)
         # used when its just a pip install
@@ -139,4 +139,9 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str]:
     if not benchmarks_folder_path.exists():
         benchmarks_folder_path.mkdir(exist_ok=True)
 
-    return HOME_DIRECTORY, CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH
+    return (
+        HOME_DIRECTORY,
+        CONFIG_PATH,
+        REGRESSION_TESTS_PATH,
+        INFO_TESTS_PATH,
+    )
