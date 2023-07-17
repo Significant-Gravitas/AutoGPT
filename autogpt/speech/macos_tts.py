@@ -1,6 +1,8 @@
 """ MacOS TTS Voice. """
 import os
+import subprocess
 
+from autogpt.config.config import Config
 from autogpt.speech.base import VoiceBase
 
 
