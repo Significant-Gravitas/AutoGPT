@@ -298,12 +298,7 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                                 f"Zipped plugins should use the class name ({plugin_name}) as the key."
                             )
                     else:
-                        module_name = (
-                            a_module.__name__
-                            if hasattr(a_module, "__name__")
-                            else str(a_module)
-                        )
-                        if module_name != "AutoGPTPluginTemplate":
+                        if getattr(a_module, "__name__", str(a_module)) != "AutoGPTPluginTemplate":
                             logger.debug(
                                 f"Skipping '{key}' because it doesn't subclass AutoGPTPluginTemplate."
                             )
