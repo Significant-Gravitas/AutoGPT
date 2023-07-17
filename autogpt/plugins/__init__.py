@@ -265,7 +265,7 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                 try:
                     zipped_module = zipped_package.load_module(str(module.parent))
                 except:
-                    logger.error(f"failed loading {str(module.parent)}")
+                    logger.error(f"Failed to load {str(module.parent)}")
 
                 for key in dir(zipped_module):
                     if key.startswith("__"):
@@ -298,9 +298,12 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                                 f"Zipped plugins should use the class name ({plugin_name}) as the key."
                             )
                     else:
-                        if getattr(a_module, "__name__", str(a_module)) != "AutoGPTPluginTemplate":
+                        if (
+                            module_name := getattr(a_module, "__name__", str(a_module))
+                            != "AutoGPTPluginTemplate"
+                        ):
                             logger.debug(
-                                f"Skipping '{key}' because it doesn't subclass AutoGPTPluginTemplate."
+                                f"Skipping '{module_name}' because it doesn't subclass AutoGPTPluginTemplate."
                             )
 
     # OpenAI plugins
