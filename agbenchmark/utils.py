@@ -1,7 +1,9 @@
 # radio charts, logs, helper functions for tests, anything else relevant.
 import glob
+import math
 import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -17,17 +19,49 @@ HOME_ENV = os.getenv("HOME_ENV")
 
 
 def calculate_info_test_path(reports_path: Path) -> str:
+    command = sys.argv
+
     if not reports_path.exists():
         reports_path.mkdir(parents=True, exist_ok=True)
-        return str(
-            reports_path / f"file1_{datetime.now().strftime('%m-%d-%H-%M')}.json"
-        )
-    else:
-        json_files = glob.glob(str(reports_path / "*.json"))
-        file_count = len(json_files)
-        run_name = f"file{file_count + 1}_{datetime.now().strftime('%m-%d-%H-%M')}.json"
-        new_file_path = reports_path / run_name
-        return str(new_file_path)
+
+    json_files = glob.glob(str(reports_path / "*.json"))
+
+    # Default naming scheme
+    file_count = len(json_files)
+    run_name = f"file{file_count + 1}_{datetime.now().strftime('%m-%d-%H-%M')}.json"
+
+    # # If "--test" is in command
+    if "--test" in command:
+        test_index = command.index("--test")
+        try:
+            test_arg = command[test_index + 1]  # Argument after --test
+        except IndexError:
+            raise ValueError("Expected an argument after --test")
+
+        # Get all files that include the string that is the argument after --test
+        related_files = [f for f in json_files if test_arg in f]
+        related_file_count = len(related_files)
+
+        # Determine the prefix based on the existing files
+        if related_file_count == 0:
+            # Try to find the highest prefix number among all files, then increment it
+            all_prefix_numbers = []
+            for f in json_files:
+                number = float(Path(f).stem.split("_")[0])
+                all_prefix_numbers.append(math.floor(number))
+
+            max_prefix = max(all_prefix_numbers, default=0)
+            print("HEY WE ARE HERE BIG DAWG", max_prefix)
+            run_name = f"{max_prefix + 1}_{test_arg}.json"
+        else:
+            # Take the number from before the _ and add the .{number}
+            prefix_str = Path(related_files[0]).stem.rsplit("_", 1)[0].split(".")[0]
+            prefix = math.floor(float(prefix_str))
+            run_name = f"{prefix}.{related_file_count}_{test_arg}.json"
+
+    print("run_namerun_namerun_name", run_name)
+    new_file_path = reports_path / run_name
+    return str(new_file_path)
 
 
 def replace_backslash(value: Any) -> Any:
