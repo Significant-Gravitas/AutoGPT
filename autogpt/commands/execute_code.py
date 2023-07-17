@@ -148,7 +148,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
             image_name,
             [
                 "python",
-                str(file_path.relative_to(agent.workspace.root)).replace("\\", "/"),
+                file_path.relative_to(agent.workspace.root).as_posix(),
             ],
             volumes={
                 agent.config.workspace_path: {
