@@ -188,9 +188,9 @@ View memory usage by using the `--debug` flag :)
 !!! warning
     v0.4.5
     Data ingestion is broken in v0.4.5 and possibly earlier versions. This is a known issue that will be addressed in future releases. PRs welcome.
-    https://github.com/Significant-Gravitas/Auto-GPT/issues/4435
-    https://github.com/Significant-Gravitas/Auto-GPT/issues/4024
-    https://github.com/Significant-Gravitas/Auto-GPT/issues/2076
+    [Issue 4435](https://github.com/Significant-Gravitas/Auto-GPT/issues/4435)
+    [Issue 4024](https://github.com/Significant-Gravitas/Auto-GPT/issues/4024)
+    [Issue 2076](https://github.com/Significant-Gravitas/Auto-GPT/issues/2076)
 
 
 
