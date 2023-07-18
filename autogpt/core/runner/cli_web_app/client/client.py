@@ -1,3 +1,6 @@
+"""
+It is essential that Agent (the parent of SimpleAgent) provide a method to load an object from a dictionary/json object for webapps
+"""
 import json
 import requests
 from pathlib import Path
@@ -29,42 +32,59 @@ input("Press Enter to Test all the end points : \n")
 
 
 # GET /agents
+print("\nGET /agents")
 response = send_request_with_retry(f"{BASE_URL}/agents")
 if response:
-    print("GET /agents response:", response)
+    print(" response:", response)
 
 # POST /agent
+print("\nPOST /agent")
 response = send_request_with_retry(f"{BASE_URL}/agent", method="POST")
 if response:
-    print("POST /agent response:", response)
+    print(" response:", response)
     agent_id = response.get("agent_id")
 
 # GET /agent/{agent_id}
+print(f"\nGET /agent/{agent_id}")
 response = send_request_with_retry(f"{BASE_URL}/agent/{agent_id}")
 if response:
-    print(f"GET /agent/{agent_id} response:", response)
+    print(" response:", response)
 
 # POST /agent/{agent_id}/start
 start_request_body = {
     "message": "your message here",
     "start": True
 }
+print(f"\nPOST /agent/{agent_id}/start")
 response = send_request_with_retry(f"{BASE_URL}/agent/{agent_id}/start", method="POST", json_payload=start_request_body)
 if response:
-    print(f"POST /agent/{agent_id}/start response:", response)
+    print(" response:", response)
 
 # POST /agent/{agent_id}/message
 message_request_body = {
-    "message": "your message here",
+    "message": "This is the tests message sent by the cli & so far it's working",
     "start": True
 }
+print(f"\nPOST /agent/{agent_id}/message")
 response = send_request_with_retry(f"{BASE_URL}/agent/{agent_id}/message", method="POST", json_payload=message_request_body)
 if response:
-    print(f"POST /agent/{agent_id}/message response:", response)
+    print(" response:", response)
+
+# GET /agent/{agent_id}/messagehistory
+print(f"\nGET /agent/{agent_id}/messagehistory")
+response = send_request_with_retry(f"{BASE_URL}/agent/{agent_id}/messagehistory")
+if response:
+    print(" response:", response)
+
+# GET /agent/{agent_id}/lastmessage
+print(f"\nGET /agent/{agent_id}/lastmessage")
+response = send_request_with_retry(f"{BASE_URL}/agent/{agent_id}/lastmessage")
+if response:
+    print(" response:", response)
 
 input("\n\nPress Enter to start AutoGPT\n\n")
 
-def run_auto_gpt_webapp():
+def run():
    
     """Run the Auto-GPT CLI client."""
 
@@ -77,6 +97,7 @@ def run_auto_gpt_webapp():
     simple_agent_as_dict = response_data.get('agents')[0]
 
     # Todo : Needs to create a SimpleAgent from a dict
+    exit('Demo stops here as a method SimpleAgent.load_from_dict(simple_agent_as_dict) is needed')
     agent = SimpleAgent.load_from_dict(simple_agent_as_dict)
     print("agent is loaded")
 
@@ -95,5 +116,5 @@ def run_auto_gpt_webapp():
             "start": True  # or False
         }
         response = requests.post(f"{BASE_URL}/agent/{agent_id}/message", json=message_request_body)
-        print(f"POST /agent/{agent_id}/message response:", response.json())
-
+        print(f"\nPOST /agent/{agent_id}/message response:", response.json())
+        

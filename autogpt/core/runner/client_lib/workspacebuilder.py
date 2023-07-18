@@ -4,7 +4,7 @@ import yaml
 import click
 from pathlib import Path
 from logging import Logger
-from autogpt.core.agent import AgentSettings, SimpleAgent ### @TODO should work for every Agent
+from autogpt.core.agent import AgentSettings, SimpleAgent ### TODO should work for every Agent
 from autogpt.core.runner.client_lib.logging import get_client_logger
 from autogpt.core.runner.client_lib.parser import parse_agent_name_and_goals , parse_ability_result , parse_agent_plan , parse_next_ability
 
@@ -58,7 +58,7 @@ def get_settings_from_file() :
     """ 
     Current Back-end for setting is a File 
     """
-    # @Todo : Possible Back-End No SQL Database 
+    # TODO : Possible Back-End No SQL Database 
     settings_file = Path(DEFAULT_SETTINGS_FILE)
     settings = {}
     if settings_file.exists():

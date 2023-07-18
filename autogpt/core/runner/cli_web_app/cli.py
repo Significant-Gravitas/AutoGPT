@@ -43,6 +43,7 @@ def autogpt():
     help="The port of the webserver.",
     type=click.INT,
 )
+
 def server(host: str, port: int) -> None:
     """Run the Auto-GPT runner httpserver."""
     click.echo("Running Auto-GPT runner httpserver...")
@@ -71,8 +72,8 @@ async def client(settings_file) -> None:
 
     from autogpt.core.runner.cli_web_app.client.client import run
 
-    with autogpt_server():
-        run()
+    # with autogpt_server():
+    run()
 
 
 @contextlib.contextmanager

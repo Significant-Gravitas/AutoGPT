@@ -1,3 +1,15 @@
+"""
+/agents (GET): Returns a list of all agents.
+    => need Agent (Parent) to define this properties : agent_id, client_facing, status
+/agent (POST): Create a new agent.
+/agent/{agent_id} (GET): Get an agent from its ID & return an agent.
+/agent/{agent_id}/start (POST): Send a message to an agent.
+/agent/{agent_id}/message (POST): Sends a message to the agent.
+/agent/{agent_id}/messagehistory (GET): Get message history for an agent.
+    => need SimpleAgent to provide a method 
+/agent/{agent_id}/lastmessage (GET): Get the last message for an agent.
+    => need SimpleAgent to provide a method 
+"""
 import uuid
 from pathlib import Path
 import yaml
@@ -15,6 +27,12 @@ from autogpt.core.runner.client_lib.parser import parse_agent_name_and_goals , p
 
 
 router = APIRouter()
+
+# def get_settings_logger_workspace():
+#     settings = get_settings_from_file()
+#     client_logger, agent_workspace = get_logger_and_workspace(settings)
+#     return settings, client_logger, agent_workspace
+
 
 @router.get("/agents")
 async def get_agents(request: Request):
@@ -38,9 +56,9 @@ async def get_agents(request: Request):
             client_logger,
             )
         agent = agent.__dict__
-        # @Todo place holder for elements
-        # @Todo filter on client_facing
-        # @Todo filter on inactive
+        # TODO place holder for elements
+        # TODO filter on client_facing
+        # TODO filter on inactive
         agent['agent_id' ]= uuid.uuid4().hex
         agent['client_facing'] = True
         agent['status'] = 0
@@ -75,9 +93,9 @@ async def get_agent_by_id(request: Request, agent_id: str):
             client_logger,
             )
         agent = agent.__dict__
-        # @Todo place holder for elements
-        # @Todo filter on client_facing
-        # @Todo filter on inactive
+        # TODO place holder for elements
+        # TODO filter on client_facing
+        # TODO filter on inactive
         agent['agent_id' ]= uuid.uuid4().hex
         agent['client_facing'] = True
         agent['status'] = 0
@@ -90,9 +108,10 @@ async def start_simple_agent_main_loop(request: Request, agent_id: str):
     """
     Senf a message to an agent 
     """
-    user_configuration = get_settings_from_file()
+
     # Get the logger and the workspace movec to a function
     # Because almost every API end-point will excecute this piece of code
+    user_configuration = get_settings_from_file()
     client_logger, agent_workspace = get_logger_and_workspace(user_configuration)
 
     # Get the logger and the workspace moved to a function
@@ -117,6 +136,7 @@ async def start_simple_agent_main_loop(request: Request, agent_id: str):
         }
 
 
+
 @router.post("/agent/{agent_id}/message")
 async def message_simple_agent(request: Request, agent_id: str, body: SimpleAgentMessageRequestBody):
     """
@@ -134,6 +154,9 @@ async def message_simple_agent(request: Request, agent_id: str, body: SimpleAgen
     # Get the logger and the workspace moved to a function
     # Because API end-point will treat this as an error & break
     if not agent_workspace : 
+        print (f"request.body: {request.body}")
+        print (f"agent_id: {agent_id}")
+        print (f"body: {body}")
         raise BaseException
 
     # launch agent interaction loop
@@ -143,7 +166,6 @@ async def message_simple_agent(request: Request, agent_id: str, body: SimpleAgen
     )
 
     plan = await agent.build_initial_plan()
-    print(parse_agent_plan(plan))
 
     current_task, next_ability = await agent.determine_next_ability(plan)
     
@@ -155,6 +177,18 @@ async def message_simple_agent(request: Request, agent_id: str, body: SimpleAgen
             result['current_task'], result['next_ability'] = await agent.determine_next_ability(plan)
 
     return result
+
+
+@router.get("/agent/{agent_id}/messagehistory")
+def get_message_history(request: Request, agent_id: str) :
+    # TODO : Define structure of the list
+    return {'messages' : ['message 1', 'message 2', 'message 3', 'message 4']}
+
+
+@router.get("/agent/{agent_id}/lastmessage")
+def get_last_message(request: Request, agent_id: str) :
+    return {'message' : 'my last message'}
+
 
 app = FastAPI()
 app.include_router(router, prefix="/api/v1")
