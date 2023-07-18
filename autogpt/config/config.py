@@ -277,16 +277,16 @@ class ConfigBuilder(Configurable[Config]):
         config_dict["elevenlabs_voice_id"] = os.getenv(
             "ELEVENLABS_VOICE_ID", os.getenv("ELEVENLABS_VOICE_1_ID")
         )
-        elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        if os.getenv("USE_MAC_OS_TTS"):
-            default_tts_provider = "macos"
-        elif elevenlabs_api_key:
-            default_tts_provider = "elevenlabs"
-        elif os.getenv("USE_BRIAN_TTS"):
-            default_tts_provider = "streamelements"
-        else:
-            default_tts_provider = "gtts"
-        config_dict["text_to_speech_provider"] = default_tts_provider
+        if not config_dict["text_to_speech_provider"]:
+            if os.getenv("USE_MAC_OS_TTS"):
+                default_tts_provider = "macos"
+            elif config_dict["elevenlabs_api_key"]:
+                default_tts_provider = "elevenlabs"
+            elif os.getenv("USE_BRIAN_TTS"):
+                default_tts_provider = "streamelements"
+            else:
+                default_tts_provider = "gtts"
+            config_dict["text_to_speech_provider"] = default_tts_provider
 
         config_dict["plugins_allowlist"] = _safe_split(os.getenv("ALLOWLISTED_PLUGINS"))
         config_dict["plugins_denylist"] = _safe_split(os.getenv("DENYLISTED_PLUGINS"))
