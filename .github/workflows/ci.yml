@@ -191,3 +191,6 @@ jobs:
           git fetch origin $current_branch
           git rebase origin/$current_branch
           git push origin HEAD
+          poetry run python send_to_googledrive.py
+        env:
+          GDRIVE_BASE64: ${{ secrets.GDRIVE_BASE64 }}
