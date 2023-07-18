@@ -183,13 +183,17 @@ MEMORY_INDEX="Autogpt" # name of the index to create for the application
 View memory usage by using the `--debug` flag :)
 
 
-!!! warning
-    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
-    by work on the memory system, and have been removed.
-    Whether support will be added back in the future is subject to discussion,
-    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
-
 ## 🧠 Memory pre-seeding
+
+!!! warning
+    v0.4.5
+    Data ingestion is broken in v0.4.5 and possibly earlier versions. This is a known issue that will be addressed in future releases. PRs welcome.
+    [Issue reports](https://github.com/Significant-Gravitas/Auto-GPT/issues/4435
+https://github.com/Significant-Gravitas/Auto-GPT/issues/4024
+https://github.com/Significant-Gravitas/Auto-GPT/issues/2076)
+
+
+
 Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.
 
 ``` shell
