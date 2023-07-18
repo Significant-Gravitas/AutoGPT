@@ -9,6 +9,7 @@
     "TestSearch": {
       "data_path": "agbenchmark/challenges/interface/search",
       "is_regression": true,
+      "reached_cutoff": false,
       "metrics": {
         "difficulty": "interface",
         "success": true,
@@ -18,8 +19,7 @@
     }
   },
   "config": {
-    "workspace": "${os.path.join(Path.home(), 'miniagi')}",
-    "entry_path": "agbenchmark.benchmarks"
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
   },
   "additional": {
     "model": "gpt-4"

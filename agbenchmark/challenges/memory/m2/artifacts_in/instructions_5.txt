@@ -1,1 +1,0 @@
-Write the ids previously mentioned to a .txt file.

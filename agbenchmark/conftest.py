@@ -135,8 +135,8 @@ internal_info = ReportManager(str(INTERNAL_LOGS_PATH / "internal_info.json"))
 
 
 def pytest_runtest_makereport(item: Any, call: Any) -> None:
+    challenge_data = item.funcargs.get("challenge_data", None)
     if call.when == "call":
-        challenge_data = item.funcargs.get("challenge_data", None)
         difficulty = (
             challenge_data["info"]["difficulty"] if challenge_data else "unknown"
         )
@@ -157,6 +157,9 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
         info_details: Any = {
             "data_path": challenge_location,
             "is_regression": False,
+            "task": challenge_data["task"],
+            "answer": challenge_data["ground"]["answer"],
+            "description": challenge_data["info"]["description"],
             "metrics": {
                 "difficulty": difficulty,
                 "success": False,
@@ -217,6 +220,10 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
                 info_details["metrics"][
                     "run_time"
                 ] = f"{str(round(run_time, 3))} seconds"
+
+                info_details["reached_cutoff"] = (
+                    float(run_time) > challenge_data["cutoff"]
+                )
 
             info_manager.add_test(test_name, info_details)
 

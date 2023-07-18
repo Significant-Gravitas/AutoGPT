@@ -1,0 +1,19 @@
+{
+  "name": "TestBasicRetrieval",
+  "category": ["retrieval"],
+  "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
+  "dependencies": ["TestWriteFile", "TestSearch"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "£25.89",
+    "should_contain": ["25.89"],
+    "should_not_contain": [],
+    "files": [".txt"],
+    "type": "file"
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Specifies specific website to retrieve website from.",
+    "side_effects": []
+  }
+}
