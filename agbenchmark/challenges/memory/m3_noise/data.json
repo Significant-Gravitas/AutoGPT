@@ -1,0 +1,19 @@
+{
+  "name": "TestRememberMultipleWithNoise",
+  "category": ["memory"],
+  "task": "Follow the instructions in the instructions_1.txt file",
+  "dependencies": ["TestRememberMultipleIds"],
+  "cutoff": 75,
+  "ground": {
+    "answer": "3145\n3791\n9317\n9471",
+    "should_contain": ["3145", "3791", "9317", "9471"],
+    "should_not_contain": [],
+    "files": ["result.txt"],
+    "type": "file"
+  },
+  "info": {
+    "difficulty": "intermediate",
+    "description": "Tests ability for the agent to remember information between each action. Multiple ids are presented in different files and the last file instructs the agent to write these ids into another file. Some noise is also added to the files to test the agent's ability to filter out noise.",
+    "side_effects": []
+  }
+}

@@ -2,7 +2,7 @@
   "name": "TestRetrieval3",
   "category": ["retrieval"],
   "task": "Write tesla's revenue every year since its creation into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion).",
-  "dependencies": ["TestRetrieval2"],
+  "dependencies": ["TestRetrieval2.1"],
   "cutoff": 60,
   "ground": {
     "answer": "15 Millions\n112 Millions\n117 Millions\n204 Millions\n413 Millions\n2,014 Millions\n3,198 Millions\n4,046 Millions\n7,000 Millions\n11,759 Millions\n21,461 Millions\n24,578 Millions\n31,536 Millions\n53,823 Millions\n81,462 Millions",

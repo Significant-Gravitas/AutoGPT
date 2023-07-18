@@ -3,27 +3,19 @@
         "TestBasicMemory": [
             true,
             true,
+            true,
+            true,
+            true,
+            false,
+            false,
             true
         ],
         "TestBasicRetrieval": [
             true,
             true,
+            true,
+            true,
             true
-        ],
-        "TestCreateSimpleWebServer": [
-            false,
-            false,
-            false
-        ],
-        "TestDebugSimpleTypoWithGuidance": [
-            false,
-            false,
-            false
-        ],
-        "TestDebugSimpleTypoWithoutGuidance": [
-            false,
-            false,
-            false
         ],
         "TestReadFile": [
             true,
@@ -32,32 +24,8 @@
             true,
             true
         ],
-        "TestRememberMultipleIds": [
-            true,
-            true,
-            true
-        ],
-        "TestRememberMultipleIdsWithNoise": [
-            true,
-            true,
-            true
-        ],
-        "TestRememberMultiplePhrasesWithNoise": [
-            true,
-            true,
-            true
-        ],
-        "TestRetrieval2": [
-            true,
-            true,
-            true
-        ],
-        "TestRetrieval3": [
-            true,
-            true,
-            true
-        ],
         "TestSearch": [
+            true,
             true,
             true,
             true,
@@ -66,7 +34,52 @@
         "TestWriteFile": [
             true,
             true,
+            true,
             true
+        ],
+        "TestRetrieval2.2": [
+            false,
+            false,
+            false,
+            false
+        ],
+        "TestRetrieval2.1": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        ],
+        "TestRetrieval2.0": [
+            true,
+            false
+        ],
+        "TestRememberMultipleIds": [
+            false,
+            false,
+            true
+        ],
+        "TestRememberMultipleIdsWithNoise": [
+            false
+        ],
+        "TestRememberMultipleWithNoise": [
+            false,
+            true
+        ],
+        "TestRememberMultiplePhrasesWithNoise": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        ],
+        "TestDebugSimpleTypoWithGuidance": [
+            false,
+            false,
+            false,
+            false
         ]
     }
 }

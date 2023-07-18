@@ -55,7 +55,6 @@ def calculate_info_test_path(reports_path: Path) -> str:
                 all_prefix_numbers.append(math.floor(number))
 
             max_prefix = max(all_prefix_numbers, default=0)
-            print("HEY WE ARE HERE BIG DAWG", max_prefix)
             run_name = f"{max_prefix + 1}_{test_arg}.json"
         else:
             # Take the number from before the _ and add the .{number}
@@ -118,7 +117,9 @@ def get_highest_success_difficulty(data: dict) -> str:
     else:
         highest_difficulty_str = ""
 
-    return f"{highest_difficulty_str}: {highest_difficulty_level}"
+    if highest_difficulty_level:
+        return f"{highest_difficulty_str}: {highest_difficulty_level}"
+    return "No successful tests"
 
 
 def assign_paths(folder_path: Path) -> tuple[str, str, str]:

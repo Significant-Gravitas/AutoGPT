@@ -1,0 +1,24 @@
+{
+  "name": "TestRememberMultiplePhrasesWithNoise",
+  "category": ["memory"],
+  "task": "Follow the instructions in the instructions_1.txt file",
+  "dependencies": ["TestRememberMultipleWithNoise"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "The purple elephant danced on a rainbow while eating a taco\nThe sneaky toaster stole my socks and ran away to Hawaii\nMy pet rock sings better than Beyoncé on Tuesdays\nThe giant hamster rode a unicycle through the crowded mall",
+    "should_contain": [
+      "The purple elephant danced on a rainbow while eating a taco",
+      "The sneaky toaster stole my socks and ran away to Hawaii",
+      "My pet rock sings better than Beyonce on Tuesdays",
+      "The giant hamster rode a unicycle through the crowded mall"
+    ],
+    "should_not_contain": [],
+    "files": ["result.txt"],
+    "type": "file"
+  },
+  "info": {
+    "difficulty": "advanced",
+    "description": "Tests ability for the agent to remember information between each action. Multiple phrases are presented in different files and the last file instructs the agent to write these phrases into another file. Some noise is also added to the files to test the agent's ability to filter out noise.",
+    "side_effects": []
+  }
+}

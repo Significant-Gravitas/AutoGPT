@@ -103,22 +103,25 @@ class Challenge(ABC):
         ]
 
     def scoring(self, content: str, ground: Ground) -> float:
+        print("Scoring content: ", content)
         if ground.should_contain:
             for should_contain_word in ground.should_contain:
                 if should_contain_word not in content:
+                    print(f"Word that should exist - {should_contain_word}: False")
                     return 0.0
                 else:
-                    print(
-                        f"Word that should exist: {should_contain_word} exists in the content"
-                    )
+                    print(f"Word that should exist - {should_contain_word}: True")
 
         if ground.should_not_contain:
             for should_not_contain_word in ground.should_not_contain:
                 if should_not_contain_word in content:
+                    print(
+                        f"Word that should not exist - {should_not_contain_word}: False"
+                    )
                     return 0.0
                 else:
                     print(
-                        f"Word that should not exist: {should_not_contain_word} does not exist in the content"
+                        f"Word that should not exist - {should_not_contain_word}: True"
                     )
 
         return 1.0
