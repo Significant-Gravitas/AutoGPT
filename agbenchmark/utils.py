@@ -19,6 +19,10 @@ HOME_ENV = os.getenv("HOME_ENV")
 
 
 def calculate_info_test_path(reports_path: Path) -> str:
+    report_location = os.getenv("REPORT_LOCATION", ".")
+    if report_location:
+        reports_path = Path(os.getcwd()) / report_location
+
     command = sys.argv
 
     if not reports_path.exists():

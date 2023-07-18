@@ -8,7 +8,7 @@ on:
   push:
     branches: [master, ci-test*]
     paths-ignore:
-      - 'benchmark_runs/**'
+      - 'reports/**'
   pull_request:
     branches: [stable, master, release-*]
 
@@ -167,7 +167,7 @@ jobs:
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
           HELICONE_CACHE_ENABLED: ${{ matrix.cache-enabled }}
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
-          REPORT_LOCATION:  ${{ matrix.cache-enabled == false && format('../../../benchmark_runs/{0}', matrix.agent-name) || '.' }}
+          REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
 
 
       - name: Upload reports
@@ -175,7 +175,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.agent-name }}
-          path: benchmark_runs/${{ matrix.agent-name }}
+          path: reports/${{ matrix.agent-name }}
 
       - name: Authenticate and Push to Branch
         if: (success() || failure()) && (github.event_name != 'pull_request' && matrix.cache-enabled == false)
@@ -183,7 +183,7 @@ jobs:
           git config --global user.email "github-bot@agpt.co"
           git config --global user.name "Auto-GPT-Bot"
       
-          git add benchmark_runs/* || echo "nothing to commit"
+          git add reports/* || echo "nothing to commit"
           commit_message="${{ matrix.agent-name }}-$(date +'%Y%m%d%H%M%S')"
           git commit -m "${commit_message}"
             
