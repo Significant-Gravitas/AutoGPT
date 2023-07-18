@@ -13,8 +13,8 @@ import yaml
 from autogpt.core.runner.client_lib.shared_click_commands import (
     DEFAULT_SETTINGS_FILE,
     make_settings,
-    status,
 )
+
 from autogpt.core.runner.client_lib.utils import coroutine
 
 
@@ -24,8 +24,8 @@ def autogpt():
     pass
 
 
-autogpt.add_command(make_settings)
-autogpt.add_command(status)
+# autogpt.add_command(make_settings)
+# autogpt.add_command(status)
 
 
 @autogpt.command()

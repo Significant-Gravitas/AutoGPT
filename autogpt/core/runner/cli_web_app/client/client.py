@@ -1,16 +1,99 @@
 import json
+import requests
+from pathlib import Path
+import click
+
+from autogpt.core.agent import AgentSettings, SimpleAgent
+from autogpt.core.runner.client_lib.logging import get_client_logger
 
 import requests
+import json
+
+from time import sleep
+
+BASE_URL = "http://localhost:8080/api/v1"
+MAX_ATTEMPTS = 3
+
+def send_request_with_retry(url, method="GET", json_payload=None):
+    for attempt in range(MAX_ATTEMPTS):
+        response = requests.request(method, url, json=json_payload)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Request failed with status code {response.status_code}. Retrying...")
+            sleep(1)  # Wait for 1 second before retrying
+    print(f"Maximum number of attempts reached. Unable to complete the request.")
+    return None
+
+input("Press Enter to Test all the end points : \n")
 
 
-def run():
-    body = json.dumps(
-        {"ai_name": "HelloBot", "ai_role": "test", "ai_goals": ["goal1", "goal2"]}
-    )
+# GET /agents
+response = send_request_with_retry(f"{BASE_URL}/agents")
+if response:
+    print("GET /agents response:", response)
 
-    header = {"Content-Type": "application/json", "openai_api_key": "asdf"}
-    print("Sending: ", header, body)
-    response = requests.post(
-        "http://localhost:8080/api/v1/agents", data=body, headers=header
-    )
-    print(response.content.decode("utf-8"))
+# POST /agent
+response = send_request_with_retry(f"{BASE_URL}/agent", method="POST")
+if response:
+    print("POST /agent response:", response)
+    agent_id = response.get("agent_id")
+
+# GET /agent/{agent_id}
+response = send_request_with_retry(f"{BASE_URL}/agent/{agent_id}")
+if response:
+    print(f"GET /agent/{agent_id} response:", response)
+
+# POST /agent/{agent_id}/start
+start_request_body = {
+    "message": "your message here",
+    "start": True
+}
+response = send_request_with_retry(f"{BASE_URL}/agent/{agent_id}/start", method="POST", json_payload=start_request_body)
+if response:
+    print(f"POST /agent/{agent_id}/start response:", response)
+
+# POST /agent/{agent_id}/message
+message_request_body = {
+    "message": "your message here",
+    "start": True
+}
+response = send_request_with_retry(f"{BASE_URL}/agent/{agent_id}/message", method="POST", json_payload=message_request_body)
+if response:
+    print(f"POST /agent/{agent_id}/message response:", response)
+
+input("\n\nPress Enter to start AutoGPT\n\n")
+
+def run_auto_gpt_webapp():
+   
+    """Run the Auto-GPT CLI client."""
+
+    client_logger = get_client_logger()
+    client_logger.debug("Getting agent settings")
+
+
+    response = requests.get(f"{BASE_URL}/agents/")
+    response_data = response.json()
+    simple_agent_as_dict = response_data.get('agents')[0]
+
+    # Todo : Needs to create a SimpleAgent from a dict
+    agent = SimpleAgent.load_from_dict(simple_agent_as_dict)
+    print("agent is loaded")
+
+
+    response = requests.post(f"{BASE_URL}/agent/{agent_id}/start")
+    print(response.json())
+
+    user_input : str = ''
+    while user_input.lower != 'n' :
+        user_input = click.prompt(
+            "Should the agent proceed with this ability?",
+            default="y",
+        )        
+        message_request_body = {
+            "message": user_input,
+            "start": True  # or False
+        }
+        response = requests.post(f"{BASE_URL}/agent/{agent_id}/message", json=message_request_body)
+        print(f"POST /agent/{agent_id}/message response:", response.json())
+
