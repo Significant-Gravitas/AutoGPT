@@ -1,6 +1,6 @@
 !!! warning
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
-    by work on the memory system, and have been removed in `master`.
+    by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
     feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
@@ -20,7 +20,7 @@ to the value that you want:
 
 !!! warning
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
-    by work on the memory system, and have been removed in `master`.
+    by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
     feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
@@ -35,7 +35,7 @@ Links to memory backends
 
 !!! warning
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
-    by work on the memory system, and have been removed in `master`.
+    by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
     feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
@@ -76,7 +76,7 @@ Links to memory backends
 
 !!! warning
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
-    by work on the memory system, and have been removed in `master`.
+    by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
     feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
@@ -96,7 +96,7 @@ In the `.env` file set:
 
 !!! warning
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
-    by work on the memory system, and have been removed in `master`.
+    by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
     feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
@@ -140,7 +140,7 @@ deployed with docker, or as a cloud service provided by [Zilliz Cloud](https://z
 
 !!! warning
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
-    by work on the memory system, and have been removed in `master`.
+    by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
     feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
@@ -185,7 +185,7 @@ View memory usage by using the `--debug` flag :)
 
 !!! warning
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
-    by work on the memory system, and have been removed in `master`.
+    by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
     feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
