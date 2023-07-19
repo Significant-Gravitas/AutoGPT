@@ -1,7 +1,8 @@
 """
 /agents (GET): Returns a list of all agents.
-    => need Agent (Parent) to define this properties : agent_id, client_facing, status
+    => Need Agent (Parent) to define this properties : agent_id, client_facing, status
 /agent (POST): Create a new agent.
+    => TODO : Save an Agent (or SimpleAgent) in the workspace (can't find the method still reading the code)
 /agent/{agent_id} (GET): Get an agent from its ID & return an agent.
 /agent/{agent_id}/start (POST): Send a message to an agent.
 /agent/{agent_id}/message (POST): Sends a message to the agent.
@@ -74,6 +75,8 @@ async def create_agent(request: Request):
     Minimal requirements : None 
     """
     agent_id = uuid.uuid4().hex
+
+    # TODO : Save the Agent, idealy managed in Agent() not Simple Agent.
     return {"agent_id": agent_id}
 
 
