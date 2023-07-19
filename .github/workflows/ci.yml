@@ -71,7 +71,6 @@ jobs:
       min-python-version: "3.10"
     name: "${{ matrix.agent-name }} (Cache: ${{ matrix.cache-enabled }})"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -80,6 +79,7 @@ jobs:
           - "smol-developer"
           - "Auto-GPT"
           - "mini-agi"
+          - "beebot"
         cache-enabled: [ true, false ]
 
     steps:
@@ -115,6 +115,7 @@ jobs:
       - name: Run regression tests
         run: |
           cd agent/$AGENT_NAME
+          prefix=""
           if [ "$AGENT_NAME" == "gpt-engineer" ]; then
             make install
             source venv/bin/activate
@@ -135,6 +136,10 @@ jobs:
             cp config_template.yaml config.yaml
             sed -i 's/OPENAI_API_KEY:.*/OPENAI_API_KEY: "'"${{ secrets.OPENAI_API_KEY }}"'"/' config.yaml
             docker-compose up -d --build
+          elif [ "$AGENT_NAME" == "beebot" ]; then
+            poetry install
+            poetry run playwright install
+            prefix="poetry run "
           else
             echo "Unknown agent name: $AGENT_NAME"
             exit 1
@@ -143,19 +148,19 @@ jobs:
           pip install ../../dist/*.whl
           
           if [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
-            agbenchmark start --maintain --mock
-            agbenchmark start --improve --mock
-            agbenchmark start --mock
-            agbenchmark start --mock --category=retrieval
-            agbenchmark start --mock --category=interface
-            agbenchmark start --mock --category=code
-            agbenchmark start --mock --category=memory
-            agbenchmark start --mock --category=iterate
+            ${prefix}agbenchmark start --maintain --mock
+            ${prefix}agbenchmark start --improve --mock
+            ${prefix}agbenchmark start --mock
+            ${prefix}agbenchmark start --mock --category=retrieval
+            ${prefix}agbenchmark start --mock --category=interface
+            ${prefix}agbenchmark start --mock --category=code
+            ${prefix}agbenchmark start --mock --category=memory
+            ${prefix}agbenchmark start --mock --category=iterate
           else
             curl -s https://raw.githubusercontent.com/Helicone/helicone/main/mitmproxy.sh | bash -s start
-            agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
+            ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
           fi
-
+          
           cd ../..
 
         env:
@@ -191,6 +196,8 @@ jobs:
           git fetch origin $current_branch
           git rebase origin/$current_branch
           git push origin HEAD
-          poetry run python send_to_googledrive.py
+          if [ "$current_branch" == "master" ]; then
+            poetry run python send_to_googledrive.py
+          fi
         env:
           GDRIVE_BASE64: ${{ secrets.GDRIVE_BASE64 }}
