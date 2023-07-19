@@ -145,11 +145,14 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         logger.debug(f"Running {file_path} in a {image_name} container...")
         container: DockerContainer = client.containers.run(
             image_name,
-            ["python", str(file_path.relative_to(agent.workspace.root))],
+            [
+                "python",
+                file_path.relative_to(agent.workspace.root).as_posix(),
+            ],
             volumes={
                 agent.config.workspace_path: {
                     "bind": "/workspace",
-                    "mode": "ro",
+                    "mode": "rw",
                 }
             },
             working_dir="/workspace",
