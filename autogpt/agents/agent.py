@@ -62,11 +62,11 @@ class Agent(BaseAgent):
         """LogCycleHandler for structured debug logging."""
 
     def construct_base_prompt(self, *args, **kwargs) -> ChatSequence:
-        if kwargs.get("append_messages") is None:
-            kwargs["append_messages"] = []
+        if kwargs.get("prepend_messages") is None:
+            kwargs["prepend_messages"] = []
 
         # Clock
-        kwargs["append_messages"].append(
+        kwargs["prepend_messages"].append(
             Message("system", f"The current time and date is {time.strftime('%c')}"),
         )
 
@@ -93,6 +93,9 @@ class Agent(BaseAgent):
                 ),
             )
             logger.debug(budget_msg)
+
+            if kwargs.get("append_messages") is None:
+                kwargs["append_messages"] = []
             kwargs["append_messages"].append(budget_msg)
 
         return super().construct_base_prompt(*args, **kwargs)
