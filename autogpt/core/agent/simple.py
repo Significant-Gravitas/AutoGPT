@@ -24,6 +24,16 @@ from autogpt.core.workspace.simple import SimpleWorkspace, WorkspaceSettings
 
 
 class AgentSystems(SystemConfiguration):
+    """
+    System configuration for the agent.
+
+    Attributes:
+        ability_registry (PluginLocation): Plugin location for the ability registry.
+        memory (PluginLocation): Plugin location for the memory system.
+        openai_provider (PluginLocation): Plugin location for the OpenAI provider.
+        planning (PluginLocation): Plugin location for the planning system.
+        workspace (PluginLocation): Plugin location for the workspace system.
+    """
     ability_registry: PluginLocation
     memory: PluginLocation
     openai_provider: PluginLocation
@@ -32,6 +42,18 @@ class AgentSystems(SystemConfiguration):
 
 
 class AgentConfiguration(SystemConfiguration):
+    """
+    Configuration for the agent.
+
+    Attributes:
+        cycle_count (int): Number of cycles the agent has gone through.
+        max_task_cycle_count (int): Maximum number of cycles a task can go through before being considered complete.
+        creation_time (str): Timestamp of the agent's creation.
+        name (str): Name of the agent.
+        role (str): Role or description of the agent.
+        goals (List[str]): List of goals the agent aims to achieve.
+        systems (AgentSystems): System configuration for the agent.
+    """
     cycle_count: int
     max_task_cycle_count: int
     creation_time: str
@@ -42,10 +64,27 @@ class AgentConfiguration(SystemConfiguration):
 
 
 class AgentSystemSettings(SystemSettings):
+    """
+    System settings for the agent.
+
+    Attributes:
+        configuration (AgentConfiguration): Configuration for the agent.
+    """
     configuration: AgentConfiguration
 
 
 class AgentSettings(BaseModel):
+    """
+    Settings for the agent.
+
+    Attributes:
+        agent (AgentSystemSettings): System settings for the agent.
+        ability_registry (AbilityRegistrySettings): Settings for the ability registry system.
+        memory (MemorySettings): Settings for the memory system.
+        openai_provider (OpenAISettings): Settings for the OpenAI provider system.
+        planning (PlannerSettings): Settings for the planning system.
+        workspace (WorkspaceSettings): Settings for the workspace system.
+    """
     agent: AgentSystemSettings
     ability_registry: AbilityRegistrySettings
     memory: MemorySettings
@@ -60,6 +99,12 @@ class AgentSettings(BaseModel):
 
 
 class SimpleAgent(Agent, Configurable):
+    """
+    SimpleAgent class representing a simple agent.
+
+    Attributes:
+        default_settings (AgentSystemSettings): Default system settings for the agent.
+    """
     default_settings = AgentSystemSettings(
         name="simple_agent",
         description="A simple agent.",
@@ -112,6 +157,18 @@ class SimpleAgent(Agent, Configurable):
         planning: SimplePlanner,
         workspace: SimpleWorkspace,
     ):
+        """
+        Initialize the SimpleAgent.
+
+        Args:
+            settings (AgentSystemSettings): System settings for the agent.
+            logger (logging.Logger): Logger object for logging messages.
+            ability_registry (SimpleAbilityRegistry): Ability registry for the agent.
+            memory (SimpleMemory): Memory system for the agent.
+            openai_provider (OpenAIProvider): OpenAI provider for the agent.
+            planning (SimplePlanner): Planner system for the agent.
+            workspace (SimpleWorkspace): Workspace system for the agent.
+        """
         self._configuration = settings.configuration
         self._logger = logger
         self._ability_registry = ability_registry
