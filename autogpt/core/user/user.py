@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, SecretStr
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -21,6 +21,18 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 4320
 JWT_RENEWAL_PERIOD_MINUTES = 1440
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto") if USE_DICTIONARY else None
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: SecretStr
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: SecretStr
+
+class UserResponse(BaseModel):
+    uid: str
+    email: str
 
 class User(BaseModel):
     email: str
