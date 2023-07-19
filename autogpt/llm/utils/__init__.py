@@ -7,12 +7,19 @@ from colorama import Fore
 from autogpt.config import Config
 
 from ..api_manager import ApiManager
-from ..base import ChatModelResponse, ChatSequence, Message
+from ..base import (
+    ChatModelResponse,
+    ChatSequence,
+    FunctionCallDict,
+    Message,
+    ResponseMessageDict,
+)
 from ..providers import openai as iopenai
 from ..providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAIFunctionCall,
     OpenAIFunctionSpec,
+    count_openai_functions_tokens,
 )
 from .token_counter import *
 
@@ -111,7 +118,13 @@ def create_chat_completion(
     if temperature is None:
         temperature = config.temperature
     if max_tokens is None:
-        max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt.token_length
+        prompt_tlength = prompt.token_length
+        max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt_tlength
+        logger.debug(f"Prompt length: {prompt_tlength} tokens")
+        if functions:
+            functions_tlength = count_openai_functions_tokens(functions, model)
+            max_tokens -= functions_tlength
+            logger.debug(f"Functions take up {functions_tlength} tokens in API call")
 
     logger.debug(
         f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
@@ -138,9 +151,8 @@ def create_chat_completion(
 
     if functions:
         chat_completion_kwargs["functions"] = [
-            function.__dict__ for function in functions
+            function.schema for function in functions
         ]
-        logger.debug(f"Function dicts: {chat_completion_kwargs['functions']}")
 
     response = iopenai.create_chat_completion(
         messages=prompt.raw(),
@@ -152,19 +164,24 @@ def create_chat_completion(
         logger.error(response.error)
         raise RuntimeError(response.error)
 
-    first_message = response.choices[0].message
+    first_message: ResponseMessageDict = response.choices[0].message
     content: str | None = first_message.get("content")
-    function_call: OpenAIFunctionCall | None = first_message.get("function_call")
+    function_call: FunctionCallDict | None = first_message.get("function_call")
 
     for plugin in config.plugins:
         if not plugin.can_handle_on_response():
             continue
+        # TODO: function call support in plugin.on_response()
         content = plugin.on_response(content)
 
     return ChatModelResponse(
         model_info=OPEN_AI_CHAT_MODELS[model],
         content=content,
-        function_call=function_call,
+        function_call=OpenAIFunctionCall(
+            name=function_call["name"], arguments=function_call["arguments"]
+        )
+        if function_call
+        else None,
     )
 
 

@@ -12,7 +12,8 @@ nav:
     - Voice: configuration/voice.md
     - Image Generation: configuration/imagegen.md
 
-  - Contributing:
+  - Help us improve Auto-GPT:
+    - Share your debug logs with us: share-your-logs.md
     - Contribution guide: contributing.md
     - Running tests: testing.md
     - Code of Conduct: code-of-conduct.md
