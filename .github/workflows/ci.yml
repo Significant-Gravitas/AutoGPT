@@ -33,7 +33,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ env.min-python-version }}
 
@@ -132,7 +132,7 @@ jobs:
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -153,14 +153,16 @@ jobs:
 
       - name: Run pytest with coverage
         run: |
-          pytest -n auto --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+          pytest -vv --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+            --numprocesses=logical --durations=10 \
             tests/unit tests/integration tests/challenges
           python tests/challenges/utils/build_current_score.py
         env:
           CI: true
-          PROXY: ${{ secrets.PROXY }}
-          AGENT_MODE: ${{ secrets.AGENT_MODE }}
-          AGENT_TYPE: ${{ secrets.AGENT_TYPE }}
+          PROXY: ${{ github.event_name == 'pull_request_target' && secrets.PROXY || '' }}
+          AGENT_MODE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_MODE || '' }}
+          AGENT_TYPE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_TYPE || '' }}
+          OPENAI_API_KEY: ${{ github.event_name == 'pull_request' && secrets.OPENAI_API_KEY || '' }}
           PLAIN_OUTPUT: True
 
       - name: Upload coverage reports to Codecov
@@ -251,7 +253,7 @@ jobs:
             gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
 
-      - name: Upload logs as artifact
+      - name: Upload logs to artifact
         if: always()
         uses: actions/upload-artifact@v3
         with:

@@ -1,7 +1,7 @@
 """Functions for counting the number of tokens in a message or string."""
 from __future__ import annotations
 
-from typing import List
+from typing import List, overload
 
 import tiktoken
 
@@ -9,8 +9,18 @@ from autogpt.llm.base import Message
 from autogpt.logs import logger
 
 
+@overload
+def count_message_tokens(messages: Message, model: str = "gpt-3.5-turbo") -> int:
+    ...
+
+
+@overload
+def count_message_tokens(messages: List[Message], model: str = "gpt-3.5-turbo") -> int:
+    ...
+
+
 def count_message_tokens(
-    messages: List[Message], model: str = "gpt-3.5-turbo-0301"
+    messages: Message | List[Message], model: str = "gpt-3.5-turbo"
 ) -> int:
     """
     Returns the number of tokens used by a list of messages.
@@ -24,6 +34,9 @@ def count_message_tokens(
     Returns:
         int: The number of tokens used by the list of messages.
     """
+    if isinstance(messages, Message):
+        messages = [messages]
+
     if model.startswith("gpt-3.5-turbo"):
         tokens_per_message = (
             4  # every message follows <|start|>{role/name}\n{content}<|end|>\n

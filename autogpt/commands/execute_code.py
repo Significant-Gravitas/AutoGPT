@@ -7,10 +7,12 @@ import docker
 from docker.errors import DockerException, ImageNotFound
 from docker.models.containers import Container as DockerContainer
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.config import Config
 from autogpt.logs import logger
+
+from .decorators import sanitize_path_arg
 
 ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"
@@ -43,14 +45,14 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
     Returns:
         str: The STDOUT captured from the code when it ran
     """
-    ai_name = agent.ai_name
+    ai_name = agent.ai_config.ai_name
     code_dir = agent.workspace.get_path(Path(ai_name, "executed_code"))
     os.makedirs(code_dir, exist_ok=True)
 
     if not name.endswith(".py"):
         name = name + ".py"
 
-    # The `name` arg is not covered by Agent._resolve_pathlike_command_args(),
+    # The `name` arg is not covered by @sanitize_path_arg,
     # so sanitization must be done here to prevent path traversal.
     file_path = agent.workspace.get_path(code_dir / name)
     if not file_path.is_relative_to(code_dir):
@@ -76,6 +78,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
         },
     },
 )
+@sanitize_path_arg("filename")
 def execute_python_file(filename: str, agent: Agent) -> str:
     """Execute a Python file in a Docker container and return the output
 
@@ -100,6 +103,9 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         )
 
     if we_are_running_in_a_docker_container():
+        logger.debug(
+            f"Auto-GPT is running in a Docker container; executing {file_path} directly..."
+        )
         result = subprocess.run(
             ["python", str(file_path)],
             capture_output=True,
@@ -111,6 +117,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         else:
             return f"Error: {result.stderr}"
 
+    logger.debug("Auto-GPT is not running in a Docker container")
     try:
         client = docker.from_env()
         # You can replace this with the desired Python image/version
@@ -119,10 +126,10 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         image_name = "python:3-alpine"
         try:
             client.images.get(image_name)
-            logger.warn(f"Image '{image_name}' found locally")
+            logger.debug(f"Image '{image_name}' found locally")
         except ImageNotFound:
             logger.info(
-                f"Image '{image_name}' not found locally, pulling from Docker Hub"
+                f"Image '{image_name}' not found locally, pulling from Docker Hub..."
             )
             # Use the low-level API to stream the pull response
             low_level_client = docker.APIClient()
@@ -135,6 +142,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
                 elif status:
                     logger.info(status)
 
+        logger.debug(f"Running {file_path} in a {image_name} container...")
         container: DockerContainer = client.containers.run(
             image_name,
             ["python", str(file_path.relative_to(agent.workspace.root))],
