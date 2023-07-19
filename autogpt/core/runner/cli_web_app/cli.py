@@ -13,8 +13,8 @@ import yaml
 from autogpt.core.runner.client_lib.shared_click_commands import (
     DEFAULT_SETTINGS_FILE,
     make_settings,
-    status,
 )
+
 from autogpt.core.runner.client_lib.utils import coroutine
 
 
@@ -24,8 +24,8 @@ def autogpt():
     pass
 
 
-autogpt.add_command(make_settings)
-autogpt.add_command(status)
+# autogpt.add_command(make_settings)
+# autogpt.add_command(status)
 
 
 @autogpt.command()
@@ -43,6 +43,7 @@ autogpt.add_command(status)
     help="The port of the webserver.",
     type=click.INT,
 )
+
 def server(host: str, port: int) -> None:
     """Run the Auto-GPT runner httpserver."""
     click.echo("Running Auto-GPT runner httpserver...")
@@ -71,8 +72,8 @@ async def client(settings_file) -> None:
 
     from autogpt.core.runner.cli_web_app.client.client import run
 
-    with autogpt_server():
-        run()
+    # with autogpt_server():
+    run()
 
 
 @contextlib.contextmanager

@@ -1,9 +1,13 @@
+projects
+docs/tech/
+
 ## Original ignores
 autogpt/keys.py
 autogpt/*.json
 **/auto_gpt_workspace/*
 *.mpeg
 .env
+.env-*
 azure.yaml
 ai_settings.yaml
 last_run_ai_settings.yaml

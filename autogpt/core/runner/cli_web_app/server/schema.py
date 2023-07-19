@@ -1,6 +1,7 @@
 from uuid import UUID
+from typing import Dict, Any, Optional
 
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, Field
 
 
 class AgentInfo(BaseModel):
@@ -27,10 +28,11 @@ class AgentConfiguration(BaseModel):
             raise ValueError("Must specify either objective or name, role, and goals")
 
 
-class InteractRequestBody(BaseModel):
-    user_input: str = ""
+class SimpleAgentMessageRequestBody(BaseModel):
+    message: str = Field(..., min_length=1)
+    start: bool = Field(default=False)
 
-
-class InteractResponseBody(BaseModel):
-    thoughts: dict[str, str]  # TBD
-    messages: list[str]  # for example
+class SimpleAgentMessageResponseBody(BaseModel):
+    ability_result: Dict[str, Any]
+    current_task: Optional[Any]
+    next_ability: Optional[Any]
