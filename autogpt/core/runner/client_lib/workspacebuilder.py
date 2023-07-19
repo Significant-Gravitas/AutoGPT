@@ -50,7 +50,7 @@ def get_logger_and_workspace(user_configuration: dict):
     client_logger.debug("Getting agent settings")
 
     agent_workspace = (
-        user_configuration.get("workspace", {}).get("configuration", {}).get("root", "")
+        user_configuration.get("workspace", {}).get("configuration", {}).get("parent", "")
     )
     return client_logger, agent_workspace
 

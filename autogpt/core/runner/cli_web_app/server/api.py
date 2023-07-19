@@ -25,7 +25,9 @@ from autogpt.core.runner.client_lib.workspacebuilder import workspace_loader , g
 from autogpt.core.agent import AgentSettings, SimpleAgent
 from autogpt.core.runner.client_lib.parser import parse_agent_name_and_goals , parse_ability_result , parse_agent_plan , parse_next_ability
 
-
+app = FastAPI()
+# bypass_routes = ["/user/login", "/user/register"]
+# app.add_middleware(JWTAuthenticationMiddleware, bypass_routes=bypass_routes)
 
 router = APIRouter()
 
