@@ -73,16 +73,13 @@ jobs:
       run: .github/workflows/scripts/docker-ci-summary.sh >> $GITHUB_STEP_SUMMARY
       continue-on-error: true
 
-  # Docker setup needs fixing before this is going to work: #1843
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: build
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
           submodules: true
 
       - name: Set up Docker Buildx
@@ -102,14 +99,15 @@ jobs:
       - id: test
         name: Run tests
         env:
-          PLAIN_OUTPUT: True
           CI: true
+          PLAIN_OUTPUT: True
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set +e
           test_output=$(
             docker run --env CI --env OPENAI_API_KEY --entrypoint python ${{ env.IMAGE_NAME }} -m \
-            pytest -n auto --cov=autogpt --cov-branch --cov-report term-missing \
+            pytest -v --cov=autogpt --cov-branch --cov-report term-missing \
+              --numprocesses=4 --durations=10 \
               tests/unit tests/integration 2>&1
           )
           test_failure=$?
