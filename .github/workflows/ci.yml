@@ -190,7 +190,7 @@ jobs:
           git add reports/* || echo "nothing to commit"
           commit_message="${{ matrix.agent-name }}-$(date +'%Y%m%d%H%M%S')"
           git commit -m "${commit_message}"
-            
+          git stash
           current_branch=${{ github.ref_name }}
           git fetch origin $current_branch
           git rebase origin/$current_branch

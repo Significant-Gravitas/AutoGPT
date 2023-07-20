@@ -1,4 +1,64 @@
 {
+    "TestBasicCodeGeneration": [
+        true
+    ],
+    "TestBasicMemory": [
+        true
+    ],
+    "TestBasicRetrieval": [
+        true
+    ],
+    "TestCreateSimpleWebServer": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+    ],
+    "TestDebugSimpleTypoWithGuidance": [
+        true
+    ],
+    "TestDebugSimpleTypoWithoutGuidance": [
+        false
+    ],
+    "TestReadFile": [
+        true
+    ],
+    "TestRememberMultipleIds": [
+        true
+    ],
+    "TestRememberMultiplePhrasesWithNoise": [
+        false
+    ],
+    "TestRememberMultipleWithNoise": [
+        false
+    ],
+    "TestRetrieval2.0": [
+        true
+    ],
+    "TestRetrieval2.1": [
+        false
+    ],
+    "TestRetrieval2.2": [
+        false
+    ],
+    "TestRetrieval3": [
+        false
+    ],
+    "TestSearch": [
+        true
+    ],
+    "TestThreeSum": [
+        true
+    ],
+    "TestWriteFile": [
+        true
+    ],
     "mini-agi": {
         "TestBasicMemory": [
             true,

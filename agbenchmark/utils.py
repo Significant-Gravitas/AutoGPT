@@ -51,7 +51,12 @@ def calculate_info_test_path(reports_path: Path) -> str:
             # Try to find the highest prefix number among all files, then increment it
             all_prefix_numbers = []
             for f in json_files:
-                number = float(Path(f).stem.split("_")[0])
+                try:
+                    number = float(Path(f).stem.split("_")[0])
+                except ValueError:
+                    print(f"File {f} is invalid.")
+                    continue
+
                 all_prefix_numbers.append(math.floor(number))
 
             max_prefix = max(all_prefix_numbers, default=0)
