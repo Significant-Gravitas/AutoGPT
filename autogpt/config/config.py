@@ -277,24 +277,19 @@ class ConfigBuilder(Configurable[Config]):
         config_dict["elevenlabs_voice_id"] = os.getenv(
             "ELEVENLABS_VOICE_ID", os.getenv("ELEVENLABS_VOICE_1_ID")
         )
-        elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        if os.getenv("USE_MAC_OS_TTS"):
-            default_tts_provider = "macos"
-        elif elevenlabs_api_key:
-            default_tts_provider = "elevenlabs"
-        elif os.getenv("USE_BRIAN_TTS"):
-            default_tts_provider = "streamelements"
-        else:
-            default_tts_provider = "gtts"
-        config_dict["text_to_speech_provider"] = default_tts_provider
+        if not config_dict["text_to_speech_provider"]:
+            if os.getenv("USE_MAC_OS_TTS"):
+                default_tts_provider = "macos"
+            elif config_dict["elevenlabs_api_key"]:
+                default_tts_provider = "elevenlabs"
+            elif os.getenv("USE_BRIAN_TTS"):
+                default_tts_provider = "streamelements"
+            else:
+                default_tts_provider = "gtts"
+            config_dict["text_to_speech_provider"] = default_tts_provider
 
         config_dict["plugins_allowlist"] = _safe_split(os.getenv("ALLOWLISTED_PLUGINS"))
         config_dict["plugins_denylist"] = _safe_split(os.getenv("DENYLISTED_PLUGINS"))
-        config_dict["plugins_config"] = PluginsConfig.load_config(
-            config_dict["plugins_config_file"],
-            config_dict["plugins_denylist"],
-            config_dict["plugins_allowlist"],
-        )
 
         with contextlib.suppress(TypeError):
             config_dict["image_size"] = int(os.getenv("IMAGE_SIZE"))
@@ -318,7 +313,17 @@ class ConfigBuilder(Configurable[Config]):
             k: v for k, v in config_dict.items() if v is not None
         }
 
-        return cls.build_agent_configuration(config_dict_without_none_values)
+        config = cls.build_agent_configuration(config_dict_without_none_values)
+
+        # Set secondary config variables (that depend on other config variables)
+
+        config.plugins_config = PluginsConfig.load_config(
+            config.plugins_config_file,
+            config.plugins_denylist,
+            config.plugins_allowlist,
+        )
+
+        return config
 
     @classmethod
     def load_azure_config(cls, config_file: str = AZURE_CONFIG_FILE) -> Dict[str, str]:
