@@ -54,14 +54,10 @@ def kubernetes_agent(
     system_prompt = ai_config.construct_full_prompt()
     agent_test_config.set_continuous_mode(False)
     agent = Agent(
-        # We also give the AI a name 
-        ai_name="Kubernetes-Demo",
         memory=memory_json_file,
-        full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,
-        system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
     )
