@@ -171,18 +171,13 @@ class NextAbility(PromptStrategy):
             The parsed response.
 
         """
-
-        if response_content["function_call"]  : 
-            function_name = response_content["function_call"]["name"]
-            function_arguments = json_loads(response_content["function_call"]["arguments"])
-            parsed_response = {
-                "motivation": function_arguments.pop("motivation"),
-                "self_criticism": function_arguments.pop("self_criticism"),
-                "reasoning": function_arguments.pop("reasoning"),
-                "next_ability": function_name,
-                "ability_arguments": function_arguments,
-            }
-        else : 
-            parsed_response = None
-            print("Warning : no function_call !")
+        function_name = response_content["function_call"]["name"]
+        function_arguments = json_loads(response_content["function_call"]["arguments"])
+        parsed_response = {
+            "motivation": function_arguments.pop("motivation"),
+            "self_criticism": function_arguments.pop("self_criticism"),
+            "reasoning": function_arguments.pop("reasoning"),
+            "next_ability": function_name,
+            "ability_arguments": function_arguments,
+        }
         return parsed_response
