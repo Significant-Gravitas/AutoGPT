@@ -1,6 +1,6 @@
 from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
-from autogpt.main import COMMAND_CATEGORIES
+from autogpt.main import COMMAND_CATEGORIES, run_interaction_loop
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
@@ -9,7 +9,7 @@ from autogpt.workspace import Workspace
 
 def run_task(task) -> None:
     agent = bootstrap_agent(task)
-    agent.start_interaction_loop()
+    run_interaction_loop(agent)
 
 
 def bootstrap_agent(task):
@@ -28,15 +28,11 @@ def bootstrap_agent(task):
         ai_goals=[task.user_input],
     )
     ai_config.command_registry = command_registry
-    system_prompt = ai_config.construct_full_prompt(config)
     return Agent(
-        ai_name="Auto-GPT",
         memory=get_memory(config),
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,
-        next_action_count=0,
-        system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=str(workspace_directory_path),
     )
