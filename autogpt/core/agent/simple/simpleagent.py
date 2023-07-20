@@ -1,28 +1,37 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Awaitable
+from typing import Any, Awaitable, Callable
 
-from pydantic import BaseModel
 
 from autogpt.core.ability import (
-    AbilityRegistrySettings,
     AbilityResult,
     SimpleAbilityRegistry,
 )
 from autogpt.core.agent.base import Agent
-from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
-from autogpt.core.memory import MemorySettings, SimpleMemory
-from autogpt.core.planning import PlannerSettings, SimplePlanner, Task, TaskStatus
+from autogpt.core.agent.simple import (
+    AgentConfiguration,
+    AgentSettings,
+    AgentSystems,
+    AgentSystemSettings,
+    SimpleLoop,
+)
+from autogpt.core.configuration import Configurable
+from autogpt.core.memory import SimpleMemory
+from autogpt.core.planning import SimplePlanner, Task, TaskStatus
 from autogpt.core.plugin.simple import (
     PluginLocation,
     PluginStorageFormat,
     SimplePluginService,
 )
-from autogpt.core.resource.model_providers import OpenAIProvider, OpenAISettings
-from autogpt.core.workspace.simple import SimpleWorkspace, WorkspaceSettings
+from autogpt.core.resource.model_providers import OpenAIProvider
+from autogpt.core.runner.client_lib.parser import (
+    parse_ability_result,
+    parse_agent_plan,
+    parse_next_ability,
+)
+from autogpt.core.workspace.simple import SimpleWorkspace
 
-from autogpt.core.agent.simple import AgentConfiguration, AgentSettings, AgentSystems, AgentSystemSettings, SimpleLoop
 
 class SimpleAgent(Agent, Configurable):
     default_settings = AgentSystemSettings(
@@ -90,15 +99,17 @@ class SimpleAgent(Agent, Configurable):
         self._completed_tasks = []
         self._current_task = None
         self._next_ability = None
-        self._loop = SimpleLoop(        
-            settings =  settings,
-            logger = logger,
-            ability_registry = ability_registry,
-            memory = memory,
-            openai_provider = openai_provider,
-            planning = planning,
-            workspace = workspace,
-            ) 
+
+        # TODO Will provide another PR with the logic migrated to SimpleLoop once approved
+        self._loop = SimpleLoop(
+            settings=settings,
+            logger=logger,
+            ability_registry=ability_registry,
+            memory=memory,
+            openai_provider=openai_provider,
+            planning=planning,
+            workspace=workspace,
+        )
 
     @classmethod
     def from_workspace(
@@ -176,12 +187,12 @@ class SimpleAgent(Agent, Configurable):
             self._ability_registry.dump_abilities(),
         )
 
-        if next_ability.content != None : 
+        if next_ability.content != None:
             self._current_task = task
             self._next_ability = next_ability.content
             return self._current_task, self._next_ability
-        else : 
-            return_var = await self.determine_next_ability() 
+        else:
+            return_var = await self.determine_next_ability()
             return return_var
 
     async def execute_next_ability(self, user_input: str, *args, **kwargs):
@@ -346,40 +357,39 @@ class SimpleAgent(Agent, Configurable):
         )
         return system_instance
 
-
     async def run(self, user_input_handler: Callable[[str], Awaitable[str]]):
-        
-        # TODO : Define Agent with run , start & stop method to be able to chain agents
-        from autogpt.core.runner.client_lib.parser import (
-            parse_ability_result,
-            parse_agent_plan,
-            parse_next_ability,
-        )
-
         plan = await self.build_initial_plan()
         print(parse_agent_plan(plan))
 
-        # TODO : Segregate _autonomous_ Agent Logic (that pull ressources toguether) & prompting logic to respect  Single Responsibility Principle (SRP), which is one of the five principles of SOLID. 
+        # TODO : Uncoment the following line to run a agent via SimpleLoop
+        # This is to segregate _autonomous_ agent logic (that pull ressources toguether)
+        # & looping logic to respect Single Responsibility Principle (SRP), which is one of the five principles of SOLID.
+
+        # NOTE Advantages :
+        # Provide common Framework for cli & webapp
+        # Easy integration with API ( &enable method star & stop on API)
+        # Allow sub agents
+
         # self._loop.start(user_input_handler: Callable[[str], Awaitable[str]])
         while True:
             current_task, next_ability = await self.determine_next_ability(plan)
             print(parse_next_ability(current_task, next_ability))
             # Send a message to the user input handler to request user input
-            user_input = await user_input_handler("Should the agent proceed with this ability?")
-           
+            user_input = await user_input_handler(
+                "Should the agent proceed with this ability?"
+            )
+
             ability_result = await self.execute_next_ability(user_input)
             print(parse_ability_result(ability_result))
 
-    
     async def start(self, user_input_handler: Callable[[str], Awaitable[str]]):
-        pass
-        # return_var =  await self._loop.start(user_input_handler)
-        # return return_var
+        return_var = await self._loop.start(user_input_handler)
+        return return_var
 
-    async def stop():
-        pass
-        # return_var =  await self._loop.stop()
-        # return return_var
+    async def stop(self):
+        return_var = await self._loop.stop()
+        return return_var
+
 
 def _prune_empty_dicts(d: dict) -> dict:
     """

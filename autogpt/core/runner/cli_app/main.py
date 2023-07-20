@@ -3,12 +3,8 @@ import click
 from autogpt.core.agent import AgentSettings, SimpleAgent
 from autogpt.core.runner.client_lib.logging import get_client_logger
 from autogpt.core.runner.client_lib.parser import (
-    parse_ability_result,
     parse_agent_name_and_goals,
-    parse_agent_plan,
-    parse_next_ability,
 )
-
 
 
 async def run_auto_gpt(user_configuration: dict):
@@ -58,10 +54,10 @@ async def run_auto_gpt(user_configuration: dict):
 
     await agent.run(handle_user_input_request)
 
+
 async def handle_user_input_request(prompt):
     user_input = click.prompt(
-                prompt,
-                default="y",
-            )
+        prompt,
+        default="y",
+    )
     return user_input
-

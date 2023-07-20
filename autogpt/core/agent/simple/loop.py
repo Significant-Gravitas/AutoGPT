@@ -1,31 +1,20 @@
 import logging
-from datetime import datetime
-from pathlib import Path
-from typing import Any
 
-from pydantic import BaseModel
 
 from autogpt.core.ability import (
-    AbilityRegistrySettings,
     AbilityResult,
     SimpleAbilityRegistry,
 )
-from autogpt.core.agent.base import Agent
-from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
-from autogpt.core.memory import MemorySettings, SimpleMemory
-from autogpt.core.planning import PlannerSettings, SimplePlanner, Task, TaskStatus
-from autogpt.core.plugin.simple import (
-    PluginLocation,
-    PluginStorageFormat,
-    SimplePluginService,
+from autogpt.core.agent.simple.models import (
+    AgentSystemSettings,
 )
-from autogpt.core.resource.model_providers import OpenAIProvider, OpenAISettings
-from autogpt.core.workspace.simple import SimpleWorkspace, WorkspaceSettings
-from autogpt.core.agent.simple.models import AgentConfiguration, AgentSettings, AgentSystems, AgentSystemSettings
+from autogpt.core.memory import SimpleMemory
+from autogpt.core.planning import SimplePlanner, Task, TaskStatus
+from autogpt.core.resource.model_providers import OpenAIProvider
+from autogpt.core.workspace.simple import SimpleWorkspace
 
 
-class SimpleLoop():
-
+class SimpleLoop:
     def __init__(
         self,
         settings: AgentSystemSettings,
@@ -49,7 +38,6 @@ class SimpleLoop():
         self._completed_tasks = []
         self._current_task = None
         self._next_ability = None
-
 
     async def build_initial_plan(self) -> dict:
         plan = await self._planning.make_initial_plan(
@@ -141,19 +129,17 @@ class SimpleLoop():
     def __repr__(self):
         return "SimpleLoop()"
 
-
-    async def run(self) :
+    async def run(self):
+        import click
 
         from autogpt.core.runner.client_lib.parser import (
             parse_ability_result,
             parse_agent_plan,
             parse_next_ability,
         )
-        import click
-        
+
         plan = await self.build_initial_plan()
         print(parse_agent_plan(plan))
-
 
         while True:
             current_task, next_ability = await self.determine_next_ability(plan)
