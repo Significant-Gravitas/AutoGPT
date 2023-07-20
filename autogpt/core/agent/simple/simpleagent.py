@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Awaitable
 
 from pydantic import BaseModel
 
@@ -22,42 +22,7 @@ from autogpt.core.plugin.simple import (
 from autogpt.core.resource.model_providers import OpenAIProvider, OpenAISettings
 from autogpt.core.workspace.simple import SimpleWorkspace, WorkspaceSettings
 
-
-class AgentSystems(SystemConfiguration):
-    ability_registry: PluginLocation
-    memory: PluginLocation
-    openai_provider: PluginLocation
-    planning: PluginLocation
-    workspace: PluginLocation
-
-
-class AgentConfiguration(SystemConfiguration):
-    cycle_count: int
-    max_task_cycle_count: int
-    creation_time: str
-    name: str
-    role: str
-    goals: list[str]
-    systems: AgentSystems
-
-
-class AgentSystemSettings(SystemSettings):
-    configuration: AgentConfiguration
-
-
-class AgentSettings(BaseModel):
-    agent: AgentSystemSettings
-    ability_registry: AbilityRegistrySettings
-    memory: MemorySettings
-    openai_provider: OpenAISettings
-    planning: PlannerSettings
-    workspace: WorkspaceSettings
-
-    def update_agent_name_and_goals(self, agent_goals: dict) -> None:
-        self.agent.configuration.name = agent_goals["agent_name"]
-        self.agent.configuration.role = agent_goals["agent_role"]
-        self.agent.configuration.goals = agent_goals["agent_goals"]
-
+from autogpt.core.agent.simple import AgentConfiguration, AgentSettings, AgentSystems, AgentSystemSettings, SimpleLoop
 
 class SimpleAgent(Agent, Configurable):
     default_settings = AgentSystemSettings(
@@ -125,6 +90,15 @@ class SimpleAgent(Agent, Configurable):
         self._completed_tasks = []
         self._current_task = None
         self._next_ability = None
+        self._loop = SimpleLoop(        
+            settings =  settings,
+            logger = logger,
+            ability_registry = ability_registry,
+            memory = memory,
+            openai_provider = openai_provider,
+            planning = planning,
+            workspace = workspace,
+            ) 
 
     @classmethod
     def from_workspace(
@@ -367,6 +341,40 @@ class SimpleAgent(Agent, Configurable):
         )
         return system_instance
 
+
+    async def run(self, user_input_handler: Callable[[str], Awaitable[str]]):
+        
+        # TODO : Define Agent with run , start & stop method to be able to chain agents
+        from autogpt.core.runner.client_lib.parser import (
+            parse_ability_result,
+            parse_agent_plan,
+            parse_next_ability,
+        )
+
+        plan = await self.build_initial_plan()
+        print(parse_agent_plan(plan))
+
+        # TODO : Segregate _autonomous_ Agent Logic (that pull ressources toguether) & prompting logic to respect  Single Responsibility Principle (SRP), which is one of the five principles of SOLID. 
+        # self._loop.start(user_input_handler: Callable[[str], Awaitable[str]])
+        while True:
+            current_task, next_ability = await self.determine_next_ability(plan)
+            print(parse_next_ability(current_task, next_ability))
+            # Send a message to the user input handler to request user input
+            user_input = await user_input_handler("Should the agent proceed with this ability?")
+           
+            ability_result = await self.execute_next_ability(user_input)
+            print(parse_ability_result(ability_result))
+
+    
+    async def start(self, user_input_handler: Callable[[str], Awaitable[str]]):
+        pass
+        # return_var =  await self._loop.start(user_input_handler)
+        # return return_var
+
+    async def stop():
+        pass
+        # return_var =  await self._loop.stop()
+        # return return_var
 
 def _prune_empty_dicts(d: dict) -> dict:
     """
