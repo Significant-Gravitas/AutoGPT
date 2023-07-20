@@ -449,7 +449,7 @@ def get_user_feedback(
                     f"Please enter '{config.authorise_key} -N'"
                     " where N is the number of continuous tasks."
                 )
-        elif console_input.lower() == config.exit_key:
+        elif console_input.lower() in [config.exit_key, "exit"]:
             user_feedback = UserFeedback.EXIT
         else:
             user_feedback = UserFeedback.TEXT
