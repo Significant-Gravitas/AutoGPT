@@ -53,7 +53,8 @@ async def run_auto_gpt(user_configuration: dict):
     print(parse_agent_plan(plan))
 
     while True:
-        current_task, next_ability = await agent.determine_next_ability(plan)
+        result = await agent.determine_next_ability(plan)
+        current_task, next_ability = result
         print(parse_next_ability(current_task, next_ability))
         user_input = click.prompt(
             "Should the agent proceed with this ability?",
