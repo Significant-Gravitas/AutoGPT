@@ -1,4 +1,3 @@
-
 def parse_agent_name_and_goals(name_and_goals: dict) -> str:
     parsed_response = f"Agent Name: {name_and_goals['agent_name']}\n"
     parsed_response += f"Agent Role: {name_and_goals['agent_role']}\n"
@@ -6,7 +5,6 @@ def parse_agent_name_and_goals(name_and_goals: dict) -> str:
     for i, goal in enumerate(name_and_goals["agent_goals"]):
         parsed_response += f"{i+1}. {goal}\n"
     return parsed_response
- 
 
 
 def parse_agent_plan(plan: dict) -> str:
@@ -30,7 +28,7 @@ def parse_next_ability(current_task, next_ability: dict) -> str:
     parsed_response = f"Current Task: {current_task.objective}\n"
     ability_args = ", ".join(
         f"{k}={v}" for k, v in next_ability["ability_arguments"].items()
-    ) 
+    )
     parsed_response += f"Next Ability: {next_ability['next_ability']}({ability_args})\n"
     parsed_response += f"Motivation: {next_ability['motivation']}\n"
     parsed_response += f"Self-criticism: {next_ability['self_criticism']}\n"
@@ -45,4 +43,3 @@ def parse_ability_result(ability_result) -> str:
     parsed_response += f"Message: {ability_result['message']}\n"
     parsed_response += f"Data: {ability_result['new_knowledge']}\n"
     return parsed_response
-
