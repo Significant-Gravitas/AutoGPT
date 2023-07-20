@@ -302,10 +302,10 @@ def run_interaction_loop(
                 if new_cycles_remaining is not None:
                     # Case 1: User is altering the cycle budget.
                     if cycle_budget > 1:
-                        cycle_budget = new_cycles_remaining
+                        cycle_budget = new_cycles_remaining + 1
                     # Case 2: User is running iteratively and
                     #   has initiated a one-time continuous cycle
-                    cycles_remaining = new_cycles_remaining
+                    cycles_remaining = new_cycles_remaining + 1
                 else:
                     # Case 1: Continuous iteration was interrupted -> resume
                     if cycle_budget > 1:
@@ -315,7 +315,7 @@ def run_interaction_loop(
                             f"The cycle budget is {cycle_budget}.",
                         )
                     # Case 2: The agent used up its cycle budget -> reset
-                    cycles_remaining = cycle_budget
+                    cycles_remaining = cycle_budget + 1
                 logger.typewriter_log(
                     "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
                     Fore.MAGENTA,
