@@ -69,7 +69,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.event_name == 'pull_request' && github.token || secrets.PAT }}
       min-python-version: "3.10"
-    name: "${{ matrix.agent-name }} (Cache: ${{ matrix.cache-enabled }})"
+    name: "${{ matrix.agent-name }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -80,7 +80,6 @@ jobs:
           - "Auto-GPT"
           - "mini-agi"
           - "beebot"
-        cache-enabled: [ true, false ]
 
     steps:
       - name: Checkout repository
@@ -170,7 +169,7 @@ jobs:
           PROMPT_USER: false # For mini-agi. TODO: Remove this once mini-agi follows the standards.
           HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
-          HELICONE_CACHE_ENABLED: ${{ matrix.cache-enabled }}
+          HELICONE_CACHE_ENABLED: false
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
           REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
 
@@ -183,7 +182,7 @@ jobs:
           path: reports/${{ matrix.agent-name }}
 
       - name: Authenticate and Push to Branch
-        if: (success() || failure()) && (github.event_name != 'pull_request' && matrix.cache-enabled == false)
+        if: (success() || failure()) && (github.event_name != 'pull_request')
         run: |
           git config --global user.email "github-bot@agpt.co"
           git config --global user.name "Auto-GPT-Bot"
