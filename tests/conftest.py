@@ -6,9 +6,8 @@ import pytest
 import yaml
 from pytest_mock import MockerFixture
 
-from autogpt.agents.agent import Agent
+from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
-from autogpt.config.ai_config import AIConfig
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
@@ -98,16 +97,11 @@ def agent(config: Config, workspace: Workspace) -> Agent:
     memory_json_file = get_memory(config)
     memory_json_file.clear()
 
-    system_prompt = ai_config.construct_full_prompt(config)
-
     return Agent(
-        ai_name=ai_config.ai_name,
         memory=memory_json_file,
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,
-        next_action_count=0,
-        system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
     )

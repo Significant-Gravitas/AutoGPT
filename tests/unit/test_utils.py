@@ -5,7 +5,7 @@ import pytest
 import requests
 
 from autogpt.config import Config
-from autogpt.json_utils.utilities import extract_json_from_response, validate_json
+from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
 from autogpt.utils import (
     get_bulletin_from_web,
     get_current_git_branch,
@@ -187,22 +187,26 @@ def test_get_current_git_branch_failure(mock_repo):
 
 
 def test_validate_json_valid(valid_json_response, config: Config):
-    assert validate_json(valid_json_response, config)
+    valid, errors = validate_dict(valid_json_response, config)
+    assert valid
+    assert errors is None
 
 
 def test_validate_json_invalid(invalid_json_response, config: Config):
-    assert not validate_json(valid_json_response, config)
+    valid, errors = validate_dict(valid_json_response, config)
+    assert not valid
+    assert errors is not None
 
 
 def test_extract_json_from_response(valid_json_response: dict):
     emulated_response_from_openai = str(valid_json_response)
     assert (
-        extract_json_from_response(emulated_response_from_openai) == valid_json_response
+        extract_dict_from_response(emulated_response_from_openai) == valid_json_response
     )
 
 
 def test_extract_json_from_response_wrapped_in_code_block(valid_json_response: dict):
     emulated_response_from_openai = "```" + str(valid_json_response) + "```"
     assert (
-        extract_json_from_response(emulated_response_from_openai) == valid_json_response
+        extract_dict_from_response(emulated_response_from_openai) == valid_json_response
     )

@@ -15,23 +15,17 @@ from autogpt.memory.message_history import MessageHistory
 
 @pytest.fixture
 def agent(config: Config):
-    ai_name = "Test AI"
     memory = MagicMock()
-    next_action_count = 0
     command_registry = MagicMock()
-    ai_config = AIConfig(ai_name=ai_name)
-    system_prompt = "System prompt"
+    ai_config = AIConfig(ai_name="Test AI")
     triggering_prompt = "Triggering prompt"
     workspace_directory = "workspace_directory"
 
     agent = Agent(
-        ai_name=ai_name,
         memory=memory,
-        next_action_count=next_action_count,
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,
-        system_prompt=system_prompt,
         triggering_prompt=triggering_prompt,
         workspace_directory=workspace_directory,
     )
@@ -39,7 +33,7 @@ def agent(config: Config):
 
 
 def test_message_history_batch_summary(mocker, agent: Agent, config: Config):
-    history = MessageHistory.for_model(agent.config.smart_llm, agent=agent)
+    history = MessageHistory(agent.llm, agent=agent)
     model = config.fast_llm
     message_tlength = 0
     message_count = 0
