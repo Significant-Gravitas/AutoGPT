@@ -186,9 +186,14 @@ class OpenAIProvider(
             "completion_tokens_used": response.usage.completion_tokens,
         }
 
+        message_dict = response.choices[0].message.to_dict_recursive()
+        if not "function_call" in message_dict : 
+            print('Warning : No "function_call" in message_dict')
+            message_dict["function_call"] = None
+            response.choices[0].message ["function_call"] = None
         parsed_response = completion_parser(
-            response.choices[0].message.to_dict_recursive()
-        )
+                message_dict
+            )
         response = LanguageModelProviderModelResponse(
             content=parsed_response, **response_args
         )

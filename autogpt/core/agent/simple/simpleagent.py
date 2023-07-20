@@ -175,9 +175,14 @@ class SimpleAgent(Agent, Configurable):
             task,
             self._ability_registry.dump_abilities(),
         )
-        self._current_task = task
-        self._next_ability = next_ability.content
-        return self._current_task, self._next_ability
+
+        if next_ability.content != None : 
+            self._current_task = task
+            self._next_ability = next_ability.content
+            return self._current_task, self._next_ability
+        else : 
+            return_var = await self.determine_next_ability() 
+            return return_var
 
     async def execute_next_ability(self, user_input: str, *args, **kwargs):
         if user_input == "y":
