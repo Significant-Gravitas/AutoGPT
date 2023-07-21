@@ -2,6 +2,7 @@ import json
 import logging
 import random
 import time
+from pathlib import Path
 
 
 class ConsoleHandler(logging.StreamHandler):
@@ -38,7 +39,7 @@ class TypingConsoleHandler(logging.StreamHandler):
 
 
 class JsonFileHandler(logging.FileHandler):
-    def __init__(self, filename: str, mode="a", encoding=None, delay=False):
+    def __init__(self, filename: str | Path, mode="a", encoding=None, delay=False):
         super().__init__(filename, mode, encoding, delay)
 
     def emit(self, record: logging.LogRecord):
