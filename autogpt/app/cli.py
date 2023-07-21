@@ -112,7 +112,7 @@ def main(
     Start an Auto-GPT assistant.
     """
     # Put imports inside function to avoid importing everything when starting the CLI
-    from autogpt.main import run_auto_gpt
+    from autogpt.app.main import run_auto_gpt
 
     if ctx.invoked_subcommand is None:
         run_auto_gpt(
