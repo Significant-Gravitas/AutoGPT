@@ -132,7 +132,9 @@ def test_get_latest_bulletin_with_new_bulletin():
         f.write("Old bulletin")
 
     expected_content = "New bulletin from web"
-    with patch("autogpt.app.utils.get_bulletin_from_web", return_value=expected_content):
+    with patch(
+        "autogpt.app.utils.get_bulletin_from_web", return_value=expected_content
+    ):
         bulletin, is_new = get_latest_bulletin()
         assert "::NEW BULLETIN::" in bulletin
         assert expected_content in bulletin
@@ -146,7 +148,9 @@ def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
     with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
         f.write(expected_content)
 
-    with patch("autogpt.app.utils.get_bulletin_from_web", return_value=expected_content):
+    with patch(
+        "autogpt.app.utils.get_bulletin_from_web", return_value=expected_content
+    ):
         bulletin, is_new = get_latest_bulletin()
         assert expected_content in bulletin
         assert is_new == False
