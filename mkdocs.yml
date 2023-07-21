@@ -61,7 +61,8 @@ theme:
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
-        
+plugins:
+    - search
 markdown_extensions:
   admonition:
   codehilite:
