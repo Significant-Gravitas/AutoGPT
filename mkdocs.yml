@@ -36,8 +36,31 @@ nav:
 
   - License: https://github.com/Significant-Gravitas/Auto-GPT/blob/master/LICENSE
 
-theme: readthedocs
+theme: 
+  name: material
+  icon:
+    logo: material/book-open-variant
+  favicon: imgs/Auto_GPT_Logo.png
+  features:
+    - navigation.sections
+    - toc.follow
+    - navigation.top
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
 
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+        
 markdown_extensions:
   admonition:
   codehilite:
