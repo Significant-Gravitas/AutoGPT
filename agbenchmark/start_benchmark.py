@@ -30,9 +30,13 @@ def cli() -> None:
 @click.option("--maintain", is_flag=True, help="Runs only regression tests")
 @click.option("--improve", is_flag=True, help="Run only non-regression tests")
 @click.option("--mock", is_flag=True, help="Run with mock")
-def start(category: str, test: str, maintain: bool, improve: bool, mock: bool) -> int:
+@click.option("--nc", is_flag=True, help="Run without cutoff")
+def start(
+    category: str, test: str, maintain: bool, improve: bool, mock: bool, nc: bool
+) -> int:
     """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
     # Check if configuration file exists and is not empty
+
     if maintain and improve:
         print(
             "Error: You can't use both --maintain and --improve at the same time. Please choose one."
@@ -105,6 +109,9 @@ def start(category: str, test: str, maintain: bool, improve: bool, mock: bool) -
 
     if mock:
         pytest_args.append("--mock")
+
+    if nc:
+        pytest_args.append("--nc")
 
     # when used as a library, the pytest directory to execute is in the CURRENT_DIRECTORY
     pytest_args.append(str(CURRENT_DIRECTORY))

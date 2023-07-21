@@ -27,7 +27,11 @@ def run_agent(
     else:
         entry_path = "agbenchmark.benchmarks"
 
-        print(f"Running Python function '{entry_path}' with timeout {cutoff}")
+        timeout = cutoff
+        if "--nc" in sys.argv:
+            timeout = 100000
+
+        print(f"Running Python function '{entry_path}' with timeout {timeout}")
         command = [sys.executable, "-m", entry_path, str(task)]
         process = subprocess.Popen(
             command,
@@ -49,11 +53,11 @@ def run_agent(
             if (
                 process.poll() is not None
                 or output == ""
-                or (time.time() - start_time > cutoff)
+                or (time.time() - start_time > timeout)
             ):
                 break
 
-        if time.time() - start_time > cutoff:
+        if time.time() - start_time > timeout:
             print("The Python function has exceeded the time limit and was terminated.")
             process.kill()
         else:
