@@ -81,6 +81,7 @@ jobs:
           - "Auto-GPT"
           - "mini-agi"
           - "beebot"
+          - "BabyAGI"
 
     steps:
       - name: Checkout repository
@@ -129,6 +130,10 @@ jobs:
             pip install -r requirements.txt
             cp .env_example .env
           elif [ "$AGENT_NAME" == "smol-developer" ]; then
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+          elif [ "$AGENT_NAME" == "BabyAGI" ]; then
             python -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt

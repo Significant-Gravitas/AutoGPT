@@ -16,10 +16,10 @@ from agbenchmark.challenges.define_task_types import DIFFICULTY_MAP, DifficultyL
 
 AGENT_NAME = os.getenv("AGENT_NAME")
 HOME_ENV = os.getenv("HOME_ENV")
+report_location = os.getenv("REPORT_LOCATION", None)
 
 
 def calculate_info_test_path(reports_path: Path) -> str:
-    report_location = os.getenv("REPORT_LOCATION", ".")
     if report_location:
         reports_path = Path(os.getcwd()) / report_location
 
@@ -62,12 +62,13 @@ def calculate_info_test_path(reports_path: Path) -> str:
             max_prefix = max(all_prefix_numbers, default=0)
             run_name = f"{max_prefix + 1}_{test_arg}.json"
         else:
+            print(f"Found {related_file_count} files with '{test_arg}' in the name")
             # Take the number from before the _ and add the .{number}
-            prefix_str = Path(related_files[0]).stem.rsplit("_", 1)[0].split(".")[0]
+
+            prefix_str = Path(related_files[0]).stem.rsplit("_")[0].split(".")[0]
             prefix = math.floor(float(prefix_str))
             run_name = f"{prefix}.{related_file_count}_{test_arg}.json"
 
-    print("run_namerun_namerun_name", run_name)
     new_file_path = reports_path / run_name
     return str(new_file_path)
 

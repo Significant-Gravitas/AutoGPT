@@ -1,4 +1,10 @@
 {
+    "BabyAGI": {
+        "TestWriteFile": [
+            false,
+            false
+        ]
+    },
     "TestBasicCodeGeneration": [
         true
     ],

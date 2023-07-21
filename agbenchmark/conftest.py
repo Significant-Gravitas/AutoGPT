@@ -81,6 +81,7 @@ def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
 
 def pytest_addoption(parser: Any) -> None:
     parser.addoption("--mock", action="store_true", default=False)
+    parser.addoption("--nc", action="store_true", default=False)
     parser.addoption("--improve", action="store_true", default=False)
     parser.addoption("--maintain", action="store_true", default=False)
     parser.addoption("--test", action="store_true", default=None)
