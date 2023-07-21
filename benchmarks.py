@@ -1,8 +1,9 @@
 from pathlib import Path
 
 from autogpt.agents import Agent
+from autogpt.app.main import run_interaction_loop
+from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder
-from autogpt.main import COMMAND_CATEGORIES, run_interaction_loop
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT

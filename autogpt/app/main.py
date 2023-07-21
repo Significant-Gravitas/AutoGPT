@@ -11,13 +11,16 @@ from typing import Optional
 from colorama import Fore, Style
 
 from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
+from autogpt.app.configurator import create_config
+from autogpt.app.setup import prompt_user
+from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
-from autogpt.configurator import create_config
-from autogpt.logs import logger, print_assistant_thoughts, remove_ansi_escape
+from autogpt.llm.api_manager import ApiManager
+from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
+from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import (
@@ -29,14 +32,6 @@ from autogpt.utils import (
 )
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
-
-COMMAND_CATEGORIES = [
-    "autogpt.commands.execute_code",
-    "autogpt.commands.file_operations",
-    "autogpt.commands.web_search",
-    "autogpt.commands.web_selenium",
-    "autogpt.commands.task_statuses",
-]
 
 
 def run_auto_gpt(
@@ -458,3 +453,146 @@ def get_user_feedback(
             user_input = console_input
 
     return user_feedback, user_input, new_cycles_remaining
+
+
+def construct_main_ai_config(
+    config: Config,
+    name: Optional[str] = None,
+    role: Optional[str] = None,
+    goals: tuple[str] = tuple(),
+) -> AIConfig:
+    """Construct the prompt for the AI to respond to
+
+    Returns:
+        str: The prompt string
+    """
+    ai_config = AIConfig.load(config.workdir / config.ai_settings_file)
+
+    # Apply overrides
+    if name:
+        ai_config.ai_name = name
+    if role:
+        ai_config.ai_role = role
+    if goals:
+        ai_config.ai_goals = list(goals)
+
+    if (
+        all([name, role, goals])
+        or config.skip_reprompt
+        and all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals])
+    ):
+        logger.typewriter_log("Name :", Fore.GREEN, ai_config.ai_name)
+        logger.typewriter_log("Role :", Fore.GREEN, ai_config.ai_role)
+        logger.typewriter_log("Goals:", Fore.GREEN, f"{ai_config.ai_goals}")
+        logger.typewriter_log(
+            "API Budget:",
+            Fore.GREEN,
+            "infinite" if ai_config.api_budget <= 0 else f"${ai_config.api_budget}",
+        )
+    elif all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals]):
+        logger.typewriter_log(
+            "Welcome back! ",
+            Fore.GREEN,
+            f"Would you like me to return to being {ai_config.ai_name}?",
+            speak_text=True,
+        )
+        should_continue = clean_input(
+            config,
+            f"""Continue with the last settings?
+Name:  {ai_config.ai_name}
+Role:  {ai_config.ai_role}
+Goals: {ai_config.ai_goals}
+API Budget: {"infinite" if ai_config.api_budget <= 0 else f"${ai_config.api_budget}"}
+Continue ({config.authorise_key}/{config.exit_key}): """,
+        )
+        if should_continue.lower() == config.exit_key:
+            ai_config = AIConfig()
+
+    if any([not ai_config.ai_name, not ai_config.ai_role, not ai_config.ai_goals]):
+        ai_config = prompt_user(config)
+        ai_config.save(config.ai_settings_file)
+
+    if config.restrict_to_workspace:
+        logger.typewriter_log(
+            "NOTE:All files/directories created by this agent can be found inside its workspace at:",
+            Fore.YELLOW,
+            f"{config.workspace_path}",
+        )
+    # set the total api budget
+    api_manager = ApiManager()
+    api_manager.set_total_budget(ai_config.api_budget)
+
+    # Agent Created, print message
+    logger.typewriter_log(
+        ai_config.ai_name,
+        Fore.LIGHTBLUE_EX,
+        "has been created with the following details:",
+        speak_text=True,
+    )
+
+    # Print the ai_config details
+    # Name
+    logger.typewriter_log("Name:", Fore.GREEN, ai_config.ai_name, speak_text=False)
+    # Role
+    logger.typewriter_log("Role:", Fore.GREEN, ai_config.ai_role, speak_text=False)
+    # Goals
+    logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
+    for goal in ai_config.ai_goals:
+        logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
+
+    return ai_config
+
+
+def print_assistant_thoughts(
+    ai_name: str,
+    assistant_reply_json_valid: dict,
+    config: Config,
+) -> None:
+    from autogpt.speech import say_text
+
+    assistant_thoughts_reasoning = None
+    assistant_thoughts_plan = None
+    assistant_thoughts_speak = None
+    assistant_thoughts_criticism = None
+
+    assistant_thoughts = assistant_reply_json_valid.get("thoughts", {})
+    assistant_thoughts_text = remove_ansi_escape(assistant_thoughts.get("text", ""))
+    if assistant_thoughts:
+        assistant_thoughts_reasoning = remove_ansi_escape(
+            assistant_thoughts.get("reasoning", "")
+        )
+        assistant_thoughts_plan = remove_ansi_escape(assistant_thoughts.get("plan", ""))
+        assistant_thoughts_criticism = remove_ansi_escape(
+            assistant_thoughts.get("criticism", "")
+        )
+        assistant_thoughts_speak = remove_ansi_escape(
+            assistant_thoughts.get("speak", "")
+        )
+    logger.typewriter_log(
+        f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text
+    )
+    logger.typewriter_log("REASONING:", Fore.YELLOW, str(assistant_thoughts_reasoning))
+    if assistant_thoughts_plan:
+        logger.typewriter_log("PLAN:", Fore.YELLOW, "")
+        # If it's a list, join it into a string
+        if isinstance(assistant_thoughts_plan, list):
+            assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
+        elif isinstance(assistant_thoughts_plan, dict):
+            assistant_thoughts_plan = str(assistant_thoughts_plan)
+
+        # Split the input_string using the newline character and dashes
+        lines = assistant_thoughts_plan.split("\n")
+        for line in lines:
+            line = line.lstrip("- ")
+            logger.typewriter_log("- ", Fore.GREEN, line.strip())
+    logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
+    # Speak the assistant's thoughts
+    if assistant_thoughts_speak:
+        if config.speak_mode:
+            say_text(assistant_thoughts_speak, config)
+        else:
+            logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
+
+
+def remove_ansi_escape(s: str) -> str:
+    return s.replace("\x1B", "")
