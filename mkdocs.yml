@@ -7,6 +7,7 @@ nav:
   - Usage: usage.md
   - Plugins: plugins.md
   - Configuration:
+    - Options: configuration/options.md
     - Search: configuration/search.md
     - Memory: configuration/memory.md
     - Voice: configuration/voice.md
