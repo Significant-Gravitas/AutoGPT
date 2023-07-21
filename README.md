@@ -1,2 +1,2 @@
-# Auto-GPT-Factory
+# Auto-GPT-Forge
 Build your own Auto-GPT
