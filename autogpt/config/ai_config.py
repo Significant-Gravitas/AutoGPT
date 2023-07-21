@@ -53,7 +53,7 @@ class AIConfig:
         self.command_registry: CommandRegistry | None = None
 
     @staticmethod
-    def load(ai_settings_file: Path) -> "AIConfig":
+    def load(ai_settings_file: str | Path) -> "AIConfig":
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget)
         loaded from yaml file if yaml file exists, else returns class with no parameters.
@@ -83,7 +83,7 @@ class AIConfig:
 
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
-    def save(self, ai_settings_file: Path) -> None:
+    def save(self, ai_settings_file: str | Path) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
