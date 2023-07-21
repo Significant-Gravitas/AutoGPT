@@ -152,15 +152,13 @@ class Workspace:
         config.file_logger_path = str(file_logger_path)
 
     @staticmethod
-    def get_workspace_directory(
+    def set_workspace_directory(
         config: Config, workspace_directory: Optional[str | Path] = None
-    ):
+    ) -> None:
         if workspace_directory is None:
-            workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
+            workspace_directory = config.workdir / "auto_gpt_workspace"
         elif type(workspace_directory) == str:
             workspace_directory = Path(workspace_directory)
         # TODO: pass in the ai_settings file and the env file and have them cloned into
         #   the workspace directory so we can bind them to the agent.
-        workspace_directory = Workspace.make_workspace(workspace_directory)
-        config.workspace_path = str(workspace_directory)
-        return workspace_directory
+        config.workspace_path = Workspace.make_workspace(workspace_directory)
