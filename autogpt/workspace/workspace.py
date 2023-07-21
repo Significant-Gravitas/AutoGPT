@@ -19,7 +19,7 @@ from autogpt.logs import logger
 class Workspace:
     """A class that represents a workspace for an AutoGPT agent."""
 
-    NULL_BYTES = ["\0", "\000", "\x00", r"\z", "\u0000", "%00"]
+    NULL_BYTES = ["\0", "\000", "\x00", "\u0000"]
 
     def __init__(self, workspace_root: str | Path, restrict_to_workspace: bool):
         self._root = self._sanitize_path(workspace_root)
