@@ -119,7 +119,7 @@ def test_get_latest_bulletin_with_file():
     with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
         f.write(expected_content)
 
-    with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
+    with patch("autogpt.app.utils.get_bulletin_from_web", return_value=""):
         bulletin, is_new = get_latest_bulletin()
         assert expected_content in bulletin
         assert is_new == False
@@ -132,7 +132,7 @@ def test_get_latest_bulletin_with_new_bulletin():
         f.write("Old bulletin")
 
     expected_content = "New bulletin from web"
-    with patch("autogpt.utils.get_bulletin_from_web", return_value=expected_content):
+    with patch("autogpt.app.utils.get_bulletin_from_web", return_value=expected_content):
         bulletin, is_new = get_latest_bulletin()
         assert "::NEW BULLETIN::" in bulletin
         assert expected_content in bulletin
@@ -146,7 +146,7 @@ def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
     with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
         f.write(expected_content)
 
-    with patch("autogpt.utils.get_bulletin_from_web", return_value=expected_content):
+    with patch("autogpt.app.utils.get_bulletin_from_web", return_value=expected_content):
         bulletin, is_new = get_latest_bulletin()
         assert expected_content in bulletin
         assert is_new == False
@@ -162,7 +162,7 @@ def test_get_current_git_branch():
     assert branch_name != ""
 
 
-@patch("autogpt.utils.Repo")
+@patch("autogpt.app.utils.Repo")
 def test_get_current_git_branch_success(mock_repo):
     mock_repo.return_value.active_branch.name = "test-branch"
     branch_name = get_current_git_branch()
@@ -170,7 +170,7 @@ def test_get_current_git_branch_success(mock_repo):
     assert branch_name == "test-branch"
 
 
-@patch("autogpt.utils.Repo")
+@patch("autogpt.app.utils.Repo")
 def test_get_current_git_branch_failure(mock_repo):
     mock_repo.side_effect = Exception()
     branch_name = get_current_git_branch()
