@@ -27,7 +27,8 @@ class Logger(metaclass=Singleton):
         # create log directory if it doesn't exist
         # TODO: use workdir from config
         self.log_dir = Path(__file__).parent.parent.parent / "logs"
-        self.log_dir.mkdir(exist_ok=True)
+        if not self.log_dir.exists():
+            self.log_dir.mkdir()
 
         log_file = "activity.log"
         error_file = "error.log"

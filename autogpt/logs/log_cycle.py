@@ -32,7 +32,8 @@ class LogCycleHandler:
             outer_folder_name = f"{created_at}_{ai_name_short}"
 
         outer_folder_path = logger.log_dir / "DEBUG" / outer_folder_name
-        outer_folder_path.mkdir(exist_ok=True)
+        if not outer_folder_path.exists():
+            outer_folder_path.mkdir()
 
         return outer_folder_path
 
@@ -42,7 +43,8 @@ class LogCycleHandler:
     def create_inner_directory(self, outer_folder_path: Path, cycle_count: int) -> Path:
         nested_folder_name = str(cycle_count).zfill(3)
         nested_folder_path = outer_folder_path / nested_folder_name
-        nested_folder_path.mkdir(exist_ok=True)
+        if not nested_folder_path.exists():
+            nested_folder_path.mkdir()
 
         return nested_folder_path
 
