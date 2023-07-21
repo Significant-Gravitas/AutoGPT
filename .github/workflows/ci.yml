@@ -162,7 +162,7 @@ jobs:
           PROXY: ${{ github.event_name == 'pull_request_target' && secrets.PROXY || '' }}
           AGENT_MODE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_MODE || '' }}
           AGENT_TYPE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_TYPE || '' }}
-          OPENAI_API_KEY: ${{ github.event_name == 'pull_request' && secrets.OPENAI_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ github.event_name != 'pull_request_target' && secrets.OPENAI_API_KEY || '' }}
           PLAIN_OUTPUT: True
 
       - name: Upload coverage reports to Codecov
