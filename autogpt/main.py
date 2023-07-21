@@ -53,6 +53,7 @@ def run_auto_gpt(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
+    working_directory: Path,
     workspace_directory: str | Path,
     install_plugin_deps: bool,
     ai_name: Optional[str] = None,
@@ -62,7 +63,8 @@ def run_auto_gpt(
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
 
-    config = ConfigBuilder.build_config_from_env()
+    config = ConfigBuilder.build_config_from_env(workdir=working_directory)
+
     # HACK: This is a hack to allow the config into the logger without having to pass it around everywhere
     # or import it directly.
     logger.config = config
@@ -129,10 +131,10 @@ def run_auto_gpt(
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
-    workspace_directory = Workspace.get_workspace_directory(config, workspace_directory)
+    Workspace.set_workspace_directory(config, workspace_directory)
 
     # HACK: doing this here to collect some globals that depend on the workspace.
-    Workspace.build_file_logger_path(config, workspace_directory)
+    Workspace.build_file_logger_path(config, config.workspace_path)
 
     config.plugins = scan_plugins(config, config.debug_mode)
     # Create a CommandRegistry instance and scan default folder
