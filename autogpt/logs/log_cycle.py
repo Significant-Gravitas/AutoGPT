@@ -33,7 +33,7 @@ class LogCycleHandler:
 
         outer_folder_path = logger.log_dir / "DEBUG" / outer_folder_name
         if not outer_folder_path.exists():
-            outer_folder_path.mkdir()
+            outer_folder_path.mkdir(parents=True)
 
         return outer_folder_path
 
