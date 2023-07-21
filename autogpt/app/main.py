@@ -13,6 +13,14 @@ from colorama import Fore, Style
 from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
 from autogpt.app.configurator import create_config
 from autogpt.app.setup import prompt_user
+from autogpt.app.spinner import Spinner
+from autogpt.app.utils import (
+    clean_input,
+    get_current_git_branch,
+    get_latest_bulletin,
+    get_legal_warning,
+    markdown_to_ansi_style,
+)
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
 from autogpt.llm.api_manager import ApiManager
@@ -22,14 +30,6 @@ from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.speech import say_text
-from autogpt.spinner import Spinner
-from autogpt.utils import (
-    clean_input,
-    get_current_git_branch,
-    get_latest_bulletin,
-    get_legal_warning,
-    markdown_to_ansi_style,
-)
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 

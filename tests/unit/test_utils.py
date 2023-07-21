@@ -4,15 +4,14 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from autogpt.config import Config
-from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
-from autogpt.utils import (
+from autogpt.app.utils import (
     get_bulletin_from_web,
     get_current_git_branch,
     get_latest_bulletin,
-    readable_file_size,
-    validate_yaml_file,
 )
+from autogpt.config import Config
+from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
+from autogpt.utils import validate_yaml_file
 from tests.utils import skip_in_ci
 
 
@@ -75,13 +74,6 @@ def test_validate_yaml_file_invalid():
     print(message)
     assert result == False
     assert "There was an issue while trying to read" in message
-
-
-def test_readable_file_size():
-    size_in_bytes = 1024 * 1024 * 3.5  # 3.5 MB
-    readable_size = readable_file_size(size_in_bytes)
-
-    assert readable_size == "3.50 MB"
 
 
 @patch("requests.get")
