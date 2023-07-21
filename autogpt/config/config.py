@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 import yaml
@@ -14,10 +15,8 @@ from pydantic import Field, validator
 from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.plugins.plugins_config import PluginsConfig
 
-AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
-PLUGINS_CONFIG_FILE = os.path.join(
-    os.path.dirname(__file__), "../..", "plugins_config.yaml"
-)
+AZURE_CONFIG_FILE = "azure.yaml"
+PLUGINS_CONFIG_FILE = "plugins_config.yaml"
 GPT_4_MODEL = "gpt-4"
 GPT_3_MODEL = "gpt-3.5-turbo"
 
@@ -47,7 +46,8 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Paths
     ai_settings_file: str = "ai_settings.yaml"
     prompt_settings_file: str = "prompt_settings.yaml"
-    workspace_path: Optional[str] = None
+    workdir: Path = None
+    workspace_path: Optional[Path] = None
     file_logger_path: Optional[str] = None
     # Model configuration
     fast_llm: str = "gpt-3.5-turbo"
@@ -210,9 +210,10 @@ class ConfigBuilder(Configurable[Config]):
     default_settings = Config()
 
     @classmethod
-    def build_config_from_env(cls) -> Config:
+    def build_config_from_env(cls, workdir: Path) -> Config:
         """Initialize the Config class"""
         config_dict = {
+            "workdir": workdir,
             "authorise_key": os.getenv("AUTHORISE_COMMAND_KEY"),
             "exit_key": os.getenv("EXIT_KEY"),
             "plain_output": os.getenv("PLAIN_OUTPUT", "False") == "True",
@@ -299,7 +300,9 @@ class ConfigBuilder(Configurable[Config]):
             config_dict["temperature"] = float(os.getenv("TEMPERATURE"))
 
         if config_dict["use_azure"]:
-            azure_config = cls.load_azure_config(config_dict["azure_config_file"])
+            azure_config = cls.load_azure_config(
+                workdir / config_dict["azure_config_file"]
+            )
             config_dict.update(azure_config)
 
         elif os.getenv("OPENAI_API_BASE_URL"):
@@ -318,7 +321,7 @@ class ConfigBuilder(Configurable[Config]):
         # Set secondary config variables (that depend on other config variables)
 
         config.plugins_config = PluginsConfig.load_config(
-            config.plugins_config_file,
+            config.workdir / config.plugins_config_file,
             config.plugins_denylist,
             config.plugins_allowlist,
         )
@@ -326,13 +329,13 @@ class ConfigBuilder(Configurable[Config]):
         return config
 
     @classmethod
-    def load_azure_config(cls, config_file: str = AZURE_CONFIG_FILE) -> Dict[str, str]:
+    def load_azure_config(cls, config_file: Path) -> Dict[str, str]:
         """
         Loads the configuration parameters for Azure hosting from the specified file
           path as a yaml file.
 
         Parameters:
-            config_file(str): The path to the config yaml file. DEFAULT: "../azure.yaml"
+            config_file (Path): The path to the config yaml file.
 
         Returns:
             Dict
