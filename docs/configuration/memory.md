@@ -1,6 +1,6 @@
 !!! warning
-    The Pinecone, Milvus and Weaviate memory backends were rendered incompatible
-    by work on the memory system, and have been removed in `master`.
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
     feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
@@ -18,6 +18,12 @@ to the value that you want:
 * `milvus` will use the milvus cache that you configured
 * `weaviate` will use the weaviate cache that you configured
 
+!!! warning
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+
 ## Memory Backend Setup
 
 Links to memory backends
@@ -26,6 +32,12 @@ Links to memory backends
 - [Milvus](https://milvus.io/) &ndash; [self-hosted](https://milvus.io/docs), or managed with [Zilliz Cloud](https://zilliz.com/)
 - [Redis](https://redis.io)
 - [Weaviate](https://weaviate.io)
+
+!!! warning
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
 ### Redis Setup
 
@@ -62,6 +74,12 @@ Links to memory backends
     See [redis-stack-server](https://hub.docker.com/r/redis/redis-stack-server) for
     setting a password and additional configuration.
 
+!!! warning
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+
 ### 🌲 Pinecone API Key Setup
 
 Pinecone lets you store vast amounts of vector-based memory, allowing the agent to load only relevant memories at any given time.
@@ -75,6 +93,12 @@ In the `.env` file set:
 - `PINECONE_API_KEY`
 - `PINECONE_ENV` (example: `us-east4-gcp`)
 - `MEMORY_BACKEND=pinecone`
+
+!!! warning
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
 ### Milvus Setup
 
@@ -113,6 +137,12 @@ deployed with docker, or as a cloud service provided by [Zilliz Cloud](https://z
         *Note: setting `MILVUS_ADDR` to a `https://` URL will override this setting.*
     - `MILVUS_COLLECTION` to change the collection name to use in Milvus.
         Defaults to `autogpt`.
+
+!!! warning
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
 ### Weaviate Setup
 [Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store
@@ -154,6 +184,15 @@ View memory usage by using the `--debug` flag :)
 
 
 ## 🧠 Memory pre-seeding
+
+!!! warning
+    Data ingestion is broken in v0.4.5 and possibly earlier versions. This is a known issue that will be addressed in future releases. Follow these issues for updates.
+    [Issue 4435](https://github.com/Significant-Gravitas/Auto-GPT/issues/4435)
+    [Issue 4024](https://github.com/Significant-Gravitas/Auto-GPT/issues/4024)
+    [Issue 2076](https://github.com/Significant-Gravitas/Auto-GPT/issues/2076)
+
+
+
 Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.
 
 ``` shell
