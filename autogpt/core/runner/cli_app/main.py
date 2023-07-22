@@ -17,7 +17,9 @@ async def run_auto_gpt(user_configuration: dict):
     client_logger.debug("Getting agent settings")
 
     agent_workspace = (
-        user_configuration.get("workspace", {}).get("configuration", {}).get("parent", "")
+        user_configuration.get("workspace", {})
+        .get("configuration", {})
+        .get("parent", "")
     )
 
     if not agent_workspace:  # We don't have an agent yet.

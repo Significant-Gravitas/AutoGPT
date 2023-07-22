@@ -34,6 +34,7 @@ class AgentSystems(SystemConfiguration):
         planning (PluginLocation): Plugin location for the planning system.
         workspace (PluginLocation): Plugin location for the workspace system.
     """
+
     ability_registry: PluginLocation
     memory: PluginLocation
     openai_provider: PluginLocation
@@ -54,6 +55,7 @@ class AgentConfiguration(SystemConfiguration):
         goals (List[str]): List of goals the agent aims to achieve.
         systems (AgentSystems): System configuration for the agent.
     """
+
     cycle_count: int
     max_task_cycle_count: int
     creation_time: str
@@ -70,6 +72,7 @@ class AgentSystemSettings(SystemSettings):
     Attributes:
         configuration (AgentConfiguration): Configuration for the agent.
     """
+
     configuration: AgentConfiguration
 
 
@@ -85,6 +88,7 @@ class AgentSettings(BaseModel):
         planning (PlannerSettings): Settings for the planning system.
         workspace (WorkspaceSettings): Settings for the workspace system.
     """
+
     agent: AgentSystemSettings
     ability_registry: AbilityRegistrySettings
     memory: MemorySettings
@@ -105,6 +109,7 @@ class SimpleAgent(Agent, Configurable):
     Attributes:
         default_settings (AgentSystemSettings): Default system settings for the agent.
     """
+
     default_settings = AgentSystemSettings(
         name="simple_agent",
         description="A simple agent.",

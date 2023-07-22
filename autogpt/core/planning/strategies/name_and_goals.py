@@ -135,7 +135,6 @@ class NameAndGoals(PromptStrategy):
             The parsed response.
 
         """
-        # parsed_response = json_loads(response_content["function_call"]["arguments"])
         arguments = response_content["function_call"]["arguments"]
         parsed_response = json_loads(arguments)
         return parsed_response
