@@ -27,8 +27,8 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
     config.plain_output = True
     command_registry = get_command_registry(config)
     config.memory_backend = "no_memory"
-    Workspace.set_workspace_directory(config)
-    Workspace.build_file_logger_path(config, config.workspace_path)
+    config.workspace_path = Workspace.set_workspace_directory(config)
+    config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
     ai_config = AIConfig(
         ai_name="Auto-GPT",
         ai_role="a multi-purpose AI assistant.",
@@ -41,7 +41,6 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
         ai_config=ai_config,
         config=config,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=str(config.workspace_path),
     )
 
 
