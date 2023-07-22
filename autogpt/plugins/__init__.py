@@ -23,10 +23,6 @@ if TYPE_CHECKING:
 from autogpt.logs import logger
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
-DEFAULT_PLUGINS_CONFIG_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "plugins_config.yaml"
-)
-
 
 def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
     """

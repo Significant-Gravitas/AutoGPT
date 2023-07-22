@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 from typing import Any, Dict, Union
 
 from .logger import logger
@@ -23,38 +24,33 @@ class LogCycleHandler:
     def __init__(self):
         self.log_count_within_cycle = 0
 
-    @staticmethod
-    def create_directory_if_not_exists(directory_path: str) -> None:
-        if not os.path.exists(directory_path):
-            os.makedirs(directory_path, exist_ok=True)
-
-    def create_outer_directory(self, ai_name: str, created_at: str) -> str:
-        log_directory = logger.get_log_directory()
-
+    def create_outer_directory(self, ai_name: str, created_at: str) -> Path:
         if os.environ.get("OVERWRITE_DEBUG") == "1":
             outer_folder_name = "auto_gpt"
         else:
             ai_name_short = self.get_agent_short_name(ai_name)
             outer_folder_name = f"{created_at}_{ai_name_short}"
 
-        outer_folder_path = os.path.join(log_directory, "DEBUG", outer_folder_name)
-        self.create_directory_if_not_exists(outer_folder_path)
+        outer_folder_path = logger.log_dir / "DEBUG" / outer_folder_name
+        if not outer_folder_path.exists():
+            outer_folder_path.mkdir(parents=True)
 
         return outer_folder_path
 
     def get_agent_short_name(self, ai_name: str) -> str:
         return ai_name[:15].rstrip() if ai_name else DEFAULT_PREFIX
 
-    def create_inner_directory(self, outer_folder_path: str, cycle_count: int) -> str:
+    def create_inner_directory(self, outer_folder_path: Path, cycle_count: int) -> Path:
         nested_folder_name = str(cycle_count).zfill(3)
-        nested_folder_path = os.path.join(outer_folder_path, nested_folder_name)
-        self.create_directory_if_not_exists(nested_folder_path)
+        nested_folder_path = outer_folder_path / nested_folder_name
+        if not nested_folder_path.exists():
+            nested_folder_path.mkdir()
 
         return nested_folder_path
 
     def create_nested_directory(
         self, ai_name: str, created_at: str, cycle_count: int
-    ) -> str:
+    ) -> Path:
         outer_folder_path = self.create_outer_directory(ai_name, created_at)
         nested_folder_path = self.create_inner_directory(outer_folder_path, cycle_count)
 
@@ -75,14 +71,10 @@ class LogCycleHandler:
             data (Any): The data to be logged.
             file_name (str): The name of the file to save the logged data.
         """
-        nested_folder_path = self.create_nested_directory(
-            ai_name, created_at, cycle_count
-        )
+        cycle_log_dir = self.create_nested_directory(ai_name, created_at, cycle_count)
 
         json_data = json.dumps(data, ensure_ascii=False, indent=4)
-        log_file_path = os.path.join(
-            nested_folder_path, f"{self.log_count_within_cycle}_{file_name}"
-        )
+        log_file_path = cycle_log_dir / f"{self.log_count_within_cycle}_{file_name}"
 
         logger.log_json(json_data, log_file_path)
         self.log_count_within_cycle += 1
