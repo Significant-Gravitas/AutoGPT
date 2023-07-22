@@ -300,8 +300,7 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                     else:
                         if (
                             module_name := getattr(a_module, "__name__", str(a_module))
-                            != "AutoGPTPluginTemplate"
-                        ):
+                        ) != "AutoGPTPluginTemplate":
                             logger.debug(
                                 f"Skipping '{module_name}' because it doesn't subclass AutoGPTPluginTemplate."
                             )
