@@ -29,8 +29,7 @@ class JSONFileMemory(VectorMemoryProvider):
         Returns:
             None
         """
-        workspace_path = Path(config.workspace_path)
-        self.file_path = workspace_path / f"{config.memory_index}.json"
+        self.file_path = config.workspace_path / f"{config.memory_index}.json"
         self.file_path.touch()
         logger.debug(
             f"Initialized {__class__.__name__} with index path {self.file_path}"
