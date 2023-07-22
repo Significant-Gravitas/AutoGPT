@@ -1,5 +1,5 @@
 """Auto-GPT: A GPT powered AI Assistant"""
-import autogpt.cli
+import autogpt.app.cli
 
 if __name__ == "__main__":
-    autogpt.cli.main()
+    autogpt.app.cli.main()
