@@ -117,6 +117,7 @@ def create_config(
         config.skip_reprompt = True
 
     if ai_settings_file:
+        # TODO, BUG?: ai_settings_file is passed in via the CLI. If it is an absolute path, it'll break config.ai_settings_file
         file = ai_settings_file
 
         # Validate file
@@ -127,7 +128,7 @@ def create_config(
             exit(1)
 
         logger.typewriter_log("Using AI Settings File:", Fore.GREEN, file)
-        config.ai_settings_file = file
+        config.ai_settings_file = file  # TODO, BUG?: Potential bug here if file is an absolute path
         config.skip_reprompt = True
 
     if prompt_settings_file:
