@@ -1,4 +1,3 @@
-
 def parse_agent_name_and_goals(name_and_goals: dict) -> str:
     parsed_response = f"Agent Name: {name_and_goals['agent_name']}\n"
     parsed_response += f"Agent Role: {name_and_goals['agent_role']}\n"
@@ -6,7 +5,6 @@ def parse_agent_name_and_goals(name_and_goals: dict) -> str:
     for i, goal in enumerate(name_and_goals["agent_goals"]):
         parsed_response += f"{i+1}. {goal}\n"
     return parsed_response
-
 
 
 def parse_agent_plan(plan: dict) -> str:
@@ -41,8 +39,7 @@ def parse_next_ability(current_task, next_ability: dict) -> str:
 def parse_ability_result(ability_result) -> str:
     parsed_response = f"Ability: {ability_result['ability_name']}\n"
     parsed_response += f"Ability Arguments: {ability_result['ability_args']}\n"
-    parsed_response = f"Ability Result: {ability_result['success']}\n"
+    parsed_response += f"Ability Result: {ability_result['success']}\n"
     parsed_response += f"Message: {ability_result['message']}\n"
     parsed_response += f"Data: {ability_result['new_knowledge']}\n"
     return parsed_response
-

@@ -57,8 +57,6 @@ def get_embedding(
         f" with model '{model}'"
         + (f" via Azure deployment '{kwargs['engine']}'" if config.use_azure else "")
     )
-    if config.use_azure:
-        breakpoint()
 
     embeddings = iopenai.create_embedding(
         input,
