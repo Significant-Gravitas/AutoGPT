@@ -222,7 +222,9 @@ class ConfigBuilder(Configurable[Config]):
             "plain_output": os.getenv("PLAIN_OUTPUT", "False") == "True",
             "shell_command_control": os.getenv("SHELL_COMMAND_CONTROL"),
             "ai_settings_file": os.getenv("AI_SETTINGS_FILE", AI_SETTINGS_FILE),
-            "prompt_settings_file": os.getenv("PROMPT_SETTINGS_FILE", PROMPT_SETTINGS_FILE),
+            "prompt_settings_file": os.getenv(
+                "PROMPT_SETTINGS_FILE", PROMPT_SETTINGS_FILE
+            ),
             "fast_llm": os.getenv("FAST_LLM", os.getenv("FAST_LLM_MODEL")),
             "smart_llm": os.getenv("SMART_LLM", os.getenv("SMART_LLM_MODEL")),
             "embedding_model": os.getenv("EMBEDDING_MODEL"),
@@ -259,7 +261,9 @@ class ConfigBuilder(Configurable[Config]):
             "redis_password": os.getenv("REDIS_PASSWORD"),
             "wipe_redis_on_start": os.getenv("WIPE_REDIS_ON_START", "True") == "True",
             "plugins_dir": os.getenv("PLUGINS_DIR"),
-            "plugins_config_file": os.getenv("PLUGINS_CONFIG_FILE", PLUGINS_CONFIG_FILE),
+            "plugins_config_file": os.getenv(
+                "PLUGINS_CONFIG_FILE", PLUGINS_CONFIG_FILE
+            ),
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
         }
 

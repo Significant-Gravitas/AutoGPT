@@ -128,7 +128,9 @@ def create_config(
             exit(1)
 
         logger.typewriter_log("Using AI Settings File:", Fore.GREEN, file)
-        config.ai_settings_file = file  # TODO, BUG?: Potential bug here if file is an absolute path
+        config.ai_settings_file = (
+            file  # TODO, BUG?: Potential bug here if file is an absolute path
+        )
         config.skip_reprompt = True
 
     if prompt_settings_file:
