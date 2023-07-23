@@ -206,3 +206,4 @@ jobs:
           fi
         env:
           GDRIVE_BASE64: ${{ secrets.GDRIVE_BASE64 }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}

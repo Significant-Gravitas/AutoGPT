@@ -94,7 +94,8 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info, scope)
 client = gspread.authorize(creds)
 
 # Get the instance of the Spreadsheet
-sheet = client.open("benchmark")
+branch_name = os.getenv("GITHUB_REF_NAME")
+sheet = client.open(f"benchmark-{branch_name}")
 
 # Get the first sheet of the Spreadsheet
 sheet_instance = sheet.get_worksheet(0)
