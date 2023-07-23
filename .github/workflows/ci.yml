@@ -201,9 +201,7 @@ jobs:
           git fetch origin $current_branch
           git rebase origin/$current_branch
           git push origin HEAD
-          if [ "$current_branch" == "master" ]; then
-            poetry run python send_to_googledrive.py
-          fi
+          poetry run python send_to_googledrive.py || echo "Failed to upload to Google Drive"
         env:
           GDRIVE_BASE64: ${{ secrets.GDRIVE_BASE64 }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
