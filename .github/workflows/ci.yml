@@ -162,7 +162,7 @@ jobs:
             ${prefix}agbenchmark start --mock --category=memory
             ${prefix}agbenchmark start --mock --category=iterate
           else
-            curl -s https://raw.githubusercontent.com/Helicone/helicone/main/mitmproxy.sh | bash -s start
+            bash -c "$(curl -fsSL https://raw.githubusercontent.com/Helicone/helicone/0ed90e3203f172ed05d5754bc0b95a584689233c/mitmproxy.sh)" -s start
             ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
           fi
           
