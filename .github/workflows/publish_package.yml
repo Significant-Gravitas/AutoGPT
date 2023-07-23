@@ -20,9 +20,25 @@ jobs:
       run: |
         curl -sSL https://install.python-poetry.org | python3 -
         echo "$HOME/.poetry/bin" >> $GITHUB_PATH
+    - name: Build project for distribution
+      run: poetry build
 
     - name: Install dependencies
       run: poetry install
+    - name: Check Version
+      id: check-version
+      run: |
+        echo version=$(poetry version --short) >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "dist/*"
+        token: ${{ secrets.GITHUB_TOKEN }}
+        draft: false
+        generateReleaseNotes: true
+        tag: v${{ steps.check-version.outputs.version }}
+        commit: master
 
     - name: Build and publish
-      run: poetry publish --build -u __token__ -p ${{ secrets.PYPI_API_TOKEN }}
+      run: poetry publish -u __token__ -p ${{ secrets.PYPI_API_TOKEN }}
