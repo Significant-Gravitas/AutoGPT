@@ -1,17 +1,18 @@
 from pathlib import Path
+
+from agent_protocol import Agent as AgentProtocol
+from agent_protocol import StepHandler, StepResult
 from colorama import Fore
-from agent_protocol import Agent as AgentProtocol, StepHandler, StepResult
 
 from autogpt.agents import Agent
 from autogpt.app.main import UserFeedback
-from autogpt.logs import logger
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder
+from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
-
 
 PROJECT_DIR = Path().resolve()
 
@@ -25,18 +26,18 @@ async def task_handler(task_input) -> StepHandler:
     async def step_handler(step_input) -> StepResult:
         result = await interaction_step(
             agent,
-            step_input['user_input'],
-            step_input['user_feedback'],
+            step_input["user_input"],
+            step_input["user_feedback"],
             next_command_name,
             next_command_args,
         )
 
         nonlocal next_command_name, next_command_args
-        next_command_name = result['next_step_command_name'] if result else None
-        next_command_args = result['next_step_command_args'] if result else None
+        next_command_name = result["next_step_command_name"] if result else None
+        next_command_args = result["next_step_command_args"] if result else None
 
         if not result:
-            return StepResult(output=None, is_last=True)    
+            return StepResult(output=None, is_last=True)
         return StepResult(output=result)
 
     return step_handler
@@ -62,7 +63,7 @@ async def interaction_step(
         if result is None:
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
             return
-        
+
     next_command_name, next_command_args, assistant_reply_dict = agent.think()
 
     return {

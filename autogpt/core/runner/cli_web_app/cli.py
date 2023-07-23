@@ -21,6 +21,7 @@ def autogpt():
 autogpt.add_command(make_settings)
 autogpt.add_command(status)
 
+
 @autogpt.command()
 @click.option(
     "port",
@@ -29,13 +30,11 @@ autogpt.add_command(status)
     help="The port of the webserver.",
     type=click.INT,
 )
-
 def server(port: int) -> None:
     """Run the Auto-GPT runner httpserver."""
     click.echo("Running Auto-GPT runner httpserver...")
     port = 8080
     Agent.start(port)
-
 
 
 @autogpt.command()
