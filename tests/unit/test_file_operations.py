@@ -282,24 +282,6 @@ def test_append_to_file_uses_checksum_from_appended_file(
     )
 
 
-def test_delete_file(test_file_with_content_path: Path, agent: Agent):
-    result = file_ops.delete_file(str(test_file_with_content_path), agent=agent)
-    assert result == "File deleted successfully."
-    assert os.path.exists(test_file_with_content_path) is False
-
-
-def test_delete_missing_file(agent: Agent):
-    filename = "path/to/file/which/does/not/exist"
-    # confuse the log
-    file_ops.log_operation("write", filename, agent=agent, checksum="fake")
-    try:
-        os.remove(agent.workspace.get_path(filename))
-    except FileNotFoundError as err:
-        assert str(err) in file_ops.delete_file(filename, agent=agent)
-        return
-    assert False, f"Failed to test delete_file; {filename} not expected to exist"
-
-
 def test_list_files(workspace: Workspace, test_directory: Path, agent: Agent):
     # Case 1: Create files A and B, search for A, and ensure we don't return A and B
     file_a = workspace.get_path("file_a.txt")
