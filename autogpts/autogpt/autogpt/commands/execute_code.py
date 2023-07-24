@@ -296,7 +296,6 @@ def we_are_running_in_a_docker_container() -> bool:
     """
     return os.path.exists("/.dockerenv")
 
-
 @command(
     "execute_interactive_shell",
     "Executes a Shell Command that needs interactivity and return the output.",
@@ -307,8 +306,9 @@ def we_are_running_in_a_docker_container() -> bool:
             "required": True,
         }
     },
-    enabled=lambda config: config.execute_local_commands,
-    disabled_reason="You are not allowed to run local shell commands. To execute"
+    lambda config: config.execute_local_commands and not config.continuous_mode,
+    "Either the agent is running in continuous mode, or "
+    "you are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config file: .env - do not attempt to bypass the restriction.",
 )
@@ -510,6 +510,8 @@ def _exec_cross_platform(command_line: str) -> list[dict]:
             "required": True,
         }
     },
+    lambda config: not config.continuous_mode,
+    "The agent is running in continuous mode.",
 )
 def ask_user(prompts: list[str], agent: Agent) -> list[str]:
     """Ask the user a series of prompts and return the responses
