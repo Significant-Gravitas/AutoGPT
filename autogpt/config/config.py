@@ -15,8 +15,11 @@ from pydantic import Field, validator
 from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.plugins.plugins_config import PluginsConfig
 
+AI_SETTINGS_FILE = "ai_settings.yaml"
 AZURE_CONFIG_FILE = "azure.yaml"
 PLUGINS_CONFIG_FILE = "plugins_config.yaml"
+PROMPT_SETTINGS_FILE = "prompt_settings.yaml"
+
 GPT_4_MODEL = "gpt-4"
 GPT_3_MODEL = "gpt-3.5-turbo"
 
@@ -44,8 +47,8 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Agent Control Settings #
     ##########################
     # Paths
-    ai_settings_file: str = "ai_settings.yaml"
-    prompt_settings_file: str = "prompt_settings.yaml"
+    ai_settings_file: str = AI_SETTINGS_FILE
+    prompt_settings_file: str = PROMPT_SETTINGS_FILE
     workdir: Path = None
     workspace_path: Optional[Path] = None
     file_logger_path: Optional[str] = None
@@ -218,8 +221,10 @@ class ConfigBuilder(Configurable[Config]):
             "exit_key": os.getenv("EXIT_KEY"),
             "plain_output": os.getenv("PLAIN_OUTPUT", "False") == "True",
             "shell_command_control": os.getenv("SHELL_COMMAND_CONTROL"),
-            "ai_settings_file": os.getenv("AI_SETTINGS_FILE"),
-            "prompt_settings_file": os.getenv("PROMPT_SETTINGS_FILE"),
+            "ai_settings_file": os.getenv("AI_SETTINGS_FILE", AI_SETTINGS_FILE),
+            "prompt_settings_file": os.getenv(
+                "PROMPT_SETTINGS_FILE", PROMPT_SETTINGS_FILE
+            ),
             "fast_llm": os.getenv("FAST_LLM", os.getenv("FAST_LLM_MODEL")),
             "smart_llm": os.getenv("SMART_LLM", os.getenv("SMART_LLM_MODEL")),
             "embedding_model": os.getenv("EMBEDDING_MODEL"),
@@ -256,7 +261,9 @@ class ConfigBuilder(Configurable[Config]):
             "redis_password": os.getenv("REDIS_PASSWORD"),
             "wipe_redis_on_start": os.getenv("WIPE_REDIS_ON_START", "True") == "True",
             "plugins_dir": os.getenv("PLUGINS_DIR"),
-            "plugins_config_file": os.getenv("PLUGINS_CONFIG_FILE"),
+            "plugins_config_file": os.getenv(
+                "PLUGINS_CONFIG_FILE", PLUGINS_CONFIG_FILE
+            ),
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
         }
 
