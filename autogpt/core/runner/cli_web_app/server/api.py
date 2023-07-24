@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from agent_protocol import Agent as AgentProtocol
 from agent_protocol import StepHandler, StepResult
 from colorama import Fore
 
@@ -18,21 +17,25 @@ PROJECT_DIR = Path().resolve()
 
 
 async def task_handler(task_input) -> StepHandler:
-    agent = bootstrap_agent(task_input)
+    task = task_input.__root__ if task_input else {}
+    agent = bootstrap_agent(task.get("user_input"), False)
 
-    next_command_name: str | None
-    next_command_args: dict[str, str] | None
+    next_command_name: str | None = None
+    next_command_args: dict[str, str] | None = None
 
     async def step_handler(step_input) -> StepResult:
+        step = step_input.__root__ if step_input else {}
+
+        nonlocal next_command_name, next_command_args
+
         result = await interaction_step(
             agent,
-            step_input["user_input"],
-            step_input["user_feedback"],
+            step.get("user_input"),
+            step.get("user_feedback"),
             next_command_name,
             next_command_args,
         )
 
-        nonlocal next_command_name, next_command_args
         next_command_name = result["next_step_command_name"] if result else None
         next_command_args = result["next_step_command_args"] if result else None
 
@@ -76,19 +79,20 @@ async def interaction_step(
     }
 
 
-def bootstrap_agent(task):
+def bootstrap_agent(task, continuous_mode) -> Agent:
     config = ConfigBuilder.build_config_from_env(workdir=PROJECT_DIR)
-    config.continuous_mode = False
+    config.debug_mode = True
+    config.continuous_mode = continuous_mode
     config.temperature = 0
     config.plain_output = True
     command_registry = get_command_registry(config)
     config.memory_backend = "no_memory"
-    Workspace.set_workspace_directory(config)
-    Workspace.build_file_logger_path(config, config.workspace_path)
+    config.workspace_path = Workspace.set_workspace_directory(config)
+    config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
     ai_config = AIConfig(
         ai_name="Auto-GPT",
         ai_role="a multi-purpose AI assistant.",
-        ai_goals=[task.user_input],
+        ai_goals=[task],
     )
     ai_config.command_registry = command_registry
     return Agent(
@@ -97,7 +101,6 @@ def bootstrap_agent(task):
         ai_config=ai_config,
         config=config,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=str(config.workspace_path),
     )
 
 
@@ -109,6 +112,3 @@ def get_command_registry(config: Config):
     for command_category in enabled_command_categories:
         command_registry.import_commands(command_category)
     return command_registry
-
-
-AgentProtocol.handle_task(task_handler)
