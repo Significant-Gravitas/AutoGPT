@@ -119,7 +119,9 @@ def create_chat_completion(
         temperature = config.temperature
     if max_tokens is None:
         prompt_tlength = prompt.token_length
-        max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt_tlength
+        max_tokens = (
+            OPEN_AI_CHAT_MODELS[model].max_tokens - prompt_tlength - 1
+        )  # the -1 is just here because we have a bug and we don't know how to fix it. When using gpt-4-0314 we get a token error.
         logger.debug(f"Prompt length: {prompt_tlength} tokens")
         if functions:
             functions_tlength = count_openai_functions_tokens(functions, model)
