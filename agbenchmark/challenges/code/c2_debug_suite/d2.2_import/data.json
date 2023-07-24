@@ -1,0 +1,19 @@
+{
+  "name": "TestDebugMultipleTypo",
+  "category": ["code", "iterate"],
+  "task": "Make test.py run without errors.",
+  "dependencies": ["TestDebugSimpleTypoWithoutGuidance"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "[0, 1] [2, 5] [0, 3]",
+    "should_contain": ["[0, 1]", "[2, 5]", "[0, 3]"],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "type": "execute_python_code"
+  },
+  "info": {
+    "difficulty": "advanced",
+    "description": "Now it's not just the typo error, but also an incomplete import statement",
+    "side_effects": []
+  }
+}

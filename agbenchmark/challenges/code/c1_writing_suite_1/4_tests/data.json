@@ -1,0 +1,19 @@
+{
+  "name": "TestReturnCode_Tests",
+  "category": ["code", "iterate"],
+  "task": "First, modify test.py to fill in the test case to be able to test the code in code.py. Next, modify the multiply_int function in code.py to be able to pass in a 'multiplier' argument to multiply the 'num' by 'multiplier'. Both arguments are integers. You can make sure you have correctly done this by running test.py that you previously modified.",
+  "dependencies": ["TestReturnCode_Modify"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "Just a simple multiple by 2 function. Num is 4 so answer is 8",
+    "should_contain": ["8", "49", "-12"],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "type": "execute_python_code"
+  },
+  "info": {
+    "difficulty": "advanced",
+    "description": "Small step up, just writing the function with a name as well as the return statement.",
+    "side_effects": []
+  }
+}

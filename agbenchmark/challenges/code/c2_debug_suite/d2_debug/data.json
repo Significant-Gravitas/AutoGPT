@@ -1,0 +1,19 @@
+{
+  "name": "TestDebugSimpleTypoWithGuidance",
+  "category": ["code", "iterate"],
+  "task": "1- Run test.py.\n2- Read code.py.\n3- Modify code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
+  "dependencies": ["TestReadFile", "TestWriteFile"],
+  "cutoff": 75,
+  "ground": {
+    "answer": "[0, 1] [2, 5] [0, 3]",
+    "should_contain": ["[0, 1]", "[2, 5]", "[0, 3]"],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "type": "execute_python_code"
+  },
+  "info": {
+    "difficulty": "novice",
+    "description": "Tests ability for the agent to debug python code with a simple typo in it.",
+    "side_effects": []
+  }
+}

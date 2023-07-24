@@ -30,9 +30,22 @@ def cli() -> None:
 @click.option("--maintain", is_flag=True, help="Runs only regression tests")
 @click.option("--improve", is_flag=True, help="Run only non-regression tests")
 @click.option("--mock", is_flag=True, help="Run with mock")
+@click.option("--suite", default=None, help="Run a suite of related tests")
+@click.option(
+    "--no_dep",
+    is_flag=True,
+    help="Run without dependencies (can be useful for a suite run)",
+)
 @click.option("--nc", is_flag=True, help="Run without cutoff")
 def start(
-    category: str, test: str, maintain: bool, improve: bool, mock: bool, nc: bool
+    category: str,
+    test: str,
+    maintain: bool,
+    improve: bool,
+    mock: bool,
+    suite: str,
+    no_dep: bool,
+    nc: bool,
 ) -> int:
     """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
     # Check if configuration file exists and is not empty
@@ -43,13 +56,20 @@ def start(
         )
         return 1
 
-    if test and (category or maintain or improve):
+    if test and (category or maintain or improve or suite):
         print(
             "Error: If you're running a specific test make sure no other options are selected. Please just pass the --test."
         )
         return 1
 
-    print(CONFIG_PATH, os.path.exists(CONFIG_PATH), os.stat(CONFIG_PATH).st_size)
+    # TODO: test and ensure that this functionality works before removing
+    # change elif suite below if removing
+    if suite and (category or maintain or improve):
+        print(
+            "Error: If you're running a specific suite make sure no other options are selected. Please just pass the --suite."
+        )
+        return 1
+
     if not os.path.exists(CONFIG_PATH) or os.stat(CONFIG_PATH).st_size == 0:
         config = {}
 
@@ -93,9 +113,12 @@ def start(
     if test:
         print("Running specific test:", test)
         pytest_args.extend(["-k", test, "--test"])
+    elif suite:
+        print("Running specific suite:", suite)
+        pytest_args.extend(["--suite"])
     else:
         if category:
-            pytest_args.extend(["-m", category])
+            pytest_args.extend(["-m", category, "--category"])
             print("Running tests of category:", category)
         else:
             print("Running all categories")
@@ -110,6 +133,8 @@ def start(
     if mock:
         pytest_args.append("--mock")
 
+    if no_dep:
+        pytest_args.append("--no_dep")
     if nc:
         pytest_args.append("--nc")
 

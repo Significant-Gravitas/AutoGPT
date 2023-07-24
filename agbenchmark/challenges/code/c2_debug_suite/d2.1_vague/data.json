@@ -1,0 +1,19 @@
+{
+  "name": "TestDebugSimpleTypoWithoutGuidance",
+  "category": ["code", "iterate"],
+  "task": "Make test.py run without errors.",
+  "dependencies": ["TestDebugSimpleTypoWithGuidance"],
+  "cutoff": 75,
+  "ground": {
+    "answer": "[0, 1] [2, 5] [0, 3]",
+    "should_contain": ["[0, 1]", "[2, 5]", "[0, 3]"],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "type": "execute_python_code"
+  },
+  "info": {
+    "difficulty": "intermediate",
+    "description": "Tests ability for the agent to debug python code with a simple typo in it, using a very broad prompt without guidance",
+    "side_effects": []
+  }
+}

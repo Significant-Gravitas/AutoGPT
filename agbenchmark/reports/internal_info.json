@@ -142,9 +142,45 @@
             false
         ],
         "TestDebugSimpleTypoWithGuidance": [
+            true,
+            true,
+            true,
+            true,
+            true
+        ],
+        "TestCodeBasic": [
+            false,
+            true,
+            false,
+            false
+        ],
+        "TestRevenueRetrieval_1.0": [
+            true,
+            true,
+            true,
+            true,
+            true
+        ],
+        "TestRevenueRetrieval_1.1": [
             false,
             false,
+            false
+        ],
+        "TestRevenueRetrieval_1.2": [
             false,
+            false,
+            false
+        ],
+        "TestReturnCode_Simple": [
+            false
+        ],
+        "TestReturnCode_Write": [
+            false
+        ],
+        "TestReturnCode_Modify": [
+            false
+        ],
+        "TestReturnCode_Tests": [
             false
         ]
     }

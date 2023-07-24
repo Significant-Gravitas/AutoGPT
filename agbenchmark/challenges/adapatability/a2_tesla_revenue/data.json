@@ -1,0 +1,19 @@
+{
+  "name": "TestAdaptTeslaRevenue",
+  "category": ["adaptability"],
+  "task": "I'm a financial planner, please help me write tesla's r in 2022 into a .txt file.",
+  "cutoff": 60,
+  "dependencies": ["TestRevenueRetrieval_1.0"],
+  "ground": {
+    "answer": "It was $81.462 billion in 2022.",
+    "should_contain": ["81"],
+    "should_not_contain": [],
+    "files": [".txt"],
+    "type": "file"
+  },
+  "info": {
+    "difficulty": "intermediate",
+    "description": "Given context adapt to the missing of the word revenue",
+    "side_effects": []
+  }
+}

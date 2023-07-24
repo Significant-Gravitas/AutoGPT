@@ -1,0 +1,19 @@
+{
+  "name": "TestReturnCode_Modify",
+  "category": ["code", "iterate"],
+  "task": "Modify the multiply_int function in code.py to be able to pass in a 'multiplier' argument to multiply the 'num' by 'multiplier'. Both arguments are integers. You can make sure you have correctly done this by running test.py",
+  "dependencies": ["TestReturnCode_Write"],
+  "cutoff": 75,
+  "ground": {
+    "answer": "def multiply_int(num, multiplier):\n    return num * multiplier\n",
+    "should_contain": ["8", "49", "-12"],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "type": "execute_python_code"
+  },
+  "info": {
+    "difficulty": "intermediate",
+    "description": "Builds on the previous function also take a multiplier .",
+    "side_effects": []
+  }
+}

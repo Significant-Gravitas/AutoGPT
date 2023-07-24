@@ -1,0 +1,19 @@
+{
+  "name": "TestAdaptLink",
+  "category": ["adaptability"],
+  "task": "Write the price of the book in this url 'books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
+  "dependencies": ["TestBasicRetrieval"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "£25.89",
+    "should_contain": ["25.89"],
+    "should_not_contain": [],
+    "files": [".txt"],
+    "type": "file"
+  },
+  "info": {
+    "difficulty": "novice",
+    "description": "An advanced version of this -> remove.html as well. Same as TestBasicRetrieval but link is slightly broken, supposed to be http:// at the start.",
+    "side_effects": []
+  }
+}

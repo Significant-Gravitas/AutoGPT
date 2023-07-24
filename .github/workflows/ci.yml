@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     branches: [master]
   schedule:
-    - cron: "0 8 * * *"
+    - cron: '0 8 * * *'
   push:
     branches: [master, ci-test*]
     paths-ignore:
@@ -16,7 +16,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     env:
-      min-python-version: "3.10"
+      min-python-version: '3.10'
 
     steps:
       - name: Checkout repository
@@ -45,10 +45,10 @@ jobs:
           poetry install
 
       - name: Lint with flake8
-        run: poetry run flake8
+        run: poetry run flake8 --exclude=code,agent
 
       - name: Check black formatting
-        run: poetry run  black . --check
+        run: poetry run  black . --exclude test.py --check
         if: success() || failure()
 
       - name: Check isort formatting
@@ -68,20 +68,20 @@ jobs:
   tests:
     env:
       GH_TOKEN: ${{ github.event_name == 'pull_request' && github.token || secrets.PAT }}
-      min-python-version: "3.10"
-    name: "${{ matrix.agent-name }}"
+      min-python-version: '3.10'
+    name: '${{ matrix.agent-name }}'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         agent-name:
-          - "gpt-engineer"
-          - "smol-developer"
-          - "Auto-GPT"
-          - "mini-agi"
-          - "beebot"
-          - "BabyAGI"
+          - 'gpt-engineer'
+          - 'smol-developer'
+          - 'Auto-GPT'
+          - 'mini-agi'
+          - 'beebot'
+          - 'BabyAGI'
 
     steps:
       - name: Checkout repository
@@ -151,10 +151,37 @@ jobs:
           fi
 
           pip install ../../dist/*.whl
-          
+
           if [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
+
+            set +e # Ignore non-zero exit codes and continue execution
             ${prefix}agbenchmark start --maintain --mock
-            ${prefix}agbenchmark start --improve --mock
+            EXIT_CODE=$?
+            set -e  # Stop ignoring non-zero exit codes
+
+            # Check if the exit code was 5, and if so, exit with 0 instead
+            if [ $EXIT_CODE -eq 5 ]
+            then
+              echo "regression_tests.json is empty."
+              exit 0
+            else
+              exit $EXIT_CODE
+            fi
+
+            set +e # Ignore non-zero exit codes and continue execution
+            improve_cmd = ${prefix}agbenchmark start --improve --mock
+            EXIT_CODE=$?
+            set -e  # Stop ignoring non-zero exit codes
+
+            # Check if the exit code was 5, and if so, exit with 0 instead
+            if [ $EXIT_CODE -eq 5 ]
+            then
+              echo "regression_tests.json is empty."
+              exit 0
+            else
+              exit $EXIT_CODE
+            fi
+
             ${prefix}agbenchmark start --mock
             ${prefix}agbenchmark start --mock --category=retrieval
             ${prefix}agbenchmark start --mock --category=interface
@@ -165,7 +192,7 @@ jobs:
             bash -c "$(curl -fsSL https://raw.githubusercontent.com/Helicone/helicone/0ed90e3203f172ed05d5754bc0b95a584689233c/mitmproxy.sh)" -s start
             ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
           fi
-          
+
           cd ../..
 
         env:
@@ -179,7 +206,6 @@ jobs:
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
           REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
 
-
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v3
@@ -192,7 +218,7 @@ jobs:
         run: |
           git config --global user.email "github-bot@agpt.co"
           git config --global user.name "Auto-GPT-Bot"
-      
+
           git add reports/* || echo "nothing to commit"
           commit_message="${{ matrix.agent-name }}-$(date +'%Y%m%d%H%M%S')"
           git commit -m "${commit_message}"

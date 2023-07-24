@@ -6,13 +6,13 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from agbenchmark.challenges.define_task_types import DIFFICULTY_MAP, DifficultyLevel
+from agbenchmark.challenges.data_types import DIFFICULTY_MAP, DifficultyLevel
 
 AGENT_NAME = os.getenv("AGENT_NAME")
 HOME_ENV = os.getenv("HOME_ENV")
@@ -34,39 +34,63 @@ def calculate_info_test_path(reports_path: Path) -> str:
     file_count = len(json_files)
     run_name = f"file{file_count + 1}_{datetime.now().strftime('%m-%d-%H-%M')}.json"
 
-    # # If "--test" is in command
+    test_index = None
+    test_arg = None
     if "--test" in command:
         test_index = command.index("--test")
-        try:
-            test_arg = command[test_index + 1]  # Argument after --test
-        except IndexError:
-            raise ValueError("Expected an argument after --test")
+    elif "--suite" in command:
+        test_index = command.index("--suite")
+    elif "--category" in command:
+        test_index = command.index("--category")
+    elif "--maintain" in command:
+        test_index = command.index("--maintain")
+        test_arg = "maintain"
+    elif "--improve" in command:
+        test_index = command.index("--improve")
+        test_arg = "improve"
+
+    # # If "--test" is in command
+    if test_index:
+        if not test_arg:
+            test_arg = command[test_index + 1]  # Argument after --
+
+        # Try to find the highest prefix number among all files, then increment it
+        all_prefix_numbers = []
+        # count related files and assign the correct file number
+        related_files = []
+        prefix_number = 0.0
 
         # Get all files that include the string that is the argument after --test
-        related_files = [f for f in json_files if test_arg in f]
+        for file in json_files:
+            file_name = Path(file).name.rsplit(".", 1)[0]
+            file_parts = file_name.split("_")
+            try:
+                if "file" in file_parts[0]:
+                    # default files are called file{num}
+                    number = float(file_parts[0][4:])
+                else:
+                    number = float(file_parts[0])
+            except:
+                number = file_count + 1
+            test_name = "_".join(file_parts[1:])
+            all_prefix_numbers.append(math.floor(number))
+            if test_arg == test_name:
+                prefix_number = number
+                related_files.append(test_name)
+
         related_file_count = len(related_files)
 
         # Determine the prefix based on the existing files
         if related_file_count == 0:
-            # Try to find the highest prefix number among all files, then increment it
-            all_prefix_numbers = []
-            for f in json_files:
-                try:
-                    number = float(Path(f).stem.split("_")[0])
-                except ValueError:
-                    print(f"File {f} is invalid.")
-                    continue
-
-                all_prefix_numbers.append(math.floor(number))
-
             max_prefix = max(all_prefix_numbers, default=0)
             run_name = f"{max_prefix + 1}_{test_arg}.json"
         else:
             print(f"Found {related_file_count} files with '{test_arg}' in the name")
             # Take the number from before the _ and add the .{number}
 
-            prefix_str = Path(related_files[0]).stem.rsplit("_")[0].split(".")[0]
-            prefix = math.floor(float(prefix_str))
+            prefix = ""
+            math.floor(prefix_number)
+
             run_name = f"{prefix}.{related_file_count}_{test_arg}.json"
 
     new_file_path = reports_path / run_name
@@ -97,34 +121,69 @@ def calculate_success_percentage(results: list[bool]) -> float:
     return round(success_percentage, 2)
 
 
-def get_highest_success_difficulty(data: dict) -> str:
+def get_test_path(json_file: str | Path) -> str:
+    if isinstance(json_file, str):
+        json_file = Path(json_file)
+
+    # Find the index of "agbenchmark" in the path parts
+    try:
+        agbenchmark_index = json_file.parts.index("agbenchmark")
+    except ValueError:
+        raise ValueError("Invalid challenge location.")
+
+    # Create the path from "agbenchmark" onwards
+    challenge_location = Path(*json_file.parts[agbenchmark_index:])
+
+    formatted_location = replace_backslash(str(challenge_location))
+    if isinstance(formatted_location, str):
+        return formatted_location
+    else:
+        return str(challenge_location)
+
+
+def get_highest_success_difficulty(
+    data: dict, just_string: Optional[bool] = None
+) -> str:
     highest_difficulty = None
     highest_difficulty_level = 0
 
     for test_name, test_data in data.items():
-        if test_data["metrics"]["success"]:
-            # Replace 'medium' with 'intermediate' for this example
-            difficulty_str = test_data["metrics"]["difficulty"]
-
+        if test_data.get("tests", None):
+            highest_difficulty_str = test_data["metrics"]["highest_difficulty"]
             try:
-                difficulty_enum = DifficultyLevel[difficulty_str.lower()]
-                difficulty_level = DIFFICULTY_MAP[difficulty_enum]
-
-                if difficulty_level > highest_difficulty_level:
-                    highest_difficulty = difficulty_enum
-                    highest_difficulty_level = difficulty_level
+                highest_difficulty = DifficultyLevel[highest_difficulty_str]
+                highest_difficulty_level = DIFFICULTY_MAP[highest_difficulty]
             except KeyError:
                 print(
-                    f"Unexpected difficulty level '{difficulty_str}' in test '{test_name}'"
+                    f"Unexpected difficulty level '{highest_difficulty_str}' in test '{test_name}'"
                 )
+                continue
+        else:
+            if test_data["metrics"]["success"]:
+                difficulty_str = test_data["metrics"]["difficulty"]
+
+                try:
+                    difficulty_enum = DifficultyLevel[difficulty_str.lower()]
+                    difficulty_level = DIFFICULTY_MAP[difficulty_enum]
+
+                    if difficulty_level > highest_difficulty_level:
+                        highest_difficulty = difficulty_enum
+                        highest_difficulty_level = difficulty_level
+                except KeyError:
+                    print(
+                        f"Unexpected difficulty level '{difficulty_str}' in test '{test_name}'"
+                    )
+                    continue
 
     if highest_difficulty is not None:
         highest_difficulty_str = highest_difficulty.name  # convert enum to string
     else:
         highest_difficulty_str = ""
 
-    if highest_difficulty_level:
+    if highest_difficulty_level and not just_string:
         return f"{highest_difficulty_str}: {highest_difficulty_level}"
+    elif highest_difficulty_str:
+        return highest_difficulty_str
     return "No successful tests"
 
 
@@ -147,22 +206,7 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str]:
     HOME_DIRECTORY = Path(os.getcwd())
     benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
 
-    if AGENT_NAME and HOME_ENV == "ci":
-        if "/Auto-GPT-Benchmarks/agent" in str(HOME_DIRECTORY):
-            raise Exception("Must run from root of benchmark repo if HOME_ENV is ci")
-
-        # however if the env is local and the agent name is defined, we want to run that agent from the repo and then get the data in the internal agbenchmark directory
-        # this is for the ci/cd pipeline
-        benchmarks_folder_path = HOME_DIRECTORY / "agent" / AGENT_NAME / "agbenchmark"
-
-        CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH = assign_paths(
-            benchmarks_folder_path
-        )
-
-        # we want to run the agent from the submodule
-        HOME_DIRECTORY = Path(os.getcwd()) / "agent" / AGENT_NAME
-
-    elif AGENT_NAME and not os.path.join("Auto-GPT-Benchmarks", "agent") in str(
+    if AGENT_NAME and not os.path.join("Auto-GPT-Benchmarks", "agent") in str(
         HOME_DIRECTORY
     ):
         # if the agent name is defined but the run is not from the agent repo, then home is the agent repo

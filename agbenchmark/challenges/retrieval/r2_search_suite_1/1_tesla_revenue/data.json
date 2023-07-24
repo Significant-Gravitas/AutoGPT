@@ -1,0 +1,19 @@
+{
+  "name": "TestRevenueRetrieval_1.0",
+  "category": ["retrieval"],
+  "task": "Write tesla's revenue in 2022 into a .txt file.",
+  "dependencies": ["TestBasicRetrieval"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "It was $81.462 billion in 2022.",
+    "should_contain": ["81"],
+    "should_not_contain": [],
+    "files": [".txt"],
+    "type": "file"
+  },
+  "info": {
+    "difficulty": "novice",
+    "description": "A no guardrails search for info",
+    "side_effects": []
+  }
+}
