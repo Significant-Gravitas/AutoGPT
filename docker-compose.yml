@@ -11,6 +11,7 @@ services:
       - .env
     ports:
       - "8765:8765"
+    environment:
       SUNCO_APP_ID: ${SUNCO_APP_ID}
       SUNCO_API_KEY: ${SUNCO_API_KEY}
       SUNCO_API_SECRET: ${SUNCO_API_SECRET}
