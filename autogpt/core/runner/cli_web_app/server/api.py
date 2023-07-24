@@ -16,23 +16,26 @@ from autogpt.workspace import Workspace
 
 PROJECT_DIR = Path().resolve()
 
-
 async def task_handler(task_input) -> StepHandler:
-    agent = bootstrap_agent(task_input)
+    task = task_input.__root__ if task_input else {}
+    agent = bootstrap_agent(task)
 
-    next_command_name: str | None
-    next_command_args: dict[str, str] | None
+    next_command_name: str | None = None
+    next_command_args: dict[str, str] | None = None
 
     async def step_handler(step_input) -> StepResult:
+        step = step_input.__root__ if step_input else {}
+
+        nonlocal next_command_name, next_command_args
+
         result = await interaction_step(
             agent,
-            step_input["user_input"],
-            step_input["user_feedback"],
+            step.get("user_input"),
+            step.get("user_feedback"),
             next_command_name,
             next_command_args,
         )
 
-        nonlocal next_command_name, next_command_args
         next_command_name = result["next_step_command_name"] if result else None
         next_command_args = result["next_step_command_args"] if result else None
 
@@ -88,7 +91,7 @@ def bootstrap_agent(task):
     ai_config = AIConfig(
         ai_name="Auto-GPT",
         ai_role="a multi-purpose AI assistant.",
-        ai_goals=[task.user_input],
+        ai_goals=[task.get("user_input")],
     )
     ai_config.command_registry = command_registry
     return Agent(
@@ -109,6 +112,3 @@ def get_command_registry(config: Config):
     for command_category in enabled_command_categories:
         command_registry.import_commands(command_category)
     return command_registry
-
-
-AgentProtocol.handle_task(task_handler)
