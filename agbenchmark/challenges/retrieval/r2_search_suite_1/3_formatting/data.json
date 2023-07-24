@@ -1,0 +1,19 @@
+{
+  "name": "TestRevenueRetrieval_1.2",
+  "category": ["retrieval"],
+  "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion).",
+  "dependencies": ["TestRevenueRetrieval_1.1"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
+    "should_contain": ["81,462"],
+    "should_not_contain": [],
+    "files": [".txt"],
+    "type": "file"
+  },
+  "info": {
+    "difficulty": "intermediate",
+    "description": "Advanced version of the r2.1 challenge that also asks for specific formatting.",
+    "side_effects": []
+  }
+}

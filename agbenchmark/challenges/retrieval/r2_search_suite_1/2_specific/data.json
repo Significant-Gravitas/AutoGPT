@@ -1,0 +1,19 @@
+{
+  "name": "TestRevenueRetrieval_1.1",
+  "category": ["retrieval"],
+  "task": "Write Tesla's precise revenue in 2022 into a .txt file.",
+  "dependencies": ["TestRevenueRetrieval_1.0"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "It was $81.462 billion in 2022.",
+    "should_contain": ["81", "462"],
+    "should_not_contain": [],
+    "files": [".txt"],
+    "type": "file"
+  },
+  "info": {
+    "difficulty": "novice",
+    "description": "This one checks the accuracy of the information over r2",
+    "side_effects": []
+  }
+}

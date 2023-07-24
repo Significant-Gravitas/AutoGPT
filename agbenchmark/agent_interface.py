@@ -16,13 +16,14 @@ MOCK_FLAG = mock_test_str.lower() == "true" if mock_test_str else False
 
 
 def run_agent(
-    task: str, config: Dict[str, Any], challenge_location: str, cutoff: int
+    task: str, config: Dict[str, Any], artifacts_location: str, cutoff: int
 ) -> None:
     """Calling to get a response"""
 
     if MOCK_FLAG:
+        print("Running mock agent")
         copy_artifacts_into_workspace(
-            config["workspace"], "artifacts_out", challenge_location
+            config["workspace"], "artifacts_out", artifacts_location
         )
     else:
         entry_path = "agbenchmark.benchmarks"
@@ -31,7 +32,7 @@ def run_agent(
         if "--nc" in sys.argv:
             timeout = 100000
 
-        print(f"Running Python function '{entry_path}' with timeout {timeout}")
+        print(f"Running '{entry_path}' with timeout {timeout}")
         command = [sys.executable, "-m", entry_path, str(task)]
         process = subprocess.Popen(
             command,

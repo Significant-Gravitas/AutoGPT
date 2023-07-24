@@ -1,0 +1,19 @@
+{
+  "name": "TestReturnCode_Write",
+  "category": ["code", "iterate"],
+  "task": "Add a function called multiply_int in code.py that multiplies numbers by 2. You can make sure you have correctly done this by running test.py",
+  "dependencies": ["TestReturnCode_Simple"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "Just a simple multiple by 2 function. Num is 4 so answer is 8",
+    "should_contain": ["8"],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "type": "execute_python_code"
+  },
+  "info": {
+    "difficulty": "novice",
+    "description": "Small step up, just writing the function with a name as well as the return statement.",
+    "side_effects": []
+  }
+}

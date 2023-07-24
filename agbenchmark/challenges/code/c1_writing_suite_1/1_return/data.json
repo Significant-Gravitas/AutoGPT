@@ -1,0 +1,19 @@
+{
+  "name": "TestReturnCode_Simple",
+  "category": ["code", "iterate"],
+  "task": "Return the multiplied number in the function multiply_int in code.py. You can make sure you have correctly done this by running test.py",
+  "dependencies": ["TestReadFile", "TestWriteFile"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "Just a simple multiple by 2 function. Num is 4 so answer is 8",
+    "should_contain": ["8"],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "type": "execute_python_code"
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Simple test if a simple code instruction can be executed",
+    "side_effects": []
+  }
+}

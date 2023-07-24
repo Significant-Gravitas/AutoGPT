@@ -45,7 +45,11 @@ markers = [
     "interface",
     "code",
     "memory",
-    "iterate"
+    "iterate",
+    "adaptability",
+    "safety",
+    "first",
+    "second"
 ]
 
 [tool.poetry.scripts]

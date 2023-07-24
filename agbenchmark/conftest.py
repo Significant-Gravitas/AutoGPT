@@ -8,14 +8,15 @@ from typing import Any, Dict, Generator
 
 import pytest
 
-from agbenchmark.ReportManager import ReportManager
-from agbenchmark.start_benchmark import (
-    CONFIG_PATH,
-    INFO_TESTS_PATH,
-    REGRESSION_TESTS_PATH,
-    get_regression_data,
+from agbenchmark.challenges.data_types import SuiteConfig
+from agbenchmark.reports.utils import (
+    finalize_reports,
+    generate_combined_suite_report,
+    generate_single_call_report,
+    session_finish,
+    setup_dummy_dependencies,
 )
-from agbenchmark.utils import AGENT_NAME, calculate_success_percentage
+from agbenchmark.start_benchmark import CONFIG_PATH, get_regression_data
 
 
 def resolve_workspace(workspace: str) -> str:
@@ -81,10 +82,13 @@ def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
 
 def pytest_addoption(parser: Any) -> None:
     parser.addoption("--mock", action="store_true", default=False)
+    parser.addoption("--category", action="store_true", default=False)
     parser.addoption("--nc", action="store_true", default=False)
     parser.addoption("--improve", action="store_true", default=False)
     parser.addoption("--maintain", action="store_true", default=False)
     parser.addoption("--test", action="store_true", default=None)
+    parser.addoption("--no_dep", action="store_true", default=False)
+    parser.addoption("--suite", action="store_true", default=False)
 
 
 @pytest.fixture(autouse=True)
@@ -123,120 +127,62 @@ def timer(request: Any) -> Any:
     request.node.user_properties.append(("run_time", run_time))
 
 
-# tests that consistently pass are considered regression tests
-regression_manager = ReportManager(REGRESSION_TESTS_PATH)
-
-# user facing reporting information
-info_manager = ReportManager(INFO_TESTS_PATH)
-
-INTERNAL_LOGS_PATH = Path(__file__).resolve().parent / "reports"
-
-# internal db step in replacement track pass/fail rate
-internal_info = ReportManager(str(INTERNAL_LOGS_PATH / "internal_info.json"))
+suite_reports: dict[str, list] = {}
 
 
 def pytest_runtest_makereport(item: Any, call: Any) -> None:
     challenge_data = item.funcargs.get("challenge_data", None)
+    if not challenge_data:
+        # this will only happen for dummy dependency setup tests
+        return
+
+    challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
+    is_suite = None
+
+    try:
+        is_suite = SuiteConfig.deserialize(
+            Path(__file__).parent.parent / Path(challenge_location) / "suite.json"
+        )
+    except:
+        pass
+
     if call.when == "call":
-        difficulty = (
-            challenge_data["info"]["difficulty"] if challenge_data else "unknown"
-        )
-        dependencies = dependencies = (
-            challenge_data["dependencies"] if challenge_data else []
-        )
-        # Extract the challenge_location from the class
-        challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
-        test_name = item.nodeid.split("::")[1]
-        item.test_name = test_name
-
-        test_details = {
-            "difficulty": difficulty,
-            "dependencies": dependencies,
-            "data_path": challenge_location,
-        }
-
-        info_details: Any = {
-            "data_path": challenge_location,
-            "is_regression": False,
-            "task": challenge_data["task"],
-            "answer": challenge_data["ground"]["answer"],
-            "description": challenge_data["info"]["description"],
-            "metrics": {
-                "difficulty": difficulty,
-                "success": False,
-            },
-        }
-
-        mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
-
-        if call.excinfo is None:
-            info_details["metrics"]["success"] = True
+        # if it's a same task suite, we combine the report.
+        # but not if it's a single --test
+        if is_suite and is_suite.same_task and "--test" not in sys.argv:
+            generate_combined_suite_report(item, challenge_data, challenge_location)
         else:
-            if not mock:  # don't remove if it's a mock test
-                regression_manager.remove_test(test_name)
-            info_details["metrics"]["fail_reason"] = str(call.excinfo.value)
-
-        prev_test_results: list[bool]
-        agent_tests: dict[str, list[bool]] = {}
-
-        # if the structure is nested inside of the agent name
-        if AGENT_NAME:
-            agent_tests = internal_info.tests.get(AGENT_NAME, {})
-
-        if agent_tests:
-            prev_test_results = agent_tests.get(test_name, [])
-        else:
-            prev_test_results = internal_info.tests.get(test_name, [])
-
-        if not mock:
-            # only add if it's an actual test
-            prev_test_results.append(info_details["metrics"]["success"])
-            internal_info.add_test(test_name, prev_test_results, AGENT_NAME)
-
-            # can calculate success rate regardless of mock
-            info_details["metrics"]["success_%"] = calculate_success_percentage(
-                prev_test_results
-            )
-        else:
-            # can calculate success rate regardless of mock
-            info_details["metrics"][
-                "non_mock_success_%"
-            ] = calculate_success_percentage(prev_test_results)
-
-        if len(prev_test_results) >= 3 and prev_test_results[-3:] == [True, True, True]:
-            # if the last 3 tests were successful, add to the regression tests
-            info_details["is_regression"] = True
-            regression_manager.add_test(test_name, test_details)
-
-        # user facing reporting
-        item.info_details = info_details
+            # single non suite test
+            generate_single_call_report(item, call, challenge_data)
+        # else: it's a same_task=false suite (tests aren't combined)
     if call.when == "teardown":
-        run_time = dict(item.user_properties).get("run_time")
+        finalize_reports(item, challenge_data)
 
-        info_details = getattr(item, "info_details", {})
-        test_name = getattr(item, "test_name", "")
-
-        if info_details and test_name:
-            if run_time:
-                info_details["metrics"][
-                    "run_time"
-                ] = f"{str(round(run_time, 3))} seconds"
-
-                info_details["reached_cutoff"] = (
-                    float(run_time) > challenge_data["cutoff"]
-                )
-
-            info_manager.add_test(test_name, info_details)
+        # for separate task suites (same_task=false), their data is the same as a regular suite, but we combined the report at the end
+        if is_suite and not is_suite.same_task:
+            suite_reports.setdefault(is_suite.prefix, []).append(challenge_data["name"])
 
 
 def pytest_sessionfinish(session: Any) -> None:
     """Called at the end of the session to save regression tests and info"""
-    with open(CONFIG_PATH, "r") as f:
-        config = json.load(f)
 
-    internal_info.save()
-    info_manager.end_info_report(config)
-    regression_manager.save()
+    session_finish(suite_reports)
+
+
+@pytest.fixture
+def scores(request: Any) -> None:
+    test_class_name = request.node.cls.__name__
+    return request.node.cls.scores.get(test_class_name)
+
+
+def pytest_generate_tests(metafunc: Any) -> None:
+    """This is to generate the dummy dependencies each test class"""
+    test_class_instance = metafunc.cls()
+
+    if test_class_instance.setup_dependencies:
+        test_class = metafunc.cls
+        setup_dummy_dependencies(test_class_instance, test_class)
+        setattr(test_class, "setup_dependencies", [])
 
 
 # this is adding the dependency marker and category markers automatically from the json
@@ -247,14 +193,25 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         # Assuming item.cls is your test class
         test_class_instance = item.cls()
 
+        # if it's a dummy dependency setup test, we also skip
+        if "test_method" not in item.name:
+            continue
+
         # Then you can access your properties
         name = item.parent.cls.__name__
         dependencies = test_class_instance.data.dependencies
 
         # Filter dependencies if they exist in regression data if its an improvement test
-        if config.getoption("--improve"):
+        if (
+            config.getoption("--improve")
+            or config.getoption("--category")
+            or config.getoption("--suite")
+        ):
             dependencies = [dep for dep in dependencies if not data.get(dep, None)]
-        elif config.getoption("--test"):
+        if config.getoption("--test"):
+            dependencies = []
+
+        if config.getoption("--no_dep"):
             dependencies = []
 
         categories = test_class_instance.data.category
