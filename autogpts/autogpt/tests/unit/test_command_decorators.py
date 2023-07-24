@@ -2,10 +2,10 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from benchmarks import bootstrap_agent
 
 from autogpt.agents.agent import Agent
 from autogpt.commands.decorators import run_in_workspace
-from benchmarks import bootstrap_agent
 
 
 class MockAgent(Agent, Mock):

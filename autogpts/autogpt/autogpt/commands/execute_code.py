@@ -296,6 +296,7 @@ def we_are_running_in_a_docker_container() -> bool:
     """
     return os.path.exists("/.dockerenv")
 
+
 @command(
     "execute_interactive_shell",
     "Executes a Shell Command that needs interactivity and return the output.",
