@@ -19,7 +19,6 @@ def agent(config: Config):
     command_registry = MagicMock()
     ai_config = AIConfig(ai_name="Test AI")
     triggering_prompt = "Triggering prompt"
-    workspace_directory = "workspace_directory"
 
     agent = Agent(
         memory=memory,
@@ -27,7 +26,6 @@ def agent(config: Config):
         ai_config=ai_config,
         config=config,
         triggering_prompt=triggering_prompt,
-        workspace_directory=workspace_directory,
     )
     return agent
 
