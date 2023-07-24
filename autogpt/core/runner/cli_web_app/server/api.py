@@ -15,6 +15,7 @@ from autogpt.workspace import Workspace
 
 PROJECT_DIR = Path().resolve()
 
+
 async def task_handler(task_input) -> StepHandler:
     task = task_input.__root__ if task_input else {}
     agent = bootstrap_agent(task.get("user_input"), False)
@@ -101,6 +102,7 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
         config=config,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
     )
+
 
 def get_command_registry(config: Config):
     command_registry = CommandRegistry()
