@@ -33,6 +33,8 @@ pydantic
 inflection
 agbenchmark>=0.0.9
 agent-protocol>=0.1.1
+inputimeout
+sarge
 
 # web server
 fastapi

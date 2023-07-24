@@ -2,6 +2,7 @@ import os
 import random
 import string
 import tempfile
+from typing import Generator
 
 import pytest
 
@@ -21,7 +22,7 @@ def random_code(random_string) -> str:
 
 
 @pytest.fixture
-def python_test_file(config: Config, random_code: str) -> str:
+def python_test_file(config: Config, random_code: str) -> Generator[str, None, None]:
     temp_file = tempfile.NamedTemporaryFile(dir=config.workspace_path, suffix=".py")
     temp_file.write(str.encode(random_code))
     temp_file.flush()
@@ -43,15 +44,18 @@ def test_execute_python_file(python_test_file: str, random_string: str, agent: A
 def test_execute_python_code(random_code: str, random_string: str, agent: Agent):
     ai_name = agent.ai_config.ai_name
 
-    result: str = sut.execute_python_code(random_code, "test_code", agent=agent)
+    result: str = sut.execute_python_code(random_code, b"test_code", agent=agent)
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
 
     # Check that the code is stored
     destination = os.path.join(
-        agent.config.workspace_path, ai_name, "executed_code", "test_code.py"
+        str(agent.config.workspace_path).encode(),
+        ai_name.encode(),
+        b"executed_code",
+        b"test_code.py",
     )
-    with open(destination) as f:
-        assert f.read() == random_code
+    with open(destination, "rb") as f:
+        assert f.read().decode() == random_code
 
 
 def test_execute_python_code_disallows_name_arg_path_traversal(
@@ -68,7 +72,10 @@ def test_execute_python_code_disallows_name_arg_path_traversal(
 def test_execute_python_code_overwrites_file(random_code: str, agent: Agent):
     ai_name = agent.ai_config.ai_name
     destination = os.path.join(
-        agent.config.workspace_path, ai_name, "executed_code", "test_code.py"
+        str(agent.config.workspace_path).encode(),
+        ai_name.encode(),
+        b"executed_code",
+        b"test_code.py",
     )
     os.makedirs(os.path.dirname(destination), exist_ok=True)
 
@@ -133,3 +140,34 @@ def test_execute_shell_allowlist_should_allow(agent: Agent, random_string: str):
 
     result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert "Hello" in result and random_string in result
+
+
+"""
+Tests for the InteractiveShellCommands class.
+"""
+from unittest.mock import patch
+
+
+def test_ask_user() -> None:
+    """Test that the ask_user method returns the expected responses."""
+    prompts = ["Question 1: ", "Question 2: ", "Question 3: "]
+    expected_responses = ["Answer 1", "Answer 2", "Answer 3"]
+    with patch("inputimeout.inputimeout", side_effect=expected_responses):
+        responses = sut.ask_user(prompts)
+
+    assert (
+        responses == expected_responses
+    ), f"Expected {expected_responses} but got {responses}"
+
+
+def test_ask_user_timeout() -> None:
+    """Test that the ask_user method returns the expected responses when a timeout occurs."""
+    prompts = ["Prompt 1:"]
+    timeout = 900
+
+    from inputimeout import TimeoutOccurred
+
+    with patch("inputimeout.inputimeout", side_effect=TimeoutOccurred):
+        responses = sut.ask_user(prompts, timeout)
+
+    assert responses == [f"Timed out after {timeout} seconds."]

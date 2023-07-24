@@ -284,3 +284,28 @@ def list_folder(folder: Path, agent: Agent) -> list[str]:
             found_files.append(relative_path)
 
     return found_files
+
+
+@command(
+    "exists",
+    "Efficiently check if a file or path exists",
+    {
+        "entity": {
+            "type": "string",
+            "description": "The name or path of the entity to check for.",
+            "required": True,
+        },
+    },
+)
+@sanitize_path_arg("entity")
+def exists(entity: str | Path, agent: Agent) -> bool:
+    """Efficiently check if a file or path exists.
+
+    Args:
+        entity (str | Path): The file or path to search for
+        agent (Agent): The agent that is executing the command
+
+    Returns:
+        bool: True if the  exists, otherwise False
+    """
+    return Path(entity).exists()
