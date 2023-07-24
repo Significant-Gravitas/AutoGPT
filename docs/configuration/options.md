@@ -4,9 +4,10 @@ Configuration is controlled through the `Config` object. You can set configurati
 
 ## Environment Variables
 
-- `AI_SETTINGS_FILE`: Location of AI Settings file. Default: ai_settings.yaml
+- `AI_SETTINGS_FILE`: Location of the AI Settings file relative to the Auto-GPT root directory. Default: ai_settings.yaml
 - `AUDIO_TO_TEXT_PROVIDER`: Audio To Text Provider. Only option currently is `huggingface`. Default: huggingface
 - `AUTHORISE_COMMAND_KEY`: Key response accepted when authorising commands. Default: y
+- `AZURE_CONFIG_FILE`: Location of the Azure Config file relative to the Auto-GPT root directory. Default: azure.yaml
 - `BROWSE_CHUNK_MAX_LENGTH`: When browsing website, define the length of chunks to summarize. Default: 3000
 - `BROWSE_SPACY_LANGUAGE_MODEL`: [spaCy language model](https://spacy.io/usage/models) to use when creating chunks. Default: en_core_web_sm
 - `CHAT_MESSAGES_ENABLED`: Enable chat messages. Optional
@@ -32,8 +33,8 @@ Configuration is controlled through the `Config` object. You can set configurati
 - `OPENAI_API_KEY`: *REQUIRED*- Your [OpenAI API Key](https://platform.openai.com/account/api-keys).
 - `OPENAI_ORGANIZATION`: Organization ID in OpenAI. Optional.
 - `PLAIN_OUTPUT`: Plain output, which disables the spinner. Default: False
-- `PLUGINS_CONFIG_FILE`: Path of plugins_config.yaml file. Default: plugins_config.yaml
-- `PROMPT_SETTINGS_FILE`: Location of Prompt Settings file. Default: prompt_settings.yaml
+- `PLUGINS_CONFIG_FILE`: Path of the Plugins Config file relative to the Auto-GPT root directory. Default: plugins_config.yaml
+- `PROMPT_SETTINGS_FILE`: Location of the Prompt Settings file relative to the Auto-GPT root directory. Default: prompt_settings.yaml
 - `REDIS_HOST`: Redis Host. Default: localhost
 - `REDIS_PASSWORD`: Redis Password. Optional. Default:
 - `REDIS_PORT`: Redis Port. Default: 6379
