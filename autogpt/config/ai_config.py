@@ -4,7 +4,6 @@ A module that contains the AIConfig class object that contains the configuration
 """
 from __future__ import annotations
 
-import os
 import platform
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -15,9 +14,6 @@ import yaml
 if TYPE_CHECKING:
     from autogpt.models.command_registry import CommandRegistry
     from autogpt.prompts.generator import PromptGenerator
-
-# Soon this will go in a folder where it remembers more stuff about the run(s)
-SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 
 
 class AIConfig:
@@ -57,14 +53,13 @@ class AIConfig:
         self.command_registry: CommandRegistry | None = None
 
     @staticmethod
-    def load(ai_settings_file: str = SAVE_FILE) -> "AIConfig":
+    def load(ai_settings_file: str | Path) -> "AIConfig":
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget)
         loaded from yaml file if yaml file exists, else returns class with no parameters.
 
         Parameters:
-            ai_settings_file (int): The path to the config yaml file.
-              DEFAULT: "../ai_settings.yaml"
+            ai_settings_file (Path): The path to the config yaml file.
 
         Returns:
             cls (object): An instance of given cls object
@@ -85,16 +80,15 @@ class AIConfig:
             for goal in config_params.get("ai_goals", [])
         ]
         api_budget = config_params.get("api_budget", 0.0)
-        # type: Type[AIConfig]
+
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
-    def save(self, ai_settings_file: str = SAVE_FILE) -> None:
+    def save(self, ai_settings_file: str | Path) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
         Parameters:
-            ai_settings_file(str): The path to the config yaml file.
-              DEFAULT: "../ai_settings.yaml"
+            ai_settings_file (Path): The path to the config yaml file.
 
         Returns:
             None

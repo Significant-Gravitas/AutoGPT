@@ -57,7 +57,7 @@ def test_debug_code_challenge_a(
 
     output = execute_python_file(
         get_workspace_path(workspace, TEST_FILE_PATH),
-        dummy_agent,
+        agent=dummy_agent,
     )
 
     assert "error" not in output.lower(), f"Errors found in output: {output}!"

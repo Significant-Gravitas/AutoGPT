@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from colorama import Fore
@@ -25,10 +25,10 @@ class Logger(metaclass=Singleton):
 
     def __init__(self):
         # create log directory if it doesn't exist
-        this_files_dir_path = os.path.dirname(__file__)
-        log_dir = os.path.join(this_files_dir_path, "../logs")
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        # TODO: use workdir from config
+        self.log_dir = Path(__file__).parent.parent.parent / "logs"
+        if not self.log_dir.exists():
+            self.log_dir.mkdir()
 
         log_file = "activity.log"
         error_file = "error.log"
@@ -46,9 +46,7 @@ class Logger(metaclass=Singleton):
         self.console_handler.setFormatter(console_formatter)
 
         # Info handler in activity.log
-        self.file_handler = logging.FileHandler(
-            os.path.join(log_dir, log_file), "a", "utf-8"
-        )
+        self.file_handler = logging.FileHandler(self.log_dir / log_file, "a", "utf-8")
         self.file_handler.setLevel(logging.DEBUG)
         info_formatter = AutoGptFormatter(
             "%(asctime)s %(levelname)s %(title)s %(message_no_color)s"
@@ -56,9 +54,7 @@ class Logger(metaclass=Singleton):
         self.file_handler.setFormatter(info_formatter)
 
         # Error handler error.log
-        error_handler = logging.FileHandler(
-            os.path.join(log_dir, error_file), "a", "utf-8"
-        )
+        error_handler = logging.FileHandler(self.log_dir / error_file, "a", "utf-8")
         error_handler.setLevel(logging.ERROR)
         error_formatter = AutoGptFormatter(
             "%(asctime)s %(levelname)s %(module)s:%(funcName)s:%(lineno)d %(title)s"
@@ -179,13 +175,9 @@ class Logger(metaclass=Singleton):
 
         self.typewriter_log("DOUBLE CHECK CONFIGURATION", Fore.YELLOW, additionalText)
 
-    def log_json(self, data: Any, file_name: str) -> None:
-        # Define log directory
-        this_files_dir_path = os.path.dirname(__file__)
-        log_dir = os.path.join(this_files_dir_path, "../logs")
-
+    def log_json(self, data: Any, file_name: str | Path) -> None:
         # Create a handler for JSON files
-        json_file_path = os.path.join(log_dir, file_name)
+        json_file_path = self.log_dir / file_name
         json_data_handler = JsonFileHandler(json_file_path)
         json_data_handler.setFormatter(JsonFormatter())
 
@@ -193,11 +185,6 @@ class Logger(metaclass=Singleton):
         self.json_logger.addHandler(json_data_handler)
         self.json_logger.debug(data)
         self.json_logger.removeHandler(json_data_handler)
-
-    def get_log_directory(self) -> str:
-        this_files_dir_path = os.path.dirname(__file__)
-        log_dir = os.path.join(this_files_dir_path, "../../logs")
-        return os.path.abspath(log_dir)
 
 
 logger = Logger()

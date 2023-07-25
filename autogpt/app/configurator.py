@@ -1,19 +1,17 @@
 """Configurator module."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Literal
 
 import click
 from colorama import Back, Fore, Style
 
 from autogpt import utils
+from autogpt.config import Config
 from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
-from autogpt.llm.utils import check_model
+from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import logger
 from autogpt.memory.vector import get_supported_memory_backends
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
 
 
 def create_config(
@@ -165,3 +163,25 @@ def create_config(
 
     if skip_news:
         config.skip_news = True
+
+
+def check_model(
+    model_name: str,
+    model_type: Literal["smart_llm", "fast_llm"],
+    config: Config,
+) -> str:
+    """Check if model is available for use. If not, return gpt-3.5-turbo."""
+    openai_credentials = config.get_openai_credentials(model_name)
+    api_manager = ApiManager()
+    models = api_manager.get_models(**openai_credentials)
+
+    if any(model_name in m["id"] for m in models):
+        return model_name
+
+    logger.typewriter_log(
+        "WARNING: ",
+        Fore.YELLOW,
+        f"You do not have access to {model_name}. Setting {model_type} to "
+        f"gpt-3.5-turbo.",
+    )
+    return "gpt-3.5-turbo"

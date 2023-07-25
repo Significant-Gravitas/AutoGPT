@@ -3,13 +3,13 @@ from __future__ import annotations
 import copy
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Iterator, Optional
 
 if TYPE_CHECKING:
-    from autogpt.agents import Agent
+    from autogpt.agents import Agent, BaseAgent
+    from autogpt.config import Config
 
-from autogpt.config import Config
-from autogpt.json_utils.utilities import extract_json_from_response
+from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import (
@@ -17,13 +17,18 @@ from autogpt.llm.utils import (
     count_string_tokens,
     create_chat_completion,
 )
-from autogpt.logs import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME, logger
+from autogpt.logs import (
+    PROMPT_SUMMARY_FILE_NAME,
+    SUMMARY_FILE_NAME,
+    LogCycleHandler,
+    logger,
+)
 
 
 @dataclass
 class MessageHistory(ChatSequence):
     max_summary_tlength: int = 500
-    agent: Optional[Agent] = None
+    agent: Optional[BaseAgent | Agent] = None
     summary: str = "I was created"
     last_trimmed_index: int = 0
 
@@ -80,7 +85,9 @@ Latest Development:
 
         return new_summary_message, new_messages_not_in_chain
 
-    def per_cycle(self, messages: list[Message] | None = None):
+    def per_cycle(
+        self, messages: Optional[list[Message]] = None
+    ) -> Iterator[tuple[Message | None, Message, Message]]:
         """
         Yields:
             Message: a message containing user input
@@ -98,7 +105,7 @@ Latest Development:
             result_message = messages[i + 1]
             try:
                 assert (
-                    extract_json_from_response(ai_message.content) != {}
+                    extract_dict_from_response(ai_message.content) != {}
                 ), "AI response is not a valid JSON object"
                 assert result_message.type == "action_result"
 
@@ -153,7 +160,7 @@ Latest Development:
 
                 # Remove "thoughts" dictionary from "content"
                 try:
-                    content_dict = extract_json_from_response(event.content)
+                    content_dict = extract_dict_from_response(event.content)
                     if "thoughts" in content_dict:
                         del content_dict["thoughts"]
                     event.content = json.dumps(content_dict)
@@ -177,7 +184,7 @@ Latest Development:
         )
         max_input_tokens = summ_model.max_tokens - max_summary_length
         summary_tlength = count_string_tokens(self.summary, summ_model.name)
-        batch = []
+        batch: list[Message] = []
         batch_tlength = 0
 
         # TODO: Put a cap on length of total new events and drop some previous events to
@@ -190,7 +197,7 @@ Latest Development:
                 > max_input_tokens - prompt_template_length - summary_tlength
             ):
                 # The batch is full. Summarize it and start a new one.
-                self.summarize_batch(batch, config, max_summary_length)
+                self._update_summary_with_batch(batch, config, max_summary_length)
                 summary_tlength = count_string_tokens(self.summary, summ_model.name)
                 batch = [event]
                 batch_tlength = event_tlength
@@ -200,19 +207,25 @@ Latest Development:
 
         if batch:
             # There's an unprocessed batch. Summarize it.
-            self.summarize_batch(batch, config, max_summary_length)
+            self._update_summary_with_batch(batch, config, max_summary_length)
 
         return self.summary_message()
 
-    def summarize_batch(
+    def _update_summary_with_batch(
         self, new_events_batch: list[Message], config: Config, max_output_length: int
-    ):
+    ) -> None:
         prompt = MessageHistory.SUMMARIZATION_PROMPT.format(
             summary=self.summary, new_events=new_events_batch
         )
 
         prompt = ChatSequence.for_model(config.fast_llm, [Message("user", prompt)])
-        if self.agent:
+        if (
+            self.agent is not None
+            and hasattr(self.agent, "created_at")
+            and isinstance(
+                getattr(self.agent, "log_cycle_handler", None), LogCycleHandler
+            )
+        ):
             self.agent.log_cycle_handler.log_cycle(
                 self.agent.ai_config.ai_name,
                 self.agent.created_at,
@@ -225,7 +238,13 @@ Latest Development:
             prompt, config, max_tokens=max_output_length
         ).content
 
-        if self.agent:
+        if (
+            self.agent is not None
+            and hasattr(self.agent, "created_at")
+            and isinstance(
+                getattr(self.agent, "log_cycle_handler", None), LogCycleHandler
+            )
+        ):
             self.agent.log_cycle_handler.log_cycle(
                 self.agent.ai_config.ai_name,
                 self.agent.created_at,

@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, create_config
 from autogpt.config import Config, ConfigBuilder
-from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL, create_config
 from autogpt.workspace.workspace import Workspace
 
 
@@ -161,7 +161,7 @@ azure_model_map:
 
     os.environ["USE_AZURE"] = "True"
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
-    config = ConfigBuilder.build_config_from_env()
+    config = ConfigBuilder.build_config_from_env(workspace.root.parent)
 
     assert config.openai_api_type == "azure"
     assert config.openai_api_base == "https://dummy.openai.azure.com"

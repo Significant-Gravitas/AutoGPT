@@ -12,4 +12,3 @@ from .log_cycle import (
     LogCycleHandler,
 )
 from .logger import Logger, logger
-from .utils import print_assistant_thoughts, remove_ansi_escape

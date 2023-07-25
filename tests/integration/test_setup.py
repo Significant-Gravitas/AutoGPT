@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
+from autogpt.app.setup import generate_aiconfig_automatic, prompt_user
 from autogpt.config.ai_config import AIConfig
-from autogpt.setup import generate_aiconfig_automatic, prompt_user
 
 
 @pytest.mark.vcr

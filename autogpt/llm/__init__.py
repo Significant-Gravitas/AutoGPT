@@ -1,6 +1,7 @@
 from autogpt.llm.base import (
     ChatModelInfo,
     ChatModelResponse,
+    ChatSequence,
     EmbeddingModelInfo,
     EmbeddingModelResponse,
     LLMResponse,
@@ -10,6 +11,7 @@ from autogpt.llm.base import (
 
 __all__ = [
     "Message",
+    "ChatSequence",
     "ModelInfo",
     "ChatModelInfo",
     "EmbeddingModelInfo",
