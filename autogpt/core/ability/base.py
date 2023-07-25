@@ -88,5 +88,5 @@ class AbilityRegistry(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def perform(self, ability_name: str, **kwargs: Any) -> AbilityResult:
+    async def perform(self, ability_name: str, **kwargs: Any) -> AbilityResult:
         ...
