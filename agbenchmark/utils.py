@@ -88,8 +88,8 @@ def calculate_info_test_path(reports_path: Path) -> str:
             print(f"Found {related_file_count} files with '{test_arg}' in the name")
             # Take the number from before the _ and add the .{number}
 
-            prefix = ""
-            math.floor(prefix_number)
+            prefix = 0
+            prefix = math.floor(prefix_number)
 
             run_name = f"{prefix}.{related_file_count}_{test_arg}.json"
 
@@ -148,32 +148,36 @@ def get_highest_success_difficulty(
     highest_difficulty_level = 0
 
     for test_name, test_data in data.items():
-        if test_data.get("tests", None):
-            highest_difficulty_str = test_data["metrics"]["highest_difficulty"]
-            try:
-                highest_difficulty = DifficultyLevel[highest_difficulty_str]
-                highest_difficulty_level = DIFFICULTY_MAP[highest_difficulty]
-            except KeyError:
-                print(
-                    f"Unexpected difficulty level '{highest_difficulty_str}' in test '{test_name}'"
-                )
-                continue
-        else:
-            if test_data["metrics"]["success"]:
-                difficulty_str = test_data["metrics"]["difficulty"]
-
+        try:
+            if test_data.get("tests", None):
+                highest_difficulty_str = test_data["metrics"]["highest_difficulty"]
                 try:
-                    difficulty_enum = DifficultyLevel[difficulty_str.lower()]
-                    difficulty_level = DIFFICULTY_MAP[difficulty_enum]
-
-                    if difficulty_level > highest_difficulty_level:
-                        highest_difficulty = difficulty_enum
-                        highest_difficulty_level = difficulty_level
+                    highest_difficulty = DifficultyLevel[highest_difficulty_str]
+                    highest_difficulty_level = DIFFICULTY_MAP[highest_difficulty]
                 except KeyError:
                     print(
-                        f"Unexpected difficulty level '{difficulty_str}' in test '{test_name}'"
+                        f"Unexpected difficulty level '{highest_difficulty_str}' in test '{test_name}'"
                     )
                     continue
+            else:
+                if test_data["metrics"]["success"]:
+                    difficulty_str = test_data["metrics"]["difficulty"]
+
+                    try:
+                        difficulty_enum = DifficultyLevel[difficulty_str.lower()]
+                        difficulty_level = DIFFICULTY_MAP[difficulty_enum]
+
+                        if difficulty_level > highest_difficulty_level:
+                            highest_difficulty = difficulty_enum
+                            highest_difficulty_level = difficulty_level
+                    except KeyError:
+                        print(
+                            f"Unexpected difficulty level '{difficulty_str}' in test '{test_name}'"
+                        )
+                        continue
+        except Exception:
+            print(f"Make sure you selected the right test, no reports were generated.")
+            break
 
     if highest_difficulty is not None:
         highest_difficulty_str = highest_difficulty.name  # convert enum to string

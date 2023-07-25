@@ -137,19 +137,25 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
         return
 
     challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
-    is_suite = None
+    # this is a non same task suite, with the location pointing to a data.json
+    is_suite = SuiteConfig.suite_data_if_suite(
+        Path(__file__).parent.parent / Path(challenge_location)
+    )
 
     try:
+        # this is for a same_task suite pointing to the directory where the suite lives
         is_suite = SuiteConfig.deserialize(
             Path(__file__).parent.parent / Path(challenge_location) / "suite.json"
         )
-    except:
+    except Exception as e:
         pass
+
+    flags = "--test" in sys.argv or "--maintain" in sys.argv or "--improve" in sys.argv
 
     if call.when == "call":
         # if it's a same task suite, we combine the report.
         # but not if it's a single --test
-        if is_suite and is_suite.same_task and "--test" not in sys.argv:
+        if is_suite and is_suite.same_task and not flags:
             generate_combined_suite_report(item, challenge_data, challenge_location)
         else:
             # single non suite test
@@ -159,7 +165,7 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
         finalize_reports(item, challenge_data)
 
         # for separate task suites (same_task=false), their data is the same as a regular suite, but we combined the report at the end
-        if is_suite and not is_suite.same_task:
+        if is_suite and not is_suite.same_task and not flags:
             suite_reports.setdefault(is_suite.prefix, []).append(challenge_data["name"])
 
 
