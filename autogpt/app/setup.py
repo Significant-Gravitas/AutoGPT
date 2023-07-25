@@ -9,7 +9,7 @@ from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.llm.base import ChatSequence, Message
-from autogpt.llm.chat import create_chat_completion
+from autogpt.llm.utils import create_chat_completion
 from autogpt.logs import logger
 from autogpt.prompts.default_prompts import (
     DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
