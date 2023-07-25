@@ -34,7 +34,7 @@ def create_single_test(
     # if its a parallel run suite we just give it the data
     if suite_config and suite_config.same_task:
         artifacts_location = str(Path(challenge_location).resolve())
-        if "--test" or "--maintain" or "--improve" in sys.argv:
+        if "--test" in sys.argv or "--maintain" in sys.argv or "--improve" in sys.argv:
             artifacts_location = str(Path(challenge_location).resolve().parent.parent)
         else:
             setattr(
@@ -99,7 +99,7 @@ def create_challenge(
         grandparent_dir = path.parent.parent
 
         # if its a single test running we dont care about the suite
-        if "--test" or "--maintain" or "--improve" in sys.argv:
+        if "--test" in sys.argv or "--maintain" in sys.argv or "--improve" in sys.argv:
             create_single_suite_challenge(suite_config, data, path)
             return json_files
 
@@ -191,8 +191,9 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
             continue
 
         # --maintain and --improve flag
-        improve_flag = regression_tests.get(data["name"], None)
-        maintain_flag = not improve_flag
+        in_regression = regression_tests.get(data["name"], None)
+        improve_flag = in_regression and "--improve" in commands
+        maintain_flag = not in_regression and "--maintain" in commands
         if "--maintain" in commands and maintain_flag:
             continue
         elif "--improve" in commands and improve_flag:

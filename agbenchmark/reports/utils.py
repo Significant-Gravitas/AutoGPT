@@ -45,8 +45,6 @@ def generate_combined_suite_report(
     )
     item.test_name = suite_config.prefix
 
-    print("Generating combined suite report...", challenge_data, challenge_location)
-
     data_paths = suite_config.get_data_paths(root_path / Path(challenge_location))
     scores = getattr(item, "scores", {})
     mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
@@ -296,7 +294,9 @@ def generate_separate_suite_reports(suite_reports: dict) -> None:
 
 
 def session_finish(suite_reports: dict) -> None:
-    generate_separate_suite_reports(suite_reports)
+    flags = "--test" in sys.argv or "--maintain" in sys.argv or "--improve" in sys.argv
+    if not flags:
+        generate_separate_suite_reports(suite_reports)
 
     with open(CONFIG_PATH, "r") as f:
         config = json.load(f)
