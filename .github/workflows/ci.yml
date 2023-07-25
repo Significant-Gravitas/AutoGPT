@@ -206,6 +206,9 @@ jobs:
           HELICONE_CACHE_ENABLED: false
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
           REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
+          WOLFRAM_ALPHA_APPID: ${{ secrets.WOLFRAM_ALPHA_APPID }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          BING_SUBSCRIPTION_KEY: ${{ secrets.BING_SUBSCRIPTION_KEY }}
 
       - name: Upload reports
         if: always()
