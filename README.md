@@ -1,37 +1,19 @@
-# Auto-GPT Benchmark
+# Auto-GPT Benchmarks
 
 A repo built for the purpose of benchmarking the performance of agents far and wide, regardless of how they are set up and how they work
 
 ## Scores:
-Radio chart for each agent coming soon !
+<img width="733" alt="Screenshot 2023-07-25 at 10 35 01 AM" src="https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/assets/9652976/98963e0b-18b9-4b17-9a6a-4d3e4418af70">
 
-## Detailed results
-:warning: These results are constantly evolving at the moment. We will publish an official benchmark result very soon.
-
-Interface
-
-| Task         | Auto-GPT | gpt-engineer       | mini-agi | smol-developer     |
-|--------------|----------|--------------------|----------|--------------------|
-| Write File   | :x:      | :white_check_mark: | tbd      | :white_check_mark: |
-| Read File    | :x:      | :x:                | tbd      | :x:                |
-| Search File  | :x:      | :x:                | tbd      | :x:                |
+## Ranking overall:
+- 1- [Beebot](https://github.com/Significant-Gravitas/Auto-GPT)
+- 2- [mini-agi](https://github.com/muellerberndt/mini-agi)
+- 3- [Auto-GPT](https://github.com/Significant-Gravitas/Auto-GPT)
+## Detailed results:
 
 
-Code
+<img width="733" alt="Screenshot 2023-07-25 at 10 42 15 AM" src="https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/assets/9652976/39be464c-c842-4437-b28a-07d878542a83">
 
-| Task                               | Auto-GPT | gpt-engineer       | mini-agi | smol-developer     |
-|------------------------------------|----------|--------------------|----------|--------------------|
-| Debug Simple Typo With Guidance    | :x:      | :x:                | tbd      | :x:                |
-| Debug Simple Typo Without Guidance | :x:      | :x:                | tbd      | :x:                |
-| Basic Code Generation              | :x:      | :white_check_mark: | tbd      | :white_check_mark: |
-| Create Simple Web Server           | :x:      | :x:                | tbd      | :x:                |
+[Click here to see the results and the raw data!](https://docs.google.com/spreadsheets/d/1WXm16P2AHNbKpkOI0LYBpcsGG0O7D8HYTG5Uj0PaJjA/edit#gid=203558751)!
 
-
-Memory
-
-| Task                                       | Auto-GPT |
-|--------------------------------------------|----------|
-| Basic Memory                               | :x:      |
-| Remember Multiple Ids                      | :x:      |
-| Remember Multiple Ids With Noise           | :x:      |
-| Remember Multiple Phrases With Noise       | :x:      |
+More agents coming soon !
