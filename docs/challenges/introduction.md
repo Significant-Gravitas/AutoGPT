@@ -28,4 +28,4 @@ We're slowly transitioning to agbenchmark. agbenchmark is a simpler way to impro
 agbenchmark start
 ```
 and beat as many challenges as possible.
-For more agbenchmark options, look at the [readme](https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/tree/master/agbenchmark)https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/tree/master/agbenchmark.
+For more agbenchmark options, look at the [readme](https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/tree/master/agbenchmark).
