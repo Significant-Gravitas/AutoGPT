@@ -7,7 +7,7 @@ from typing import Any
 import click
 import pytest
 
-from agbenchmark.utils import calculate_dynamic_paths
+from agbenchmark.utils.utils import calculate_dynamic_paths
 
 CURRENT_DIRECTORY = Path(__file__).resolve().parent
 

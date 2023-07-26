@@ -1,3 +1,0 @@
-{
-  "workspace": "${os.path.join(Path.home(), 'miniagi')}"
-}

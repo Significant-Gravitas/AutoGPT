@@ -20,7 +20,8 @@
 3. `poetry shell`
 4. `poetry install`
 5. `cp .env_example .env`
-6. `agbenchmark start --mock`
+6. `git submodule update --init --remote --recursive`
+7. `agbenchmark start --mock`
    Keep config the same and watch the logs :)
 
 ### To run with mini-agi
@@ -28,7 +29,8 @@
 1. Navigate to `auto-gpt-benchmarks/agent/mini-agi`
 2. `pip install -r requirements.txt`
 3. `cp .env_example .env`, set `PROMPT_USER=false` and add your `OPENAI_API_KEY=`. Sset `MODEL="gpt-3.5-turbo"` if you don't have access to `gpt-4` yet. Also make sure you have Python 3.10^ installed
-4. Make sure to follow the commands above, and remove mock flag `agbenchmark start`
+4. set `AGENT_NAME=mini-agi` in `.env` file and where you want your `REPORT_LOCATION` to be
+5. Make sure to follow the commands above, and remove mock flag `agbenchmark start`
 
 - To add requirements `poetry add requirement`.
 
@@ -65,6 +67,6 @@ https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/pull/48/files
 **To just use as the benchmark for your agent**. `pip install` the package and run `agbenchmark start`
 
 **For internal Auto-GPT ci runs**, specify the `AGENT_NAME` you want you use and set the `HOME_ENV`.
-Ex. `HOME_ENV=ci AGENT_NAME=mini-agi`
+Ex. `AGENT_NAME=mini-agi`
 
 **To develop agent alongside benchmark**, you can specify the `AGENT_NAME` you want you use and add as a submodule to the repo
