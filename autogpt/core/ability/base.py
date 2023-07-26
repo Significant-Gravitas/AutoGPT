@@ -1,12 +1,12 @@
 import abc
 from pprint import pformat
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import inflection
-from pydantic import Field
 
 from autogpt.core.ability.schema import AbilityResult
 from autogpt.core.configuration import SystemConfiguration
+from autogpt.core.configuration.schema import UserConfigurable
 from autogpt.core.planning.simple import LanguageModelConfiguration
 
 
@@ -16,10 +16,10 @@ class AbilityConfiguration(SystemConfiguration):
     from autogpt.core.plugin.base import PluginLocation
 
     location: PluginLocation
-    packages_required: list[str] = Field(default_factory=list)
+    packages_required: list[str] = UserConfigurable(default_factory=list)
     language_model_required: LanguageModelConfiguration = None
-    memory_provider_required: bool = False
-    workspace_required: bool = False
+    memory_provider_required: bool = UserConfigurable(default=False)
+    workspace_required: bool = UserConfigurable(default=False)
 
 
 class Ability(abc.ABC):
@@ -50,7 +50,7 @@ class Ability(abc.ABC):
         return []
 
     @abc.abstractmethod
-    async def __call__(self, *args, **kwargs) -> AbilityResult:
+    async def __call__(self, *args: Any, **kwargs: Any) -> AbilityResult:
         ...
 
     def __str__(self) -> str:
@@ -88,5 +88,5 @@ class AbilityRegistry(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def perform(self, ability_name: str, **kwargs) -> AbilityResult:
+    def perform(self, ability_name: str, **kwargs: Any) -> AbilityResult:
         ...
