@@ -109,6 +109,6 @@ def get_command_registry(config: Config):
     enabled_command_categories = [
         x for x in COMMAND_CATEGORIES if x not in config.disabled_command_categories
     ]
-    for command_category in enabled_command_categories:
-        command_registry.import_commands(command_category)
+    for command_module in enabled_command_categories:
+        command_registry.import_command_module(command_module)
     return command_registry
