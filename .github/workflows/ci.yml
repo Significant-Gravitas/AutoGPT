@@ -27,7 +27,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
 
-          - name: Set up Python ${{ env.min-python-version }}
+      - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
         with:
           python-version: ${{ env.min-python-version }}
