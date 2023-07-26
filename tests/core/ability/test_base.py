@@ -1,7 +1,7 @@
 import abc
 from importlib import import_module
 from pprint import pformat
-from typing import Any, Dict, List
+from typing import Any, ClassVar, Dict, List
 
 import pydantic
 import pytest
@@ -177,6 +177,15 @@ class TestAbility:
 
     def setup_method(self) -> None:
         self.ability = MockDerivedAbility()
+
+    @staticmethod
+    def test_base_variables_exist() -> None:
+        # assert 'default_configuration' exists in Ability class
+        assert "default_configuration" in Ability.__annotations__
+
+        # assert 'default_configuration' has the correct type
+        default_configuration_type = Ability.__annotations__["default_configuration"]
+        assert default_configuration_type is ClassVar[AbilityConfiguration]
 
     @staticmethod
     def test_base_methods_exist() -> None:
