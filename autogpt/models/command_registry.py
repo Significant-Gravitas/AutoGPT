@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
@@ -33,8 +33,8 @@ class CommandRegistry:
         name: str
         title: str
         description: str
-        commands: list[Command] = []
-        modules: list[ModuleType] = []
+        commands: list[Command] = field(default_factory=list[Command])
+        modules: list[ModuleType] = field(default_factory=list[ModuleType])
 
     def __init__(self):
         self.commands = {}
