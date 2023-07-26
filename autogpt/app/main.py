@@ -126,10 +126,12 @@ def run_auto_gpt(
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
-    Workspace.set_workspace_directory(config, workspace_directory)
+    config.workspace_path = Workspace.init_workspace_directory(
+        config, workspace_directory
+    )
 
     # HACK: doing this here to collect some globals that depend on the workspace.
-    Workspace.set_file_logger_path(config, config.workspace_path)
+    config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
 
     config.plugins = scan_plugins(config, config.debug_mode)
     # Create a CommandRegistry instance and scan default folder
