@@ -42,7 +42,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry install
+          poetry install -vvv
 
       - name: Lint with flake8
         run: poetry run flake8 --exclude=code,agent
