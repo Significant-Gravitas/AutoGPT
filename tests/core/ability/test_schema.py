@@ -6,7 +6,7 @@ import enum
 
 import pytest
 
-from autogpt.core.ability.schema import ContentType, Knowledge
+from autogpt.core.ability.schema import AbilityResult, ContentType, Knowledge
 
 
 class TestContentType:
@@ -94,3 +94,62 @@ class TestKnowledgeModel:
         # check they have the right name too
         for field_name in members.keys():
             assert field_name in ("content", "content_type", "content_metadata")
+
+
+class TestAbilityResultModel:
+    """
+    Provides necessary tests for the AbilityResult class.
+    """
+
+    @staticmethod
+    def test_ability_result_attributes() -> None:
+        # Test if the AbilityResult class has the expected attributes
+        result = AbilityResult(
+            ability_name="TestAbility",
+            ability_args={"arg1": "value1", "arg2": "value2"},
+            success=True,
+            message="Ability executed successfully.",
+            new_knowledge=Knowledge(
+                content="Sample content",
+                content_type=ContentType.TEXT,
+                content_metadata={},
+            ),
+        )
+
+        assert result.ability_name == "TestAbility"
+        assert result.ability_args == {"arg1": "value1", "arg2": "value2"}
+        assert result.success is True
+        assert result.message == "Ability executed successfully."
+        assert isinstance(result.new_knowledge, (Knowledge, type(None)))
+
+    @staticmethod
+    def test_ability_result_summary() -> None:
+        # Test the summary method of AbilityResult
+        result = AbilityResult(
+            ability_name="TestAbility",
+            ability_args={"arg1": "value1", "arg2": "value2"},
+            success=True,
+            message="Ability executed successfully.",
+            new_knowledge=Knowledge(
+                content="Sample content",
+                content_type=ContentType.TEXT,
+                content_metadata={},
+            ),
+        )
+
+        expected_summary = (
+            "TestAbility(arg1=value1, arg2=value2): Ability executed successfully."
+        )
+        assert result.summary() == expected_summary
+
+    @staticmethod
+    def test_ability_result_default_new_knowledge() -> None:
+        # Test if new_knowledge attribute is None by default
+        result = AbilityResult(
+            ability_name="TestAbility",
+            ability_args={"arg1": "value1", "arg2": "value2"},
+            success=True,
+            message="Ability executed successfully.",
+        )
+
+        assert result.new_knowledge is None
