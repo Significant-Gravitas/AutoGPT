@@ -29,3 +29,4 @@
 [submodule "agbenchmark/challenges"]
 	path = agbenchmark/challenges
 	url = https://github.com/SilenNaihin/agbenchmark_challenges.git
+	branch = main
