@@ -211,13 +211,17 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         if (
             config.getoption("--improve")
             or config.getoption("--category")
-            or config.getoption("--suite")
+            or test_class_instance.setup_dependencies  # same_task suite
         ):
             dependencies = [dep for dep in dependencies if not data.get(dep, None)]
-        if config.getoption("--test"):
-            dependencies = []
-
-        if config.getoption("--no_dep"):
+        if (
+            config.getoption("--test")
+            or (  # separate task suite
+                not test_class_instance.setup_dependencies
+                and config.getoption("--suite")
+            )
+            or config.getoption("--no_dep")
+        ):
             dependencies = []
 
         categories = test_class_instance.data.category
