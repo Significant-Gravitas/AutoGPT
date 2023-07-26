@@ -108,7 +108,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry install
+          poetry install -vvv
           poetry run agbenchmark start --mock
           poetry run agbenchmark start --mock --maintain
           poetry build
