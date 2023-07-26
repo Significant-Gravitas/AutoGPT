@@ -134,36 +134,9 @@ def run_auto_gpt(
     config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
 
     config.plugins = scan_plugins(config, config.debug_mode)
+
     # Create a CommandRegistry instance and scan default folder
-    command_registry = CommandRegistry()
-
-    logger.debug(
-        f"The following command categories are disabled: {config.disabled_command_categories}"
-    )
-    enabled_command_categories = [
-        x for x in COMMAND_CATEGORIES if x not in config.disabled_command_categories
-    ]
-
-    logger.debug(
-        f"The following command categories are enabled: {enabled_command_categories}"
-    )
-
-    for command_category in enabled_command_categories:
-        command_registry.import_commands(command_category)
-
-    # Unregister commands that are incompatible with the current config
-    incompatible_commands = []
-    for command in command_registry.commands.values():
-        if callable(command.enabled) and not command.enabled(config):
-            command.enabled = False
-            incompatible_commands.append(command)
-
-    for command in incompatible_commands:
-        command_registry.unregister(command)
-        logger.debug(
-            f"Unregistering incompatible command: {command.name}, "
-            f"reason - {command.disabled_reason or 'Disabled by current config.'}"
-        )
+    command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
 
     ai_config = construct_main_ai_config(
         config,
