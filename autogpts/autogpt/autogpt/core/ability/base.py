@@ -3,23 +3,52 @@ from pprint import pformat
 from typing import Any, ClassVar
 
 import inflection
+import pydantic
 from pydantic import Field
 
 from autogpt.core.ability.schema import AbilityResult
 from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.planning.simple import LanguageModelConfiguration
+from autogpt.core.plugin.base import PluginLocation
 
 
 class AbilityConfiguration(SystemConfiguration):
     """Struct for model configuration."""
-
-    from autogpt.core.plugin.base import PluginLocation
 
     location: PluginLocation
     packages_required: list[str] = Field(default_factory=list)
     language_model_required: LanguageModelConfiguration = None
     memory_provider_required: bool = False
     workspace_required: bool = False
+
+    @pydantic.validator("location")
+    def evaluate_location(cls, value: PluginLocation) -> PluginLocation:
+        assert isinstance(value, PluginLocation)
+        return value
+
+    @pydantic.validator("packages_required")
+    def evaluate_packages_required(cls, value: list) -> list:
+        assert isinstance(value, list)
+        for s in value:
+            assert isinstance(s, str)
+        return value
+
+    @pydantic.validator("language_model_required")
+    def evaluate_language_model_required(
+        cls, value: LanguageModelConfiguration
+    ) -> LanguageModelConfiguration:
+        assert isinstance(value, LanguageModelConfiguration)
+        return value
+
+    @pydantic.validator("workspace_required")
+    def evaluate_workspace_required(cls, value: bool) -> bool:
+        assert isinstance(value, bool)
+        return value
+
+    @pydantic.validator("memory_provider_required")
+    def evaluate_memory_provider_required(cls, value: bool) -> bool:
+        assert isinstance(value, bool)
+        return value
 
 
 class Ability(abc.ABC):
