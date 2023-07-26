@@ -8,8 +8,7 @@ from typing import Any, Dict, Generator
 
 import pytest
 
-from agbenchmark.challenges.data_types import SuiteConfig
-from agbenchmark.reports.utils import (
+from agbenchmark.reports.reports import (
     finalize_reports,
     generate_combined_suite_report,
     generate_single_call_report,
@@ -17,6 +16,7 @@ from agbenchmark.reports.utils import (
     setup_dummy_dependencies,
 )
 from agbenchmark.start_benchmark import CONFIG_PATH, get_regression_data
+from agbenchmark.utils.data_types import SuiteConfig
 
 
 def resolve_workspace(workspace: str) -> str:
@@ -221,6 +221,7 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
                 and config.getoption("--suite")
             )
             or config.getoption("--no_dep")
+            or config.getoption("--maintain")
         ):
             dependencies = []
 
