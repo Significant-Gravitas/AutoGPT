@@ -515,6 +515,21 @@ google-auth = ">=1.12.0"
 google-auth-oauthlib = ">=0.4.1"
 
 [[package]]
+name = "helicone"
+version = "1.0.6"
+description = "A Python wrapper for the OpenAI API that logs all requests to Helicone."
+optional = false
+python-versions = ">=3.8.1"
+files = [
+    {file = "helicone-1.0.6-py3-none-any.whl", hash = "sha256:a735096a3d616399210a2cf951360b45418fbea6af5f21fb61b6a1b99c4d75da"},
+    {file = "helicone-1.0.6.tar.gz", hash = "sha256:25f9459a9b427726d3373cccc64776034b6db5fe39b3f5c48efdbad9a37fffb4"},
+]
+
+[package.dependencies]
+lockfile = ">=0.12.2,<0.13.0"
+openai = ">=0.27.0,<0.28.0"
+
+[[package]]
 name = "httplib2"
 version = "0.22.0"
 description = "A comprehensive HTTP client library."
@@ -566,6 +581,17 @@ colors = ["colorama (>=0.4.3)"]
 pipfile-deprecated-finder = ["pip-shims (>=0.5.2)", "pipreqs", "requirementslib"]
 plugins = ["setuptools"]
 requirements-deprecated-finder = ["pip-api", "pipreqs"]
+
+[[package]]
+name = "lockfile"
+version = "0.12.2"
+description = "Platform-independent file locking module"
+optional = false
+python-versions = "*"
+files = [
+    {file = "lockfile-0.12.2-py2.py3-none-any.whl", hash = "sha256:6c3cb24f344923d30b2785d5ad75182c8ea7ac1b6171b08657258ec7429d50fa"},
+    {file = "lockfile-0.12.2.tar.gz", hash = "sha256:6aed02de03cba24efabcd600b30540140634fc06cfa603822d508d5361e9f799"},
+]
 
 [[package]]
 name = "mccabe"
@@ -1439,4 +1465,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "69391ed283544bc6ce50a65f5c8fb0aa4e2ced538159f5ad0464ba255882b45c"
+content-hash = "54bf8b431e1c64c947e36d48ebef5463bf84cf0c909ce17b639f9ef1228389d5"

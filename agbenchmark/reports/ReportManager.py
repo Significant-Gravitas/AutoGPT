@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from agbenchmark.start_benchmark import BENCHMARK_START_TIME
 from agbenchmark.utils.utils import get_highest_success_difficulty
 
 
@@ -62,6 +63,7 @@ class ReportManager:
         self.tests = {
             "command": command.split(os.sep)[-1],
             "completion_time": datetime.now().strftime("%Y-%m-%d-%H:%M"),
+            "benchmark_start_time": BENCHMARK_START_TIME,
             "metrics": {
                 "run_time": str(round(time.time() - self.start_time, 2)) + " seconds",
                 "highest_difficulty": get_highest_success_difficulty(self.tests),
