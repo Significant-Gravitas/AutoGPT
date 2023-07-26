@@ -105,7 +105,6 @@ class BaseAgent(metaclass=ABCMeta):
 
         prompt: ChatSequence = self.construct_prompt(instruction)
         prompt = self.on_before_think(prompt, instruction)
-
         raw_response = create_chat_completion(
             prompt,
             self.config,

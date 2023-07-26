@@ -59,7 +59,6 @@ def kubernetes_agent(
         config=ai_config,
         next_action_count=0,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace.root,
     )
 
     return agent

@@ -51,7 +51,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     prompt_settings_file: str = PROMPT_SETTINGS_FILE
     workdir: Path = None
     workspace_path: Optional[Path] = None
-    file_logger_path: Optional[str] = None
+    file_logger_path: Optional[Path] = None
     # Model configuration
     fast_llm: str = "gpt-3.5-turbo"
     smart_llm: str = "gpt-4"
