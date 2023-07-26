@@ -19,6 +19,7 @@ click = "^8.1.3"
 types-requests = "^2.31.0.1"
 pexpect = "^4.8.0"
 psutil = "^5.9.5"
+helicone = "^1.0.6"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"

@@ -56,6 +56,7 @@ for sub_dir in os.listdir(base_dir):
                         "Agent": sub_dir,
                         "Command": data.get("command", ""),
                         "Completion Time": data.get("completion_time", ""),
+                        "Benchmark Start Time": data.get("benchmark_start_time", ""),
                         "Total Run Time": data.get("metrics", {}).get("run_time", ""),
                         "Highest Difficulty": data.get("metrics", {}).get(
                             "highest_difficulty", ""

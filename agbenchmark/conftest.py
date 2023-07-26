@@ -5,6 +5,7 @@ import sys
 import time
 from pathlib import Path  # noqa
 from typing import Any, Dict, Generator
+from helicone.lock import HeliconeLockManager
 
 import pytest
 
@@ -132,6 +133,9 @@ suite_reports: dict[str, list] = {}
 
 def pytest_runtest_makereport(item: Any, call: Any) -> None:
     challenge_data = item.funcargs.get("challenge_data", None)
+
+    HeliconeLockManager.write_custom_property("challenge", challenge_data["name"])
+
     if not challenge_data:
         # this will only happen for dummy dependency setup tests
         return
