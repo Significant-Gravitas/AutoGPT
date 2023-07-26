@@ -27,6 +27,10 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
 
+      - name: List submodule files
+        run: |
+          ls -al agbenchmark/challenges
+
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
         with:
@@ -42,6 +46,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          export POETRY_VIRTUALENVS_IN_PROJECT=true
           poetry install -vvv
 
       - name: Lint with flake8
@@ -108,6 +113,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          export POETRY_VIRTUALENVS_IN_PROJECT=true
           poetry install -vvv
           poetry run agbenchmark start --mock
           poetry run agbenchmark start --mock --maintain
