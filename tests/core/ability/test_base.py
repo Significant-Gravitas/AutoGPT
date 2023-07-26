@@ -3,6 +3,7 @@ from importlib import import_module
 from pprint import pformat
 from typing import Any, Dict, List
 
+import pydantic
 import pytest
 from inflection import underscore
 
@@ -13,7 +14,13 @@ from autogpt.core.ability.simple import (
     AbilityRegistryConfiguration,
     AbilityRegistrySettings,
 )
-from autogpt.core.plugin.base import PluginLocation, PluginStorageFormat
+from autogpt.core.planning.simple import LanguageModelConfiguration
+from autogpt.core.plugin.base import (
+    PluginLocation,
+    PluginStorageFormat,
+    SystemConfiguration,
+)
+from autogpt.core.resource.model_providers.schema import ModelProviderName
 
 
 class MockDerivedAbility(Ability):
@@ -242,6 +249,129 @@ class TestAbility:
         assert dumped["parameters"]["type"] == "object"
         assert dumped["parameters"]["properties"] == {"arg1": "int", "arg2": "str"}
         assert dumped["parameters"]["required"] == []
+
+
+class TestAbilityConfiguration:
+    """
+    Provides necessary tests for the AbilityConfiguration class/struct.
+    """
+
+    @staticmethod
+    def test_ability_configuration_is_subclass_of_system_configuration() -> None:
+        assert issubclass(AbilityConfiguration, SystemConfiguration)
+
+    @staticmethod
+    def test_default_values() -> None:
+        ability_config = AbilityConfiguration(
+            location=PluginLocation(
+                storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+                storage_route="autogopt.core.etc",
+            )
+        )
+
+        assert ability_config.packages_required == []
+        assert ability_config.language_model_required is None
+        assert ability_config.memory_provider_required is False
+        assert ability_config.workspace_required is False
+
+    @staticmethod
+    def test_user_config_fields_included() -> None:
+        language_model_config = LanguageModelConfiguration(
+            model_name="model_name",
+            provider_name=ModelProviderName.OPENAI,
+            temperature=0.8,
+        )
+        ability_config = AbilityConfiguration(
+            location=PluginLocation(
+                storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+                storage_route="route",
+            ),
+            packages_required=["package1", "package2"],
+            language_model_required=language_model_config,
+            memory_provider_required=True,
+            workspace_required=True,
+        )
+
+        user_config = ability_config.get_user_config()
+
+        assert user_config == {
+            "location": {
+                "storage_format": "installed_package",
+                "storage_route": "route",
+            },
+            "packages_required": ["package1", "package2"],
+            "language_model_required": {
+                "model_name": "model_name",
+                "provider_name": "openai",
+                "temperature": 0.8,
+            },
+            "memory_provider_required": True,
+            "workspace_required": True,
+        }
+
+    @staticmethod
+    def test_validations() -> None:
+        """
+        Tests the validation of each individual field by feeding 'junk_value' as the value.
+        """
+        junk_value = None
+        language_model_config = LanguageModelConfiguration(
+            model_name="model_name",
+            provider_name=ModelProviderName.OPENAI,
+            temperature=0.8,
+        )
+        with pytest.raises(pydantic.error_wrappers.ValidationError):
+            AbilityConfiguration(
+                location=junk_value,
+                packages_required=["package1", "package2"],
+                language_model_required=language_model_config,
+                memory_provider_required=True,
+                workspace_required=True,
+            )
+        with pytest.raises(pydantic.error_wrappers.ValidationError):
+            AbilityConfiguration(
+                location=PluginLocation(
+                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+                    storage_route="route",
+                ),
+                packages_required=junk_value,
+                language_model_required=language_model_config,
+                memory_provider_required=True,
+                workspace_required=True,
+            )
+        with pytest.raises(pydantic.error_wrappers.ValidationError):
+            AbilityConfiguration(
+                location=PluginLocation(
+                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+                    storage_route="route",
+                ),
+                packages_required=["package1", "package2"],
+                language_model_required=junk_value,
+                memory_provider_required=True,
+                workspace_required=True,
+            )
+        with pytest.raises(pydantic.error_wrappers.ValidationError):
+            AbilityConfiguration(
+                location=PluginLocation(
+                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+                    storage_route="route",
+                ),
+                packages_required=["package1", "package2"],
+                language_model_required=language_model_config,
+                memory_provider_required=junk_value,
+                workspace_required=True,
+            )
+        with pytest.raises(pydantic.error_wrappers.ValidationError):
+            AbilityConfiguration(
+                location=PluginLocation(
+                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+                    storage_route="route",
+                ),
+                packages_required=["package1", "package2"],
+                language_model_required=language_model_config,
+                memory_provider_required=True,
+                workspace_required=junk_value,
+            )
 
 
 if __name__ == "__main__":
