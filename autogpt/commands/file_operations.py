@@ -25,7 +25,7 @@ def text_checksum(text: str) -> str:
 
 
 def operations_from_log(
-    log_path: str,
+    log_path: str | Path,
 ) -> Generator[tuple[Operation, str, str | None], None, None]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
@@ -52,7 +52,7 @@ def operations_from_log(
     log.close()
 
 
-def file_operations_state(log_path: str) -> dict[str, str]:
+def file_operations_state(log_path: str | Path) -> dict[str, str]:
     """Iterates over the operations log and returns the expected state.
 
     Parses a log file at config.file_logger_path to construct a dictionary that maps
@@ -270,37 +270,6 @@ def append_to_file(
             log_operation("append", filename, agent, checksum=checksum)
 
         return "Text appended successfully."
-    except Exception as err:
-        return f"Error: {err}"
-
-
-@command(
-    "delete_file",
-    "Deletes a file",
-    {
-        "filename": {
-            "type": "string",
-            "description": "The name of the file to delete",
-            "required": True,
-        }
-    },
-)
-@sanitize_path_arg("filename")
-def delete_file(filename: str, agent: Agent) -> str:
-    """Delete a file
-
-    Args:
-        filename (str): The name of the file to delete
-
-    Returns:
-        str: A message indicating success or failure
-    """
-    if is_duplicate_operation("delete", filename, agent):
-        return "Error: File has already been deleted."
-    try:
-        os.remove(filename)
-        log_operation("delete", filename, agent)
-        return "File deleted successfully."
     except Exception as err:
         return f"Error: {err}"
 

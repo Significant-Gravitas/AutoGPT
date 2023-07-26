@@ -17,7 +17,6 @@ ABILITIES = (
     'analyze_code: Analyze Code, args: "code": "<full_code_string>"',
     'execute_python_file: Execute Python File, args: "filename": "<filename>"',
     'append_to_file: Append to file, args: "filename": "<filename>", "text": "<text>"',
-    'delete_file: Delete file, args: "filename": "<filename>"',
     'list_files: List Files in Directory, args: "directory": "<directory>"',
     'read_file: Read a file, args: "filename": "<filename>"',
     'write_to_file: Write to file, args: "filename": "<filename>", "text": "<text>"',

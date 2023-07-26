@@ -1,0 +1,24 @@
+{
+    "TestBasicCodeGeneration": {
+        "difficulty": "basic",
+        "dependencies": [
+            "TestWriteFile"
+        ],
+        "data_path": "agbenchmark/challenges/code/d3"
+    },
+    "TestBasicMemory": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/memory/m1"
+    },
+    "TestReadFile": {
+        "difficulty": "basic",
+        "dependencies": [
+            "TestWriteFile"
+        ],
+        "data_path": "agbenchmark/challenges/interface/read_file"
+    },
+    "TestWriteFile": {
+        "dependencies": [],
+        "data_path": "agbenchmark/challenges/interface/write_file"
+    }
+}
