@@ -52,6 +52,8 @@ def config(
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
 
+    Workspace.set_workspace_directory(config, workspace.root)
+
     # HACK: this is necessary to ensure PLAIN_OUTPUT takes effect
     logger.config = config
 
@@ -84,7 +86,7 @@ def api_manager() -> ApiManager:
 
 
 @pytest.fixture
-def agent(config: Config, workspace: Workspace) -> Agent:
+def agent(config: Config) -> Agent:
     ai_config = AIConfig(
         ai_name="Base",
         ai_role="A base AI",
@@ -103,5 +105,4 @@ def agent(config: Config, workspace: Workspace) -> Agent:
         ai_config=ai_config,
         config=config,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace.root,
     )

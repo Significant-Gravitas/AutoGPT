@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -37,7 +36,6 @@ class Agent(BaseAgent):
         command_registry: CommandRegistry,
         memory: VectorMemory,
         triggering_prompt: str,
-        workspace_directory: str | Path,
         config: Config,
         cycle_budget: Optional[int] = None,
     ):
@@ -52,7 +50,7 @@ class Agent(BaseAgent):
         self.memory = memory
         """VectorMemoryProvider used to manage the agent's context (TODO)"""
 
-        self.workspace = Workspace(workspace_directory, config.restrict_to_workspace)
+        self.workspace = Workspace(config.workspace_path, config.restrict_to_workspace)
         """Workspace that the agent has access to, e.g. for reading/writing files."""
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
