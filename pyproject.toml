@@ -48,8 +48,6 @@ markers = [
     "iterate",
     "adaptability",
     "safety",
-    "first",
-    "second"
 ]
 
 [tool.poetry.scripts]
