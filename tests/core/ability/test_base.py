@@ -1,3 +1,7 @@
+"""
+This file provides pytests for the classes and codes defined in
+autogpt/core/ability/base.py location.
+"""
 import abc
 from importlib import import_module
 from pprint import pformat
@@ -56,6 +60,12 @@ class MockDerivedAbility(Ability):
 
 
 class MockDerivedAbilityRegistry(AbilityRegistry):
+    """
+    This is a mock class simulating implementation of AbilityRegistry class. It
+    is used inside the various test methods of TestAbilityRegistry class in the
+    following.
+    """
+
     def __init__(
         self,
         settings: AbilityRegistrySettings,
@@ -103,7 +113,7 @@ class MockDerivedAbilityRegistry(AbilityRegistry):
 
 class TestAbilityRegistry:
     """
-    Provides various tests for AbilityRegistry class
+    Provides various tests for AbilityRegistry class.
     """
 
     MOCK_ABILITIES = {MockDerivedAbility.name(): MockDerivedAbility}
@@ -321,7 +331,8 @@ class TestAbilityConfiguration:
     @staticmethod
     def test_validations() -> None:
         """
-        Tests the validation of each individual field by feeding 'junk_value' as the value.
+        Tests the validation of each individual field by feeding 'junk_value' as
+        the value.
         """
         junk_value = None
         language_model_config = LanguageModelConfiguration(
