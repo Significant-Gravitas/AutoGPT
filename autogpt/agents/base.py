@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
-from autogpt.logs import CURRENT_CONTEXT_FILE_NAME, logger
+from autogpt.logs import logger
 from autogpt.memory.message_history import MessageHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
@@ -105,13 +105,6 @@ class BaseAgent(metaclass=ABCMeta):
 
         prompt: ChatSequence = self.construct_prompt(instruction)
         prompt = self.on_before_think(prompt, instruction)
-        self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            prompt.raw(),
-            CURRENT_CONTEXT_FILE_NAME,
-        )
         raw_response = create_chat_completion(
             prompt,
             self.config,
