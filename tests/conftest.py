@@ -103,5 +103,4 @@ def agent(config: Config, workspace: Workspace) -> Agent:
         ai_config=ai_config,
         config=config,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace.root,
     )
