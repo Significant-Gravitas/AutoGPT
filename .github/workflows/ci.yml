@@ -83,7 +83,6 @@ jobs:
           - 'mini-agi'
           - 'beebot'
           - 'BabyAGI'
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -199,8 +198,8 @@ jobs:
             ${prefix}agbenchmark start --mock --suite TestReturnCode 
             ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval
           else
-            bash -c "$(curl -fsSL https://raw.githubusercontent.com/Helicone/helicone/779bb99c6e9cd878e324e5e1c6a41c0d8db81754/mitmproxy.sh)" -s start
-            ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
+            bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/003d3c829afc4de8595614f1241d1dfbf389d00a/mitmproxy.sh)" -s start
+            ${prefix}agbenchmark start --test=TestWriteFile || echo "This command will always return a non zero exit code unless all the challenges are solved."
           fi
 
           cd ../..

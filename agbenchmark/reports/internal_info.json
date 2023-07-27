@@ -63,8 +63,15 @@
         true
     ],
     "TestWriteFile": [
-        true
+        true,
+        false
     ],
+    "gpt-engineer": {
+        "TestWriteFile": [
+            true,
+            false
+        ]
+    },
     "mini-agi": {
         "TestBasicMemory": [
             true,
