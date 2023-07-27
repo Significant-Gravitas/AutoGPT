@@ -136,6 +136,7 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
 
     HeliconeLockManager.write_custom_property("challenge", challenge_data["name"])
 
+
     if not challenge_data:
         # this will only happen for dummy dependency setup tests
         return
