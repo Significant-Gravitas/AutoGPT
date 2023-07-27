@@ -1,6 +1,6 @@
 # Information Retrieval Challenge B
 
-**Status**: Beaten
+**Status**: Challenge Completed 
 
 **Command to try**:
 
