@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Any, Optional
+
+from autogpt.json_utils.utilities import llm_response_schema
 
 if TYPE_CHECKING:
     from autogpt.config import AIConfig, Config
@@ -155,7 +158,15 @@ class BaseAgent(metaclass=ABCMeta):
 
         prompt = ChatSequence.for_model(
             self.llm.name,
-            [Message("system", self.system_prompt)] + prepend_messages,
+            [
+                Message("system", self.system_prompt),
+                Message(
+                    "system",
+                    "Respond with only valid JSON conforming to the following schema: \n"
+                    f"{json.dumps(llm_response_schema(self.config))}\n",
+                ),
+            ]
+            + prepend_messages,
         )
 
         # Reserve tokens for messages to be appended later, if any

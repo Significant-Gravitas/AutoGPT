@@ -8,7 +8,7 @@ DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond u
 def build_default_prompt_generator(config: Config) -> PromptGenerator:
     """
     This function generates a prompt string that includes various constraints,
-        commands, resources, and performance evaluations.
+        commands, resources, and best practices.
 
     Returns:
         str: The generated prompt string.
@@ -28,8 +28,8 @@ def build_default_prompt_generator(config: Config) -> PromptGenerator:
     for resource in prompt_config.resources:
         prompt_generator.add_resource(resource)
 
-    # Add performance evaluations to the PromptGenerator object
-    for performance_evaluation in prompt_config.performance_evaluations:
-        prompt_generator.add_performance_evaluation(performance_evaluation)
+    # Add best practices to the PromptGenerator object
+    for best_practice in prompt_config.best_practices:
+        prompt_generator.add_best_practice(best_practice)
 
     return prompt_generator

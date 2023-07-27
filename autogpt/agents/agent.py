@@ -293,10 +293,10 @@ def execute_command(
         # Handle non-native commands (e.g. from plugins)
         for command in agent.ai_config.prompt_generator.commands:
             if (
-                command_name == command["label"].lower()
-                or command_name == command["name"].lower()
+                command_name == command.label.lower()
+                or command_name == command.name.lower()
             ):
-                return command["function"](**arguments)
+                return command.function(**arguments)
 
         raise RuntimeError(
             f"Cannot execute '{command_name}': unknown command."
