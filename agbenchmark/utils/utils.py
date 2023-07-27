@@ -216,7 +216,6 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str]:
         CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH = assign_paths(
             benchmarks_folder_path
         )
-
     else:
         # otherwise the default is when home is an agent (running agbenchmark from agent/agent_repo)
         # used when its just a pip install

@@ -93,10 +93,6 @@ jobs:
           submodules: true
           token: ${{ env.GH_TOKEN }}
 
-      - name: List submodule files
-        run: |
-          ls -al agbenchmark/challenges
-
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
         with:
@@ -112,11 +108,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python --version
-          poetry --version
-          poetry install --no-interaction -vvv
-          poetry run agbenchmark start --mock
-          poetry run agbenchmark start --mock --maintain
+          poetry install -vvv
           poetry build
 
       - name: Run regression tests
