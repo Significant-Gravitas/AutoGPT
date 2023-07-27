@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     branches: [master]
   schedule:
-    - cron: '0 8 * * *'
+    - cron: "0 8 * * *"
   push:
     branches: [master, ci-test*]
     paths-ignore:
-      - 'reports/**'
+      - "reports/**"
   pull_request:
     branches: [stable, master, release-*]
 
@@ -16,7 +16,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     env:
-      min-python-version: '3.10'
+      min-python-version: "3.10"
 
     steps:
       - name: Checkout repository
@@ -69,20 +69,20 @@ jobs:
   tests:
     env:
       GH_TOKEN: ${{ github.event_name == 'pull_request' && github.token || secrets.PAT }}
-      min-python-version: '3.10'
-    name: '${{ matrix.agent-name }}'
+      min-python-version: "3.10"
+    name: "${{ matrix.agent-name }}"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         agent-name:
-          - 'gpt-engineer'
-          - 'smol-developer'
-          - 'Auto-GPT'
-          - 'mini-agi'
-          - 'beebot'
-          - 'BabyAGI'
+          - "gpt-engineer"
+          - "smol-developer"
+          - "Auto-GPT"
+          - "mini-agi"
+          - "beebot"
+          - "BabyAGI"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -190,7 +190,7 @@ jobs:
             ${prefix}agbenchmark start --mock --suite TestReturnCode 
             ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval
           else
-            bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/003d3c829afc4de8595614f1241d1dfbf389d00a/mitmproxy.sh)" -s start
+            bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/b7ab4bc53e51d8ab29fff19ce5986ab7720970c6/mitmproxy.sh)" -s start
             ${prefix}agbenchmark start --test=TestWriteFile || echo "This command will always return a non zero exit code unless all the challenges are solved."
           fi
 
