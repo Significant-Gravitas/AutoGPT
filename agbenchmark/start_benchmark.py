@@ -76,22 +76,14 @@ def start(
         )
         return 1
 
+    print("CONFIG_PATH", CONFIG_PATH)
+
     if not os.path.exists(CONFIG_PATH) or os.stat(CONFIG_PATH).st_size == 0:
         config = {}
 
         config["workspace"] = click.prompt(
             "Please enter a new workspace path",
-            default=os.path.join(Path.home(), "workspace"),
-        )
-
-        config["entry_path"] = click.prompt(
-            "Please enter a the path to your run_specific_agent function implementation within the benchmarks folder",
-            default="agbenchmark/benchmarks.py",
-        )
-
-        config["cutoff"] = click.prompt(
-            "Please enter a hard cutoff runtime for your agent per test",
-            default="60",
+            default=os.path.join("workspace"),
         )
 
         with open(CONFIG_PATH, "w") as f:

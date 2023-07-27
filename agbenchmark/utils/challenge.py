@@ -120,7 +120,7 @@ class Challenge(ABC):
                 print_content = (
                     f"\033[1;34mWord that should exist\033[0m - {should_contain_word}:"
                 )
-                if self.data.ground.type == "file_llm_evaluation":
+                if ground.type == "file_llm_evaluation":
                     return self.llm_eval(content, should_contain_word)
                 elif should_contain_word not in content:
                     print(print_content, "False")
@@ -164,46 +164,49 @@ ANSWER:
         scores_dict = {}
         percentage = None
 
-        if isinstance(self.data.ground, Ground):
-            files_contents = self.get_artifacts_out(
-                config["workspace"], self.data.ground
-            )
-
-            for file_content in files_contents:
-                score = self.scoring(file_content, self.data.ground)
-                print("\033[1;32mYour score is:\033[0m", score)
-                scores.append(score)
-        elif isinstance(self.data.ground, dict):
-            # if it's a dict then we know its a combined suite
-            for ground_key in self.data.ground:
-                ground = self.data.ground[ground_key]
-                files_contents = self.get_artifacts_out(config["workspace"], ground)
+        try:
+            if isinstance(self.data.ground, Ground):
+                files_contents = self.get_artifacts_out(
+                    config["workspace"], self.data.ground
+                )
 
                 for file_content in files_contents:
-                    score = self.scoring(file_content, ground)
-                    scores_dict[ground_key] = score
-                    print(
-                        f"\033[1;35mScore for {ground_key}:\033[0m",
-                        scores_dict[ground_key],
-                    )
+                    score = self.scoring(file_content, self.data.ground)
+                    print("\033[1;32mYour score is:\033[0m", score)
+                    scores.append(score)
+            elif isinstance(self.data.ground, dict):
+                # if it's a dict then we know its a combined suite
+                for ground_key in self.data.ground:
+                    ground = self.data.ground[ground_key]
+                    files_contents = self.get_artifacts_out(config["workspace"], ground)
 
-            # Count the number of times the value 1.0 appears in the dictionary
-            num_ones = sum(1 for score in scores_dict.values() if score == 1.0)
+                    for file_content in files_contents:
+                        score = self.scoring(file_content, ground)
+                        scores_dict[ground_key] = score
+                        print(
+                            f"\033[1;35mScore for {ground_key}:\033[0m",
+                            scores_dict[ground_key],
+                        )
 
-            # Calculate the percentage
-            percentage = round((num_ones / len(scores_dict)) * 100, 2)
+                # Count the number of times the value 1.0 appears in the dictionary
+                num_ones = sum(1 for score in scores_dict.values() if score == 1.0)
 
-            # Print the result in green
-            print(f"\033[1;92mPercentage of 1.0 scores:\033[0m {percentage}%")
+                # Calculate the percentage
+                percentage = round((num_ones / len(scores_dict)) * 100, 2)
 
-            # TODO: in an ideal world it only returns 1.0 if all of the tests pass but then the dependencies break.
-            # So for now we return 1.0 if there's any that pass
-            if percentage > 0:
-                scores.append(1.0)
-                if percentage != 100:
-                    print(
-                        "\033[1;93mWARNING:\033[0m Your agent did not pass all the tests in the suite."
-                    )
+                # Print the result in green
+                print(f"\033[1;92mPercentage of 1.0 scores:\033[0m {percentage}%")
+
+                # TODO: in an ideal world it only returns 1.0 if all of the tests pass but then the dependencies break.
+                # So for now we return 1.0 if there's any that pass
+                if percentage > 0:
+                    scores.append(1.0)
+                    if percentage != 100:
+                        print(
+                            "\033[1;93mWARNING:\033[0m Your agent did not pass all the tests in the suite."
+                        )
+        except Exception as e:
+            print("Error getting scores", e)
 
         scores_data = {
             "values": scores,
