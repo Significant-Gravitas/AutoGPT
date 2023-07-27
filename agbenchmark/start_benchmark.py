@@ -4,12 +4,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from helicone.lock import HeliconeLockManager
-from agbenchmark.utils.utils import AGENT_NAME, calculate_dynamic_paths
 
 import click
 import pytest
+from helicone.lock import HeliconeLockManager
 
+from agbenchmark.utils.utils import AGENT_NAME, calculate_dynamic_paths
 
 CURRENT_DIRECTORY = Path(__file__).resolve().parent
 BENCHMARK_START_TIME = datetime.now().strftime("%Y-%m-%d-%H:%M")

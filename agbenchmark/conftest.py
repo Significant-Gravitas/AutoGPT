@@ -5,9 +5,9 @@ import sys
 import time
 from pathlib import Path  # noqa
 from typing import Any, Dict, Generator
-from helicone.lock import HeliconeLockManager
 
 import pytest
+from helicone.lock import HeliconeLockManager
 
 from agbenchmark.reports.reports import (
     finalize_reports,
