@@ -76,7 +76,11 @@ def start(
         )
         return 1
 
-    print("CONFIG_PATH", CONFIG_PATH)
+    if os.path.join("Auto-GPT-Benchmarks") in str(HOME_DIRECTORY) and not AGENT_NAME:
+        print(
+            "If you are running from the Auto-GPT-Benchmarks repo, you must have AGENT_NAME defined."
+        )
+        return 1
 
     if not os.path.exists(CONFIG_PATH) or os.stat(CONFIG_PATH).st_size == 0:
         config = {}
@@ -84,6 +88,7 @@ def start(
         config["workspace"] = click.prompt(
             "Please enter a new workspace path",
             default=os.path.join("workspace"),
+            show_default=True,
         )
 
         with open(CONFIG_PATH, "w") as f:
@@ -93,19 +98,19 @@ def start(
         with open(CONFIG_PATH, "r") as f:
             config = json.load(f)
 
-    os.environ["MOCK_TEST"] = "True" if mock else "False"
+    print("Current configuration:")
+    for key, value in config.items():
+        print(f"{key}: {value}")
 
     if not os.path.exists(REGRESSION_TESTS_PATH):
         with open(REGRESSION_TESTS_PATH, "w"):
             pass
 
+    os.environ["MOCK_TEST"] = "True" if mock else "False"
+
     if not os.path.exists(INFO_TESTS_PATH):
         with open(INFO_TESTS_PATH, "w"):
             pass
-
-    print("Current configuration:")
-    for key, value in config.items():
-        print(f"{key}: {value}")
 
     pytest_args = ["-vs"]
     if test:
