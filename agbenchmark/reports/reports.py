@@ -65,7 +65,6 @@ def generate_combined_suite_report(
                 "success": False,
             },
         }
-
         if scores["scores_obj"][test_name] == 1:
             # add dependency successful here
 
