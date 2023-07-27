@@ -46,7 +46,7 @@ jobs:
           poetry install -vvv
 
       - name: Lint with flake8
-        run: poetry run flake8 --exclude=code,agent
+        run: poetry run flake8
 
       - name: Check black formatting
         run: poetry run  black . --exclude test.py --check

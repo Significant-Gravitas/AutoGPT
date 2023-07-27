@@ -10,4 +10,5 @@ exclude =
     .venv/*,
     reports/*,
     dist/*,
-    agent/*
+    agent/*,
+    code
