@@ -16,7 +16,10 @@ import click
 @click.option(
     "--ai-settings",
     "-C",
-    help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
+    help=(
+        "Specifies which ai_settings.yaml file to use, relative to the Auto-GPT"
+        " root directory. Will also automatically skip the re-prompt."
+    ),
 )
 @click.option(
     "--prompt-settings",
@@ -129,7 +132,9 @@ def main(
             browser_name=browser_name,
             allow_downloads=allow_downloads,
             skip_news=skip_news,
-            working_directory=Path(__file__).parent.parent,  # TODO: make this an option
+            working_directory=Path(
+                __file__
+            ).parent.parent.parent,  # TODO: make this an option
             workspace_directory=workspace_directory,
             install_plugin_deps=install_plugin_deps,
             ai_name=ai_name,
