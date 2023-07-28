@@ -38,7 +38,7 @@ def setup_mock_input(monkeypatch: pytest.MonkeyPatch, cycle_count: int) -> None:
         yield from input_sequence
 
     gen = input_generator()
-    monkeypatch.setattr("autogpt.utils.session.prompt", lambda _: next(gen))
+    monkeypatch.setattr("autogpt.utils.session.prompt", lambda _, **kwargs: next(gen))
 
 
 def setup_mock_log_cycle_agent_name(

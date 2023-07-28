@@ -4,6 +4,7 @@ import dataclasses
 import json
 from typing import Literal
 
+import ftfy
 import numpy as np
 
 from autogpt.config import Config
@@ -42,6 +43,9 @@ class MemoryItem:
         question_for_summary: str | None = None,
     ):
         logger.debug(f"Memorizing text:\n{'-'*32}\n{text}\n{'-'*32}\n")
+
+        # Fix encoding, e.g. removing unicode surrogates (see issue #778)
+        text = ftfy.fix_text(text)
 
         chunks = [
             chunk

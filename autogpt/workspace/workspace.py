@@ -19,7 +19,7 @@ from autogpt.logs import logger
 class Workspace:
     """A class that represents a workspace for an AutoGPT agent."""
 
-    NULL_BYTES = ["\0", "\000", "\x00", r"\z", "\u0000", "%00"]
+    NULL_BYTES = ["\0", "\000", "\x00", "\u0000"]
 
     def __init__(self, workspace_root: str | Path, restrict_to_workspace: bool):
         self._root = self._sanitize_path(workspace_root)
@@ -144,7 +144,7 @@ class Workspace:
         return full_path
 
     @staticmethod
-    def build_file_logger_path(config: Config, workspace_directory: Path):
+    def set_file_logger_path(config: Config, workspace_directory: Path):
         file_logger_path = workspace_directory / "file_logger.txt"
         if not file_logger_path.exists():
             with file_logger_path.open(mode="w", encoding="utf-8") as f:
@@ -152,15 +152,13 @@ class Workspace:
         config.file_logger_path = str(file_logger_path)
 
     @staticmethod
-    def get_workspace_directory(
+    def set_workspace_directory(
         config: Config, workspace_directory: Optional[str | Path] = None
-    ):
+    ) -> None:
         if workspace_directory is None:
-            workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
+            workspace_directory = config.workdir / "auto_gpt_workspace"
         elif type(workspace_directory) == str:
             workspace_directory = Path(workspace_directory)
         # TODO: pass in the ai_settings file and the env file and have them cloned into
         #   the workspace directory so we can bind them to the agent.
-        workspace_directory = Workspace.make_workspace(workspace_directory)
-        config.workspace_path = str(workspace_directory)
-        return workspace_directory
+        config.workspace_path = Workspace.make_workspace(workspace_directory)

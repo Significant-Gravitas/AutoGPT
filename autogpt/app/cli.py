@@ -1,4 +1,5 @@
 """Main script for the autogpt package."""
+from pathlib import Path
 from typing import Optional
 
 import click
@@ -15,7 +16,10 @@ import click
 @click.option(
     "--ai-settings",
     "-C",
-    help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
+    help=(
+        "Specifies which ai_settings.yaml file to use, relative to the Auto-GPT"
+        " root directory. Will also automatically skip the re-prompt."
+    ),
 )
 @click.option(
     "--prompt-settings",
@@ -111,28 +115,31 @@ def main(
     Start an Auto-GPT assistant.
     """
     # Put imports inside function to avoid importing everything when starting the CLI
-    from autogpt.main import run_auto_gpt
+    from autogpt.app.main import run_auto_gpt
 
     if ctx.invoked_subcommand is None:
         run_auto_gpt(
-            continuous,
-            continuous_limit,
-            ai_settings,
-            prompt_settings,
-            skip_reprompt,
-            speak,
-            debug,
-            gpt3only,
-            gpt4only,
-            memory_type,
-            browser_name,
-            allow_downloads,
-            skip_news,
-            workspace_directory,
-            install_plugin_deps,
-            ai_name,
-            ai_role,
-            ai_goal,
+            continuous=continuous,
+            continuous_limit=continuous_limit,
+            ai_settings=ai_settings,
+            prompt_settings=prompt_settings,
+            skip_reprompt=skip_reprompt,
+            speak=speak,
+            debug=debug,
+            gpt3only=gpt3only,
+            gpt4only=gpt4only,
+            memory_type=memory_type,
+            browser_name=browser_name,
+            allow_downloads=allow_downloads,
+            skip_news=skip_news,
+            working_directory=Path(
+                __file__
+            ).parent.parent.parent,  # TODO: make this an option
+            workspace_directory=workspace_directory,
+            install_plugin_deps=install_plugin_deps,
+            ai_name=ai_name,
+            ai_role=ai_role,
+            ai_goals=ai_goal,
         )
 
 

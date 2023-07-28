@@ -72,6 +72,10 @@ def patched_api_requestor(mocker: MockerFixture):
             headers["AGENT-MODE"] = os.environ.get("AGENT_MODE")
             headers["AGENT-TYPE"] = os.environ.get("AGENT_TYPE")
 
+        print(
+            f"[DEBUG] Outgoing API request: {headers}\n{data.decode() if data else None}"
+        )
+
         # Add hash header for cheap & fast matching on cassette playback
         headers["X-Content-Hash"] = sha256(
             freeze_request_body(data), usedforsecurity=False

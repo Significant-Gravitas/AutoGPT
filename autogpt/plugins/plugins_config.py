@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+from pathlib import Path
 from typing import Union
 
 import yaml
@@ -28,7 +28,7 @@ class PluginsConfig(BaseModel):
     @classmethod
     def load_config(
         cls,
-        plugins_config_file: str,
+        plugins_config_file: Path,
         plugins_denylist: list[str],
         plugins_allowlist: list[str],
     ) -> "PluginsConfig":
@@ -56,11 +56,11 @@ class PluginsConfig(BaseModel):
     @classmethod
     def deserialize_config_file(
         cls,
-        plugins_config_file: str,
+        plugins_config_file: Path,
         plugins_denylist: list[str],
         plugins_allowlist: list[str],
     ) -> dict[str, PluginConfig]:
-        if not os.path.exists(plugins_config_file):
+        if not plugins_config_file.is_file():
             logger.warn("plugins_config.yaml does not exist, creating base config.")
             cls.create_empty_plugins_config(
                 plugins_config_file,
@@ -87,7 +87,7 @@ class PluginsConfig(BaseModel):
 
     @staticmethod
     def create_empty_plugins_config(
-        plugins_config_file: str,
+        plugins_config_file: Path,
         plugins_denylist: list[str],
         plugins_allowlist: list[str],
     ):

@@ -6,9 +6,8 @@ import pytest
 import yaml
 from pytest_mock import MockerFixture
 
-from autogpt.agents.agent import Agent
+from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
-from autogpt.config.ai_config import AIConfig
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
@@ -49,9 +48,11 @@ def temp_plugins_config_file():
 def config(
     temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace
 ) -> Config:
-    config = ConfigBuilder.build_config_from_env()
+    config = ConfigBuilder.build_config_from_env(workspace.root.parent)
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
+
+    Workspace.set_workspace_directory(config, workspace.root)
 
     # HACK: this is necessary to ensure PLAIN_OUTPUT takes effect
     logger.config = config
@@ -85,7 +86,7 @@ def api_manager() -> ApiManager:
 
 
 @pytest.fixture
-def agent(config: Config, workspace: Workspace) -> Agent:
+def agent(config: Config) -> Agent:
     ai_config = AIConfig(
         ai_name="Base",
         ai_role="A base AI",
@@ -98,16 +99,10 @@ def agent(config: Config, workspace: Workspace) -> Agent:
     memory_json_file = get_memory(config)
     memory_json_file.clear()
 
-    system_prompt = ai_config.construct_full_prompt(config)
-
     return Agent(
-        ai_name=ai_config.ai_name,
         memory=memory_json_file,
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,
-        next_action_count=0,
-        system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace.root,
     )
