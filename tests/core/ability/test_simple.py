@@ -4,6 +4,7 @@ This file provides all the necessary pytests for autogpt/core/ability/simple.py.
 from autogpt.core.ability.simple import (
     AbilityConfiguration,
     AbilityRegistryConfiguration,
+    AbilityRegistrySettings,
 )
 from autogpt.core.plugin.base import PluginLocation, PluginStorageFormat
 
@@ -66,3 +67,52 @@ class TestAbilityRegistryConfiguration:
             # Validate the type of specific fields
             assert isinstance(user_config["abilities"][ability_name]["location"], dict)
             # TODO: assert isinstance(user_config["abilities"][ability_name]["packages_required"], list) FIXME: requires get_user_config() to return it
+
+
+class TestAbilityRegistrySettings:
+    """
+    Provides some tests for AbilityRegistrySettings class.
+    """
+
+    def setup_method(self) -> None:
+        # Define test data for abilities
+        self.abilities_data = {
+            "ability1": {
+                "location": PluginLocation(
+                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+                    storage_route="non-existent.route",
+                ),
+                "packages_required": ["package1", "package2"],
+            },
+            "ability2": {
+                "location": PluginLocation(
+                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+                    storage_route="non-existent.route",
+                ),
+                "packages_required": ["package3"],
+            },
+        }
+
+        # mapping of ability'name to its configuration (ability_name -> AbilityConfiguration)
+        self.ability_configurations = {
+            ability_name: AbilityConfiguration(**ability_data)
+            for ability_name, ability_data in self.abilities_data.items()
+        }
+
+    def test_ability_registry_settings(self) -> None:
+        # Create an instance of AbilityRegistryConfiguration using the abilities dictionary
+        registry_configuration = AbilityRegistryConfiguration(
+            abilities=self.ability_configurations
+        )
+
+        # Create an instance of AbilityRegistrySettings with the AbilityRegistryConfiguration
+        settings = AbilityRegistrySettings(
+            name="ability-reg-settings-test",
+            description="test desc.",
+            configuration=registry_configuration,
+        )
+
+        # Assert that the configuration is correctly set
+        assert settings.configuration == registry_configuration
+        assert settings.name == "ability-reg-settings-test"
+        assert settings.description == "test desc."
