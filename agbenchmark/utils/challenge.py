@@ -219,7 +219,7 @@ ANSWER:
         return scores_data
 
     def get_dummy_scores(self, test_name: str, scores: dict[str, Any]) -> int | None:
-        if scores["scores_obj"][test_name] == 1:
+        if scores.get("scores_obj", {}).get(test_name) == 1:
             return 1
 
         return None
