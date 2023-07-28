@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -18,6 +17,7 @@ from autogpt.llm.base import Message
 from autogpt.llm.utils import count_string_tokens
 from autogpt.logs import logger
 from autogpt.logs.log_cycle import (
+    CURRENT_CONTEXT_FILE_NAME,
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     USER_INPUT_FILE_NAME,
@@ -37,7 +37,6 @@ class Agent(BaseAgent):
         command_registry: CommandRegistry,
         memory: VectorMemory,
         triggering_prompt: str,
-        workspace_directory: str | Path,
         config: Config,
         cycle_budget: Optional[int] = None,
     ):
@@ -52,7 +51,7 @@ class Agent(BaseAgent):
         self.memory = memory
         """VectorMemoryProvider used to manage the agent's context (TODO)"""
 
-        self.workspace = Workspace(workspace_directory, config.restrict_to_workspace)
+        self.workspace = Workspace(config.workspace_path, config.restrict_to_workspace)
         """Workspace that the agent has access to, e.g. for reading/writing files."""
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -110,6 +109,13 @@ class Agent(BaseAgent):
             self.cycle_count,
             self.history.raw(),
             FULL_MESSAGE_HISTORY_FILE_NAME,
+        )
+        self.log_cycle_handler.log_cycle(
+            self.ai_config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            prompt.raw(),
+            CURRENT_CONTEXT_FILE_NAME,
         )
         return prompt
 
