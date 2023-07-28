@@ -4,7 +4,6 @@ from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
-from autogpt.workspace import Workspace
 
 
 @pytest.fixture
@@ -20,7 +19,7 @@ def memory_json_file(config: Config):
 
 
 @pytest.fixture
-def dummy_agent(config: Config, memory_json_file, workspace: Workspace):
+def dummy_agent(config: Config, memory_json_file):
     command_registry = CommandRegistry()
 
     ai_config = AIConfig(
