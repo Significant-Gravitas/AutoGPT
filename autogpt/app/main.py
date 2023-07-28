@@ -126,7 +126,7 @@ def run_auto_gpt(
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
-    config.workspace_path = Workspace.set_workspace_directory(
+    config.workspace_path = Workspace.init_workspace_directory(
         config, workspace_directory
     )
 
@@ -511,7 +511,7 @@ Continue ({config.authorise_key}/{config.exit_key}): """,
 
     if any([not ai_config.ai_name, not ai_config.ai_role, not ai_config.ai_goals]):
         ai_config = prompt_user(config)
-        ai_config.save(config.ai_settings_file)
+        ai_config.save(config.workdir / config.ai_settings_file)
 
     if config.restrict_to_workspace:
         logger.typewriter_log(
