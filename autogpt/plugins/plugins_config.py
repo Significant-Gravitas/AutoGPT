@@ -102,7 +102,7 @@ class PluginsConfig(BaseModel):
             base_config[plugin_name] = {"enabled": False, "config": {}}
 
         for plugin_name in plugins_allowlist:
-            base_config[plugin_name] = {"enabled": True, "config": {}}
+            base_config[plugin_name] = {"enabled": False, "config": {}}
 
         logger.debug(f"Constructed base plugins config: {base_config}")
 
