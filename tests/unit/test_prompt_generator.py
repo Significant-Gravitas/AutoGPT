@@ -20,13 +20,12 @@ def test_add_command():
     params = {"arg1": "value1", "arg2": "value2"}
     generator = PromptGenerator()
     generator.add_command(command_label, command_name, params)
-    command = {
+    assert generator.commands[0].__dict__ == {
         "label": command_label,
         "name": command_name,
         "params": params,
         "function": None,
     }
-    assert command in generator.commands
 
 
 def test_add_resource():
@@ -39,18 +38,18 @@ def test_add_resource():
     assert resource in generator.resources
 
 
-def test_add_performance_evaluation():
+def test_add_best_practice():
     """
-    Test if the add_performance_evaluation() method adds an evaluation to the generator's
-    performance_evaluation list.
+    Test if the add_best_practice() method adds a best practice to the generator's
+    best_practices list.
     """
-    evaluation = "Evaluation1"
+    practice = "Practice1"
     generator = PromptGenerator()
-    generator.add_performance_evaluation(evaluation)
-    assert evaluation in generator.performance_evaluation
+    generator.add_best_practice(practice)
+    assert practice in generator.best_practices
 
 
-def test_generate_prompt_string(config):
+def test_generate_prompt_string():
     """
     Test if the generate_prompt_string() method generates a prompt string with all the added
     constraints, commands, resources, and evaluations.
@@ -82,10 +81,10 @@ def test_generate_prompt_string(config):
     for resource in resources:
         generator.add_resource(resource)
     for evaluation in evaluations:
-        generator.add_performance_evaluation(evaluation)
+        generator.add_best_practice(evaluation)
 
     # Generate the prompt string and verify its correctness
-    prompt_string = generator.generate_prompt_string(config)
+    prompt_string = generator.generate_prompt_string()
     assert prompt_string is not None
 
     # Check if all constraints, commands, resources, and evaluations are present in the prompt string

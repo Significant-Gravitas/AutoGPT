@@ -1,11 +1,8 @@
 """ A module for generating custom prompt strings."""
 from __future__ import annotations
 
-import json
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, TypedDict
-
-from autogpt.config import Config
-from autogpt.json_utils.utilities import llm_response_schema
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Callable, Optional
 
 if TYPE_CHECKING:
     from autogpt.models.command_registry import CommandRegistry
@@ -17,33 +14,32 @@ class PromptGenerator:
         resources, and performance evaluations.
     """
 
-    class Command(TypedDict):
+    @dataclass
+    class Command:
         label: str
         name: str
         params: dict[str, str]
         function: Optional[Callable]
 
+        def __str__(self) -> str:
+            """Returns a string representation of the command."""
+            params_string = ", ".join(
+                f'"{key}": "{value}"' for key, value in self.params.items()
+            )
+            return f'{self.label}: "{self.name}", params: ({params_string})'
+
     constraints: list[str]
     commands: list[Command]
     resources: list[str]
-    performance_evaluation: list[str]
+    best_practices: list[str]
     command_registry: CommandRegistry | None
-
-    # TODO: replace with AIConfig
-    name: str
-    role: str
-    goals: list[str]
 
     def __init__(self):
         self.constraints = []
         self.commands = []
         self.resources = []
-        self.performance_evaluation = []
+        self.best_practices = []
         self.command_registry = None
-
-        self.name = "Bob"
-        self.role = "AI"
-        self.goals = []
 
     def add_constraint(self, constraint: str) -> None:
         """
@@ -75,31 +71,15 @@ class PromptGenerator:
             function (callable, optional): A callable function to be called when
                 the command is executed. Defaults to None.
         """
-        command_params = {name: type for name, type in params.items()}
 
-        command: PromptGenerator.Command = {
-            "label": command_label,
-            "name": command_name,
-            "params": command_params,
-            "function": function,
-        }
-
-        self.commands.append(command)
-
-    def _generate_command_string(self, command: Dict[str, Any]) -> str:
-        """
-        Generate a formatted string representation of a command.
-
-        Args:
-            command (dict): A dictionary containing command information.
-
-        Returns:
-            str: The formatted command string.
-        """
-        params_string = ", ".join(
-            f'"{key}": "{value}"' for key, value in command["params"].items()
+        self.commands.append(
+            PromptGenerator.Command(
+                label=command_label,
+                name=command_name,
+                params={name: type for name, type in params.items()},
+                function=function,
+            )
         )
-        return f'{command["label"]}: "{command["name"]}", params: {params_string}'
 
     def add_resource(self, resource: str) -> None:
         """
@@ -110,71 +90,67 @@ class PromptGenerator:
         """
         self.resources.append(resource)
 
-    def add_performance_evaluation(self, evaluation: str) -> None:
+    def add_best_practice(self, best_practice: str) -> None:
         """
-        Add a performance evaluation item to the performance_evaluation list.
+        Add an item to the list of best practices.
 
         Args:
-            evaluation (str): The evaluation item to be added.
+            best_practice (str): The best practice item to be added.
         """
-        self.performance_evaluation.append(evaluation)
+        self.best_practices.append(best_practice)
 
-    def _generate_numbered_list(self, items: List[Any], item_type="list") -> str:
+    def _generate_numbered_list(self, items: list[str], start_at: int = 1) -> str:
         """
-        Generate a numbered list from given items based on the item_type.
+        Generate a numbered list containing the given items.
 
         Args:
             items (list): A list of items to be numbered.
-            item_type (str, optional): The type of items in the list.
-                Defaults to 'list'.
+            start_at (int, optional): The number to start the sequence with; defaults to 1.
 
         Returns:
             str: The formatted numbered list.
         """
-        if item_type == "command":
-            command_strings = []
-            if self.command_registry:
-                command_strings += [
-                    str(item)
-                    for item in self.command_registry.commands.values()
-                    if item.enabled
-                ]
-            # terminate command is added manually
-            command_strings += [self._generate_command_string(item) for item in items]
-            return "\n".join(f"{i+1}. {item}" for i, item in enumerate(command_strings))
-        else:
-            return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
+        return "\n".join(f"{i}. {item}" for i, item in enumerate(items, start_at))
 
-    def generate_prompt_string(self, config: Config) -> str:
+    def generate_prompt_string(
+        self,
+        *,
+        additional_constraints: list[str] = [],
+        additional_resources: list[str] = [],
+        additional_best_practices: list[str] = [],
+    ) -> str:
         """
         Generate a prompt string based on the constraints, commands, resources,
-            and performance evaluations.
+            and best practices.
 
         Returns:
             str: The generated prompt string.
         """
+
         return (
-            f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
-            f"{generate_commands(self, config)}"
-            f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
-            "Performance Evaluation:\n"
-            f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
-            "Respond with only valid JSON conforming to the following schema: \n"
-            f"{json.dumps(llm_response_schema(config))}\n"
+            "## Constraints\n"
+            "You operate within the following constraints:\n"
+            f"{self._generate_numbered_list(self.constraints + additional_constraints)}\n\n"
+            "## Commands\n"
+            "You have access to the following commands:\n"
+            f"{self._generate_commands()}\n\n"
+            "## Resources\n"
+            "You can leverage access to the following resources:\n"
+            f"{self._generate_numbered_list(self.resources + additional_resources)}\n\n"
+            "## Best practices\n"
+            f"{self._generate_numbered_list(self.best_practices + additional_best_practices)}"
         )
 
+    def _generate_commands(self) -> str:
+        command_strings = []
+        if self.command_registry:
+            command_strings += [
+                str(cmd)
+                for cmd in self.command_registry.commands.values()
+                if cmd.enabled
+            ]
 
-def generate_commands(self, config: Config) -> str:
-    """
-    Generate a prompt string based on the constraints, commands, resources,
-        and performance evaluations.
+        # Add commands from plugins etc.
+        command_strings += [str(cmd) for cmd in self.commands]
 
-    Returns:
-        str: The generated prompt string.
-    """
-    if config.openai_functions:
-        return ""
-    return (
-        "Commands:\n"
-        f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
-    )
+        return self._generate_numbered_list(command_strings)

@@ -25,7 +25,7 @@ def text_checksum(text: str) -> str:
 
 
 def operations_from_log(
-    log_path: str,
+    log_path: str | Path,
 ) -> Generator[tuple[Operation, str, str | None], None, None]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
@@ -52,7 +52,7 @@ def operations_from_log(
     log.close()
 
 
-def file_operations_state(log_path: str) -> dict[str, str]:
+def file_operations_state(log_path: str | Path) -> dict[str, str]:
     """Iterates over the operations log and returns the expected state.
 
     Parses a log file at config.file_logger_path to construct a dictionary that maps
