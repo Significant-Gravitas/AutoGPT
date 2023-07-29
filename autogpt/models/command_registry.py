@@ -1,6 +1,13 @@
+from __future__ import annotations
+
 import importlib
 import inspect
-from typing import Any
+from dataclasses import dataclass, field
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from autogpt.config import Config
 
 from autogpt.command_decorator import AUTO_GPT_COMMAND_IDENTIFIER
 from autogpt.logs import logger
@@ -18,9 +25,21 @@ class CommandRegistry:
     commands: dict[str, Command]
     commands_aliases: dict[str, Command]
 
+    # Alternative way to structure the registry; currently redundant with self.commands
+    categories: dict[str, CommandCategory]
+
+    @dataclass
+    class CommandCategory:
+        name: str
+        title: str
+        description: str
+        commands: list[Command] = field(default_factory=list[Command])
+        modules: list[ModuleType] = field(default_factory=list[ModuleType])
+
     def __init__(self):
         self.commands = {}
         self.commands_aliases = {}
+        self.categories = {}
 
     def __contains__(self, command_name: str):
         return command_name in self.commands or command_name in self.commands_aliases
@@ -84,7 +103,41 @@ class CommandRegistry:
         ]
         return "\n".join(commands_list)
 
-    def import_commands(self, module_name: str) -> None:
+    @staticmethod
+    def with_command_modules(modules: list[str], config: Config) -> CommandRegistry:
+        new_registry = CommandRegistry()
+
+        logger.debug(
+            f"The following command categories are disabled: {config.disabled_command_categories}"
+        )
+        enabled_command_modules = [
+            x for x in modules if x not in config.disabled_command_categories
+        ]
+
+        logger.debug(
+            f"The following command categories are enabled: {enabled_command_modules}"
+        )
+
+        for command_module in enabled_command_modules:
+            new_registry.import_command_module(command_module)
+
+        # Unregister commands that are incompatible with the current config
+        incompatible_commands: list[Command] = []
+        for command in new_registry.commands.values():
+            if callable(command.enabled) and not command.enabled(config):
+                command.enabled = False
+                incompatible_commands.append(command)
+
+        for command in incompatible_commands:
+            new_registry.unregister(command)
+            logger.debug(
+                f"Unregistering incompatible command: {command.name}, "
+                f"reason - {command.disabled_reason or 'Disabled by current config.'}"
+            )
+
+        return new_registry
+
+    def import_command_module(self, module_name: str) -> None:
         """
         Imports the specified Python module containing command plugins.
 
@@ -99,16 +152,42 @@ class CommandRegistry:
 
         module = importlib.import_module(module_name)
 
+        category = self.register_module_category(module)
+
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
+
+            command = None
+
             # Register decorated functions
-            if hasattr(attr, AUTO_GPT_COMMAND_IDENTIFIER) and getattr(
-                attr, AUTO_GPT_COMMAND_IDENTIFIER
-            ):
-                self.register(attr.command)
+            if getattr(attr, AUTO_GPT_COMMAND_IDENTIFIER, False):
+                command = attr.command
+
             # Register command classes
             elif (
                 inspect.isclass(attr) and issubclass(attr, Command) and attr != Command
             ):
-                cmd_instance = attr()
-                self.register(cmd_instance)
+                command = attr()
+
+            if command:
+                self.register(command)
+                category.commands.append(command)
+
+    def register_module_category(self, module: ModuleType) -> CommandCategory:
+        if not (category_name := getattr(module, "COMMAND_CATEGORY", None)):
+            raise ValueError(f"Cannot import invalid command module {module.__name__}")
+
+        if category_name not in self.categories:
+            self.categories[category_name] = CommandRegistry.CommandCategory(
+                name=category_name,
+                title=getattr(
+                    module, "COMMAND_CATEGORY_TITLE", category_name.capitalize()
+                ),
+                description=getattr(module, "__doc__", ""),
+            )
+
+        category = self.categories[category_name]
+        if module not in category.modules:
+            category.modules.append(module)
+
+        return category
