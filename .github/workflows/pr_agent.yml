@@ -1,8 +1,15 @@
+name: PR Agent Workflow
+
+permissions:
+  issues: write
+  pull-requests: write
+
 on:
   pull_request:
   issue_comment:
 jobs:
   pr_agent_job:
+    permissions: write-all
     runs-on: ubuntu-latest
     name: Run pr agent on every pull request, respond to user comments
     steps:

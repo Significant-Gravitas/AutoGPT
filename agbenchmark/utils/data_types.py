@@ -49,12 +49,45 @@ class Info(BaseModel):
         raise ValueError(f"Cannot convert {v} to DifficultyLevel.")
 
 
+class Eval(BaseModel):
+    type: str
+    scoring: Optional[str]
+    template: Optional[str]
+    examples: Optional[str]
+
+    @validator("scoring", "template", always=True)
+    def validate_eval_fields(cls, v, values, field):
+        if "type" in values and values["type"] == "llm":
+            if v is None:
+                raise ValueError(f"{field.name} must be provided when type is 'llm'")
+        else:
+            if v is not None:
+                raise ValueError(f"{field.name} should only exist when type is 'llm'")
+        return v
+
+    @validator("scoring")
+    def validate_scoring(cls, v):
+        if v is not None and v not in ["percentage", "scale", "binary"]:
+            raise ValueError(
+                "scoring must be either 'percentage', 'scale', or 'binary'"
+            )
+        return v
+
+    @validator("template")
+    def validate_template(cls, v):
+        if v is not None and v not in ["rubric", "reference", "question", "custom"]:
+            raise ValueError(
+                "template must be either 'rubric', 'reference', 'question', or 'custom'"
+            )
+        return v
+
+
 class Ground(BaseModel):
     answer: str
     should_contain: Optional[List[str]] = None
     should_not_contain: Optional[List[str]] = None
     files: List[str]
-    type: str
+    eval: Eval
 
 
 class ChallengeData(BaseModel):
