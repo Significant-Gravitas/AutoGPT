@@ -49,6 +49,7 @@ markers = [
     "iterate",
     "adaptability",
     "safety",
+    "content_gen"
 ]
 
 [tool.poetry.scripts]
