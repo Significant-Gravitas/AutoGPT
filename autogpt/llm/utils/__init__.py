@@ -154,6 +154,9 @@ def create_chat_completion(
             function.schema for function in functions
         ]
 
+    # Print full prompt to debug log
+    logger.debug(prompt.dump())
+
     response = iopenai.create_chat_completion(
         messages=prompt.raw(),
         **chat_completion_kwargs,
