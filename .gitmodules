@@ -1,7 +1,7 @@
 [submodule "agent/Auto-GPT"]
 	path = agent/Auto-GPT
-	url = https://github.com/merwanehamadi/Auto-GPT.git
-	branch = remove-append-to-file
+	url = https://github.com/Significant-Gravitas/Auto-GPT
+	branch = master
 [submodule "agent/gpt-engineer"]
 	path = agent/gpt-engineer
 	url = https://github.com/merwanehamadi/gpt-engineer.git
