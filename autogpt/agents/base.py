@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import re
 from abc import ABCMeta, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
     from autogpt.config import AIConfig, Config
@@ -22,6 +23,8 @@ AgentThoughts = dict[str, Any]
 
 class BaseAgent(metaclass=ABCMeta):
     """Base class for all Auto-GPT agents."""
+
+    ThoughtProcessID = Literal["one-shot"]
 
     def __init__(
         self,
@@ -91,6 +94,7 @@ class BaseAgent(metaclass=ABCMeta):
     def think(
         self,
         instruction: Optional[str] = None,
+        thought_process_id: ThoughtProcessID = "one-shot",
     ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
         """Runs the agent for one cycle.
 
@@ -103,8 +107,8 @@ class BaseAgent(metaclass=ABCMeta):
 
         instruction = instruction or self.default_cycle_instruction
 
-        prompt: ChatSequence = self.construct_prompt(instruction)
-        prompt = self.on_before_think(prompt, instruction)
+        prompt: ChatSequence = self.construct_prompt(instruction, thought_process_id)
+        prompt = self.on_before_think(prompt, thought_process_id, instruction)
         raw_response = create_chat_completion(
             prompt,
             self.config,
@@ -114,7 +118,7 @@ class BaseAgent(metaclass=ABCMeta):
         )
         self.cycle_count += 1
 
-        return self.on_response(raw_response, prompt, instruction)
+        return self.on_response(raw_response, thought_process_id, prompt, instruction)
 
     @abstractmethod
     def execute(
@@ -137,6 +141,7 @@ class BaseAgent(metaclass=ABCMeta):
 
     def construct_base_prompt(
         self,
+        thought_process_id: ThoughtProcessID,
         prepend_messages: list[Message] = [],
         append_messages: list[Message] = [],
         reserve_tokens: int = 0,
@@ -178,7 +183,11 @@ class BaseAgent(metaclass=ABCMeta):
 
         return prompt
 
-    def construct_prompt(self, cycle_instruction: str) -> ChatSequence:
+    def construct_prompt(
+        self,
+        cycle_instruction: str,
+        thought_process_id: ThoughtProcessID,
+    ) -> ChatSequence:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
         2. Message history of the agent, truncated & prepended with running summary as needed
@@ -195,14 +204,86 @@ class BaseAgent(metaclass=ABCMeta):
         cycle_instruction_tlength = count_message_tokens(
             cycle_instruction_msg, self.llm.name
         )
-        prompt = self.construct_base_prompt(reserve_tokens=cycle_instruction_tlength)
+
+        append_messages: list[Message] = []
+
+        response_format_instr = self.response_format_instruction(thought_process_id)
+        if response_format_instr:
+            append_messages.append(Message("system", response_format_instr))
+
+        prompt = self.construct_base_prompt(
+            thought_process_id,
+            append_messages=append_messages,
+            reserve_tokens=cycle_instruction_tlength,
+        )
 
         # ADD user input message ("triggering prompt")
         prompt.append(cycle_instruction_msg)
 
         return prompt
 
-    def on_before_think(self, prompt: ChatSequence, instruction: str) -> ChatSequence:
+    # This can be expanded to support multiple types of (inter)actions within an agent
+    def response_format_instruction(self, thought_process_id: ThoughtProcessID) -> str:
+        if thought_process_id != "one-shot":
+            raise NotImplementedError(f"Unknown thought process '{thought_process_id}'")
+
+        RESPONSE_FORMAT_WITH_COMMAND = """```ts
+        interface Response {
+            thoughts: {
+                // Thoughts
+                text: string;
+                reasoning: string;
+                // Short markdown-style bullet list that conveys the long-term plan
+                plan: string;
+                // Constructive self-criticism
+                criticism: string;
+                // Summary of thoughts to say to the user
+                speak: string;
+            };
+            command: {
+                name: string;
+                args: Record<string, any>;
+            };
+        }
+        ```"""
+
+        RESPONSE_FORMAT_WITHOUT_COMMAND = """```ts
+        interface Response {
+            thoughts: {
+                // Thoughts
+                text: string;
+                reasoning: string;
+                // Short markdown-style bullet list that conveys the long-term plan
+                plan: string;
+                // Constructive self-criticism
+                criticism: string;
+                // Summary of thoughts to say to the user
+                speak: string;
+            };
+        }
+        ```"""
+
+        response_format = re.sub(
+            r"\n\s+",
+            "\n",
+            RESPONSE_FORMAT_WITHOUT_COMMAND
+            if self.config.openai_functions
+            else RESPONSE_FORMAT_WITH_COMMAND,
+        )
+
+        use_functions = self.config.openai_functions and self.command_registry.commands
+        return (
+            f"Respond strictly with JSON{', and also specify a command to use through a function_call' if use_functions else ''}. "
+            "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
+            f"{response_format}\n"
+        )
+
+    def on_before_think(
+        self,
+        prompt: ChatSequence,
+        thought_process_id: ThoughtProcessID,
+        instruction: str,
+    ) -> ChatSequence:
         """Called after constructing the prompt but before executing it.
 
         Calls the `on_planning` hook of any enabled and capable plugins, adding their
@@ -237,7 +318,11 @@ class BaseAgent(metaclass=ABCMeta):
         return prompt
 
     def on_response(
-        self, llm_response: ChatModelResponse, prompt: ChatSequence, instruction: str
+        self,
+        llm_response: ChatModelResponse,
+        thought_process_id: ThoughtProcessID,
+        prompt: ChatSequence,
+        instruction: str,
     ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
         """Called upon receiving a response from the chat model.
 
@@ -260,7 +345,9 @@ class BaseAgent(metaclass=ABCMeta):
         )  # FIXME: support function calls
 
         try:
-            return self.parse_and_process_response(llm_response, prompt, instruction)
+            return self.parse_and_process_response(
+                llm_response, thought_process_id, prompt, instruction
+            )
         except SyntaxError as e:
             logger.error(f"Response could not be parsed: {e}")
             # TODO: tune this message
@@ -275,7 +362,11 @@ class BaseAgent(metaclass=ABCMeta):
 
     @abstractmethod
     def parse_and_process_response(
-        self, llm_response: ChatModelResponse, prompt: ChatSequence, instruction: str
+        self,
+        llm_response: ChatModelResponse,
+        thought_process_id: ThoughtProcessID,
+        prompt: ChatSequence,
+        instruction: str,
     ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
         """Validate, parse & process the LLM's response.
 
