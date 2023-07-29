@@ -219,7 +219,12 @@ class Challenge(ABC):
                         scores_dict[ground_key].append(llm_eval)
 
                 # Count the number of times the value 1.0 appears in the dictionary
-                num_ones = sum(1 for score in scores_dict.values() if score == 1.0)
+                num_ones = sum(
+                    1
+                    for scores in scores_dict.values()
+                    for score in scores
+                    if score == 1.0
+                )
 
                 # Calculate the percentage
                 percentage = round((num_ones / len(scores_dict)) * 100, 2)
@@ -249,7 +254,7 @@ class Challenge(ABC):
         return scores_data
 
     def get_dummy_scores(self, test_name: str, scores: dict[str, Any]) -> int | None:
-        if scores.get("scores_obj", {}).get(test_name) == 1:
+        if 1 in scores.get("scores_obj", {}).get(test_name, []):
             return 1
 
         return None

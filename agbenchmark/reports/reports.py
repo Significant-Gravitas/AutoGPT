@@ -65,7 +65,8 @@ def generate_combined_suite_report(
                 "success": False,
             },
         }
-        if scores.get("scores_obj", {}).get(test_name) == 1:
+
+        if 1 in scores.get("scores_obj", {}).get(test_name, []):
             # add dependency successful here
 
             test_info_details["metrics"]["success"] = True
@@ -208,7 +209,7 @@ def setup_dummy_dependencies(test_class_instance: Any, test_class: Any) -> None:
         # Define a dummy test function that does nothing
         def setup_dependency_test(self: Any, scores: dict[str, Any]) -> None:
             scores = self.get_dummy_scores(test_name, scores)
-            assert 1 == 1
+            assert scores == 1
 
         return setup_dependency_test
 
