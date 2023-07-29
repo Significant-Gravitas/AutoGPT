@@ -3,5 +3,5 @@ COMMAND_CATEGORIES = [
     "autogpt.commands.file_operations",
     "autogpt.commands.web_search",
     "autogpt.commands.web_selenium",
-    "autogpt.commands.task_statuses",
+    "autogpt.commands.system",
 ]
