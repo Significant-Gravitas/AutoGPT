@@ -7,7 +7,8 @@ constraints: [
 resources: [
   'Internet access for searches and information gathering.',
   'Long Term memory management.',
-  'File output.'
+  'File output.',
+  'Command execution'
 ]
 best_practices: [
   'Continuously review and analyze your actions to ensure you are performing to the best of your abilities.',

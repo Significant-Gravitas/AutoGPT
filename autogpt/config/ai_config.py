@@ -148,15 +148,6 @@ class AIConfig:
 
             full_prompt_parts.append(f"The OS you are running on is: {os_info}")
 
-        if self.ai_goals:
-            full_prompt_parts += "\n".join(
-                [
-                    "## Goals",
-                    "In service of the user, you have the following goals:",
-                    *[f"{i+1}. {goal}" for i, goal in enumerate(self.ai_goals)],
-                ]
-            )
-
         additional_constraints: list[str] = []
         if self.api_budget > 0.0:
             additional_constraints.append(
@@ -169,5 +160,16 @@ class AIConfig:
                 additional_constraints=additional_constraints
             )
         )
+
+        if self.ai_goals:
+            full_prompt_parts.append(
+                "\n".join(
+                    [
+                        "## Goals",
+                        "For your task, you must fulfill the following goals:",
+                        *[f"{i+1}. {goal}" for i, goal in enumerate(self.ai_goals)],
+                    ]
+                )
+            )
 
         return "\n\n".join(full_prompt_parts).strip("\n")

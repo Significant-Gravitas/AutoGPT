@@ -2,7 +2,11 @@ from autogpt.config.config import Config
 from autogpt.config.prompt_config import PromptConfig
 from autogpt.prompts.generator import PromptGenerator
 
-DEFAULT_TRIGGERING_PROMPT = "Determine exactly one command to use, and respond using the JSON schema specified previously:"
+DEFAULT_TRIGGERING_PROMPT = (
+    "Determine exactly one command to use based on the given goals "
+    "and the progress you have made so far, "
+    "and respond using the JSON schema specified previously:"
+)
 
 
 def build_default_prompt_generator(config: Config) -> PromptGenerator:
