@@ -1,4 +1,8 @@
-"""Execute code in a Docker container"""
+"""Commands to execute code"""
+
+COMMAND_CATEGORY = "execute_code"
+COMMAND_CATEGORY_TITLE = "Execute Code"
+
 import os
 import subprocess
 from pathlib import Path

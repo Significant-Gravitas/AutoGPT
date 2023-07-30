@@ -1,5 +1,9 @@
-"""File operations for AutoGPT"""
+"""Commands to perform operations on files"""
+
 from __future__ import annotations
+
+COMMAND_CATEGORY = "file_operations"
+COMMAND_CATEGORY_TITLE = "File Operations"
 
 import contextlib
 import hashlib
@@ -228,22 +232,6 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
         return f"Error: {err}"
 
 
-@command(
-    "append_to_file",
-    "Appends to a file",
-    {
-        "filename": {
-            "type": "string",
-            "description": "The name of the file to write to",
-            "required": True,
-        },
-        "text": {
-            "type": "string",
-            "description": "The text to write to the file",
-            "required": True,
-        },
-    },
-)
 @sanitize_path_arg("filename")
 def append_to_file(
     filename: str, text: str, agent: Agent, should_log: bool = True

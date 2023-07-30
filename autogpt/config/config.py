@@ -54,7 +54,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     file_logger_path: Optional[Path] = None
     # Model configuration
     fast_llm: str = "gpt-3.5-turbo"
-    smart_llm: str = "gpt-4"
+    smart_llm: str = "gpt-4-0314"
     temperature: float = 0
     openai_functions: bool = False
     embedding_model: str = "text-embedding-ada-002"
