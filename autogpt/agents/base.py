@@ -9,11 +9,13 @@ if TYPE_CHECKING:
 
     from autogpt.models.command_registry import CommandRegistry
 
+from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.logs import logger
 from autogpt.memory.message_history import MessageHistory
+from autogpt.models.agent_actions import ActionResult
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 CommandName = str
@@ -25,7 +27,7 @@ class BaseAgent(metaclass=ABCMeta):
     """Base class for all Auto-GPT agents."""
 
     ThoughtProcessID = Literal["one-shot"]
-    ThoughtProcessOutput = tuple[CommandName | None, CommandArgs | None, AgentThoughts]
+    ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
 
     def __init__(
         self,
@@ -124,10 +126,10 @@ class BaseAgent(metaclass=ABCMeta):
     @abstractmethod
     def execute(
         self,
-        command_name: str | None,
-        command_args: dict[str, str] | None,
-        user_input: str | None,
-    ) -> str:
+        command_name: str,
+        command_args: dict[str, str] = {},
+        user_input: str = "",
+    ) -> ActionResult:
         """Executes the given command, if any, and returns the agent's response.
 
         Params:
@@ -349,15 +351,14 @@ class BaseAgent(metaclass=ABCMeta):
             return self.parse_and_process_response(
                 llm_response, thought_process_id, prompt, instruction
             )
-        except SyntaxError as e:
-            logger.error(f"Response could not be parsed: {e}")
+        except InvalidAgentResponseError as e:
             # TODO: tune this message
             self.history.add(
                 "system",
                 f"Your response could not be parsed: {e}"
                 "\n\nRemember to only respond using the specified format above!",
             )
-            return None, None, {}
+            raise
 
         # TODO: update memory/context
 

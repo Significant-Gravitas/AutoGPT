@@ -32,6 +32,7 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, get_memory
@@ -72,17 +73,22 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
         msg = e.msg.split("\n")[0]
-        return f"Error: {msg}"
+        raise CommandExecutionError(msg)
 
     add_header(driver)
-    summary = summarize_memorize_webpage(url, text, question, agent, driver)
+    summary = (
+        summarize_memorize_webpage(url, text, question, agent, driver) if text else None
+    )
     links = scrape_links_with_selenium(driver, url)
 
     # Limit links to 5
     if len(links) > 5:
         links = links[:5]
     close_browser(driver)
-    return f"Answer gathered from website: {summary}\n\nLinks: {links}"
+    if summary:
+        return f"Answer gathered from website: {summary}\n\nLinks: {links}"
+    else:
+        return f"Website did not contain any text.\n\nLinks: {links}"
 
 
 def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
@@ -229,7 +235,7 @@ def summarize_memorize_webpage(
         str: The summary of the text
     """
     if not text:
-        return "Error: No text to summarize"
+        raise ValueError("No text to summarize")
 
     text_length = len(text)
     logger.info(f"Text length: {text_length} characters")
