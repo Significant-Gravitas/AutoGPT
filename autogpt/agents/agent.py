@@ -23,6 +23,7 @@ from autogpt.logs.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
+from autogpt.models.command import CommandOutput
 from autogpt.workspace import Workspace
 
 from .base import AgentThoughts, BaseAgent, CommandArgs, CommandName
@@ -172,7 +173,7 @@ class Agent(BaseAgent):
 
     def parse_and_process_response(
         self, llm_response: ChatModelResponse, *args, **kwargs
-    ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
+    ) -> Agent.ThoughtProcessOutput:
         if not llm_response.content:
             raise SyntaxError("Assistant response has no text content")
 
@@ -274,7 +275,7 @@ def execute_command(
     command_name: str,
     arguments: dict[str, str],
     agent: Agent,
-) -> Any:
+) -> CommandOutput:
     """Execute the command and return the result
 
     Args:

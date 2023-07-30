@@ -4,6 +4,8 @@ from autogpt.config import Config
 
 from .command_parameter import CommandParameter
 
+CommandOutput = Any
+
 
 class Command:
     """A class representing a command.
@@ -18,7 +20,7 @@ class Command:
         self,
         name: str,
         description: str,
-        method: Callable[..., Any],
+        method: Callable[..., CommandOutput],
         parameters: list[CommandParameter],
         enabled: bool | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
