@@ -2,7 +2,7 @@
 
 Enter this command to use TTS _(Text-to-Speech)_ for Auto-GPT
 
-``` shell
+```shell
 python -m autogpt --speak
 ```
 
