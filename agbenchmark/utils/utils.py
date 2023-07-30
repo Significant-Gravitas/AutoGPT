@@ -1,5 +1,4 @@
 # radio charts, logs, helper functions for tests, anything else relevant.
-import glob
 import math
 import os
 import re
@@ -15,27 +14,26 @@ load_dotenv()
 from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
 
 AGENT_NAME = os.getenv("AGENT_NAME")
-HOME_ENV = os.getenv("HOME_ENV")
-report_location = os.getenv("REPORT_LOCATION", None)
+REPORT_LOCATION = os.getenv("REPORT_LOCATION", None)
 
 
 def calculate_info_test_path(reports_path: Path) -> str:
-    if report_location:
-        reports_path = Path(os.getcwd()) / report_location
-
     command = sys.argv
 
     if not reports_path.exists():
         reports_path.mkdir(parents=True, exist_ok=True)
 
-    json_files = glob.glob(str(reports_path / "*.json"))
+    # Collect all directories in reports_path
+    all_items = os.listdir(str(reports_path))
+    dirs = [item for item in all_items if os.path.isdir(reports_path / item)]
 
     # Default naming scheme
-    file_count = len(json_files)
-    run_name = f"file{file_count + 1}_{datetime.now().strftime('%m-%d-%H-%M')}.json"
+    dir_count = len(dirs)
+    run_name = f"folder{dir_count + 1}_{datetime.now().strftime('%m-%d-%H-%M')}"
 
     test_index = None
     test_arg = None
+    # Check command-line arguments
     if "--test" in command:
         test_index = command.index("--test")
     elif "--suite" in command:
@@ -49,52 +47,43 @@ def calculate_info_test_path(reports_path: Path) -> str:
         test_index = command.index("--improve")
         test_arg = "improve"
 
-    # # If "--test" is in command
     if test_index:
         if not test_arg:
-            test_arg = command[test_index + 1]  # Argument after --
+            test_arg = command[test_index + 1]
 
-        # Try to find the highest prefix number among all files, then increment it
-        all_prefix_numbers = []
-        # count related files and assign the correct file number
-        related_files = []
-        prefix_number = 0.0
+        # collect related directories and their prefix numbers
+        related_dirs = []
+        prefix_numbers = []
 
-        # Get all files that include the string that is the argument after --test
-        for file in json_files:
-            file_name = Path(file).name.rsplit(".", 1)[0]
-            file_parts = file_name.split("_")
+        for dir in dirs:
+            dir_parts = dir.split("_")
             try:
-                if "file" in file_parts[0]:
-                    # default files are called file{num}
-                    number = float(file_parts[0][4:]) + 1
-                else:
-                    number = float(file_parts[0]) + 1
+                prefix = float(dir_parts[0][6:])
+                test_name = "_".join(dir_parts[1:])
+                if test_arg == test_name:
+                    prefix_numbers.append(math.floor(prefix))
+                    related_dirs.append(test_name)
             except:
-                number = file_count + 1
-            test_name = "_".join(file_parts[1:])
-            all_prefix_numbers.append(math.floor(number))
-            if test_arg == test_name:
-                prefix_number = number
-                related_files.append(test_name)
+                pass
 
-        related_file_count = len(related_files)
+        related_dir_count = len(related_dirs)
 
-        # Determine the prefix based on the existing files
-        if related_file_count == 0:
-            max_prefix = max(all_prefix_numbers, default=0)
-            run_name = f"{max_prefix + 1}_{test_arg}.json"
+        if related_dir_count == 0:
+            max_prefix = max(prefix_numbers, default=0)
+            run_name = f"folder{max_prefix + 1}_{test_arg}"
         else:
-            print(f"Found {related_file_count} files with '{test_arg}' in the name")
-            # Take the number from before the _ and add the .{number}
+            print(
+                f"Found {related_dir_count} directories with '{test_arg}' in the name"
+            )
+            prefix = max(prefix_numbers)
+            run_name = f"folder{prefix}.{related_dir_count}_{test_arg}"
 
-            prefix = 0
-            prefix = math.floor(prefix_number)
+    new_dir_path = reports_path / run_name
 
-            run_name = f"{prefix}.{related_file_count}_{test_arg}.json"
+    if not os.path.exists(new_dir_path):
+        os.makedirs(new_dir_path)
 
-    new_file_path = reports_path / run_name
-    return str(new_file_path)
+    return str(new_dir_path)
 
 
 def replace_backslash(value: Any) -> Any:
@@ -195,9 +184,14 @@ def assign_paths(folder_path: Path) -> tuple[str, str, str]:
     CONFIG_PATH = str(folder_path / "config.json")
     REGRESSION_TESTS_PATH = str(folder_path / "regression_tests.json")
 
-    INFO_TESTS_PATH = calculate_info_test_path(folder_path / "reports")
+    reports_location = folder_path / "reports"
+    # from the ci
+    if REPORT_LOCATION:
+        reports_location = Path.cwd() / REPORT_LOCATION
 
-    return CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH
+    REPORTS_PATH = calculate_info_test_path(reports_location)
+
+    return CONFIG_PATH, REGRESSION_TESTS_PATH, REPORTS_PATH
 
 
 def calculate_dynamic_paths() -> tuple[Path, str, str, str]:
@@ -213,13 +207,13 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str]:
         HOME_DIRECTORY = Path(os.getcwd()) / "agent" / AGENT_NAME
         benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
 
-        CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH = assign_paths(
+        CONFIG_PATH, REGRESSION_TESTS_PATH, REPORTS_PATH = assign_paths(
             benchmarks_folder_path
         )
     else:
         # otherwise the default is when home is an agent (running agbenchmark from agent/agent_repo)
         # used when its just a pip install
-        CONFIG_PATH, REGRESSION_TESTS_PATH, INFO_TESTS_PATH = assign_paths(
+        CONFIG_PATH, REGRESSION_TESTS_PATH, REPORTS_PATH = assign_paths(
             benchmarks_folder_path
         )
 
@@ -230,5 +224,5 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str]:
         HOME_DIRECTORY,
         CONFIG_PATH,
         REGRESSION_TESTS_PATH,
-        INFO_TESTS_PATH,
+        REPORTS_PATH,
     )

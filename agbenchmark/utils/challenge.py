@@ -54,6 +54,7 @@ class Challenge(ABC):
         print(
             f"\033[1;35m============Starting {self.data.name} challenge============\033[0m"
         )
+        print(f"\033[1;30mTask: {self.task}\033[0m")
 
         run_agent(self.task, config, self.ARTIFACTS_LOCATION, cutoff)
 
@@ -146,7 +147,6 @@ class Challenge(ABC):
 
     def llm_eval(self, config: Dict[str, Any], content: str, ground: Ground) -> float:
         openai.api_key = os.getenv("OPENAI_API_KEY")
-        print("we are here burh")
         if MOCK_FLAG:
             return 1.0
 

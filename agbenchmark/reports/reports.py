@@ -6,11 +6,7 @@ from typing import Any, Callable
 import pytest
 
 from agbenchmark.reports.ReportManager import ReportManager
-from agbenchmark.start_benchmark import (
-    CONFIG_PATH,
-    INFO_TESTS_PATH,
-    REGRESSION_TESTS_PATH,
-)
+from agbenchmark.start_benchmark import CONFIG_PATH, REGRESSION_TESTS_PATH, REPORTS_PATH
 from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel, SuiteConfig
 from agbenchmark.utils.utils import (
     AGENT_NAME,
@@ -24,7 +20,7 @@ from agbenchmark.utils.utils import (
 regression_manager = ReportManager(REGRESSION_TESTS_PATH)
 
 # user facing reporting information
-info_manager = ReportManager(INFO_TESTS_PATH)
+info_manager = ReportManager(str(Path(REPORTS_PATH) / "report.json"))
 
 INTERNAL_LOGS_PATH = Path(__file__).resolve().parent
 
@@ -58,6 +54,7 @@ def generate_combined_suite_report(
         test_info_details = {
             "data_path": replace_backslash(data_paths[i]),
             "is_regression": False,
+            "category": challenge_data["category"],
             "answer": challenge_data["ground"][test_name]["answer"],
             "description": challenge_data["info"][test_name]["description"],
             "metrics": {
@@ -126,15 +123,10 @@ def get_previous_test_results(
         prev_test_results.append(info_details["metrics"]["success"])
         internal_info.add_test(test_name, prev_test_results, AGENT_NAME)
 
-        # can calculate success rate regardless of mock
-        info_details["metrics"]["success_%"] = calculate_success_percentage(
-            prev_test_results
-        )
-    else:
-        # can calculate success rate regardless of mock
-        info_details["metrics"]["non_mock_success_%"] = calculate_success_percentage(
-            prev_test_results
-        )
+    # can calculate success rate regardless of mock
+    info_details["metrics"]["success_%"] = calculate_success_percentage(
+        prev_test_results
+    )
 
     return prev_test_results
 

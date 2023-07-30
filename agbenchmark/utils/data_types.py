@@ -28,6 +28,8 @@ DIFFICULTY_MAP = {
     DifficultyLevel.human: 7,
 }
 
+STRING_DIFFICULTY_MAP = {e.value: DIFFICULTY_MAP[e] for e in DifficultyLevel}
+
 
 class Info(BaseModel):
     difficulty: DifficultyLevel
