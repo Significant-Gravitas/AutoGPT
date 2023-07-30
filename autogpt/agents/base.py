@@ -145,6 +145,7 @@ class BaseAgent(metaclass=ABCMeta):
         prepend_messages: list[Message] = [],
         append_messages: list[Message] = [],
         reserve_tokens: int = 0,
+        with_message_history: bool = False,
     ) -> ChatSequence:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
@@ -163,20 +164,23 @@ class BaseAgent(metaclass=ABCMeta):
             [Message("system", self.system_prompt)] + prepend_messages,
         )
 
-        # Reserve tokens for messages to be appended later, if any
-        reserve_tokens += self.history.max_summary_tlength
-        if append_messages:
-            reserve_tokens += count_message_tokens(append_messages, self.llm.name)
+        if with_message_history:
+            # Reserve tokens for messages to be appended later, if any
+            reserve_tokens += self.history.max_summary_tlength
+            if append_messages:
+                reserve_tokens += count_message_tokens(append_messages, self.llm.name)
 
-        # Fill message history, up to a margin of reserved_tokens.
-        # Trim remaining historical messages and add them to the running summary.
-        history_start_index = len(prompt)
-        trimmed_history = add_history_upto_token_limit(
-            prompt, self.history, self.send_token_limit - reserve_tokens
-        )
-        if trimmed_history:
-            new_summary_msg, _ = self.history.trim_messages(list(prompt), self.config)
-            prompt.insert(history_start_index, new_summary_msg)
+            # Fill message history, up to a margin of reserved_tokens.
+            # Trim remaining historical messages and add them to the running summary.
+            history_start_index = len(prompt)
+            trimmed_history = add_history_upto_token_limit(
+                prompt, self.history, self.send_token_limit - reserve_tokens
+            )
+            if trimmed_history:
+                new_summary_msg, _ = self.history.trim_messages(
+                    list(prompt), self.config
+                )
+                prompt.insert(history_start_index, new_summary_msg)
 
         if append_messages:
             prompt.extend(append_messages)

@@ -70,12 +70,12 @@ class PlanningAgent(BaseAgent):
         """List of steps that the Agent plans to take"""
 
     def construct_base_prompt(
-        self,
-        thought_process_id: ThoughtProcessID,
-        prepend_messages: list[Message] = [],
-        append_messages: list[Message] = [],
-        reserve_tokens: int = 0,
+        self, thought_process_id: ThoughtProcessID, **kwargs
     ) -> ChatSequence:
+        prepend_messages = kwargs["prepend_messages"] = kwargs.get(
+            "prepend_messages", []
+        )
+
         match thought_process_id:
             case "plan" | "action":
                 # Add the current plan to the prompt, if any
@@ -116,17 +116,9 @@ class PlanningAgent(BaseAgent):
                     f"Unknown thought process '{thought_process_id}'"
                 )
 
-        prompt = ChatSequence.for_model(
-            self.llm.name,
-            [Message("system", self.system_prompt)] + prepend_messages,
+        return super().construct_base_prompt(
+            thought_process_id=thought_process_id, **kwargs
         )
-
-        # No message history; this makes it easier to develop & debug the prompt
-
-        if append_messages:
-            prompt.extend(append_messages)
-
-        return prompt
 
     def on_before_think(self, *args, **kwargs) -> ChatSequence:
         prompt = super().on_before_think(*args, **kwargs)

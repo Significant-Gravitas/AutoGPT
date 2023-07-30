@@ -97,6 +97,9 @@ class Agent(BaseAgent):
                 kwargs["append_messages"] = []
             kwargs["append_messages"].append(budget_msg)
 
+            # Include message history in base prompt
+            kwargs["with_message_history"] = True
+
         return super().construct_base_prompt(*args, **kwargs)
 
     def on_before_think(self, *args, **kwargs) -> ChatSequence:
