@@ -191,7 +191,7 @@ jobs:
             ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval
           else
             bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/b7ab4bc53e51d8ab29fff19ce5986ab7720970c6/mitmproxy.sh)" -s start
-            timeout 25m ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
+            ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
           fi
 
           cd ../..
