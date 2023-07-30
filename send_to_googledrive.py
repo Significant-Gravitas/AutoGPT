@@ -31,6 +31,45 @@ base_dir = "reports"
 # Create a list to store each row of data
 rows = []
 
+
+def process_test(
+    test_name: str, test_info: dict, agent_name: str, common_data: dict
+) -> None:
+    """Recursive function to process test data."""
+    row = {
+        "Agent": agent_name,
+        "Command": common_data.get("command", ""),
+        "Completion Time": common_data.get("completion_time", ""),
+        "Benchmark Start Time": common_data.get("benchmark_start_time", ""),
+        "Total Run Time": common_data.get("metrics", {}).get("run_time", ""),
+        "Highest Difficulty": common_data.get("metrics", {}).get(
+            "highest_difficulty", ""
+        ),
+        "Workspace": common_data.get("config", {}).get("workspace", ""),
+        "Test Name": test_name,
+        "Data Path": test_info.get("data_path", ""),
+        "Is Regression": test_info.get("is_regression", ""),
+        "Difficulty": test_info.get("metrics", {}).get("difficulty", ""),
+        "Success": test_info.get("metrics", {}).get("success", ""),
+        "Success %": test_info.get("metrics", {}).get("success_%", ""),
+        "Non mock success %": test_info.get("metrics", {}).get(
+            "non_mock_success_%", ""
+        ),
+        "Run Time": test_info.get("metrics", {}).get("run_time", ""),
+    }
+
+    rows.append(row)
+
+    # Check for nested tests and process them if present
+    nested_tests = test_info.get("tests")
+    if nested_tests:
+        for nested_test_name, nested_test_info in nested_tests.items():
+            process_test(nested_test_name, nested_test_info, agent_name, common_data)
+
+
+# Usage:
+
+
 # Loop over each directory in the base directory
 for sub_dir in os.listdir(base_dir):
     # Define the subdirectory path
@@ -51,33 +90,7 @@ for sub_dir in os.listdir(base_dir):
 
                 # Loop through each test
                 for test_name, test_info in data["tests"].items():
-                    # Create a dictionary to hold the information for this row
-                    row = {
-                        "Agent": sub_dir,
-                        "Command": data.get("command", ""),
-                        "Completion Time": data.get("completion_time", ""),
-                        "Benchmark Start Time": data.get("benchmark_start_time", ""),
-                        "Total Run Time": data.get("metrics", {}).get("run_time", ""),
-                        "Highest Difficulty": data.get("metrics", {}).get(
-                            "highest_difficulty", ""
-                        ),
-                        "Workspace": data.get("config", {}).get("workspace", ""),
-                        "Test Name": test_name,
-                        "Data Path": test_info.get("data_path", ""),
-                        "Is Regression": test_info.get("is_regression", ""),
-                        "Difficulty": test_info.get("metrics", {}).get(
-                            "difficulty", ""
-                        ),
-                        "Success": test_info.get("metrics", {}).get("success", ""),
-                        "Success %": test_info.get("metrics", {}).get("success_%", ""),
-                        "Non mock success %": test_info.get("metrics", {}).get(
-                            "non_mock_success_%", ""
-                        ),
-                        "Run Time": test_info.get("metrics", {}).get("run_time", ""),
-                    }
-
-                    # Add this row to the list
-                    rows.append(row)
+                    process_test(test_name, test_info, sub_dir, data)
 
 # Convert the list of rows into a DataFrame
 df = pd.DataFrame(rows)
