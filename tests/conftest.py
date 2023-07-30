@@ -52,7 +52,7 @@ def config(
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
 
-    Workspace.set_workspace_directory(config, workspace.root)
+    config.workspace_path = workspace.root
 
     # HACK: this is necessary to ensure PLAIN_OUTPUT takes effect
     logger.config = config

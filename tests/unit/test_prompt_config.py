@@ -18,10 +18,10 @@ resources:
 - A test resource
 - Another test resource
 - A third test resource
-performance_evaluations:
-- A test performance evaluation
-- Another test performance evaluation
-- A third test performance evaluation
+best_practices:
+- A test best-practice
+- Another test best-practice
+- A third test best-practice
 """
     prompt_settings_file = tmp_path / "test_prompt_settings.yaml"
     prompt_settings_file.write_text(yaml_content)
@@ -36,13 +36,7 @@ performance_evaluations:
     assert prompt_config.resources[0] == "A test resource"
     assert prompt_config.resources[1] == "Another test resource"
     assert prompt_config.resources[2] == "A third test resource"
-    assert len(prompt_config.performance_evaluations) == 3
-    assert prompt_config.performance_evaluations[0] == "A test performance evaluation"
-    assert (
-        prompt_config.performance_evaluations[1]
-        == "Another test performance evaluation"
-    )
-    assert (
-        prompt_config.performance_evaluations[2]
-        == "A third test performance evaluation"
-    )
+    assert len(prompt_config.best_practices) == 3
+    assert prompt_config.best_practices[0] == "A test best-practice"
+    assert prompt_config.best_practices[1] == "Another test best-practice"
+    assert prompt_config.best_practices[2] == "A third test best-practice"

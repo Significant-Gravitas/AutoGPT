@@ -87,7 +87,7 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
     config.plain_output = True
     command_registry = get_command_registry(config)
     config.memory_backend = "no_memory"
-    config.workspace_path = Workspace.set_workspace_directory(config)
+    config.workspace_path = Workspace.init_workspace_directory(config)
     config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
     ai_config = AIConfig(
         ai_name="Auto-GPT",
@@ -109,6 +109,6 @@ def get_command_registry(config: Config):
     enabled_command_categories = [
         x for x in COMMAND_CATEGORIES if x not in config.disabled_command_categories
     ]
-    for command_category in enabled_command_categories:
-        command_registry.import_commands(command_category)
+    for command_module in enabled_command_categories:
+        command_registry.import_command_module(command_module)
     return command_registry

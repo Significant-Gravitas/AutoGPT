@@ -1,5 +1,9 @@
-"""File operations for AutoGPT"""
+"""Commands to perform operations on files"""
+
 from __future__ import annotations
+
+COMMAND_CATEGORY = "file_operations"
+COMMAND_CATEGORY_TITLE = "File Operations"
 
 import contextlib
 import hashlib
@@ -25,7 +29,7 @@ def text_checksum(text: str) -> str:
 
 
 def operations_from_log(
-    log_path: str,
+    log_path: str | Path,
 ) -> Generator[tuple[Operation, str, str | None], None, None]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
@@ -52,7 +56,7 @@ def operations_from_log(
     log.close()
 
 
-def file_operations_state(log_path: str) -> dict[str, str]:
+def file_operations_state(log_path: str | Path) -> dict[str, str]:
     """Iterates over the operations log and returns the expected state.
 
     Parses a log file at config.file_logger_path to construct a dictionary that maps
@@ -228,22 +232,6 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
         return f"Error: {err}"
 
 
-@command(
-    "append_to_file",
-    "Appends to a file",
-    {
-        "filename": {
-            "type": "string",
-            "description": "The name of the file to write to",
-            "required": True,
-        },
-        "text": {
-            "type": "string",
-            "description": "The text to write to the file",
-            "required": True,
-        },
-    },
-)
 @sanitize_path_arg("filename")
 def append_to_file(
     filename: str, text: str, agent: Agent, should_log: bool = True

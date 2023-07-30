@@ -1,4 +1,8 @@
-""" Image Generation Module for AutoGPT."""
+"""Commands to generate images based on text input"""
+
+COMMAND_CATEGORY = "text_to_image"
+COMMAND_CATEGORY_TITLE = "Text to Image"
+
 import io
 import json
 import time

@@ -1,7 +1,4 @@
-import os
-import sys
 from pathlib import Path
-from typing import Tuple
 
 from autogpt.agents import Agent
 from autogpt.app.main import run_interaction_loop
@@ -15,15 +12,14 @@ from autogpt.workspace import Workspace
 PROJECT_DIR = Path().resolve()
 
 
-def run_specific_agent(task, continuous_mode=False) -> Tuple[str, int]:
-    agent = bootstrap_agent(task, continuous_mode)
+def run_task(task) -> None:
+    agent = bootstrap_agent(task)
     run_interaction_loop(agent)
 
 
-def bootstrap_agent(task, continuous_mode) -> Agent:
+def bootstrap_agent(task):
     config = ConfigBuilder.build_config_from_env(workdir=PROJECT_DIR)
-    config.debug_mode = True
-    config.continuous_mode = continuous_mode
+    config.continuous_mode = False
     config.temperature = 0
     config.plain_output = True
     command_registry = get_command_registry(config)
@@ -33,7 +29,7 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
     ai_config = AIConfig(
         ai_name="Auto-GPT",
         ai_role="a multi-purpose AI assistant.",
-        ai_goals=[task],
+        ai_goals=[task.user_input],
     )
     ai_config.command_registry = command_registry
     return Agent(
@@ -50,15 +46,6 @@ def get_command_registry(config: Config):
     enabled_command_categories = [
         x for x in COMMAND_CATEGORIES if x not in config.disabled_command_categories
     ]
-    for command_module in enabled_command_categories:
-        command_registry.import_command_module(command_module)
+    for command_category in enabled_command_categories:
+        command_registry.import_commands(command_category)
     return command_registry
-
-
-if __name__ == "__main__":
-    # The first argument is the script name itself, second is the task
-    if len(sys.argv) != 2:
-        print("Usage: python script.py <task>")
-        sys.exit(1)
-    task = sys.argv[1]
-    run_specific_agent(task, continuous_mode=True)
