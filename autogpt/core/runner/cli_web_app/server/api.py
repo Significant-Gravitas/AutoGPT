@@ -6,7 +6,7 @@ from colorama import Fore
 from autogpt.agents import Agent
 from autogpt.app.main import UserFeedback
 from autogpt.commands import COMMAND_CATEGORIES
-from autogpt.config import AIConfig, Config, ConfigBuilder
+from autogpt.config import AIConfig, ConfigBuilder
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
