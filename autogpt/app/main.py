@@ -347,7 +347,8 @@ def update_user(
             logger.typewriter_log(
                 "ERROR: ",
                 Fore.RED,
-                f"The Agent failed to select an action. " f"Error message: {command_name}",
+                f"The Agent failed to select an action. "
+                f"Error message: {command_name}",
             )
         else:
             if config.speak_mode:
