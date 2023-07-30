@@ -20,7 +20,7 @@ HeliconeLockManager.write_custom_property("benchmark_start_time", BENCHMARK_STAR
     HOME_DIRECTORY,
     CONFIG_PATH,
     REGRESSION_TESTS_PATH,
-    INFO_TESTS_PATH,
+    REPORTS_PATH,
 ) = calculate_dynamic_paths()
 
 
@@ -107,8 +107,8 @@ def start(
 
     os.environ["MOCK_TEST"] = "True" if mock else "False"
 
-    if not os.path.exists(INFO_TESTS_PATH):
-        with open(INFO_TESTS_PATH, "w"):
+    if not os.path.exists(Path(REPORTS_PATH) / "report.json"):
+        with open(Path(REPORTS_PATH) / "report.json", "w"):
             pass
 
     pytest_args = ["-vs"]
