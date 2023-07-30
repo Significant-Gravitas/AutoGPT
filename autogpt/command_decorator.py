@@ -2,7 +2,7 @@ import functools
 from typing import Any, Callable, Optional, TypedDict
 
 from autogpt.config import Config
-from autogpt.models.command import Command, CommandParameter
+from autogpt.models.command import Command, CommandOutput, CommandParameter
 
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
@@ -21,10 +21,10 @@ def command(
     enabled: bool | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
-) -> Callable[..., Any]:
+) -> Callable[..., CommandOutput]:
     """The command decorator is used to create Command objects from ordinary functions."""
 
-    def decorator(func: Callable[..., Any]) -> Command:
+    def decorator(func: Callable[..., CommandOutput]) -> Command:
         typed_parameters = [
             CommandParameter(
                 name=param_name,

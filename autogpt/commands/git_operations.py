@@ -6,6 +6,7 @@ COMMAND_CATEGORY_TITLE = "Git Operations"
 from git.repo import Repo
 
 from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
 from autogpt.url_utils.validators import validate_url
 
@@ -50,6 +51,7 @@ def clone_repository(url: str, clone_path: str, agent: Agent) -> str:
     )
     try:
         Repo.clone_from(url=auth_repo_url, to_path=clone_path)
-        return f"""Cloned {url} to {clone_path}"""
     except Exception as e:
-        return f"Error: {str(e)}"
+        raise CommandExecutionError(f"Could not clone repo: {e}")
+
+    return f"""Cloned {url} to {clone_path}"""
