@@ -6,7 +6,7 @@ A repo built for the purpose of benchmarking the performance of agents far and w
 <img width="733" alt="Screenshot 2023-07-25 at 10 35 01 AM" src="https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/assets/9652976/98963e0b-18b9-4b17-9a6a-4d3e4418af70">
 
 ## Ranking overall:
-- 1- [Beebot](https://github.com/Significant-Gravitas/Auto-GPT)
+- 1- [Beebot](https://github.com/AutoPackAI/beebot)
 - 2- [mini-agi](https://github.com/muellerberndt/mini-agi)
 - 3- [Auto-GPT](https://github.com/Significant-Gravitas/Auto-GPT)
 ## Detailed results:
