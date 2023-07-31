@@ -8,7 +8,7 @@ COMMAND_CATEGORY_TITLE = "Web Browsing"
 import logging
 from pathlib import Path
 from sys import platform
-from typing import Optional, Type
+from typing import Optional
 
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import WebDriverException
@@ -16,6 +16,7 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
 from selenium.webdriver.chrome.webdriver import WebDriver as ChromeDriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.options import ArgOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.service import Service as EdgeDriverService
 from selenium.webdriver.edge.webdriver import WebDriver as EdgeDriver
@@ -41,6 +42,7 @@ from autogpt.url_utils.validators import validate_url
 BrowserOptions = ChromeOptions | EdgeOptions | FirefoxOptions | SafariOptions
 
 FILE_DIR = Path(__file__).parent.parent
+SUMMARIZATION_TRIGGER_LENGTH = 250  # Approximately 50 tokens for GPT-4
 
 
 @command(
@@ -66,6 +68,7 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
     Returns:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
     """
+    driver = None
     try:
         driver, text = scrape_text_with_selenium(url, agent)
     except WebDriverException as e:
@@ -73,16 +76,22 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
         # Just grab the first line.
         msg = e.msg.split("\n")[0]
         return f"Error: {msg}"
+    else:
+        add_header(driver)
 
-    add_header(driver)
-    summary = summarize_memorize_webpage(url, text, question, agent, driver)
-    links = scrape_links_with_selenium(driver, url)
+        if len(text) > SUMMARIZATION_TRIGGER_LENGTH:
+            summary = summarize_memorize_webpage(url, text, question, agent, driver)
+            links = scrape_links_with_selenium(driver, url)
 
-    # Limit links to 5
-    if len(links) > 5:
-        links = links[:5]
-    close_browser(driver)
-    return f"Answer gathered from website: {summary}\n\nLinks: {links}"
+            # Limit links to 5
+            if len(links) > 5:
+                links = links[:5]
+            return f"Answer gathered from website: {summary}\n\nLinks: {links}"
+        else:
+            return f"Text gathered from website: {text}."
+    finally:
+        if driver:
+            close_browser(driver)
 
 
 def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
@@ -96,14 +105,14 @@ def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
     """
     logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
-    options_available: dict[str, Type[BrowserOptions]] = {
+    options_available: dict[str, ArgOptions] = {
         "chrome": ChromeOptions,
         "edge": EdgeOptions,
         "firefox": FirefoxOptions,
         "safari": SafariOptions,
     }
 
-    options: BrowserOptions = options_available[agent.config.selenium_web_browser]()
+    options: ArgOptions = options_available[agent.config.selenium_web_browser]()
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
