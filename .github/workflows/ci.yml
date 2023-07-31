@@ -313,4 +313,3 @@ jobs:
           echo "Failed after $max_attempts attempts."
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
-          REPORT_LOCATION: 'reports'

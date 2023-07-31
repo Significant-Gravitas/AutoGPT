@@ -1,4 +1,5 @@
 import os
+import json
 from typing import Optional
 
 import requests
@@ -43,8 +44,8 @@ query ExampleQuery($properties: [PropertyFilter!]){
     operation_name = "ExampleQuery"
 
     data = None
+    response = None
 
-    # Make the request
     try:
         response = requests.post(
             url,
@@ -59,9 +60,12 @@ query ExampleQuery($properties: [PropertyFilter!]){
         data = response.json()
     except requests.HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
+        raise  # Re-raise the exception to stop execution
+    except json.JSONDecodeError:
+        print(f"Invalid JSON response: {response.text if response else 'No response'}")
+        raise
     except Exception as err:
         print(f"Other error occurred: {err}")
+        raise
 
-    if not data:
-        raise Exception("No data returned from Helicone")
     return data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("cost", None)
