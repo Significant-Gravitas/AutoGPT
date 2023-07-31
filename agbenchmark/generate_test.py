@@ -56,6 +56,9 @@ def create_single_test(
 
     # Define test method within the dynamically created class
     def test_method(self, config: Dict[str, Any], request) -> None:  # type: ignore
+        from helicone.lock import HeliconeLockManager
+        HeliconeLockManager.write_custom_property("challenge", self.data.name)
+
         cutoff = self.data.cutoff or 60
         self.setup_challenge(config, cutoff)
 

@@ -79,3 +79,4 @@ query ExampleQuery($properties: [PropertyFilter!]){
         )
     except Exception as err:
         print(f"Error occurred: {err}")
+        raise

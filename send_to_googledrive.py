@@ -71,26 +71,28 @@ def process_test(
 
 
 # Loop over each directory in the base directory
-for sub_dir in os.listdir(base_dir):
-    # Define the subdirectory path
-    sub_dir_path = os.path.join(base_dir, sub_dir)
+for agent_dir in os.listdir(base_dir):
+    agent_dir_path = os.path.join(base_dir, agent_dir)
 
-    # Ensure the sub_dir_path is a directory
-    if os.path.isdir(sub_dir_path):
-        # Loop over each file in the subdirectory
-        for filename in os.listdir(sub_dir_path):
-            # Check if the file is a JSON file
-            if filename.endswith(".json"):
-                # Define the file path
-                file_path = os.path.join(sub_dir_path, filename)
+    # Ensure the agent_dir_path is a directory
+    if os.path.isdir(agent_dir_path):
+        # Loop over each sub-directory in the agent directory (e.g., "folder49_07-28-03-53")
+        for report_folder in os.listdir(agent_dir_path):
+            report_folder_path = os.path.join(agent_dir_path, report_folder)
 
-                # Load the JSON data from the file
-                with open(file_path, "r") as f:
-                    data = json.load(f)
+            # Ensure the report_folder_path is a directory
+            if os.path.isdir(report_folder_path):
+                # Check for a file named "report.json" in the sub-directory
+                report_path = os.path.join(report_folder_path, "report.json")
 
-                # Loop through each test
-                for test_name, test_info in data["tests"].items():
-                    process_test(test_name, test_info, sub_dir, data)
+                if os.path.exists(report_path):
+                    # Load the JSON data from the file
+                    with open(report_path, "r") as f:
+                        data = json.load(f)
+
+                    # Loop through each test
+                    for test_name, test_info in data["tests"].items():
+                        process_test(test_name, test_info, agent_dir, data)
 
 # Convert the list of rows into a DataFrame
 df = pd.DataFrame(rows)

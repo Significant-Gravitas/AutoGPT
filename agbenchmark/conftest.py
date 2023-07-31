@@ -8,7 +8,6 @@ from pathlib import Path  # noqa
 from typing import Any, Dict, Generator
 
 import pytest
-from helicone.lock import HeliconeLockManager
 
 from agbenchmark.reports.reports import (
     finalize_reports,
@@ -169,7 +168,6 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
             test_name = challenge_data["name"]
             generate_single_call_report(item, call, challenge_data)
         # else: it's a same_task=false suite (tests aren't combined)
-        HeliconeLockManager.write_custom_property("challenge", test_name)
     if call.when == "teardown":
         finalize_reports(item, challenge_data)
 
