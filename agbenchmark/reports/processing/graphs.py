@@ -4,12 +4,15 @@ from typing import Any
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from matplotlib.colors import Normalize
 
 
 def save_combined_radar_chart(
     categories: dict[str, Any], save_path: str | Path
 ) -> None:
+    if not all(categories.values()):
+        raise Exception("No data to plot")
     labels = np.array(
         list(next(iter(categories.values())).keys())
     )  # We use the first category to get the keys
@@ -30,18 +33,9 @@ def save_combined_radar_chart(
         vmin=0, vmax=max([max(val.values()) for val in categories.values()])
     )  # We use the maximum of all categories for normalization
 
-    colors = [
-        "#40c463",
-        "#ff7f0e",
-        "#2ca02c",
-        "#d62728",
-        "#9467bd",
-        "#8c564b",
-        "#e377c2",
-        "#7f7f7f",
-        "#bcbd22",
-        "#17becf",
-    ]  # Define more colors for more categories
+    cmap = plt.cm.get_cmap("nipy_spectral", len(categories))  # type: ignore
+
+    colors = [cmap(i) for i in range(len(categories))]
 
     for i, (cat_name, cat_values) in enumerate(
         categories.items()
@@ -62,12 +56,17 @@ def save_combined_radar_chart(
         )  # Draw points
 
         # Draw legend
-        ax.legend(
+        legend = ax.legend(
             handles=[
                 mpatches.Patch(color=color, label=cat_name, alpha=0.25)
                 for cat_name, color in zip(categories.keys(), colors)
-            ]
+            ],
+            loc="upper left",
+            bbox_to_anchor=(0.7, 1.3),
         )
+
+        # Adjust layout to make room for the legend
+        plt.tight_layout()
 
     lines, labels = plt.thetagrids(
         np.degrees(angles[:-1]), (list(next(iter(categories.values())).keys()))
@@ -175,6 +174,24 @@ def save_single_radar_chart(
 
     green_patch = mpatches.Patch(color="#40c463", label="Mini-AGI", alpha=0.25)
     plt.legend(handles=[green_patch])
+
+    plt.savefig(save_path, dpi=300)  # Save the figure as a PNG file
+    plt.close()  # Close the figure to free up memory
+
+
+def save_combined_bar_chart(categories: dict[str, Any], save_path: str | Path) -> None:
+    if not all(categories.values()):
+        raise Exception("No data to plot")
+
+    # Convert dictionary to DataFrame
+    df = pd.DataFrame(categories)
+
+    # Create a grouped bar chart
+    df.plot(kind="bar", figsize=(10, 7))
+
+    plt.title("Performance by Category for Each Agent")
+    plt.xlabel("Category")
+    plt.ylabel("Performance")
 
     plt.savefig(save_path, dpi=300)  # Save the figure as a PNG file
     plt.close()  # Close the figure to free up memory

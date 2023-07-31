@@ -3,13 +3,15 @@ import os
 from pathlib import Path
 from typing import Any
 
-from agbenchmark.reports.processing.get_files import get_latest_files_in_subdirectories
+from agbenchmark.reports.processing.get_files import (
+    get_latest_report_from_agent_directories,
+)
 from agbenchmark.reports.processing.report_types import Report, SuiteTest, Test
 from agbenchmark.utils.data_types import STRING_DIFFICULTY_MAP
 
 
 def get_reports_data(report_path: str) -> dict[str, Any]:
-    latest_files = get_latest_files_in_subdirectories(report_path)
+    latest_files = get_latest_report_from_agent_directories(report_path)
 
     reports_data = {}
 
@@ -19,7 +21,6 @@ def get_reports_data(report_path: str) -> dict[str, Any]:
     # This will print the latest file in each subdirectory and add to the files_data dictionary
     for subdir, file in latest_files:
         subdir_name = os.path.basename(os.path.normpath(subdir))
-        print(f"Subdirectory: {subdir}, Latest file: {file}")
         with open(Path(subdir) / file, "r") as f:
             # Load the JSON data from the file
             json_data = json.load(f)
@@ -37,9 +38,11 @@ def get_agent_category(report: Report) -> dict[str, Any]:
         for category in data.category:
             if category == "interface":
                 continue
-            num_dif = STRING_DIFFICULTY_MAP[data.metrics.difficulty]
-            if num_dif > categories.setdefault(category, 0):
-                categories[category] = num_dif
+            categories[category] = categories.get(category, 0)
+            if data.metrics.success:
+                num_dif = STRING_DIFFICULTY_MAP[data.metrics.difficulty]
+                if num_dif > categories[category]:
+                    categories[category] = num_dif
 
     for _, test_data in report.tests.items():
         if isinstance(test_data, SuiteTest):
