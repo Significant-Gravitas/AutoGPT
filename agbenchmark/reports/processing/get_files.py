@@ -1,28 +1,34 @@
 import os
 
 
-def get_last_file_in_directory(directory_path: str) -> str | None:
-    # Get all files in the directory
-    files = [
-        f
-        for f in os.listdir(directory_path)
-        if os.path.isfile(os.path.join(directory_path, f)) and f.endswith(".json")
+def get_last_subdirectory(directory_path: str) -> str | None:
+    # Get all subdirectories in the directory
+    subdirs = [
+        os.path.join(directory_path, name)
+        for name in os.listdir(directory_path)
+        if os.path.isdir(os.path.join(directory_path, name))
     ]
 
-    # Sort the files by modification time
-    files.sort(key=lambda x: os.path.getmtime(os.path.join(directory_path, x)))
+    # Sort the subdirectories by creation time
+    subdirs.sort(key=os.path.getctime)
 
-    # Return the last file in the list
-    return files[-1] if files else None
+    # Return the last subdirectory in the list
+    return subdirs[-1] if subdirs else None
 
 
-def get_latest_files_in_subdirectories(
+def get_latest_report_from_agent_directories(
     directory_path: str,
-) -> list[tuple[str, str]] | None:
-    latest_files = []
+) -> list[tuple[os.DirEntry[str], str]]:
+    latest_reports = []
+
     for subdir in os.scandir(directory_path):
         if subdir.is_dir():
-            latest_file = get_last_file_in_directory(subdir.path)
-            if latest_file is not None:
-                latest_files.append((subdir.path, latest_file))
-    return latest_files
+            # Get the most recently created subdirectory within this agent's directory
+            latest_subdir = get_last_subdirectory(subdir.path)
+            if latest_subdir is not None:
+                # Look for 'report.json' in the subdirectory
+                report_file = os.path.join(latest_subdir, "report.json")
+                if os.path.isfile(report_file):
+                    latest_reports.append((subdir, report_file))
+
+    return latest_reports
