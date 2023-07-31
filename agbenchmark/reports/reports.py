@@ -8,11 +8,15 @@ import pytest
 
 from agbenchmark.agent_interface import MOCK_FLAG
 from agbenchmark.reports.ReportManager import ReportManager
-from agbenchmark.start_benchmark import CONFIG_PATH, REGRESSION_TESTS_PATH, REPORTS_PATH
+from agbenchmark.start_benchmark import (
+    CONFIG_PATH,
+    REGRESSION_TESTS_PATH,
+    REPORTS_PATH,
+    SUCCESS_RATE_PATH,
+)
 from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel, SuiteConfig
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.utils.utils import (
-    AGENT_NAME,
     calculate_success_percentage,
     get_highest_success_difficulty,
     get_test_path,
@@ -25,10 +29,8 @@ regression_manager = ReportManager(REGRESSION_TESTS_PATH)
 # user facing reporting information
 info_manager = ReportManager(str(Path(REPORTS_PATH) / "report.json"))
 
-INTERNAL_LOGS_PATH = Path(__file__).resolve().parent
-
 # internal db step in replacement track pass/fail rate
-internal_info = ReportManager(str(INTERNAL_LOGS_PATH / "internal_info.json"))
+internal_info = ReportManager(SUCCESS_RATE_PATH)
 
 
 def generate_combined_suite_report(
@@ -112,19 +114,12 @@ def get_previous_test_results(
     agent_tests: dict[str, list[bool]] = {}
     mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
 
-    # if the structure is nested inside of the agent name
-    if AGENT_NAME:
-        agent_tests = internal_info.tests.get(AGENT_NAME, {})
-
-    if agent_tests:
-        prev_test_results = agent_tests.get(test_name, [])
-    else:
-        prev_test_results = internal_info.tests.get(test_name, [])
+    prev_test_results = internal_info.tests.get(test_name, [])
 
     if not mock:
         # only add if it's an actual test
         prev_test_results.append(info_details["metrics"]["success"])
-        internal_info.add_test(test_name, prev_test_results, AGENT_NAME)
+        internal_info.add_test(test_name, prev_test_results)
 
     # can calculate success rate regardless of mock
     info_details["metrics"]["success_%"] = calculate_success_percentage(

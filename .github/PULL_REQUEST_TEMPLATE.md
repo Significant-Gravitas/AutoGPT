@@ -13,5 +13,6 @@
   black . --exclude test.py
   isort .
   mypy .
-  autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring --in-place agbenchmark
+  autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring agbenchmark"
+agbenchmark/start_benchmark.py
   ```
