@@ -1,0 +1,13 @@
+{
+    "command": "agbenchmark start",
+    "completion_time": "2023-07-31-04:36",
+    "benchmark_start_time": "2023-07-31-04:36",
+    "metrics": {
+        "run_time": "11.89 seconds",
+        "highest_difficulty": "No successful tests"
+    },
+    "tests": {},
+    "config": {
+        "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+    }
+}
