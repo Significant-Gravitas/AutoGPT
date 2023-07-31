@@ -16,7 +16,7 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
 from selenium.webdriver.chrome.webdriver import WebDriver as ChromeDriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.options import ArgOptions
+from selenium.webdriver.common.options import ArgOptions as BrowserOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.service import Service as EdgeDriverService
 from selenium.webdriver.edge.webdriver import WebDriver as EdgeDriver
@@ -38,8 +38,6 @@ from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
-
-BrowserOptions = ChromeOptions | EdgeOptions | FirefoxOptions | SafariOptions
 
 FILE_DIR = Path(__file__).parent.parent
 SUMMARIZATION_TRIGGER_LENGTH = 250  # Approximately 50 tokens for GPT-4
@@ -105,14 +103,14 @@ def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
     """
     logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
-    options_available: dict[str, ArgOptions] = {
+    options_available: dict[str, BrowserOptions] = {
         "chrome": ChromeOptions,
         "edge": EdgeOptions,
         "firefox": FirefoxOptions,
         "safari": SafariOptions,
     }
 
-    options: ArgOptions = options_available[agent.config.selenium_web_browser]()
+    options: BrowserOptions = options_available[agent.config.selenium_web_browser]()
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
