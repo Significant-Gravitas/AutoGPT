@@ -36,6 +36,7 @@ from autogpt.models.agent_actions import (
     ActionSuccessResult,
 )
 from autogpt.models.command import CommandOutput
+from autogpt.models.context_item import ContextItem
 from autogpt.workspace import Workspace
 
 from .base import BaseAgent
@@ -165,6 +166,16 @@ class Agent(BaseAgent):
                     arguments=command_args,
                     agent=self,
                 )
+
+                # Intercept ContextItem if one is returned by the command
+                if type(return_value) == tuple and isinstance(
+                    return_value[1], ContextItem
+                ):
+                    # self.context.add(return_value[1])
+                    # return_value = return_value[0]
+                    # HACK: use content of ContextItem as return value, for legacy support
+                    return_value = return_value[1]
+
                 result = ActionSuccessResult(return_value)
             except AgentException as e:
                 result = ActionErrorResult(e.message, e)

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 if TYPE_CHECKING:
     from autogpt.config import AIConfig, Config
@@ -10,12 +9,7 @@ if TYPE_CHECKING:
     from autogpt.memory.vector import VectorMemory
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.agents.utils.exceptions import (
-    AgentException,
-    CommandExecutionError,
-    InvalidAgentResponseError,
-    UnknownCommandError,
-)
+from autogpt.agents.utils.exceptions import AgentException, InvalidAgentResponseError
 from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
 from autogpt.llm.base import Message
 from autogpt.llm.utils import count_string_tokens
@@ -34,13 +28,12 @@ from autogpt.models.agent_actions import (
     ActionResult,
     ActionSuccessResult,
 )
-from autogpt.models.command import CommandOutput
-from autogpt.memory.agent_history import ActionHistory
+from autogpt.models.context_item import ContextItem
 from autogpt.workspace import Workspace
 
-from .base import AgentThoughts, BaseAgent, CommandArgs, CommandName
-
-PLANNING_AGENT_SYSTEM_PROMPT = """You are an AI agent named {ai_name}"""
+from .agent import execute_command, extract_command
+from .base import BaseAgent
+from .utils.context import AgentContext
 
 
 class PlanningAgent(BaseAgent):
@@ -79,6 +72,9 @@ class PlanningAgent(BaseAgent):
 
         self.action_history = ActionHistory()
 
+        self.context = AgentContext()
+        """Dynamic segment of the prompt, to provide the LLM with relevant context"""
+
         self.plan: list[str] = []
         """List of steps that the Agent plans to take"""
 
@@ -89,35 +85,53 @@ class PlanningAgent(BaseAgent):
             "prepend_messages", []
         )
 
+        # Add the current plan to the prompt, if any
+        if self.plan:
+            plan_section = [
+                "## Plan",
+                "To complete your task, you have composed the following plan:",
+            ]
+            plan_section += [f"{i}. {s}" for i, s in enumerate(self.plan, 1)]
+
+            # Add the actions so far to the prompt
+            if self.action_history:
+                plan_section += [
+                    "\n### Progress",
+                    "So far, you have executed the following actions based on the plan:",
+                ]
+                for i, cycle in enumerate(self.action_history, 1):
+                    if not (cycle.action and cycle.result):
+                        logger.warn(f"Incomplete action in history: {cycle}")
+                        continue
+
+                    plan_section.append(
+                        f"{i}. You executed the command `{cycle.action.format_call()}`, "
+                        f"which gave the result `{cycle.result}`."
+                    )
+
+            prepend_messages.append(Message("system", "\n".join(plan_section)))
+
+        if self.context:
+            context_section = [
+                "## Context",
+                "Below is information that may be relevant to your task. These take up "
+                "part of your working memory, which is limited, so when a context item is "
+                "no longer relevant for your plan, use the `close_context_item` command to "
+                "free up some memory."
+                "\n",
+                self.context.format_numbered(),
+            ]
+            prepend_messages.append(Message("system", "\n".join(context_section)))
+
         match thought_process_id:
-            case "plan" | "action":
-                # Add the current plan to the prompt, if any
-                if self.plan:
-                    plan_section = [
-                        "## Plan",
-                        "To complete your task, you have made the following plan:",
-                    ]
-                    plan_section += [f"{i}. {s}" for i, s in enumerate(self.plan, 1)]
-
-                    # Add the actions so far to the prompt
-                    if self.action_history:
-                        plan_section += [
-                            "\n### Progress",
-                            "So far, you have executed the following actions based on the plan:",
-                        ]
-                        for i, cycle in enumerate(self.action_history, 1):
-                            if not (cycle.action and cycle.result):
-                                logger.warn(f"Incomplete action in history: {cycle}")
-                                continue
-
-                            plan_section.append(
-                                f"{i}. You executed the command `{cycle.action.format_call()}`, "
-                                f"which gave the result `{cycle.result}`."
-                            )
-
-                    prepend_messages.append(Message("system", "\n".join(plan_section)))
-
+            case "plan":
+                # TODO: add planning instructions; details about what to pay attention to when planning
+                pass
+            case "action":
+                # TODO: need to insert the functions here again?
+                pass
             case "evaluate":
+                # TODO: insert latest action (with reasoning) + result + evaluation instructions
                 pass
             case _:
                 raise NotImplementedError(
@@ -178,6 +192,13 @@ class PlanningAgent(BaseAgent):
                     arguments=command_args,
                     agent=self,
                 )
+
+                # Intercept ContextItem if one is returned by the command
+                if type(return_value) == tuple and isinstance(
+                    return_value[1], ContextItem
+                ):
+                    self.context.add(return_value[1])
+                    return_value = return_value[0]
 
                 result = ActionSuccessResult(return_value)
             except AgentException as e:
@@ -256,100 +277,3 @@ class PlanningAgent(BaseAgent):
             NEXT_ACTION_FILE_NAME,
         )
         return response
-
-
-def extract_command(
-    assistant_reply_json: dict, assistant_reply: ChatModelResponse, config: Config
-) -> tuple[str, dict[str, str]]:
-    """Parse the response and return the command name and arguments
-
-    Args:
-        assistant_reply_json (dict): The response object from the AI
-        assistant_reply (ChatModelResponse): The model response from the AI
-        config (Config): The config object
-
-    Returns:
-        tuple: The command name and arguments
-
-    Raises:
-        json.decoder.JSONDecodeError: If the response is not valid JSON
-
-        Exception: If any other error occurs
-    """
-    if config.openai_functions:
-        if assistant_reply.function_call is None:
-            raise InvalidAgentResponseError("No 'function_call' in assistant reply")
-        assistant_reply_json["command"] = {
-            "name": assistant_reply.function_call.name,
-            "args": json.loads(assistant_reply.function_call.arguments),
-        }
-    try:
-        if not isinstance(assistant_reply_json, dict):
-            raise InvalidAgentResponseError(
-                f"The previous message sent was not a dictionary {assistant_reply_json}"
-            )
-
-        if "command" not in assistant_reply_json:
-            raise InvalidAgentResponseError("Missing 'command' object in JSON")
-
-        command = assistant_reply_json["command"]
-        if not isinstance(command, dict):
-            raise InvalidAgentResponseError("'command' object is not a dictionary")
-
-        if "name" not in command:
-            raise InvalidAgentResponseError("Missing 'name' field in 'command' object")
-
-        command_name = command["name"]
-
-        # Use an empty dictionary if 'args' field is not present in 'command' object
-        arguments = command.get("args", {})
-
-        return command_name, arguments
-
-    except json.decoder.JSONDecodeError:
-        raise InvalidAgentResponseError("Invalid JSON")
-
-    except Exception as e:
-        raise InvalidAgentResponseError(str(e))
-
-
-def execute_command(
-    command_name: str,
-    arguments: dict[str, str],
-    agent: PlanningAgent,
-) -> CommandOutput:
-    """Execute the command and return the result
-
-    Args:
-        command_name (str): The name of the command to execute
-        arguments (dict): The arguments for the command
-        agent (Agent): The agent that is executing the command
-
-    Returns:
-        str: The result of the command
-    """
-    # Execute a native command with the same name or alias, if it exists
-    if command := agent.command_registry.get_command(command_name):
-        try:
-            return command(**arguments, agent=agent)
-        except AgentException:
-            raise
-        except Exception as e:
-            raise CommandExecutionError(str(e))
-
-    # Handle non-native commands (e.g. from plugins)
-    for command in agent.ai_config.prompt_generator.commands:
-        if (
-            command_name == command.label.lower()
-            or command_name == command.name.lower()
-        ):
-            try:
-                return command.function(**arguments)
-            except AgentException:
-                raise
-            except Exception as e:
-                raise CommandExecutionError(str(e))
-
-    raise UnknownCommandError(
-        f"Cannot execute command '{command_name}': unknown command."
-    )

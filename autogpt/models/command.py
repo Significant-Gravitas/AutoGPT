@@ -3,8 +3,10 @@ from typing import Any, Callable, Optional
 from autogpt.config import Config
 
 from .command_parameter import CommandParameter
+from .context_item import ContextItem
 
-CommandOutput = Any
+CommandReturnValue = Any
+CommandOutput = CommandReturnValue | tuple[CommandReturnValue, ContextItem]
 
 
 class Command:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Optional
+from typing import Any, Iterator, Literal, Optional
 
 
 @dataclass
@@ -43,3 +43,54 @@ class ActionInterruptedByHuman:
 
 
 ActionResult = ActionSuccessResult | ActionErrorResult | ActionInterruptedByHuman
+
+
+class ActionHistory:
+    """Utility container for an action history"""
+
+    @dataclass
+    class CycleRecord:
+        action: Action | None
+        result: ActionResult | None
+
+    cursor: int
+    cycles: list[CycleRecord]
+
+    def __init__(self, cycles: list[CycleRecord] = []):
+        self.cycles = cycles
+        self.cursor = len(self.cycles)
+
+    @property
+    def current_record(self) -> CycleRecord | None:
+        if self.cursor == len(self):
+            return None
+        return self[self.cursor]
+
+    def __getitem__(self, key: int) -> CycleRecord:
+        return self.cycles[key]
+
+    def __iter__(self) -> Iterator[CycleRecord]:
+        return iter(self.cycles)
+
+    def __len__(self) -> int:
+        return len(self.cycles)
+
+    def __bool__(self) -> bool:
+        return len(self.cycles) > 0
+
+    def register_action(self, action: Action) -> None:
+        if not self.current_record:
+            self.cycles.append(self.CycleRecord(None, None))
+            assert self.current_record
+        elif self.current_record.action:
+            raise ValueError("Action for current cycle already set")
+
+        self.current_record.action = action
+
+    def register_result(self, result: ActionResult) -> None:
+        if not self.current_record:
+            raise RuntimeError("Cannot register result for cycle without action")
+        elif self.current_record.result:
+            raise ValueError("Result for current cycle already set")
+
+        self.current_record.result = result
