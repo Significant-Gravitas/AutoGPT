@@ -22,6 +22,7 @@ query ExampleQuery($properties: [PropertyFilter!]){
   }
 }
 """
+    print(query)
 
     variables = {
         "filters": [
@@ -40,6 +41,7 @@ query ExampleQuery($properties: [PropertyFilter!]){
             {"property": {"value": {"equals": challenge}, "name": "challenge"}},
         ]
     }
+    print(json.dumps(variables, indent=4))
 
     operation_name = "ExampleQuery"
 
@@ -72,4 +74,6 @@ query ExampleQuery($properties: [PropertyFilter!]){
     if data is None or data.get("data") is None:
         raise ValueError("Invalid response received from server: no data")
 
-    return data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("cost", None)
+    return (
+        data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("costUSD", None)
+    )
