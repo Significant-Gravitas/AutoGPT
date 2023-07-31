@@ -1,5 +1,7 @@
 from autogpt.command_decorator import command
 
+COMMAND_CATEGORY = "mock"
+
 
 @command(
     "function_based",

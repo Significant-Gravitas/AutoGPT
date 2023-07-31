@@ -1,4 +1,7 @@
-"""Git operations for autogpt"""
+"""Commands to perform Git operations"""
+
+COMMAND_CATEGORY = "git_operations"
+COMMAND_CATEGORY_TITLE = "Git Operations"
 
 from git.repo import Repo
 
