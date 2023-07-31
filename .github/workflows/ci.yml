@@ -281,8 +281,12 @@ jobs:
       - name: Generate charts
         run: |
           python agbenchmark/reports/processing/gen_combined_chart.py
-        env:
-          REPORT_LOCATION: 'reports'
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          path: reports/combined_charts/*
 
       - name: Authenticate and Push to Branch
         if: (success() || failure()) && (github.event_name != 'pull_request')
@@ -290,8 +294,8 @@ jobs:
           git config --global user.email "github-bot@agpt.co"
           git config --global user.name "Auto-GPT-Bot"
 
-          git add reports/*.png || echo "nothing to commit"
-          commit_message="Update radar charts - $(date +'%Y%m%d%H%M%S')"
+          git add reports/combined_charts/* || echo "nothing to commit"
+          commit_message="Add combined charts - $(date +'%Y%m%d%H%M%S')"
           git commit -m "${commit_message}"
           git stash
           current_branch=${{ github.ref_name }}
