@@ -58,9 +58,6 @@ query ExampleQuery($properties: [PropertyFilter!]){
         )
         response.raise_for_status()  # Raises a HTTPError if the response was an unsuccessful status code
 
-        print(f"Response status code: {response.status_code}")
-        print(f"Response text: {response.text}")
-
         data = response.json()
     except requests.HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
@@ -72,11 +69,7 @@ query ExampleQuery($properties: [PropertyFilter!]){
         print(f"Other error occurred: {err}")
         raise
 
-    print("this is the data!", data)
-    try:
-        return (
-            data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("cost", None)
-        )
-    except Exception as err:
-        print(f"Error occurred: {err}")
-        raise
+    if data is None or data.get("data") is None:
+        raise ValueError("Invalid response received from server: no data")
+
+    return data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("cost", None)

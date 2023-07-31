@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 import pytest
 
-from agbenchmark.start_benchmark import CURRENT_DIRECTORY, get_regression_data
+from agbenchmark.start_benchmark import CHALLENGES_PATH, get_regression_data
 from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import ChallengeData, SuiteConfig
 from agbenchmark.utils.utils import get_test_path
@@ -158,7 +158,7 @@ def create_challenge(
 def generate_tests() -> None:  # sourcery skip: invert-any-all
     print("Generating tests...")
 
-    json_files = deque(glob.glob(f"{CURRENT_DIRECTORY}/**/data.json", recursive=True))
+    json_files = deque(glob.glob(f"{CHALLENGES_PATH}/**/data.json", recursive=True))
     regression_tests = get_regression_data()
 
     # for suites to know if the file has already been used to generate the tests

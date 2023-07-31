@@ -4,7 +4,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from agbenchmark.reports.processing.graphs import save_single_radar_chart
 from agbenchmark.reports.processing.process_report import get_agent_category
@@ -42,18 +42,8 @@ class ReportManager:
         with open(self.filename, "w") as f:
             json.dump(self.tests, f, indent=4)
 
-    def add_test(
-        self,
-        test_name: str,
-        test_details: dict | list,
-        agent_name: Optional[str] = None,
-    ) -> None:
-        if agent_name:
-            if agent_name not in self.tests:
-                self.tests[agent_name] = {}
-            self.tests[agent_name][test_name] = test_details
-        else:
-            self.tests[test_name] = test_details
+    def add_test(self, test_name: str, test_details: dict | list) -> None:
+        self.tests[test_name] = test_details
 
         self.save()
 

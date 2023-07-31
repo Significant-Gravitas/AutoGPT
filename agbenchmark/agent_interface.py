@@ -48,11 +48,13 @@ def run_agent(
         start_time = time.time()
 
         while True:
-
-            # This checks if there's data to be read from stdout without blocking.
-            if process.stdout and select.select([process.stdout], [], [], 0)[0]:
-                output = process.stdout.readline()
-                print(output.strip())
+            try:
+                # This checks if there's data to be read from stdout without blocking.
+                if process.stdout and select.select([process.stdout], [], [], 0)[0]:
+                    output = process.stdout.readline()
+                    print(output.strip())
+            except Exception as e:
+                print("Error reading stdout", e)
 
             # Check if process has ended, has no more output, or exceeded timeout
             if process.poll() is not None or (time.time() - start_time > timeout):

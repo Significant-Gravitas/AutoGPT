@@ -180,21 +180,39 @@ def get_highest_success_difficulty(
     return "No successful tests"
 
 
-def assign_paths(folder_path: Path) -> tuple[str, str, str]:
+def assign_paths(folder_path: Path) -> tuple[str, str, str, str, str]:
     CONFIG_PATH = str(folder_path / "config.json")
-    REGRESSION_TESTS_PATH = str(folder_path / "regression_tests.json")
 
     reports_location = folder_path / "reports"
+
+    # if the user has a locally defined challenges path that they've added tests to
+    CHALLENGES_PATH = str(folder_path / "challenges")
+    if not os.path.exists(CHALLENGES_PATH):
+        Path(__file__).parent / "challenges"
+
+    if not os.path.exists(reports_location):
+        os.makedirs(reports_location)
+
     # from the ci
     if REPORT_LOCATION:
         reports_location = Path.cwd() / REPORT_LOCATION
 
     REPORTS_PATH = calculate_info_test_path(reports_location)
 
-    return CONFIG_PATH, REGRESSION_TESTS_PATH, REPORTS_PATH
+    REGRESSION_TESTS_PATH = str(reports_location / "regression_tests.json")
+
+    SUCCESS_RATE_PATH = str(reports_location / "success_rate.json")
+
+    return (
+        CONFIG_PATH,
+        REGRESSION_TESTS_PATH,
+        REPORTS_PATH,
+        SUCCESS_RATE_PATH,
+        CHALLENGES_PATH,
+    )
 
 
-def calculate_dynamic_paths() -> tuple[Path, str, str, str]:
+def calculate_dynamic_paths() -> tuple[Path, str, str, str, str, str]:
     # the default home is where you're running from
     HOME_DIRECTORY = Path(os.getcwd())
     benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
@@ -207,22 +225,47 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str]:
         HOME_DIRECTORY = Path(os.getcwd()) / "agent" / AGENT_NAME
         benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
 
-        CONFIG_PATH, REGRESSION_TESTS_PATH, REPORTS_PATH = assign_paths(
-            benchmarks_folder_path
-        )
+        (
+            CONFIG_PATH,
+            REGRESSION_TESTS_PATH,
+            REPORTS_PATH,
+            SUCCESS_RATE_PATH,
+            CHALLENGES_PATH,
+        ) = assign_paths(benchmarks_folder_path)
     else:
         # otherwise the default is when home is an agent (running agbenchmark from agent/agent_repo)
         # used when its just a pip install
-        CONFIG_PATH, REGRESSION_TESTS_PATH, REPORTS_PATH = assign_paths(
-            benchmarks_folder_path
-        )
+        (
+            CONFIG_PATH,
+            REGRESSION_TESTS_PATH,
+            REPORTS_PATH,
+            SUCCESS_RATE_PATH,
+            CHALLENGES_PATH,
+        ) = assign_paths(benchmarks_folder_path)
 
     if not benchmarks_folder_path.exists():
         benchmarks_folder_path.mkdir(exist_ok=True)
+
+    if not os.path.exists(benchmarks_folder_path / "reports"):
+        os.makedirs(benchmarks_folder_path / "reports")
+
+    if not os.path.exists(REGRESSION_TESTS_PATH):
+        with open(REGRESSION_TESTS_PATH, "w"):
+            pass
+
+    if not os.path.exists(SUCCESS_RATE_PATH):
+        with open(SUCCESS_RATE_PATH, "w"):
+            pass
+
+    if not os.path.exists(Path(REPORTS_PATH) / "report.json"):
+        with open(Path(REPORTS_PATH) / "report.json", "w"):
+            pass
 
     return (
         HOME_DIRECTORY,
         CONFIG_PATH,
         REGRESSION_TESTS_PATH,
         REPORTS_PATH,
+        SUCCESS_RATE_PATH,
+        CHALLENGES_PATH,
     )
