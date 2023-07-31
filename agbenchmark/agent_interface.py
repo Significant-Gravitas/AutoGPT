@@ -1,4 +1,5 @@
 import os
+import select
 import shutil
 import subprocess
 import sys
@@ -33,6 +34,7 @@ def run_agent(
             timeout = 100000
 
         print(f"Running '{entry_path}' with timeout {timeout}")
+
         command = [sys.executable, "-m", entry_path, str(task)]
         process = subprocess.Popen(
             command,
@@ -40,22 +42,20 @@ def run_agent(
             stderr=subprocess.STDOUT,
             universal_newlines=True,
             cwd=HOME_DIRECTORY,
+            bufsize=1,
         )
 
         start_time = time.time()
 
         while True:
-            output = ""
-            if process.stdout is not None:
+
+            # This checks if there's data to be read from stdout without blocking.
+            if process.stdout and select.select([process.stdout], [], [], 0)[0]:
                 output = process.stdout.readline()
                 print(output.strip())
 
             # Check if process has ended, has no more output, or exceeded timeout
-            if (
-                process.poll() is not None
-                or output == ""
-                or (time.time() - start_time > timeout)
-            ):
+            if process.poll() is not None or (time.time() - start_time > timeout):
                 break
 
         if time.time() - start_time > timeout:
