@@ -1,0 +1,13 @@
+{
+    "command": "agbenchmark start",
+    "completion_time": "2023-07-31-11:26",
+    "benchmark_start_time": "2023-07-31-11:25",
+    "metrics": {
+        "run_time": "61.01 seconds",
+        "highest_difficulty": "No successful tests"
+    },
+    "tests": {},
+    "config": {
+        "workspace": "workspace"
+    }
+}
