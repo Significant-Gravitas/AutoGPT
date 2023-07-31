@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Optional
 
@@ -16,7 +17,6 @@ from autogpt.llm.utils import count_string_tokens
 from autogpt.logs import logger
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
-    FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
@@ -142,6 +142,89 @@ class PlanningAgent(BaseAgent):
             thought_process_id=thought_process_id, **kwargs
         )
 
+    def response_format_instruction(self, thought_process_id: ThoughtProcessID) -> str:
+        match thought_process_id:
+            case "plan":
+                # TODO: add planning instructions; details about what to pay attention to when planning
+                response_format = f"""```ts
+                interface Response {{
+                    thoughts: {{
+                        // Thoughts
+                        text: string;
+                        // A short logical explanation about how the action is part of the earlier composed plan
+                        reasoning: string;
+                        // Constructive self-criticism
+                        criticism: string;
+                    }};
+                    // A plan to achieve the goals with the available resources and/or commands.
+                    plan: Array<{{
+                        // An actionable subtask
+                        subtask: string;
+                        // Criterium to determine whether the subtask has been completed
+                        completed_if: string;
+                    }}>;
+                }}
+                ```"""
+                pass
+            case "action":
+                # TODO: need to insert the functions here again?
+                response_format = """```ts
+                interface Response {
+                    thoughts: {
+                        // Thoughts
+                        text: string;
+                        // A short logical explanation about how the action is part of the earlier composed plan
+                        reasoning: string;
+                        // Constructive self-criticism
+                        criticism: string;
+                    };
+                    // The action to take, from the earlier specified list of commands
+                    command: {
+                        name: string;
+                        args: Record<string, any>;
+                    };
+                }
+                ```"""
+                pass
+            case "evaluate":
+                # TODO: insert latest action (with reasoning) + result + evaluation instructions
+                response_format = f"""```ts
+                interface Response {{
+                    thoughts: {{
+                        // Thoughts
+                        text: string;
+                        reasoning: string;
+                        // Constructive self-criticism
+                        criticism: string;
+                    }};
+                    result_evaluation: {{
+                        // A short logical explanation of why the given partial result does or does not complete the corresponding subtask
+                        reasoning: string;
+                        // Whether the current subtask has been completed
+                        completed: boolean;
+                        // An estimate of the progress (0.0 - 1.0) that has been made on the subtask with the actions that have been taken so far
+                        progress: float;
+                    }};
+                }}
+                ```"""
+                pass
+            case _:
+                raise NotImplementedError(
+                    f"Unknown thought process '{thought_process_id}'"
+                )
+
+        response_format = re.sub(
+            r"\n\s+",
+            "\n",
+            response_format,
+        )
+
+        return (
+            f"Respond strictly with JSON. The JSON should be compatible with "
+            "the TypeScript type `Response` from the following:\n"
+            f"{response_format}\n"
+        )
+
     def on_before_think(self, *args, **kwargs) -> ChatSequence:
         prompt = super().on_before_think(*args, **kwargs)
 
@@ -150,8 +233,8 @@ class PlanningAgent(BaseAgent):
             self.ai_config.ai_name,
             self.created_at,
             self.cycle_count,
-            self.history.raw(),
-            FULL_MESSAGE_HISTORY_FILE_NAME,
+            self.action_history.cycles,
+            "action_history.json",
         )
         self.log_cycle_handler.log_cycle(
             self.ai_config.ai_name,
@@ -242,7 +325,11 @@ class PlanningAgent(BaseAgent):
         return result
 
     def parse_and_process_response(
-        self, llm_response: ChatModelResponse, *args, **kwargs
+        self,
+        llm_response: ChatModelResponse,
+        thought_process_id: ThoughtProcessID,
+        *args,
+        **kwargs,
     ) -> PlanningAgent.ThoughtProcessOutput:
         if not llm_response.content:
             raise InvalidAgentResponseError("Assistant response has no text content")
