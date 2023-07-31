@@ -1,0 +1,3 @@
+Defaulting to user installation because normal site-packages is not writeable
+Requirement already satisfied: prompt_toolkit in c:\users\adamw\appdata\roaming\python\python311\site-packages (3.0.39)
+Requirement already satisfied: wcwidth in c:\users\adamw\appdata\roaming\python\python311\site-packages (from prompt_toolkit) (0.2.6)
