@@ -1,5 +1,9 @@
-"""Google search command for Autogpt."""
+"""Commands to search the web with"""
+
 from __future__ import annotations
+
+COMMAND_CATEGORY = "web_search"
+COMMAND_CATEGORY_TITLE = "Web Search"
 
 import json
 import time
