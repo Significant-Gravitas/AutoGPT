@@ -60,6 +60,8 @@ query ExampleQuery($properties: [PropertyFilter!]){
     except Exception as err:
         print(f"Other error occurred: {err}")
     else:
+        if not data:
+            raise Exception("No data returned from Helicone")
         return (
             data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("cost", None)
         )
