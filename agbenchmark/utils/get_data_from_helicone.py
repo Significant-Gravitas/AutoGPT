@@ -12,7 +12,7 @@ def get_data_from_helicone(challenge: str) -> Optional[float]:
     url = "https://www.helicone.ai/api/graphql"
 
     # Set the headers, usually you'd need to set the content type and possibly an authorization token
-    headers = {"authorization": "Bearer {os.environ.get('HELICONE_API_KEY')}"}
+    headers = {"authorization": f"Bearer {os.environ.get('HELICONE_API_KEY')}"}
 
     # Define the query, variables, and operation name
     query = """
