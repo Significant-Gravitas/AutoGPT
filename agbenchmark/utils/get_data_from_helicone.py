@@ -42,6 +42,8 @@ query ExampleQuery($properties: [PropertyFilter!]){
 
     operation_name = "ExampleQuery"
 
+    data = None
+
     # Make the request
     try:
         response = requests.post(
@@ -59,9 +61,7 @@ query ExampleQuery($properties: [PropertyFilter!]){
         print(f"HTTP error occurred: {http_err}")
     except Exception as err:
         print(f"Other error occurred: {err}")
-    else:
-        if not data:
-            raise Exception("No data returned from Helicone")
-        return (
-            data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("cost", None)
-        )
+
+    if not data:
+        raise Exception("No data returned from Helicone")
+    return data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("cost", None)

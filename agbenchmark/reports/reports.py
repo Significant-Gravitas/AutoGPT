@@ -7,10 +7,10 @@ from typing import Any, Callable
 import pytest
 
 from agbenchmark.agent_interface import MOCK_FLAG
-from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.reports.ReportManager import ReportManager
 from agbenchmark.start_benchmark import CONFIG_PATH, REGRESSION_TESTS_PATH, REPORTS_PATH
 from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel, SuiteConfig
+from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.utils.utils import (
     AGENT_NAME,
     calculate_success_percentage,
