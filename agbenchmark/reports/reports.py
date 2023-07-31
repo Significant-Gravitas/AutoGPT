@@ -1,10 +1,13 @@
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Callable
 
 import pytest
 
+from agbenchmark.agent_interface import MOCK_FLAG
+from agbenchmark.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.reports.ReportManager import ReportManager
 from agbenchmark.start_benchmark import CONFIG_PATH, REGRESSION_TESTS_PATH, REPORTS_PATH
 from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel, SuiteConfig
@@ -234,6 +237,11 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
 
     if info_details and test_name:
         if run_time:
+            cost = None
+            if not MOCK_FLAG and os.environ.get("HELICONE_API_KEY"):
+                cost = get_data_from_helicone(test_name)
+
+            info_details["metrics"]["cost"] = cost
             info_details["metrics"]["run_time"] = f"{str(round(run_time, 3))} seconds"
 
             info_details["reached_cutoff"] = float(run_time) > challenge_data["cutoff"]
