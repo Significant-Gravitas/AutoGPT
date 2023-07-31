@@ -15,9 +15,9 @@ def get_data_from_helicone(challenge: str) -> Optional[float]:
 
     # Define the query, variables, and operation name
     query = """
-query ExampleQuery {
-  aggregatedHeliconeRequest {
-    cost
+query ExampleQuery($properties: [PropertyFilter!]){
+  aggregatedHeliconeRequest(properties: $properties) {
+    costUSD
   }
 }
 """
@@ -43,11 +43,23 @@ query ExampleQuery {
     operation_name = "ExampleQuery"
 
     # Make the request
-    response = requests.post(
-        url,
-        headers=headers,
-        json={"query": query, "variables": variables, "operationName": operation_name},
-    )
-    data = response.json()
-
-    return data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("cost", None)
+    try:
+        response = requests.post(
+            url,
+            headers=headers,
+            json={
+                "query": query,
+                "variables": variables,
+                "operationName": operation_name,
+            },
+        )
+        response.raise_for_status()  # Raises a HTTPError if the response was an unsuccessful status code
+        data = response.json()
+    except requests.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+    except Exception as err:
+        print(f"Other error occurred: {err}")
+    else:
+        return (
+            data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("cost", None)
+        )
