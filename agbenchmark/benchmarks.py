@@ -26,7 +26,7 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
     config.continuous_mode = continuous_mode
     config.temperature = 0
     config.plain_output = True
-    command_registry = get_command_registry(config)
+    command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
     config.memory_backend = "no_memory"
     config.workspace_path = Workspace.init_workspace_directory(config)
     config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
@@ -43,16 +43,6 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
         config=config,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
     )
-
-
-def get_command_registry(config: Config):
-    command_registry = CommandRegistry()
-    enabled_command_categories = [
-        x for x in COMMAND_CATEGORIES if x not in config.disabled_command_categories
-    ]
-    for command_module in enabled_command_categories:
-        command_registry.import_command_module(command_module)
-    return command_registry
 
 
 if __name__ == "__main__":
