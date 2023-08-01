@@ -1,32 +1,108 @@
 {
-    "TestWriteFile": [
-        true
-    ],
-    "TestPlanCreation": [
-        true
-    ],
-    "TestGoalDivergence": [
+    "TestBasicContentGen": [
+        false,
         false
     ],
-    "TestSearch": [
+    "TestBasicMemory": [
+        false,
         false
-    ],
-    "TestReadFile": [
-        true
     ],
     "TestBasicRetrieval": [
-        false
-    ],
-    "TestBasicContentGen": [
-        false
-    ],
-    "TestReturnCode_Simple": [
+        false,
         false
     ],
     "TestDebugSimpleTypoWithGuidance": [
+        true,
         true
     ],
-    "TestBasicMemory": [
+    "TestGoalDivergence": [
+        false,
+        false
+    ],
+    "TestPlanCreation": [
+        true,
+        true
+    ],
+    "TestReadFile": [
+        true,
+        true
+    ],
+    "TestReturnCode_Simple": [
+        false,
+        false
+    ],
+    "TestSearch": [
+        false,
+        false
+    ],
+    "TestWriteFile": [
+        true,
+        true
+    ],
+    "TestAdaptLink": [
+        false
+    ],
+    "TestRevenueRetrieval_1.2": [
+        false
+    ],
+    "TestRevenueRetrieval_1.1": [
+        false
+    ],
+    "TestRevenueRetrieval_1.0": [
+        false
+    ],
+    "TestReturnCode_Write": [
+        false
+    ],
+    "TestDebugSimpleTypoWithoutGuidance": [
+        false
+    ],
+    "TestAdaptSimpleTypoWithGuidance": [
+        false
+    ],
+    "TestInstructionFollowing": [
+        false
+    ],
+    "TestGoalLoss_Simple": [
+        false
+    ],
+    "TestGoalLoss_advanced": [
+        false
+    ],
+    "TestGoalLoss_Hard": [
+        false
+    ],
+    "TestGoalLoss_Medium": [
+        false
+    ],
+    "TestRememberMultipleIds": [
+        false
+    ],
+    "TestFunctionCodeGeneration": [
+        false
+    ],
+    "TestReturnCode_Modify": [
+        false
+    ],
+    "TestDebugMultipleTypo": [
+        false
+    ],
+    "TestRememberMultipleWithNoise": [
+        false
+    ],
+    "TestRetrieval3": [
+        false
+    ],
+    "TestAdaptTeslaRevenue": [
+        false
+    ],
+    "TestThreeSum": [
+        false
+    ],
+    "TestReturnCode_Tests": [
+        false
+    ],
+    "TestRememberMultiplePhrasesWithNoise": [
         false
     ]
 }
