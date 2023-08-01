@@ -67,6 +67,8 @@ class CompletionModelInfo(ModelInfo):
 class ChatModelInfo(CompletionModelInfo):
     """Struct for chat model information."""
 
+    supports_functions: bool = False
+
 
 @dataclass
 class TextModelInfo(CompletionModelInfo):
