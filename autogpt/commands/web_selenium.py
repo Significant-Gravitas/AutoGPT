@@ -79,7 +79,7 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
     else:
         add_header(driver)
 
-        token_length = count_string_tokens(text, agent.config.llm.name)
+        token_length = count_string_tokens(text, agent.llm.name)
         if token_length > TOKENS_TO_TRIGGER_SUMMARY:
             summary = summarize_memorize_webpage(url, text, question, agent, driver)
             links = scrape_links_with_selenium(driver, url)
