@@ -23,10 +23,13 @@ To learn more about submitting and beating challenges, please visit the [List of
 We look forward to your contributions and the exciting solutions that the community will develop together to make Auto-GPT even better!
 
 !!! warning
-    [indented content]
-We're slowly transitioning to agbenchmark. agbenchmark is a simpler way to improve Auto-GPT. Simply run:
-```
-agbenchmark start
-```
-and beat as many challenges as possible.
+    
+    We're slowly transitioning to agbenchmark. agbenchmark is a simpler way to improve Auto-GPT. Simply run:
+    
+    ```
+    agbenchmark start
+    ```
+    
+    and beat as many challenges as possible.
+
 For more agbenchmark options, look at the [readme](https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/tree/master/agbenchmark).
