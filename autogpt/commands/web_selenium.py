@@ -43,6 +43,7 @@ from autogpt.url_utils.validators import validate_url
 
 FILE_DIR = Path(__file__).parent.parent
 TOKENS_TO_TRIGGER_SUMMARY = 50
+LINKS_TO_RETURN = 20
 
 
 @command(
@@ -66,30 +67,27 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
         question (str): The question asked by the user
 
     Returns:
-        Tuple[str, WebDriver]: The answer and links to the user and the webdriver
+        str: The answer and links to the user and the webdriver
     """
     driver = None
     try:
         driver, text = scrape_text_with_selenium(url, agent)
+        add_header(driver)
+        if TOKENS_TO_TRIGGER_SUMMARY < count_string_tokens(text, agent.llm.name):
+            text = summarize_memorize_webpage(url, text, question, agent, driver)
+
+        links = scrape_links_with_selenium(driver, url)
+
+        # Limit links to LINKS_TO_RETURN
+        if len(links) > LINKS_TO_RETURN:
+            links = links[:LINKS_TO_RETURN]
+
+        return f"Answer gathered from website: {text}\n\nLinks: {links}"
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
         msg = e.msg.split("\n")[0]
         return f"Error: {msg}"
-    else:
-        add_header(driver)
-
-        token_length = count_string_tokens(text, agent.llm.name)
-        if token_length > TOKENS_TO_TRIGGER_SUMMARY:
-            summary = summarize_memorize_webpage(url, text, question, agent, driver)
-            links = scrape_links_with_selenium(driver, url)
-
-            # Limit links to 5
-            if len(links) > 5:
-                links = links[:5]
-            return f"Answer gathered from website: {summary}\n\nLinks: {links}"
-        else:
-            return f"Text gathered from website: {text}."
     finally:
         if driver:
             close_browser(driver)
