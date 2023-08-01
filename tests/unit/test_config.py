@@ -3,6 +3,7 @@ Test cases for the config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
 import os
+from typing import Any
 from unittest import mock
 from unittest.mock import patch
 
@@ -13,7 +14,7 @@ from autogpt.config import Config, ConfigBuilder
 from autogpt.workspace.workspace import Workspace
 
 
-def test_initial_values(config: Config):
+def test_initial_values(config: Config) -> None:
     """
     Test if the initial values of the config class attributes are set correctly.
     """
@@ -24,7 +25,7 @@ def test_initial_values(config: Config):
     assert config.smart_llm == "gpt-4-0314"
 
 
-def test_set_continuous_mode(config: Config):
+def test_set_continuous_mode(config: Config) -> None:
     """
     Test if the set_continuous_mode() method updates the continuous_mode attribute.
     """
@@ -38,7 +39,7 @@ def test_set_continuous_mode(config: Config):
     config.continuous_mode = continuous_mode
 
 
-def test_set_speak_mode(config: Config):
+def test_set_speak_mode(config: Config) -> None:
     """
     Test if the set_speak_mode() method updates the speak_mode attribute.
     """
@@ -52,7 +53,7 @@ def test_set_speak_mode(config: Config):
     config.speak_mode = speak_mode
 
 
-def test_set_fast_llm(config: Config):
+def test_set_fast_llm(config: Config) -> None:
     """
     Test if the set_fast_llm() method updates the fast_llm attribute.
     """
@@ -66,7 +67,7 @@ def test_set_fast_llm(config: Config):
     config.fast_llm = fast_llm
 
 
-def test_set_smart_llm(config: Config):
+def test_set_smart_llm(config: Config) -> None:
     """
     Test if the set_smart_llm() method updates the smart_llm attribute.
     """
@@ -80,7 +81,7 @@ def test_set_smart_llm(config: Config):
     config.smart_llm = smart_llm
 
 
-def test_set_debug_mode(config: Config):
+def test_set_debug_mode(config: Config) -> None:
     """
     Test if the set_debug_mode() method updates the debug_mode attribute.
     """
@@ -95,7 +96,7 @@ def test_set_debug_mode(config: Config):
 
 
 @patch("openai.Model.list")
-def test_smart_and_fast_llms_set_to_gpt4(mock_list_models, config: Config):
+def test_smart_and_fast_llms_set_to_gpt4(mock_list_models: Any, config: Config) -> None:
     """
     Test if models update to gpt-3.5-turbo if both are set to gpt-4.
     """
@@ -132,7 +133,7 @@ def test_smart_and_fast_llms_set_to_gpt4(mock_list_models, config: Config):
     config.smart_llm = smart_llm
 
 
-def test_missing_azure_config(workspace: Workspace):
+def test_missing_azure_config(workspace: Workspace) -> None:
     config_file = workspace.get_path("azure_config.yaml")
     with pytest.raises(FileNotFoundError):
         ConfigBuilder.load_azure_config(str(config_file))
