@@ -109,7 +109,7 @@ class OpenAIModelProviderBudget(ModelProviderBudget):
 
 class OpenAISettings(ModelProviderSettings):
     configuration: OpenAIConfiguration
-    credentials: ModelProviderCredentials()
+    credentials: ModelProviderCredentials
     budget: OpenAIModelProviderBudget
 
 
