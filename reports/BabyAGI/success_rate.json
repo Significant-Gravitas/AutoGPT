@@ -1,1 +1,26 @@
-{}
+{
+    "TestWriteFile": [
+        false
+    ],
+    "TestPlanCreation": [
+        false
+    ],
+    "TestGoalDivergence": [
+        false
+    ],
+    "TestSearch": [
+        false
+    ],
+    "TestReadFile": [
+        false
+    ],
+    "TestBasicRetrieval": [
+        false
+    ],
+    "TestBasicContentGen": [
+        false
+    ],
+    "TestReturnCode_Simple": [
+        false
+    ]
+}
