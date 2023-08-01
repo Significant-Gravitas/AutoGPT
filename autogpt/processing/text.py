@@ -10,7 +10,15 @@ from autogpt.llm.base import ChatSequence
 from autogpt.llm.providers.openai import OPEN_AI_MODELS
 from autogpt.llm.utils import count_string_tokens, create_chat_completion
 from autogpt.logs import logger
-from autogpt.utils import batch
+
+
+def batch(iterable, max_batch_length: int, overlap: int = 0):
+    """Batch data from iterable into slices of length N. The last batch may be shorter."""
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if max_batch_length < 1:
+        raise ValueError("n must be at least one")
+    for i in range(0, len(iterable), max_batch_length - overlap):
+        yield iterable[i : i + max_batch_length]
 
 
 def _max_chunk_length(model: str, max: Optional[int] = None) -> int:
