@@ -5,7 +5,7 @@ from typing import Optional
 from colorama import Fore, Style
 from jinja2 import Template
 
-from autogpt import utils
+from autogpt.app import utils
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.llm.base import ChatSequence, Message
