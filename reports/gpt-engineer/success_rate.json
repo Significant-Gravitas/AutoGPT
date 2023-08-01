@@ -3,6 +3,12 @@
         false,
         false
     ],
+    "TestAdaptSimpleTypoWithGuidance": [
+        false
+    ],
+    "TestAdaptTeslaRevenue": [
+        false
+    ],
     "TestBasicContentGen": [
         false,
         false
@@ -15,12 +21,36 @@
         false,
         false
     ],
+    "TestDebugMultipleTypo": [
+        false
+    ],
     "TestDebugSimpleTypoWithGuidance": [
         false,
         false
     ],
+    "TestDebugSimpleTypoWithoutGuidance": [
+        false
+    ],
+    "TestFunctionCodeGeneration": [
+        false
+    ],
     "TestGoalDivergence": [
         false,
+        false
+    ],
+    "TestGoalLoss_Hard": [
+        false
+    ],
+    "TestGoalLoss_Medium": [
+        false
+    ],
+    "TestGoalLoss_Simple": [
+        false
+    ],
+    "TestGoalLoss_advanced": [
+        false
+    ],
+    "TestInstructionFollowing": [
         false
     ],
     "TestPlanCreation": [
@@ -31,8 +61,26 @@
         false,
         false
     ],
+    "TestRememberMultipleIds": [
+        false
+    ],
+    "TestRememberMultiplePhrasesWithNoise": [
+        false
+    ],
+    "TestRememberMultipleWithNoise": [
+        false
+    ],
+    "TestRetrieval3": [
+        false
+    ],
+    "TestReturnCode_Modify": [
+        false
+    ],
     "TestReturnCode_Simple": [
         false,
+        false
+    ],
+    "TestReturnCode_Tests": [
         false
     ],
     "TestReturnCode_Write": [
@@ -55,59 +103,12 @@
         false,
         false
     ],
-    "TestWriteFile": [
-        true,
-        true
-    ],
-    "TestDebugSimpleTypoWithoutGuidance": [
-        false
-    ],
-    "TestAdaptSimpleTypoWithGuidance": [
-        false
-    ],
-    "TestInstructionFollowing": [
-        false
-    ],
-    "TestGoalLoss_Simple": [
-        false
-    ],
-    "TestGoalLoss_advanced": [
-        false
-    ],
-    "TestGoalLoss_Hard": [
-        false
-    ],
-    "TestGoalLoss_Medium": [
-        false
-    ],
-    "TestRememberMultipleIds": [
-        false
-    ],
-    "TestFunctionCodeGeneration": [
-        false
-    ],
-    "TestReturnCode_Modify": [
-        false
-    ],
-    "TestDebugMultipleTypo": [
-        false
-    ],
-    "TestRememberMultipleWithNoise": [
-        false
-    ],
-    "TestRetrieval3": [
-        false
-    ],
-    "TestAdaptTeslaRevenue": [
-        false
-    ],
     "TestThreeSum": [
         false
     ],
-    "TestReturnCode_Tests": [
-        false
-    ],
-    "TestRememberMultiplePhrasesWithNoise": [
-        false
+    "TestWriteFile": [
+        true,
+        true,
+        true
     ]
 }
