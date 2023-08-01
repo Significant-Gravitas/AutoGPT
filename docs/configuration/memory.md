@@ -51,17 +51,19 @@ Links to memory backends
 
 1. Launch Redis container
 
-        :::shell
-        docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+    ```shell
+    docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+    ```
 
 3. Set the following settings in `.env`
 
-        :::ini
-        MEMORY_BACKEND=redis
-        REDIS_HOST=localhost
-        REDIS_PORT=6379
-        REDIS_PASSWORD=<PASSWORD>
-
+    ```shell
+    MEMORY_BACKEND=redis
+    REDIS_HOST=localhost
+    REDIS_PORT=6379
+    REDIS_PASSWORD=<PASSWORD>
+    ```
+    
     Replace `<PASSWORD>` by your password, omitting the angled brackets (<>).
 
     Optional configuration:
@@ -157,7 +159,7 @@ To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip insta
 
 Install the Weaviate client before usage.
 
-``` shell
+```shell
 $ pip install weaviate-client
 ```
 
@@ -165,7 +167,7 @@ $ pip install weaviate-client
 
 In your `.env` file set the following:
 
-``` ini
+```ini
 MEMORY_BACKEND=weaviate
 WEAVIATE_HOST="127.0.0.1" # the IP or domain of the running Weaviate instance
 WEAVIATE_PORT="8080" 
@@ -195,7 +197,7 @@ View memory usage by using the `--debug` flag :)
 
 Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.
 
-``` shell
+```shell
 $ python data_ingestion.py -h 
 usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
 

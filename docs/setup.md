@@ -36,40 +36,43 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 1. Make sure you have Docker installed, see [requirements](#requirements)
 2. Create a project directory for Auto-GPT
 
-        :::shell
-        mkdir Auto-GPT
-        cd Auto-GPT
+    ```shell
+    mkdir Auto-GPT
+    cd Auto-GPT
+    ```
 
 3. In the project directory, create a file called `docker-compose.yml` with the following contents:
 
-        :::yaml
-        version: "3.9"
-        services:
-          auto-gpt:
-            image: significantgravitas/auto-gpt
-            env_file:
-              - .env
-            profiles: ["exclude-from-up"]
-            volumes:
-              - ./auto_gpt_workspace:/app/auto_gpt_workspace
-              - ./data:/app/data
-              ## allow auto-gpt to write logs to disk
-              - ./logs:/app/logs
-              ## uncomment following lines if you want to make use of these files
-              ## you must have them existing in the same folder as this docker-compose.yml
-              #- type: bind
-              #  source: ./azure.yaml
-              #  target: /app/azure.yaml
-              #- type: bind
-              #  source: ./ai_settings.yaml
-              #  target: /app/ai_settings.yaml
+    ```yaml
+    version: "3.9"
+    services:
+        auto-gpt:
+        image: significantgravitas/auto-gpt
+        env_file:
+            - .env
+        profiles: ["exclude-from-up"]
+        volumes:
+            - ./auto_gpt_workspace:/app/auto_gpt_workspace
+            - ./data:/app/data
+            ## allow auto-gpt to write logs to disk
+            - ./logs:/app/logs
+            ## uncomment following lines if you want to make use of these files
+            ## you must have them existing in the same folder as this docker-compose.yml
+            #- type: bind
+            #  source: ./azure.yaml
+            #  target: /app/azure.yaml
+            #- type: bind
+            #  source: ./ai_settings.yaml
+            #  target: /app/ai_settings.yaml
+    ```
 
 4. Create the necessary [configuration](#configuration) files. If needed, you can find
     templates in the [repository].
 5. Pull the latest image from [Docker Hub]
 
-        :::shell
-        docker pull significantgravitas/auto-gpt
+    ```shell
+    docker pull significantgravitas/auto-gpt
+    ```
 
 6. Continue to [Run with Docker](#run-with-docker)
 
@@ -92,14 +95,15 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
 1. Clone the repository
 
-        :::shell
-        git clone -b stable https://github.com/Significant-Gravitas/Auto-GPT.git
+    ```shell
+    git clone -b stable https://github.com/Significant-Gravitas/Auto-GPT.git
+    ```
 
 2. Navigate to the directory where you downloaded the repository
 
-        :::shell
-        cd Auto-GPT
-
+    ```shell
+    cd Auto-GPT
+    ```
 
 ### Set up without Git/Docker
 
@@ -139,12 +143,13 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
     Example:
 
-        :::yaml
-        # Please specify all of these values as double-quoted strings
-        # Replace string in angled brackets (<>) to your own deployment Name
-        azure_model_map:
-            fast_llm_deployment_id: "<auto-gpt-deployment>"
-                ...
+    ```yaml
+    # Please specify all of these values as double-quoted strings
+    # Replace string in angled brackets (<>) to your own deployment Name
+    azure_model_map:
+        fast_llm_deployment_id: "<auto-gpt-deployment>"
+        ...
+    ```
 
     Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.
     If you're on Windows you may need to install an [MSVC library](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
@@ -164,7 +169,9 @@ Easiest is to use `docker compose`.
 Important: Docker Compose version 1.29.0 or later is required to use version 3.9 of the Compose file format.
 You can check the version of Docker Compose installed on your system by running the following command:
 
-	docker compose version
+```shell
+docker compose version
+```
 
 This will display the version of Docker Compose that is currently installed on your system.
 
@@ -174,13 +181,15 @@ Once you have a recent version of Docker Compose, run the commands below in your
 
 1. Build the image. If you have pulled the image from Docker Hub, skip this step (NOTE: You *will* need to do this if you are modifying requirements.txt to add/remove dependencies like Python libs/frameworks) 
 
-        :::shell
-        docker compose build auto-gpt
-
+    ```shell
+    docker compose build auto-gpt
+    ```
+        
 2. Run Auto-GPT
 
-        :::shell
-        docker compose run --rm auto-gpt
+    ```shell
+    docker compose run --rm auto-gpt
+    ```
 
     By default, this will also start and attach a Redis memory backend. If you do not
     want this, comment or remove the `depends: - redis` and `redis:` sections from
@@ -189,12 +198,14 @@ Once you have a recent version of Docker Compose, run the commands below in your
     For related settings, see [Memory > Redis setup](./configuration/memory.md#redis-setup).
 
 You can pass extra arguments, e.g. running with `--gpt3only` and `--continuous`:
-``` shell
+
+```shell
 docker compose run --rm auto-gpt --gpt3only --continuous
 ```
 
 If you dare, you can also build and run it with "vanilla" docker commands:
-``` shell
+
+```shell
 docker build -t auto-gpt .
 docker run -it --env-file=.env -v $PWD:/app auto-gpt
 docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuous
@@ -218,7 +229,7 @@ docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuou
 
 Create a virtual environment to run in.
 
-``` shell
+```shell
 python -m venv venvAutoGPT
 source venvAutoGPT/bin/activate
 pip3 install --upgrade pip
@@ -232,13 +243,15 @@ packages and launch Auto-GPT.
 
 - On Linux/MacOS:
 
-        :::shell
-        ./run.sh
+    ```shell
+    ./run.sh
+    ```
 
 - On Windows:
 
-        :::shell
-        .\run.bat
+    ```shell
+    .\run.bat
+    ```
 
 If this gives errors, make sure you have a compatible Python version installed. See also
 the [requirements](./installation.md#requirements).
