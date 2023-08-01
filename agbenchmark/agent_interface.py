@@ -54,7 +54,7 @@ def run_agent(
                     output = process.stdout.readline()
                     print(output.strip())
             except Exception as e:
-                print("Error reading stdout", e)
+                continue
 
             # Check if process has ended, has no more output, or exceeded timeout
             if process.poll() is not None or (time.time() - start_time > timeout):
