@@ -73,7 +73,6 @@ jobs:
     name: '${{ matrix.agent-name }}'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: matrix.agent-name == 'mini-agi' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     strategy:
       fail-fast: false
       matrix:
