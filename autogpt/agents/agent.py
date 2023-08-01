@@ -17,6 +17,7 @@ from autogpt.llm.base import Message
 from autogpt.llm.utils import count_string_tokens
 from autogpt.logs import logger
 from autogpt.logs.log_cycle import (
+    CURRENT_CONTEXT_FILE_NAME,
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     USER_INPUT_FILE_NAME,
@@ -108,6 +109,13 @@ class Agent(BaseAgent):
             self.cycle_count,
             self.history.raw(),
             FULL_MESSAGE_HISTORY_FILE_NAME,
+        )
+        self.log_cycle_handler.log_cycle(
+            self.ai_config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            prompt.raw(),
+            CURRENT_CONTEXT_FILE_NAME,
         )
         return prompt
 
@@ -285,10 +293,10 @@ def execute_command(
         # Handle non-native commands (e.g. from plugins)
         for command in agent.ai_config.prompt_generator.commands:
             if (
-                command_name == command["label"].lower()
-                or command_name == command["name"].lower()
+                command_name == command.label.lower()
+                or command_name == command.name.lower()
             ):
-                return command["function"](**arguments)
+                return command.function(**arguments)
 
         raise RuntimeError(
             f"Cannot execute '{command_name}': unknown command."

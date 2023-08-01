@@ -1,5 +1,9 @@
-"""Selenium web scraping module."""
+"""Commands for browsing a website"""
+
 from __future__ import annotations
+
+COMMAND_CATEGORY = "web_browse"
+COMMAND_CATEGORY_TITLE = "Web Browsing"
 
 import logging
 from pathlib import Path

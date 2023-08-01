@@ -2,12 +2,12 @@ import pathlib
 
 import click
 import yaml
-from agent_protocol import Agent
+from agent_protocol import Agent as AgentProtocol
 
+from autogpt.core.runner.cli_web_app.server.api import task_handler
 from autogpt.core.runner.client_lib.shared_click_commands import (
     DEFAULT_SETTINGS_FILE,
     make_settings,
-    status,
 )
 from autogpt.core.runner.client_lib.utils import coroutine
 
@@ -19,7 +19,6 @@ def autogpt():
 
 
 autogpt.add_command(make_settings)
-autogpt.add_command(status)
 
 
 @autogpt.command()
@@ -33,8 +32,7 @@ autogpt.add_command(status)
 def server(port: int) -> None:
     """Run the Auto-GPT runner httpserver."""
     click.echo("Running Auto-GPT runner httpserver...")
-    port = 8080
-    Agent.start(port)
+    AgentProtocol.handle_task(task_handler).start(port)
 
 
 @autogpt.command()

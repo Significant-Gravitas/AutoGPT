@@ -126,7 +126,7 @@ def run_auto_gpt(
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
-    config.workspace_path = Workspace.set_workspace_directory(
+    config.workspace_path = Workspace.init_workspace_directory(
         config, workspace_directory
     )
 
@@ -134,36 +134,9 @@ def run_auto_gpt(
     config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
 
     config.plugins = scan_plugins(config, config.debug_mode)
+
     # Create a CommandRegistry instance and scan default folder
-    command_registry = CommandRegistry()
-
-    logger.debug(
-        f"The following command categories are disabled: {config.disabled_command_categories}"
-    )
-    enabled_command_categories = [
-        x for x in COMMAND_CATEGORIES if x not in config.disabled_command_categories
-    ]
-
-    logger.debug(
-        f"The following command categories are enabled: {enabled_command_categories}"
-    )
-
-    for command_category in enabled_command_categories:
-        command_registry.import_commands(command_category)
-
-    # Unregister commands that are incompatible with the current config
-    incompatible_commands = []
-    for command in command_registry.commands.values():
-        if callable(command.enabled) and not command.enabled(config):
-            command.enabled = False
-            incompatible_commands.append(command)
-
-    for command in incompatible_commands:
-        command_registry.unregister(command)
-        logger.debug(
-            f"Unregistering incompatible command: {command.name}, "
-            f"reason - {command.disabled_reason or 'Disabled by current config.'}"
-        )
+    command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
 
     ai_config = construct_main_ai_config(
         config,
@@ -370,23 +343,25 @@ def update_user(
     print_assistant_thoughts(ai_config.ai_name, assistant_reply_dict, config)
 
     if command_name is not None:
-        if config.speak_mode:
-            say_text(f"I want to execute {command_name}", config)
+        if command_name.lower().startswith("error"):
+            logger.typewriter_log(
+                "ERROR: ",
+                Fore.RED,
+                f"The Agent failed to select an action. "
+                f"Error message: {command_name}",
+            )
+        else:
+            if config.speak_mode:
+                say_text(f"I want to execute {command_name}", config)
 
-        # First log new-line so user can differentiate sections better in console
-        logger.typewriter_log("\n")
-        logger.typewriter_log(
-            "NEXT ACTION: ",
-            Fore.CYAN,
-            f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
-            f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
-        )
-    elif command_name.lower().startswith("error"):
-        logger.typewriter_log(
-            "ERROR: ",
-            Fore.RED,
-            f"The Agent failed to select an action. " f"Error message: {command_name}",
-        )
+            # First log new-line so user can differentiate sections better in console
+            logger.typewriter_log("\n")
+            logger.typewriter_log(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
+                f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
+            )
     else:
         logger.typewriter_log(
             "NO ACTION SELECTED: ",
@@ -511,7 +486,7 @@ Continue ({config.authorise_key}/{config.exit_key}): """,
 
     if any([not ai_config.ai_name, not ai_config.ai_role, not ai_config.ai_goals]):
         ai_config = prompt_user(config)
-        ai_config.save(config.ai_settings_file)
+        ai_config.save(config.workdir / config.ai_settings_file)
 
     if config.restrict_to_workspace:
         logger.typewriter_log(

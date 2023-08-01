@@ -83,6 +83,7 @@ def prompt_user(
                 "Falling back to manual mode.",
                 speak_text=True,
             )
+            logger.debug(f"Error during AIConfig generation: {e}")
 
             return generate_aiconfig_manual(config)
 
