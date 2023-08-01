@@ -65,8 +65,31 @@ jobs:
           cmd="poetry run autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring agbenchmark"
           $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
         if: success() || failure()
+  matrix-setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      env-name: ${{ steps.set-env-name.outputs.env-name }}
+    steps:
+      - id: set-matrix
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI' ]"
+          else
+            echo "::set-output name=matrix::[ 'mini-agi']"
+          fi
+      - id: set-env-name
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]] || [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "::set-output name=env-name::testing"
+          else
+            echo "::set-output name=env-name::production"
+          fi
 
   tests:
+    environment:
+      name: '${{ needs.matrix-setup.outputs.env-name }}'
+    needs: matrix-setup
     env:
       GH_TOKEN: ${{ github.event_name == 'pull_request' && github.token || secrets.PAT }}
       min-python-version: '3.10'
@@ -76,14 +99,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        agent-name:
-          - 'gpt-engineer'
-          - 'smol-developer'
-          - 'Auto-GPT'
-          - 'mini-agi'
-          - 'beebot'
-          - 'BabyAGI'
+        agent-name: ${{fromJson(needs.matrix-setup.outputs.matrix)}}
     steps:
+      - name: Print Environment Name
+        run: |
+          echo "Matrix Setup Environment Name: ${{ needs.matrix-setup.outputs.env-name }}"
+
+
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
@@ -150,47 +172,30 @@ jobs:
           fi
 
           pip install ../../dist/*.whl
+          
+          bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/b7ab4bc53e51d8ab29fff19ce5986ab7720970c6/mitmproxy.sh)" -s start
+          set +e # Ignore non-zero exit codes and continue execution
+          ${prefix}agbenchmark start --maintain --mock
+          EXIT_CODE=$?
+          set -e  # Stop ignoring non-zero exit codes
 
-          if [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
+          # Check if the exit code was 5, and if so, exit with 0 instead
+          if [ $EXIT_CODE -eq 5 ]; then
+            echo "regression_tests.json is empty."
+            exit 0
+          fi
 
-            set +e # Ignore non-zero exit codes and continue execution
-            ${prefix}agbenchmark start --maintain --mock
-            EXIT_CODE=$?
-            set -e  # Stop ignoring non-zero exit codes
-
-            # Check if the exit code was 5, and if so, exit with 0 instead
-            if [ $EXIT_CODE -eq 5 ]
-            then
-              echo "regression_tests.json is empty."
-              exit 0
-            else
-              exit $EXIT_CODE
-            fi
-
-            set +e # Ignore non-zero exit codes and continue execution
-            improve_cmd = ${prefix}agbenchmark start --improve --mock
-            EXIT_CODE=$?
-            set -e  # Stop ignoring non-zero exit codes
-
-            # Check if the exit code was 5, and if so, exit with 0 instead
-            if [ $EXIT_CODE -eq 5 ]
-            then
-              echo "regression_tests.json is empty."
-              exit 0
-            else
-              exit $EXIT_CODE
-            fi
-
-            ${prefix}agbenchmark start --mock
-            ${prefix}agbenchmark start --mock --category=retrieval
-            ${prefix}agbenchmark start --mock --category=interface
-            ${prefix}agbenchmark start --mock --category=code
-            ${prefix}agbenchmark start --mock --category=memory
-            ${prefix}agbenchmark start --mock --category=iterate
-            ${prefix}agbenchmark start --mock --suite TestReturnCode 
-            ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval
+          ${prefix}agbenchmark start --mock
+          ${prefix}agbenchmark start --mock --category=retrieval
+          ${prefix}agbenchmark start --mock --category=interface
+          ${prefix}agbenchmark start --mock --category=code
+          ${prefix}agbenchmark start --mock --category=memory
+          ${prefix}agbenchmark start --mock --category=iterate
+          ${prefix}agbenchmark start --mock --suite TestReturnCode 
+          ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval
+          if [ "${GITHUB_EVENT_NAME}" == "pull_request" ] || [ "${{ github.event_name }}" == "push" ]; then
+            ${prefix}agbenchmark start --test=TestWriteFile
           else
-            bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/b7ab4bc53e51d8ab29fff19ce5986ab7720970c6/mitmproxy.sh)" -s start
             ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
           fi
 
@@ -200,7 +205,7 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
-          PROMPT_USER: false # For mini-agi. TODO: Remove this once mini-agi follows the standards.
+          PROMPT_USER: false # For mini-agi. TODO: Remove this and put it in benchmarks.py
           HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
           HELICONE_CACHE_ENABLED: false
@@ -295,7 +300,7 @@ jobs:
           path: reports/combined_charts/*
 
       - name: Authenticate and Push to Branch
-        if: (success() || failure()) && (github.event_name != 'pull_request')
+        if: (success() || failure()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         run: |
           git config --global user.email "github-bot@agpt.co"
           git config --global user.name "Auto-GPT-Bot"

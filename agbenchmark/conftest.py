@@ -19,7 +19,9 @@ from agbenchmark.reports.reports import (
 from agbenchmark.start_benchmark import CONFIG_PATH, get_regression_data
 from agbenchmark.utils.data_types import SuiteConfig
 
-GLOBAL_TIMEOUT = 1500  # The tests will stop after 25 minutes so we can send the reports.
+GLOBAL_TIMEOUT = (
+    1500  # The tests will stop after 25 minutes so we can send the reports.
+)
 
 
 def resolve_workspace(workspace: str) -> str:
@@ -182,11 +184,13 @@ def timeout_monitor(start_time: int) -> None:
 
     pytest.exit("Test suite exceeded the global timeout", returncode=1)
 
+
 def pytest_sessionstart(session: Any) -> None:
     start_time = time.time()
     t = threading.Thread(target=timeout_monitor, args=(start_time,))
     t.daemon = True  # Daemon threads are abruptly stopped at shutdown
     t.start()
+
 
 def pytest_sessionfinish(session: Any) -> None:
     """Called at the end of the session to save regression tests and info"""

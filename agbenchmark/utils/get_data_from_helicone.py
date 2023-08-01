@@ -25,27 +25,24 @@ query ExampleQuery($properties: [PropertyFilter!]){
     print(query)
 
     variables = {
-        "filters": [
+        "properties": [
             {
-                "property": {
-                    "value": {"equals": os.environ.get("AGENT_NAME")},
-                    "name": "agent",
-                }
+                "value": {"equals": os.environ.get("AGENT_NAME")},
+                "name": "agent",
             },
             {
-                "property": {
-                    "value": {"equals": BENCHMARK_START_TIME},
-                    "name": "benchmark_start_time",
-                }
+                "value": {"equals": BENCHMARK_START_TIME},
+                "name": "benchmark_start_time",
             },
-            {"property": {"value": {"equals": challenge}, "name": "challenge"}},
+            {"value": {"equals": challenge}, "name": "challenge"},
         ]
     }
+
     print(json.dumps(variables, indent=4))
 
     operation_name = "ExampleQuery"
 
-    data = None
+    data = {}
     response = None
 
     try:
@@ -70,10 +67,10 @@ query ExampleQuery($properties: [PropertyFilter!]){
         print(f"Other error occurred: {err}")
         return None
 
-    if data is None or data.get("data") is None:
-        print("Invalid response received from server: no data")
-        return None
     try:
+        if data is None or data.get("data") is None:
+            print("Invalid response received from server: no data")
+            return None
         return (
             data.get("data", {})
             .get("aggregatedHeliconeRequest", {})
