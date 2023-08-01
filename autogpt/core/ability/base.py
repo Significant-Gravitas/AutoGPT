@@ -1,6 +1,6 @@
 import abc
 from pprint import pformat
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import inflection
 from pydantic import Field
@@ -50,11 +50,11 @@ class Ability(abc.ABC):
         return []
 
     @abc.abstractmethod
-    async def __call__(self, *args, **kwargs) -> AbilityResult:
+    async def __call__(self, *args: Any, **kwargs: Any) -> AbilityResult:
         ...
 
     def __str__(self) -> str:
-        return pformat(self.dump)
+        return pformat(self.dump())
 
     def dump(self) -> dict:
         return {
@@ -88,5 +88,5 @@ class AbilityRegistry(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def perform(self, ability_name: str, **kwargs) -> AbilityResult:
+    async def perform(self, ability_name: str, **kwargs: Any) -> AbilityResult:
         ...
