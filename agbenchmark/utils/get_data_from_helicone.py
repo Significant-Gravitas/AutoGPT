@@ -58,21 +58,21 @@ query ExampleQuery($properties: [PropertyFilter!]){
                 "operationName": operation_name,
             },
         )
-        response.raise_for_status()  # Raises a HTTPError if the response was an unsuccessful status code
 
         data = response.json()
     except requests.HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
-        raise  # Re-raise the exception to stop execution
+        return None  # Re-raise the exception to stop execution
     except json.JSONDecodeError:
         print(f"Invalid JSON response: {response.text if response else 'No response'}")
-        raise
+        return None
     except Exception as err:
         print(f"Other error occurred: {err}")
-        raise
+        return None
 
     if data is None or data.get("data") is None:
-        raise ValueError("Invalid response received from server: no data")
+        print("Invalid response received from server: no data")
+        return None
 
     return (
         data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("costUSD", None)
