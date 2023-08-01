@@ -117,7 +117,7 @@ def save_single_radar_chart(
     angles += angles[:1]
     values = np.concatenate((values, values[:1]))
 
-    colors = ["#40c463"]
+    colors = ["#1f77b4"]
 
     fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
     ax.set_theta_offset(np.pi / 2)  # type: ignore
@@ -128,6 +128,11 @@ def save_single_radar_chart(
     lines, labels = plt.thetagrids(
         np.degrees(angles[:-1]), (list(category_dict.keys()))
     )
+
+    highest_score = 7
+
+    # Set y-axis limit to 7
+    ax.set_ylim(top=highest_score)
 
     for label in labels:
         label.set_position((label.get_position()[0], label.get_position()[1] + -0.05))
@@ -158,7 +163,7 @@ def save_single_radar_chart(
     if values.size == 0:
         return
 
-    for y in np.arange(0, values.max(), 1):
+    for y in np.arange(0, highest_score, 1):
         ax.plot(angles, [y] * len(angles), color="gray", linewidth=0.5, linestyle=":")
 
     for angle, value in zip(angles, values):
@@ -171,9 +176,6 @@ def save_single_radar_chart(
             markeredgecolor=colors[0],
             markeredgewidth=2,
         )
-
-    green_patch = mpatches.Patch(color="#40c463", label="Mini-AGI", alpha=0.25)
-    plt.legend(handles=[green_patch])
 
     plt.savefig(save_path, dpi=300)  # Save the figure as a PNG file
     plt.close()  # Close the figure to free up memory

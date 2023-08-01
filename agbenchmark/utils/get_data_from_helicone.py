@@ -73,7 +73,12 @@ query ExampleQuery($properties: [PropertyFilter!]){
     if data is None or data.get("data") is None:
         print("Invalid response received from server: no data")
         return None
-
-    return (
-        data.get("data", {}).get("aggregatedHeliconeRequest", {}).get("costUSD", None)
-    )
+    try:
+        return (
+            data.get("data", {})
+            .get("aggregatedHeliconeRequest", {})
+            .get("costUSD", None)
+        )
+    except Exception as err:
+        print(f"Error occurred while parsing response: {err}")
+        return None
