@@ -21,8 +21,6 @@ def generate_combined_chart() -> None:
 
     categories = all_agent_categories(reports_data)
 
-    print("Agent categories:", categories)
-
     # Count the number of directories in this directory
     num_dirs = len([f for f in combined_charts_folder.iterdir() if f.is_dir()])
 

@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from agbenchmark.reports.processing.get_files import (
     get_latest_report_from_agent_directories,
@@ -41,7 +41,7 @@ def get_agent_category(report: Report) -> dict[str, Any]:
             categories.setdefault(category, 0)
             if data.metrics.success:
                 num_dif = STRING_DIFFICULTY_MAP[data.metrics.difficulty]
-                if num_dif > categories.setdefault(category, 0):
+                if num_dif > categories[category]:
                     categories[category] = num_dif
 
     for _, test_data in report.tests.items():
@@ -59,6 +59,8 @@ def all_agent_categories(reports_data: dict[str, Any]) -> dict[str, Any]:
 
     for name, report in reports_data.items():
         categories = get_agent_category(report)
-        all_categories[name] = categories
+        if categories:  # only add to all_categories if categories is not empty
+            print(f"Adding {name}: {categories}")
+            all_categories[name] = categories
 
     return all_categories
