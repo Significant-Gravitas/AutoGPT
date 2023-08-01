@@ -188,7 +188,7 @@ def assign_paths(folder_path: Path) -> tuple[str, str, str, str, str]:
     # if the user has a locally defined challenges path that they've added tests to
     CHALLENGES_PATH = str(folder_path / "challenges")
     if not os.path.exists(CHALLENGES_PATH):
-        Path(__file__).parent / "challenges"
+        CHALLENGES_PATH = str(Path(__file__).parent.parent / "challenges")
 
     if not os.path.exists(reports_location):
         os.makedirs(reports_location)
