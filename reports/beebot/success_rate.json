@@ -1,130 +1,161 @@
 {
     "TestAdaptLink": [
         false,
+        false,
         false
     ],
     "TestAdaptSimpleTypoWithGuidance": [
+        false,
         false,
         false
     ],
     "TestAdaptTeslaRevenue": [
         false,
+        false,
         false
     ],
     "TestBasicContentGen": [
+        false,
         false,
         false
     ],
     "TestBasicMemory": [
         true,
+        false,
         false
     ],
     "TestBasicRetrieval": [
+        false,
         false,
         false,
         false
     ],
     "TestDebugMultipleTypo": [
         false,
+        false,
         false
     ],
     "TestDebugSimpleTypoWithGuidance": [
         true,
+        false,
         false
     ],
     "TestDebugSimpleTypoWithoutGuidance": [
         true,
+        false,
         false
     ],
     "TestFunctionCodeGeneration": [
+        false,
         false,
         false
     ],
     "TestGoalDivergence": [
         false,
         false,
+        false,
         false
     ],
     "TestGoalLoss_Hard": [
+        false,
         false,
         false
     ],
     "TestGoalLoss_Medium": [
         false,
+        false,
         false
     ],
     "TestGoalLoss_Simple": [
+        false,
         false,
         false
     ],
     "TestGoalLoss_advanced": [
         false,
+        false,
         false
     ],
     "TestInstructionFollowing": [
+        false,
         false,
         false
     ],
     "TestPlanCreation": [
         true,
         true,
-        false
+        false,
+        true
     ],
     "TestReadFile": [
         true,
         true,
-        false
+        false,
+        true
     ],
     "TestRememberMultipleIds": [
+        false,
         false,
         false
     ],
     "TestRememberMultiplePhrasesWithNoise": [
         false,
+        false,
         false
     ],
     "TestRememberMultipleWithNoise": [
+        false,
         false,
         false
     ],
     "TestRetrieval3": [
         false,
+        false,
         false
     ],
     "TestReturnCode_Modify": [
+        false,
         false,
         false
     ],
     "TestReturnCode_Simple": [
         true,
-        false
+        false,
+        true
     ],
     "TestReturnCode_Tests": [
+        false,
         false,
         false
     ],
     "TestReturnCode_Write": [
         true,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.0": [
+        false,
         false,
         false
     ],
     "TestRevenueRetrieval_1.1": [
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.2": [
+        false,
         false,
         false
     ],
     "TestSearch": [
         true,
         true,
-        false
+        false,
+        true
     ],
     "TestThreeSum": [
+        false,
         false,
         false
     ],
@@ -132,6 +163,7 @@
         true,
         true,
         false,
-        false
+        false,
+        true
     ]
 }
