@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from autogpt.llm.utils.token_counter import count_string_tokens
+
 COMMAND_CATEGORY = "web_browse"
 COMMAND_CATEGORY_TITLE = "Web Browsing"
 
@@ -40,7 +42,7 @@ from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
 
 FILE_DIR = Path(__file__).parent.parent
-SUMMARIZATION_TRIGGER_LENGTH = 250  # Approximately 50 tokens for GPT-4
+TOKENS_TO_TRIGGER_SUMMARY = 50
 
 
 @command(
@@ -77,7 +79,8 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
     else:
         add_header(driver)
 
-        if len(text) > SUMMARIZATION_TRIGGER_LENGTH:
+        token_length = count_string_tokens(text, agent.config.llm.name)
+        if token_length > TOKENS_TO_TRIGGER_SUMMARY:
             summary = summarize_memorize_webpage(url, text, question, agent, driver)
             links = scrape_links_with_selenium(driver, url)
 
