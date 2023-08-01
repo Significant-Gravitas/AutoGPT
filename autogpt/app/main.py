@@ -13,6 +13,14 @@ from colorama import Fore, Style
 from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
 from autogpt.app.configurator import create_config
 from autogpt.app.setup import prompt_user
+from autogpt.app.spinner import Spinner
+from autogpt.app.utils import (
+    clean_input,
+    get_current_git_branch,
+    get_latest_bulletin,
+    get_legal_warning,
+    markdown_to_ansi_style,
+)
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
 from autogpt.llm.api_manager import ApiManager
@@ -22,14 +30,6 @@ from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.speech import say_text
-from autogpt.spinner import Spinner
-from autogpt.utils import (
-    clean_input,
-    get_current_git_branch,
-    get_latest_bulletin,
-    get_legal_warning,
-    markdown_to_ansi_style,
-)
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
@@ -343,23 +343,25 @@ def update_user(
     print_assistant_thoughts(ai_config.ai_name, assistant_reply_dict, config)
 
     if command_name is not None:
-        if config.speak_mode:
-            say_text(f"I want to execute {command_name}", config)
+        if command_name.lower().startswith("error"):
+            logger.typewriter_log(
+                "ERROR: ",
+                Fore.RED,
+                f"The Agent failed to select an action. "
+                f"Error message: {command_name}",
+            )
+        else:
+            if config.speak_mode:
+                say_text(f"I want to execute {command_name}", config)
 
-        # First log new-line so user can differentiate sections better in console
-        logger.typewriter_log("\n")
-        logger.typewriter_log(
-            "NEXT ACTION: ",
-            Fore.CYAN,
-            f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
-            f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
-        )
-    elif command_name.lower().startswith("error"):
-        logger.typewriter_log(
-            "ERROR: ",
-            Fore.RED,
-            f"The Agent failed to select an action. " f"Error message: {command_name}",
-        )
+            # First log new-line so user can differentiate sections better in console
+            logger.typewriter_log("\n")
+            logger.typewriter_log(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
+                f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
+            )
     else:
         logger.typewriter_log(
             "NO ACTION SELECTED: ",

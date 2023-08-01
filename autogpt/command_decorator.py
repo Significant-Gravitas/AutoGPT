@@ -1,7 +1,11 @@
-import functools
-from typing import Any, Callable, Optional, TypedDict
+from __future__ import annotations
 
-from autogpt.config import Config
+import functools
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypedDict
+
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.models.command import Command, CommandParameter
 
 # Unique identifier for auto-gpt commands
