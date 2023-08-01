@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from agbenchmark.reports.processing.get_files import (
     get_latest_report_from_agent_directories,
@@ -31,13 +31,17 @@ def get_reports_data(report_path: str) -> dict[str, Any]:
     return reports_data
 
 
-def get_agent_category(report: Report) -> dict[str, Any]:
+def get_agent_category(
+    report: Report, combined: Optional[bool] = None
+) -> dict[str, Any]:
     categories: dict[str, Any] = {}
 
     def get_highest_category_difficulty(data: Test) -> None:
         for category in data.category:
             if category == "interface" or category == "iterate":
                 continue
+            if combined:
+                categories.setdefault(category, 0)
             if data.metrics.success:
                 num_dif = STRING_DIFFICULTY_MAP[data.metrics.difficulty]
                 if num_dif > categories.setdefault(category, 0):
@@ -53,11 +57,13 @@ def get_agent_category(report: Report) -> dict[str, Any]:
     return categories
 
 
-def all_agent_categories(reports_data: dict[str, Any]) -> dict[str, Any]:
+def all_agent_categories(
+    reports_data: dict[str, Any], combined: Optional[bool] = None
+) -> dict[str, Any]:
     all_categories: dict[str, Any] = {}
 
     for name, report in reports_data.items():
-        categories = get_agent_category(report)
+        categories = get_agent_category(report, combined)
         all_categories[name] = categories
 
     return all_categories

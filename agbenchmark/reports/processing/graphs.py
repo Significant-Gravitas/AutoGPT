@@ -72,6 +72,11 @@ def save_combined_radar_chart(
         np.degrees(angles[:-1]), (list(next(iter(categories.values())).keys()))
     )  # We use the first category to get the keys
 
+    highest_score = 7
+
+    # Set y-axis limit to 7
+    ax.set_ylim(top=highest_score)
+
     # Move labels away from the plot
     for label in labels:
         label.set_position(
@@ -84,8 +89,8 @@ def save_combined_radar_chart(
     ax.set_yticks([])  # Remove default yticks
 
     # Manually create gridlines
-    for y in np.arange(0, norm.vmax + 1, 1):
-        if y != norm.vmax:
+    for y in np.arange(0, highest_score + 1, 1):
+        if y != highest_score:
             ax.plot(
                 angles, [y] * len(angles), color="gray", linewidth=0.5, linestyle=":"
             )
