@@ -1,26 +1,106 @@
 {
-    "TestWriteFile": [
-        false
-    ],
-    "TestPlanCreation": [
-        false
-    ],
-    "TestGoalDivergence": [
-        false
-    ],
-    "TestSearch": [
-        false
-    ],
-    "TestReadFile": [
+    "TestBasicContentGen": [
+        false,
         false
     ],
     "TestBasicRetrieval": [
+        false,
         false
     ],
-    "TestBasicContentGen": [
+    "TestGoalDivergence": [
+        false,
+        false
+    ],
+    "TestPlanCreation": [
+        false,
+        false
+    ],
+    "TestReadFile": [
+        false,
         false
     ],
     "TestReturnCode_Simple": [
+        false,
+        false
+    ],
+    "TestSearch": [
+        false,
+        false
+    ],
+    "TestWriteFile": [
+        false,
+        false
+    ],
+    "TestDebugSimpleTypoWithGuidance": [
+        false
+    ],
+    "TestBasicMemory": [
+        false
+    ],
+    "TestAdaptLink": [
+        false
+    ],
+    "TestRevenueRetrieval_1.2": [
+        false
+    ],
+    "TestRevenueRetrieval_1.1": [
+        false
+    ],
+    "TestRevenueRetrieval_1.0": [
+        false
+    ],
+    "TestReturnCode_Write": [
+        false
+    ],
+    "TestDebugSimpleTypoWithoutGuidance": [
+        false
+    ],
+    "TestAdaptSimpleTypoWithGuidance": [
+        false
+    ],
+    "TestInstructionFollowing": [
+        false
+    ],
+    "TestGoalLoss_Simple": [
+        false
+    ],
+    "TestGoalLoss_advanced": [
+        false
+    ],
+    "TestGoalLoss_Hard": [
+        false
+    ],
+    "TestGoalLoss_Medium": [
+        false
+    ],
+    "TestRememberMultipleIds": [
+        false
+    ],
+    "TestFunctionCodeGeneration": [
+        false
+    ],
+    "TestReturnCode_Modify": [
+        false
+    ],
+    "TestDebugMultipleTypo": [
+        false
+    ],
+    "TestRememberMultipleWithNoise": [
+        false
+    ],
+    "TestRetrieval3": [
+        false
+    ],
+    "TestAdaptTeslaRevenue": [
+        false
+    ],
+    "TestThreeSum": [
+        false
+    ],
+    "TestReturnCode_Tests": [
+        false
+    ],
+    "TestRememberMultiplePhrasesWithNoise": [
         false
     ]
 }
