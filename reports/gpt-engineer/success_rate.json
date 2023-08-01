@@ -1,1 +1,47 @@
-{}
+{
+    "TestWriteFile": [
+        true
+    ],
+    "TestPlanCreation": [
+        false
+    ],
+    "TestGoalDivergence": [
+        false
+    ],
+    "TestSearch": [
+        false
+    ],
+    "TestReadFile": [
+        false
+    ],
+    "TestBasicRetrieval": [
+        false
+    ],
+    "TestBasicContentGen": [
+        false
+    ],
+    "TestReturnCode_Simple": [
+        false
+    ],
+    "TestDebugSimpleTypoWithGuidance": [
+        false
+    ],
+    "TestBasicMemory": [
+        false
+    ],
+    "TestAdaptLink": [
+        false
+    ],
+    "TestRevenueRetrieval_1.2": [
+        false
+    ],
+    "TestRevenueRetrieval_1.1": [
+        false
+    ],
+    "TestRevenueRetrieval_1.0": [
+        false
+    ],
+    "TestReturnCode_Write": [
+        false
+    ]
+}
