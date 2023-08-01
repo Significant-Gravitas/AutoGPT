@@ -234,8 +234,10 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
         if run_time:
             cost = None
             if not MOCK_FLAG and os.environ.get("HELICONE_API_KEY"):
+                print("Getting cost from Helicone")
                 cost = get_data_from_helicone(test_name)
-
+            else:
+                print("Helicone not setup or mock flag set, not getting cost")
             info_details["metrics"]["cost"] = cost
             info_details["metrics"]["run_time"] = f"{str(round(run_time, 3))} seconds"
 
