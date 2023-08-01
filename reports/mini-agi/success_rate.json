@@ -1,1 +1,8 @@
-{}
+{
+    "TestWriteFile": [
+        true
+    ],
+    "TestPlanCreation": [
+        true
+    ]
+}
