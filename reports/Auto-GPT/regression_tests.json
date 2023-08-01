@@ -1,4 +1,8 @@
 {
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2_debug/data.json"
+    },
     "TestPlanCreation": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
@@ -6,9 +10,5 @@
     "TestReadFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/read_file/data.json"
-    },
-    "TestDebugSimpleTypoWithGuidance": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2_debug/data.json"
     }
 }
