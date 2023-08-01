@@ -32,6 +32,7 @@ def generate_combined_chart() -> None:
     info_data = {
         report_name: data.benchmark_start_time
         for report_name, data in reports_data.items()
+        if report_name in categories
     }
     with open(Path(run_charts_folder) / "run_info.json", "w") as f:
         json.dump(info_data, f)

@@ -263,6 +263,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
+          token: ${{ env.GH_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v2

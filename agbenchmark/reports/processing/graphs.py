@@ -11,6 +11,7 @@ from matplotlib.colors import Normalize
 def save_combined_radar_chart(
     categories: dict[str, Any], save_path: str | Path
 ) -> None:
+    categories = {k: v for k, v in categories.items() if v}
     if not all(categories.values()):
         raise Exception("No data to plot")
     labels = np.array(
