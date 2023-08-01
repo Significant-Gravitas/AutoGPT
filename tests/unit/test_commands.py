@@ -193,7 +193,7 @@ def test_import_mock_commands_module():
     registry = CommandRegistry()
     mock_commands_module = "tests.mocks.mock_commands"
 
-    registry.import_commands(mock_commands_module)
+    registry.import_command_module(mock_commands_module)
 
     assert "function_based" in registry
     assert registry.commands["function_based"].name == "function_based"
@@ -219,7 +219,7 @@ def test_import_temp_command_file_module(tmp_path: Path):
     sys.path.append(str(tmp_path))
 
     temp_commands_module = "mock_commands"
-    registry.import_commands(temp_commands_module)
+    registry.import_command_module(temp_commands_module)
 
     # Remove the temp directory from sys.path
     sys.path.remove(str(tmp_path))
