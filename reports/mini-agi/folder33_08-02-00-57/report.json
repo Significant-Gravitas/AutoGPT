@@ -1,0 +1,69 @@
+{
+    "command": "agbenchmark start --mock --category=interface",
+    "git_commit_sha": "2fc70aa0032eec986dfb1020854a1b3b8aaf6780",
+    "completion_time": "2023-08-02-00:57",
+    "benchmark_start_time": "2023-08-02-00:57",
+    "metrics": {
+        "run_time": "0.36 seconds",
+        "highest_difficulty": "interface: 1"
+    },
+    "tests": {
+        "TestSearch": {
+            "data_path": "agbenchmark/challenges/interface/search/data.json",
+            "is_regression": true,
+            "category": [
+                "interface"
+            ],
+            "task": "Open 'https://silennaihin.com/random/plain.html' and paste the text on the page in a .txt file",
+            "answer": "This is a Heading\nThis is a paragraph.",
+            "description": "Tests if an llm can search",
+            "metrics": {
+                "difficulty": "interface",
+                "success": true,
+                "success_%": 100.0,
+                "cost": null,
+                "run_time": "0.002 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestWriteFile": {
+            "data_path": "agbenchmark/challenges/interface/write_file/data.json",
+            "is_regression": true,
+            "category": [
+                "interface"
+            ],
+            "task": "Print the the capital of America to a .txt file",
+            "answer": "Washington",
+            "description": "Tests the writing to file",
+            "metrics": {
+                "difficulty": "interface",
+                "success": true,
+                "success_%": 100.0,
+                "cost": null,
+                "run_time": "0.001 seconds"
+            },
+            "reached_cutoff": false
+        },
+        "TestReadFile": {
+            "data_path": "agbenchmark/challenges/interface/read_file/data.json",
+            "is_regression": true,
+            "category": [
+                "interface"
+            ],
+            "task": "Write the string 'random string' before any existing text to the file called file_to_check.txt",
+            "answer": "random string Hello World!",
+            "description": "This reads the file quickly",
+            "metrics": {
+                "difficulty": "interface",
+                "success": true,
+                "success_%": 100.0,
+                "cost": null,
+                "run_time": "0.002 seconds"
+            },
+            "reached_cutoff": false
+        }
+    },
+    "config": {
+        "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+    }
+}
