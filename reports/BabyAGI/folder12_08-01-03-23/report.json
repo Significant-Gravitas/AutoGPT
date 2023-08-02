@@ -21,7 +21,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1349.5450334999996,
+                "cost": null,
                 "run_time": "60.118 seconds"
             },
             "reached_cutoff": true
@@ -40,7 +40,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestPlanCreation::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1349.7110934999992,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -60,7 +60,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalDivergence::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1349.7220814999994,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -79,7 +79,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1349.771653499999,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -98,7 +98,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1349.7908734999999,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -117,7 +117,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0], agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.0636414999997,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -136,7 +136,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicContentGen::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0], agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.1109494999996,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -156,7 +156,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0], agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.1949954999993,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -175,7 +175,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0], agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.2521314999997,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -194,7 +194,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestAdaptLink::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.3188514999995,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -208,7 +208,7 @@
             "metrics": {
                 "percentage": 0,
                 "highest_difficulty": "No successful tests",
-                "cost": 1350.3505874999994,
+                "cost": null,
                 "run_time": "0.003 seconds"
             },
             "tests": {
@@ -272,7 +272,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestDebugSimpleTypoWithoutGuidance::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.3895874999992,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -291,7 +291,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestAdaptSimpleTypoWithGuidance::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.3895874999994,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -311,7 +311,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestInstructionFollowing::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.3895874999996,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -330,7 +330,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleIds::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.758855499999,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -349,7 +349,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestFunctionCodeGeneration::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Write::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.7791274999993,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -369,7 +369,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestDebugMultipleTypo::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestDebugSimpleTypoWithoutGuidance::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.7791274999997,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -388,7 +388,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleWithNoise::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleIds::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.7791274999997,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -407,7 +407,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRetrieval3::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRevenueRetrieval::test_TestRevenueRetrieval_1.2[None]",
                 "success_%": 0.0,
-                "cost": 1350.8574474999994,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -426,7 +426,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestAdaptTeslaRevenue::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRevenueRetrieval::test_TestRevenueRetrieval_1.0[None]",
                 "success_%": 0.0,
-                "cost": 1350.8574474999994,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -446,7 +446,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestFunctionCodeGeneration::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.8574474999994,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -465,7 +465,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultiplePhrasesWithNoise::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleWithNoise::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1350.8805354999995,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -493,7 +493,7 @@
                         "success": false,
                         "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Simple::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0], agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1350.1566454999995,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -513,7 +513,7 @@
                         "success": false,
                         "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Write::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Simple::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1350.3505874999994,
+                        "cost": null,
                         "run_time": "0.001 seconds"
                     },
                     "reached_cutoff": false
@@ -533,7 +533,7 @@
                         "success": false,
                         "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Modify::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Write::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1350.7791274999988,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -553,7 +553,7 @@
                         "success": false,
                         "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Tests::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Modify::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1350.8805354999995,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -583,7 +583,7 @@
                         "success": false,
                         "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_Simple::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1350.4219954999996,
+                        "cost": null,
                         "run_time": "0.001 seconds"
                     },
                     "reached_cutoff": false
@@ -603,7 +603,7 @@
                         "success": false,
                         "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_advanced::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1350.4706314999996,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -623,7 +623,7 @@
                         "success": false,
                         "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_Hard::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1350.5281074999991,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -643,7 +643,7 @@
                         "success": false,
                         "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_Medium::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1350.5744154999995,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false

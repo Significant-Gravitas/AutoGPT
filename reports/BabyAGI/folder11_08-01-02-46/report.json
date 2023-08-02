@@ -21,7 +21,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "60.154 seconds"
             },
             "reached_cutoff": true
@@ -40,7 +40,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestPlanCreation::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999999,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -60,7 +60,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalDivergence::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -79,7 +79,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -98,7 +98,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -117,7 +117,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0], agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -136,7 +136,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicContentGen::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0], agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999994,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false

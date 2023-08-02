@@ -20,7 +20,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "60.007 seconds"
             },
             "reached_cutoff": true
@@ -39,7 +39,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "51.859 seconds"
             },
             "reached_cutoff": false
@@ -59,7 +59,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "43.621 seconds"
             },
             "reached_cutoff": false
@@ -78,7 +78,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "44.743 seconds"
             },
             "reached_cutoff": false
@@ -97,7 +97,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "48.236 seconds"
             },
             "reached_cutoff": false
@@ -116,7 +116,7 @@
                 "success": false,
                 "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -135,7 +135,7 @@
                 "success": false,
                 "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicContentGen::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -155,7 +155,7 @@
                 "success": false,
                 "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -174,7 +174,7 @@
                 "success": false,
                 "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -193,7 +193,7 @@
                 "success": false,
                 "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestAdaptLink::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -207,7 +207,7 @@
             "metrics": {
                 "percentage": 0,
                 "highest_difficulty": "No successful tests",
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "0.004 seconds"
             },
             "tests": {
@@ -279,7 +279,7 @@
                         "success": false,
                         "fail_reason": "agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Simple::test_method[challenge_data0] depends on agent/gpt-engineer/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1341.2960054999996,
+                        "cost": null,
                         "run_time": "0.001 seconds"
                     },
                     "reached_cutoff": false

@@ -20,7 +20,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "60.004 seconds"
             },
             "reached_cutoff": true
@@ -38,7 +38,7 @@
                 "difficulty": "basic",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "60.988 seconds"
             },
             "reached_cutoff": true
@@ -58,7 +58,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "60.15 seconds"
             },
             "reached_cutoff": true
@@ -76,7 +76,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1341.2960054999994,
+                "cost": null,
                 "run_time": "29.371 seconds"
             },
             "reached_cutoff": false
@@ -94,7 +94,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1341.2960054999996,
+                "cost": null,
                 "run_time": "60.004 seconds"
             },
             "reached_cutoff": true

@@ -330,7 +330,7 @@
                 "success": false,
                 "fail_reason": "agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleIds::test_method[challenge_data0] depends on agent/BabyAGI/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1571.2554915,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
