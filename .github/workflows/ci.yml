@@ -3,6 +3,11 @@ name: CI
 on:
   workflow_dispatch:
     branches: [master]
+    inputs:
+      agents:
+        description: 'Agents to run (comma-separated)'
+        required: false
+        default: 'gpt-engineer,smol-developer,Auto-GPT,mini-agi,beebot,BabyAGI'  # Default agents if none are specified
   schedule:
     - cron: '0 8 * * *'
   push:
@@ -69,21 +74,21 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      env-name: ${{ steps.set-env-name.outputs.env-name }}
+      env-name: ${{ steps.set-matrix.outputs.env-name }}
     steps:
       - id: set-matrix
         run: |
-          if [ "${{ github.event_name }}" == "schedule" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI' ]"
-          else
-            echo "::set-output name=matrix::[ 'mini-agi']"
-          fi
-      - id: set-env-name
-        run: |
-          if [[ "${{ github.event_name }}" == "push" ]] || [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "::set-output name=env-name::testing"
-          else
+          if [ "${{ github.event_name }}" == "schedule" ]; then
             echo "::set-output name=env-name::production"
+            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI' ]"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            IFS=',' read -ra matrix_array <<< "${{ github.event.inputs.agents }}"
+            matrix_string="[ \"$(echo "${matrix_array[@]}" | sed 's/ /", "/g')\" ]"
+            echo "::set-output name=env-name::production"
+            echo "::set-output name=matrix::$matrix_string"
+          else
+            echo "::set-output name=env-name::testing"
+            echo "::set-output name=matrix::[ 'mini-agi' ]"
           fi
 
   tests:
