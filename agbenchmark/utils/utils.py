@@ -272,7 +272,7 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str, str, str]:
     )
 
 
-def get_git_commit_sha(directory: str) -> Optional[str]:
+def get_git_commit_sha(directory: Path) -> Optional[str]:
     try:
         repo = git.Repo(directory)
         remote_url = repo.remotes.origin.url
