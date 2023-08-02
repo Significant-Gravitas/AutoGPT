@@ -9,7 +9,11 @@ import click
 import pytest
 from helicone.lock import HeliconeLockManager
 
-from agbenchmark.utils.utils import AGENT_NAME, calculate_dynamic_paths
+from agbenchmark.utils.utils import (
+    AGENT_NAME,
+    calculate_dynamic_paths,
+    get_git_commit_sha,
+)
 
 CURRENT_DIRECTORY = Path(__file__).resolve().parent
 BENCHMARK_START_TIME = datetime.now().strftime("%Y-%m-%d-%H:%M")
@@ -24,6 +28,7 @@ HeliconeLockManager.write_custom_property("benchmark_start_time", BENCHMARK_STAR
     SUCCESS_RATE_PATH,
     CHALLENGES_PATH,
 ) = calculate_dynamic_paths()
+GIT_COMMIT_SHA = get_git_commit_sha()
 
 
 @click.group()

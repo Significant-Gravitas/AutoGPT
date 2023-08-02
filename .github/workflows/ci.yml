@@ -174,26 +174,27 @@ jobs:
           pip install ../../dist/*.whl
           
           bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/b7ab4bc53e51d8ab29fff19ce5986ab7720970c6/mitmproxy.sh)" -s start
-          set +e # Ignore non-zero exit codes and continue execution
-          ${prefix}agbenchmark start --maintain --mock
-          EXIT_CODE=$?
-          set -e  # Stop ignoring non-zero exit codes
 
-          # Check if the exit code was 5, and if so, exit with 0 instead
-          if [ $EXIT_CODE -eq 5 ]; then
-            echo "regression_tests.json is empty."
-            exit 0
-          fi
-
-          ${prefix}agbenchmark start --mock
-          ${prefix}agbenchmark start --mock --category=retrieval
-          ${prefix}agbenchmark start --mock --category=interface
-          ${prefix}agbenchmark start --mock --category=code
-          ${prefix}agbenchmark start --mock --category=memory
-          ${prefix}agbenchmark start --mock --category=iterate
-          ${prefix}agbenchmark start --mock --suite TestReturnCode 
-          ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval
           if [ "${GITHUB_EVENT_NAME}" == "pull_request" ] || [ "${{ github.event_name }}" == "push" ]; then
+            set +e # Ignore non-zero exit codes and continue execution
+            ${prefix}agbenchmark start --maintain --mock
+            EXIT_CODE=$?
+            set -e  # Stop ignoring non-zero exit codes
+  
+            # Check if the exit code was 5, and if so, exit with 0 instead
+            if [ $EXIT_CODE -eq 5 ]; then
+              echo "regression_tests.json is empty."
+              exit 0
+            fi
+  
+            ${prefix}agbenchmark start --mock
+            ${prefix}agbenchmark start --mock --category=retrieval
+            ${prefix}agbenchmark start --mock --category=interface
+            ${prefix}agbenchmark start --mock --category=code
+            ${prefix}agbenchmark start --mock --category=memory
+            ${prefix}agbenchmark start --mock --category=iterate
+            ${prefix}agbenchmark start --mock --suite TestReturnCode 
+            ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval
             ${prefix}agbenchmark start --test=TestWriteFile
           else
             ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."

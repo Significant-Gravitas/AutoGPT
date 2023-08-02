@@ -22,6 +22,7 @@ psutil = "^5.9.5"
 helicone = "^1.0.6"
 matplotlib = "^3.7.2"
 pandas = "^2.0.3"
+gitpython = "^3.1.32"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"
