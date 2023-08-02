@@ -20,7 +20,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1343.5359974999994,
+                "cost": null,
                 "run_time": "60.004 seconds"
             },
             "reached_cutoff": true
@@ -38,7 +38,7 @@
                 "difficulty": "basic",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1345.5068694999998,
+                "cost": null,
                 "run_time": "61.046 seconds"
             },
             "reached_cutoff": true
@@ -58,7 +58,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1348.7567854999998,
+                "cost": null,
                 "run_time": "60.144 seconds"
             },
             "reached_cutoff": true
@@ -76,7 +76,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1350.8574474999994,
+                "cost": null,
                 "run_time": "35.62 seconds"
             },
             "reached_cutoff": false
@@ -94,7 +94,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1353.8305034999994,
+                "cost": null,
                 "run_time": "60.004 seconds"
             },
             "reached_cutoff": true
@@ -113,7 +113,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0, 0.0]",
                 "success_%": 0.0,
-                "cost": 1356.8839354999998,
+                "cost": null,
                 "run_time": "60.01 seconds"
             },
             "reached_cutoff": true
@@ -132,7 +132,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1360.2214214999997,
+                "cost": null,
                 "run_time": "60.011 seconds"
             },
             "reached_cutoff": true
@@ -151,7 +151,7 @@
                 "difficulty": "novice",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1365.1847854999999,
+                "cost": null,
                 "run_time": "41.004 seconds"
             },
             "reached_cutoff": false
@@ -169,7 +169,7 @@
                 "difficulty": "basic",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1368.2918914999993,
+                "cost": null,
                 "run_time": "60.005 seconds"
             },
             "reached_cutoff": true
@@ -188,7 +188,7 @@
                 "success": false,
                 "fail_reason": "generate_test.py::TestAdaptLink::test_method[challenge_data0] depends on generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1368.3542554999992,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -202,7 +202,7 @@
             "metrics": {
                 "percentage": 0,
                 "highest_difficulty": "No successful tests",
-                "cost": 1368.3542554999992,
+                "cost": null,
                 "run_time": "0.004 seconds"
             },
             "tests": {
@@ -265,7 +265,7 @@
                 "difficulty": "intermediate",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1373.0814234999998,
+                "cost": null,
                 "run_time": "75.044 seconds"
             },
             "reached_cutoff": true
@@ -284,7 +284,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1378.1223054999994,
+                "cost": null,
                 "run_time": "75.039 seconds"
             },
             "reached_cutoff": true
@@ -304,7 +304,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1380.5522154999996,
+                "cost": null,
                 "run_time": "39.757 seconds"
             },
             "reached_cutoff": false
@@ -323,7 +323,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1392.5523254999994,
+                "cost": null,
                 "run_time": "60.009 seconds"
             },
             "reached_cutoff": true
@@ -342,7 +342,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1396.2070014999993,
+                "cost": null,
                 "run_time": "90.043 seconds"
             },
             "reached_cutoff": true
@@ -362,7 +362,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1403.8377014999992,
+                "cost": null,
                 "run_time": "90.04 seconds"
             },
             "reached_cutoff": true
@@ -381,7 +381,7 @@
                 "success": false,
                 "fail_reason": "generate_test.py::TestRememberMultipleWithNoise::test_method[challenge_data0] depends on generate_test.py::TestRememberMultipleIds::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1403.9080654999993,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -400,7 +400,7 @@
                 "success": false,
                 "fail_reason": "generate_test.py::TestRetrieval3::test_method[challenge_data0] depends on generate_test.py::TestRevenueRetrieval::test_TestRevenueRetrieval_1.2[None]",
                 "success_%": 0.0,
-                "cost": 1403.9080654999993,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -419,7 +419,7 @@
                 "success": false,
                 "fail_reason": "generate_test.py::TestAdaptTeslaRevenue::test_method[challenge_data0] depends on generate_test.py::TestRevenueRetrieval::test_TestRevenueRetrieval_1.0[None]",
                 "success_%": 0.0,
-                "cost": 1403.9080654999993,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -439,7 +439,7 @@
                 "success": false,
                 "fail_reason": "generate_test.py::TestThreeSum::test_method[challenge_data0] depends on generate_test.py::TestFunctionCodeGeneration::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1403.9080654999993,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -458,7 +458,7 @@
                 "success": false,
                 "fail_reason": "generate_test.py::TestRememberMultiplePhrasesWithNoise::test_method[challenge_data0] depends on generate_test.py::TestRememberMultipleWithNoise::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1404.0667974999992,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -485,7 +485,7 @@
                         "difficulty": "basic",
                         "success": true,
                         "success_%": 100.0,
-                        "cost": 1362.8408334999992,
+                        "cost": null,
                         "run_time": "40.908 seconds"
                     },
                     "reached_cutoff": false
@@ -504,7 +504,7 @@
                         "difficulty": "novice",
                         "success": true,
                         "success_%": 100.0,
-                        "cost": 1369.4081974999995,
+                        "cost": null,
                         "run_time": "29.797 seconds"
                     },
                     "reached_cutoff": false
@@ -524,7 +524,7 @@
                         "success": false,
                         "fail_reason": "assert 1 in [0.0]",
                         "success_%": 0.0,
-                        "cost": 1399.2661054999996,
+                        "cost": null,
                         "run_time": "75.04 seconds"
                     },
                     "reached_cutoff": true
@@ -544,7 +544,7 @@
                         "success": false,
                         "fail_reason": "generate_test.py::TestReturnCode_Tests::test_method[challenge_data0] depends on generate_test.py::TestReturnCode_Modify::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1403.9891414999993,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -574,7 +574,7 @@
                         "success": false,
                         "fail_reason": "assert 1 in [0.0, 0.0]",
                         "success_%": 0.0,
-                        "cost": 1383.1865814999994,
+                        "cost": null,
                         "run_time": "60.01 seconds"
                     },
                     "reached_cutoff": true
@@ -594,7 +594,7 @@
                         "success": false,
                         "fail_reason": "assert 1 in [0.0, 0.0, 0.0]",
                         "success_%": 0.0,
-                        "cost": 1385.6828374999998,
+                        "cost": null,
                         "run_time": "60.011 seconds"
                     },
                     "reached_cutoff": true
@@ -614,7 +614,7 @@
                         "success": false,
                         "fail_reason": "assert 1 in [0.0, 0.0, 0.0]",
                         "success_%": 0.0,
-                        "cost": 1388.4356334999998,
+                        "cost": null,
                         "run_time": "60.011 seconds"
                     },
                     "reached_cutoff": true
@@ -634,7 +634,7 @@
                         "success": false,
                         "fail_reason": "assert 1 in [0.0]",
                         "success_%": 0.0,
-                        "cost": 1389.1831974999996,
+                        "cost": null,
                         "run_time": "17.267 seconds"
                     },
                     "reached_cutoff": false

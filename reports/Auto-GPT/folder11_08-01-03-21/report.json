@@ -20,7 +20,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1343.3564774999995,
+                "cost": null,
                 "run_time": "43.121 seconds"
             },
             "reached_cutoff": false
@@ -38,7 +38,7 @@
                 "difficulty": "basic",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1345.506869499999,
+                "cost": null,
                 "run_time": "61.122 seconds"
             },
             "reached_cutoff": true
@@ -58,7 +58,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1348.7567854999993,
+                "cost": null,
                 "run_time": "60.227 seconds"
             },
             "reached_cutoff": true
@@ -77,7 +77,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0, 0.0]",
                 "success_%": 0.0,
-                "cost": 1351.2083754999996,
+                "cost": null,
                 "run_time": "44.372 seconds"
             },
             "reached_cutoff": false
@@ -95,7 +95,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1354.0949554999993,
+                "cost": null,
                 "run_time": "56.795 seconds"
             },
             "reached_cutoff": false
@@ -114,7 +114,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1354.2449554999992,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -133,7 +133,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1357.2560394999998,
+                "cost": null,
                 "run_time": "60.421 seconds"
             },
             "reached_cutoff": true
@@ -152,7 +152,7 @@
                 "difficulty": "novice",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1364.7770254999998,
+                "cost": null,
                 "run_time": "75.062 seconds"
             },
             "reached_cutoff": true
@@ -171,7 +171,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1368.2915574999995,
+                "cost": null,
                 "run_time": "60.026 seconds"
             },
             "reached_cutoff": true
@@ -190,7 +190,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestAdaptLink::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1368.2918914999993,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -204,7 +204,7 @@
             "metrics": {
                 "percentage": 0,
                 "highest_difficulty": "No successful tests",
-                "cost": 1368.2918914999993,
+                "cost": null,
                 "run_time": "0.004 seconds"
             },
             "tests": {
@@ -268,7 +268,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1371.3122634999995,
+                "cost": null,
                 "run_time": "75.083 seconds"
             },
             "reached_cutoff": true
@@ -287,7 +287,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1375.6546774999997,
+                "cost": null,
                 "run_time": "75.068 seconds"
             },
             "reached_cutoff": true
@@ -307,7 +307,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestInstructionFollowing::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1375.6546774999997,
+                "cost": null,
                 "run_time": "0.003 seconds"
             },
             "reached_cutoff": false
@@ -326,7 +326,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleIds::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1376.1842814999993,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -345,7 +345,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestFunctionCodeGeneration::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Write::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1376.1842814999995,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -365,7 +365,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestDebugMultipleTypo::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestDebugSimpleTypoWithoutGuidance::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1376.6591454999998,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -384,7 +384,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleWithNoise::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleIds::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1376.7042934999995,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -403,7 +403,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRetrieval3::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRevenueRetrieval::test_TestRevenueRetrieval_1.2[None]",
                 "success_%": 0.0,
-                "cost": 1376.7042935,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -422,7 +422,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestAdaptTeslaRevenue::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRevenueRetrieval::test_TestRevenueRetrieval_1.0[None]",
                 "success_%": 0.0,
-                "cost": 1376.7042935,
+                "cost": null,
                 "run_time": "0.003 seconds"
             },
             "reached_cutoff": false
@@ -442,7 +442,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestFunctionCodeGeneration::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1376.7042935,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -461,7 +461,7 @@
                 "success": false,
                 "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultiplePhrasesWithNoise::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleWithNoise::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1376.7357334999997,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -489,7 +489,7 @@
                         "success": false,
                         "fail_reason": "assert 1 in [0.0]",
                         "success_%": 0.0,
-                        "cost": 1360.5222974999997,
+                        "cost": null,
                         "run_time": "60.061 seconds"
                     },
                     "reached_cutoff": true
@@ -509,7 +509,7 @@
                         "success": false,
                         "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Write::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Simple::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1368.3237474999994,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -529,7 +529,7 @@
                         "success": false,
                         "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Modify::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Write::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1376.2331374999992,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -549,7 +549,7 @@
                         "success": false,
                         "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Tests::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Modify::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1376.7042934999997,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -579,7 +579,7 @@
                         "success": false,
                         "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_Simple::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1375.6834654999998,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -599,7 +599,7 @@
                         "success": false,
                         "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_advanced::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1376.0837854999995,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -619,7 +619,7 @@
                         "success": false,
                         "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_Hard::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1376.0871414999997,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -639,7 +639,7 @@
                         "success": false,
                         "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_Medium::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1376.0871414999992,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false

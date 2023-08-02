@@ -20,7 +20,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1341.6358494999993,
+                "cost": null,
                 "run_time": "14.976 seconds"
             },
             "reached_cutoff": false
@@ -38,7 +38,7 @@
                 "difficulty": "basic",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1342.7803774999993,
+                "cost": null,
                 "run_time": "34.59 seconds"
             },
             "reached_cutoff": false
@@ -58,7 +58,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in [0.0]",
                 "success_%": 0.0,
-                "cost": 1343.5949394999996,
+                "cost": null,
                 "run_time": "21.005 seconds"
             },
             "reached_cutoff": false
@@ -76,7 +76,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1344.2619814999994,
+                "cost": null,
                 "run_time": "20.928 seconds"
             },
             "reached_cutoff": false
@@ -94,7 +94,7 @@
                 "difficulty": "interface",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1344.9177814999994,
+                "cost": null,
                 "run_time": "17.648 seconds"
             },
             "reached_cutoff": false
@@ -112,7 +112,7 @@
                 "difficulty": "basic",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1346.108983499999,
+                "cost": null,
                 "run_time": "23.255 seconds"
             },
             "reached_cutoff": false
@@ -130,7 +130,7 @@
                 "difficulty": "basic",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1351.5025554999993,
+                "cost": null,
                 "run_time": "99.538 seconds"
             },
             "reached_cutoff": true
@@ -149,7 +149,7 @@
                 "difficulty": "novice",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1356.7393354999992,
+                "cost": null,
                 "run_time": "41.77 seconds"
             },
             "reached_cutoff": false
@@ -168,7 +168,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1360.2214214999997,
+                "cost": null,
                 "run_time": "61.047 seconds"
             },
             "reached_cutoff": true
@@ -187,7 +187,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1363.9154954999997,
+                "cost": null,
                 "run_time": "61.445 seconds"
             },
             "reached_cutoff": true
@@ -201,7 +201,7 @@
             "metrics": {
                 "percentage": 33.33,
                 "highest_difficulty": "novice",
-                "cost": 1365.6362114999993,
+                "cost": null,
                 "run_time": "29.589 seconds"
             },
             "tests": {
@@ -264,7 +264,7 @@
                 "difficulty": "intermediate",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1367.9136655000002,
+                "cost": null,
                 "run_time": "42.673 seconds"
             },
             "reached_cutoff": false
@@ -282,7 +282,7 @@
                 "difficulty": "intermediate",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1371.3122634999997,
+                "cost": null,
                 "run_time": "86.683 seconds"
             },
             "reached_cutoff": true
@@ -302,7 +302,7 @@
                 "success": false,
                 "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestInstructionFollowing::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1371.5417034999996,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -321,7 +321,7 @@
                 "success": false,
                 "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleIds::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1371.6130294999994,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -340,7 +340,7 @@
                 "success": false,
                 "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestFunctionCodeGeneration::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Write::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1371.6130294999994,
+                "cost": null,
                 "run_time": "0.001 seconds"
             },
             "reached_cutoff": false
@@ -359,7 +359,7 @@
                 "difficulty": "advanced",
                 "success": true,
                 "success_%": 100.0,
-                "cost": 1375.4160334999997,
+                "cost": null,
                 "run_time": "59.221 seconds"
             },
             "reached_cutoff": false
@@ -378,7 +378,7 @@
                 "success": false,
                 "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleWithNoise::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleIds::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1375.6546774999995,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -397,7 +397,7 @@
                 "success": false,
                 "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRetrieval3::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRevenueRetrieval::test_TestRevenueRetrieval_1.2[None]",
                 "success_%": 0.0,
-                "cost": 1375.6546774999993,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -416,7 +416,7 @@
                 "success": false,
                 "fail_reason": "assert 1 in []",
                 "success_%": 0.0,
-                "cost": 1380.0412454999998,
+                "cost": null,
                 "run_time": "66.239 seconds"
             },
             "reached_cutoff": true
@@ -436,7 +436,7 @@
                 "success": false,
                 "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestFunctionCodeGeneration::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1380.3811174999992,
+                "cost": null,
                 "run_time": "0.002 seconds"
             },
             "reached_cutoff": false
@@ -455,7 +455,7 @@
                 "success": false,
                 "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultiplePhrasesWithNoise::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestRememberMultipleWithNoise::test_method[challenge_data0]",
                 "success_%": 0.0,
-                "cost": 1380.4471354999991,
+                "cost": null,
                 "run_time": "0.003 seconds"
             },
             "reached_cutoff": false
@@ -483,7 +483,7 @@
                         "success": false,
                         "fail_reason": "assert 1 in [0.0]",
                         "success_%": 0.0,
-                        "cost": 1354.5040255,
+                        "cost": null,
                         "run_time": "65.444 seconds"
                     },
                     "reached_cutoff": true
@@ -503,7 +503,7 @@
                         "success": false,
                         "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Write::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Simple::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1365.8208914999998,
+                        "cost": null,
                         "run_time": "0.003 seconds"
                     },
                     "reached_cutoff": false
@@ -523,7 +523,7 @@
                         "success": false,
                         "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Modify::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Write::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1371.6130294999998,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -543,7 +543,7 @@
                         "success": false,
                         "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Tests::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestReturnCode_Modify::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1380.4249174999993,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -573,7 +573,7 @@
                         "success": false,
                         "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_Simple::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1371.5417034999996,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -593,7 +593,7 @@
                         "success": false,
                         "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_advanced::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1371.5764874999998,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
@@ -613,7 +613,7 @@
                         "success": false,
                         "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_Hard::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1371.5764874999998,
+                        "cost": null,
                         "run_time": "0.003 seconds"
                     },
                     "reached_cutoff": false
@@ -633,7 +633,7 @@
                         "success": false,
                         "fail_reason": "agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestGoalLoss_Medium::test_method[challenge_data0] depends on agent/mini-agi/venv/lib/python3.10/site-packages/agbenchmark/generate_test.py::TestBasicMemory::test_method[challenge_data0]",
                         "success_%": 0.0,
-                        "cost": 1371.6130294999994,
+                        "cost": null,
                         "run_time": "0.002 seconds"
                     },
                     "reached_cutoff": false
