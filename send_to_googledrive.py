@@ -36,6 +36,9 @@ def process_test(
     test_name: str, test_info: dict, agent_name: str, common_data: dict
 ) -> None:
     """Recursive function to process test data."""
+    parts = test_name.split("_", 1)  # Split by underscore only once
+    test_suite = parts[0] if len(parts) > 1 else None
+
     row = {
         "Agent": agent_name,
         "Command": common_data.get("command", ""),
@@ -60,6 +63,7 @@ def process_test(
         "Agent Git Commit Sha": common_data.get("agent_git_commit_sha", None),
         "Cost": test_info.get("metrics", {}).get("cost", ""),
         "Attempted": test_info.get("metrics", {}).get("attempted", ""),
+        "Test Suite": test_suite,
     }
 
     rows.append(row)
