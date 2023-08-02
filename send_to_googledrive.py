@@ -56,6 +56,8 @@ def process_test(
             "non_mock_success_%", ""
         ),
         "Run Time": test_info.get("metrics", {}).get("run_time", ""),
+        "Git Commit Sha": common_data.get("git_commit_sha", None),
+        "Cost": test_info.get("metrics", {}).get("cost", ""),
     }
 
     rows.append(row)
