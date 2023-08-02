@@ -58,6 +58,7 @@ def process_test(
         "Run Time": test_info.get("metrics", {}).get("run_time", ""),
         "Benchmark Git Commit Sha": common_data.get("git_commit_sha", None),
         "Cost": test_info.get("metrics", {}).get("cost", ""),
+        "Attempted": test_info.get("metrics", {}).get("attempted", ""),
     }
 
     rows.append(row)

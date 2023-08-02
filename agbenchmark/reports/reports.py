@@ -65,6 +65,7 @@ def generate_combined_suite_report(
             "metrics": {
                 "difficulty": raw_difficulty.value,
                 "success": False,
+                "attempted": True,
             },
         }
 
@@ -100,6 +101,7 @@ def generate_combined_suite_report(
         "metrics": {
             "percentage": scores.get("percentage", 0),
             "highest_difficulty": str_highest_difficulty,
+            "attempted": True,
         },
         "tests": tests,
     }
@@ -166,10 +168,7 @@ def generate_single_call_report(
         "task": challenge_data["task"],
         "answer": challenge_data["ground"]["answer"],
         "description": challenge_data["info"]["description"],
-        "metrics": {
-            "difficulty": difficulty,
-            "success": False,
-        },
+        "metrics": {"difficulty": difficulty, "success": False, "attempted": True},
     }
 
     mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
@@ -180,6 +179,8 @@ def generate_single_call_report(
         if not mock:  # don't remove if it's a mock test
             regression_manager.remove_test(test_name)
         info_details["metrics"]["fail_reason"] = str(call.excinfo.value)
+        if call.excinfo.typename == "Skipped":
+            info_details["metrics"]["attempted"] = False
 
     prev_test_results: list[bool] = get_previous_test_results(test_name, info_details)
 
@@ -258,6 +259,7 @@ def generate_separate_suite_reports(suite_reports: dict) -> None:
                 "percentage": 0,
                 "highest_difficulty": "",
                 "run_time": "0 seconds",
+                "attempted": True,
             },
             "tests": {},
         }
