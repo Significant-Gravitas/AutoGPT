@@ -10,8 +10,9 @@ from agbenchmark.reports.processing.graphs import save_single_radar_chart
 from agbenchmark.reports.processing.process_report import get_agent_category
 from agbenchmark.reports.processing.report_types import Report
 from agbenchmark.start_benchmark import (
+    AGENT_GIT_COMMIT_SHA,
+    BENCHMARK_GIT_COMMIT_SHA,
     BENCHMARK_START_TIME,
-    GIT_COMMIT_SHA,
     REPORTS_PATH,
 )
 from agbenchmark.utils.utils import get_highest_success_difficulty
@@ -60,7 +61,8 @@ class ReportManager:
         command = " ".join(sys.argv)
         self.tests = {
             "command": command.split(os.sep)[-1],
-            "git_commit_sha": GIT_COMMIT_SHA,
+            "benchmark_git_commit_sha": BENCHMARK_GIT_COMMIT_SHA,
+            "agent_git_commit_sha": AGENT_GIT_COMMIT_SHA,
             "completion_time": datetime.now().strftime("%Y-%m-%d-%H:%M"),
             "benchmark_start_time": BENCHMARK_START_TIME,
             "metrics": {

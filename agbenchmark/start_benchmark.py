@@ -28,7 +28,8 @@ HeliconeLockManager.write_custom_property("benchmark_start_time", BENCHMARK_STAR
     SUCCESS_RATE_PATH,
     CHALLENGES_PATH,
 ) = calculate_dynamic_paths()
-GIT_COMMIT_SHA = get_git_commit_sha()
+BENCHMARK_GIT_COMMIT_SHA = get_git_commit_sha(HOME_DIRECTORY / ".." / "..")
+AGENT_GIT_COMMIT_SHA = get_git_commit_sha(HOME_DIRECTORY)
 
 
 @click.group()
