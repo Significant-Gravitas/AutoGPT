@@ -224,7 +224,7 @@ jobs:
           path: reports/${{ matrix.agent-name }}
 
       - name: Authenticate and Push to Branch
-        if: (success() || failure()) && (github.event_name != 'pull_request')
+        if: (success() || failure()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         run: |
           git config --global user.email "github-bot@agpt.co"
           git config --global user.name "Auto-GPT-Bot"
