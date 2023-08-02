@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+import git
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -269,3 +270,16 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str, str, str]:
         SUCCESS_RATE_PATH,
         CHALLENGES_PATH,
     )
+
+
+def get_git_commit_sha() -> Optional[str]:
+    from agbenchmark.start_benchmark import HOME_DIRECTORY
+
+    try:
+        repo = git.Repo(HOME_DIRECTORY)
+        git_commit_sha = repo.head.commit.hexsha
+        print(f"GIT_COMMIT_SHA: {git_commit_sha}")
+        return git_commit_sha
+    except Exception:
+        print(f"{HOME_DIRECTORY} is not a git repository!")
+        return None
