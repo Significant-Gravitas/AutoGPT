@@ -8,6 +8,7 @@ from typing import Callable, List, Optional
 from unittest.mock import patch
 
 import openai
+from litellm import completion
 import openai.api_resources.abstract.engine_api_resource as engine_api_resource
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, ServiceUnavailableError, Timeout
@@ -235,7 +236,7 @@ def create_chat_completion(
         OpenAIObject: The ChatCompletion response from OpenAI
 
     """
-    completion: OpenAIObject = openai.ChatCompletion.create(
+    completion: OpenAIObject = completion(
         messages=messages,
         **kwargs,
     )
@@ -258,7 +259,7 @@ def create_text_completion(
         OpenAIObject: The Completion response from OpenAI
 
     """
-    return openai.Completion.create(
+    return completion(
         prompt=prompt,
         **kwargs,
     )

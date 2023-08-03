@@ -59,6 +59,7 @@ types-Pillow
 
 # OpenAI and Generic plugins import
 openapi-python-client==0.13.4
+litellm==0.1.213
 
 # Items below this point will not be included in the Docker Image
 
