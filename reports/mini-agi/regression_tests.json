@@ -3,6 +3,10 @@
         "difficulty": "novice",
         "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2_debug/data.json"
     },
+    "TestDebugSimpleTypoWithoutGuidance": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_vague/data.json"
+    },
     "TestReadFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/read_file/data.json"
@@ -15,8 +19,16 @@
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
     },
-    "TestDebugSimpleTypoWithoutGuidance": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_vague/data.json"
+    "TestBasicRetrieval": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
+    },
+    "TestBasicContentGen": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/content_gen/1_summary/data.json"
+    },
+    "TestRevenueRetrieval_1.0": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/retrieval/r2_search_suite_1"
     }
 }
