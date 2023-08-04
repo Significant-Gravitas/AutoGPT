@@ -1,4 +1,8 @@
 {
+    "TestAdaptLink": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/adapatability/a3_book_price/data.json"
+    },
     "TestBasicRetrieval": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
@@ -26,9 +30,5 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestAdaptLink": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/adapatability/a3_book_price/data.json"
     }
 }
