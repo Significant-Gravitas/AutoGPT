@@ -1,8 +1,4 @@
 {
-    "TestBasicMemory": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
-    },
     "TestBasicRetrieval": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
@@ -11,25 +7,13 @@
         "difficulty": "advanced",
         "data_path": "agbenchmark/challenges/code/c3_writing_suite_2/d3_two_sum/data.json"
     },
-    "TestGoalLoss_Hard": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/4_hard/data.json"
-    },
-    "TestGoalLoss_Medium": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/2_medium/data.json"
-    },
-    "TestGoalLoss_advanced": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/3_advanced/data.json"
+    "TestPlanCreation": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
     },
     "TestReadFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/read_file/data.json"
-    },
-    "TestRememberMultipleIds": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/memory/m2_multiple/data.json"
     },
     "TestReturnCode_Simple": {
         "difficulty": "basic",
@@ -46,9 +30,5 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestPlanCreation": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
     }
 }
