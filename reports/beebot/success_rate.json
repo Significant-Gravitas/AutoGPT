@@ -13,6 +13,7 @@
         false,
         false,
         true,
+        false,
         false
     ],
     "TestAdaptSimpleTypoWithGuidance": [
@@ -29,9 +30,11 @@
         false,
         false,
         false,
-        false
+        false,
+        true
     ],
     "TestAdaptTeslaRevenue": [
+        false,
         false,
         false,
         false,
@@ -61,6 +64,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestBasicMemory": [
@@ -76,6 +80,7 @@
         false,
         false,
         false,
+        true,
         true,
         true
     ],
@@ -94,9 +99,11 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestDebugMultipleTypo": [
+        false,
         false,
         false,
         false,
@@ -126,7 +133,8 @@
         false,
         false,
         false,
-        false
+        false,
+        true
     ],
     "TestDebugSimpleTypoWithoutGuidance": [
         true,
@@ -142,7 +150,8 @@
         false,
         false,
         false,
-        false
+        false,
+        true
     ],
     "TestFunctionCodeGeneration": [
         false,
@@ -158,9 +167,11 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestGoalDivergence": [
+        false,
         false,
         false,
         false,
@@ -191,6 +202,7 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestGoalLoss_Medium": [
@@ -206,6 +218,7 @@
         false,
         false,
         false,
+        true,
         true,
         true
     ],
@@ -223,7 +236,8 @@
         false,
         false,
         true,
-        true
+        true,
+        false
     ],
     "TestGoalLoss_advanced": [
         false,
@@ -239,9 +253,11 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestInstructionFollowing": [
+        false,
         false,
         false,
         false,
@@ -272,6 +288,7 @@
         false,
         false,
         false,
+        true,
         true
     ],
     "TestReadFile": [
@@ -289,6 +306,7 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestRememberMultipleIds": [
@@ -305,9 +323,11 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestRememberMultiplePhrasesWithNoise": [
+        false,
         false,
         false,
         false,
@@ -337,9 +357,11 @@
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestRetrieval3": [
+        false,
         false,
         false,
         false,
@@ -369,7 +391,8 @@
         false,
         false,
         false,
-        false
+        false,
+        true
     ],
     "TestReturnCode_Simple": [
         true,
@@ -385,9 +408,11 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestReturnCode_Tests": [
+        false,
         false,
         false,
         false,
@@ -417,9 +442,11 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestRevenueRetrieval_1.0": [
+        false,
         false,
         false,
         false,
@@ -449,9 +476,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.2": [
+        false,
         false,
         false,
         false,
@@ -482,6 +511,7 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestThreeSum": [
@@ -498,7 +528,8 @@
         false,
         false,
         true,
-        true
+        true,
+        false
     ],
     "TestWriteFile": [
         true,
@@ -515,6 +546,7 @@
         false,
         false,
         false,
+        true,
         true,
         true
     ]
