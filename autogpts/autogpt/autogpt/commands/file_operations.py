@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from enum import Enum
+
 COMMAND_CATEGORY = "file_operations"
 COMMAND_CATEGORY_TITLE = "File Operations"
 
@@ -11,10 +13,14 @@ import logging
 import os
 import os.path
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Iterator, Literal, Optional
 
 from autogpt.agents.agent import Agent
-from autogpt.agents.utils.exceptions import DuplicateOperationError
+from autogpt.agents.utils.exceptions import (
+    CommandExecutionError,
+    DuplicateOperationError,
+    InvalidArgumentError
+)
 from autogpt.command_decorator import command
 from autogpt.memory.vector import MemoryItem, VectorMemory
 
@@ -24,7 +30,10 @@ from .file_operations_utils import read_textual_file
 
 logger = logging.getLogger(__name__)
 
-Operation = Literal["write", "append", "delete"]
+class Operations(Enum):
+    WRITE = "write"
+    APPEND = "append"
+    DELETE = "delete"
 
 
 def text_checksum(text: str) -> str:
@@ -34,9 +43,7 @@ def text_checksum(text: str) -> str:
 
 def operations_from_log(
     log_path: str | Path,
-) -> Iterator[
-    tuple[Literal["write", "append"], str, str] | tuple[Literal["delete"], str, None]
-]:
+) -> Iterator[tuple[Operations, str, str] | tuple[Literal[Operations.DELETE], str, None]]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
         log = open(log_path, "r", encoding="utf-8")
@@ -48,17 +55,21 @@ def operations_from_log(
         if not line:
             continue
         operation, tail = line.split(": ", maxsplit=1)
-        operation = operation.strip()
-        if operation in ("write", "append"):
-            path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
+        operation = Operations[operation.strip()]
+        if operation in (Operations.WRITE, Operations.APPEND):
+            try:
+                path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
+            except ValueError:
+                logger.warn(f"File log entry lacks checksum: '{line}'")
+                path, checksum = tail.strip(), None
             yield (operation, path, checksum)
-        elif operation == "delete":
-            yield (operation, tail.strip(), None)
+        elif operation == Operations.DELETE:
+            yield (Operations.DELETE, tail.strip(), None)
 
     log.close()
 
 
-def file_operations_state(log_path: str | Path) -> dict[str, str]:
+def file_operations_state(log_path: str | Path) -> dict[str, Optional[str]]:
     """Iterates over the operations log and returns the expected state.
 
     Parses a log file at config.file_logger_path to construct a dictionary that maps
@@ -74,16 +85,16 @@ def file_operations_state(log_path: str | Path) -> dict[str, str]:
     """
     state = {}
     for operation, path, checksum in operations_from_log(log_path):
-        if operation in ("write", "append"):
+        if operation in (Operations.WRITE, Operations.APPEND):
             state[path] = checksum
-        elif operation == "delete":
+        elif operation == Operations.DELETE:
             del state[path]
     return state
 
 
 @sanitize_path_arg("file_path")
 def is_duplicate_operation(
-    operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
+    operation: Operations, file_path: Path, agent: Agent, checksum: str | None = None
 ) -> bool:
     """Check if the operation has already been performed
 
@@ -101,16 +112,16 @@ def is_duplicate_operation(
         file_path = file_path.relative_to(agent.workspace.root)
 
     state = file_operations_state(agent.config.file_logger_path)
-    if operation == "delete" and str(file_path) not in state:
+    if operation == Operations.DELETE and str(file_path) not in state:
         return True
-    if operation == "write" and state.get(str(file_path)) == checksum:
+    if operation == Operations.WRITE and state.get(str(file_path)) == checksum:
         return True
     return False
 
 
 @sanitize_path_arg("file_path")
 def log_operation(
-    operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
+    operation: Operations, file_path: Path, agent: Agent, checksum: str | None = None
 ) -> None:
     """Log the file operation to the file_logger.txt
 
@@ -123,7 +134,7 @@ def log_operation(
     with contextlib.suppress(ValueError):
         file_path = file_path.relative_to(agent.workspace.root)
 
-    log_entry = f"{operation}: {file_path}"
+    log_entry = f"{operation.value}: {file_path}"
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
@@ -191,7 +202,7 @@ def ingest_file(
 
 @command(
     "write_file",
-    "Write a file, creating it if necessary. If the file exists, it is overwritten.",
+    "Write a file, creating it if necessary.",
     {
         "filename": {
             "type": "string",
@@ -203,29 +214,60 @@ def ingest_file(
             "description": "The contents to write to the file",
             "required": True,
         },
+        "if_exists": {
+            "type": "string",
+            "description": "One of 'overwrite', 'prepend', 'append', 'skip' or 'fail'",
+            "required": True,
+        },
     },
     aliases=["write_file", "create_file"],
 )
 @sanitize_path_arg("filename")
-def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
+def write_to_file(filename: Path, contents: str, if_exists: str, agent: Agent) -> str:
     """Write contents to a file
 
     Args:
         filename (Path): The name of the file to write to
         contents (str): The contents to write to the file
+        if_exists (str): One of 'overwrite', 'prepend', 'append', 'skip' or 'fail'
 
     Returns:
         str: A message indicating success or failure
     """
+    ACTIONS = {
+        "overwrite": (lambda p, _txt: p.write_text(_txt, encoding="utf-8")),
+        "prepend": lambda p, _txt: p.write_text(_txt + p.read_text(encoding="utf-8")),
+        "append": lambda p, _txt: open(p, "a", encoding="utf-8").write(_txt),
+        "skip": (
+            lambda p, _txt: "File exists, skipping."
+            if p.exists()
+            else p.write_text(_txt, encoding="utf-8")
+        ),
+        "fail": (
+            lambda p, _txt: CommandExecutionError("File exists")
+            if p.exists()
+            else p.write_text(_txt, encoding="utf-8")
+        ),
+    }
+
     checksum = text_checksum(contents)
-    if is_duplicate_operation("write", filename, agent, checksum):
+    if is_duplicate_operation(Operations.WRITE, filename, agent, checksum):
         raise DuplicateOperationError(f"File {filename.name} has already been updated.")
 
-    directory = os.path.dirname(filename)
+    directory = filename.parent
     os.makedirs(directory, exist_ok=True)
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(contents)
-    log_operation("write", filename, agent, checksum)
+
+    if if_exists not in ACTIONS:
+        raise InvalidArgumentError("Invalid value for 'if_exists'")
+
+    result = ACTIONS.get(if_exists)(filename, contents)
+
+    if isinstance(result, str):  # If the result is a string, return it
+        return result
+    if isinstance(result, Exception):
+        raise result
+
+    log_operation(Operations.WRITE, filename, agent, checksum)
     return f"File {filename.name} has been written successfully."
 
 
@@ -248,7 +290,7 @@ def append_to_file(
     if should_log:
         with open(filename, "r", encoding="utf-8") as f:
             checksum = text_checksum(f.read())
-        log_operation("append", filename, agent, checksum=checksum)
+        log_operation(Operations.APPEND, filename, agent, checksum=checksum)
 
 
 @command(
