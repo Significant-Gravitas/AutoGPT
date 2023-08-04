@@ -65,7 +65,7 @@ def generate_combined_suite_report(
             "metrics": {
                 "difficulty": raw_difficulty.value,
                 "success": False,
-                "attempted": True,
+                "attempted": False,
             },
         }
 
@@ -73,6 +73,7 @@ def generate_combined_suite_report(
             # add dependency successful here
 
             test_info_details["metrics"]["success"] = True
+            test_info_details["metrics"]["attempted"] = True
 
             # replace the highest difficulty if needed
             if DIFFICULTY_MAP[raw_difficulty] > num_highest_difficulty:
@@ -101,7 +102,6 @@ def generate_combined_suite_report(
         "metrics": {
             "percentage": scores.get("percentage", 0),
             "highest_difficulty": str_highest_difficulty,
-            "attempted": True,
         },
         "tests": tests,
     }
@@ -168,7 +168,11 @@ def generate_single_call_report(
         "task": challenge_data["task"],
         "answer": challenge_data["ground"]["answer"],
         "description": challenge_data["info"]["description"],
-        "metrics": {"difficulty": difficulty, "success": False, "attempted": True},
+        "metrics": {
+            "difficulty": difficulty,
+            "success": False,
+            "attempted": True,
+        },
     }
 
     mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
@@ -245,6 +249,11 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
             if info_details["metrics"].get("success", None) is None:
                 info_details["metrics"]["attempted"] = False
                 info_details["metrics"]["success"] = False
+            elif (
+                info_details["metrics"].get("success") is False
+                and "attempted" not in info_details["metrics"]
+            ):
+                info_details["metrics"]["attempted"] = False
 
             info_details["metrics"]["run_time"] = f"{str(round(run_time, 3))} seconds"
 
