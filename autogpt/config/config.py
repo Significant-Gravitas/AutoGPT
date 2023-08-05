@@ -16,6 +16,8 @@ from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.plugins.plugins_config import PluginsConfig
 
+splitifnotnone = lambda x: (x.split(",") if x is not None else [])
+
 AI_SETTINGS_FILE = "ai_settings.yaml"
 AZURE_CONFIG_FILE = "azure.yaml"
 PLUGINS_CONFIG_FILE = "plugins_config.yaml"
@@ -79,6 +81,8 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     ############
     # General
     disabled_command_categories: list[str] = Field(default_factory=list)
+    commands_to_ignore: list[str] = Field(default_factory=list)
+    commands_to_stop: list[str] = Field(default_factory=list)
     # File ops
     restrict_to_workspace: bool = True
     allow_downloads: bool = False
@@ -275,6 +279,8 @@ class ConfigBuilder(Configurable[Config]):
                 "PLUGINS_CONFIG_FILE", PLUGINS_CONFIG_FILE
             ),
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
+            "commands_to_ignore": splitifnotnone(os.getenv("COMMANDS_TO_IGNORE")),
+            "commands_to_stop": splitifnotnone(os.getenv("COMMANDS_TO_STOP")),
         }
 
         config_dict["disabled_command_categories"] = _safe_split(

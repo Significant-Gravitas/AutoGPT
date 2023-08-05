@@ -1,4 +1,6 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
+import asyncio
+import concurrent.futures
 import enum
 import logging
 import math
@@ -6,14 +8,14 @@ import signal
 import sys
 from pathlib import Path
 from types import FrameType
-from typing import Optional
+from typing import Any, Callable, Optional, Tuple
 
 from colorama import Fore, Style
 
 from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
 from autogpt.app.configurator import create_config
 from autogpt.app.setup import prompt_user
-from autogpt.app.spinner import Spinner
+from autogpt.app.spinner import Spinner, SpinnerInterrupted
 from autogpt.app.utils import (
     clean_input,
     get_current_git_branch,
@@ -32,6 +34,45 @@ from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.speech import say_text
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
+
+
+class InteractionResult(enum.Enum):
+    OK = 0
+    SoftInterrupt = 1
+    HardInterrupt = 2
+    ExceptionInValidation = 3
+
+
+async def async_task_and_spin(
+    spn: Spinner, some_task: Callable, args: Tuple
+) -> Optional[Any]:
+    loop = asyncio.get_event_loop()
+    # Run the synchronous function in an executor
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        task = loop.run_in_executor(pool, some_task, *args)
+        event_task = loop.run_in_executor(pool, spn.ended.wait)
+        # Wait for the task or the event to complete
+        done, pending = await asyncio.wait(
+            {task, event_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+
+        spn.ended.set()  # just in case
+        if spn.running:
+            spn.stop()
+
+        # Cancel any pending tasks
+        for t in pending:
+            t.cancel()
+            await asyncio.sleep(
+                0.1
+            )  # adding sleep seems to assure that it gets cancelled
+            if not t.cancelled:
+                logger.warn("Task not cancelled: %s", t)
+        # Check which task completed
+        if task in done:
+            result = await task
+            return result
+        return None
 
 
 def run_auto_gpt(
@@ -197,6 +238,11 @@ class UserFeedback(str, enum.Enum):
 def run_interaction_loop(
     agent: Agent,
 ) -> None:
+    def upd() -> None:
+        logger.info("Soft interrupt")
+        nonlocal status
+        status = InteractionResult.SoftInterrupt
+
     """Run the main interaction loop for the agent.
 
     Args:
@@ -213,7 +259,12 @@ def run_interaction_loop(
     cycle_budget = cycles_remaining = _get_cycle_budget(
         config.continuous_mode, config.continuous_limit
     )
-    spinner = Spinner("Thinking...", plain_output=config.plain_output)
+    spinner = Spinner(
+        "Thinking... (q to stop immediately, <space> to stop afterwards) ",
+        interruptable=True,
+        on_soft_interrupt=upd,
+        plain_output=config.plain_output,
+    )
 
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
         nonlocal cycle_budget, cycles_remaining, spinner
@@ -245,25 +296,45 @@ def run_interaction_loop(
     #########################
 
     while cycles_remaining > 0:
+        status = InteractionResult.OK
         logger.debug(f"Cycle budget: {cycle_budget}; remaining: {cycles_remaining}")
 
         ########
         # Plan #
         ########
         # Have the agent determine the next action to take.
-        with spinner:
-            command_name, command_args, assistant_reply_dict = agent.think()
+        try:
+            with spinner:
+                command_name, command_args, assistant_reply_dict = asyncio.run(
+                    async_task_and_spin(spinner, agent.think, tuple())
+                )
+        except SpinnerInterrupted:
+            logger.warn("Task canceled")
+            assistant_reply_json = {}
+            assistant_reply = None
+            status = InteractionResult.HardInterrupt
+            command_name = ""
 
         ###############
         # Update User #
         ###############
         # Print the assistant's thoughts and the next command to the user.
-        update_user(config, ai_config, command_name, command_args, assistant_reply_dict)
+        if status == InteractionResult.OK or status == InteractionResult.SoftInterrupt:
+            update_user(
+                config, ai_config, command_name, command_args, assistant_reply_dict
+            )
 
         ##################
         # Get user input #
         ##################
-        if cycles_remaining == 1:  # Last cycle
+        if command_name in config.commands_to_ignore and status == InteractionResult.OK:
+            user_feedback = UserFeedback.AUTHORIZE
+
+        elif (
+            cycles_remaining == 1
+            or (status != InteractionResult.OK)
+            or (command_name in config.commands_to_stop)
+        ):  # Last cycle
             user_feedback, user_input, new_cycles_remaining = get_user_feedback(
                 config,
                 ai_config,
@@ -312,8 +383,11 @@ def run_interaction_loop(
         ###################
         # Decrement the cycle counter first to reduce the likelihood of a SIGINT
         # happening during command execution, setting the cycles remaining to 1,
-        # and then having the decrement set it to 0, exiting the application.
-        if command_name != "human_feedback":
+        # and then having the decrement set it to 0, exiting the appliation.
+        if (
+            command_name != "human_feedback"
+            and command_name not in config.commands_to_ignore
+        ):
             cycles_remaining -= 1
         result = agent.execute(command_name, command_args, user_input)
 
