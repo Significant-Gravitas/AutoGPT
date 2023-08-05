@@ -23,6 +23,7 @@ helicone = "^1.0.6"
 matplotlib = "^3.7.2"
 pandas = "^2.0.3"
 gitpython = "^3.1.32"
+agent-protocol = "^0.1.2"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"
