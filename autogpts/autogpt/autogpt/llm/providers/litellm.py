@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import functools
-import logging
 import time
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 from unittest.mock import patch
 
 import openai
+from litellm import completion
 import openai.api_resources.abstract.engine_api_resource as engine_api_resource
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, ServiceUnavailableError, Timeout
@@ -20,10 +20,8 @@ from autogpt.llm.base import (
     TextModelInfo,
     TText,
 )
-from autogpt.logs.helpers import request_user_double_check
+from autogpt.logs import logger
 from autogpt.models.command_registry import CommandRegistry
-
-logger = logging.getLogger(__name__)
 
 OPEN_AI_CHAT_MODELS = {
     info.name: info
@@ -39,14 +37,12 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.0015,
             completion_token_cost=0.002,
             max_tokens=4096,
-            supports_functions=True,
         ),
         ChatModelInfo(
             name="gpt-3.5-turbo-16k-0613",
             prompt_token_cost=0.003,
             completion_token_cost=0.004,
             max_tokens=16384,
-            supports_functions=True,
         ),
         ChatModelInfo(
             name="gpt-4-0314",
@@ -59,7 +55,6 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.03,
             completion_token_cost=0.06,
             max_tokens=8191,
-            supports_functions=True,
         ),
         ChatModelInfo(
             name="gpt-4-32k-0314",
@@ -72,7 +67,6 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.06,
             completion_token_cost=0.12,
             max_tokens=32768,
-            supports_functions=True,
         ),
     ]
 }
@@ -169,15 +163,15 @@ def retry_api(
         warn_user bool: Whether to warn the user. Defaults to True.
     """
     error_messages = {
-        ServiceUnavailableError: "The OpenAI API engine is currently overloaded",
-        RateLimitError: "Reached rate limit",
+        ServiceUnavailableError: f"{Fore.RED}Error: The OpenAI API engine is currently overloaded{Fore.RESET}",
+        RateLimitError: f"{Fore.RED}Error: Reached rate limit{Fore.RESET}",
     }
     api_key_error_msg = (
         f"Please double check that you have setup a "
-        f"{Style.BRIGHT}PAID{Style.NORMAL} OpenAI API Account. You can "
+        f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
         f"read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
     )
-    backoff_msg = "Waiting {backoff} seconds..."
+    backoff_msg = f"{Fore.RED}Waiting {{backoff}} seconds...{Fore.RESET}"
 
     def _wrapper(func: Callable):
         @functools.wraps(func)
@@ -200,7 +194,7 @@ def retry_api(
                     error_msg = error_messages[type(e)]
                     logger.warn(error_msg)
                     if not user_warned:
-                        request_user_double_check(api_key_error_msg)
+                        logger.double_check(api_key_error_msg)
                         logger.debug(f"Status: {e.http_status}")
                         logger.debug(f"Response body: {e.json_body}")
                         logger.debug(f"Response headers: {e.headers}")
@@ -235,10 +229,12 @@ def create_chat_completion(
         OpenAIObject: The ChatCompletion response from OpenAI
 
     """
-    completion: OpenAIObject = openai.ChatCompletion.create(
+    completion: OpenAIObject = completion(
         messages=messages,
         **kwargs,
     )
+    if not hasattr(completion, "error"):
+        logger.debug(f"Response: {completion}")
     return completion
 
 
@@ -258,7 +254,7 @@ def create_text_completion(
         OpenAIObject: The Completion response from OpenAI
 
     """
-    return openai.Completion.create(
+    return completion(
         prompt=prompt,
         **kwargs,
     )
