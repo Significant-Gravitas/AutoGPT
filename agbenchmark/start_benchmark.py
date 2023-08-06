@@ -17,8 +17,10 @@ from agbenchmark.utils.utils import (
 
 CURRENT_DIRECTORY = Path(__file__).resolve().parent
 BENCHMARK_START_TIME = datetime.now().strftime("%Y-%m-%d-%H:%M")
-
-HeliconeLockManager.write_custom_property("benchmark_start_time", BENCHMARK_START_TIME)
+if os.environ.get("HELICONE_API_KEY"):
+    HeliconeLockManager.write_custom_property(
+        "benchmark_start_time", BENCHMARK_START_TIME
+    )
 
 (
     HOME_DIRECTORY,

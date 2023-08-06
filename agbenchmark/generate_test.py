@@ -1,5 +1,6 @@
 import glob
 import importlib
+import os
 import sys
 import types
 from collections import deque
@@ -58,7 +59,8 @@ def create_single_test(
     def test_method(self, config: Dict[str, Any], request) -> None:  # type: ignore
         from helicone.lock import HeliconeLockManager
 
-        HeliconeLockManager.write_custom_property("challenge", self.data.name)
+        if os.environ.get("HELICONE_API_KEY"):
+            HeliconeLockManager.write_custom_property("challenge", self.data.name)
 
         cutoff = self.data.cutoff or 60
         self.setup_challenge(config, cutoff)
