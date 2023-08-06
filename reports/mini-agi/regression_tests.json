@@ -1,15 +1,7 @@
 {
-    "TestAdaptLink": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/adapatability/a3_book_price/data.json"
-    },
     "TestBasicRetrieval": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
-    },
-    "TestDebugSimpleTypoWithGuidance": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2_debug/data.json"
     },
     "TestReadFile": {
         "difficulty": "interface",
