@@ -6,7 +6,7 @@ __init__.py.
 """
 
 import collections
-from typing import Any, Generator
+from typing import Any, Generator, Optional
 
 import colorama
 import networkx
@@ -191,7 +191,7 @@ class DependencyManager(object):
                 colorama.deinit()
 
     @property
-    def sorted_items(self, show_graph: bool = False) -> Generator:
+    def sorted_items(self, show_graph: Optional[bool] = False) -> Generator:
         """Get a sorted list of tests where all tests are sorted after their dependencies."""
         # Build a directed graph for sorting
         dag = networkx.DiGraph()
