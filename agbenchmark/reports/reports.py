@@ -2,9 +2,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable
-
-import pytest
+from typing import Any
 
 from agbenchmark.agent_interface import MOCK_FLAG
 from agbenchmark.reports.ReportManager import ReportManager
@@ -192,41 +190,6 @@ def generate_single_call_report(
 
     # user facing reporting
     item.info_details = info_details
-
-
-def setup_dummy_dependencies(test_class_instance: Any, test_class: Any) -> None:
-    """Sets up the dependencies if it's a suite. Creates tests that pass
-    based on the main test run."""
-
-    def create_test_func(test_name: str) -> Callable[[Any, dict[str, Any]], None]:
-        # This function will return another function
-
-        # Define a dummy test function that does nothing
-        def setup_dependency_test(self: Any, scores: dict[str, Any]) -> None:
-            scores = self.get_dummy_scores(test_name, scores)
-            assert scores == 1
-
-        return setup_dependency_test
-
-    for test_name in test_class_instance.setup_dependencies:
-        setup_dependency_test = create_test_func(test_name)
-        # Add the dummy test function to the class that the current test is part of
-        # TODO: remove on=[test_class.__name__] and fix the actual dependencies problem
-        test_func = pytest.mark.depends(on=[test_class.__name__], name=test_name)(
-            setup_dependency_test
-        )
-        # Parametrize to tell makereport to skip it
-        test_func = pytest.mark.parametrize(
-            "challenge_data",
-            [None],
-            indirect=True,
-        )(test_func)
-        # Add category markers
-        for category in test_class_instance.data.category:
-            test_func = getattr(pytest.mark, category)(test_func)
-
-        test_func = pytest.mark.usefixtures("scores")(test_func)
-        setattr(test_class, f"test_{test_name}", test_func)
 
 
 def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:

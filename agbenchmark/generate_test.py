@@ -5,7 +5,7 @@ import sys
 import types
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 import pytest
 
@@ -14,11 +14,52 @@ from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import ChallengeData, SuiteConfig
 from agbenchmark.utils.utils import get_test_path
 
+DATA_CATEGORY = {}
+
+
+def setup_dummy_dependencies(
+    file_datum: list[dict[str, Any]],
+    challenge_class: Any,
+    challenge_data: ChallengeData,
+) -> None:
+    """Sets up the dependencies if it's a suite. Creates tests that pass
+    based on the main test run."""
+
+    def create_test_func(test_name: str) -> Callable[[Any, dict[str, Any]], None]:
+        # This function will return another function
+
+        # Define a dummy test function that does nothing
+        def setup_dependency_test(self: Any, scores: dict[str, Any]) -> None:
+            scores = self.get_dummy_scores(test_name, scores)
+            assert scores == 1
+
+        return setup_dependency_test
+
+    for datum in file_datum:
+        DATA_CATEGORY[datum["name"]] = challenge_data.category[0]
+        test_func = create_test_func(datum["name"])
+        # TODO: replace this once I figure out actual dependencies
+        test_func = pytest.mark.depends(on=[challenge_data.name], name=datum["name"])(
+            test_func
+        )
+        test_func = pytest.mark.parametrize(
+            "challenge_data",
+            [None],
+            indirect=True,
+        )(test_func)
+
+        # Add category markers
+        for category in challenge_data.category:
+            test_func = getattr(pytest.mark, category)(test_func)
+
+        test_func = pytest.mark.usefixtures("scores")(test_func)
+        setattr(challenge_class, f"test_{datum['name']}", test_func)
+
 
 def create_single_test(
     data: Dict[str, Any] | ChallengeData,
     challenge_location: str,
-    suite_config: Optional[SuiteConfig] = None,
+    file_datum: Optional[list[dict[str, Any]]] = None,
 ) -> None:
     challenge_data = None
     artifacts_location = None
@@ -26,23 +67,22 @@ def create_single_test(
         challenge_data = data
         data = data.get_data()
 
+    DATA_CATEGORY[data["name"]] = data["category"][0]
+
     # Define test class dynamically
     challenge_class = types.new_class(data["name"], (Challenge,))
 
     clean_challenge_location = get_test_path(challenge_location)
     setattr(challenge_class, "CHALLENGE_LOCATION", clean_challenge_location)
 
-    # if its a parallel run suite we just give it the data
-    if suite_config and suite_config.same_task:
+    # in the case of a suite
+    if isinstance(challenge_data, ChallengeData):
+        if file_datum:  # same task suite
+            setup_dummy_dependencies(file_datum, challenge_class, challenge_data)
+
         artifacts_location = str(Path(challenge_location).resolve())
         if "--test" in sys.argv or "--maintain" in sys.argv or "--improve" in sys.argv:
             artifacts_location = str(Path(challenge_location).resolve().parent.parent)
-        else:
-            setattr(
-                challenge_class,
-                "setup_dependencies",
-                [test_name for test_name in data["info"].keys()],
-            )
         setattr(
             challenge_class,
             "_data_cache",
@@ -83,15 +123,8 @@ def create_single_test(
     setattr(module, data["name"], challenge_class)
 
 
-def create_single_suite_challenge(
-    suite_config: SuiteConfig, data: Dict[str, Any], path: Path
-) -> None:
-    test_data = suite_config.challenge_from_test_data(data)
-    create_single_test(
-        test_data,
-        str(path),
-        suite_config=suite_config,
-    )
+def create_single_suite_challenge(challenge_data: ChallengeData, path: Path) -> None:
+    create_single_test(challenge_data, str(path))
 
 
 def create_challenge(
@@ -106,7 +139,8 @@ def create_challenge(
 
         # if its a single test running we dont care about the suite
         if "--test" in sys.argv or "--maintain" in sys.argv or "--improve" in sys.argv:
-            create_single_suite_challenge(suite_config, data, path)
+            challenge_data = suite_config.challenge_from_test_data(data)
+            create_single_suite_challenge(challenge_data, path)
             return json_files
 
         # Get all data.json files within the grandparent directory
@@ -132,7 +166,7 @@ def create_challenge(
             challenge_data = suite_config.challenge_from_datum(file_datum)
 
             create_single_test(
-                challenge_data, str(grandparent_dir), suite_config=suite_config
+                challenge_data, str(grandparent_dir), file_datum=file_datum
             )
         else:
             reverse = suite_config.reverse_order
