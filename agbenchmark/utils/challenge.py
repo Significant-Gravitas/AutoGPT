@@ -25,7 +25,6 @@ class Challenge(ABC):
     _data_cache: Dict[str, ChallengeData] = {}
     CHALLENGE_LOCATION: str = ""
     ARTIFACTS_LOCATION: str = ""  # this is for suites
-    setup_dependencies: List[str] = []  # this is for suites
     scores: dict[str, Any] = {}  # this is for suites
 
     @property

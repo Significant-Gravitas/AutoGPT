@@ -14,7 +14,6 @@ from agbenchmark.reports.reports import (
     generate_combined_suite_report,
     generate_single_call_report,
     session_finish,
-    setup_dummy_dependencies,
 )
 from agbenchmark.start_benchmark import CONFIG_PATH, get_regression_data
 from agbenchmark.utils.data_types import SuiteConfig
@@ -22,6 +21,8 @@ from agbenchmark.utils.data_types import SuiteConfig
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
 )
+
+pytest_plugins = ["agbenchmark.utils.dependencies"]
 
 
 def resolve_workspace(workspace: str) -> str:
@@ -159,15 +160,12 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
     flags = "--test" in sys.argv or "--maintain" in sys.argv or "--improve" in sys.argv
 
     if call.when == "call":
-        test_name = ""
         # if it's a same task suite, we combine the report.
         # but not if it's a single --test
         if is_suite and is_suite.same_task and not flags:
-            test_name = is_suite.prefix
             generate_combined_suite_report(item, challenge_data, challenge_location)
         else:
             # single non suite test
-            test_name = challenge_data["name"]
             generate_single_call_report(item, call, challenge_data)
         # else: it's a same_task=false suite (tests aren't combined)
     if call.when == "teardown":
@@ -204,16 +202,6 @@ def scores(request: Any) -> None:
     return request.node.cls.scores.get(test_class_name)
 
 
-def pytest_generate_tests(metafunc: Any) -> None:
-    """This is to generate the dummy dependencies each test class"""
-    test_class_instance = metafunc.cls()
-
-    if test_class_instance.setup_dependencies:
-        test_class = metafunc.cls
-        setup_dummy_dependencies(test_class_instance, test_class)
-        setattr(test_class, "setup_dependencies", [])
-
-
 # this is adding the dependency marker and category markers automatically from the json
 def pytest_collection_modifyitems(items: Any, config: Any) -> None:
     data = get_regression_data()
@@ -222,7 +210,6 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         # Assuming item.cls is your test class
         test_class_instance = item.cls()
 
-        # if it's a dummy dependency setup test, we also skip
         if "test_method" not in item.name:
             continue
 
@@ -231,27 +218,21 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         dependencies = test_class_instance.data.dependencies
 
         # Filter dependencies if they exist in regression data if its an improvement test
-        if (
-            config.getoption("--improve")
-            or config.getoption("--category")
-            or test_class_instance.setup_dependencies  # same_task suite
-        ):
+        if config.getoption("--improve") or config.getoption(
+            "--category"
+        ):  # TODO: same task suite
             dependencies = [dep for dep in dependencies if not data.get(dep, None)]
-        if (
+        if (  # TODO: separate task suite
             config.getoption("--test")
-            or (  # separate task suite
-                not test_class_instance.setup_dependencies
-                and config.getoption("--suite")
-            )
             or config.getoption("--no_dep")
             or config.getoption("--maintain")
         ):
             dependencies = []
 
-        categories = test_class_instance.data.category
-
         # Add depends marker dynamically
         item.add_marker(pytest.mark.depends(on=dependencies, name=name))
+
+        categories = test_class_instance.data.category
 
         # Add category marker dynamically
         for category in categories:
