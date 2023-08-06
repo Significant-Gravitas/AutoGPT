@@ -14,6 +14,10 @@ load_dotenv()
 
 mock_test_str = os.getenv("MOCK_TEST")
 MOCK_FLAG = mock_test_str.lower() == "true" if mock_test_str else False
+helicone_graphql_logs = os.getenv("HELICONE_GRAPHQL_LOGS")
+HELICONE_GRAPHQL_LOGS = (
+    helicone_graphql_logs.lower() == "true" if helicone_graphql_logs else False
+)
 
 
 def run_agent(

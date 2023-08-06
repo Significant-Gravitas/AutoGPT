@@ -4,6 +4,7 @@ from typing import Optional
 
 import requests
 
+from agbenchmark.agent_interface import HELICONE_GRAPHQL_LOGS
 from agbenchmark.start_benchmark import BENCHMARK_START_TIME
 
 
@@ -22,7 +23,6 @@ query ExampleQuery($properties: [PropertyFilter!]){
   }
 }
 """
-    print(query)
 
     variables = {
         "properties": [
@@ -37,8 +37,9 @@ query ExampleQuery($properties: [PropertyFilter!]){
             {"value": {"equals": challenge}, "name": "challenge"},
         ]
     }
-
-    print(json.dumps(variables, indent=4))
+    if HELICONE_GRAPHQL_LOGS:
+        print(query)
+        print(json.dumps(variables, indent=4))
 
     operation_name = "ExampleQuery"
 
