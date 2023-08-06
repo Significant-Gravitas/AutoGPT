@@ -177,7 +177,9 @@ class Challenge(ABC):
         percentage = None
 
         try:
-            if isinstance(self.data.ground, Ground):
+            if self.data.task == "" and MOCK_FLAG:
+                scores = [1.0]
+            elif isinstance(self.data.ground, Ground):
                 files_contents = self.get_artifacts_out(
                     config["workspace"], self.data.ground
                 )
