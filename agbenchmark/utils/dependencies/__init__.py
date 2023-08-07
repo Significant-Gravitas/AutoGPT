@@ -8,7 +8,7 @@ import warnings
 from typing import Any, Callable, Optional
 
 import pytest
-from _pytest.config.argparsing import OptionGroup
+from _pytest.config.argparsing import OptionGroup, Parser
 from _pytest.nodes import Item
 
 from .main import DependencyManager
@@ -57,53 +57,68 @@ def _get_ini_or_option(
     return config.getoption(name) or value
 
 
-def pytest_addoption(parser: Any) -> None:
+def pytest_addoption(parser: Parser) -> None:
+    # get all current option strings
+    current_options = []
+    for action in parser._anonymous.options:
+        current_options += action._short_opts + action._long_opts
+
+    for group in parser._groups:
+        for action in group.options:
+            current_options += action._short_opts + action._long_opts
+
+    print(current_options)
+
     group = parser.getgroup("depends")
 
     # Add a flag to list all names + the tests they resolve to
-    group.addoption(
-        "--list-dependency-names",
-        action="store_true",
-        default=False,
-        help=(
-            "List all non-nodeid dependency names + the tests they resolve to. "
-            "Will also list all nodeid dependency names when verbosity is high enough."
-        ),
-    )
+    if "--list-dependency-names" not in current_options:
+        group.addoption(
+            "--list-dependency-names",
+            action="store_true",
+            default=False,
+            help=(
+                "List all non-nodeid dependency names + the tests they resolve to. "
+                "Will also list all nodeid dependency names when verbosity is high enough."
+            ),
+        )
 
     # Add a flag to list all (resolved) dependencies for all tests + unresolvable names
-    group.addoption(
-        "--list-processed-dependencies",
-        action="store_true",
-        default=False,
-        help="List all dependencies of all tests as a list of nodeids + the names that could not be resolved.",
-    )
+    if "--list-processed-dependencies" not in current_options:
+        group.addoption(
+            "--list-processed-dependencies",
+            action="store_true",
+            default=False,
+            help="List all dependencies of all tests as a list of nodeids + the names that could not be resolved.",
+        )
 
     # Add an ini option + flag to choose the action to take for failed dependencies
-    _add_ini_and_option(
-        parser,
-        group,
-        name="failed_dependency_action",
-        help=(
-            "The action to take when a test has dependencies that failed. "
-            'Use "run" to run the test anyway, "skip" to skip the test, and "fail" to fail the test.'
-        ),
-        default="skip",
-        choices=DEPENDENCY_PROBLEM_ACTIONS.keys(),
-    )
+    if "--failed-dependency-action" not in current_options:
+        _add_ini_and_option(
+            parser,
+            group,
+            name="failed_dependency_action",
+            help=(
+                "The action to take when a test has dependencies that failed. "
+                'Use "run" to run the test anyway, "skip" to skip the test, and "fail" to fail the test.'
+            ),
+            default="skip",
+            choices=DEPENDENCY_PROBLEM_ACTIONS.keys(),
+        )
 
     # Add an ini option + flag to choose the action to take for unresolved dependencies
-    _add_ini_and_option(
-        parser,
-        group,
-        name="missing_dependency_action",
-        help=(
-            "The action to take when a test has dependencies that cannot be found within the current scope. "
-            'Use "run" to run the test anyway, "skip" to skip the test, and "fail" to fail the test.'
-        ),
-        default="warning",
-        choices=DEPENDENCY_PROBLEM_ACTIONS.keys(),
-    )
+    if "--missing-dependency-action" not in current_options:
+        _add_ini_and_option(
+            parser,
+            group,
+            name="missing_dependency_action",
+            help=(
+                "The action to take when a test has dependencies that cannot be found within the current scope. "
+                'Use "run" to run the test anyway, "skip" to skip the test, and "fail" to fail the test.'
+            ),
+            default="warning",
+            choices=DEPENDENCY_PROBLEM_ACTIONS.keys(),
+        )
 
 
 def pytest_configure(config: Any) -> None:
