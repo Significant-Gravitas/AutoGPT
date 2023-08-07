@@ -7,8 +7,10 @@ from abc import ABC
 from typing import Any, Dict, List
 
 import openai
+import pytest
 
 from agbenchmark.agent_interface import MOCK_FLAG
+from agbenchmark.start_benchmark import OPTIONAL_CATEGORIES
 from agbenchmark.utils.data_types import ChallengeData, Ground
 from agbenchmark.utils.prompts import (
     END_PROMPT,
@@ -16,6 +18,7 @@ from agbenchmark.utils.prompts import (
     PROMPT_MAP,
     SCORING_MAP,
 )
+from agbenchmark.utils.utils import agent_eligibible_for_optional_categories
 
 
 class Challenge(ABC):
@@ -262,3 +265,15 @@ class Challenge(ABC):
             return 1
 
         return None
+
+    def skip_optional_categories(self, config: Dict[str, Any]) -> None:
+        challenge_category = self.data.category
+        categories = [
+            category
+            for category in OPTIONAL_CATEGORIES
+            if category in challenge_category
+        ]
+        if not agent_eligibible_for_optional_categories(
+            categories, config.get("category", [])
+        ):
+            pytest.skip("Agent is not eligible for this category")

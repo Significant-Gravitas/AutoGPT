@@ -97,6 +97,7 @@ def create_single_test(
 
     # Define test method within the dynamically created class
     def test_method(self, config: Dict[str, Any], request) -> None:  # type: ignore
+        self.skip_optional_categories(config)
         from helicone.lock import HeliconeLockManager
 
         if os.environ.get("HELICONE_API_KEY"):
