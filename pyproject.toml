@@ -36,6 +36,7 @@ autoflake = "^1.4"
 pandas = "^2.0.3"
 gspread = "^5.10.0"
 oauth2client = "^4.1.3"
+pre-commit = "^3.3.3"
 
 [build-system]
 requires = ["poetry-core"]
