@@ -68,6 +68,9 @@
         false,
         false
     ],
+    "TestAgentProtocol_CreateAgentTask": [
+        true
+    ],
     "TestBasicContentGen": [
         false,
         false,
@@ -746,13 +749,10 @@
         true,
         true
     ],
-    "TestAgentProtocol_CreateAgentTask": [
+    "TestWritingCLI_Easy": [
         true
     ],
     "TestWritingCLI_FileOrganizer": [
         false
-    ],
-    "TestWritingCLI_Easy": [
-        true
     ]
 }
