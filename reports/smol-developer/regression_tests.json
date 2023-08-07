@@ -1,10 +1,14 @@
 {
+    "TestPlanCreation": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
+    },
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
     },
-    "TestPlanCreation": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
+    "TestAgentProtocol_CreateAgentTask": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/1_create_agent_task/data.json"
     }
 }
