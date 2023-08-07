@@ -13,10 +13,17 @@ python-dotenv = "^1.0.0"
 openai = "^0.27.8"
 autopack-tools = "^0.2.0"
 psutil = "^5.9.5"
+agent-protocol = "^0.2.0"
+helicone = "^1.0.6"
+agbenchmark = "^0.0.3"
 
 
 [tool.poetry.group.dev.dependencies]
+isort = "^5.12.0"
 black = "^23.3.0"
+pre-commit = "^3.3.3"
+mypy = "^1.4.1"
+flake8 = "^6.0.0"
 
 [build-system]
 requires = ["poetry-core"]
