@@ -33,6 +33,11 @@ if os.environ.get("HELICONE_API_KEY"):
 ) = calculate_dynamic_paths()
 BENCHMARK_GIT_COMMIT_SHA = get_git_commit_sha(HOME_DIRECTORY / ".." / "..")
 AGENT_GIT_COMMIT_SHA = get_git_commit_sha(HOME_DIRECTORY)
+# open a file in the challenges/optional_categories
+with open(
+    Path(__file__).resolve().parent / "challenges" / "optional_categories.json"
+) as f:
+    OPTIONAL_CATEGORIES = json.load(f)["optional_categories"]
 
 
 @click.group()
