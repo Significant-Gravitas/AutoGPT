@@ -3,7 +3,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import click
 import pytest
@@ -58,6 +58,7 @@ def cli() -> None:
     help="Run without dependencies (can be useful for a suite run)",
 )
 @click.option("--nc", is_flag=True, help="Run without cutoff")
+@click.option("--cutoff", default=None, help="Set or override tests cutoff (seconds)")
 def start(
     category: str,
     test: str,
@@ -67,6 +68,7 @@ def start(
     suite: str,
     no_dep: bool,
     nc: bool,
+    cutoff: Optional[int] = None,
 ) -> int:
     """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
     # Check if configuration file exists and is not empty
@@ -145,8 +147,18 @@ def start(
 
     if no_dep:
         pytest_args.append("--no_dep")
+
+    if nc and cutoff:
+        print(
+            "Error: You can't use both --nc and --cutoff at the same time. Please choose one."
+        )
+        return 1
+
     if nc:
         pytest_args.append("--nc")
+    if cutoff:
+        pytest_args.extend(["--cutoff", str(cutoff)])
+        print(f"Setting cuttoff override to {cutoff} seconds.")
 
     # when used as a library, the pytest directory to execute is in the CURRENT_DIRECTORY
     pytest_args.append(str(CURRENT_DIRECTORY))
