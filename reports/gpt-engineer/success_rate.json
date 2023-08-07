@@ -26,9 +26,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAdaptSimpleTypoWithGuidance": [
+        false,
         false,
         false,
         false,
@@ -82,9 +84,15 @@
         false,
         false,
         false,
+        false,
         false
     ],
+    "TestAgentProtocol_CreateAgentTask": [
+        true,
+        true
+    ],
     "TestBasicContentGen": [
+        false,
         false,
         false,
         false,
@@ -140,9 +148,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestBasicRetrieval": [
+        false,
         false,
         false,
         false,
@@ -197,9 +207,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestDebugSimpleTypoWithGuidance": [
+        false,
         false,
         false,
         false,
@@ -254,9 +266,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestFunctionCodeGeneration": [
+        false,
         false,
         false,
         false,
@@ -311,9 +325,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestGoalLoss_Hard": [
+        false,
         false,
         false,
         false,
@@ -367,9 +383,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestGoalLoss_Simple": [
+        false,
         false,
         false,
         false,
@@ -451,6 +469,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestPlanCreation": [
@@ -480,9 +499,11 @@
         true,
         false,
         false,
-        false
+        false,
+        true
     ],
     "TestReadFile": [
+        false,
         false,
         false,
         false,
@@ -537,9 +558,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRememberMultiplePhrasesWithNoise": [
+        false,
         false,
         false,
         false,
@@ -593,6 +616,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRetrieval3": [
@@ -621,9 +645,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Modify": [
+        false,
         false,
         false,
         false,
@@ -678,6 +704,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Tests": [
@@ -706,9 +733,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Write": [
+        false,
         false,
         false,
         false,
@@ -764,9 +793,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.1": [
+        false,
         false,
         false,
         false,
@@ -822,6 +853,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestSearch": [
@@ -851,9 +883,11 @@
         false,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestThreeSum": [
+        false,
         false,
         false,
         false,
@@ -909,15 +943,35 @@
         true,
         true,
         true,
+        true,
         true
-    ],
-    "TestAgentProtocol_CreateAgentTask": [
-        true
-    ],
-    "TestWritingCLI_FileOrganizer": [
-        false
     ],
     "TestWritingCLI_Easy": [
+        false
+    ],
+    "TestWritingCLI_FileOrganizer": [
+        false,
+        false
+    ],
+    "TestProductAdvisor_GamingMonitor": [
+        false
+    ],
+    "TestPasswordGenerator_Easy": [
+        false
+    ],
+    "TestAgentProtocol_ListAgentTasksIds": [
+        false
+    ],
+    "TestAgentProtocol_GetAgentTask": [
+        false
+    ],
+    "TestAgentProtocol_ListAgentTaskSteps": [
+        false
+    ],
+    "TestAgentProtocol_ExecuteAgentTaskStep": [
+        false
+    ],
+    "TestGoalLoss_Advanced": [
         false
     ]
 }
