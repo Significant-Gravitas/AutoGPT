@@ -74,22 +74,24 @@ def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
 
     yield config["workspace"]
     # teardown after test function completes
-
-    for filename in os.listdir(output_path):
-        file_path = os.path.join(output_path, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-        except Exception as e:
-            print(f"Failed to delete {file_path}. Reason: {e}")
+    if not config.get("keep_workspace_files", False):
+        print("Emptying workspace")
+        for filename in os.listdir(output_path):
+            file_path = os.path.join(output_path, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print(f"Failed to delete {file_path}. Reason: {e}")
 
 
 def pytest_addoption(parser: Any) -> None:
     parser.addoption("--mock", action="store_true", default=False)
     parser.addoption("--category", action="store_true", default=False)
     parser.addoption("--nc", action="store_true", default=False)
+    parser.addoption("--cutoff", action="store_true", default=False)
     parser.addoption("--improve", action="store_true", default=False)
     parser.addoption("--maintain", action="store_true", default=False)
     parser.addoption("--test", action="store_true", default=None)

@@ -38,6 +38,8 @@ def run_agent(
     timeout = cutoff
     if "--nc" in sys.argv:
         timeout = 100000
+    if "--cutoff" in sys.argv:
+        timeout = int(sys.argv[sys.argv.index("--cutoff") + 1])
 
     print(f"Running '{entry_path}' with timeout {timeout}")
 
