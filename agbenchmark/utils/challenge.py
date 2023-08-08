@@ -98,7 +98,7 @@ class Challenge(ABC):
                         capture_output=True,
                         text=True,
                     )
-                    if "error" in result.stderr:
+                    if "error" in result.stderr or result.returncode != 0:
                         print(result.stderr)
                         assert False, result.stderr
                     files_contents.append(f"Output: {result.stdout}\n")

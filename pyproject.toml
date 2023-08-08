@@ -24,8 +24,9 @@ pandas = "^2.0.3"
 gitpython = "^3.1.32"
 networkx = "^3.1"
 colorama = "^0.4.6"
-agent-protocol = "^0.1.2"
 pyvis = "^0.3.2"
+selenium = "^4.11.2"
+agent-protocol = "^0.2.3"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"
