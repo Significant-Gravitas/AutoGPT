@@ -20,9 +20,11 @@
         false,
         false,
         true,
-        true
+        true,
+        false
     ],
     "TestAdaptSimpleTypoWithGuidance": [
+        false,
         false,
         false,
         false,
@@ -66,9 +68,11 @@
         false,
         true,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_CreateAgentTask": [
+        true,
         true
     ],
     "TestBasicContentGen": [
@@ -93,9 +97,11 @@
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestBasicMemory": [
+        false,
         false,
         false,
         false,
@@ -141,6 +147,7 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestDebugMultipleTypo": [
@@ -164,6 +171,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestDebugSimpleTypoWithGuidance": [
@@ -183,6 +191,7 @@
         false,
         false,
         false,
+        true,
         true,
         true,
         true,
@@ -211,6 +220,7 @@
         false,
         true,
         false,
+        false,
         false
     ],
     "TestFunctionCodeGeneration": [
@@ -234,9 +244,11 @@
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestGoalDivergence": [
+        false,
         false,
         false,
         false,
@@ -281,6 +293,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestGoalLoss_Medium": [
@@ -304,9 +317,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestGoalLoss_Simple": [
+        false,
         false,
         false,
         false,
@@ -373,6 +388,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestPlanCreation": [
@@ -390,6 +406,7 @@
         false,
         false,
         false,
+        true,
         true,
         true,
         true,
@@ -421,9 +438,11 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestRememberMultipleIds": [
+        false,
         false,
         false,
         false,
@@ -467,9 +486,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRememberMultipleWithNoise": [
+        false,
         false,
         false,
         false,
@@ -513,6 +534,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Modify": [
@@ -536,7 +558,8 @@
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestReturnCode_Simple": [
         false,
@@ -560,9 +583,11 @@
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestReturnCode_Tests": [
+        false,
         false,
         false,
         false,
@@ -606,7 +631,8 @@
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestRevenueRetrieval_1.0": [
         false,
@@ -629,7 +655,8 @@
         true,
         true,
         false,
-        false
+        false,
+        true
     ],
     "TestRevenueRetrieval_1.1": [
         false,
@@ -652,6 +679,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.2": [
@@ -662,6 +690,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -699,6 +728,7 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestThreeSum": [
@@ -722,7 +752,8 @@
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestWriteFile": [
         true,
@@ -747,12 +778,35 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestWritingCLI_Easy": [
         true
     ],
     "TestWritingCLI_FileOrganizer": [
+        false,
+        false
+    ],
+    "TestProductAdvisor_GamingMonitor": [
+        false
+    ],
+    "TestPasswordGenerator_Easy": [
+        false
+    ],
+    "TestAgentProtocol_ListAgentTasksIds": [
+        true
+    ],
+    "TestAgentProtocol_GetAgentTask": [
+        true
+    ],
+    "TestAgentProtocol_ListAgentTaskSteps": [
+        true
+    ],
+    "TestAgentProtocol_ExecuteAgentTaskStep": [
+        true
+    ],
+    "TestGoalLoss_Advanced": [
         false
     ]
 }
