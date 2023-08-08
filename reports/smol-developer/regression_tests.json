@@ -3,17 +3,9 @@
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/1_create_agent_task/data.json"
     },
-    "TestPlanCreation": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
-    },
-    "TestWriteFile": {
+    "TestAgentProtocol_ExecuteAgentTaskStep": {
         "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestAgentProtocol_ListAgentTasksIds": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/2_list_agent_tasks_ids/data.json"
+        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/5_execute_agent_task_step/data.json"
     },
     "TestAgentProtocol_GetAgentTask": {
         "difficulty": "interface",
@@ -23,8 +15,20 @@
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/4_list_agent_tasks_steps/data.json"
     },
-    "TestAgentProtocol_ExecuteAgentTaskStep": {
+    "TestAgentProtocol_ListAgentTasksIds": {
         "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/5_execute_agent_task_step/data.json"
+        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/2_list_agent_tasks_ids/data.json"
+    },
+    "TestPlanCreation": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
+    },
+    "TestPasswordGenerator_Easy": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/code/c4_writing_cli_suite_3/1_password_generator/data.json"
     }
 }
