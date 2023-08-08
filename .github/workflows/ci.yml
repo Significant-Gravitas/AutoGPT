@@ -229,6 +229,7 @@ jobs:
           AGENT_NAME: ${{ matrix.agent-name }}
           PROMPT_USER: false # For mini-agi. TODO: Remove this and put it in benchmarks.py
           HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
+          BASERUN_API_KEY: ${{ secrets.BASERUN_API_KEY }}
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
           HELICONE_CACHE_ENABLED: false
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
