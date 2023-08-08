@@ -214,7 +214,8 @@ def start(
 
     # when used as a library, the pytest directory to execute is in the CURRENT_DIRECTORY
     pytest_args.append(str(CURRENT_DIRECTORY))
-
+    if os.environ.get("BASERUN_API_KEY"):
+        pytest_args.extend(["--baserun"])
     return sys.exit(pytest.main(pytest_args))
 
 

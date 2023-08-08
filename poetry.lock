@@ -259,6 +259,20 @@ files = [
 ]
 
 [[package]]
+name = "baserun"
+version = "0.3"
+description = "Tools for testing, debugging, and evaluating LLM features."
+optional = false
+python-versions = ">=3.7.1"
+files = [
+    {file = "baserun-0.3-py3-none-any.whl", hash = "sha256:b4570d3d3ab64b2fc346d1bd41aad145404e3d521065778dfd942e84056a302a"},
+    {file = "baserun-0.3.tar.gz", hash = "sha256:e7b8a63d1039228973c4a93c4a3b3df31f4b979a5d7476df12c7dd55c9bed41f"},
+]
+
+[package.dependencies]
+requests = ">=2.31.0"
+
+[[package]]
 name = "black"
 version = "22.3.0"
 description = "The uncompromising code formatter."
@@ -2716,4 +2730,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "855fe892a4401b03bbda926df20c140ea5143574ff5d04b6168472a2d162b9dd"
+content-hash = "d3f4df7a26eacfe0b726142521f20f3c98ee721b4710502e1ed7bffda3c9dff0"

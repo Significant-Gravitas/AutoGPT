@@ -27,6 +27,7 @@ colorama = "^0.4.6"
 pyvis = "^0.3.2"
 selenium = "^4.11.2"
 agent-protocol = "^0.2.3"
+baserun = "^0.3"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"
