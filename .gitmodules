@@ -33,4 +33,4 @@
 [submodule "agent/PolyGPT"]
 	path = agent/PolyGPT
 	url = https://github.com/polywrap/PolyGPT.git
-	branch = nerfzael-agent-protocol
+	branch = nerfzael-use-local-wrap-library
