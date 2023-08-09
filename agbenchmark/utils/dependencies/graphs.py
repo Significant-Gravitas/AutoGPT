@@ -182,14 +182,18 @@ def get_category_colors(categories: Dict[Any, str]) -> Dict[str, str]:
 
 
 def graph_interactive_network(
-    dag: nx.DiGraph, labels: Dict[Any, str], show: bool = False
+    dag: nx.DiGraph, labels: Dict[Any, Dict[str, Any]], show: bool = False
 ) -> None:
     nt = Network(notebook=True, width="100%", height="800px", directed=True)
 
     category_colors = get_category_colors(DATA_CATEGORY)
 
     # Add nodes and edges to the pyvis network
-    for node, label in labels.items():
+    for node, json_data in labels.items():
+
+        label = json_data.get("name", "")
+        # remove the first 4 letters of label
+        label_without_test = label[4:]
         node_id_str = node.nodeid
 
         # Get the category for this label
@@ -200,7 +204,12 @@ def graph_interactive_network(
         # Get the color for this category
         color = category_colors.get(category, "grey")
 
-        nt.add_node(node_id_str, label=label, color=color)
+        nt.add_node(
+            node_id_str,
+            label=label_without_test,
+            color=color,
+            task=json_data.get("task"),
+        )
 
     # Add edges to the pyvis network
     for edge in dag.edges():
@@ -263,3 +272,94 @@ def graph_interactive_network(
     if show:
         nt.show(file_path, notebook=False)
     nt.write_html(file_path)
+
+    # Example usage
+    table_data = [
+        ["Task: ", "Click on a skill to to see the task"],
+    ]
+
+    iframe_path = "dependencies.html"
+    combined_file_path = "agbenchmark/challenges/combined_view.html"
+
+    create_combined_html(combined_file_path, iframe_path, table_data)
+    # JavaScript code snippet to be inserted
+    iframe_js_code = """
+    network.on("click", function(params) {
+        if (params.nodes.length > 0) {
+            var clickedNodeId = params.nodes[0];
+            var clickedNode = nodes.get(clickedNodeId);
+            var clickedNodeLabel = clickedNode.task;
+            window.parent.updateLabel(clickedNodeLabel);
+        }
+    });
+    """
+
+    # Path to the iframe HTML file
+    iframe_path = "agbenchmark/challenges/dependencies.html"
+
+    # Insert the JS code snippet into the iframe HTML file
+    insert_js_into_iframe(iframe_path, iframe_js_code)
+
+
+def create_combined_html(
+    file_path: str, iframe_path: str, table_data: List[List[Any]]
+) -> None:
+    table_html = "<table>"
+    for row in table_data:
+        table_html += "<tr>"
+        for cell in row:
+            table_html += f"<td>{cell}</td>"
+        table_html += "</tr>"
+    table_html += "</table>"
+    table_html = table_html.replace(
+        "<td>Click on a skill to to see the task</td>",
+        '<td id="labelCell">Click on a skill to to see the task</td>',
+        1,
+    )
+
+    # JavaScript function to update the table
+    js_function = """
+    <script type="text/javascript">
+        function updateLabel(label) {
+            document.getElementById('labelCell').innerText = label;
+        }
+    </script>
+    """
+
+    iframe_html = f'<iframe src="{iframe_path}" width="100%" height="800px"></iframe>'
+
+    full_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Graph with Table</title>
+    </head>
+    <body>
+        {js_function}
+        {table_html}
+        {iframe_html}
+    </body>
+    </html>
+    """
+
+    with open(file_path, "w", encoding="utf-8") as file:
+        file.write(full_html)
+
+
+def insert_js_into_iframe(iframe_path: str, js_code: str) -> None:
+    with open(iframe_path, "r", encoding="utf-8") as file:
+        content = file.readlines()
+
+    # Locate the line number where "drawGraph();" is called
+    line_number = -1
+    for index, line in enumerate(content):
+        if "drawGraph();" in line:
+            line_number = index
+            break
+
+    # Insert the JS code snippet just after "drawGraph();"
+    if line_number != -1:
+        content.insert(line_number + 1, js_code)
+
+    with open(iframe_path, "w", encoding="utf-8") as file:
+        file.writelines(content)
