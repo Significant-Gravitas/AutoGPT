@@ -11,6 +11,9 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
+      with:
+        submodules: true
+        fetch-depth: 0
 
     - name: Set up Python
       uses: actions/setup-python@v2

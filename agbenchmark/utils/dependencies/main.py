@@ -192,7 +192,7 @@ class DependencyManager(object):
                 colorama.deinit()
 
     @property
-    def sorted_items(self, show_graph: Optional[bool] = True) -> Generator:
+    def sorted_items(self, show_graph: Optional[bool] = False) -> Generator:
         """Get a sorted list of tests where all tests are sorted after their dependencies."""
         # Build a directed graph for sorting
         dag = networkx.DiGraph()
