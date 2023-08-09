@@ -1,0 +1,125 @@
+{
+    "TestWriteFile": [
+        true
+    ],
+    "TestAgentProtocol_CreateAgentTask": [
+        false
+    ],
+    "TestProductAdvisor_GamingMonitor": [
+        false
+    ],
+    "TestSearch": [
+        false
+    ],
+    "TestReadFile": [
+        true
+    ],
+    "TestWebApp_ListAnimals": [
+        false
+    ],
+    "TestPasswordGenerator_Easy": [
+        false
+    ],
+    "TestPlanCreation": [
+        true
+    ],
+    "TestAgentProtocol_ListAgentTasksIds": [
+        false
+    ],
+    "TestBasicRetrieval": [
+        false
+    ],
+    "TestBasicMemory": [
+        false
+    ],
+    "TestReturnCode_Simple": [
+        false
+    ],
+    "TestDebugSimpleTypoWithGuidance": [
+        false
+    ],
+    "TestBasicContentGen": [
+        false
+    ],
+    "TestWritingCLI_FileOrganizer": [
+        false
+    ],
+    "TestAgentProtocol_GetAgentTask": [
+        false
+    ],
+    "TestAdaptLink": [
+        false
+    ],
+    "TestRevenueRetrieval_1.1": [
+        false
+    ],
+    "TestRevenueRetrieval_1.2": [
+        false
+    ],
+    "TestRevenueRetrieval_1.0": [
+        false
+    ],
+    "TestGoalLoss_Simple": [
+        false
+    ],
+    "TestRememberMultipleIds": [
+        false
+    ],
+    "TestReturnCode_Write": [
+        false
+    ],
+    "TestAdaptSimpleTypoWithGuidance": [
+        false
+    ],
+    "TestDebugSimpleTypoWithoutGuidance": [
+        false
+    ],
+    "TestAgentProtocol_ListAgentTaskSteps": [
+        false
+    ],
+    "TestAgentProtocol_ExecuteAgentTaskStep": [
+        false
+    ],
+    "TestGoalLoss_Medium": [
+        false
+    ],
+    "TestInstructionFollowing": [
+        false
+    ],
+    "TestGoalDivergence": [
+        false
+    ],
+    "TestRememberMultipleWithNoise": [
+        false
+    ],
+    "TestFunctionCodeGeneration": [
+        false
+    ],
+    "TestReturnCode_Modify": [
+        false
+    ],
+    "TestDebugMultipleTypo": [
+        false
+    ],
+    "TestRetrieval3": [
+        false
+    ],
+    "TestAdaptTeslaRevenue": [
+        false
+    ],
+    "TestGoalLoss_Advanced": [
+        false
+    ],
+    "TestRememberMultiplePhrasesWithNoise": [
+        false
+    ],
+    "TestThreeSum": [
+        false
+    ],
+    "TestReturnCode_Tests": [
+        false
+    ],
+    "TestGoalLoss_Hard": [
+        false
+    ]
+}
