@@ -160,3 +160,8 @@ openai/
 
 # news
 CURRENT_BULLETIN.md
+
+# agbenchmark
+
+agbenchmark/reports
+agbenchmark/workspace
