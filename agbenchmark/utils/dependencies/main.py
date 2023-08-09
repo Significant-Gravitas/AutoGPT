@@ -6,6 +6,7 @@ __init__.py.
 """
 
 import collections
+import json
 from typing import Any, Generator, Optional
 
 import colorama
@@ -191,7 +192,7 @@ class DependencyManager(object):
                 colorama.deinit()
 
     @property
-    def sorted_items(self, show_graph: Optional[bool] = False) -> Generator:
+    def sorted_items(self, show_graph: Optional[bool] = True) -> Generator:
         """Get a sorted list of tests where all tests are sorted after their dependencies."""
         # Build a directed graph for sorting
         dag = networkx.DiGraph()
@@ -208,8 +209,15 @@ class DependencyManager(object):
 
         labels = {}
         for item in self.items:
+            try:
+                with open(item.cls.CHALLENGE_LOCATION) as f:
+                    data = json.load(f)
+            except:
+                data = {}
+
             node_name = get_name(item)
-            labels[item] = node_name
+            data["name"] = node_name
+            labels[item] = data
 
         if show_graph:
             # graph_spring_layout(dag, labels)
