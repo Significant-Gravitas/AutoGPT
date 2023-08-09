@@ -21,3 +21,15 @@ There are two main ways to get involved with challenges:
 To learn more about submitting and beating challenges, please visit the [List of Challenges](list.md), [Submit a Challenge](submit.md), and [Beat a Challenge](beat.md) pages.
 
 We look forward to your contributions and the exciting solutions that the community will develop together to make Auto-GPT even better!
+
+!!! warning
+    
+    We're slowly transitioning to agbenchmark. agbenchmark is a simpler way to improve Auto-GPT. Simply run:
+    
+    ```
+    agbenchmark start
+    ```
+    
+    and beat as many challenges as possible.
+
+For more agbenchmark options, look at the [readme](https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/tree/master/agbenchmark).

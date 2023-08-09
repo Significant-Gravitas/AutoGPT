@@ -1,6 +1,9 @@
-from typing import Any, Callable, Optional
+from __future__ import annotations
 
-from autogpt.config import Config
+from typing import TYPE_CHECKING, Any, Callable, Optional
+
+if TYPE_CHECKING:
+    from autogpt.config import Config
 
 from .command_parameter import CommandParameter
 
