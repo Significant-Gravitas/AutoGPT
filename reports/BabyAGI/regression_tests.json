@@ -1,6 +1,1 @@
-{
-    "TestAgentProtocol_CreateAgentTask": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/1_create_agent_task/data.json"
-    }
-}
+{}
