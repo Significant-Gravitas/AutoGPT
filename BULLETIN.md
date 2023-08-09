@@ -6,7 +6,8 @@
 
 # v0.4.7 RELEASE HIGHLIGHTS! 🚀
 # -----------------------------
-This release introduces initial REST API support, powered by e2b's agent protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). 
+This release introduces initial REST API support, powered by e2b's agent 
+protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). 
 
 It also includes improvements to prompt generation and support 
 for our new benchmarking tool, Auto-GPT-Benchmarks
