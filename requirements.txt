@@ -48,6 +48,8 @@ isort
 gitpython==3.1.31
 auto-gpt-plugin-template @ git+https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template@0.1.0
 mkdocs
+mkdocs-material
+mkdocs-table-reader-plugin
 pymdown-extensions
 mypy
 types-Markdown

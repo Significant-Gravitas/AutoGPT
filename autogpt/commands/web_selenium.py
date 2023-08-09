@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from autogpt.llm.utils.token_counter import count_string_tokens
+
 COMMAND_CATEGORY = "web_browse"
 COMMAND_CATEGORY_TITLE = "Web Browsing"
 
@@ -16,6 +18,7 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
 from selenium.webdriver.chrome.webdriver import WebDriver as ChromeDriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.options import ArgOptions as BrowserOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.service import Service as EdgeDriverService
 from selenium.webdriver.edge.webdriver import WebDriver as EdgeDriver
@@ -39,9 +42,9 @@ from autogpt.memory.vector import MemoryItem, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
 
-BrowserOptions = ChromeOptions | EdgeOptions | FirefoxOptions | SafariOptions
-
 FILE_DIR = Path(__file__).parent.parent
+TOKENS_TO_TRIGGER_SUMMARY = 50
+LINKS_TO_RETURN = 20
 
 
 @command(
@@ -65,30 +68,35 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
         question (str): The question asked by the user
 
     Returns:
-        Tuple[str, WebDriver]: The answer and links to the user and the webdriver
+        str: The answer and links to the user and the webdriver
     """
+    driver = None
     try:
         driver, text = scrape_text_with_selenium(url, agent)
+
+        # TODO: remove. This overlay is purely for aesthetic purposes.
+        add_header(driver)
+
+        links = scrape_links_with_selenium(driver, url)
+
+        if not text:
+            return f"Website did not contain any text.\n\nLinks: {links}"
+        elif count_string_tokens(text, agent.llm.name) > TOKENS_TO_TRIGGER_SUMMARY:
+            text = summarize_memorize_webpage(url, text, question, agent, driver)
+
+        # Limit links to LINKS_TO_RETURN
+        if len(links) > LINKS_TO_RETURN:
+            links = links[:LINKS_TO_RETURN]
+
+        return f"Answer gathered from website: {text}\n\nLinks: {links}"
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
         msg = e.msg.split("\n")[0]
         raise CommandExecutionError(msg)
-
-    add_header(driver)
-    summary = (
-        summarize_memorize_webpage(url, text, question, agent, driver) if text else None
-    )
-    links = scrape_links_with_selenium(driver, url)
-
-    # Limit links to 5
-    if len(links) > 5:
-        links = links[:5]
-    close_browser(driver)
-    if summary:
-        return f"Answer gathered from website: {summary}\n\nLinks: {links}"
-    else:
-        return f"Website did not contain any text.\n\nLinks: {links}"
+    finally:
+        if driver:
+            close_browser(driver)
 
 
 def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:

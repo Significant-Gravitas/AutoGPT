@@ -8,7 +8,7 @@ Activity, Error, and Debug logs are located in `./logs`
 
 To print out debug logs:
 
-``` shell
+```shell
 ./run.sh --debug     # on Linux / macOS
 
 .\run.bat --debug    # on Windows

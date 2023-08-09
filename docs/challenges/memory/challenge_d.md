@@ -1,11 +1,12 @@
-# Memory Challenge C
+# Memory Challenge D
 
 **Status**: Current level to beat: level 1
 
 **Command to try**: 
-```
+
+```shell
 pytest -s tests/challenges/memory/test_memory_challenge_d.py --level=1
-``
+```
 
 ## Description
 
@@ -30,13 +31,16 @@ The test runs for levels up to the maximum level that the AI has successfully be
 
 - `instructions_1.txt`
 
-"Sally has a marble (marble A) and she puts it in her basket (basket S), then leaves the room. Anne moves marble A from Sally's basket (basket S) to her own basket (basket A).",
+```
+Sally has a marble (marble A) and she puts it in her basket (basket S), then leaves the room. Anne moves marble A from Sally's basket (basket S) to her own basket (basket A).
+```
 
 
 - `instructions_2.txt`
 
-"Sally gives a new marble (marble B) to Bob who is outside with her. Bob goes into the room and places marble B into Anne's basket (basket A). Anne tells Bob to tell Sally that he lost the marble b. Bob leaves the room and speaks to Sally about the marble B. Meanwhile, after Bob left the room, Anne moves marble A into the green box, but tells Charlie to tell Sally that marble A is under the sofa. Charlie leaves the room and speak to Sally about the marble A as instructed by Anne.",
-
+```
+Sally gives a new marble (marble B) to Bob who is outside with her. Bob goes into the room and places marble B into Anne's basket (basket A). Anne tells Bob to tell Sally that he lost the marble b. Bob leaves the room and speaks to Sally about the marble B. Meanwhile, after Bob left the room, Anne moves marble A into the green box, but tells Charlie to tell Sally that marble A is under the sofa. Charlie leaves the room and speak to Sally about the marble A as instructed by Anne.
+```
 
 ...and so on.
 
@@ -44,6 +48,7 @@ The test runs for levels up to the maximum level that the AI has successfully be
 
 The expected believes of every characters are given in a list:
 
+```json
 expected_beliefs = {
     1: {
         'Sally': {
@@ -68,7 +73,7 @@ expected_beliefs = {
             'A': 'sofa',  # Because Anne told him to tell Sally so
         }
     },...
-
+```
 
 ## Objective
 
