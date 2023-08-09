@@ -26,11 +26,10 @@
 	path = agent/beebot
 	url = https://github.com/AutoPackAI/beebot.git
 	branch = main
-[submodule "agbenchmark/challenges"]
-	path = agbenchmark/challenges
-	url = https://github.com/SilenNaihin/agbenchmark_challenges.git
-	branch = main
 [submodule "agent/PolyGPT"]
 	path = agent/PolyGPT
 	url = https://github.com/polywrap/PolyGPT.git
 	branch = nerfzael-use-local-wrap-library
+[submodule "agbenchmark/challenges"]
+	path = agbenchmark/challenges
+	url = https://github.com/agbenchmark/agent-evals.git
