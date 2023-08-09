@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from autogpt.llm.utils.token_counter import count_string_tokens
-
 COMMAND_CATEGORY = "web_browse"
 COMMAND_CATEGORY_TITLE = "Web Browsing"
 
 import logging
 from pathlib import Path
 from sys import platform
-from typing import Optional, Type
+from typing import TYPE_CHECKING, Optional, Type
 
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import WebDriverException
@@ -34,9 +32,13 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-from autogpt.agents.agent import Agent
+if TYPE_CHECKING:
+    from autogpt.config import Config
+    from autogpt.agents.agent import Agent
+
 from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
+from autogpt.llm.utils import count_string_tokens
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
@@ -72,11 +74,9 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
     """
     driver = None
     try:
-        driver, text = scrape_text_with_selenium(url, agent)
+        driver = open_page_in_browser(url, agent.config)
 
-        # TODO: remove. This overlay is purely for aesthetic purposes.
-        add_header(driver)
-
+        text = scrape_text_with_selenium(driver)
         links = scrape_links_with_selenium(driver, url)
 
         if not text:
@@ -99,14 +99,60 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
             close_browser(driver)
 
 
-def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
-    """Scrape text from a website using selenium
+def scrape_text_with_selenium(driver: WebDriver) -> str:
+    """Scrape text from a browser window using selenium
 
     Args:
-        url (str): The url of the website to scrape
+        driver (WebDriver): A driver object representing the browser window to scrape
 
     Returns:
-        Tuple[WebDriver, str]: The webdriver and the text scraped from the website
+        str: the text scraped from the website
+    """
+
+    # Get the HTML content directly from the browser's DOM
+    page_source = driver.execute_script("return document.body.outerHTML;")
+    soup = BeautifulSoup(page_source, "html.parser")
+
+    for script in soup(["script", "style"]):
+        script.extract()
+
+    text = soup.get_text()
+    lines = (line.strip() for line in text.splitlines())
+    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+    text = "\n".join(chunk for chunk in chunks if chunk)
+    return text
+
+
+def scrape_links_with_selenium(driver: WebDriver, base_url: str) -> list[str]:
+    """Scrape links from a website using selenium
+
+    Args:
+        driver (WebDriver): A driver object representing the browser window to scrape
+        base_url (str): The base URL to use for resolving relative links
+
+    Returns:
+        List[str]: The links scraped from the website
+    """
+    page_source = driver.page_source
+    soup = BeautifulSoup(page_source, "html.parser")
+
+    for script in soup(["script", "style"]):
+        script.extract()
+
+    hyperlinks = extract_hyperlinks(soup, base_url)
+
+    return format_hyperlinks(hyperlinks)
+
+
+def open_page_in_browser(url: str, config: Config) -> WebDriver:
+    """Open a browser window and load a web page using Selenium
+
+    Params:
+        url (str): The URL of the page to load
+        config (Config): The applicable application configuration
+
+    Returns:
+        driver (WebDriver): A driver object representing the browser window to scrape
     """
     logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
@@ -117,23 +163,23 @@ def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
         "safari": SafariOptions,
     }
 
-    options: BrowserOptions = options_available[agent.config.selenium_web_browser]()
+    options: BrowserOptions = options_available[config.selenium_web_browser]()
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
 
-    if agent.config.selenium_web_browser == "firefox":
-        if agent.config.selenium_headless:
+    if config.selenium_web_browser == "firefox":
+        if config.selenium_headless:
             options.headless = True
             options.add_argument("--disable-gpu")
         driver = FirefoxDriver(
             service=GeckoDriverService(GeckoDriverManager().install()), options=options
         )
-    elif agent.config.selenium_web_browser == "edge":
+    elif config.selenium_web_browser == "edge":
         driver = EdgeDriver(
             service=EdgeDriverService(EdgeDriverManager().install()), options=options
         )
-    elif agent.config.selenium_web_browser == "safari":
+    elif config.selenium_web_browser == "safari":
         # Requires a bit more setup on the users end
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = SafariDriver(options=options)
@@ -143,7 +189,7 @@ def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
             options.add_argument("--remote-debugging-port=9222")
 
         options.add_argument("--no-sandbox")
-        if agent.config.selenium_headless:
+        if config.selenium_headless:
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
 
@@ -161,38 +207,7 @@ def scrape_text_with_selenium(url: str, agent: Agent) -> tuple[WebDriver, str]:
         EC.presence_of_element_located((By.TAG_NAME, "body"))
     )
 
-    # Get the HTML content directly from the browser's DOM
-    page_source = driver.execute_script("return document.body.outerHTML;")
-    soup = BeautifulSoup(page_source, "html.parser")
-
-    for script in soup(["script", "style"]):
-        script.extract()
-
-    text = soup.get_text()
-    lines = (line.strip() for line in text.splitlines())
-    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-    text = "\n".join(chunk for chunk in chunks if chunk)
-    return driver, text
-
-
-def scrape_links_with_selenium(driver: WebDriver, url: str) -> list[str]:
-    """Scrape links from a website using selenium
-
-    Args:
-        driver (WebDriver): The webdriver to use to scrape the links
-
-    Returns:
-        List[str]: The links scraped from the website
-    """
-    page_source = driver.page_source
-    soup = BeautifulSoup(page_source, "html.parser")
-
-    for script in soup(["script", "style"]):
-        script.extract()
-
-    hyperlinks = extract_hyperlinks(soup, url)
-
-    return format_hyperlinks(hyperlinks)
+    return driver
 
 
 def close_browser(driver: WebDriver) -> None:
@@ -205,23 +220,6 @@ def close_browser(driver: WebDriver) -> None:
         None
     """
     driver.quit()
-
-
-def add_header(driver: WebDriver) -> None:
-    """Add a header to the website
-
-    Args:
-        driver (WebDriver): The webdriver to use to add the header
-
-    Returns:
-        None
-    """
-    try:
-        with open(f"{FILE_DIR}/js/overlay.js", "r") as overlay_file:
-            overlay_script = overlay_file.read()
-        driver.execute_script(overlay_script)
-    except Exception as e:
-        print(f"Error executing overlay.js: {e}")
 
 
 def summarize_memorize_webpage(
