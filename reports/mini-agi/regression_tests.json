@@ -1,11 +1,15 @@
 {
-    "TestAgentProtocol_CreateAgentTask": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/1_create_agent_task/data.json"
+    "TestAdaptLink": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/adapatability/a3_book_price/data.json"
     },
     "TestBasicRetrieval": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
+    },
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
     },
     "TestReadFile": {
         "difficulty": "interface",
@@ -22,33 +26,5 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestPasswordGenerator_Easy": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/code/c4_writing_cli_suite_3/1_password_generator/data.json"
-    },
-    "TestAgentProtocol_ListAgentTasksIds": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/2_list_agent_tasks_ids/data.json"
-    },
-    "TestDebugSimpleTypoWithGuidance": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
-    },
-    "TestAgentProtocol_GetAgentTask": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/3_get_agent_task/data.json"
-    },
-    "TestAdaptLink": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/adapatability/a3_book_price/data.json"
-    },
-    "TestAgentProtocol_ListAgentTaskSteps": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/4_list_agent_tasks_steps/data.json"
-    },
-    "TestAgentProtocol_ExecuteAgentTaskStep": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/5_execute_agent_task_step/data.json"
     }
 }
