@@ -1,12 +1,31 @@
-# sourcery skip: avoid-global-variables
+import asyncio
 import sys
 
-from dotenv import load_dotenv
+from agent_protocol_client import Configuration
+
+import agbenchmark.e2b_boilerplate
+
+configuration = Configuration(host="http://localhost:8915")
 
 
-def run(task: str) -> None:
+async def run_specific_agent(task: str) -> None:
     """Runs the agent for benchmarking"""
-    load_dotenv()
+    # Start the agent Server
+    command = [
+        "poetry",
+        "run",
+        "python",
+        "-m",
+        "autogpt",
+    ]
+    agent_process = agbenchmark.e2b_boilerplate.start_agent_server(
+        command, "localhost", 8915
+    )
+
+    # Send the task to the agent
+    await agbenchmark.e2b_boilerplate.task_agent(task)
+
+    agent_process.terminate()
 
 
 if __name__ == "__main__":
@@ -14,4 +33,4 @@ if __name__ == "__main__":
         print("Usage: python script.py <task>")
         sys.exit(1)
     task = sys.argv[-1]
-    run(task)
+    asyncio.run(run_specific_agent(task))
