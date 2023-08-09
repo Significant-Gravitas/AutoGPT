@@ -1,0 +1,22 @@
+{
+    "TestAgentProtocol_CreateAgentTask": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/1_create_agent_task/data.json"
+    },
+    "TestAgentProtocol_ExecuteAgentTaskStep": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/5_execute_agent_task_step/data.json"
+    },
+    "TestAgentProtocol_GetAgentTask": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/3_get_agent_task/data.json"
+    },
+    "TestAgentProtocol_ListAgentTaskSteps": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/4_list_agent_tasks_steps/data.json"
+    },
+    "TestAgentProtocol_ListAgentTasksIds": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/agent_protocol_suite/2_list_agent_tasks_ids/data.json"
+    }
+}
