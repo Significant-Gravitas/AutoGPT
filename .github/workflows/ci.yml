@@ -185,7 +185,7 @@ jobs:
           elif [ "$AGENT_NAME" == "beebot" ]; then
             poetry install
             poetry run playwright install
-            uvicorn beebot.initiator.api:create_app --reload &
+            poetry run uvicorn beebot.initiator.api:create_app --reload &
             prefix="poetry run "
           elif [ "$AGENT_NAME" == "PolyGPT" ]; then
             cp .env.template .env
