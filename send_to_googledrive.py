@@ -39,6 +39,12 @@ def process_test(
     parts = test_name.split("_", 1)  # Split by underscore only once
     test_suite = parts[0] if len(parts) > 1 else None
 
+    # transform array into string with | as separator
+    separator = "|"
+    categories = separator.join(
+        test_info.get("category", []),
+    )
+
     row = {
         "Agent": agent_name,
         "Command": common_data.get("command", ""),
@@ -64,6 +70,12 @@ def process_test(
         "Cost": test_info.get("metrics", {}).get("cost", ""),
         "Attempted": test_info.get("metrics", {}).get("attempted", ""),
         "Test Suite": test_suite,
+        "Category": categories,
+        "Task": test_info.get("task", ""),
+        "Answer": test_info.get("answer", ""),
+        "Description": test_info.get("description", ""),
+        "Fail Reason": test_info.get("metrics", {}).get("fail_reason", ""),
+        "Reached Cutoff": test_info.get("reached_cutoff", ""),
     }
 
     rows.append(row)
