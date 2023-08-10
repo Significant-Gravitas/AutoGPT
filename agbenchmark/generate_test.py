@@ -1,5 +1,6 @@
 import glob
 import importlib
+import json
 import os
 import sys
 import types
@@ -97,7 +98,23 @@ def create_single_test(
 
     # Define test method within the dynamically created class
     def test_method(self, config: Dict[str, Any], request) -> None:  # type: ignore
+        # create a random number between 0 and 1
+        test_name = self.data.name
+
+        try:
+            with open("challenges_already_beaten.json", "r") as f:
+                challenges_beaten_in_the_past = json.load(f)
+        except:
+            challenges_beaten_in_the_past = {}
+
+        if request.config.getoption("--explore") and challenges_beaten_in_the_past.get(
+            test_name, False
+        ):
+            return None
+
+        # skip optional categories
         self.skip_optional_categories(config)
+
         from helicone.lock import HeliconeLockManager
 
         if os.environ.get("HELICONE_API_KEY"):
@@ -108,6 +125,7 @@ def create_single_test(
 
         scores = self.get_scores(config)
         request.node.scores = scores  # store scores in request.node
+
         assert 1 in scores["values"]
 
     # Parametrize the method here

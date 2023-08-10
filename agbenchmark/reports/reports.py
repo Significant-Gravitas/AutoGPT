@@ -2,7 +2,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 from agbenchmark.agent_interface import MOCK_FLAG
 from agbenchmark.reports.ReportManager import ReportManager
@@ -144,7 +144,11 @@ def update_regression_tests(
 def generate_single_call_report(
     item: Any, call: Any, challenge_data: dict[str, Any]
 ) -> None:
-    difficulty = challenge_data["info"]["difficulty"]
+
+    try:
+        difficulty = challenge_data["info"]["difficulty"]
+    except KeyError:
+        return None
 
     if isinstance(difficulty, DifficultyLevel):
         difficulty = difficulty.value
@@ -222,7 +226,31 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
 
             info_details["reached_cutoff"] = float(run_time) > challenge_data["cutoff"]
 
+            update_challenges_already_beaten(info_details, test_name)
+            if info_details.get("tests") is not None:
+                for nested_test_name, nested_test_info in info_details["tests"].items():
+                    update_challenges_already_beaten(nested_test_info, nested_test_name)
+
         info_manager.add_test(test_name, info_details)
+
+
+def update_challenges_already_beaten(
+    info_details: Dict[str, Any], test_name: str
+) -> None:
+    current_run_successful = info_details["metrics"]["success"]
+    try:
+        with open("challenges_already_beaten.json", "r") as f:
+            challenge_data = json.load(f)
+    except:
+        challenge_data = {}
+    challenge_beaten_in_the_past = challenge_data.get(test_name)
+
+    challenge_data[test_name] = True
+    if challenge_beaten_in_the_past is None and not current_run_successful:
+        challenge_data[test_name] = False
+
+    with open("challenges_already_beaten.json", "w") as f:
+        json.dump(challenge_data, f, indent=4)
 
 
 def generate_separate_suite_reports(suite_reports: dict) -> None:

@@ -94,6 +94,7 @@ def pytest_addoption(parser: Any) -> None:
     parser.addoption("--cutoff", action="store_true", default=False)
     parser.addoption("--improve", action="store_true", default=False)
     parser.addoption("--maintain", action="store_true", default=False)
+    parser.addoption("--explore", action="store_true", default=False)
     parser.addoption("--test", action="store_true", default=None)
     parser.addoption("--no_dep", action="store_true", default=False)
     parser.addoption("--suite", action="store_true", default=False)
@@ -159,7 +160,12 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
     except Exception as e:
         pass
 
-    flags = "--test" in sys.argv or "--maintain" in sys.argv or "--improve" in sys.argv
+    flags = (
+        "--test" in sys.argv
+        or "--maintain" in sys.argv
+        or "--improve" in sys.argv
+        or "--explore" in sys.argv
+    )
 
     if call.when == "call":
         # if it's a same task suite, we combine the report.

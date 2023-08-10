@@ -163,3 +163,4 @@ cython_debug/
 .DS_Store
 ```
 secrets.json
+challenges_already_beaten.json
