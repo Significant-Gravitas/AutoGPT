@@ -13,6 +13,8 @@ It also includes improvements to prompt generation and support
 for our new benchmarking tool, Auto-GPT-Benchmarks
 (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).
 
+We've also moved our documentation to Material Theme, at https://docs.agpt.co.
+
 As usual, we've squashed a few bugs and made some under-the-hood improvements.
 
 Take a look at the Release Notes on Github for the full changelog:
