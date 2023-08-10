@@ -111,7 +111,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
     file_path = Path(filename)
     if not file_path.is_file():
         # Mimic the response that you get from the command line so that it's easier to identify
-        raise InvalidArgumentError(
+        raise FileNotFoundError(
             f"python: can't open file '{filename}': [Errno 2] No such file or directory"
         )
 

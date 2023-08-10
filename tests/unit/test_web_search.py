@@ -4,6 +4,7 @@ import pytest
 from googleapiclient.errors import HttpError
 
 from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import ConfigurationError
 from autogpt.commands.web_search import google, safe_google_results, web_search
 
 
@@ -89,20 +90,19 @@ def test_google_official_search(
 
 
 @pytest.mark.parametrize(
-    "query, num_results, expected_output, http_code, error_msg",
+    "query, num_results, expected_error_type, http_code, error_msg",
     [
         (
             "invalid query",
             3,
-            "Error: <HttpError 400 when requesting https://www.googleapis.com/customsearch/v1?q=invalid+query&cx "
-            'returned "Invalid Value". Details: "Invalid Value">',
+            HttpError,
             400,
             "Invalid Value",
         ),
         (
             "invalid API key",
             3,
-            "Error: The provided Google API key is invalid or missing.",
+            ConfigurationError,
             403,
             "invalid API key",
         ),
@@ -111,7 +111,7 @@ def test_google_official_search(
 def test_google_official_search_errors(
     query,
     num_results,
-    expected_output,
+    expected_error_type,
     mock_googleapiclient,
     http_code,
     error_msg,
@@ -132,5 +132,5 @@ def test_google_official_search_errors(
     )
 
     mock_googleapiclient.side_effect = error
-    actual_output = google(query, agent=agent, num_results=num_results)
-    assert actual_output == safe_google_results(expected_output)
+    with pytest.raises(expected_error_type):
+        google(query, agent=agent, num_results=num_results)

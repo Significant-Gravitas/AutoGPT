@@ -146,6 +146,11 @@ class Agent(BaseAgent):
 
         if command_name == "human_feedback":
             result = ActionInterruptedByHuman(user_input)
+            self.history.add(
+                "user",
+                "I interrupted the execution of the command you proposed "
+                f"to give you some feedback: {user_input}",
+            )
             self.log_cycle_handler.log_cycle(
                 self.ai_config.ai_name,
                 self.created_at,

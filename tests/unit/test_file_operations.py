@@ -13,6 +13,7 @@ from pytest_mock import MockerFixture
 
 import autogpt.commands.file_operations as file_ops
 from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.config import Config
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
@@ -199,8 +200,8 @@ def test_read_file(
 
 def test_read_file_not_found(agent: Agent):
     filename = "does_not_exist.txt"
-    content = file_ops.read_file(filename, agent=agent)
-    assert "Error:" in content and filename in content and "no such file" in content
+    with pytest.raises(FileNotFoundError):
+        file_ops.read_file(filename, agent=agent)
 
 
 def test_write_to_file_relative_path(test_file_name: Path, agent: Agent):
@@ -236,8 +237,8 @@ def test_write_file_fails_if_content_exists(test_file_name: Path, agent: Agent):
         agent=agent,
         checksum=file_ops.text_checksum(new_content),
     )
-    result = file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
-    assert result == "Error: File has already been updated."
+    with pytest.raises(DuplicateOperationError):
+        file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
 
 
 def test_write_file_succeeds_if_content_different(
