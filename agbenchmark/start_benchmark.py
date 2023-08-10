@@ -85,6 +85,11 @@ def cli() -> None:
 @click.option("--test", default=None, help="Specific test to run")
 @click.option("--maintain", is_flag=True, help="Runs only regression tests")
 @click.option("--improve", is_flag=True, help="Run only non-regression tests")
+@click.option(
+    "--explore",
+    is_flag=True,
+    help="Only attempt challenges that have never been beaten",
+)
 @click.option("--mock", is_flag=True, help="Run with mock")
 @click.option("--suite", default=None, help="Run a suite of related tests")
 @click.option(
@@ -100,6 +105,7 @@ def start(
     test: str,
     maintain: bool,
     improve: bool,
+    explore: bool,
     mock: bool,
     suite: str,
     no_dep: bool,
@@ -109,13 +115,13 @@ def start(
     """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
     # Check if configuration file exists and is not empty
 
-    if maintain and improve:
+    if int(maintain) + int(improve) + int(explore) > 1:
         print(
-            "Error: You can't use both --maintain and --improve at the same time. Please choose one."
+            "Error: You can't use --maintain, --improve or --explore at the same time. Please choose one."
         )
         return 1
 
-    if test and (category or skip_category or maintain or improve or suite):
+    if test and (category or skip_category or maintain or improve or suite or explore):
         print(
             "Error: If you're running a specific test make sure no other options are selected. Please just pass the --test."
         )
@@ -123,7 +129,7 @@ def start(
 
     # TODO: test and ensure that this functionality works before removing
     # change elif suite below if removing
-    if suite and (category or skip_category or maintain or improve):
+    if suite and (category or skip_category or maintain or improve or explore):
         print(
             "Error: If you're running a specific suite make sure no other options are selected. Please just pass the --suite."
         )
@@ -193,6 +199,9 @@ def start(
         elif improve:
             print("Running only non-regression tests")
             pytest_args.append("--improve")
+        elif explore:
+            print("Only attempt challenges that have never been beaten")
+            pytest_args.append("--explore")
 
     if mock:
         pytest_args.append("--mock")

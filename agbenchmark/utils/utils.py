@@ -47,6 +47,9 @@ def calculate_info_test_path(reports_path: Path) -> str:
     elif "--improve" in command:
         test_index = command.index("--improve")
         test_arg = "improve"
+    elif "--improve" in command:
+        test_index = command.index("--explore")
+        test_arg = "explore"
 
     if test_index:
         if not test_arg:
