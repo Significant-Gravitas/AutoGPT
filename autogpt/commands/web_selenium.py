@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 COMMAND_CATEGORY = "web_browse"
 COMMAND_CATEGORY_TITLE = "Web Browsing"
 
@@ -44,6 +46,10 @@ from autogpt.url_utils.validators import validate_url
 FILE_DIR = Path(__file__).parent.parent
 TOKENS_TO_TRIGGER_SUMMARY = 50
 LINKS_TO_RETURN = 20
+
+
+class BrowsingError(CommandExecutionError):
+    """An error occurred while trying to browse the page"""
 
 
 @command(
@@ -92,6 +98,11 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
         msg = e.msg.split("\n")[0]
+        if "net::" in msg:
+            raise BrowsingError(
+                f"A networking error occurred while trying to load the page: "
+                + re.sub(r"^unknown error: ", "", msg)
+            )
         raise CommandExecutionError(msg)
     finally:
         if driver:

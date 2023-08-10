@@ -1,6 +1,5 @@
 import os
 import random
-import re
 import string
 import tempfile
 
@@ -8,6 +7,11 @@ import pytest
 
 import autogpt.commands.execute_code as sut  # system under testing
 from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import (
+    AccessDeniedError,
+    InvalidArgumentError,
+    OperationNotAllowedError,
+)
 from autogpt.config import Config
 
 
@@ -53,11 +57,8 @@ def test_execute_python_code(random_code: str, random_string: str, agent: Agent)
 def test_execute_python_code_disallows_name_arg_path_traversal(
     random_code: str, agent: Agent
 ):
-    result: str = sut.execute_python_code(
-        random_code, name="../../test_code", agent=agent
-    )
-    assert "Error:" in result, "Path traversal in 'name' argument does not return error"
-    assert "path traversal" in result.lower()
+    with pytest.raises(AccessDeniedError, match="path traversal"):
+        sut.execute_python_code(random_code, name="../../test_code", agent=agent)
 
     # Check that the code is not stored in parent directory
     dst_with_traversal = agent.workspace.get_path("test_code.py")
@@ -82,16 +83,16 @@ def test_execute_python_code_overwrites_file(random_code: str, agent: Agent):
 
 
 def test_execute_python_file_invalid(agent: Agent):
-    assert all(
-        s in sut.execute_python_file("not_python", agent).lower()
-        for s in ["error:", "invalid", ".py"]
-    )
+    with pytest.raises(InvalidArgumentError):
+        sut.execute_python_file("not_python", agent)
 
 
 def test_execute_python_file_not_found(agent: Agent):
-    result = sut.execute_python_file("notexist.py", agent).lower()
-    assert re.match(r"python: can't open file '([A-Z]:)?[/\\\-\w]*notexist.py'", result)
-    assert "[errno 2] no such file or directory" in result
+    with pytest.raises(
+        FileNotFoundError,
+        match=r"python: can't open file '([a-zA-Z]:)?[/\\\-\w]*notexist.py': \[Errno 2\] No such file or directory",
+    ):
+        sut.execute_python_file("notexist.py", agent)
 
 
 def test_execute_shell(random_string: str, agent: Agent):
@@ -107,8 +108,8 @@ def test_execute_shell_local_commands_not_allowed(random_string: str, agent: Age
 def test_execute_shell_denylist_should_deny(agent: Agent, random_string: str):
     agent.config.shell_denylist = ["echo"]
 
-    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
-    assert "Error:" in result and "not allowed" in result
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
 
 
 def test_execute_shell_denylist_should_allow(agent: Agent, random_string: str):
@@ -116,15 +117,14 @@ def test_execute_shell_denylist_should_allow(agent: Agent, random_string: str):
 
     result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert "Hello" in result and random_string in result
-    assert "Error" not in result
 
 
 def test_execute_shell_allowlist_should_deny(agent: Agent, random_string: str):
     agent.config.shell_command_control = sut.ALLOWLIST_CONTROL
     agent.config.shell_allowlist = ["cat"]
 
-    result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
-    assert "Error:" in result and "not allowed" in result
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
 
 
 def test_execute_shell_allowlist_should_allow(agent: Agent, random_string: str):
@@ -133,4 +133,3 @@ def test_execute_shell_allowlist_should_allow(agent: Agent, random_string: str):
 
     result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert "Hello" in result and random_string in result
-    assert "Error" not in result
