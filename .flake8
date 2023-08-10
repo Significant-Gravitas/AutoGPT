@@ -11,4 +11,5 @@ exclude =
     reports/*,
     dist/*,
     agent/*,
-    code
+    code,
+    agbenchmark/challenges/*
