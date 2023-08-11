@@ -5,7 +5,7 @@ description = "Benchmarking the performance of agents far and wide, regardless o
 authors = ["Silen Naihin <silen.naihin@gmail.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "agbenchmark"}]
+packages = [{ include = "agbenchmark" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -28,6 +28,7 @@ pyvis = "^0.3.2"
 selenium = "^4.11.2"
 agent-protocol = "^0.2.3"
 agent-protocol-client = "^0.2.2"
+pytest-asyncio = "^0.21.1"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"
@@ -39,7 +40,6 @@ pandas = "^2.0.3"
 gspread = "^5.10.0"
 oauth2client = "^4.1.3"
 pre-commit = "^3.3.3"
-pytest-asyncio = "^0.21.1"
 
 [build-system]
 requires = ["poetry-core"]
