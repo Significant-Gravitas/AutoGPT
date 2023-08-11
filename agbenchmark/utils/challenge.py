@@ -9,8 +9,8 @@ from typing import Any, Dict, List
 import openai
 import pytest
 
-from agbenchmark.agent_interface import MOCK_FLAG
-from agbenchmark.start_benchmark import OPTIONAL_CATEGORIES
+from agbenchmark.agent_api_interface import run_api_agent
+from agbenchmark.start_benchmark import MOCK_FLAG, OPTIONAL_CATEGORIES
 from agbenchmark.utils.data_types import ChallengeData, Ground
 from agbenchmark.utils.prompts import (
     END_PROMPT,
@@ -46,7 +46,10 @@ class Challenge(ABC):
     def dependencies(self) -> list:
         return self.data.dependencies
 
-    def setup_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
+    async def setup_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
+        if not self.task:
+            return
+
         from agbenchmark.agent_interface import copy_artifacts_into_workspace, run_agent
 
         copy_artifacts_into_workspace(
@@ -58,7 +61,15 @@ class Challenge(ABC):
         )
         print(f"\033[1;30mTask: {self.task}\033[0m")
 
-        run_agent(self.task, config, self.ARTIFACTS_LOCATION, cutoff)
+        if MOCK_FLAG:
+            print("Running mock agent")
+            copy_artifacts_into_workspace(
+                config["workspace"], "artifacts_out", self.ARTIFACTS_LOCATION
+            )
+        elif config.get("api_mode"):
+            await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
+        else:
+            run_agent(self.task, cutoff)
 
         # hidden files are added after the agent runs. Hidden files can be python test files.
         # We copy them in the workspace to make it easy to import the code produced by the agent
