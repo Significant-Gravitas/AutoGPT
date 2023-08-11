@@ -76,7 +76,6 @@ def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
     yield config["workspace"]
     # teardown after test function completes
     if not config.get("keep_workspace_files", False):
-        print("Emptying workspace")
         for filename in os.listdir(output_path):
             file_path = os.path.join(output_path, filename)
             try:

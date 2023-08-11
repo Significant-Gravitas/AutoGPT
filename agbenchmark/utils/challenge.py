@@ -10,7 +10,7 @@ import openai
 import pytest
 
 from agbenchmark.agent_api_interface import run_api_agent
-from agbenchmark.start_benchmark import MOCK_FLAG, OPTIONAL_CATEGORIES
+from agbenchmark.start_benchmark import OPTIONAL_CATEGORIES
 from agbenchmark.utils.data_types import ChallengeData, Ground
 from agbenchmark.utils.prompts import (
     END_PROMPT,
@@ -61,7 +61,7 @@ class Challenge(ABC):
         )
         print(f"\033[1;30mTask: {self.task}\033[0m")
 
-        if MOCK_FLAG:
+        if "--mock" in sys.argv:
             print("Running mock agent")
             copy_artifacts_into_workspace(
                 config["workspace"], "artifacts_out", self.ARTIFACTS_LOCATION
@@ -88,7 +88,12 @@ class Challenge(ABC):
         with open(workspace_dir, "r") as f:
             return f.read()
 
-    def get_artifacts_out(self, workspace: str, ground: Ground) -> List[str]:
+    def get_artifacts_out(
+        self, workspace: str | dict[str, str], ground: Ground
+    ) -> List[str]:
+        if isinstance(workspace, dict):
+            workspace = workspace["output"]
+
         script_dir = workspace
         files_contents = []
 
@@ -163,7 +168,7 @@ class Challenge(ABC):
 
     def llm_eval(self, config: Dict[str, Any], content: str, ground: Ground) -> float:
         openai.api_key = os.getenv("OPENAI_API_KEY")
-        if MOCK_FLAG:
+        if "--mock" in sys.argv:
             return 1.0
 
         # the validation for this is done in the Eval BaseModel
@@ -190,7 +195,7 @@ class Challenge(ABC):
         percentage = None
 
         try:
-            if self.data.task == "" and MOCK_FLAG:
+            if self.data.task == "" and "--mock" in sys.argv:
                 scores = [1.0]
             elif isinstance(self.data.ground, Ground):
                 files_contents = self.get_artifacts_out(

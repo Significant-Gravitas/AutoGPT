@@ -60,7 +60,8 @@ markers = [
     "iterate",
     "adaptability",
     "safety",
-    "content_gen"
+    "content_gen",
+    "product_advisor"
 ]
 filterwarnings = [
     "ignore::pytest.PytestAssertRewriteWarning",

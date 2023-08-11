@@ -80,8 +80,13 @@ def get_list_of_file_paths(
 
 
 def copy_artifacts_into_workspace(
-    workspace: str, artifact_folder_name: str, challenge_dir_path: str
+    workspace: str | dict[str, str], artifact_folder_name: str, challenge_dir_path: str
 ) -> None:
+    if isinstance(workspace, dict):
+        if artifact_folder_name == "artifacts_in":
+            workspace = workspace["input"]
+        else:
+            workspace = workspace["output"]
     file_paths = get_list_of_file_paths(challenge_dir_path, artifact_folder_name)
     for file_path in file_paths:
         if os.path.isfile(file_path):

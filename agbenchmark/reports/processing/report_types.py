@@ -43,4 +43,4 @@ class Report(BaseModel):
     benchmark_start_time: str
     metrics: MetricsOverall
     tests: Dict[str, Union[Test, SuiteTest]]
-    config: Dict[str, str]
+    config: Dict[str, str | dict[str, str]]
