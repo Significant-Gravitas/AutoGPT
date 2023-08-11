@@ -7,7 +7,6 @@ from typing import Any, Dict
 from agbenchmark.reports.ReportManager import ReportManager
 from agbenchmark.start_benchmark import (
     CONFIG_PATH,
-    MOCK_FLAG,
     REGRESSION_TESTS_PATH,
     REPORTS_PATH,
     SUCCESS_RATE_PATH,
@@ -144,7 +143,6 @@ def update_regression_tests(
 def generate_single_call_report(
     item: Any, call: Any, challenge_data: dict[str, Any]
 ) -> None:
-
     try:
         difficulty = challenge_data["info"]["difficulty"]
     except KeyError:
@@ -205,11 +203,9 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
     if info_details and test_name:
         if run_time:
             cost = None
-            if not MOCK_FLAG and os.environ.get("HELICONE_API_KEY"):
+            if "--mock" not in sys.argv and os.environ.get("HELICONE_API_KEY"):
                 print("Getting cost from Helicone")
                 cost = get_data_from_helicone(test_name)
-            else:
-                print("Helicone not setup or mock flag set, not getting cost")
 
             info_details["metrics"]["cost"] = cost
 
@@ -226,10 +222,15 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
 
             info_details["reached_cutoff"] = float(run_time) > challenge_data["cutoff"]
 
-            update_challenges_already_beaten(info_details, test_name)
-            if info_details.get("tests") is not None:
-                for nested_test_name, nested_test_info in info_details["tests"].items():
-                    update_challenges_already_beaten(nested_test_info, nested_test_name)
+            if "--mock" not in sys.argv:
+                update_challenges_already_beaten(info_details, test_name)
+                if info_details.get("tests") is not None:
+                    for nested_test_name, nested_test_info in info_details[
+                        "tests"
+                    ].items():
+                        update_challenges_already_beaten(
+                            nested_test_info, nested_test_name
+                        )
 
         info_manager.add_test(test_name, info_details)
 
