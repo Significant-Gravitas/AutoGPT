@@ -6,9 +6,9 @@ from typing import Any, Generator
 
 import pytest
 
+from agbenchmark.benchmarks import run_specific_agent
 from autogpt.logs import LogCycleHandler
 from autogpt.workspace import Workspace
-from benchmarks import run_task
 from tests.challenges.schema import Task
 
 
@@ -38,7 +38,9 @@ def setup_mock_input(monkeypatch: pytest.MonkeyPatch, cycle_count: int) -> None:
         yield from input_sequence
 
     gen = input_generator()
-    monkeypatch.setattr("autogpt.utils.session.prompt", lambda _, **kwargs: next(gen))
+    monkeypatch.setattr(
+        "autogpt.app.utils.session.prompt", lambda _, **kwargs: next(gen)
+    )
 
 
 def setup_mock_log_cycle_agent_name(
@@ -75,4 +77,4 @@ def run_challenge(
     setup_mock_log_cycle_agent_name(monkeypatch, challenge_name, level_to_run)
     task = Task(user_input=user_input)
     with contextlib.suppress(SystemExit):
-        run_task(task)
+        run_specific_agent(task.user_input)

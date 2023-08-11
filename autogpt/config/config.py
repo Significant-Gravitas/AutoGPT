@@ -13,6 +13,7 @@ from colorama import Fore
 from pydantic import Field, validator
 
 from autogpt.core.configuration.schema import Configurable, SystemSettings
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.plugins.plugins_config import PluginsConfig
 
 AI_SETTINGS_FILE = "ai_settings.yaml"
@@ -51,10 +52,10 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     prompt_settings_file: str = PROMPT_SETTINGS_FILE
     workdir: Path = None
     workspace_path: Optional[Path] = None
-    file_logger_path: Optional[str] = None
+    file_logger_path: Optional[Path] = None
     # Model configuration
     fast_llm: str = "gpt-3.5-turbo"
-    smart_llm: str = "gpt-4"
+    smart_llm: str = "gpt-4-0314"
     temperature: float = 0
     openai_functions: bool = False
     embedding_model: str = "text-embedding-ada-002"
@@ -146,6 +147,15 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
             p.__class__.__name__ != "AutoGPTPluginTemplate"
         ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
         return p
+
+    @validator("openai_functions")
+    def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
+        if v:
+            smart_llm = values["smart_llm"]
+            assert OPEN_AI_CHAT_MODELS[smart_llm].supports_functions, (
+                f"Model {smart_llm} does not support OpenAI Functions. "
+                "Please disable OPENAI_FUNCTIONS or choose a suitable model."
+            )
 
     def get_openai_credentials(self, model: str) -> dict[str, str]:
         credentials = {

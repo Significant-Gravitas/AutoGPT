@@ -13,6 +13,14 @@ from colorama import Fore, Style
 from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
 from autogpt.app.configurator import create_config
 from autogpt.app.setup import prompt_user
+from autogpt.app.spinner import Spinner
+from autogpt.app.utils import (
+    clean_input,
+    get_current_git_branch,
+    get_latest_bulletin,
+    get_legal_warning,
+    markdown_to_ansi_style,
+)
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
 from autogpt.llm.api_manager import ApiManager
@@ -22,14 +30,6 @@ from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.speech import say_text
-from autogpt.spinner import Spinner
-from autogpt.utils import (
-    clean_input,
-    get_current_git_branch,
-    get_latest_bulletin,
-    get_legal_warning,
-    markdown_to_ansi_style,
-)
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
@@ -126,42 +126,17 @@ def run_auto_gpt(
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
-    Workspace.set_workspace_directory(config, workspace_directory)
+    config.workspace_path = Workspace.init_workspace_directory(
+        config, workspace_directory
+    )
 
     # HACK: doing this here to collect some globals that depend on the workspace.
-    Workspace.set_file_logger_path(config, config.workspace_path)
+    config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
 
     config.plugins = scan_plugins(config, config.debug_mode)
+
     # Create a CommandRegistry instance and scan default folder
-    command_registry = CommandRegistry()
-
-    logger.debug(
-        f"The following command categories are disabled: {config.disabled_command_categories}"
-    )
-    enabled_command_categories = [
-        x for x in COMMAND_CATEGORIES if x not in config.disabled_command_categories
-    ]
-
-    logger.debug(
-        f"The following command categories are enabled: {enabled_command_categories}"
-    )
-
-    for command_category in enabled_command_categories:
-        command_registry.import_commands(command_category)
-
-    # Unregister commands that are incompatible with the current config
-    incompatible_commands = []
-    for command in command_registry.commands.values():
-        if callable(command.enabled) and not command.enabled(config):
-            command.enabled = False
-            incompatible_commands.append(command)
-
-    for command in incompatible_commands:
-        command_registry.unregister(command)
-        logger.debug(
-            f"Unregistering incompatible command: {command.name}, "
-            f"reason - {command.disabled_reason or 'Disabled by current config.'}"
-        )
+    command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
 
     ai_config = construct_main_ai_config(
         config,
@@ -368,23 +343,25 @@ def update_user(
     print_assistant_thoughts(ai_config.ai_name, assistant_reply_dict, config)
 
     if command_name is not None:
-        if config.speak_mode:
-            say_text(f"I want to execute {command_name}", config)
+        if command_name.lower().startswith("error"):
+            logger.typewriter_log(
+                "ERROR: ",
+                Fore.RED,
+                f"The Agent failed to select an action. "
+                f"Error message: {command_name}",
+            )
+        else:
+            if config.speak_mode:
+                say_text(f"I want to execute {command_name}", config)
 
-        # First log new-line so user can differentiate sections better in console
-        logger.typewriter_log("\n")
-        logger.typewriter_log(
-            "NEXT ACTION: ",
-            Fore.CYAN,
-            f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
-            f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
-        )
-    elif command_name.lower().startswith("error"):
-        logger.typewriter_log(
-            "ERROR: ",
-            Fore.RED,
-            f"The Agent failed to select an action. " f"Error message: {command_name}",
-        )
+            # First log new-line so user can differentiate sections better in console
+            logger.typewriter_log("\n")
+            logger.typewriter_log(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
+                f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
+            )
     else:
         logger.typewriter_log(
             "NO ACTION SELECTED: ",

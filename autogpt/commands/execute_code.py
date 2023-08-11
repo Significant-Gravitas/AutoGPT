@@ -1,4 +1,8 @@
-"""Execute code in a Docker container"""
+"""Commands to execute code"""
+
+COMMAND_CATEGORY = "execute_code"
+COMMAND_CATEGORY_TITLE = "Execute Code"
+
 import os
 import subprocess
 from pathlib import Path
@@ -251,9 +255,9 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     "execute_shell_popen",
     "Executes a Shell Command, non-interactive commands only",
     {
-        "query": {
+        "command_line": {
             "type": "string",
-            "description": "The search query",
+            "description": "The command line to execute",
             "required": True,
         }
     },
