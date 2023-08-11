@@ -23,9 +23,11 @@
         true,
         false,
         true,
+        false,
         false
     ],
     "TestAdaptSimpleTypoWithGuidance": [
+        false,
         false,
         false,
         false,
@@ -75,31 +77,37 @@
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestAgentProtocol_CreateAgentTask": [
         true,
         true,
+        false,
         false,
         false
     ],
     "TestAgentProtocol_ExecuteAgentTaskStep": [
         true,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_GetAgentTask": [
         true,
+        false,
         false,
         false
     ],
     "TestAgentProtocol_ListAgentTaskSteps": [
         true,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTasksIds": [
         true,
+        false,
         false,
         false
     ],
@@ -128,9 +136,11 @@
         true,
         false,
         false,
+        false,
         false
     ],
     "TestBasicMemory": [
+        false,
         false,
         false,
         false,
@@ -182,7 +192,8 @@
         true,
         true,
         true,
-        true
+        true,
+        false
     ],
     "TestDebugMultipleTypo": [
         false,
@@ -202,6 +213,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -235,6 +247,7 @@
         true,
         true,
         false,
+        false,
         false
     ],
     "TestDebugSimpleTypoWithoutGuidance": [
@@ -257,6 +270,7 @@
         true,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -285,6 +299,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false
@@ -451,6 +466,7 @@
     "TestPasswordGenerator_Easy": [
         false,
         false,
+        false,
         false
     ],
     "TestPlanCreation": [
@@ -478,9 +494,11 @@
         true,
         true,
         true,
-        true
+        true,
+        false
     ],
     "TestProductAdvisor_GamingMonitor": [
+        false,
         false,
         false,
         false
@@ -510,9 +528,11 @@
         true,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestRememberMultipleIds": [
+        false,
         false,
         false,
         false,
@@ -539,6 +559,7 @@
         false
     ],
     "TestRememberMultiplePhrasesWithNoise": [
+        false,
         false,
         false,
         false,
@@ -614,6 +635,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Modify": [
@@ -638,6 +660,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false
@@ -667,9 +690,11 @@
         true,
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Tests": [
+        false,
         false,
         false,
         false,
@@ -719,6 +744,7 @@
         true,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.0": [
@@ -745,7 +771,8 @@
         false,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestRevenueRetrieval_1.1": [
         false,
@@ -771,6 +798,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.2": [
@@ -781,6 +809,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -824,7 +853,8 @@
         true,
         true,
         true,
-        true
+        true,
+        false
     ],
     "TestThreeSum": [
         false,
@@ -850,11 +880,13 @@
         true,
         false,
         false,
+        false,
         false
     ],
     "TestWebApp_ListAnimals": [
         true,
-        true
+        true,
+        false
     ],
     "TestWriteFile": [
         true,
@@ -882,7 +914,8 @@
         true,
         true,
         true,
-        true
+        true,
+        false
     ],
     "TestWritingCLI_Easy": [
         true
@@ -891,6 +924,28 @@
         false,
         false,
         false,
+        false,
+        false
+    ],
+    "TestWrite4FilesWithArray": [
+        false
+    ],
+    "TestWrite6Files": [
+        false
+    ],
+    "TestRememberGoal_Simple": [
+        false
+    ],
+    "TestRememberGoal_Medium": [
+        false
+    ],
+    "TestRememberMultipleIdsWithNoise": [
+        false
+    ],
+    "TestRememberGoal_Advanced": [
+        false
+    ],
+    "TestRememberGoal_Hard": [
         false
     ]
 }
