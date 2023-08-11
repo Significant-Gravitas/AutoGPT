@@ -22,6 +22,7 @@ if os.environ.get("HELICONE_API_KEY"):
     HeliconeLockManager.write_custom_property(
         "benchmark_start_time", BENCHMARK_START_TIME
     )
+MOCK_FLAG = os.getenv("MOCK_TEST", "").lower() == "true"
 
 
 (
@@ -141,21 +142,29 @@ def start(
         )
         return 1
 
-    if not os.path.exists(CONFIG_PATH) or os.stat(CONFIG_PATH).st_size == 0:
+    if os.path.exists(CONFIG_PATH) and os.stat(CONFIG_PATH).st_size:
+        # If the configuration file exists and is not empty, load it
+        with open(CONFIG_PATH, "r") as f:
+            config = json.load(f)
+    else:
         config = {}
 
+    if not config.get("workspace"):
         config["workspace"] = click.prompt(
             "Please enter a new workspace path",
             default=os.path.join("workspace"),
             show_default=True,
         )
 
-        with open(CONFIG_PATH, "w") as f:
-            json.dump(config, f)
-    else:
-        # If the configuration file exists and is not empty, load it
-        with open(CONFIG_PATH, "r") as f:
-            config = json.load(f)
+    if config.get("api_mode") and not config.get("host"):
+        config["host"] = click.prompt(
+            "Please enter the Agent API host address",
+            default="http://localhost:8000",
+            show_default=True,
+        )
+
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(config, f)
 
     print("Current configuration:")
     for key, value in config.items():

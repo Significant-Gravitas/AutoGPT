@@ -4,10 +4,10 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-from agbenchmark.agent_interface import MOCK_FLAG
 from agbenchmark.reports.ReportManager import ReportManager
 from agbenchmark.start_benchmark import (
     CONFIG_PATH,
+    MOCK_FLAG,
     REGRESSION_TESTS_PATH,
     REPORTS_PATH,
     SUCCESS_RATE_PATH,
