@@ -283,7 +283,7 @@ jobs:
                   git add .
                   git commit -m "Update website with new skill tree"
                   git remote set-url origin https://x-access-token:${{ env.GH_TOKEN }}@github.com/agbenchmark/skill-tree.github.io.git
-                  git push origin HEAD:refs/heads/main
+                  git push origin HEAD:refs/heads/main || echo "Already pushed the website, no need to push again."
                   cd ../../..
                   exit 0
               else
