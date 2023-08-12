@@ -218,7 +218,6 @@ jobs:
             # Check if the exit code was 5, and if so, exit with 0 instead
             if [ $EXIT_CODE -eq 5 ]; then
               echo "regression_tests.json is empty."
-              exit 0
             fi
   
             ${prefix}agbenchmark start --mock
