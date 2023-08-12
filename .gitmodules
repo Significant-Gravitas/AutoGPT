@@ -33,3 +33,7 @@
 [submodule "agbenchmark/challenges"]
 	path = agbenchmark/challenges
 	url = https://github.com/agbenchmark/agent-evals.git
+[submodule "skill-tree"]
+	path = skill-tree
+	url = https://github.com/agbenchmark/skill-tree.github.io
+	branch = main

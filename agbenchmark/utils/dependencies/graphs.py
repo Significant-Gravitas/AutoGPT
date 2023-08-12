@@ -266,7 +266,7 @@ def graph_interactive_network(
         "layout": {"hierarchical": hierarchical_options},
     }
 
-    relative_path = "agbenchmark/challenges/dependencies.html"
+    relative_path = "agbenchmark/challenges/skill_tree/dependencies.html"
     file_path = str(Path(relative_path).resolve())
 
     if show:
@@ -279,7 +279,7 @@ def graph_interactive_network(
     ]
 
     iframe_path = "dependencies.html"
-    combined_file_path = "agbenchmark/challenges/combined_view.html"
+    combined_file_path = "agbenchmark/challenges/skill_tree/combined_view.html"
 
     create_combined_html(combined_file_path, iframe_path, table_data)
     # JavaScript code snippet to be inserted
@@ -295,7 +295,7 @@ def graph_interactive_network(
     """
 
     # Path to the iframe HTML file
-    iframe_path = "agbenchmark/challenges/dependencies.html"
+    iframe_path = "agbenchmark/challenges/skill_tree/dependencies.html"
 
     # Insert the JS code snippet into the iframe HTML file
     insert_js_into_iframe(iframe_path, iframe_js_code)
