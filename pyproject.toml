@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "agbenchmark"
-version = "0.0.6"
+version = "0.0.7"
 description = "Benchmarking the performance of agents far and wide, regardless of how they are set up and how they work"
 authors = ["Silen Naihin <silen.naihin@gmail.com>"]
 license = "MIT"
