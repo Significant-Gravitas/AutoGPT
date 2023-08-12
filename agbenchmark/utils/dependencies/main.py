@@ -7,6 +7,7 @@ __init__.py.
 
 import collections
 import json
+import os
 from typing import Any, Generator, Optional
 
 import colorama
@@ -195,6 +196,12 @@ class DependencyManager(object):
     def sorted_items(self, show_graph: Optional[bool] = False) -> Generator:
         """Get a sorted list of tests where all tests are sorted after their dependencies."""
         # Build a directed graph for sorting
+        build_skill_tree = os.getenv("BUILD_SKILL_TREE")
+        BUILD_SKILL_TREE = (
+            build_skill_tree.lower() == "true" if build_skill_tree else False
+        )
+        if BUILD_SKILL_TREE:
+            show_graph = True
         dag = networkx.DiGraph()
 
         # Insert all items as nodes, to prevent items that have no dependencies and are not dependencies themselves from
