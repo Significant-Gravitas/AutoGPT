@@ -55,8 +55,6 @@ class Challenge(ABC):
         if not self.task:
             return
 
-
-
         print(
             f"\033[1;35m============Starting {self.data.name} challenge============\033[0m"
         )
