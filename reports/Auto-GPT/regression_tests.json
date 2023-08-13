@@ -3,6 +3,10 @@
         "difficulty": "novice",
         "data_path": "agbenchmark/challenges/adapatability/a3_book_price/data.json"
     },
+    "TestBasicMemory": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
+    },
     "TestBasicRetrieval": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
@@ -34,9 +38,5 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestBasicMemory": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
     }
 }
