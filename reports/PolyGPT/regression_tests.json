@@ -2,9 +2,5 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestReadFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/read_file/data.json"
     }
 }
