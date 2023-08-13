@@ -1,18 +1,30 @@
 {
-    "TestWriteFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
     },
     "TestReadFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/read_file/data.json"
     },
-    "TestDebugSimpleTypoWithGuidance": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
     },
-    "TestDebugSimpleTypoWithoutGuidance": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.2_vague/data.json"
+    "TestBasicMemory": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
+    },
+    "TestReturnCode_Simple": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/code/c1_writing_suite_1/1_return/data.json"
+    },
+    "TestReturnCode_Write": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/code/c1_writing_suite_1/2_write/data.json"
+    },
+    "TestFunctionCodeGeneration": {
+        "difficulty": "advanced",
+        "data_path": "agbenchmark/challenges/code/c3_writing_suite_2/d3_two_sum/data.json"
     }
 }
