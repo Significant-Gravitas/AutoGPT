@@ -215,6 +215,8 @@ class Challenge(ABC):
                         scores.append(math.ceil(llm_eval / 100))
                     elif self.data.ground.eval.scoring == "scale":
                         scores.append(math.ceil(llm_eval / 10))
+                    print("\033[1;32mYour score is:\033[0m", llm_eval)
+
                     scores.append(llm_eval)
             elif isinstance(self.data.ground, dict):
                 # if it's a dict then we know its a combined suite
