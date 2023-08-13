@@ -1,19 +1,7 @@
 {
-    "TestWriteFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestSearch": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/search/data.json"
-    },
-    "TestReadFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/read_file/data.json"
-    },
-    "TestPlanCreation": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
+    "TestAdaptLink": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/adapatability/a3_book_price/data.json"
     },
     "TestBasicRetrieval": {
         "difficulty": "basic",
@@ -23,16 +11,32 @@
         "difficulty": "novice",
         "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
     },
-    "TestAdaptLink": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/adapatability/a3_book_price/data.json"
+    "TestDebugSimpleTypoWithoutGuidance": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.2_vague/data.json"
+    },
+    "TestPlanCreation": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
+    },
+    "TestReadFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/read_file/data.json"
     },
     "TestRevenueRetrieval_1.0": {
         "difficulty": "novice",
         "data_path": "agbenchmark/challenges/retrieval/r2_search_suite_1"
     },
-    "TestDebugSimpleTypoWithoutGuidance": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.2_vague/data.json"
+    "TestSearch": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/search/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
+    },
+    "TestBasicMemory": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
     }
 }
