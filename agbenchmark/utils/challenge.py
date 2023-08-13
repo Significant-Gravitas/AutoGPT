@@ -47,14 +47,15 @@ class Challenge(ABC):
         return self.data.dependencies
 
     async def setup_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
-        if not self.task:
-            return
-
         from agbenchmark.agent_interface import copy_artifacts_into_workspace, run_agent
 
         copy_artifacts_into_workspace(
             config["workspace"], "artifacts_in", self.ARTIFACTS_LOCATION
         )
+        if not self.task:
+            return
+
+
 
         print(
             f"\033[1;35m============Starting {self.data.name} challenge============\033[0m"
