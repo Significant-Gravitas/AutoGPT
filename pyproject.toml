@@ -26,6 +26,13 @@ types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
 
+
+[tool.poetry.group.ui.dependencies]
+gradio = "^3.40.1"
+plotly = "^5.16.0"
+dash = "^2.11.1"
+pandas = "^2.0.3"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
