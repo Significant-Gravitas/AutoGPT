@@ -2,5 +2,7 @@
 
 export PYTHONPATH=$PYTHONPATH:$PWD
 
+poetry install
+poetry shell
 python -m autogpt "$@"
 
