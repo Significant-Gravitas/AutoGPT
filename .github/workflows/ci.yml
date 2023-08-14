@@ -100,7 +100,7 @@ jobs:
       min-python-version: '3.10'
     name: '${{ matrix.agent-name }}'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
