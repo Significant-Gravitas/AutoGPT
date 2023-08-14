@@ -137,7 +137,7 @@ class AgentDB(TaskDB):
                 for step in steps:
                     status = Status.created if step[3] == "created" else Status.completed
                     task.steps.append(Step(task_id=step[1], step_id=step[0], name=step[2], status=status, is_last=True if step[4] == 1 else False, additional_properties=step[5]))
-            print(f"Task: {task}")
+            # print(f"Getting task {task_id}.... Task details: {task}")
             return task
         else:
             raise DataNotFoundError("Task not found")
@@ -149,7 +149,14 @@ class AgentDB(TaskDB):
             "SELECT * FROM steps WHERE task_id=? AND step_id=?", (task_id, step_id)
         )
         if step := cursor.fetchone():
-            return Step(task_id=task_id, step_id=step_id, name=step[2], status=step[3])
+            return Step(
+                task_id=task_id,
+                step_id=step_id,
+                name=step[2],
+                status=step[3],
+                is_last=step[4] == 1,
+                additional_properties=step[5],
+            )
         else:
             raise DataNotFoundError("Step not found")
 
