@@ -1,3 +1,4 @@
+import asyncio
 import glob
 import importlib
 import json
@@ -97,7 +98,7 @@ def create_single_test(
     )
 
     # Define test method within the dynamically created class
-    async def test_method(self, config: Dict[str, Any], request) -> None:  # type: ignore
+    def test_method(self, config: Dict[str, Any], request) -> None:  # type: ignore
         # create a random number between 0 and 1
         test_name = self.data.name
 
@@ -127,12 +128,12 @@ def create_single_test(
             timeout = 100000
         if "--cutoff" in sys.argv:
             timeout = int(sys.argv[sys.argv.index("--cutoff") + 1])
-
-        await self.setup_challenge(config, timeout)
+        asyncio.get_event_loop().run_until_complete(
+            self.setup_challenge(config, timeout)
+        )
 
         scores = self.get_scores(config)
         request.node.scores = scores  # store scores in request.node
-
         assert 1 in scores["values"]
 
     # Parametrize the method here
