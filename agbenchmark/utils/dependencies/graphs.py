@@ -1,5 +1,6 @@
 import math
 from pathlib import Path
+import json
 from typing import Any, Dict, List, Tuple
 
 import matplotlib.patches as patches
@@ -190,7 +191,6 @@ def graph_interactive_network(
 
     # Add nodes and edges to the pyvis network
     for node, json_data in labels.items():
-
         label = json_data.get("name", "")
         # remove the first 4 letters of label
         label_without_test = label[4:]
@@ -208,19 +208,22 @@ def graph_interactive_network(
             node_id_str,
             label=label_without_test,
             color=color,
-            task=json_data.get("task"),
+            data=json_data,
         )
 
     # Add edges to the pyvis network
     for edge in dag.edges():
         source_id_str = edge[0].nodeid
         target_id_str = edge[1].nodeid
+        edge_id_str = (
+            f"{source_id_str}_to_{target_id_str}"  # Construct a unique edge id
+        )
         if not (source_id_str in nt.get_nodes() and target_id_str in nt.get_nodes()):
             print(
                 f"Skipping edge {source_id_str} -> {target_id_str} due to missing nodes."
             )
             continue
-        nt.add_edge(source_id_str, target_id_str)
+        nt.add_edge(source_id_str, target_id_str, id=edge_id_str)
 
     # Configure physics for hierarchical layout
     hierarchical_options = {
@@ -266,7 +269,16 @@ def graph_interactive_network(
         "layout": {"hierarchical": hierarchical_options},
     }
 
-    relative_path = "agbenchmark/challenges/skill_tree/index.html"
+    # Serialize the graph to JSON
+    graph_data = {"nodes": nt.nodes, "edges": nt.edges}
+
+    json_graph = json.dumps(graph_data)
+
+    # Optionally, save to a file
+    with open(Path("agbenchmark/challenges/skill-tree/graph.json").resolve(), "w") as f:
+        f.write(json_graph)
+
+    relative_path = "agbenchmark/challenges/skill-tree/index.html"
     file_path = str(Path(relative_path).resolve())
 
     if show:
@@ -279,7 +291,7 @@ def graph_interactive_network(
     ]
 
     iframe_path = "index.html"
-    combined_file_path = "agbenchmark/challenges/skill_tree/combined_view.html"
+    combined_file_path = "agbenchmark/challenges/skill-tree/combined_view.html"
 
     create_combined_html(combined_file_path, iframe_path, table_data)
     # JavaScript code snippet to be inserted
@@ -295,7 +307,7 @@ def graph_interactive_network(
     """
 
     # Path to the iframe HTML file
-    iframe_path = "agbenchmark/challenges/skill_tree/index.html"
+    iframe_path = "agbenchmark/challenges/skill-tree/index.html"
 
     # Insert the JS code snippet into the iframe HTML file
     insert_js_into_iframe(iframe_path, iframe_js_code)
