@@ -8,16 +8,11 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-langchain = "^0.0.215"
-python-dotenv = "^0.21.0"
+python-dotenv = "^1.0.0"
 openai = "^0.27.8"
-autopack-tools = "^0.2.0"
-psutil = "^5.9.5"
 agent-protocol = "^0.2.2"
 helicone = "^1.0.6"
-
 tenacity = "^8.2.2"
-agent-protocol-client = "^0.2.2"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -26,8 +21,10 @@ black = "^23.3.0"
 pre-commit = "^3.3.3"
 mypy = "^1.4.1"
 flake8 = "^6.0.0"
-agbenchmark = "^0.0.2"
+agbenchmark = "^0.0.7"
 types-requests = "^2.31.0.2"
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.1"
 
 [build-system]
 requires = ["poetry-core"]
