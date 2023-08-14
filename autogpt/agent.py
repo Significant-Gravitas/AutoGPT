@@ -4,6 +4,8 @@ import autogpt.utils
 
 
 class AutoGPT:
+
+
     def __init__(self) -> None:
         pass
 
@@ -14,8 +16,7 @@ class AutoGPT:
 
     async def step_handler(self, step: Step) -> Step:
         print(f"step: {step.input}")
-        await Agent.db.create_step(
-            step.task_id, f"Nothing to see here.. {step.name}", is_last=True
-        )
-        step.output = step.input
-        return step
+        step = Agent.db.get_step(step.step_id)
+        updated_step: Step = Agent.db.update_step(step.step_id, status="completed")
+        updated_step.output = step.input
+        return updated_step
