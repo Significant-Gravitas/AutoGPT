@@ -1,7 +1,15 @@
 {
+    "TestAdaptSimpleTypoWithGuidance": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/adapatability/a1_debug/data.json"
+    },
     "TestBasicMemory": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
+    },
+    "TestBasicRetrieval": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
     },
     "TestDebugSimpleTypoWithGuidance": {
         "difficulty": "novice",
@@ -23,20 +31,16 @@
         "difficulty": "novice",
         "data_path": "agbenchmark/challenges/code/c1_writing_suite_1/2_write/data.json"
     },
-    "TestWriteFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
     "TestSearch": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/search/data.json"
     },
-    "TestBasicRetrieval": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
     },
-    "TestAdaptSimpleTypoWithGuidance": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/adapatability/a1_debug/data.json"
+    "TestPlanCreation": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
     }
 }
