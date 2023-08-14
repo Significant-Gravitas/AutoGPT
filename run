@@ -1,0 +1,6 @@
+#!/bin/bash
+
+export PYTHONPATH=$PYTHONPATH:$PWD
+
+python -m autogpt "$@"
+

@@ -14,10 +14,12 @@ class AutoGPT:
         await Agent.db.create_step(task.task_id, task.input, is_last=True)
         time.sleep(2)
         autogpt.utils.run(task.input)
+        # print(f"Created Task id: {task.task_id}")
+        return task
         
 
     async def step_handler(self, step: Step) -> Step:
-        print(f"step: {step.input}")
+        # print(f"step: {step}")
         agent_step = await Agent.db.get_step(step.task_id, step.step_id)
         updated_step: Step = await Agent.db.update_step(agent_step.task_id, agent_step.step_id, status="completed")
         updated_step.output = agent_step.input
