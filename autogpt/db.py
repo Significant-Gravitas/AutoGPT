@@ -9,7 +9,7 @@ import sqlite3
 from typing import Dict, List, Optional
 
 from agent_protocol import Artifact, Step, Task, TaskDB
-from agent_protocol.models import TaskInput, Status
+from agent_protocol.models import Status, TaskInput
 
 
 class DataNotFoundError(Exception):
@@ -135,8 +135,19 @@ class AgentDB(TaskDB):
             steps = cursor.fetchall()
             if steps:
                 for step in steps:
-                    status = Status.created if step[3] == "created" else Status.completed
-                    task.steps.append(Step(task_id=step[1], step_id=step[0], name=step[2], status=status, is_last=True if step[4] == 1 else False, additional_properties=step[5]))
+                    status = (
+                        Status.created if step[3] == "created" else Status.completed
+                    )
+                    task.steps.append(
+                        Step(
+                            task_id=step[1],
+                            step_id=step[0],
+                            name=step[2],
+                            status=status,
+                            is_last=True if step[4] == 1 else False,
+                            additional_properties=step[5],
+                        )
+                    )
             # print(f"Getting task {task_id}.... Task details: {task}")
             return task
         else:

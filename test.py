@@ -1,6 +1,8 @@
-DATABASE_NAME="agent.db"
+DATABASE_NAME = "agent.db"
 import sqlite3
+
 # Read all data from database
+
 
 def read_all():
     conn = sqlite3.connect(DATABASE_NAME)
@@ -9,5 +11,6 @@ def read_all():
     rows = cur.fetchall()
     conn.close()
     return rows
+
 
 print(read_all())
