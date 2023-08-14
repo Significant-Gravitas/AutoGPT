@@ -134,7 +134,7 @@ def create_single_test(
 
         scores = self.get_scores(config)
         request.node.scores = scores  # store scores in request.node
-        assert 1 in scores
+        assert 1 in scores["values"]
 
     # Parametrize the method here
     test_method = pytest.mark.parametrize(
