@@ -8,7 +8,7 @@ __init__.py.
 import collections
 import json
 import os
-from typing import Any, Generator, Optional
+from typing import Any, Generator
 
 import colorama
 import networkx
@@ -193,15 +193,13 @@ class DependencyManager(object):
                 colorama.deinit()
 
     @property
-    def sorted_items(self, show_graph: Optional[bool] = False) -> Generator:
+    def sorted_items(self) -> Generator:
         """Get a sorted list of tests where all tests are sorted after their dependencies."""
         # Build a directed graph for sorting
         build_skill_tree = os.getenv("BUILD_SKILL_TREE")
         BUILD_SKILL_TREE = (
             build_skill_tree.lower() == "true" if build_skill_tree else False
         )
-        if BUILD_SKILL_TREE:
-            show_graph = True
         dag = networkx.DiGraph()
 
         # Insert all items as nodes, to prevent items that have no dependencies and are not dependencies themselves from
@@ -226,9 +224,9 @@ class DependencyManager(object):
             data["name"] = node_name
             labels[item] = data
 
-        if show_graph:
+        if BUILD_SKILL_TREE:
             # graph_spring_layout(dag, labels)
-            graph_interactive_network(dag, labels, show=False)
+            graph_interactive_network(dag, labels, html_graph_path="")
 
         # Sort based on the dependencies
         return networkx.topological_sort(dag)
