@@ -277,9 +277,7 @@ def graph_interactive_network(
     json_graph = json.dumps(graph_data)
 
     # Optionally, save to a file
-    with open(
-        Path("agbenchmark/challenges/frontend/public/graph.json").resolve(), "w"
-    ) as f:
+    with open(Path("frontend/public/graph.json").resolve(), "w") as f:
         f.write(json_graph)
 
     if html_graph_path:

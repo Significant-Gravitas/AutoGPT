@@ -33,3 +33,6 @@
 [submodule "agbenchmark/challenges"]
 	path = agbenchmark/challenges
 	url = https://github.com/agbenchmark/agent-evals.git
+[submodule "frontend"]
+	path = frontend
+	url = https://github.com/agbenchmark/agbenchmark-frontend.git
