@@ -24,5 +24,8 @@ class AutoGPT:
             agent_step.task_id, agent_step.step_id, status="completed"
         )
         updated_step.output = agent_step.input
-        print(f"Step completed: {updated_step}")
+        if step.is_last:
+            print(f"Task completed: {updated_step.task_id}")
+        else:
+            print(f"Step completed: {updated_step}")
         return updated_step
