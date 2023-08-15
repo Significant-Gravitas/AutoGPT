@@ -176,14 +176,21 @@ class Agent(BaseAgent):
                 if type(return_value) == tuple and isinstance(
                     return_value[1], ContextItem
                 ):
-                    # self.context.add(return_value[1])
+                    context_item = return_value[1]
                     # return_value = return_value[0]
+                    logger.debug(
+                        f"Command {command_name} returned a ContextItem: {context_item}"
+                    )
+                    # self.context.add(context_item)
+
                     # HACK: use content of ContextItem as return value, for legacy support
-                    return_value = return_value[1]
+                    return_value = context_item.content
 
                 result = ActionSuccessResult(return_value)
             except AgentException as e:
                 result = ActionErrorResult(e.message, e)
+
+            logger.debug(f"Command result: {result}")
 
             result_tlength = count_string_tokens(str(result), self.llm.name)
             memory_tlength = count_string_tokens(
@@ -212,12 +219,15 @@ class Agent(BaseAgent):
             )
         elif result.status == "error":
             message = f"Command {command_name} failed: {result.reason}"
+
+            # Append hint to the error message if the exception has a hint
             if (
                 result.error
                 and isinstance(result.error, AgentException)
                 and result.error.hint
             ):
                 message = message.rstrip(".") + f". {result.error.hint}"
+
             self.history.add("system", message, "action_result")
 
         return result
