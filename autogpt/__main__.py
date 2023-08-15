@@ -9,7 +9,8 @@ import autogpt.db
 if __name__ == "__main__":
     """Runs the agent server"""
     load_dotenv()
-    database_name = os.getenv("DATABASE_NAME")
+    database_name = os.getenv("DATABASE_STRING")
+    print(database_name)
     port = os.getenv("PORT")
     workspace = os.getenv("AGENT_WORKSPACE")
     auto_gpt = autogpt.agent.AutoGPT()
