@@ -10,6 +10,12 @@ This repository contains the Flutter client for the AutoGPT project. The applica
 - Engage in chat conversations with selected agents
 - Configure user settings through a dedicated settings view
 
+## Design document
+
+The design document for this project provides a detailed outline of the architecture, components, and other important aspects of this application. Please note that this is a living, growing document and it is subject to change as the project evolves.
+
+You can access the design document [here](https://docs.google.com/document/d/1S-o2np1gq5JwFq40wPHDUVLi-mylz4WMvCB8psOUjc8/).
+
 ## Requirements
 
 - Flutter 3.x
