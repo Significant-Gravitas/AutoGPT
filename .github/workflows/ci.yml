@@ -7,7 +7,7 @@ on:
       agents:
         description: 'Agents to run (comma-separated)'
         required: false
-        default: 'gpt-engineer,smol-developer,Auto-GPT,mini-agi,beebot,BabyAGI,PolyGPT'  # Default agents if none are specified
+        default: 'gpt-engineer,smol-developer,Auto-GPT,mini-agi,beebot,BabyAGI,PolyGPT' # Default agents if none are specified
   schedule:
     - cron: '0 8 * * *'
   push:
@@ -110,7 +110,6 @@ jobs:
         run: |
           echo "Matrix Setup Environment Name: ${{ needs.matrix-setup.outputs.env-name }}"
 
-
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
@@ -126,7 +125,7 @@ jobs:
           cd agbenchmark/challenges
           git submodule update --init --remote --recursive
           cd ../..
-          
+
           sudo apt-get update
           sudo apt-get install -y unzip xvfb
           wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
@@ -206,7 +205,7 @@ jobs:
           fi
 
           pip install ../../dist/*.whl
-          
+
           bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/b7ab4bc53e51d8ab29fff19ce5986ab7720970c6/mitmproxy.sh)" -s start
 
           if [ "${GITHUB_EVENT_NAME}" == "pull_request" ] || [ "${{ github.event_name }}" == "push" ]; then
@@ -214,12 +213,12 @@ jobs:
             ${prefix}agbenchmark start --maintain --mock
             EXIT_CODE=$?
             set -e  # Stop ignoring non-zero exit codes
-  
+
             # Check if the exit code was 5, and if so, exit with 0 instead
             if [ $EXIT_CODE -eq 5 ]; then
               echo "regression_tests.json is empty."
             fi
-  
+
             ${prefix}agbenchmark start --mock
             ${prefix}agbenchmark start --mock --category=retrieval
             ${prefix}agbenchmark start --mock --category=interface
@@ -279,11 +278,9 @@ jobs:
                   poetry run python send_to_googledrive.py || echo "Failed to upload to Google Drive"
                   echo "Adding skill_tree submodule to update website"
                   poetry run agbenchmark start --mock
-                  cd agbenchmark/challenges/skill_tree                  
+                  cd agbenchmark/challenges/frontend                  
                   git add .
                   git commit -m "Update website with new skill tree"
-                  git remote set-url origin https://x-access-token:${{ env.GH_TOKEN }}@github.com/agbenchmark/skill-tree.github.io.git
-                  git push origin HEAD:refs/heads/main || echo "Already pushed the website, no need to push again."
                   cd ../../..
                   exit 0
               else
