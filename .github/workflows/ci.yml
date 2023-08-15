@@ -121,11 +121,6 @@ jobs:
 
       - name: Setup Chrome and ChromeDriver
         run: |
-          echo "Add submodules"
-          cd agbenchmark/challenges
-          git submodule update --init --remote --recursive
-          cd ../..
-
           sudo apt-get update
           sudo apt-get install -y unzip xvfb
           wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
@@ -276,12 +271,6 @@ jobs:
               if git push origin HEAD; then
                   echo "Success!"
                   poetry run python send_to_googledrive.py || echo "Failed to upload to Google Drive"
-                  echo "Adding skill_tree submodule to update website"
-                  poetry run agbenchmark start --mock
-                  cd frontend                  
-                  git add .
-                  git commit -m "Update website with new skill tree"
-                  cd ..
                   exit 0
               else
                   echo "Attempt $(($attempts + 1)) failed. Retrying..."
@@ -293,8 +282,6 @@ jobs:
         env:
           GDRIVE_BASE64: ${{ secrets.GDRIVE_BASE64 }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
-          BUILD_SKILL_TREE: true
-          AGENT_NAME: ${{ matrix.agent-name }}
 
   generate_charts:
     needs: tests
