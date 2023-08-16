@@ -1,0 +1,21 @@
+{
+  "name": "TestEngUrlShortener",
+  "category": ["code"],
+  "task": "Create a URL shortener app using HTML, CSS, JavaScript, and a backend language like Python or Node.js. Allow users to input a long URL and generate a shortened version that redirects to the original URL. Store the shortened URLs in a database.",
+  "dependencies": ["TestReturnCode_Simple"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "advanced",
+    "description": "",
+    "side_effects": []
+  }
+}

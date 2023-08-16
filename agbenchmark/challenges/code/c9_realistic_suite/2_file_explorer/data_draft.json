@@ -1,0 +1,25 @@
+{
+  "name": "TestEngFileExplorer",
+  "category": ["code"],
+  "task": "Create a file organizer CLI tool in Python that sorts files in a directory based on their file types (e.g., images, documents, audio) and moves them into corresponding folders.",
+  "dependencies": ["TestReturnCode_Simple"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "Given a directory with audio files, images, and txt files, it should sort them into folders.",
+    "should_contain": [
+      "Audio sorted correctly",
+      "Images sorted correctly",
+      ".txt files sorted correctly"
+    ],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "advanced",
+    "description": "Testing the creation of a file organizer CLI tool",
+    "side_effects": []
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "TestEngPassGen",
+  "category": ["code"],
+  "task": "Create a password generator CLI tool in Python that generates strong, random passwords based on user-specified criteria, such as length and character types (letters, numbers, symbols).",
+  "dependencies": ["TestReturnCode_Simple"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "Does the following password fulfill the requirements of the user?",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "llm",
+      "scoring": "binary",
+      "template": "question"
+    }
+  },
+  "info": {
+    "difficulty": "advanced",
+    "description": "Test.py will get content in the format of 1) Length: 10 2) Character types: letters, numbers, symbols 3) Password: 1a2b3c4d5e which the llm will score.",
+    "side_effects": []
+  }
+}

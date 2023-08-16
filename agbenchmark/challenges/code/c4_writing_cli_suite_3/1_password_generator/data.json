@@ -1,0 +1,21 @@
+{
+  "name": "TestPasswordGenerator_Easy",
+  "category": ["code"],
+  "task": "Create a random password generator. The password should have between 8 and 16 characters and should contain letters, numbers and symbols. The password should be printed to the console. The entry point will be a python file that can be run this way: python password_generator.py",
+  "dependencies": ["TestWriteFile"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "password_generator.py is created and satisfies the requirements.",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Tests ability for the agent to code a file organizer.",
+    "side_effects": []
+  }
+}
