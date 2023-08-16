@@ -52,7 +52,7 @@ class Challenge(ABC):
 
         artifact_paths = [
             self.ARTIFACTS_LOCATION,
-            Path(self.CHALLENGE_LOCATION).parent,
+            str(Path(self.CHALLENGE_LOCATION).parent),
         ]
 
         for path in artifact_paths:

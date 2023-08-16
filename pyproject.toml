@@ -76,7 +76,7 @@ line-length = 88
 target-version = ['py310']
 include = '\.pyi?$'
 packages = ["autogpt"]
-extend-exclude = '(/dist|/.venv|/venv|/build|/agent)/'
+extend-exclude = '(/dist|/.venv|/venv|/build|/agent|agbenchmark/challenges)/'
 
 [tool.isort]
 profile = "black"

@@ -1,0 +1,23 @@
+{
+  "name": "TestProductAdvisor_GamingMonitor",
+  "category": ["retrieval", "product_advisor"],
+  "task": "Write the answer of the following question into a .txt file: What is the Acer Nitro KG241Y good for?",
+  "dependencies": ["TestWriteFile"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "Does the following text mention the fact that the Acer Nitro KG241Y is good for gaming?",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "llm",
+      "scoring": "binary",
+      "template": "question"
+    }
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Tests the agent's ability to provide information about a product",
+    "side_effects": []
+  }
+}

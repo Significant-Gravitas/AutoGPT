@@ -1,0 +1,21 @@
+{
+  "name": "TestEngTimerApp",
+  "category": ["code"],
+  "task": "Create a simple timer app using HTML, CSS, and JavaScript that allows users to set a countdown timer and receive an alert when the time is up.",
+  "dependencies": ["TestReturnCode_Simple"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "advanced",
+    "description": "",
+    "side_effects": []
+  }
+}

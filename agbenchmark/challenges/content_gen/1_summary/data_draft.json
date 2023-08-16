@@ -1,0 +1,25 @@
+{
+  "name": "TestBasicContentGen",
+  "category": ["content_gen"],
+  "task": "Create a brief report or summary highlighting how one or more companies from companies.txt are addressing or capitalizing on challenges or trends from challenges.txt. Write a file called output.txt.",
+  "dependencies": ["TestReadFile"],
+  "cutoff": 240,
+  "ground": {
+    "answer": "A report highlighting elements from the 2 files.",
+    "should_contain": [
+      "Is the company mentioned in the output actively addressing or capitalizing on the challenges or trends listed?"
+    ],
+    "should_not_contain": [],
+    "files": ["output.txt"],
+    "eval": {
+      "type": "llm",
+      "scoring": "binary",
+      "template": "question"
+    }
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Tests ability to generate content based on the content of 2 files.",
+    "side_effects": []
+  }
+}

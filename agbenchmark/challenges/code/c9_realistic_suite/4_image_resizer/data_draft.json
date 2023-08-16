@@ -1,0 +1,21 @@
+{
+  "name": "TestEngImageResizer",
+  "category": ["code"],
+  "task": "Create a CLI tool in Python that allows users to resize images by specifying the desired width and height. Use the Pillow library for image manipulation.",
+  "dependencies": ["TestReturnCode_Simple"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "Takes two image files img1.jpg and img2.png and checks if they have been resized correctly",
+    "should_contain": ["1280*1280", "640*640"],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "advanced",
+    "description": "Asks to build CLI tool that resizes images to a specified width and height.",
+    "side_effects": []
+  }
+}
