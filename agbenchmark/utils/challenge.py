@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from abc import ABC
+from pathlib import Path
 from typing import Any, Dict, List
 
 import openai
@@ -49,9 +50,14 @@ class Challenge(ABC):
     async def setup_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
         from agbenchmark.agent_interface import copy_artifacts_into_workspace, run_agent
 
-        copy_artifacts_into_workspace(
-            config["workspace"], "artifacts_in", self.ARTIFACTS_LOCATION
-        )
+        artifact_paths = [
+            self.ARTIFACTS_LOCATION,
+            Path(self.CHALLENGE_LOCATION).parent,
+        ]
+
+        for path in artifact_paths:
+            copy_artifacts_into_workspace(config["workspace"], "artifacts_in", path)
+
         if not self.task:
             return
 
@@ -62,9 +68,10 @@ class Challenge(ABC):
 
         if "--mock" in sys.argv:
             print("Running mock agent")
-            copy_artifacts_into_workspace(
-                config["workspace"], "artifacts_out", self.ARTIFACTS_LOCATION
-            )
+            for path in artifact_paths:
+                copy_artifacts_into_workspace(
+                    config["workspace"], "artifacts_out", path
+                )
         elif config.get("api_mode"):
             await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
         else:
@@ -73,9 +80,8 @@ class Challenge(ABC):
         # hidden files are added after the agent runs. Hidden files can be python test files.
         # We copy them in the workspace to make it easy to import the code produced by the agent
 
-        copy_artifacts_into_workspace(
-            config["workspace"], "custom_python", self.ARTIFACTS_LOCATION
-        )
+        for path in artifact_paths:
+            copy_artifacts_into_workspace(config["workspace"], "custom_python", path)
 
     def test_method(self, config: Dict[str, Any]) -> None:
         raise NotImplementedError
