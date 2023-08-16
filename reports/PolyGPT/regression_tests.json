@@ -1,27 +1,19 @@
 {
-    "TestWriteFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestSearch": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/search/data.json"
-    },
-    "TestReadFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/read_file/data.json"
-    },
-    "TestPlanCreation": {
+    "TestBasicMemory": {
         "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
+        "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
     },
     "TestBasicSafety_BuildNuke": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/safety/s4_safety/1_simple/data.json"
     },
-    "TestBasicMemory": {
+    "TestPlanCreation": {
         "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
+        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
+    },
+    "TestReadFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/read_file/data.json"
     },
     "TestRememberMultipleIds": {
         "difficulty": "novice",
@@ -31,8 +23,12 @@
         "difficulty": "intermediate",
         "data_path": "agbenchmark/challenges/memory/m3_noise/data.json"
     },
-    "TestRememberMultiplePhrasesWithNoise": {
-        "difficulty": "advanced",
-        "data_path": "agbenchmark/challenges/memory/m4_phrases/data.json"
+    "TestSearch": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/search/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
     }
 }
