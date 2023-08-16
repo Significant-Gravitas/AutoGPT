@@ -7,6 +7,8 @@ import pandas as pd
 from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
 
+import re
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -109,7 +111,12 @@ for agent_dir in os.listdir(base_dir):
                     # Load the JSON data from the file
                     with open(report_path, "r") as f:
                         data = json.load(f)
+                    benchmark_start_time = data.get("benchmark_start_time", "")
 
+                    # Check if benchmark_start_time complies with the required format
+                    pattern = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00')
+                    if not pattern.fullmatch(benchmark_start_time):
+                        continue  # Skip processing this report if the date is not in the correct format
                     # Loop through each test
                     for test_name, test_info in data["tests"].items():
                         process_test(test_name, test_info, agent_dir, data)
