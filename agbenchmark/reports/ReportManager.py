@@ -2,7 +2,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
@@ -63,7 +63,7 @@ class ReportManager:
             "command": command.split(os.sep)[-1],
             "benchmark_git_commit_sha": BENCHMARK_GIT_COMMIT_SHA,
             "agent_git_commit_sha": AGENT_GIT_COMMIT_SHA,
-            "completion_time": datetime.now().strftime("%Y-%m-%d-%H:%M"),
+            "completion_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00"),
             "benchmark_start_time": BENCHMARK_START_TIME,
             "metrics": {
                 "run_time": str(round(time.time() - self.start_time, 2)) + " seconds",
