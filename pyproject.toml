@@ -26,6 +26,7 @@ agbenchmark = "^0.0.7"
 types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
+watchdog = "^3.0.0"
 
 
 [tool.poetry.group.ui.dependencies]
