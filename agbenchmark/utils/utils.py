@@ -25,7 +25,7 @@ def calculate_info_test_path(base_path: Path) -> str:
     base_path.mkdir(parents=True, exist_ok=True)
 
     # Get current UTC date-time stamp
-    date_stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    date_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
 
     # Default run name
     run_name = "full_run"
