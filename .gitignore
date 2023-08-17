@@ -160,3 +160,10 @@ openai/
 
 # news
 CURRENT_BULLETIN.md
+
+# AgBenchmark
+agbenchmark/reports/
+
+# Nodejs
+package-lock.json
+package.json
