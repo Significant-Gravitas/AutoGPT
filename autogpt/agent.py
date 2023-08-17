@@ -13,7 +13,8 @@ class AutoGPT:
         print(f"task: {task.input}")
         await Agent.db.create_step(task.task_id, task.input, is_last=True)
         time.sleep(2)
-        autogpt.utils.run(task.input)
+
+        # autogpt.utils.run(task.input) the task_handler only creates the task, it doesn't execute it
         # print(f"Created Task id: {task.task_id}")
         return task
 
