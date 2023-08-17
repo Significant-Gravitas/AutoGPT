@@ -5,10 +5,13 @@ from dotenv import load_dotenv
 
 import autogpt.agent
 import autogpt.db
+from autogpt.benchmark_integration import add_benchmark_routes
 
 if __name__ == "__main__":
     """Runs the agent server"""
     load_dotenv()
+    router = add_benchmark_routes()
+
     database_name = os.getenv("DATABASE_STRING")
     print(database_name)
     port = os.getenv("PORT")
@@ -19,4 +22,4 @@ if __name__ == "__main__":
     agent = Agent.setup_agent(auto_gpt.task_handler, auto_gpt.step_handler)
     agent.db = database
     agent.workspace = workspace
-    agent.start(port=port)
+    agent.start(port=port, router=router)

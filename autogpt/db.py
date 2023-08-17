@@ -5,11 +5,20 @@ IT IS NOT ADVISED TO USE THIS IN PRODUCTION!
 """
 
 from typing import Dict, List, Optional
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Boolean, LargeBinary
-from sqlalchemy.orm import relationship, sessionmaker, DeclarativeBase
 
 from agent_protocol import Artifact, Step, Task, TaskDB
 from agent_protocol.models import Status, TaskInput
+from sqlalchemy import (
+    Boolean,
+    Column,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    create_engine,
+)
+from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
+
 
 class Base(DeclarativeBase):
     pass
@@ -20,7 +29,7 @@ class DataNotFoundError(Exception):
 
 
 class TaskModel(Base):
-    __tablename__ = 'tasks'
+    __tablename__ = "tasks"
 
     task_id = Column(Integer, primary_key=True, autoincrement=True)
     input = Column(String)
@@ -31,10 +40,10 @@ class TaskModel(Base):
 
 
 class StepModel(Base):
-    __tablename__ = 'steps'
+    __tablename__ = "steps"
 
     step_id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(Integer, ForeignKey('tasks.task_id'))
+    task_id = Column(Integer, ForeignKey("tasks.task_id"))
     name = Column(String)
     status = Column(String)
     is_last = Column(Boolean, default=False)
@@ -44,18 +53,19 @@ class StepModel(Base):
 
 
 class ArtifactModel(Base):
-    __tablename__ = 'artifacts'
+    __tablename__ = "artifacts"
 
     artifact_id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(Integer, ForeignKey('tasks.task_id'))
-    step_id = Column(Integer, ForeignKey('steps.step_id'))
+    task_id = Column(Integer, ForeignKey("tasks.task_id"))
+    step_id = Column(Integer, ForeignKey("steps.step_id"))
     file_name = Column(String)
     relative_path = Column(String)
     file_data = Column(LargeBinary)
 
     task = relationship("TaskModel", back_populates="artifacts")
 
-#sqlite:///{database_name}
+
+# sqlite:///{database_name}
 class AgentDB(TaskDB):
     def __init__(self, database_string) -> None:
         super().__init__()
@@ -64,30 +74,59 @@ class AgentDB(TaskDB):
         self.Session = sessionmaker(bind=self.engine)
         print("Databases Created")
 
-    async def create_task(self, input: Optional[str], additional_input: Optional[TaskInput] = None,
-                          artifacts: List[Artifact] = None, steps: List[Step] = None) -> Task:
+    async def create_task(
+        self,
+        input: Optional[str],
+        additional_input: Optional[TaskInput] = None,
+        artifacts: List[Artifact] = None,
+        steps: List[Step] = None,
+    ) -> Task:
         session = self.Session()
-        new_task = TaskModel(input=input, additional_input=additional_input.json() if additional_input else None)
+        new_task = TaskModel(
+            input=input,
+            additional_input=additional_input.json() if additional_input else None,
+        )
         session.add(new_task)
         session.commit()
         session.refresh(new_task)
         return await self.get_task(new_task.task_id)
 
-    async def create_step(self, task_id: str, name: Optional[str] = None, is_last: bool = False,
-                          additional_properties: Optional[Dict[str, str]] = None) -> Step:
+    async def create_step(
+        self,
+        task_id: str,
+        name: Optional[str] = None,
+        is_last: bool = False,
+        additional_properties: Optional[Dict[str, str]] = None,
+    ) -> Step:
         session = self.Session()
-        new_step = StepModel(task_id=task_id, name=name, status="created", is_last=is_last,
-                             additional_properties=additional_properties)
+        new_step = StepModel(
+            task_id=task_id,
+            name=name,
+            status="created",
+            is_last=is_last,
+            additional_properties=additional_properties,
+        )
         session.add(new_step)
         session.commit()
         session.refresh(new_step)
         return await self.get_step(task_id, new_step.step_id)
 
-    async def create_artifact(self, task_id: str, file_name: str, relative_path: Optional[str] = None,
-                              step_id: Optional[str] = None, file_data: bytes | None = None) -> Artifact:
+    async def create_artifact(
+        self,
+        task_id: str,
+        file_name: str,
+        relative_path: Optional[str] = None,
+        step_id: Optional[str] = None,
+        file_data: bytes | None = None,
+    ) -> Artifact:
         session = self.Session()
-        new_artifact = ArtifactModel(task_id=task_id, step_id=step_id, file_name=file_name,
-                                     relative_path=relative_path, file_data=file_data)
+        new_artifact = ArtifactModel(
+            task_id=task_id,
+            step_id=step_id,
+            file_name=file_name,
+            relative_path=relative_path,
+            file_data=file_data,
+        )
         session.add(new_artifact)
         session.commit()
         session.refresh(new_artifact)
@@ -98,11 +137,18 @@ class AgentDB(TaskDB):
         session = self.Session()
         task_obj = session.query(TaskModel).filter_by(task_id=task_id).first()
         if task_obj:
-            task = Task(task_id=task_obj.task_id, input=task_obj.input, additional_input=task_obj.additional_input, steps=[])
+            task = Task(
+                task_id=task_obj.task_id,
+                input=task_obj.input,
+                additional_input=task_obj.additional_input,
+                steps=[],
+            )
             steps_obj = session.query(StepModel).filter_by(task_id=task_id).all()
             if steps_obj:
                 for step in steps_obj:
-                    status = Status.created if step.status == "created" else Status.completed
+                    status = (
+                        Status.created if step.status == "created" else Status.completed
+                    )
                     task.steps.append(
                         Step(
                             task_id=step.task_id,
@@ -117,7 +163,6 @@ class AgentDB(TaskDB):
         else:
             raise DataNotFoundError("Task not found")
 
-
     async def get_step(self, task_id: int, step_id: int) -> Step:
         session = self.Session()
         if (
@@ -126,13 +171,24 @@ class AgentDB(TaskDB):
             .first()
         ):
             status = Status.completed if step.status == "completed" else Status.created
-            return Step(task_id=task_id, step_id=step_id, name=step.name, status=status, is_last=step.is_last == 1,
-                        additional_properties=step.additional_properties)
+            return Step(
+                task_id=task_id,
+                step_id=step_id,
+                name=step.name,
+                status=status,
+                is_last=step.is_last == 1,
+                additional_properties=step.additional_properties,
+            )
         else:
             raise DataNotFoundError("Step not found")
 
-    async def update_step(self, task_id: str, step_id: str, status: str,
-                          additional_properties: Optional[Dict[str, str]] = None) -> Step:
+    async def update_step(
+        self,
+        task_id: str,
+        step_id: str,
+        status: str,
+        additional_properties: Optional[Dict[str, str]] = None,
+    ) -> Step:
         session = self.Session()
         if (
             step := session.query(StepModel)
@@ -153,8 +209,11 @@ class AgentDB(TaskDB):
             .filter_by(task_id=task_id, artifact_id=artifact_id)
             .first()
         ):
-            return Artifact(artifact_id=artifact.artifact_id, file_name=artifact.file_name,
-                            relative_path=artifact.relative_path)
+            return Artifact(
+                artifact_id=artifact.artifact_id,
+                file_name=artifact.file_name,
+                relative_path=artifact.relative_path,
+            )
         else:
             raise DataNotFoundError("Artifact not found")
 
@@ -172,9 +231,24 @@ class AgentDB(TaskDB):
     async def list_tasks(self) -> List[Task]:
         session = self.Session()
         tasks = session.query(TaskModel).all()
-        return [Task(task_id=task.task_id, input=task.input, additional_input=task.additional_input) for task in tasks]
+        return [
+            Task(
+                task_id=task.task_id,
+                input=task.input,
+                additional_input=task.additional_input,
+            )
+            for task in tasks
+        ]
 
     async def list_steps(self, task_id: str) -> List[Step]:
         session = self.Session()
         steps = session.query(StepModel).filter_by(task_id=task_id).all()
-        return [Step(task_id=task_id, step_id=step.step_id, name=step.name, status=step.status) for step in steps]
+        return [
+            Step(
+                task_id=task_id,
+                step_id=step.step_id,
+                name=step.name,
+                status=step.status,
+            )
+            for step in steps
+        ]

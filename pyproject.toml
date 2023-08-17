@@ -22,7 +22,7 @@ black = "^23.3.0"
 pre-commit = "^3.3.3"
 mypy = "^1.4.1"
 flake8 = "^6.0.0"
-agbenchmark = "^0.0.7"
+agbenchmark = "^0.0.9"
 types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
@@ -39,3 +39,21 @@ dash-bootstrap-components = "^1.4.2"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+packages = ["autogpt"]
+extend-exclude = '(/dist|/.venv|/venv|/build|/agent|agbenchmark/challenges)/'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+line_length = 88
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+skip_glob = [".tox", "__pycache__", "*.pyc", "venv*/*", "reports", "venv", "env", "node_modules", ".env", ".venv", "dist", "agent/*", "agbenchmark/challenges/*"]
