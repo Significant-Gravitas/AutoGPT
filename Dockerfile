@@ -28,7 +28,16 @@ ENTRYPOINT ["python", "-m", "autogpt", "--install-plugin-deps"]
 
 # dev build -> include everything
 FROM autogpt-base as autogpt-dev
+
+# Install additional dependencies for building and development
+RUN apt-get update && apt-get install -y \
+    gcc python3-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
 WORKDIR /app
 ONBUILD COPY . ./
 
