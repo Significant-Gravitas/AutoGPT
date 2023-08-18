@@ -18,6 +18,6 @@ if __name__ == "__main__":
     port = os.getenv("PORT")
 
     database = autogpt.db.AgentDB(database_name)
-    agent = autogpt.agent.AutoGPT(db=database, workspace=workspace)
+    agent = autogpt.agent.Agent(database=database, workspace=workspace)
 
     agent.start(port=port, router=router)
