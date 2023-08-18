@@ -97,7 +97,7 @@ jobs:
         run: |
           poetry run python -m autogpt &
           cp .env.example .env
-          newman run https://raw.githubusercontent.com/Significant-Gravitas/devtool-postman/master/Postman%20Collections/devtool_experience.json --env-var "url= http://127.0.0.1:8000" || echo  "The backend is not ready yet, so the tests will fail"
+          newman run https://raw.githubusercontent.com/Significant-Gravitas/postman/master/Postman%20Collections/agent_protocol_rest.json --env-var "url= http://127.0.0.1:8000"
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
