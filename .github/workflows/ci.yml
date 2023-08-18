@@ -97,7 +97,8 @@ jobs:
         run: |
           poetry run python -m autogpt &
           cp .env.example .env
-          newman run https://raw.githubusercontent.com/Significant-Gravitas/postman/master/Postman%20Collections/agent_protocol_rest.json --env-var "url= http://127.0.0.1:8000"
+          newman run https://raw.githubusercontent.com/Significant-Gravitas/postman/master/Postman%20Collections/agent_protocol_rest.json --folder "Basic User Experience" --env-var "url= http://127.0.0.1:8000" -n 2
+          newman run https://raw.githubusercontent.com/Significant-Gravitas/postman/master/Postman%20Collections/agent_protocol_rest.json --folder "Tasks Load Test" --env-var "url= http://127.0.0.1:8000" -n 10
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
