@@ -10,10 +10,10 @@ readme = "README.md"
 python = "^3.10"
 python-dotenv = "^1.0.0"
 openai = "^0.27.8"
-agent-protocol = "^0.2.2"
 helicone = "^1.0.6"
 tenacity = "^8.2.2"
 sqlalchemy = "^2.0.19"
+google-cloud-storage = "^2.10.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -27,6 +27,7 @@ types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
 watchdog = "^3.0.0"
+mock = "^5.1.0"
 
 
 [tool.poetry.group.ui.dependencies]

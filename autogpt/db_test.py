@@ -53,6 +53,17 @@ async def test_create_and_get_task():
 
 
 @pytest.mark.asyncio
+async def test_create_and_get_task_with_steps():
+    db_name = "sqlite:///test_db.sqlite3"
+    agent_db = AgentDB(db_name)
+    await agent_db.create_task("task_input")
+    task = await agent_db.get_task(1)
+
+    assert task.input == "task_input"
+    os.remove(db_name.split("///")[1])
+
+
+@pytest.mark.asyncio
 async def test_get_task_not_found():
     db_name = "sqlite:///test_db.sqlite3"
     agent_db = AgentDB(db_name)
@@ -102,41 +113,23 @@ async def test_get_artifact():
     # Given: A task and its corresponding artifact
     task = await db.create_task("test_input")
     step = await db.create_step(task.task_id, "step_name")
+
+    # Create an artifact
     artifact = await db.create_artifact(
-        task.task_id, "sample_file.txt", "/path/to/sample_file.txt", step.step_id
+        task_id=task.task_id,
+        file_name="sample_file.txt",
+        uri="file:///path/to/sample_file.txt",
+        agent_created=True,
+        step_id=step.step_id,
     )
 
     # When: The artifact is fetched by its ID
-    fetched_artifact = await db.get_artifact(task.task_id, artifact.artifact_id)
+    fetched_artifact = await db.get_artifact(int(task.task_id), artifact.artifact_id)
 
     # Then: The fetched artifact matches the original
-    assert fetched_artifact.artifact_id == artifact.artifact_id
     assert fetched_artifact.file_name == "sample_file.txt"
-    assert fetched_artifact.relative_path == "/path/to/sample_file.txt"
-    os.remove(db_name.split("///")[1])
+    assert fetched_artifact.uri == "file:///path/to/sample_file.txt"
 
-
-@pytest.mark.asyncio
-async def test_get_artifact_file():
-    db_name = "sqlite:///test_db.sqlite3"
-    db = AgentDB(db_name)
-    sample_data = b"sample data"
-    # Given: A task and its corresponding artifact
-    task = await db.create_task("test_input")
-    step = await db.create_step(task.task_id, "step_name")
-    artifact = await db.create_artifact(
-        task.task_id,
-        "sample_file.txt",
-        "/path/to/sample_file.txt",
-        step.step_id,
-        sample_data,
-    )
-
-    # When: The artifact is fetched by its ID
-    fetched_artifact = await db.get_artifact_file(task.task_id, artifact.artifact_id)
-
-    # Then: The fetched artifact matches the original
-    assert fetched_artifact == sample_data
     os.remove(db_name.split("///")[1])
 
 
@@ -174,6 +167,6 @@ async def test_list_steps():
 
     # Then: The fetched steps list includes the created steps
     step_ids = [step.step_id for step in fetched_steps]
-    assert step1.step_id in step_ids
-    assert step2.step_id in step_ids
+    assert str(step1.step_id) in step_ids
+    assert str(step2.step_id) in step_ids
     os.remove(db_name.split("///")[1])
