@@ -1,12 +1,11 @@
-from pathlib import Path
-
 from agbenchmark.app import get_artifact, get_skill_tree
-from agent_protocol.agent import base_router
 from fastapi import APIRouter
 from fastapi import (
     HTTPException as FastAPIHTTPException,  # Import HTTPException from FastAPI
 )
 from fastapi.responses import FileResponse
+
+from autogpt.agent_protocol.agent import base_router
 
 
 def add_benchmark_routes():

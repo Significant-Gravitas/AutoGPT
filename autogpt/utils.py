@@ -5,6 +5,7 @@ PLEASE IGNORE
 -------------------------------------------------------------
 """
 
+import glob
 import os
 import typing
 from pathlib import Path
@@ -41,11 +42,28 @@ def chat_completion_request(
         exit()
 
 
-def run(task: str) -> None:
+def run(task: str):
     """Runs the agent for benchmarking"""
     print("Running agent")
     steps = plan(task)
     execute_plan(steps)
+    # check for artifacts in workspace
+    items = glob.glob(os.path.join(workspace, "*"))
+    if items:
+        artifacts = []
+        print(f"Found {len(items)} artifacts in workspace")
+        for item in items:
+            with open(item, "r") as f:
+                item_contents = f.read()
+            path_within_workspace = os.path.relpath(item, workspace)
+            artifacts.append(
+                {
+                    "file_name": os.path.basename(item),
+                    "uri": f"file://{path_within_workspace}",
+                    "contents": item_contents,
+                }
+            )
+    return artifacts
 
 
 def execute_plan(plan: typing.List[str]) -> None:

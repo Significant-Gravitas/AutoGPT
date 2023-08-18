@@ -1,8 +1,8 @@
 #!/bin/bash
 
-export PYTHONPATH=$PYTHONPATH:$PWD
 
-poetry install
-poetry shell
 
-watchmedo auto-restart -p "*.py" -R python3 -- autogpt/__main__.py "$@"
+# poetry install
+# poetry shell
+
+export PYTHONPATH=$PYTHONPATH:$PWD; watchmedo auto-restart -p "*.py" -R python3 -- autogpt/__main__.py "$@"
