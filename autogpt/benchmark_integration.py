@@ -5,7 +5,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 
-from autogpt.agent_protocol.agent import base_router
+from autogpt.routes.agent_protocol import base_router
 
 
 def add_benchmark_routes():

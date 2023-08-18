@@ -9,8 +9,7 @@ from typing import Dict, List, Optional
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmaker
 
-from autogpt.agent_protocol import Artifact, Step, Task, TaskDB
-from autogpt.agent_protocol.models import Status, TaskInput
+from .schema import Artifact, Status, Step, Task, TaskInput
 
 
 class Base(DeclarativeBase):
@@ -28,7 +27,6 @@ class TaskModel(Base):
     input = Column(String)
     additional_input = Column(String)
 
-    steps = relationship("StepModel", back_populates="task")
     artifacts = relationship("ArtifactModel", back_populates="task")
 
 
@@ -41,9 +39,9 @@ class StepModel(Base):
     input = Column(String)
     status = Column(String)
     is_last = Column(Boolean, default=False)
-    additional_properties = Column(String)
 
-    task = relationship("TaskModel", back_populates="steps")
+    additional_properties = Column(String)
+    artifacts = relationship("ArtifactModel", back_populates="step")
 
 
 class ArtifactModel(Base):
@@ -56,29 +54,16 @@ class ArtifactModel(Base):
     file_name = Column(String)
     uri = Column(String)
 
+    step = relationship("StepModel", back_populates="artifacts")
     task = relationship("TaskModel", back_populates="artifacts")
 
 
 def convert_to_task(task_obj: TaskModel) -> Task:
-    steps_list = []
-    for step in task_obj.steps:
-        status = Status.completed if step.status == "completed" else Status.created
-        steps_list.append(
-            Step(
-                task_id=step.task_id,
-                step_id=step.step_id,
-                name=step.name,
-                status=status,
-                is_last=step.is_last == 1,
-                additional_properties=step.additional_properties,
-            )
-        )
     return Task(
         task_id=task_obj.task_id,
         input=task_obj.input,
         additional_input=task_obj.additional_input,
         artifacts=[],
-        steps=steps_list,
     )
 
 
@@ -91,7 +76,7 @@ def convert_to_step(step_model: StepModel) -> Step:
             agent_created=artifact.agent_created,
             uri=artifact.uri,
         )
-        for artifact in step_model.task.artifacts
+        for artifact in step_model.artifacts
         if artifact.step_id == step_model.step_id
     ]
     status = Status.completed if step_model.status == "completed" else Status.created
@@ -108,7 +93,7 @@ def convert_to_step(step_model: StepModel) -> Step:
 
 
 # sqlite:///{database_name}
-class AgentDB(TaskDB):
+class AgentDB:
     def __init__(self, database_string) -> None:
         super().__init__()
         self.engine = create_engine(database_string)
@@ -137,18 +122,21 @@ class AgentDB(TaskDB):
         is_last: bool = False,
         additional_properties: Optional[Dict[str, str]] = None,
     ) -> Step:
-        session = self.Session()
-        new_step = StepModel(
-            task_id=task_id,
-            name=name,
-            input=input,
-            status="created",
-            is_last=is_last,
-            additional_properties=additional_properties,
-        )
-        session.add(new_step)
-        session.commit()
-        session.refresh(new_step)
+        try:
+            session = self.Session()
+            new_step = StepModel(
+                task_id=task_id,
+                name=name,
+                input=input,
+                status="created",
+                is_last=is_last,
+                additional_properties=additional_properties,
+            )
+            session.add(new_step)
+            session.commit()
+            session.refresh(new_step)
+        except Exception as e:
+            print(e)
         return convert_to_step(new_step)
 
     async def create_artifact(
@@ -163,7 +151,12 @@ class AgentDB(TaskDB):
 
         if existing_artifact := session.query(ArtifactModel).filter_by(uri=uri).first():
             session.close()
-            return existing_artifact
+            return Artifact(
+                artifact_id=str(existing_artifact.artifact_id),
+                file_name=existing_artifact.file_name,
+                agent_created=existing_artifact.agent_created,
+                uri=existing_artifact.uri,
+            )
 
         new_artifact = ArtifactModel(
             task_id=task_id,
@@ -175,18 +168,22 @@ class AgentDB(TaskDB):
         session.add(new_artifact)
         session.commit()
         session.refresh(new_artifact)
-        return await self.get_artifact(task_id, new_artifact.artifact_id)
+        return Artifact(
+            artifact_id=str(new_artifact.artifact_id),
+            file_name=new_artifact.file_name,
+            agent_created=new_artifact.agent_created,
+            uri=new_artifact.uri,
+        )
 
     async def get_task(self, task_id: int) -> Task:
         """Get a task by its id"""
         session = self.Session()
-        task_obj = (
+        if task_obj := (
             session.query(TaskModel)
-            .options(joinedload(TaskModel.steps))
+            .options(joinedload(TaskModel.artifacts))
             .filter_by(task_id=task_id)
             .first()
-        )
-        if task_obj:
+        ):
             return convert_to_task(task_obj)
         else:
             raise DataNotFoundError("Task not found")
@@ -195,7 +192,7 @@ class AgentDB(TaskDB):
         session = self.Session()
         if step := (
             session.query(StepModel)
-            .options(joinedload(StepModel.task).joinedload(TaskModel.artifacts))
+            .options(joinedload(StepModel.artifacts))
             .filter(StepModel.step_id == step_id)
             .first()
         ):
@@ -248,6 +245,8 @@ class AgentDB(TaskDB):
                 task_id=task.task_id,
                 input=task.input,
                 additional_input=task.additional_input,
+                artifacts=[],
+                steps=[],
             )
             for task in tasks
         ]

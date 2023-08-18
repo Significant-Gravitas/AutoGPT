@@ -43,4 +43,4 @@ def test_local_list(setup_local_workspace):
     workspace.write("test2.txt", TEST_FILE_CONTENT)
 
     files = workspace.list(".")
-    assert set(files) == set(["test1.txt", "test2.txt"])
+    assert set(files) == {"test1.txt", "test2.txt"}
