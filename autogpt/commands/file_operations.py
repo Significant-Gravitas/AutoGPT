@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Generator, Literal
 
 from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.command_decorator import command
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
@@ -151,17 +152,14 @@ def read_file(filename: str, agent: Agent) -> str:
     Returns:
         str: The contents of the file
     """
-    try:
-        content = read_textual_file(filename, logger)
+    content = read_textual_file(filename, logger)
 
-        # TODO: invalidate/update memory when file is edited
-        file_memory = MemoryItem.from_text_file(content, filename, agent.config)
-        if len(file_memory.chunks) > 1:
-            return file_memory.summary
+    # TODO: invalidate/update memory when file is edited
+    file_memory = MemoryItem.from_text_file(content, filename, agent.config)
+    if len(file_memory.chunks) > 1:
+        return file_memory.summary
 
-        return content
-    except Exception as e:
-        return f"Error: {str(e)}"
+    return content
 
 
 def ingest_file(
@@ -220,16 +218,14 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
     """
     checksum = text_checksum(text)
     if is_duplicate_operation("write", filename, agent, checksum):
-        return "Error: File has already been updated."
-    try:
-        directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(text)
-        log_operation("write", filename, agent, checksum)
-        return "File written to successfully."
-    except Exception as err:
-        return f"Error: {err}"
+        raise DuplicateOperationError("File has already been updated.")
+
+    directory = os.path.dirname(filename)
+    os.makedirs(directory, exist_ok=True)
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(text)
+    log_operation("write", filename, agent, checksum)
+    return "File written to successfully."
 
 
 @sanitize_path_arg("filename")
@@ -246,20 +242,17 @@ def append_to_file(
     Returns:
         str: A message indicating success or failure
     """
-    try:
-        directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
-        with open(filename, "a", encoding="utf-8") as f:
-            f.write(text)
+    directory = os.path.dirname(filename)
+    os.makedirs(directory, exist_ok=True)
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(text)
 
-        if should_log:
-            with open(filename, "r", encoding="utf-8") as f:
-                checksum = text_checksum(f.read())
-            log_operation("append", filename, agent, checksum=checksum)
+    if should_log:
+        with open(filename, "r", encoding="utf-8") as f:
+            checksum = text_checksum(f.read())
+        log_operation("append", filename, agent, checksum=checksum)
 
-        return "Text appended successfully."
-    except Exception as err:
-        return f"Error: {err}"
+    return "Text appended successfully."
 
 
 @command(
