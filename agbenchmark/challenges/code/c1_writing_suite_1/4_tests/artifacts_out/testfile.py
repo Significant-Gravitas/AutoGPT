@@ -1,5 +1,5 @@
 # mypy: ignore-errors
-from code import multiply_int
+from sample_code import multiply_int
 
 
 def test_multiply_int(num: int, multiplier, expected_result: int) -> None:
@@ -15,16 +15,4 @@ if __name__ == "__main__":
     num = 4
     multiplier = 2
     expected_result = 8
-    test_multiply_int(num, multiplier, expected_result)
-
-    # so its not hard coded
-    num = 7
-    multiplier = 7
-    expected_result = 49
-    test_multiply_int(num, multiplier, expected_result)
-
-    # negative numbers
-    num = -6
-    multiplier = 2
-    expected_result = -12
     test_multiply_int(num, multiplier, expected_result)

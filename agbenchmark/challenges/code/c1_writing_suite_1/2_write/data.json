@@ -1,7 +1,7 @@
 {
   "name": "TestReturnCode_Write",
   "category": ["code", "iterate"],
-  "task": "Add a function called multiply_int in code.py that multiplies numbers by 2. You can make sure you have correctly done this by running test.py",
+  "task": "Add a function called multiply_int in sample_code.py that multiplies numbers by 2. You can make sure you have correctly done this by running test.py",
   "dependencies": ["TestReturnCode_Simple"],
   "cutoff": 120,
   "ground": {

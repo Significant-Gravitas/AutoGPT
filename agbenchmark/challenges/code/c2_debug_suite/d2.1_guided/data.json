@@ -1,7 +1,7 @@
 {
   "name": "TestDebugSimpleTypoWithGuidance",
   "category": ["code", "iterate"],
-  "task": "1- Run test.py.\n2- Read code.py.\n3- Modify code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
+  "task": "1- Run test.py.\n2- Read sample_code.py.\n3- Modify sample_code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
   "dependencies": ["TestReadFile"],
   "cutoff": 75,
   "ground": {
