@@ -3,6 +3,7 @@ from git.exc import GitCommandError
 from git.repo.base import Repo
 
 from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.commands.git_operations import clone_repository
 
 
@@ -38,6 +39,5 @@ def test_clone_repository_error(workspace, mock_clone_from, agent: Agent):
         "clone", "fatal: repository not found", ""
     )
 
-    result = clone_repository(url=url, clone_path=clone_path, agent=agent)
-
-    assert "Error: " in result
+    with pytest.raises(CommandExecutionError):
+        clone_repository(url=url, clone_path=clone_path, agent=agent)

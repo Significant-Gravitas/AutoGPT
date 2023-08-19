@@ -11,6 +11,7 @@ from typing import Optional
 from colorama import Fore, Style
 
 from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
+from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.app.configurator import create_config
 from autogpt.app.setup import prompt_user
 from autogpt.app.spinner import Spinner
@@ -174,7 +175,7 @@ def run_auto_gpt(
     run_interaction_loop(agent)
 
 
-def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | None:
+def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | float:
     # Translate from the continuous_mode/continuous_limit config
     # to a cycle_budget (maximum number of cycles to run without checking in with the
     # user) and a count of cycles_remaining before we check in..
@@ -217,10 +218,9 @@ def run_interaction_loop(
 
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
         nonlocal cycle_budget, cycles_remaining, spinner
-        if cycles_remaining in [0, 1, math.inf]:
+        if cycles_remaining in [0, 1]:
             logger.typewriter_log(
-                "Interrupt signal received. Stopping continuous command execution "
-                "immediately.",
+                "Interrupt signal received. Stopping Auto-GPT immediately.",
                 Fore.RED,
             )
             sys.exit()
@@ -244,6 +244,9 @@ def run_interaction_loop(
     # Application Main Loop #
     #########################
 
+    # Keep track of consecutive failures of the agent
+    consecutive_failures = 0
+
     while cycles_remaining > 0:
         logger.debug(f"Cycle budget: {cycle_budget}; remaining: {cycles_remaining}")
 
@@ -252,7 +255,20 @@ def run_interaction_loop(
         ########
         # Have the agent determine the next action to take.
         with spinner:
-            command_name, command_args, assistant_reply_dict = agent.think()
+            try:
+                command_name, command_args, assistant_reply_dict = agent.think()
+            except InvalidAgentResponseError as e:
+                logger.warn(f"The agent's thoughts could not be parsed: {e}")
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    logger.error(
+                        f"The agent failed to output valid thoughts {consecutive_failures} "
+                        "times in a row. Terminating..."
+                    )
+                    sys.exit()
+                continue
+
+        consecutive_failures = 0
 
         ###############
         # Update User #
@@ -298,7 +314,7 @@ def run_interaction_loop(
             else:  # user_feedback == UserFeedback.TEXT
                 command_name = "human_feedback"
         else:
-            user_input = None
+            user_input = ""
             # First log new-line so user can differentiate sections better in console
             logger.typewriter_log("\n")
             if cycles_remaining != math.inf:
@@ -315,19 +331,25 @@ def run_interaction_loop(
         # and then having the decrement set it to 0, exiting the application.
         if command_name != "human_feedback":
             cycles_remaining -= 1
+
+        if not command_name:
+            continue
+
         result = agent.execute(command_name, command_args, user_input)
 
-        if result is not None:
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
-        else:
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+        if result.status == "success":
+            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result.results)
+        elif result.status == "error":
+            logger.warn(
+                f"Command {command_name} returned an error: {result.error or result.reason}"
+            )
 
 
 def update_user(
     config: Config,
     ai_config: AIConfig,
-    command_name: CommandName | None,
-    command_args: CommandArgs | None,
+    command_name: CommandName,
+    command_args: CommandArgs,
     assistant_reply_dict: AgentThoughts,
 ) -> None:
     """Prints the assistant's thoughts and the next command to the user.
@@ -342,32 +364,17 @@ def update_user(
 
     print_assistant_thoughts(ai_config.ai_name, assistant_reply_dict, config)
 
-    if command_name is not None:
-        if command_name.lower().startswith("error"):
-            logger.typewriter_log(
-                "ERROR: ",
-                Fore.RED,
-                f"The Agent failed to select an action. "
-                f"Error message: {command_name}",
-            )
-        else:
-            if config.speak_mode:
-                say_text(f"I want to execute {command_name}", config)
+    if config.speak_mode:
+        say_text(f"I want to execute {command_name}", config)
 
-            # First log new-line so user can differentiate sections better in console
-            logger.typewriter_log("\n")
-            logger.typewriter_log(
-                "NEXT ACTION: ",
-                Fore.CYAN,
-                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
-                f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
-            )
-    else:
-        logger.typewriter_log(
-            "NO ACTION SELECTED: ",
-            Fore.RED,
-            f"The Agent failed to select an action.",
-        )
+    # First log new-line so user can differentiate sections better in console
+    logger.typewriter_log("\n")
+    logger.typewriter_log(
+        "NEXT ACTION: ",
+        Fore.CYAN,
+        f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
+        f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
+    )
 
 
 def get_user_feedback(
