@@ -1,3 +1,10 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..base import BaseAgent
+
 from autogpt.models.context_item import ContextItem
 
 
@@ -10,6 +17,9 @@ class AgentContext:
     def __bool__(self) -> bool:
         return len(self.items) > 0
 
+    def __contains__(self, item: ContextItem):
+        return any([i.source == item.source for i in self.items])
+
     def add(self, item: ContextItem) -> None:
         self.items.append(item)
 
@@ -21,3 +31,20 @@ class AgentContext:
 
     def format_numbered(self) -> str:
         return "\n\n".join([f"{i}. {c}" for i, c in enumerate(self.items, 1)])
+
+
+class ContextMixin:
+    """Mixin that adds context support to a class"""
+
+    context: AgentContext
+
+    def __init__(self, **kwargs):
+        super(ContextMixin, self).__init__(**kwargs)
+        self.context = AgentContext()
+
+
+def get_agent_context(agent: BaseAgent) -> AgentContext | None:
+    if isinstance(agent, ContextMixin):
+        return agent.context
+
+    return None

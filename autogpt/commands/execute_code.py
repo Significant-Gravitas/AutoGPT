@@ -75,7 +75,7 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
         with open(file_path, "w+", encoding="utf-8") as f:
             f.write(code)
 
-        return execute_python_file(str(file_path), agent)
+        return execute_python_file(file_path, agent)
     except Exception as e:
         raise CommandExecutionError(*e.args)
 
@@ -92,11 +92,11 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
     },
 )
 @sanitize_path_arg("filename")
-def execute_python_file(filename: str, agent: Agent) -> str:
+def execute_python_file(filename: Path, agent: Agent) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
-        filename (str): The name of the file to execute
+        filename (Path): The name of the file to execute
 
     Returns:
         str: The output of the file
@@ -105,10 +105,10 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         f"Executing python file '{filename}' in working directory '{agent.config.workspace_path}'"
     )
 
-    if not filename.endswith(".py"):
+    if not str(filename).endswith(".py"):
         raise InvalidArgumentError("Invalid file type. Only .py files are allowed.")
 
-    file_path = Path(filename)
+    file_path = filename
     if not file_path.is_file():
         # Mimic the response that you get from the command line so that it's easier to identify
         raise FileNotFoundError(

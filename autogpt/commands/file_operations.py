@@ -80,49 +80,49 @@ def file_operations_state(log_path: str | Path) -> dict[str, str]:
     return state
 
 
-@sanitize_path_arg("filename")
+@sanitize_path_arg("file_path")
 def is_duplicate_operation(
-    operation: Operation, filename: str, agent: Agent, checksum: str | None = None
+    operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
 ) -> bool:
     """Check if the operation has already been performed
 
     Args:
         operation: The operation to check for
-        filename: The name of the file to check for
+        file_path: The name of the file to check for
         agent: The agent
         checksum: The checksum of the contents to be written
 
     Returns:
         True if the operation has already been performed on the file
     """
-    # Make the filename into a relative path if possible
+    # Make the file path into a relative path if possible
     with contextlib.suppress(ValueError):
-        filename = str(Path(filename).relative_to(agent.workspace.root))
+        file_path = file_path.relative_to(agent.workspace.root)
 
     state = file_operations_state(agent.config.file_logger_path)
-    if operation == "delete" and filename not in state:
+    if operation == "delete" and str(file_path) not in state:
         return True
-    if operation == "write" and state.get(filename) == checksum:
+    if operation == "write" and state.get(str(file_path)) == checksum:
         return True
     return False
 
 
-@sanitize_path_arg("filename")
+@sanitize_path_arg("file_path")
 def log_operation(
-    operation: Operation, filename: str, agent: Agent, checksum: str | None = None
+    operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
 ) -> None:
     """Log the file operation to the file_logger.txt
 
     Args:
         operation: The operation to log
-        filename: The name of the file the operation was performed on
+        file_path: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
-    # Make the filename into a relative path if possible
+    # Make the file path into a relative path if possible
     with contextlib.suppress(ValueError):
-        filename = str(Path(filename).relative_to(agent.workspace.root))
+        file_path = file_path.relative_to(agent.workspace.root)
 
-    log_entry = f"{operation}: {filename}"
+    log_entry = f"{operation}: {file_path}"
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
@@ -143,11 +143,11 @@ def log_operation(
     },
 )
 @sanitize_path_arg("filename")
-def read_file(filename: str, agent: Agent) -> str:
+def read_file(filename: Path, agent: Agent) -> str:
     """Read a file and return the contents
 
     Args:
-        filename (str): The name of the file to read
+        filename (Path): The name of the file to read
 
     Returns:
         str: The contents of the file
@@ -155,7 +155,7 @@ def read_file(filename: str, agent: Agent) -> str:
     content = read_textual_file(filename, logger)
 
     # TODO: invalidate/update memory when file is edited
-    file_memory = MemoryItem.from_text_file(content, filename, agent.config)
+    file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
     if len(file_memory.chunks) > 1:
         return file_memory.summary
 
@@ -206,11 +206,11 @@ def ingest_file(
     aliases=["write_file", "create_file"],
 )
 @sanitize_path_arg("filename")
-def write_to_file(filename: str, text: str, agent: Agent) -> str:
+def write_to_file(filename: Path, text: str, agent: Agent) -> str:
     """Write text to a file
 
     Args:
-        filename (str): The name of the file to write to
+        filename (Path): The name of the file to write to
         text (str): The text to write to the file
 
     Returns:
@@ -230,12 +230,12 @@ def write_to_file(filename: str, text: str, agent: Agent) -> str:
 
 @sanitize_path_arg("filename")
 def append_to_file(
-    filename: str, text: str, agent: Agent, should_log: bool = True
+    filename: Path, text: str, agent: Agent, should_log: bool = True
 ) -> str:
     """Append text to a file
 
     Args:
-        filename (str): The name of the file to append to
+        filename (Path): The name of the file to append to
         text (str): The text to append to the file
         should_log (bool): Should log output
 
@@ -267,11 +267,11 @@ def append_to_file(
     },
 )
 @sanitize_path_arg("directory")
-def list_files(directory: str, agent: Agent) -> list[str]:
+def list_files(directory: Path, agent: Agent) -> list[str]:
     """lists files in a directory recursively
 
     Args:
-        directory (str): The directory to search in
+        directory (Path): The directory to search in
 
     Returns:
         list[str]: A list of files found in the directory

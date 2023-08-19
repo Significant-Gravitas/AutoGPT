@@ -11,12 +11,6 @@ if TYPE_CHECKING:
     from autogpt.memory.vector import VectorMemory
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.agents.utils.exceptions import (
-    AgentException,
-    CommandExecutionError,
-    InvalidAgentResponseError,
-    UnknownCommandError,
-)
 from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
@@ -40,9 +34,16 @@ from autogpt.models.context_item import ContextItem
 from autogpt.workspace import Workspace
 
 from .base import BaseAgent
+from .utils.context import ContextMixin
+from .utils.exceptions import (
+    AgentException,
+    CommandExecutionError,
+    InvalidAgentResponseError,
+    UnknownCommandError,
+)
 
 
-class Agent(BaseAgent):
+class Agent(BaseAgent, ContextMixin):
     """Agent class for interacting with Auto-GPT."""
 
     def __init__(

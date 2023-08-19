@@ -94,6 +94,9 @@ class BaseAgent(metaclass=ABCMeta):
             max_summary_tlength=summary_max_tlength or self.send_token_limit // 6,
         )
 
+        # Support multi-inheritance
+        super(BaseAgent, self).__init__()
+
     def think(
         self,
         instruction: Optional[str] = None,
