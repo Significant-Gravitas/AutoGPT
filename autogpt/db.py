@@ -101,18 +101,16 @@ class AgentDB:
         self.Session = sessionmaker(bind=self.engine)
         print("Databases Created")
 
-    async def create_task(
-        self, input: Optional[str], additional_input: Optional[TaskInput] = None
-    ) -> Task:
-        session = self.Session()
-        new_task = TaskModel(
-            input=input,
-            additional_input=additional_input.__root__ if additional_input else None,
-        )
-        session.add(new_task)
-        session.commit()
-        session.refresh(new_task)
-        return convert_to_task(new_task)
+    async def create_task(self, input: Optional[str], additional_input: Optional[TaskInput] = None) -> Task:
+        with self.Session() as session:
+            new_task = TaskModel(
+                input=input,
+                additional_input=additional_input.__root__ if additional_input else None,
+            )
+            session.add(new_task)
+            session.commit()
+            session.refresh(new_task)
+            return convert_to_task(new_task)
 
     async def create_step(
         self,
@@ -265,14 +263,14 @@ class AgentDB:
         ]
 
     async def list_artifacts(self, task_id: str) -> List[Artifact]:
-        session = self.Session()
-        artifacts = session.query(ArtifactModel).filter_by(task_id=task_id).all()
-        return [
-            Artifact(
-                artifact_id=str(artifact.artifact_id),
-                file_name=artifact.file_name,
-                agent_created=artifact.agent_created,
-                uri=artifact.uri,
-            )
-            for artifact in artifacts
-        ]
+        with self.Session() as session:
+            artifacts = session.query(ArtifactModel).filter_by(task_id=task_id).all()
+            return [
+                Artifact(
+                    artifact_id=str(artifact.artifact_id),
+                    file_name=artifact.file_name,
+                    agent_created=artifact.agent_created,
+                    uri=artifact.uri,
+                )
+                for artifact in artifacts
+            ]
