@@ -9,11 +9,13 @@ if TYPE_CHECKING:
 
     from autogpt.models.command_registry import CommandRegistry
 
+from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.logs import logger
 from autogpt.memory.message_history import MessageHistory
+from autogpt.models.agent_actions import ActionResult
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 CommandName = str
@@ -25,6 +27,7 @@ class BaseAgent(metaclass=ABCMeta):
     """Base class for all Auto-GPT agents."""
 
     ThoughtProcessID = Literal["one-shot"]
+    ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
 
     def __init__(
         self,
@@ -95,7 +98,7 @@ class BaseAgent(metaclass=ABCMeta):
         self,
         instruction: Optional[str] = None,
         thought_process_id: ThoughtProcessID = "one-shot",
-    ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
+    ) -> ThoughtProcessOutput:
         """Runs the agent for one cycle.
 
         Params:
@@ -123,10 +126,10 @@ class BaseAgent(metaclass=ABCMeta):
     @abstractmethod
     def execute(
         self,
-        command_name: str | None,
-        command_args: dict[str, str] | None,
-        user_input: str | None,
-    ) -> str:
+        command_name: str,
+        command_args: dict[str, str] = {},
+        user_input: str = "",
+    ) -> ActionResult:
         """Executes the given command, if any, and returns the agent's response.
 
         Params:
@@ -145,6 +148,7 @@ class BaseAgent(metaclass=ABCMeta):
         prepend_messages: list[Message] = [],
         append_messages: list[Message] = [],
         reserve_tokens: int = 0,
+        with_message_history: bool = False,
     ) -> ChatSequence:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
@@ -163,20 +167,23 @@ class BaseAgent(metaclass=ABCMeta):
             [Message("system", self.system_prompt)] + prepend_messages,
         )
 
-        # Reserve tokens for messages to be appended later, if any
-        reserve_tokens += self.history.max_summary_tlength
-        if append_messages:
-            reserve_tokens += count_message_tokens(append_messages, self.llm.name)
+        if with_message_history:
+            # Reserve tokens for messages to be appended later, if any
+            reserve_tokens += self.history.max_summary_tlength
+            if append_messages:
+                reserve_tokens += count_message_tokens(append_messages, self.llm.name)
 
-        # Fill message history, up to a margin of reserved_tokens.
-        # Trim remaining historical messages and add them to the running summary.
-        history_start_index = len(prompt)
-        trimmed_history = add_history_upto_token_limit(
-            prompt, self.history, self.send_token_limit - reserve_tokens
-        )
-        if trimmed_history:
-            new_summary_msg, _ = self.history.trim_messages(list(prompt), self.config)
-            prompt.insert(history_start_index, new_summary_msg)
+            # Fill message history, up to a margin of reserved_tokens.
+            # Trim remaining historical messages and add them to the running summary.
+            history_start_index = len(prompt)
+            trimmed_history = add_history_upto_token_limit(
+                prompt, self.history, self.send_token_limit - reserve_tokens
+            )
+            if trimmed_history:
+                new_summary_msg, _ = self.history.trim_messages(
+                    list(prompt), self.config
+                )
+                prompt.insert(history_start_index, new_summary_msg)
 
         if append_messages:
             prompt.extend(append_messages)
@@ -323,7 +330,7 @@ class BaseAgent(metaclass=ABCMeta):
         thought_process_id: ThoughtProcessID,
         prompt: ChatSequence,
         instruction: str,
-    ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
+    ) -> ThoughtProcessOutput:
         """Called upon receiving a response from the chat model.
 
         Adds the last/newest message in the prompt and the response to `history`,
@@ -348,15 +355,14 @@ class BaseAgent(metaclass=ABCMeta):
             return self.parse_and_process_response(
                 llm_response, thought_process_id, prompt, instruction
             )
-        except SyntaxError as e:
-            logger.error(f"Response could not be parsed: {e}")
+        except InvalidAgentResponseError as e:
             # TODO: tune this message
             self.history.add(
                 "system",
                 f"Your response could not be parsed: {e}"
                 "\n\nRemember to only respond using the specified format above!",
             )
-            return None, None, {}
+            raise
 
         # TODO: update memory/context
 
@@ -367,7 +373,7 @@ class BaseAgent(metaclass=ABCMeta):
         thought_process_id: ThoughtProcessID,
         prompt: ChatSequence,
         instruction: str,
-    ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
+    ) -> ThoughtProcessOutput:
         """Validate, parse & process the LLM's response.
 
         Must be implemented by derivative classes: no base implementation is provided,

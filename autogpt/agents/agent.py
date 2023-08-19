@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from autogpt.config import AIConfig, Config
@@ -11,6 +11,12 @@ if TYPE_CHECKING:
     from autogpt.memory.vector import VectorMemory
     from autogpt.models.command_registry import CommandRegistry
 
+from autogpt.agents.utils.exceptions import (
+    AgentException,
+    CommandExecutionError,
+    InvalidAgentResponseError,
+    UnknownCommandError,
+)
 from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
@@ -23,9 +29,17 @@ from autogpt.logs.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
+from autogpt.models.agent_actions import (
+    ActionErrorResult,
+    ActionInterruptedByHuman,
+    ActionResult,
+    ActionSuccessResult,
+)
+from autogpt.models.command import CommandOutput
+from autogpt.models.context_item import ContextItem
 from autogpt.workspace import Workspace
 
-from .base import AgentThoughts, BaseAgent, CommandArgs, CommandName
+from .base import BaseAgent
 
 
 class Agent(BaseAgent):
@@ -97,6 +111,9 @@ class Agent(BaseAgent):
                 kwargs["append_messages"] = []
             kwargs["append_messages"].append(budget_msg)
 
+        # Include message history in base prompt
+        kwargs["with_message_history"] = True
+
         return super().construct_base_prompt(*args, **kwargs)
 
     def on_before_think(self, *args, **kwargs) -> ChatSequence:
@@ -121,15 +138,19 @@ class Agent(BaseAgent):
 
     def execute(
         self,
-        command_name: str | None,
-        command_args: dict[str, str] | None,
-        user_input: str | None,
-    ) -> str:
-        # Execute command
-        if command_name is not None and command_name.lower().startswith("error"):
-            result = f"Could not execute command: {command_name}{command_args}"
-        elif command_name == "human_feedback":
-            result = f"Human feedback: {user_input}"
+        command_name: str,
+        command_args: dict[str, str] = {},
+        user_input: str = "",
+    ) -> ActionResult:
+        result: ActionResult
+
+        if command_name == "human_feedback":
+            result = ActionInterruptedByHuman(user_input)
+            self.history.add(
+                "user",
+                "I interrupted the execution of the command you proposed "
+                f"to give you some feedback: {user_input}",
+            )
             self.log_cycle_handler.log_cycle(
                 self.ai_config.ai_name,
                 self.created_at,
@@ -143,65 +164,101 @@ class Agent(BaseAgent):
                 if not plugin.can_handle_pre_command():
                     continue
                 command_name, arguments = plugin.pre_command(command_name, command_args)
-            command_result = execute_command(
-                command_name=command_name,
-                arguments=command_args,
-                agent=self,
-            )
-            result = f"Command {command_name} returned: " f"{command_result}"
 
-            result_tlength = count_string_tokens(str(command_result), self.llm.name)
+            try:
+                return_value = execute_command(
+                    command_name=command_name,
+                    arguments=command_args,
+                    agent=self,
+                )
+
+                # Intercept ContextItem if one is returned by the command
+                if type(return_value) == tuple and isinstance(
+                    return_value[1], ContextItem
+                ):
+                    context_item = return_value[1]
+                    # return_value = return_value[0]
+                    logger.debug(
+                        f"Command {command_name} returned a ContextItem: {context_item}"
+                    )
+                    # self.context.add(context_item)
+
+                    # HACK: use content of ContextItem as return value, for legacy support
+                    return_value = context_item.content
+
+                result = ActionSuccessResult(return_value)
+            except AgentException as e:
+                result = ActionErrorResult(e.message, e)
+
+            logger.debug(f"Command result: {result}")
+
+            result_tlength = count_string_tokens(str(result), self.llm.name)
             memory_tlength = count_string_tokens(
                 str(self.history.summary_message()), self.llm.name
             )
             if result_tlength + memory_tlength > self.send_token_limit:
-                result = f"Failure: command {command_name} returned too much output. \
-                    Do not execute this command again with the same arguments."
+                result = ActionErrorResult(
+                    reason=f"Command {command_name} returned too much output. "
+                    "Do not execute this command again with the same arguments."
+                )
 
             for plugin in self.config.plugins:
                 if not plugin.can_handle_post_command():
                     continue
-                result = plugin.post_command(command_name, result)
+                if result.status == "success":
+                    result.results = plugin.post_command(command_name, result.results)
+                elif result.status == "error":
+                    result.reason = plugin.post_command(command_name, result.reason)
+
         # Check if there's a result from the command append it to the message
-        if result is None:
-            self.history.add("system", "Unable to execute command", "action_result")
-        else:
-            self.history.add("system", result, "action_result")
+        if result.status == "success":
+            self.history.add(
+                "system",
+                f"Command {command_name} returned: {result.results}",
+                "action_result",
+            )
+        elif result.status == "error":
+            message = f"Command {command_name} failed: {result.reason}"
+
+            # Append hint to the error message if the exception has a hint
+            if (
+                result.error
+                and isinstance(result.error, AgentException)
+                and result.error.hint
+            ):
+                message = message.rstrip(".") + f". {result.error.hint}"
+
+            self.history.add("system", message, "action_result")
 
         return result
 
     def parse_and_process_response(
         self, llm_response: ChatModelResponse, *args, **kwargs
-    ) -> tuple[CommandName | None, CommandArgs | None, AgentThoughts]:
+    ) -> Agent.ThoughtProcessOutput:
         if not llm_response.content:
-            raise SyntaxError("Assistant response has no text content")
+            raise InvalidAgentResponseError("Assistant response has no text content")
 
-        assistant_reply_dict = extract_dict_from_response(llm_response.content)
-
-        valid, errors = validate_dict(assistant_reply_dict, self.config)
-        if not valid:
-            raise SyntaxError(
-                "Validation of response failed:\n  "
-                + ";\n  ".join([str(e) for e in errors])
-            )
+        response_content = llm_response.content
 
         for plugin in self.config.plugins:
             if not plugin.can_handle_post_planning():
                 continue
-            assistant_reply_dict = plugin.post_planning(assistant_reply_dict)
+            response_content = plugin.post_planning(response_content)
 
-        response = None, None, assistant_reply_dict
+        assistant_reply_dict = extract_dict_from_response(response_content)
 
-        # Print Assistant thoughts
-        if assistant_reply_dict != {}:
-            # Get command name and arguments
-            try:
-                command_name, arguments = extract_command(
-                    assistant_reply_dict, llm_response, self.config
-                )
-                response = command_name, arguments, assistant_reply_dict
-            except Exception as e:
-                logger.error("Error: \n", str(e))
+        _, errors = validate_dict(assistant_reply_dict, self.config)
+        if errors:
+            raise InvalidAgentResponseError(
+                "Validation of response failed:\n  "
+                + ";\n  ".join([str(e) for e in errors])
+            )
+
+        # Get command name and arguments
+        command_name, arguments = extract_command(
+            assistant_reply_dict, llm_response, self.config
+        )
+        response = command_name, arguments, assistant_reply_dict
 
         self.log_cycle_handler.log_cycle(
             self.ai_config.ai_name,
@@ -233,29 +290,26 @@ def extract_command(
     """
     if config.openai_functions:
         if assistant_reply.function_call is None:
-            return "Error:", {"message": "No 'function_call' in assistant reply"}
+            raise InvalidAgentResponseError("No 'function_call' in assistant reply")
         assistant_reply_json["command"] = {
             "name": assistant_reply.function_call.name,
             "args": json.loads(assistant_reply.function_call.arguments),
         }
     try:
-        if "command" not in assistant_reply_json:
-            return "Error:", {"message": "Missing 'command' object in JSON"}
-
         if not isinstance(assistant_reply_json, dict):
-            return (
-                "Error:",
-                {
-                    "message": f"The previous message sent was not a dictionary {assistant_reply_json}"
-                },
+            raise InvalidAgentResponseError(
+                f"The previous message sent was not a dictionary {assistant_reply_json}"
             )
+
+        if "command" not in assistant_reply_json:
+            raise InvalidAgentResponseError("Missing 'command' object in JSON")
 
         command = assistant_reply_json["command"]
         if not isinstance(command, dict):
-            return "Error:", {"message": "'command' object is not a dictionary"}
+            raise InvalidAgentResponseError("'command' object is not a dictionary")
 
         if "name" not in command:
-            return "Error:", {"message": "Missing 'name' field in 'command' object"}
+            raise InvalidAgentResponseError("Missing 'name' field in 'command' object")
 
         command_name = command["name"]
 
@@ -263,18 +317,19 @@ def extract_command(
         arguments = command.get("args", {})
 
         return command_name, arguments
+
     except json.decoder.JSONDecodeError:
-        return "Error:", {"message": "Invalid JSON"}
-    # All other errors, return "Error: + error message"
+        raise InvalidAgentResponseError("Invalid JSON")
+
     except Exception as e:
-        return "Error:", {"message": str(e)}
+        raise InvalidAgentResponseError(str(e))
 
 
 def execute_command(
     command_name: str,
     arguments: dict[str, str],
     agent: Agent,
-) -> Any:
+) -> CommandOutput:
     """Execute the command and return the result
 
     Args:
@@ -285,22 +340,28 @@ def execute_command(
     Returns:
         str: The result of the command
     """
-    try:
-        # Execute a native command with the same name or alias, if it exists
-        if command := agent.command_registry.get_command(command_name):
+    # Execute a native command with the same name or alias, if it exists
+    if command := agent.command_registry.get_command(command_name):
+        try:
             return command(**arguments, agent=agent)
+        except AgentException:
+            raise
+        except Exception as e:
+            raise CommandExecutionError(str(e))
 
-        # Handle non-native commands (e.g. from plugins)
-        for command in agent.ai_config.prompt_generator.commands:
-            if (
-                command_name == command.label.lower()
-                or command_name == command.name.lower()
-            ):
+    # Handle non-native commands (e.g. from plugins)
+    for command in agent.ai_config.prompt_generator.commands:
+        if (
+            command_name == command.label.lower()
+            or command_name == command.name.lower()
+        ):
+            try:
                 return command.function(**arguments)
+            except AgentException:
+                raise
+            except Exception as e:
+                raise CommandExecutionError(str(e))
 
-        raise RuntimeError(
-            f"Cannot execute '{command_name}': unknown command."
-            " Do not try to use this command again."
-        )
-    except Exception as e:
-        return f"Error: {str(e)}"
+    raise UnknownCommandError(
+        f"Cannot execute command '{command_name}': unknown command."
+    )
