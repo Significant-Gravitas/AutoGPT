@@ -3,6 +3,8 @@
 COMMAND_CATEGORY = "git_operations"
 COMMAND_CATEGORY_TITLE = "Git Operations"
 
+from pathlib import Path
+
 from git.repo import Repo
 
 from autogpt.agents.agent import Agent
@@ -33,12 +35,12 @@ from .decorators import sanitize_path_arg
 )
 @sanitize_path_arg("clone_path")
 @validate_url
-def clone_repository(url: str, clone_path: str, agent: Agent) -> str:
+def clone_repository(url: str, clone_path: Path, agent: Agent) -> str:
     """Clone a GitHub repository locally.
 
     Args:
         url (str): The URL of the repository to clone.
-        clone_path (str): The path to clone the repository to.
+        clone_path (Path): The path to clone the repository to.
 
     Returns:
         str: The result of the clone operation.

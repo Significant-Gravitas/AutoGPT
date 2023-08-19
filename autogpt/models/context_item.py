@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from autogpt.commands.file_operations_utils import read_textual_file
+
 
 class ContextItem(ABC):
     @property
@@ -35,15 +37,18 @@ class ContextItem(ABC):
 @dataclass
 class FileContextItem(ContextItem):
     file_path: Path
-    description: str
+
+    @property
+    def description(self) -> str:
+        return f"The current content of the file '{self.file_path}'"
 
     @property
     def source(self) -> str:
-        return f"local file '{self.file_path}'"
+        return str(self.file_path)
 
     @property
     def content(self) -> str:
-        return self.file_path.read_text()
+        return read_textual_file(self.file_path)
 
 
 @dataclass
@@ -60,7 +65,7 @@ class FolderContextItem(ContextItem):
 
     @property
     def source(self) -> str:
-        return f"local folder '{self.path}'"
+        return str(self.path)
 
     @property
     def content(self) -> str:
