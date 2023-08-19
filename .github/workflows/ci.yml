@@ -7,7 +7,7 @@ on:
       agents:
         description: 'Agents to run (comma-separated)'
         required: false
-        default: 'gpt-engineer,smol-developer,Auto-GPT,mini-agi,beebot,BabyAGI,PolyGPT' # Default agents if none are specified
+        default: 'gpt-engineer,smol-developer,Auto-GPT,mini-agi,beebot,BabyAGI,PolyGPT,Auto-GPT-Turbo' # Default agents if none are specified
   schedule:
     - cron: '0 8 * * *'
   push:
@@ -80,7 +80,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "schedule" ]; then
             echo "::set-output name=env-name::production"
-            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI', 'PolyGPT' ]"
+            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI', 'PolyGPT', 'Auto-GPT-Turbo' ]"
           elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             IFS=',' read -ra matrix_array <<< "${{ github.event.inputs.agents }}"
             matrix_string="[ \"$(echo "${matrix_array[@]}" | sed 's/ /", "/g')\" ]"
@@ -188,6 +188,13 @@ jobs:
             nvm install && nvm use
             yarn install
             export NODE_TLS_REJECT_UNAUTHORIZED=0
+          elif [ "$AGENT_NAME" == "Auto-GPT-Turbo" ]; then
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+            pip uninstall agbenchmark -y
+            cp .env_example .env
+            sed -i 's/your-openai-api-key/${{ secrets.OPENAI_API_KEY }}/g' .env
           else
             echo "Unknown agent name: $AGENT_NAME"
             exit 1

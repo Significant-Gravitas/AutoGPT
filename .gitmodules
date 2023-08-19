@@ -33,3 +33,6 @@
 [submodule "frontend"]
 	path = frontend
 	url = https://github.com/agbenchmark/agbenchmark-frontend.git
+[submodule "agent/Auto-GPT-Turbo"]
+	path = agent/Auto-GPT-Turbo
+	url = https://github.com/lc0rp/Auto-GPT-Turbo.git
