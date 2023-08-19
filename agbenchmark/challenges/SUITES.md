@@ -87,7 +87,7 @@ The structure for a non same_task report looks like this:
                         "code",
                         "iterate"
                     ],
-                    "task": "Return the multiplied number in the function multiply_int in code.py. You can make sure you have correctly done this by running test.py",
+                    "task": "Return the multiplied number in the function multiply_int in sample_code.py. You can make sure you have correctly done this by running test.py",
                     "answer": "Just a simple multiple by 2 function. Num is 4 so answer is 8",
                     "description": "Simple test if a simple code instruction can be executed",
                     "metrics": {
@@ -106,7 +106,7 @@ The structure for a non same_task report looks like this:
                         "code",
                         "iterate"
                     ],
-                    "task": "Add a function called multiply_int in code.py that multiplies numbers by 2. You can make sure you have correctly done this by running test.py",
+                    "task": "Add a function called multiply_int in sample_code.py that multiplies numbers by 2. You can make sure you have correctly done this by running test.py",
                     "answer": "Just a simple multiple by 2 function. Num is 4 so answer is 8",
                     "description": "Small step up, just writing the function with a name as well as the return statement.",
                     "metrics": {
