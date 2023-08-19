@@ -5,8 +5,6 @@ from __future__ import annotations
 COMMAND_CATEGORY = "system"
 COMMAND_CATEGORY_TITLE = "System"
 
-from typing import NoReturn
-
 from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
 from autogpt.logs import logger
@@ -23,7 +21,7 @@ from autogpt.logs import logger
         }
     },
 )
-def task_complete(reason: str, agent: Agent) -> NoReturn:
+def task_complete(reason: str, agent: Agent) -> None:
     """
     A function that takes in a string and exits the program
 
