@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-class AgentView extends StatelessWidget {
-  const AgentView({super.key});
+class TaskView extends StatelessWidget {
+  const TaskView({super.key});
 
   @override
   Widget build(BuildContext context) {

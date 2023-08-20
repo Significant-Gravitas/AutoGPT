@@ -1,4 +1,4 @@
-import 'package:auto_gpt_flutter_client/views/agent_view.dart';
+import 'package:auto_gpt_flutter_client/views/task_view.dart';
 import 'package:auto_gpt_flutter_client/views/chat_view.dart';
 import 'package:flutter/cupertino.dart';
 
@@ -15,7 +15,7 @@ class MainLayout extends StatelessWidget {
       // For larger screens, return a side-by-side layout
       return const Row(
         children: [
-          SizedBox(width: 280, child: AgentView()),
+          SizedBox(width: 280, child: TaskView()),
           Expanded(child: ChatView()),
         ],
       );
@@ -26,7 +26,7 @@ class MainLayout extends StatelessWidget {
           items: const <BottomNavigationBarItem>[
             BottomNavigationBarItem(
               icon: Icon(CupertinoIcons.person),
-              label: 'Agents',
+              label: 'Tasks',
             ),
             BottomNavigationBarItem(
               icon: Icon(CupertinoIcons.chat_bubble),
@@ -41,7 +41,7 @@ class MainLayout extends StatelessWidget {
             case 0:
               returnValue = CupertinoTabView(builder: (context) {
                 return const CupertinoPageScaffold(
-                  child: AgentView(),
+                  child: TaskView(),
                 );
               });
               break;
