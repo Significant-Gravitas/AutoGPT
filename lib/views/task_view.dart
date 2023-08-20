@@ -9,7 +9,7 @@ class AgentView extends StatelessWidget {
       color: Colors.blue,
       child: const Center(
         child: Text(
-          'Agents',
+          'Tasks',
           style: TextStyle(fontSize: 24, color: Colors.white),
         ),
       ),
