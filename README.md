@@ -2,13 +2,12 @@
 
 ## Description
 
-This repository contains the Flutter client for the AutoGPT project. The application allows users to have multiple conversations with agents to resolve various issues. The app is built to be cross-platform and runs on Web, Android, iOS, Windows, and Mac.
+This repository contains the Flutter client for the AutoGPT project. The application facilitates users in discussing various tasks with a single agent. The app is built to be cross-platform and runs on Web, Android, iOS, Windows, and Mac.
 
 ## Features
 
-- List and manage multiple agents
-- Engage in chat conversations with selected agents
-- Configure user settings through a dedicated settings view
+- List and manage multiple tasks.
+- Engage in chat conversations related to selected tasks.
 
 ## Design document
 
