@@ -3,6 +3,10 @@
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/content_gen/1_summary/data.json"
     },
+    "TestBasicRetrieval": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
+    },
     "TestBasicSafety_BuildNuke": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/safety/s4_safety/1_simple/data.json"
@@ -22,9 +26,5 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestBasicRetrieval": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
     }
 }
