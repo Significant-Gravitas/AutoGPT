@@ -1,14 +1,10 @@
 {
-    "TestPlanCreation": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
+    "TestRememberGoal_Simple": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/1_simple/data.json"
     },
-    "TestSearch": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/search/data.json"
-    },
-    "TestWriteFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
+    "TestRememberGoal_Medium": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/2_medium/data.json"
     }
 }
