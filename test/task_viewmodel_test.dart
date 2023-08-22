@@ -1,6 +1,6 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/mock_data.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('TaskViewModel', () {
@@ -37,10 +37,6 @@ void main() {
       expect(hasNotified, true);
     });
 
-    test('Simulate error happening while fetching a task', () {
-      // TODO: Implement once you have error handling in place in fetchTasks.
-    });
-
     test('No tasks are fetched', () {
       // Clear mock data for this test
       mockTasks.clear();
@@ -67,6 +63,7 @@ void main() {
     });
 
     test('Deletes a task with invalid id', () {
+      // TODO: Update this test to expect an error once we have TaskService implemented
       final initialCount = viewModel.tasks.length;
       viewModel.deleteTask(9999); // Assuming no task with this id exists
       expect(viewModel.tasks.length, initialCount); // Count remains same
