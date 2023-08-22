@@ -39,15 +39,20 @@ class ContextItem(ABC):
 
 @dataclass
 class FileContextItem(ContextItem):
-    file_path: Path
+    file_path_in_workspace: Path
+    workspace_path: Path
+
+    @property
+    def file_path(self) -> Path:
+        return self.workspace_path / self.file_path_in_workspace
 
     @property
     def description(self) -> str:
-        return f"The current content of the file '{self.file_path}'"
+        return f"The current content of the file '{self.file_path_in_workspace}'"
 
     @property
     def source(self) -> str:
-        return str(self.file_path)
+        return str(self.file_path_in_workspace)
 
     @property
     def content(self) -> str:
@@ -56,7 +61,12 @@ class FileContextItem(ContextItem):
 
 @dataclass
 class FolderContextItem(ContextItem):
-    path: Path
+    path_in_workspace: Path
+    workspace_path: Path
+
+    @property
+    def path(self) -> Path:
+        return self.workspace_path / self.path_in_workspace
 
     def __post_init__(self) -> None:
         assert self.path.exists(), "Selected path does not exist"
@@ -64,11 +74,11 @@ class FolderContextItem(ContextItem):
 
     @property
     def description(self) -> str:
-        return f"The contents of the folder '{self.path}' in the workspace"
+        return f"The contents of the folder '{self.path_in_workspace}' in the workspace"
 
     @property
     def source(self) -> str:
-        return str(self.path)
+        return str(self.path_in_workspace)
 
     @property
     def content(self) -> str:

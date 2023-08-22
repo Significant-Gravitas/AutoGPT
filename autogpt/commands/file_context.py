@@ -23,7 +23,7 @@ from autogpt.models.context_item import FileContextItem, FolderContextItem
 from .decorators import sanitize_path_arg
 
 
-def compatible_with_agent(agent: BaseAgent) -> bool:
+def agent_implements_context(agent: BaseAgent) -> bool:
     return isinstance(agent, ContextMixin)
 
 
@@ -37,7 +37,7 @@ def compatible_with_agent(agent: BaseAgent) -> bool:
             "required": True,
         }
     },
-    available=compatible_with_agent,
+    available=agent_implements_context,
 )
 @sanitize_path_arg("file_path")
 def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
@@ -51,8 +51,9 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
         FileContextItem: A ContextItem representing the opened file
     """
     # Try to make the file path relative
+    relative_file_path = None
     with contextlib.suppress(ValueError):
-        file_path = file_path.relative_to(agent.workspace.root)
+        relative_file_path = file_path.relative_to(agent.workspace.root)
 
     assert (agent_context := get_agent_context(agent)) is not None
 
@@ -63,12 +64,14 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
     elif not file_path.is_file():
         raise CommandExecutionError(f"{file_path} exists but is not a file")
 
-    file = FileContextItem(file_path)
+    file_path = relative_file_path or file_path
+
+    file = FileContextItem(file_path, agent.workspace.root)
     if file in agent_context:
         raise DuplicateOperationError(f"The file {file_path} is already open")
 
     return (
-        f"File {file}{' created,' if created else ''} opened and added to context ✅",
+        f"File {file_path}{' created,' if created else ''} opened and added to context ✅",
         file,
     )
 
@@ -83,7 +86,7 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
             "required": True,
         }
     },
-    available=compatible_with_agent,
+    available=agent_implements_context,
 )
 @sanitize_path_arg("path")
 def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
@@ -97,8 +100,9 @@ def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
         FolderContextItem: A ContextItem representing the opened folder
     """
     # Try to make the path relative
+    relative_path = None
     with contextlib.suppress(ValueError):
-        path = path.relative_to(agent.workspace.root)
+        relative_path = path.relative_to(agent.workspace.root)
 
     assert (agent_context := get_agent_context(agent)) is not None
 
@@ -107,8 +111,10 @@ def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
     elif not path.is_dir():
         raise CommandExecutionError(f"{path} exists but is not a folder")
 
-    folder = FolderContextItem(path)
+    path = relative_path or path
+
+    folder = FolderContextItem(path, agent.workspace.root)
     if folder in agent_context:
         raise DuplicateOperationError(f"The folder {path} is already open")
 
-    return f"Folder {folder} opened and added to context ✅", folder
+    return f"Folder {path} opened and added to context ✅", folder
