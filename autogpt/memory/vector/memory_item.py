@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 from typing import Literal
 
 import ftfy
@@ -10,10 +11,11 @@ import numpy as np
 from autogpt.config import Config
 from autogpt.llm import Message
 from autogpt.llm.utils import count_string_tokens
-from autogpt.logs import logger
 from autogpt.processing.text import chunk_content, split_text, summarize_text
 
 from .utils import Embedding, get_embedding
+
+logger = logging.getLogger(__name__)
 
 MemoryDocType = Literal["webpage", "text_file", "code_file", "agent_history"]
 

@@ -1,6 +1,7 @@
 """Text processing functions"""
+import logging
 from math import ceil
-from typing import Optional
+from typing import Iterator, Optional, Sequence
 
 import spacy
 import tiktoken
@@ -9,10 +10,11 @@ from autogpt.config import Config
 from autogpt.llm.base import ChatSequence
 from autogpt.llm.providers.openai import OPEN_AI_MODELS
 from autogpt.llm.utils import count_string_tokens, create_chat_completion
-from autogpt.logs import logger
+
+logger = logging.getLogger(__name__)
 
 
-def batch(iterable, max_batch_length: int, overlap: int = 0):
+def batch(iterable: Sequence, max_batch_length: int, overlap: int = 0):
     """Batch data from iterable into slices of length N. The last batch may be shorter."""
     # batched('ABCDEFG', 3) --> ABC DEF G
     if max_batch_length < 1:
@@ -41,7 +43,7 @@ def chunk_content(
     for_model: str,
     max_chunk_length: Optional[int] = None,
     with_overlap=True,
-):
+) -> Iterator[tuple[str, int]]:
     """Split content into chunks of approximately equal token length."""
 
     MAX_OVERLAP = 200  # limit overlap to save tokens
@@ -156,7 +158,7 @@ def split_text(
     config: Config,
     with_overlap=True,
     max_chunk_length: Optional[int] = None,
-):
+) -> Iterator[tuple[str, int]]:
     """Split text into chunks of sentences, with each chunk not exceeding the maximum length
 
     Args:

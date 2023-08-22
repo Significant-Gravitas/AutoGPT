@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterator, Optional
 
@@ -17,12 +18,9 @@ from autogpt.llm.utils import (
     count_string_tokens,
     create_chat_completion,
 )
-from autogpt.logs import (
-    PROMPT_SUMMARY_FILE_NAME,
-    SUMMARY_FILE_NAME,
-    LogCycleHandler,
-    logger,
-)
+from autogpt.logs import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME, LogCycleHandler
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
