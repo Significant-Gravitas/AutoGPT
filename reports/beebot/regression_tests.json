@@ -1,10 +1,1 @@
-{
-    "TestRememberGoal_Simple": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/1_simple/data.json"
-    },
-    "TestRememberGoal_Medium": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/2_medium/data.json"
-    }
-}
+{}
