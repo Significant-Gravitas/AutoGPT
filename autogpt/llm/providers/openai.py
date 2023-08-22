@@ -239,8 +239,6 @@ def create_chat_completion(
         messages=messages,
         **kwargs,
     )
-    if not hasattr(completion, "error"):
-        logger.debug(f"Response: {completion}")
     return completion
 
 

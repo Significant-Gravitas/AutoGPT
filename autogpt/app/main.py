@@ -213,7 +213,7 @@ def run_interaction_loop(
     ai_config = agent.ai_config
     logger = logging.getLogger(__name__)
 
-    logger.debug(f"{ai_config.ai_name} System Prompt: {agent.system_prompt}")
+    logger.debug(f"{ai_config.ai_name} System Prompt:\n{agent.system_prompt}")
 
     cycle_budget = cycles_remaining = _get_cycle_budget(
         config.continuous_mode, config.continuous_limit
