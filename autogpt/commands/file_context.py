@@ -7,9 +7,12 @@ COMMAND_CATEGORY_TITLE = "File Operations"
 
 import contextlib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from autogpt.agents.agent import Agent
-from autogpt.agents.utils.context import get_agent_context
+if TYPE_CHECKING:
+    from autogpt.agents import Agent, BaseAgent
+
+from autogpt.agents.features.context import ContextMixin, get_agent_context
 from autogpt.agents.utils.exceptions import (
     CommandExecutionError,
     DuplicateOperationError,
@@ -18,6 +21,10 @@ from autogpt.command_decorator import command
 from autogpt.models.context_item import FileContextItem, FolderContextItem
 
 from .decorators import sanitize_path_arg
+
+
+def compatible_with_agent(agent: BaseAgent):
+    return isinstance(agent, ContextMixin)
 
 
 @command(
@@ -30,6 +37,7 @@ from .decorators import sanitize_path_arg
             "required": True,
         }
     },
+    available=compatible_with_agent,
 )
 @sanitize_path_arg("file_path")
 def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
@@ -78,6 +86,7 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
             "required": True,
         }
     },
+    available=compatible_with_agent,
 )
 @sanitize_path_arg("path")
 def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:

@@ -31,10 +31,10 @@ from autogpt.models.agent_actions import (
 )
 from autogpt.models.command import CommandOutput
 from autogpt.models.context_item import ContextItem
-from autogpt.workspace import Workspace
 
 from .base import BaseAgent
-from .utils.context import ContextMixin
+from .features.context import ContextMixin
+from .features.workspace import WorkspaceMixin
 from .utils.exceptions import (
     AgentException,
     CommandExecutionError,
@@ -45,7 +45,7 @@ from .utils.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-class Agent(BaseAgent, ContextMixin):
+class Agent(BaseAgent, ContextMixin, WorkspaceMixin):
     """Agent class for interacting with Auto-GPT."""
 
     def __init__(
@@ -67,9 +67,6 @@ class Agent(BaseAgent, ContextMixin):
 
         self.memory = memory
         """VectorMemoryProvider used to manage the agent's context (TODO)"""
-
-        self.workspace = Workspace(config.workspace_path, config.restrict_to_workspace)
-        """Workspace that the agent has access to, e.g. for reading/writing files."""
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""

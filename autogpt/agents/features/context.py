@@ -39,8 +39,9 @@ class ContextMixin:
     context: AgentContext
 
     def __init__(self, **kwargs):
-        super(ContextMixin, self).__init__(**kwargs)
         self.context = AgentContext()
+
+        super(ContextMixin, self).__init__(**kwargs)
 
 
 def get_agent_context(agent: BaseAgent) -> AgentContext | None:
