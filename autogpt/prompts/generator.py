@@ -142,15 +142,15 @@ class PromptGenerator:
             plugin.post_prompt(self)
 
         # Construct full prompt
-        full_prompt_parts = self._generate_intro_prompt()
-        full_prompt_parts.append(self._generate_os_info(agent.config))
-        full_prompt_parts.append(
-            self._generate_body(
+        full_prompt_parts = (
+            self._generate_intro_prompt()
+            + self._generate_os_info(agent.config)
+            + self._generate_body(
                 agent=agent,
-                additional_constraints=[self._generate_budget_info()],
+                additional_constraints=self._generate_budget_info(),
             )
+            + self._generate_goals_info()
         )
-        full_prompt_parts.append(self._generate_goals_info())
 
         # Join non-empty parts together into paragraph format
         return "\n\n".join(filter(None, full_prompt_parts)).strip("\n")
@@ -168,7 +168,7 @@ class PromptGenerator:
             "simple strategies with no legal complications.",
         ]
 
-    def _generate_os_info(self, config: Config) -> str:
+    def _generate_os_info(self, config: Config) -> list[str]:
         """Generates the OS information part of the prompt.
 
         Params:
@@ -184,40 +184,42 @@ class PromptGenerator:
                 if os_name != "Linux"
                 else distro.name(pretty=True)
             )
-            return f"The OS you are running on is: {os_info}"
-        return ""
+            return [f"The OS you are running on is: {os_info}"]
+        return []
 
-    def _generate_budget_info(self) -> str:
+    def _generate_budget_info(self) -> list[str]:
         """Generates the budget information part of the prompt.
 
         Returns:
-            str: The budget information part of the prompt.
+            list[str]: The budget information part of the prompt, or an empty list.
         """
         if self.ai_config.api_budget > 0.0:
-            return (
+            return [
                 f"It takes money to let you run. "
                 f"Your API budget is ${self.ai_config.api_budget:.3f}"
-            )
-        return ""
+            ]
+        return []
 
-    def _generate_goals_info(self) -> str:
+    def _generate_goals_info(self) -> list[str]:
         """Generates the goals information part of the prompt.
 
         Returns:
             str: The goals information part of the prompt.
         """
         if self.ai_config.ai_goals:
-            return "\n".join(
-                [
-                    "## Goals",
-                    "For your task, you must fulfill the following goals:",
-                    *[
-                        f"{i+1}. {goal}"
-                        for i, goal in enumerate(self.ai_config.ai_goals)
-                    ],
-                ]
-            )
-        return ""
+            return [
+                "\n".join(
+                    [
+                        "## Goals",
+                        "For your task, you must fulfill the following goals:",
+                        *[
+                            f"{i+1}. {goal}"
+                            for i, goal in enumerate(self.ai_config.ai_goals)
+                        ],
+                    ]
+                )
+            ]
+        return []
 
     def _generate_body(
         self,
@@ -226,7 +228,7 @@ class PromptGenerator:
         additional_constraints: list[str] = [],
         additional_resources: list[str] = [],
         additional_best_practices: list[str] = [],
-    ) -> str:
+    ) -> list[str]:
         """
         Generates a prompt section containing the constraints, commands, resources,
         and best practices.
@@ -241,19 +243,19 @@ class PromptGenerator:
             str: The generated prompt section.
         """
 
-        return (
+        return [
             "## Constraints\n"
             "You operate within the following constraints:\n"
-            f"{self._generate_numbered_list(self.constraints + additional_constraints)}\n\n"
+            f"{self._generate_numbered_list(self.constraints + additional_constraints)}",
             "## Resources\n"
             "You can leverage access to the following resources:\n"
-            f"{self._generate_numbered_list(self.resources + additional_resources)}\n\n"
+            f"{self._generate_numbered_list(self.resources + additional_resources)}",
             "## Commands\n"
             "You have access to the following commands:\n"
-            f"{self.list_commands(agent)}\n\n"
+            f"{self.list_commands(agent)}",
             "## Best practices\n"
-            f"{self._generate_numbered_list(self.best_practices + additional_best_practices)}"
-        )
+            f"{self._generate_numbered_list(self.best_practices + additional_best_practices)}",
+        ]
 
     def list_commands(self, agent: BaseAgent) -> str:
         """Lists the commands available to the agent.
