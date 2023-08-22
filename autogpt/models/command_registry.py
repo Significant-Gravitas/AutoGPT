@@ -5,9 +5,10 @@ import inspect
 import logging
 from dataclasses import dataclass, field
 from types import ModuleType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Iterator
 
 if TYPE_CHECKING:
+    from autogpt.agents.base import BaseAgent
     from autogpt.config import Config
 
 
@@ -97,14 +98,30 @@ class CommandRegistry:
             return command(**kwargs)
         raise KeyError(f"Command '{command_name}' not found in registry")
 
-    def command_prompt(self) -> str:
+    def list_available_commands(self, agent: BaseAgent) -> Iterator[Command]:
+        """Iterates over all registered commands and yields those that are available.
+
+        Params:
+            agent (BaseAgent): The agent that the commands will be checked against.
+
+        Yields:
+            Command: The next available command.
         """
-        Returns a string representation of all registered `Command` objects for use in a prompt
-        """
-        commands_list = [
-            f"{idx + 1}. {str(cmd)}" for idx, cmd in enumerate(self.commands.values())
-        ]
-        return "\n".join(commands_list)
+
+        for cmd in self.commands.values():
+            available = cmd.available
+            if callable(cmd.available):
+                available = cmd.available(agent)
+            if available:
+                yield cmd
+
+    # def command_specs(self) -> str:
+    #     """Returns a technical declaration of all commands in the registry for use in a prompt"""
+    #
+    #     Declaring functions or commands should be done in a model-specific way to achieve
+    #     optimal results. For this reason, it should NOT be implemented here, but in an
+    #     LLM provider module.
+    #     MUST take command AVAILABILITY into account.
 
     @staticmethod
     def with_command_modules(modules: list[str], config: Config) -> CommandRegistry:
@@ -125,18 +142,13 @@ class CommandRegistry:
             new_registry.import_command_module(command_module)
 
         # Unregister commands that are incompatible with the current config
-        incompatible_commands: list[Command] = []
-        for command in new_registry.commands.values():
+        for command in [c for c in new_registry.commands.values()]:
             if callable(command.enabled) and not command.enabled(config):
-                command.enabled = False
-                incompatible_commands.append(command)
-
-        for command in incompatible_commands:
-            new_registry.unregister(command)
-            logger.debug(
-                f"Unregistering incompatible command: {command.name}, "
-                f"reason - {command.disabled_reason or 'Disabled by current config.'}"
-            )
+                new_registry.unregister(command)
+                logger.debug(
+                    f"Unregistering incompatible command '{command.name}':"
+                    f" \"{command.disabled_reason or 'Disabled by current config.'}\""
+                )
 
         return new_registry
 

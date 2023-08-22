@@ -11,7 +11,6 @@ import yaml
 from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
 
-
 logger = logging.getLogger(__name__)
 
 

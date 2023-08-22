@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
+    from autogpt.agents.base import BaseAgent
     from autogpt.config import Config
 
 from .command_parameter import CommandParameter
@@ -27,9 +28,10 @@ class Command:
         description: str,
         method: Callable[..., CommandOutput],
         parameters: list[CommandParameter],
-        enabled: bool | Callable[[Config], bool] = True,
+        enabled: Literal[True] | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
+        available: Literal[True] | Callable[[BaseAgent], bool] = True,
     ):
         self.name = name
         self.description = description
@@ -38,15 +40,18 @@ class Command:
         self.enabled = enabled
         self.disabled_reason = disabled_reason
         self.aliases = aliases
+        self.available = available
 
-    def __call__(self, *args, **kwargs) -> Any:
-        if hasattr(kwargs, "config") and callable(self.enabled):
-            self.enabled = self.enabled(kwargs["config"])
-        if not self.enabled:
+    def __call__(self, *args, agent: BaseAgent, **kwargs) -> Any:
+        if callable(self.enabled) and not self.enabled(agent.config):
             if self.disabled_reason:
                 return f"Command '{self.name}' is disabled: {self.disabled_reason}"
             return f"Command '{self.name}' is disabled"
-        return self.method(*args, **kwargs)
+
+        if callable(self.available) and not self.available(agent):
+            return f"Command '{self.name}' is not available"
+
+        return self.method(*args, **kwargs, agent=agent)
 
     def __str__(self) -> str:
         params = [

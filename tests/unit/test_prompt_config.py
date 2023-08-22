@@ -1,4 +1,4 @@
-from autogpt.config.prompt_config import PromptConfig
+from autogpt.config.ai_directives import AIDirectives
 
 """
 Test cases for the PromptConfig class, which handles loads the Prompts configuration
@@ -26,7 +26,7 @@ best_practices:
     prompt_settings_file = tmp_path / "test_prompt_settings.yaml"
     prompt_settings_file.write_text(yaml_content)
 
-    prompt_config = PromptConfig(prompt_settings_file)
+    prompt_config = AIDirectives.from_file(prompt_settings_file)
 
     assert len(prompt_config.constraints) == 3
     assert prompt_config.constraints[0] == "A test constraint"
