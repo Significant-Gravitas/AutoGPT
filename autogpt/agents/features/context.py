@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..base import BaseAgent
 
+from autogpt.llm.base import Message
 from autogpt.models.context_item import ContextItem
 
 
@@ -34,7 +35,7 @@ class AgentContext:
 
 
 class ContextMixin:
-    """Mixin that adds context support to a class"""
+    """Mixin that adds context support to a BaseAgent subclass"""
 
     context: AgentContext
 
@@ -42,6 +43,17 @@ class ContextMixin:
         self.context = AgentContext()
 
         super(ContextMixin, self).__init__(**kwargs)
+
+    def construct_base_prompt(self, *args, **kwargs):
+        if kwargs.get("append_messages") is None:
+            kwargs["append_messages"] = []
+
+        if self.context:
+            kwargs["append_messages"].insert(
+                0, Message("system", "# Context\n" + self.context.format_numbered())
+            )
+
+        return super(ContextMixin, self).construct_base_prompt(*args, **kwargs)
 
 
 def get_agent_context(agent: BaseAgent) -> AgentContext | None:

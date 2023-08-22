@@ -16,6 +16,9 @@ class WorkspaceMixin:
     """Workspace that the agent has access to, e.g. for reading/writing files."""
 
     def __init__(self, **kwargs):
+        # Initialize other bases first, because we need the config from BaseAgent
+        super(WorkspaceMixin, self).__init__(**kwargs)
+
         config: Config = getattr(self, "config")
         if not isinstance(config, Config):
             raise ValueError(f"Cannot initialize Workspace for Agent without Config")
@@ -23,8 +26,6 @@ class WorkspaceMixin:
             raise ValueError(f"Cannot set up Workspace: no WORKSPACE_PATH in config")
 
         self.workspace = Workspace(config.workspace_path, config.restrict_to_workspace)
-
-        super(WorkspaceMixin, self).__init__(**kwargs)
 
 
 def get_agent_workspace(agent: BaseAgent) -> Workspace | None:
