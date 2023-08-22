@@ -45,7 +45,7 @@ from .utils.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-class Agent(BaseAgent, ContextMixin, WorkspaceMixin):
+class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
     """Agent class for interacting with Auto-GPT."""
 
     def __init__(
