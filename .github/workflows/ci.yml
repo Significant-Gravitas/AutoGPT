@@ -193,7 +193,7 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
             pip uninstall agbenchmark -y
-            cp .env_example .env
+            cp .env.template .env
             sed -i 's/your-openai-api-key/${{ secrets.OPENAI_API_KEY }}/g' .env
           else
             echo "Unknown agent name: $AGENT_NAME"
