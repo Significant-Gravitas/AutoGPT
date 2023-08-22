@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -10,8 +11,8 @@ import yaml
 from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
 
-from autogpt import logs
-from autogpt.logs import logger
+
+logger = logging.getLogger(__name__)
 
 
 class ParserStrategy:
@@ -98,7 +99,7 @@ class LaTeXParser(ParserStrategy):
 
 
 class FileContext:
-    def __init__(self, parser: ParserStrategy, logger: logs.Logger):
+    def __init__(self, parser: ParserStrategy, logger: logging.Logger):
         self.parser = parser
         self.logger = logger
 
@@ -145,7 +146,7 @@ def is_file_binary_fn(file_path: Path):
     return False
 
 
-def read_textual_file(file_path: Path, logger: logs.Logger) -> str:
+def read_textual_file(file_path: Path, logger: logging.Logger) -> str:
     if not file_path.is_absolute():
         raise ValueError("File path must be absolute")
 

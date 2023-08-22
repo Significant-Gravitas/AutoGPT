@@ -3,7 +3,9 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Union
 
-from .logger import logger
+from autogpt.logs.helpers import log_json
+
+from .config import LOG_DIR
 
 DEFAULT_PREFIX = "agent"
 FULL_MESSAGE_HISTORY_FILE_NAME = "full_message_history.json"
@@ -31,7 +33,7 @@ class LogCycleHandler:
             ai_name_short = self.get_agent_short_name(ai_name)
             outer_folder_name = f"{created_at}_{ai_name_short}"
 
-        outer_folder_path = logger.log_dir / "DEBUG" / outer_folder_name
+        outer_folder_path = LOG_DIR / "DEBUG" / outer_folder_name
         if not outer_folder_path.exists():
             outer_folder_path.mkdir(parents=True)
 
@@ -76,5 +78,5 @@ class LogCycleHandler:
         json_data = json.dumps(data, ensure_ascii=False, indent=4)
         log_file_path = cycle_log_dir / f"{self.log_count_within_cycle}_{file_name}"
 
-        logger.log_json(json_data, log_file_path)
+        log_json(json_data, log_file_path, LOG_DIR)
         self.log_count_within_cycle += 1

@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 
@@ -8,12 +9,12 @@ from prompt_toolkit import ANSI, PromptSession
 from prompt_toolkit.history import InMemoryHistory
 
 from autogpt.config import Config
-from autogpt.logs import logger
 
+logger = logging.getLogger(__name__)
 session = PromptSession(history=InMemoryHistory())
 
 
-def clean_input(config: Config, prompt: str = "", talk=False):
+def clean_input(config: Config, prompt: str = ""):
     try:
         if config.chat_messages_enabled:
             for plugin in config.plugins:
@@ -44,7 +45,7 @@ def clean_input(config: Config, prompt: str = "", talk=False):
                 return plugin_response
 
         # ask for input, default when just pressing Enter is y
-        logger.info("Asking user via keyboard...")
+        logger.debug("Asking user via keyboard...")
 
         # handle_sigint must be set to False, so the signal handler in the
         # autogpt/main.py could be employed properly. This referes to

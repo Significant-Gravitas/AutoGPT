@@ -1,7 +1,8 @@
 import logging
-import re
 
-from colorama import Style
+from colorama import Fore, Style
+
+from .utils import remove_color_codes
 
 
 class AutoGptFormatter(logging.Formatter):
@@ -10,32 +11,46 @@ class AutoGptFormatter(logging.Formatter):
     To use this formatter, make sure to pass 'color', 'title' as log extras.
     """
 
+    # level -> (level & text color, title color)
+    LEVEL_COLOR_MAP = {
+        logging.DEBUG: Fore.LIGHTBLACK_EX,
+        logging.INFO: Fore.BLUE,
+        logging.WARNING: Fore.YELLOW,
+        logging.ERROR: Fore.RED,
+        logging.CRITICAL: Fore.RED + Style.BRIGHT,
+    }
+
     def format(self, record: logging.LogRecord) -> str:
-        if hasattr(record, "color"):
-            record.title_color = (
-                getattr(record, "color")
-                + getattr(record, "title", "")
-                + " "
-                + Style.RESET_ALL
-            )
-        else:
-            record.title_color = getattr(record, "title", "")
+        # Make sure `msg` is a string
+        if not hasattr(record, "msg"):
+            record.msg = ""
+        elif not type(record.msg) == str:
+            record.msg = str(record.msg)
 
-        # Add this line to set 'title' to an empty string if it doesn't exist
-        record.title = getattr(record, "title", "")
+        # Strip color from the message to prevent color spoofing
+        if record.msg and not getattr(record, "preserve_color", False):
+            record.msg = remove_color_codes(record.msg)
 
-        if hasattr(record, "msg"):
-            record.message_no_color = remove_color_codes(getattr(record, "msg"))
-        else:
-            record.message_no_color = ""
+        # Determine default color based on error level
+        level_color = ""
+        if record.levelno in self.LEVEL_COLOR_MAP:
+            level_color = self.LEVEL_COLOR_MAP[record.levelno]
+            record.levelname = f"{level_color}{record.levelname}{Style.RESET_ALL}"
+
+        # Determine color for message
+        color = getattr(record, "color", level_color)
+        color_is_specified = hasattr(record, "color")
+
+        # Determine color for title
+        title = getattr(record, "title", "")
+        title_color = getattr(record, "title_color", level_color)
+        if title and title_color:
+            title = f"{title_color + Style.BRIGHT}{title}{Style.RESET_ALL}"
+        # Make sure record.title is set, and padded with a space if not empty
+        record.title = f"{title} " if title else ""
+
+        # Don't color INFO messages unless the color is explicitly specified.
+        if color and (record.levelno != logging.INFO or color_is_specified):
+            record.msg = f"{color}{record.msg}{Style.RESET_ALL}"
+
         return super().format(record)
-
-
-def remove_color_codes(s: str) -> str:
-    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
-    return ansi_escape.sub("", s)
-
-
-class JsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord):
-        return record.msg

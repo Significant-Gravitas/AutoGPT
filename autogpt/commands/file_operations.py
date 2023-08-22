@@ -7,6 +7,7 @@ COMMAND_CATEGORY_TITLE = "File Operations"
 
 import contextlib
 import hashlib
+import logging
 import os
 import os.path
 from pathlib import Path
@@ -15,11 +16,12 @@ from typing import Generator, Literal
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.command_decorator import command
-from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
 
 from .decorators import sanitize_path_arg
 from .file_operations_utils import read_textual_file
+
+logger = logging.getLogger(__name__)
 
 Operation = Literal["write", "append", "delete"]
 

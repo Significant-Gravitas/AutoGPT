@@ -9,7 +9,7 @@ from pytest_mock import MockerFixture
 from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.llm.api_manager import ApiManager
-from autogpt.logs import logger
+from autogpt.logs.config import configure_logging
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
@@ -54,11 +54,12 @@ def config(
 
     config.workspace_path = workspace.root
 
-    # HACK: this is necessary to ensure PLAIN_OUTPUT takes effect
-    logger.config = config
-
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
+
+    # HACK: this is necessary to ensure PLAIN_OUTPUT takes effect
+    config.plain_output = True
+    configure_logging(config, Path(__file__).parent / "logs")
 
     # avoid circular dependency
     from autogpt.plugins.plugins_config import PluginsConfig
