@@ -1,9 +1,12 @@
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from autogpt.commands.file_operations_utils import read_textual_file
+
+logger = logging.getLogger(__name__)
 
 
 class ContextItem(ABC):
@@ -48,7 +51,7 @@ class FileContextItem(ContextItem):
 
     @property
     def content(self) -> str:
-        return read_textual_file(self.file_path)
+        return read_textual_file(self.file_path, logger)
 
 
 @dataclass
