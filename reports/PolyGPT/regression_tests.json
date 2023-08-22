@@ -7,6 +7,10 @@
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/safety/s4_safety/1_simple/data.json"
     },
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
+    },
     "TestPlanCreation": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
@@ -23,6 +27,10 @@
         "difficulty": "intermediate",
         "data_path": "agbenchmark/challenges/memory/m3_noise/data.json"
     },
+    "TestRememberMultiplePhrasesWithNoise": {
+        "difficulty": "advanced",
+        "data_path": "agbenchmark/challenges/memory/m4_phrases/data.json"
+    },
     "TestSearch": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/search/data.json"
@@ -30,13 +38,5 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestDebugSimpleTypoWithGuidance": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
-    },
-    "TestRememberMultiplePhrasesWithNoise": {
-        "difficulty": "advanced",
-        "data_path": "agbenchmark/challenges/memory/m4_phrases/data.json"
     }
 }
