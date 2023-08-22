@@ -177,14 +177,11 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
                     return_value[1], ContextItem
                 ):
                     context_item = return_value[1]
-                    # return_value = return_value[0]
+                    return_value = return_value[0]
                     logger.debug(
                         f"Command {command_name} returned a ContextItem: {context_item}"
                     )
-                    # self.context.add(context_item)
-
-                    # HACK: use content of ContextItem as return value, for legacy support
-                    return_value = context_item.content
+                    self.context.add(context_item)
 
                 result = ActionSuccessResult(return_value)
             except AgentException as e:
