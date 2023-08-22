@@ -85,7 +85,10 @@ def configure_logging(config: Config, log_dir: Path = LOG_DIR) -> None:
         typing_console_handler if not config.plain_output else console_handler
     )
     user_friendly_output_logger.addHandler(TTSHandler(config))
-    user_friendly_output_logger.setLevel(logging.DEBUG)
+    user_friendly_output_logger.addHandler(activity_log_handler)
+    user_friendly_output_logger.addHandler(error_log_handler)
+    user_friendly_output_logger.setLevel(logging.INFO)
+    user_friendly_output_logger.propagate = False
 
     # JSON logger with better formatting
     json_logger = logging.getLogger("JSON_LOGGER")

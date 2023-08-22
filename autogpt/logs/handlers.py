@@ -34,6 +34,8 @@ class TypingConsoleHandler(logging.StreamHandler):
                 self.stream.write(word)
                 self.flush()
                 if i >= len(words) - 1:
+                    self.stream.write(self.terminator)
+                    self.flush()
                     break
 
                 interval = random.uniform(min_typing_interval, max_typing_interval)
@@ -49,6 +51,7 @@ class TTSHandler(logging.Handler):
     """Output messages to the configured TTS engine (if any)"""
 
     def __init__(self, config: Config):
+        super().__init__()
         self.config = config
 
     def format(self, record: logging.LogRecord) -> str:
