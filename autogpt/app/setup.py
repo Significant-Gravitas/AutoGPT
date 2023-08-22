@@ -1,4 +1,5 @@
 """Set up the AI and its goals"""
+import logging
 import re
 from typing import Optional
 
@@ -10,15 +11,17 @@ from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.utils import create_chat_completion
-from autogpt.logs import logger
+from autogpt.logs.helpers import user_friendly_output
 from autogpt.prompts.default_prompts import (
     DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
     DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC,
     DEFAULT_USER_DESIRE_PROMPT,
 )
 
+logger = logging.getLogger(__name__)
 
-def prompt_user(
+
+def interactive_ai_config_setup(
     config: Config, ai_config_template: Optional[AIConfig] = None
 ) -> AIConfig:
     """Prompt the user for input
@@ -32,11 +35,10 @@ def prompt_user(
     """
 
     # Construct the prompt
-    logger.typewriter_log(
-        "Welcome to Auto-GPT! ",
-        Fore.GREEN,
-        "run with '--help' for more information.",
-        speak_text=True,
+    user_friendly_output(
+        title="Welcome to Auto-GPT! ",
+        message="run with '--help' for more information.",
+        title_color=Fore.GREEN,
     )
 
     ai_config_template_provided = ai_config_template is not None and any(
@@ -50,11 +52,10 @@ def prompt_user(
     user_desire = ""
     if not ai_config_template_provided:
         # Get user desire if command line overrides have not been passed in
-        logger.typewriter_log(
-            "Create an AI-Assistant:",
-            Fore.GREEN,
-            "input '--manual' to enter manual mode.",
-            speak_text=True,
+        user_friendly_output(
+            title="Create an AI-Assistant:",
+            message="input '--manual' to enter manual mode.",
+            title_color=Fore.GREEN,
         )
 
         user_desire = utils.clean_input(
@@ -66,10 +67,10 @@ def prompt_user(
 
     # If user desire contains "--manual" or we have overridden any of the AI configuration
     if "--manual" in user_desire or ai_config_template_provided:
-        logger.typewriter_log(
-            "Manual Mode Selected",
-            Fore.GREEN,
-            speak_text=True,
+        user_friendly_output(
+            "",
+            title="Manual Mode Selected",
+            title_color=Fore.GREEN,
         )
         return generate_aiconfig_manual(config, ai_config_template)
 
@@ -77,11 +78,10 @@ def prompt_user(
         try:
             return generate_aiconfig_automatic(user_desire, config)
         except Exception as e:
-            logger.typewriter_log(
-                "Unable to automatically generate AI Config based on user desire.",
-                Fore.RED,
-                "Falling back to manual mode.",
-                speak_text=True,
+            user_friendly_output(
+                title="Unable to automatically generate AI Config based on user desire.",
+                message="Falling back to manual mode.",
+                title_color=Fore.RED,
             )
             logger.debug(f"Error during AIConfig generation: {e}")
 
@@ -107,12 +107,11 @@ def generate_aiconfig_manual(
     """
 
     # Manual Setup Intro
-    logger.typewriter_log(
-        "Create an AI-Assistant:",
-        Fore.GREEN,
-        "Enter the name of your AI and its role below. Entering nothing will load"
+    user_friendly_output(
+        title="Create an AI-Assistant:",
+        message="Enter the name of your AI and its role below. Entering nothing will load"
         " defaults.",
-        speak_text=True,
+        title_color=Fore.GREEN,
     )
 
     if ai_config_template and ai_config_template.ai_name:
@@ -120,26 +119,30 @@ def generate_aiconfig_manual(
     else:
         ai_name = ""
         # Get AI Name from User
-        logger.typewriter_log(
-            "Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'"
+        user_friendly_output(
+            title="Name your AI:",
+            message="For example, 'Entrepreneur-GPT'",
+            title_color=Fore.GREEN,
         )
         ai_name = utils.clean_input(config, "AI Name: ")
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
-    logger.typewriter_log(
-        f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
+    user_friendly_output(
+        title=f"{ai_name} here!",
+        message="I am at your service.",
+        title_color=Fore.LIGHTBLUE_EX,
     )
 
     if ai_config_template and ai_config_template.ai_role:
         ai_role = ai_config_template.ai_role
     else:
         # Get AI Role from User
-        logger.typewriter_log(
-            "Describe your AI's role: ",
-            Fore.GREEN,
-            "For example, 'an AI designed to autonomously develop and run businesses with"
+        user_friendly_output(
+            title="Describe your AI's role:",
+            message="For example, 'an AI designed to autonomously develop and run businesses with"
             " the sole goal of increasing your net worth.'",
+            title_color=Fore.GREEN,
         )
         ai_role = utils.clean_input(config, f"{ai_name} is: ")
     if ai_role == "":
@@ -150,11 +153,11 @@ def generate_aiconfig_manual(
         ai_goals = ai_config_template.ai_goals
     else:
         # Enter up to 5 goals for the AI
-        logger.typewriter_log(
-            "Enter up to 5 goals for your AI: ",
-            Fore.GREEN,
-            "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage"
+        user_friendly_output(
+            title="Enter up to 5 goals for your AI:",
+            message="For example: \nIncrease net worth, Grow Twitter Account, Develop and manage"
             " multiple businesses autonomously'",
+            title_color=Fore.GREEN,
         )
         logger.info("Enter nothing to load defaults, enter nothing when finished.")
         ai_goals = []
@@ -173,10 +176,10 @@ def generate_aiconfig_manual(
         ]
 
     # Get API Budget from User
-    logger.typewriter_log(
-        "Enter your budget for API calls: ",
-        Fore.GREEN,
-        "For example: $1.50",
+    user_friendly_output(
+        title="Enter your budget for API calls:",
+        message="For example: $1.50",
+        title_color=Fore.GREEN,
     )
     logger.info("Enter nothing to let the AI run without monetary limit")
     api_budget_input = utils.clean_input(
@@ -188,8 +191,11 @@ def generate_aiconfig_manual(
         try:
             api_budget = float(api_budget_input.replace("$", ""))
         except ValueError:
-            logger.typewriter_log(
-                "Invalid budget input. Setting budget to unlimited.", Fore.RED
+            user_friendly_output(
+                level=logging.WARNING,
+                title="Invalid budget input.",
+                message="Setting budget to unlimited.",
+                title_color=Fore.RED,
             )
             api_budget = 0.0
 

@@ -1,14 +1,16 @@
 import abc
 import functools
+import logging
 from typing import MutableSet, Sequence
 
 import numpy as np
 
 from autogpt.config.config import Config
-from autogpt.logs import logger
 
 from .. import MemoryItem, MemoryItemRelevance
 from ..utils import Embedding, get_embedding
+
+logger = logging.getLogger(__name__)
 
 
 class VectorMemoryProvider(MutableSet[MemoryItem]):

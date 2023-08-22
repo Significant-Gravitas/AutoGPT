@@ -9,11 +9,13 @@ agent.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 from autogpt.config import Config
-from autogpt.logs import logger
+
+logger = logging.getLogger(__name__)
 
 
 class Workspace:

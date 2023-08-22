@@ -1,4 +1,5 @@
 import json
+import logging
 import tempfile
 from unittest import TestCase
 from xml.etree import ElementTree
@@ -8,7 +9,8 @@ import yaml
 from bs4 import BeautifulSoup
 
 from autogpt.commands.file_operations_utils import is_file_binary_fn, read_textual_file
-from autogpt.logs import logger
+
+logger = logging.getLogger(__name__)
 
 plain_text_str = "Hello, world!"
 

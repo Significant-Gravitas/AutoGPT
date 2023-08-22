@@ -40,10 +40,11 @@ if TYPE_CHECKING:
 from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
 from autogpt.llm.utils import count_string_tokens
-from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
+
+logger = logging.getLogger(__name__)
 
 FILE_DIR = Path(__file__).parent.parent
 TOKENS_TO_TRIGGER_SUMMARY = 50

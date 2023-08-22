@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Optional
@@ -14,7 +15,6 @@ from autogpt.agents.utils.exceptions import AgentException, InvalidAgentResponse
 from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
 from autogpt.llm.base import Message
 from autogpt.llm.utils import count_string_tokens
-from autogpt.logs import logger
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
@@ -34,6 +34,8 @@ from autogpt.workspace import Workspace
 from .agent import execute_command, extract_command
 from .base import BaseAgent
 from .utils.context import AgentContext
+
+logger = logging.getLogger(__name__)
 
 
 class PlanningAgent(BaseAgent):

@@ -1,22 +1,23 @@
 from __future__ import annotations
 
+import logging
 import re
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
     from autogpt.config import AIConfig, Config
-
     from autogpt.models.command_registry import CommandRegistry
 
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
-from autogpt.logs import logger
 from autogpt.memory.message_history import MessageHistory
 from autogpt.models.agent_actions import ActionResult
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
+
+logger = logging.getLogger(__name__)
 
 CommandName = str
 CommandArgs = dict[str, str]

@@ -1,13 +1,15 @@
 """Utilities for the json_fixes package."""
 import ast
 import json
+import logging
 import os.path
 from typing import Any, Literal
 
 from jsonschema import Draft7Validator
 
 from autogpt.config import Config
-from autogpt.logs import logger
+
+logger = logging.getLogger(__name__)
 
 LLM_DEFAULT_RESPONSE_FORMAT = "llm_response_format_1"
 
