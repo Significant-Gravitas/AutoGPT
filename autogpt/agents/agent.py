@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
@@ -15,7 +16,6 @@ from autogpt.json_utils.utilities import extract_dict_from_response, validate_di
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
 from autogpt.llm.utils import count_string_tokens
-from autogpt.logs import logger
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     FULL_MESSAGE_HISTORY_FILE_NAME,
@@ -41,6 +41,8 @@ from .utils.exceptions import (
     InvalidAgentResponseError,
     UnknownCommandError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class Agent(BaseAgent, ContextMixin):

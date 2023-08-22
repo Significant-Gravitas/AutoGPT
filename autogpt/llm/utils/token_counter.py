@@ -1,12 +1,14 @@
 """Functions for counting the number of tokens in a message or string."""
 from __future__ import annotations
 
+import logging
 from typing import List, overload
 
 import tiktoken
 
 from autogpt.llm.base import Message
-from autogpt.logs import logger
+
+logger = logging.getLogger(__name__)
 
 
 @overload

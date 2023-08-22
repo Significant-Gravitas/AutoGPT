@@ -1,48 +1,77 @@
+from __future__ import annotations
+
 import json
 import logging
 import random
+import re
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
+from autogpt.logs.utils import remove_color_codes
+from autogpt.speech.say import say_text
 
-class ConsoleHandler(logging.StreamHandler):
-    def emit(self, record: logging.LogRecord) -> None:
-        msg = self.format(record)
-        try:
-            print(msg)
-        except Exception:
-            self.handleError(record)
+if TYPE_CHECKING:
+    from autogpt.config import Config
 
 
 class TypingConsoleHandler(logging.StreamHandler):
     """Output stream to console using simulated typing"""
 
-    def emit(self, record: logging.LogRecord):
-        min_typing_speed = 0.05
-        max_typing_speed = 0.01
+    # Typing speed settings in WPS (Words Per Second)
+    MIN_WPS = 25
+    MAX_WPS = 100
+
+    def emit(self, record: logging.LogRecord) -> None:
+        min_typing_interval = 1 / TypingConsoleHandler.MAX_WPS
+        max_typing_interval = 1 / TypingConsoleHandler.MIN_WPS
 
         msg = self.format(record)
         try:
-            words = msg.split()
+            # Split without discarding whitespace
+            words = re.findall(r"\S+\s*", msg)
+
             for i, word in enumerate(words):
-                print(word, end="", flush=True)
-                if i < len(words) - 1:
-                    print(" ", end="", flush=True)
-                typing_speed = random.uniform(min_typing_speed, max_typing_speed)
-                time.sleep(typing_speed)
+                self.stream.write(word)
+                self.flush()
+                if i >= len(words) - 1:
+                    break
+
+                interval = random.uniform(min_typing_interval, max_typing_interval)
                 # type faster after each word
-                min_typing_speed = min_typing_speed * 0.95
-                max_typing_speed = max_typing_speed * 0.95
-            print()
+                min_typing_interval = min_typing_interval * 0.95
+                max_typing_interval = max_typing_interval * 0.95
+                time.sleep(interval)
         except Exception:
             self.handleError(record)
 
 
-class JsonFileHandler(logging.FileHandler):
-    def __init__(self, filename: str | Path, mode="a", encoding=None, delay=False):
-        super().__init__(filename, mode, encoding, delay)
+class TTSHandler(logging.Handler):
+    """Output messages to the configured TTS engine (if any)"""
 
-    def emit(self, record: logging.LogRecord):
-        json_data = json.loads(self.format(record))
+    def __init__(self, config: Config):
+        self.config = config
+
+    def format(self, record: logging.LogRecord) -> str:
+        if getattr(record, "title", ""):
+            msg = f"{getattr(record, 'title')} {record.msg}"
+        else:
+            msg = f"{record.msg}"
+
+        return remove_color_codes(msg)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if not self.config.speak_mode:
+            return
+
+        message = self.format(record)
+        say_text(message, self.config)
+
+
+class JsonFileHandler(logging.FileHandler):
+    def format(self, record: logging.LogRecord) -> str:
+        record.json_data = json.loads(record.getMessage())
+        return json.dumps(getattr(record, "json_data"), ensure_ascii=False, indent=4)
+
+    def emit(self, record: logging.LogRecord) -> None:
         with open(self.baseFilename, "w", encoding="utf-8") as f:
-            json.dump(json_data, f, ensure_ascii=False, indent=4)
+            f.write(self.format(record))

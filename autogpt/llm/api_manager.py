@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
 
 import openai
 from openai import Model
 
 from autogpt.llm.base import CompletionModelInfo
-from autogpt.logs import logger
 from autogpt.singleton import Singleton
+
+logger = logging.getLogger(__name__)
 
 
 class ApiManager(metaclass=Singleton):

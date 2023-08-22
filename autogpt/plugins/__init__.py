@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import json
+import logging
 import os
 import sys
 import zipfile
@@ -20,8 +21,9 @@ from openapi_python_client.config import Config as OpenAPIConfig
 if TYPE_CHECKING:
     from autogpt.config import Config
 
-from autogpt.logs import logger
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
+
+logger = logging.getLogger(__name__)
 
 
 def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
