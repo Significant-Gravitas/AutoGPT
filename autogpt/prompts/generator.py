@@ -1,10 +1,15 @@
 """ A module for generating custom prompt strings."""
 from __future__ import annotations
 
+import platform
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Optional
 
+import distro
+
 if TYPE_CHECKING:
+    from autogpt.agents.base import BaseAgent
+    from autogpt.config import AIConfig, AIDirectives, Config
     from autogpt.models.command_registry import CommandRegistry
 
 
@@ -13,6 +18,28 @@ class PromptGenerator:
     A class for generating custom prompt strings based on constraints, commands,
         resources, and performance evaluations.
     """
+
+    ai_config: AIConfig
+
+    best_practices: list[str]
+    constraints: list[str]
+    resources: list[str]
+
+    commands: list[Command]
+    command_registry: CommandRegistry
+
+    def __init__(
+        self,
+        ai_config: AIConfig,
+        ai_directives: AIDirectives,
+        command_registry: CommandRegistry,
+    ):
+        self.ai_config = ai_config
+        self.best_practices = ai_directives.best_practices
+        self.constraints = ai_directives.constraints
+        self.resources = ai_directives.resources
+        self.commands = []
+        self.command_registry = command_registry
 
     @dataclass
     class Command:
@@ -28,24 +55,11 @@ class PromptGenerator:
             )
             return f'{self.label}: "{self.name}", params: ({params_string})'
 
-    constraints: list[str]
-    commands: list[Command]
-    resources: list[str]
-    best_practices: list[str]
-    command_registry: CommandRegistry | None
-
-    def __init__(self):
-        self.constraints = []
-        self.commands = []
-        self.resources = []
-        self.best_practices = []
-        self.command_registry = None
-
     def add_constraint(self, constraint: str) -> None:
         """
         Add a constraint to the constraints list.
 
-        Args:
+        Params:
             constraint (str): The constraint to be added.
         """
         self.constraints.append(constraint)
@@ -63,7 +77,7 @@ class PromptGenerator:
         *Should only be used by plugins.* Native commands should be added
         directly to the CommandRegistry.
 
-        Args:
+        Params:
             command_label (str): The label of the command.
             command_name (str): The name of the command.
             params (dict, optional): A dictionary containing argument names and their
@@ -85,7 +99,7 @@ class PromptGenerator:
         """
         Add a resource to the resources list.
 
-        Args:
+        Params:
             resource (str): The resource to be added.
         """
         self.resources.append(resource)
@@ -94,7 +108,7 @@ class PromptGenerator:
         """
         Add an item to the list of best practices.
 
-        Args:
+        Params:
             best_practice (str): The best practice item to be added.
         """
         self.best_practices.append(best_practice)
@@ -103,7 +117,7 @@ class PromptGenerator:
         """
         Generate a numbered list containing the given items.
 
-        Args:
+        Params:
             items (list): A list of items to be numbered.
             start_at (int, optional): The number to start the sequence with; defaults to 1.
 
@@ -112,19 +126,119 @@ class PromptGenerator:
         """
         return "\n".join(f"{i}. {item}" for i, item in enumerate(items, start_at))
 
-    def generate_prompt_string(
+    def construct_system_prompt(self, agent: BaseAgent) -> str:
+        """Constructs a system prompt containing the most important information for the AI.
+
+        Params:
+            agent: The agent for which the system prompt is being constructed.
+
+        Returns:
+            str: The constructed system prompt.
+        """
+
+        for plugin in agent.config.plugins:
+            if not plugin.can_handle_post_prompt():
+                continue
+            plugin.post_prompt(self)
+
+        # Construct full prompt
+        full_prompt_parts = self._generate_intro_prompt()
+        full_prompt_parts.append(self._generate_os_info(agent.config))
+        full_prompt_parts.append(
+            self._generate_body(
+                agent=agent,
+                additional_constraints=[self._generate_budget_info()],
+            )
+        )
+        full_prompt_parts.append(self._generate_goals_info())
+
+        # Join non-empty parts together into paragraph format
+        return "\n\n".join(filter(None, full_prompt_parts)).strip("\n")
+
+    def _generate_intro_prompt(self) -> list[str]:
+        """Generates the introduction part of the prompt.
+
+        Returns:
+            list[str]: A list of strings forming the introduction part of the prompt.
+        """
+        return [
+            f"You are {self.ai_config.ai_name}, {self.ai_config.ai_role.rstrip('.')}.",
+            "Your decisions must always be made independently without seeking "
+            "user assistance. Play to your strengths as an LLM and pursue "
+            "simple strategies with no legal complications.",
+        ]
+
+    def _generate_os_info(self, config: Config) -> str:
+        """Generates the OS information part of the prompt.
+
+        Params:
+            config (Config): The configuration object.
+
+        Returns:
+            str: The OS information part of the prompt.
+        """
+        if config.execute_local_commands:
+            os_name = platform.system()
+            os_info = (
+                platform.platform(terse=True)
+                if os_name != "Linux"
+                else distro.name(pretty=True)
+            )
+            return f"The OS you are running on is: {os_info}"
+        return ""
+
+    def _generate_budget_info(self) -> str:
+        """Generates the budget information part of the prompt.
+
+        Returns:
+            str: The budget information part of the prompt.
+        """
+        if self.ai_config.api_budget > 0.0:
+            return (
+                f"It takes money to let you run. "
+                f"Your API budget is ${self.ai_config.api_budget:.3f}"
+            )
+        return ""
+
+    def _generate_goals_info(self) -> str:
+        """Generates the goals information part of the prompt.
+
+        Returns:
+            str: The goals information part of the prompt.
+        """
+        if self.ai_config.ai_goals:
+            return "\n".join(
+                [
+                    "## Goals",
+                    "For your task, you must fulfill the following goals:",
+                    *[
+                        f"{i+1}. {goal}"
+                        for i, goal in enumerate(self.ai_config.ai_goals)
+                    ],
+                ]
+            )
+        return ""
+
+    def _generate_body(
         self,
+        agent: BaseAgent,
         *,
         additional_constraints: list[str] = [],
         additional_resources: list[str] = [],
         additional_best_practices: list[str] = [],
     ) -> str:
         """
-        Generate a prompt string based on the constraints, commands, resources,
-            and best practices.
+        Generates a prompt section containing the constraints, commands, resources,
+        and best practices.
+
+        Params:
+            agent: The agent for which the prompt string is being generated.
+            additional_constraints: Additional constraints to be included in the prompt string.
+            additional_resources: Additional resources to be included in the prompt string.
+            additional_best_practices: Additional best practices to be included in the prompt string.
 
         Returns:
-            str: The generated prompt string.
+            str: The generated prompt section.
         """
 
         return (
@@ -136,18 +250,24 @@ class PromptGenerator:
             f"{self._generate_numbered_list(self.resources + additional_resources)}\n\n"
             "## Commands\n"
             "You have access to the following commands:\n"
-            f"{self._generate_commands()}\n\n"
+            f"{self.list_commands(agent)}\n\n"
             "## Best practices\n"
             f"{self._generate_numbered_list(self.best_practices + additional_best_practices)}"
         )
 
-    def _generate_commands(self) -> str:
+    def list_commands(self, agent: BaseAgent) -> str:
+        """Lists the commands available to the agent.
+
+        Params:
+            agent: The agent for which the commands are being listed.
+
+        Returns:
+            str: A string containing a numbered list of commands.
+        """
         command_strings = []
         if self.command_registry:
             command_strings += [
-                str(cmd)
-                for cmd in self.command_registry.commands.values()
-                if cmd.enabled
+                str(cmd) for cmd in self.command_registry.list_available_commands(agent)
             ]
 
         # Add commands from plugins etc.

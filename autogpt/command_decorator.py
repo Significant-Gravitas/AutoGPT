@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import functools
-from typing import TYPE_CHECKING, Any, Callable, Optional, TypedDict
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypedDict
 
 if TYPE_CHECKING:
+    from autogpt.agents.base import BaseAgent
     from autogpt.config import Config
 
 from autogpt.models.command import Command, CommandOutput, CommandParameter
@@ -22,9 +23,10 @@ def command(
     name: str,
     description: str,
     parameters: dict[str, CommandParameterSpec],
-    enabled: bool | Callable[[Config], bool] = True,
+    enabled: Literal[True] | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
+    available: Literal[True] | Callable[[BaseAgent], bool] = True,
 ) -> Callable[..., CommandOutput]:
     """The command decorator is used to create Command objects from ordinary functions."""
 
@@ -46,6 +48,7 @@ def command(
             enabled=enabled,
             disabled_reason=disabled_reason,
             aliases=aliases,
+            available=available,
         )
 
         @functools.wraps(func)

@@ -155,7 +155,6 @@ def run_auto_gpt(
         role=ai_role,
         goals=ai_goals,
     )
-    ai_config.command_registry = command_registry
     # print(prompt)
 
     # Initialize memory and make sure it is empty.
