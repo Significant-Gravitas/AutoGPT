@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
+from openai.util import logger as openai_logger
 
 if TYPE_CHECKING:
     from autogpt.config import Config
@@ -84,14 +85,15 @@ def configure_logging(config: Config, log_dir: Path = LOG_DIR) -> None:
         typing_console_handler if not config.plain_output else console_handler
     )
     user_friendly_output_logger.addHandler(TTSHandler(config))
-    user_friendly_output_logger.addHandler(activity_log_handler)
-    user_friendly_output_logger.addHandler(error_log_handler)
     user_friendly_output_logger.setLevel(logging.DEBUG)
 
+    # JSON logger with better formatting
     json_logger = logging.getLogger("JSON_LOGGER")
-    json_logger.addHandler(activity_log_handler)
-    json_logger.addHandler(error_log_handler)
     json_logger.setLevel(logging.DEBUG)
+    json_logger.propagate = False
+
+    # Disable debug logging from OpenAI library
+    openai_logger.setLevel(logging.INFO)
 
 
 def configure_chat_plugins(config: Config) -> None:

@@ -3,8 +3,6 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Union
 
-from autogpt.logs.helpers import log_json
-
 from .config import LOG_DIR
 
 DEFAULT_PREFIX = "agent"
@@ -78,5 +76,7 @@ class LogCycleHandler:
         json_data = json.dumps(data, ensure_ascii=False, indent=4)
         log_file_path = cycle_log_dir / f"{self.log_count_within_cycle}_{file_name}"
 
-        log_json(json_data, log_file_path, LOG_DIR)
+        with open(log_file_path, "w", encoding="utf-8") as f:
+            f.write(json_data + "\n")
+
         self.log_count_within_cycle += 1
