@@ -23,7 +23,7 @@ from autogpt.models.context_item import FileContextItem, FolderContextItem
 from .decorators import sanitize_path_arg
 
 
-def compatible_with_agent(agent: BaseAgent):
+def compatible_with_agent(agent: BaseAgent) -> bool:
     return isinstance(agent, ContextMixin)
 
 
@@ -54,10 +54,7 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
     with contextlib.suppress(ValueError):
         file_path = file_path.relative_to(agent.workspace.root)
 
-    if (agent_context := get_agent_context(agent)) is None:
-        raise NotImplementedError(
-            f"{agent.__class__.__name__} does not implement context"
-        )
+    assert (agent_context := get_agent_context(agent)) is not None
 
     created = False
     if not file_path.exists():
@@ -103,10 +100,7 @@ def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
     with contextlib.suppress(ValueError):
         path = path.relative_to(agent.workspace.root)
 
-    if (agent_context := get_agent_context(agent)) is None:
-        raise NotImplementedError(
-            f"{agent.__class__.__name__} does not implement context"
-        )
+    assert (agent_context := get_agent_context(agent)) is not None
 
     if not path.exists():
         raise FileNotFoundError(f"open_folder {path} failed: no such file or directory")
