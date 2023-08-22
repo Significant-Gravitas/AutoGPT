@@ -102,7 +102,7 @@ class BaseAgent(metaclass=ABCMeta):
         super(BaseAgent, self).__init__()
 
     @property
-    def system_prompt(self):
+    def system_prompt(self) -> str:
         """
         The system prompt sets up the AI's personality and explains its goals,
         available resources, and restrictions.
@@ -297,7 +297,7 @@ class BaseAgent(metaclass=ABCMeta):
         return (
             f"Respond strictly with JSON{', and also specify a command to use through a function_call' if use_functions else ''}. "
             "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
-            f"{response_format}\n"
+            f"{response_format}"
         )
 
     def on_before_think(
