@@ -38,7 +38,7 @@ from .features.workspace import WorkspaceMixin
 logger = logging.getLogger(__name__)
 
 
-class PlanningAgent(BaseAgent, ContextMixin, WorkspaceMixin):
+class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
     """Agent class for interacting with Auto-GPT."""
 
     ThoughtProcessID = Literal["plan", "action", "evaluate"]
