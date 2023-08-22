@@ -1,9 +1,11 @@
 import functools
+import logging
 from pathlib import Path
 from typing import Callable
 
 from autogpt.agents.agent import Agent
-from autogpt.logs import logger
+
+logger = logging.getLogger(__name__)
 
 
 def sanitize_path_arg(arg_name: str):

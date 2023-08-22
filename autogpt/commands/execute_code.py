@@ -3,6 +3,7 @@
 COMMAND_CATEGORY = "execute_code"
 COMMAND_CATEGORY_TITLE = "Execute Code"
 
+import logging
 import os
 import subprocess
 from pathlib import Path
@@ -21,9 +22,10 @@ from autogpt.agents.utils.exceptions import (
 )
 from autogpt.command_decorator import command
 from autogpt.config import Config
-from autogpt.logs import logger
 
 from .decorators import sanitize_path_arg
+
+logger = logging.getLogger(__name__)
 
 ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"

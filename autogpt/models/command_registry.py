@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import logging
 from dataclasses import dataclass, field
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
@@ -9,9 +10,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from autogpt.config import Config
 
+
 from autogpt.command_decorator import AUTO_GPT_COMMAND_IDENTIFIER
-from autogpt.logs import logger
 from autogpt.models.command import Command
+
+logger = logging.getLogger(__name__)
 
 
 class CommandRegistry:

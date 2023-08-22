@@ -2,11 +2,14 @@
 """
 A module that contains the PromptConfig class object that contains the configuration
 """
+import logging
+
 import yaml
-from colorama import Fore
 
 from autogpt import utils
-from autogpt.logs import logger
+from autogpt.logs.helpers import request_user_double_check
+
+logger = logging.getLogger(__name__)
 
 
 class PromptConfig:
@@ -35,8 +38,8 @@ class PromptConfig:
         # Validate file
         (validated, message) = utils.validate_yaml_file(prompt_settings_file)
         if not validated:
-            logger.typewriter_log("FAILED FILE VALIDATION", Fore.RED, message)
-            logger.double_check()
+            logger.error(message, extra={"title": "FAILED FILE VALIDATION"})
+            request_user_double_check()
             exit(1)
 
         with open(prompt_settings_file, encoding="utf-8") as file:

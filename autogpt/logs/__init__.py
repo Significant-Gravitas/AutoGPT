@@ -1,5 +1,4 @@
-from .formatters import AutoGptFormatter, JsonFormatter, remove_color_codes
-from .handlers import ConsoleHandler, JsonFileHandler, TypingConsoleHandler
+from .helpers import log_json, user_friendly_output
 from .log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     FULL_MESSAGE_HISTORY_FILE_NAME,
@@ -11,4 +10,3 @@ from .log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
-from .logger import Logger, logger

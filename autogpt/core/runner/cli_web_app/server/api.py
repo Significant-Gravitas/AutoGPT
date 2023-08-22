@@ -1,13 +1,13 @@
+import logging
 from pathlib import Path
 
 from agent_protocol import StepHandler, StepResult
-from colorama import Fore
 
 from autogpt.agents import Agent
 from autogpt.app.main import UserFeedback
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, ConfigBuilder
-from autogpt.logs import logger
+from autogpt.logs.helpers import user_friendly_output
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
@@ -64,7 +64,9 @@ async def interaction_step(
     if command_name is not None:
         result = agent.execute(command_name, command_args, user_input)
         if result is None:
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+            user_friendly_output(
+                title="SYSTEM:", message="Unable to execute command", level=logging.WARN
+            )
             return
 
     next_command_name, next_command_args, assistant_reply_dict = agent.think()
