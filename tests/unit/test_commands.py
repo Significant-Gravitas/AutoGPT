@@ -33,7 +33,7 @@ def test_command_creation():
     assert cmd.description == "Example command"
     assert cmd.method == example_command_method
     assert (
-        str(cmd) == "example: Example command, params: (arg1: int, arg2: Optional[str])"
+        str(cmd) == "example: Example command. Params: (arg1: int, arg2: Optional[str])"
     )
 
 
