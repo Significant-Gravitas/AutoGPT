@@ -5,6 +5,7 @@ COMMAND_CATEGORY_TITLE = "Text to Image"
 
 import io
 import json
+import logging
 import time
 import uuid
 from base64 import b64decode
@@ -15,7 +16,8 @@ from PIL import Image
 
 from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
-from autogpt.logs import logger
+
+logger = logging.getLogger(__name__)
 
 
 @command(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import logging
 import time
 from dataclasses import dataclass
 from typing import Callable, List, Optional
@@ -19,8 +20,10 @@ from autogpt.llm.base import (
     TextModelInfo,
     TText,
 )
-from autogpt.logs import logger
+from autogpt.logs.helpers import request_user_double_check
 from autogpt.models.command_registry import CommandRegistry
+
+logger = logging.getLogger(__name__)
 
 OPEN_AI_CHAT_MODELS = {
     info.name: info
@@ -197,7 +200,7 @@ def retry_api(
                     error_msg = error_messages[type(e)]
                     logger.warn(error_msg)
                     if not user_warned:
-                        logger.double_check(api_key_error_msg)
+                        request_user_double_check(api_key_error_msg)
                         logger.debug(f"Status: {e.http_status}")
                         logger.debug(f"Response body: {e.json_body}")
                         logger.debug(f"Response headers: {e.headers}")

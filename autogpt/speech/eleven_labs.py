@@ -1,6 +1,7 @@
 """ElevenLabs speech module"""
 from __future__ import annotations
 
+import logging
 import os
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,8 @@ from playsound import playsound
 if TYPE_CHECKING:
     from autogpt.config import Config
 from .base import VoiceBase
+
+logger = logging.getLogger(__name__)
 
 PLACEHOLDERS = {"your-voice-id"}
 
@@ -72,8 +75,6 @@ class ElevenLabsSpeech(VoiceBase):
         Returns:
             bool: True if the request was successful, False otherwise
         """
-        from autogpt.logs import logger
-
         tts_url = (
             f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_index]}"
         )

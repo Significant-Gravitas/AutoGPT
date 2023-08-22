@@ -1,7 +1,12 @@
 """ MacOS TTS Voice. """
-import os
+from __future__ import annotations
 
-from autogpt.config import Config
+import os
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.speech.base import VoiceBase
 
 
