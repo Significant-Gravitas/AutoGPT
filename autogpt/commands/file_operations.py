@@ -19,6 +19,7 @@ from autogpt.command_decorator import command
 from autogpt.memory.vector import MemoryItem, VectorMemory
 
 from .decorators import sanitize_path_arg
+from .file_context import open_file, open_folder    # NOQA
 from .file_operations_utils import read_textual_file
 
 logger = logging.getLogger(__name__)
