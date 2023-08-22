@@ -29,10 +29,10 @@ class NewTaskButton extends StatelessWidget {
           ),
         ),
       ),
-      child: Container(
+      child: SizedBox(
         width: buttonWidth,
         height: 50,
-        child: Row(
+        child: const Row(
           children: [
             // Black plus icon
             Icon(Icons.add, color: Colors.black),
