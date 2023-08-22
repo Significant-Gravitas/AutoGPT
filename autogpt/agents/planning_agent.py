@@ -29,16 +29,16 @@ from autogpt.models.agent_actions import (
     ActionSuccessResult,
 )
 from autogpt.models.context_item import ContextItem
-from autogpt.workspace import Workspace
 
 from .agent import execute_command, extract_command
 from .base import BaseAgent
-from .utils.context import AgentContext
+from .features.context import ContextMixin
+from .features.workspace import WorkspaceMixin
 
 logger = logging.getLogger(__name__)
 
 
-class PlanningAgent(BaseAgent):
+class PlanningAgent(BaseAgent, ContextMixin, WorkspaceMixin):
     """Agent class for interacting with Auto-GPT."""
 
     ThoughtProcessID = Literal["plan", "action", "evaluate"]
@@ -63,9 +63,6 @@ class PlanningAgent(BaseAgent):
         self.memory = memory
         """VectorMemoryProvider used to manage the agent's context (TODO)"""
 
-        self.workspace = Workspace(config.workspace_path, config.restrict_to_workspace)
-        """Workspace that the agent has access to, e.g. for reading/writing files."""
-
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""
 
@@ -73,9 +70,6 @@ class PlanningAgent(BaseAgent):
         """LogCycleHandler for structured debug logging."""
 
         self.action_history = ActionHistory()
-
-        self.context = AgentContext()
-        """Dynamic segment of the prompt, to provide the LLM with relevant context"""
 
         self.plan: list[str] = []
         """List of steps that the Agent plans to take"""
