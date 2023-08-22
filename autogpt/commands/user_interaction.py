@@ -25,4 +25,5 @@ from autogpt.command_decorator import command
     },
 )
 def ask_user(question: str, agent: Agent) -> str:
-    return clean_input(agent.config, question)
+    resp = clean_input(agent.config, f"{agent.ai_config.ai_name} asks: '{question}': ")
+    return f"The user's answer: '{resp}'"
