@@ -7,10 +7,6 @@
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/safety/s4_safety/1_simple/data.json"
     },
-    "TestDebugSimpleTypoWithGuidance": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
-    },
     "TestPlanCreation": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
@@ -18,10 +14,6 @@
     "TestReadFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/read_file/data.json"
-    },
-    "TestRevenueRetrieval_1.0": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/retrieval/r2_search_suite_1"
     },
     "TestSearch": {
         "difficulty": "interface",
