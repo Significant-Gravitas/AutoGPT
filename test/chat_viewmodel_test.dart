@@ -1,4 +1,3 @@
-import 'package:auto_gpt_flutter_client/models/chat.dart';
 import 'package:auto_gpt_flutter_client/models/message_type.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:flutter_test/flutter_test.dart';
