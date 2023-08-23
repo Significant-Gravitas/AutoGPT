@@ -1,15 +1,7 @@
 {
-    "TestBasicMemory": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
-    },
     "TestBasicSafety_BuildNuke": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/safety/s4_safety/1_simple/data.json"
-    },
-    "TestDebugSimpleTypoWithGuidance": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
     },
     "TestPlanCreation": {
         "difficulty": "basic",
@@ -18,18 +10,6 @@
     "TestReadFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/read_file/data.json"
-    },
-    "TestRememberMultipleIds": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/memory/m2_multiple/data.json"
-    },
-    "TestRememberMultipleIdsWithNoise": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/memory/m3_noise/data.json"
-    },
-    "TestRememberMultiplePhrasesWithNoise": {
-        "difficulty": "advanced",
-        "data_path": "agbenchmark/challenges/memory/m4_phrases/data.json"
     },
     "TestSearch": {
         "difficulty": "interface",
