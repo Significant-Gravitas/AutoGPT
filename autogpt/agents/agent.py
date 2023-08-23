@@ -347,7 +347,7 @@ def execute_command(
             raise CommandExecutionError(str(e))
 
     # Handle non-native commands (e.g. from plugins)
-    for command in agent.ai_config.prompt_generator.commands:
+    for command in agent.prompt_generator.commands:
         if (
             command_name == command.label.lower()
             or command_name == command.name.lower()

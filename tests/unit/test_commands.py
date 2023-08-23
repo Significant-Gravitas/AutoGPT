@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 import os
 import shutil
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from autogpt.agents import Agent, BaseAgent
 
 from autogpt.models.command import Command, CommandParameter
 from autogpt.models.command_registry import CommandRegistry
@@ -14,7 +20,7 @@ PARAMETERS = [
 ]
 
 
-def example_command_method(arg1: int, arg2: str) -> str:
+def example_command_method(arg1: int, arg2: str, agent: BaseAgent) -> str:
     """Example function for testing the Command class."""
     # This function is static because it is not used by any other test cases.
     return f"{arg1} - {arg2}"
@@ -47,16 +53,16 @@ def example_command():
     )
 
 
-def test_command_call(example_command: Command):
+def test_command_call(example_command: Command, agent: Agent):
     """Test that Command(*args) calls and returns the result of method(*args)."""
-    result = example_command(arg1=1, arg2="test")
+    result = example_command(arg1=1, arg2="test", agent=agent)
     assert result == "1 - test"
 
 
-def test_command_call_with_invalid_arguments(example_command: Command):
+def test_command_call_with_invalid_arguments(example_command: Command, agent: Agent):
     """Test that calling a Command object with invalid arguments raises a TypeError."""
     with pytest.raises(TypeError):
-        example_command(arg1="invalid", does_not_exist="test")
+        example_command(arg1="invalid", does_not_exist="test", agent=agent)
 
 
 def test_register_command(example_command: Command):
@@ -148,7 +154,7 @@ def test_get_nonexistent_command():
     assert "nonexistent_command" not in registry
 
 
-def test_call_command():
+def test_call_command(agent: Agent):
     """Test that a command can be called through the registry."""
     registry = CommandRegistry()
     cmd = Command(
@@ -159,17 +165,17 @@ def test_call_command():
     )
 
     registry.register(cmd)
-    result = registry.call("example", arg1=1, arg2="test")
+    result = registry.call("example", arg1=1, arg2="test", agent=agent)
 
     assert result == "1 - test"
 
 
-def test_call_nonexistent_command():
+def test_call_nonexistent_command(agent: Agent):
     """Test that attempting to call a nonexistent command raises a KeyError."""
     registry = CommandRegistry()
 
     with pytest.raises(KeyError):
-        registry.call("nonexistent_command", arg1=1, arg2="test")
+        registry.call("nonexistent_command", arg1=1, arg2="test", agent=agent)
 
 
 def test_import_mock_commands_module():

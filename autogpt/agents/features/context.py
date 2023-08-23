@@ -53,7 +53,7 @@ class ContextMixin:
                 0, Message("system", "# Context\n" + self.context.format_numbered())
             )
 
-        return super(ContextMixin, self).construct_base_prompt(*args, **kwargs)
+        return super(ContextMixin, self).construct_base_prompt(*args, **kwargs)  # type: ignore
 
 
 def get_agent_context(agent: BaseAgent) -> AgentContext | None:
