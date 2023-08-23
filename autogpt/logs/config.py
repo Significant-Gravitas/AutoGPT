@@ -12,6 +12,7 @@ from openai.util import logger as openai_logger
 if TYPE_CHECKING:
     from autogpt.config import Config
 
+from .filters import BelowLevelFilter
 from .formatters import AutoGptFormatter
 from .handlers import TTSHandler, TypingConsoleHandler
 
@@ -42,10 +43,14 @@ def configure_logging(config: Config, log_dir: Path = LOG_DIR) -> None:
     log_format = DEBUG_LOG_FORMAT if config.debug_mode else SIMPLE_LOG_FORMAT
     console_formatter = AutoGptFormatter(log_format)
 
-    # Console output handler
-    console_handler = logging.StreamHandler(stream=sys.stdout)
-    console_handler.setLevel(log_level)
-    console_handler.setFormatter(console_formatter)
+    # Console output handlers
+    stdout = logging.StreamHandler(stream=sys.stdout)
+    stdout.setLevel(log_level)
+    stdout.addFilter(BelowLevelFilter(logging.WARNING))
+    stdout.setFormatter(console_formatter)
+    stderr = logging.StreamHandler()
+    stderr.setLevel(logging.WARNING)
+    stderr.setFormatter(console_formatter)
 
     # INFO log file handler
     activity_log_handler = logging.FileHandler(log_dir / LOG_FILE, "a", "utf-8")
@@ -68,7 +73,7 @@ def configure_logging(config: Config, log_dir: Path = LOG_DIR) -> None:
         format=log_format,
         level=log_level,
         handlers=(
-            [console_handler, activity_log_handler, error_log_handler]
+            [stdout, stderr, activity_log_handler, error_log_handler]
             + ([debug_log_handler] if config.debug_mode else [])
         ),
     )
@@ -81,13 +86,14 @@ def configure_logging(config: Config, log_dir: Path = LOG_DIR) -> None:
     typing_console_handler.setFormatter(console_formatter)
 
     user_friendly_output_logger = logging.getLogger(USER_FRIENDLY_OUTPUT_LOGGER)
+    user_friendly_output_logger.setLevel(logging.INFO)
     user_friendly_output_logger.addHandler(
-        typing_console_handler if not config.plain_output else console_handler
+        typing_console_handler if not config.plain_output else stdout
     )
     user_friendly_output_logger.addHandler(TTSHandler(config))
     user_friendly_output_logger.addHandler(activity_log_handler)
     user_friendly_output_logger.addHandler(error_log_handler)
-    user_friendly_output_logger.setLevel(logging.INFO)
+    user_friendly_output_logger.addHandler(stderr)
     user_friendly_output_logger.propagate = False
 
     # JSON logger with better formatting

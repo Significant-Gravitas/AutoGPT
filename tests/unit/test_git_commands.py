@@ -18,7 +18,7 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, agent: Agent):
     repo = "github.com/Significant-Gravitas/Auto-GPT.git"
     scheme = "https://"
     url = scheme + repo
-    clone_path = str(workspace.get_path("auto-gpt-repo"))
+    clone_path = workspace.get_path("auto-gpt-repo")
 
     expected_output = f"Cloned {url} to {clone_path}"
 
@@ -33,7 +33,7 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, agent: Agent):
 
 def test_clone_repository_error(workspace, mock_clone_from, agent: Agent):
     url = "https://github.com/this-repository/does-not-exist.git"
-    clone_path = str(workspace.get_path("does-not-exist"))
+    clone_path = workspace.get_path("does-not-exist")
 
     mock_clone_from.side_effect = GitCommandError(
         "clone", "fatal: repository not found", ""

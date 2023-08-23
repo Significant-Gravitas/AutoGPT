@@ -11,6 +11,7 @@ def user_friendly_output(
     level: int = logging.INFO,
     title: str = "",
     title_color: str = "",
+    preserve_message_color: bool = False,
 ) -> None:
     """Outputs a message to the user in a user-friendly way.
 
@@ -24,7 +25,15 @@ def user_friendly_output(
         for plugin in _chat_plugins:
             plugin.report(f"{title}: {message}")
 
-    logger.log(level, message, extra={"title": title, "title_color": title_color})
+    logger.log(
+        level,
+        message,
+        extra={
+            "title": title,
+            "title_color": title_color,
+            "preserve_color": preserve_message_color,
+        },
+    )
 
 
 def print_attribute(
@@ -51,5 +60,8 @@ def request_user_double_check(additionalText: Optional[str] = None) -> None:
         )
 
     user_friendly_output(
-        additionalText, level=logging.WARN, title="DOUBLE CHECK CONFIGURATION"
+        additionalText,
+        level=logging.WARN,
+        title="DOUBLE CHECK CONFIGURATION",
+        preserve_message_color=True,
     )

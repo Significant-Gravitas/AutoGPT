@@ -57,7 +57,6 @@ def config(
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
 
-    # HACK: this is necessary to ensure PLAIN_OUTPUT takes effect
     config.plain_output = True
     configure_logging(config, Path(__file__).parent / "logs")
 
@@ -95,7 +94,6 @@ def agent(config: Config) -> Agent:
     )
 
     command_registry = CommandRegistry()
-    ai_config.command_registry = command_registry
     config.memory_backend = "json_file"
     memory_json_file = get_memory(config)
     memory_json_file.clear()

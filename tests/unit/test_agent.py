@@ -11,7 +11,7 @@ def test_agent_initialization(agent: Agent):
 def test_execute_command_plugin(agent: Agent):
     """Test that executing a command that came from a plugin works as expected"""
     command_name = "check_plan"
-    agent.ai_config.prompt_generator.add_command(
+    agent.prompt_generator.add_command(
         command_name,
         "Read the plan.md with the next goals to achieve",
         {},
