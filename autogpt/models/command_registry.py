@@ -93,9 +93,9 @@ class CommandRegistry:
         if name in self.commands_aliases:
             return self.commands_aliases[name]
 
-    def call(self, command_name: str, **kwargs) -> Any:
+    def call(self, command_name: str, agent: BaseAgent, **kwargs) -> Any:
         if command := self.get_command(command_name):
-            return command(**kwargs)
+            return command(**kwargs, agent=agent)
         raise KeyError(f"Command '{command_name}' not found in registry")
 
     def list_available_commands(self, agent: BaseAgent) -> Iterator[Command]:
