@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'views/main_layout.dart';
+import 'package:provider/provider.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({Key? key}) : super(key: key); // Corrected the constructor
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +17,10 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const MainLayout(), // Set MainLayout as the home screen of the app
+      home: ChangeNotifierProvider(
+        create: (context) => TaskViewModel(),
+        child: const MainLayout(),
+      ), // Set MainLayout as the home screen of the app
     );
   }
 }
