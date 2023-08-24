@@ -29,7 +29,8 @@ def agent_implements_context(agent: BaseAgent) -> bool:
 
 @command(
     "open_file",
-    "Open a file for editing, creating it if it does not exist yet",
+    "Open a file for editing, creating it if it does not exist yet."
+    " Note: if you only need to read or write a file once, use `write_to_file` instead.",
     {
         "file_path": {
             "type": "string",

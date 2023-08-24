@@ -53,7 +53,7 @@ class PromptGenerator:
             params_string = ", ".join(
                 f'"{key}": "{value}"' for key, value in self.params.items()
             )
-            return f'{self.label}: "{self.name}". Params: ({params_string})'
+            return f'{self.label}: "{self.name.rstrip(".")}". Params: ({params_string})'
 
     def add_constraint(self, constraint: str) -> None:
         """
