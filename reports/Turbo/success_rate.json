@@ -1,122 +1,162 @@
 {
-    "TestRememberGoal_Simple": [
-        false
-    ],
-    "TestAgentProtocol_CreateAgentTask": [
-        false
-    ],
-    "TestWriteFile": [
-        true
-    ],
-    "TestRememberGoal_Medium": [
-        false
-    ],
-    "TestAgentProtocol_ListAgentTasksIds": [
-        false
-    ],
-    "TestPasswordGenerator_Easy": [
-        false
-    ],
-    "TestSearch": [
-        true
-    ],
-    "TestReadFile": [
-        true
-    ],
-    "TestProductAdvisor_GamingMonitor": [
-        false
-    ],
-    "TestPlanCreation": [
-        true
-    ],
-    "TestRememberGoal_Advanced": [
-        false
-    ],
-    "TestAgentProtocol_GetAgentTask": [
-        false
-    ],
-    "TestWritingCLI_FileOrganizer": [
-        false
-    ],
-    "TestBasicRetrieval": [
-        false
-    ],
-    "TestWrite5FilesWithArray": [
-        false
-    ],
-    "TestBasicMemory": [
-        true
-    ],
-    "TestDebugSimpleTypoWithGuidance": [
-        true
-    ],
-    "TestReturnCode_Simple": [
-        false
-    ],
-    "TestRememberGoal_Hard": [
-        false
-    ],
-    "TestAgentProtocol_ExecuteAgentTaskStep": [
-        false
-    ],
-    "TestAgentProtocol_ListAgentTaskSteps": [
-        false
-    ],
-    "TestWebApp_ListAnimals": [
-        false
-    ],
     "TestAdaptLink": [
-        false
-    ],
-    "TestRevenueRetrieval_1.0": [
-        false
-    ],
-    "TestRevenueRetrieval_1.1": [
-        false
-    ],
-    "TestRevenueRetrieval_1.2": [
-        false
-    ],
-    "TestWrite6Files": [
-        false
-    ],
-    "TestRememberMultipleIds": [
-        false
-    ],
-    "TestDebugSimpleTypoWithoutGuidance": [
+        false,
         false
     ],
     "TestAdaptSimpleTypoWithGuidance": [
-        false
-    ],
-    "TestReturnCode_Write": [
-        false
-    ],
-    "TestRememberMultipleIdsWithNoise": [
-        false
-    ],
-    "TestDebugMultipleTypo": [
-        false
-    ],
-    "TestReturnCode_Modify": [
-        false
-    ],
-    "TestFunctionCodeGeneration": [
+        false,
         false
     ],
     "TestAdaptTeslaRevenue": [
+        false,
         false
     ],
-    "TestRetrieval3": [
+    "TestAgentProtocol_CreateAgentTask": [
+        false,
         false
+    ],
+    "TestAgentProtocol_ExecuteAgentTaskStep": [
+        false,
+        false
+    ],
+    "TestAgentProtocol_GetAgentTask": [
+        false,
+        false
+    ],
+    "TestAgentProtocol_ListAgentTaskSteps": [
+        false,
+        false
+    ],
+    "TestAgentProtocol_ListAgentTasksIds": [
+        false,
+        false
+    ],
+    "TestBasicMemory": [
+        true,
+        true
+    ],
+    "TestBasicRetrieval": [
+        false,
+        false
+    ],
+    "TestDebugMultipleTypo": [
+        false,
+        false
+    ],
+    "TestDebugSimpleTypoWithGuidance": [
+        true,
+        true
+    ],
+    "TestDebugSimpleTypoWithoutGuidance": [
+        false,
+        false
+    ],
+    "TestFunctionCodeGeneration": [
+        false,
+        false
+    ],
+    "TestPasswordGenerator_Easy": [
+        false,
+        false
+    ],
+    "TestPlanCreation": [
+        true,
+        true
+    ],
+    "TestProductAdvisor_GamingMonitor": [
+        false,
+        false
+    ],
+    "TestReadFile": [
+        true,
+        true
+    ],
+    "TestRememberGoal_Advanced": [
+        false,
+        false
+    ],
+    "TestRememberGoal_Hard": [
+        false,
+        false
+    ],
+    "TestRememberGoal_Medium": [
+        false,
+        false
+    ],
+    "TestRememberGoal_Simple": [
+        false,
+        false
+    ],
+    "TestRememberMultipleIds": [
+        false,
+        true
+    ],
+    "TestRememberMultipleIdsWithNoise": [
+        false,
+        true
     ],
     "TestRememberMultiplePhrasesWithNoise": [
+        false,
+        true
+    ],
+    "TestRetrieval3": [
+        false,
+        false
+    ],
+    "TestReturnCode_Modify": [
+        false,
+        false
+    ],
+    "TestReturnCode_Simple": [
+        false,
         false
     ],
     "TestReturnCode_Tests": [
+        false,
         false
     ],
+    "TestReturnCode_Write": [
+        false,
+        false
+    ],
+    "TestRevenueRetrieval_1.0": [
+        false,
+        false
+    ],
+    "TestRevenueRetrieval_1.1": [
+        false,
+        false
+    ],
+    "TestRevenueRetrieval_1.2": [
+        false,
+        false
+    ],
+    "TestSearch": [
+        true,
+        true
+    ],
     "TestThreeSum": [
+        false,
+        false
+    ],
+    "TestWebApp_ListAnimals": [
+        false,
+        false
+    ],
+    "TestWrite5FilesWithArray": [
+        false,
+        false
+    ],
+    "TestWrite6Files": [
+        false,
+        false
+    ],
+    "TestWriteFile": [
+        true,
+        true
+    ],
+    "TestWritingCLI_FileOrganizer": [
+        false,
         false
     ]
 }
