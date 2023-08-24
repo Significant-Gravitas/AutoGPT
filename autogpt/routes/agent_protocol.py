@@ -22,17 +22,35 @@ the ones that require special attention due to their complexity are:
 Developers and contributors should be especially careful when making modifications to these routes to ensure 
 consistency and correctness in the system's behavior.
 """
-from typing import List
+from typing import Optional
 
-from fastapi import APIRouter, Request, UploadFile
+from fastapi import APIRouter, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
-from autogpt.schema import Artifact, Step, StepRequestBody, Task, TaskRequestBody
+from autogpt.schema import *
+from autogpt.tracing import tracing
 
 base_router = APIRouter()
 
 
+@base_router.get("/", tags=["root"])
+async def root():
+    """
+    Root endpoint that returns a welcome message.
+    """
+    return Response(content="Welcome to the Auto-GPT Forge")
+
+
+@base_router.get("/heartbeat", tags=["server"])
+async def check_server_status():
+    """
+    Check if the server is running.
+    """
+    return Response(content="Server is running.", status_code=200)
+
+
 @base_router.post("/agent/tasks", tags=["agent"], response_model=Task)
+@tracing("Creating new task", is_create_task=True)
 async def create_agent_task(request: Request, task_request: TaskRequestBody) -> Task:
     """
     Creates a new task using the provided TaskRequestBody and returns a Task.
@@ -61,38 +79,61 @@ async def create_agent_task(request: Request, task_request: TaskRequestBody) -> 
             }
     """
     agent = request["agent"]
-    task_request = await agent.create_task(task_request)
-    return task_request
+
+    if task_request := await agent.create_task(task_request):
+        return task_request
+    else:
+        return Response(content={"error": "Task creation failed"}, status_code=400)
 
 
-@base_router.get("/agent/tasks", tags=["agent"], response_model=List[str])
-async def list_agent_tasks_ids(request: Request) -> List[str]:
+@base_router.get("/agent/tasks", tags=["agent"], response_model=TaskListResponse)
+async def list_agent_tasks(
+    request: Request,
+    page: Optional[int] = Query(1, ge=1),
+    page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
+) -> TaskListResponse:
     """
-    Gets a list of all task IDs.
+    Retrieves a paginated list of all tasks.
 
     Args:
         request (Request): FastAPI request object.
+        page (int, optional): The page number for pagination. Defaults to 1.
+        page_size (int, optional): The number of tasks per page for pagination. Defaults to 10.
 
     Returns:
-        List[str]: A list of all task IDs.
+        TaskListResponse: A response object containing a list of tasks and pagination details.
 
     Example:
         Request:
-            GET /agent/tasks
+            GET /agent/tasks?page=1&pageSize=10
 
-        Response:
-            [
-                "50da533e-3904-4401-8a07-c49adf88b5eb",
-                "b7d3c70a-7266-4b3a-818e-1327679f0117",
-                ...
-            ]
+        Response (TaskListResponse defined in schema.py):
+            {
+                "items": [
+                    {
+                        "input": "Write the word 'Washington' to a .txt file",
+                        "additional_input": null,
+                        "task_id": "50da533e-3904-4401-8a07-c49adf88b5eb",
+                        "artifacts": [],
+                        "steps": []
+                    },
+                    ...
+                ],
+                "pagination": {
+                    "total": 100,
+                    "pages": 10,
+                    "current": 1,
+                    "pageSize": 10
+                }
+            }
     """
     agent = request["agent"]
-    return await agent.list_tasks()
+    return await agent.list_tasks(page, page_size)
 
 
 @base_router.get("/agent/tasks/{task_id}", tags=["agent"], response_model=Task)
-async def get_agent_task(request: Request, task_id: str):
+@tracing("Getting task details")
+async def get_agent_task(request: Request, task_id: str) -> Task:
     """
     Gets the details of a task by ID.
 
@@ -144,35 +185,62 @@ async def get_agent_task(request: Request, task_id: str):
             }
     """
     agent = request["agent"]
-    return await agent.get_task(task_id)
+    task = await agent.get_task(task_id)
+    if task:
+        return task
+    else:
+        return Response(content={"error": "Task not found"}, status_code=404)
 
 
 @base_router.get(
-    "/agent/tasks/{task_id}/steps", tags=["agent"], response_model=List[str]
+    "/agent/tasks/{task_id}/steps", tags=["agent"], response_model=TaskStepsListResponse
 )
-async def list_agent_task_steps(request: Request, task_id: str) -> List[str]:
+async def list_agent_task_steps(
+    request: Request,
+    task_id: str,
+    page: Optional[int] = Query(1, ge=1),
+    page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
+) -> TaskStepsListResponse:
     """
-    Retrieves a list of step IDs associated with a specific task.
+    Retrieves a paginated list of steps associated with a specific task.
 
     Args:
         request (Request): FastAPI request object.
         task_id (str): The ID of the task.
+        page (int, optional): The page number for pagination. Defaults to 1.
+        page_size (int, optional): The number of steps per page for pagination. Defaults to 10.
 
     Returns:
-        List[str]: A list of step IDs.
+        TaskStepsListResponse: A response object containing a list of steps and pagination details.
 
     Example:
         Request:
-            GET /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/steps
+            GET /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/steps?page=1&pageSize=10
 
-        Response:
-            ["step1_id", "step2_id", ...]
+        Response (TaskStepsListResponse defined in schema.py):
+            {
+                "items": [
+                    {
+                        "task_id": "50da533e-3904-4401-8a07-c49adf88b5eb",
+                        "step_id": "step1_id",
+                        ...
+                    },
+                    ...
+                ],
+                "pagination": {
+                    "total": 100,
+                    "pages": 10,
+                    "current": 1,
+                    "pageSize": 10
+                }
+            }
     """
     agent = request["agent"]
-    return await agent.list_steps(task_id)
+    return await agent.list_steps(task_id, page, page_size)
 
 
 @base_router.post("/agent/tasks/{task_id}/steps", tags=["agent"], response_model=Step)
+@tracing("Creating and executing Step")
 async def execute_agent_task_step(
     request: Request, task_id: str, step: StepRequestBody
 ) -> Step:
@@ -222,6 +290,7 @@ async def execute_agent_task_step(
 @base_router.get(
     "/agent/tasks/{task_id}/steps/{step_id}", tags=["agent"], response_model=Step
 )
+@tracing("Getting Step Details")
 async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> Step:
     """
     Retrieves the details of a specific step for a given task.
@@ -250,37 +319,56 @@ async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> S
 
 
 @base_router.get(
-    "/agent/tasks/{task_id}/artifacts", tags=["agent"], response_model=List[Artifact]
+    "/agent/tasks/{task_id}/artifacts",
+    tags=["agent"],
+    response_model=TaskArtifactsListResponse,
 )
-async def list_agent_task_artifacts(request: Request, task_id: str) -> List[Artifact]:
+@tracing("Listing Task Artifacts")
+async def list_agent_task_artifacts(
+    request: Request,
+    task_id: str,
+    page: Optional[int] = Query(1, ge=1),
+    page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
+) -> TaskArtifactsListResponse:
     """
-    Retrieves a list of artifacts associated with a specific task.
+    Retrieves a paginated list of artifacts associated with a specific task.
 
     Args:
         request (Request): FastAPI request object.
         task_id (str): The ID of the task.
+        page (int, optional): The page number for pagination. Defaults to 1.
+        page_size (int, optional): The number of items per page for pagination. Defaults to 10.
 
     Returns:
-        List[Artifact]: A list of artifacts.
+        TaskArtifactsListResponse: A response object containing a list of artifacts and pagination details.
 
     Example:
         Request:
-            GET /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/artifacts
+            GET /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/artifacts?page=1&pageSize=10
 
-        Response:
-            [
-                {"artifact_id": "artifact1_id", ...},
-                {"artifact_id": "artifact2_id", ...},
-                ...
-            ]
+        Response (TaskArtifactsListResponse defined in schema.py):
+            {
+                "items": [
+                    {"artifact_id": "artifact1_id", ...},
+                    {"artifact_id": "artifact2_id", ...},
+                    ...
+                ],
+                "pagination": {
+                    "total": 100,
+                    "pages": 10,
+                    "current": 1,
+                    "pageSize": 10
+                }
+            }
     """
     agent = request["agent"]
-    return await agent.list_artifacts(task_id)
+    return await agent.list_artifacts(task_id, page, page_size)
 
 
 @base_router.post(
     "/agent/tasks/{task_id}/artifacts", tags=["agent"], response_model=Artifact
 )
+@tracing("Uploading task artifact")
 async def upload_agent_task_artifacts(
     request: Request,
     task_id: str,
@@ -327,6 +415,7 @@ async def upload_agent_task_artifacts(
 @base_router.get(
     "/agent/tasks/{task_id}/artifacts/{artifact_id}", tags=["agent"], response_model=str
 )
+@tracing("Downloading task artifact")
 async def download_agent_task_artifact(
     request: Request, task_id: str, artifact_id: str
 ) -> FileResponse:
@@ -349,5 +438,4 @@ async def download_agent_task_artifact(
             <file_content_of_artifact>
     """
     agent = request["agent"]
-    print(f"task_id: {task_id}, artifact_id: {artifact_id}")
     return await agent.get_artifact(task_id, artifact_id)

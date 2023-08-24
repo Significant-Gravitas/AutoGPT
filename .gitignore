@@ -161,7 +161,11 @@ openai/
 # news
 CURRENT_BULLETIN.md
 
-# agbenchmark
-
 agbenchmark
-agent.db
+*.sqlite
+.agbench
+.agbenchmark
+.benchmarks
+.mypy_cache
+.pytest_cache
+.vscode

@@ -3,7 +3,8 @@ import os
 import typing
 from pathlib import Path
 
-from google.cloud import storage
+import aiohttp
+from fastapi import Response
 
 
 class Workspace(abc.ABC):
@@ -12,25 +13,25 @@ class Workspace(abc.ABC):
         self.base_path = base_path
 
     @abc.abstractclassmethod
-    def read(self, path: str) -> bytes:
+    def read(self, task_id: str, path: str) -> bytes:
         pass
 
     @abc.abstractclassmethod
-    def write(self, path: str, data: bytes) -> None:
+    def write(self, task_id: str, path: str, data: bytes) -> None:
         pass
 
     @abc.abstractclassmethod
     def delete(
-        self, path: str, directory: bool = False, recursive: bool = False
+        self, task_id: str, path: str, directory: bool = False, recursive: bool = False
     ) -> None:
         pass
 
     @abc.abstractclassmethod
-    def exists(self, path: str) -> bool:
+    def exists(self, task_id: str, path: str) -> bool:
         pass
 
     @abc.abstractclassmethod
-    def list(self, path: str) -> typing.List[str]:
+    def list(self, task_id: str, path: str) -> typing.List[str]:
         pass
 
 
@@ -38,27 +39,28 @@ class LocalWorkspace(Workspace):
     def __init__(self, base_path: str):
         self.base_path = Path(base_path).resolve()
 
-    def _resolve_path(self, path: str) -> Path:
-        abs_path = (self.base_path / path).resolve()
+    def _resolve_path(self, task_id: str, path: str) -> Path:
+        abs_path = (self.base_path / task_id / path).resolve()
         if not str(abs_path).startswith(str(self.base_path)):
             raise ValueError("Directory traversal is not allowed!")
+        (self.base_path / task_id).mkdir(parents=True, exist_ok=True)
         return abs_path
 
-    def read(self, path: str) -> bytes:
-        path = self.base_path / path
-        with open(self._resolve_path(path), "rb") as f:
+    def read(self, task_id: str, path: str) -> bytes:
+        path = self.base_path / task_id / path
+        with open(self._resolve_path(task_id, path), "rb") as f:
             return f.read()
 
-    def write(self, path: str, data: bytes) -> None:
-        path = self.base_path / path
-        with open(self._resolve_path(path), "wb") as f:
+    def write(self, task_id: str, path: str, data: bytes) -> None:
+        path = self.base_path / task_id / path
+        with open(self._resolve_path(task_id, path), "wb") as f:
             f.write(data)
 
     def delete(
-        self, path: str, directory: bool = False, recursive: bool = False
+        self, task_id: str, path: str, directory: bool = False, recursive: bool = False
     ) -> None:
-        path = self.base_path / path
-        resolved_path = self._resolve_path(path)
+        path = self.base_path / task_id / path
+        resolved_path = self._resolve_path(task_id, path)
         if directory:
             if recursive:
                 os.rmdir(resolved_path)
@@ -67,61 +69,36 @@ class LocalWorkspace(Workspace):
         else:
             os.remove(resolved_path)
 
-    def exists(self, path: str) -> bool:
-        path = self.base_path / path
-        return self._resolve_path(path).exists()
+    def exists(self, task_id: str, path: str) -> bool:
+        path = self.base_path / task_id / path
+        return self._resolve_path(task_id, path).exists()
 
-    def list(self, path: str) -> typing.List[str]:
-        path = self.base_path / path
-        base = self._resolve_path(path)
-        return [str(p.relative_to(self.base_path)) for p in base.iterdir()]
+    def list(self, task_id: str, path: str) -> typing.List[str]:
+        path = self.base_path / task_id / path
+        base = self._resolve_path(task_id, path)
+        return [str(p.relative_to(self.base_path / task_id)) for p in base.iterdir()]
 
 
-class GCSWorkspace(Workspace):
-    def __init__(self, base_path: str, bucket_name: str):
-        self.client = storage.Client()
-        self.bucket_name = bucket_name
-        self.base_path = base_path.strip("/")  # Ensure no trailing or leading slash
-
-    def _resolve_path(self, path: str) -> str:
-        resolved = os.path.join(self.base_path, path).strip("/")
-        if not resolved.startswith(self.base_path):
-            raise ValueError("Directory traversal is not allowed!")
-        return resolved
-
-    def read(self, path: str) -> bytes:
-        path = self.base_path / path
-        bucket = self.client.get_bucket(self.bucket_name)
-        blob = bucket.get_blob(self._resolve_path(path))
-        return blob.download_as_bytes()
-
-    def write(self, path: str, data: bytes) -> None:
-        path = self.base_path / path
-        bucket = self.client.get_bucket(self.bucket_name)
-        blob = bucket.blob(self._resolve_path(path))
-        blob.upload_from_string(data)
-
-    def delete(
-        self, path: str, directory: bool = False, recursive: bool = False
-    ) -> None:
-        path = self.base_path / path
-        bucket = self.client.get_bucket(self.bucket_name)
-        if directory and recursive:
-            # Note: GCS doesn't really have directories, so this will just delete all blobs with the given prefix
-            blobs = bucket.list_blobs(prefix=self._resolve_path(path))
-            bucket.delete_blobs(blobs)
+async def load_from_uri(self, uri: str, task_id: str, workspace: Workspace) -> bytes:
+    """
+    Load file from given URI and return its bytes.
+    """
+    file_path = None
+    try:
+        if uri.startswith("file://"):
+            file_path = uri.split("file://")[1]
+            if not workspace.exists(task_id, file_path):
+                return Response(status_code=500, content="File not found")
+            return workspace.read(task_id, file_path)
+        elif uri.startswith("http://") or uri.startswith("https://"):
+            async with aiohttp.ClientSession() as session:
+                async with session.get(uri) as resp:
+                    if resp.status != 200:
+                        return Response(
+                            status_code=500, content="Unable to load from URL"
+                        )
+                    return await resp.read()
         else:
-            blob = bucket.blob(self._resolve_path(path))
-            blob.delete()
-
-    def exists(self, path: str) -> bool:
-        path = self.base_path / path
-        bucket = self.client.get_bucket(self.bucket_name)
-        blob = bucket.blob(self._resolve_path(path))
-        return blob.exists()
-
-    def list(self, path: str) -> typing.List[str]:
-        path = self.base_path / path
-        bucket = self.client.get_bucket(self.bucket_name)
-        blobs = bucket.list_blobs(prefix=self._resolve_path(path))
-        return [blob.name for blob in blobs]
+            return Response(status_code=500, content="Loading from unsupported uri")
+    except Exception as e:
+        return Response(status_code=500, content=str(e))
