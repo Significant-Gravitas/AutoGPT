@@ -37,6 +37,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     exit_key: str = "n"
     debug_mode: bool = False
     plain_output: bool = False
+    noninteractive_mode: bool = False
     chat_messages_enabled: bool = True
     # TTS configuration
     speak_mode: bool = False
