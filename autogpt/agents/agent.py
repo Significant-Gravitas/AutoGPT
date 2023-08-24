@@ -347,11 +347,8 @@ def execute_command(
             raise CommandExecutionError(str(e))
 
     # Handle non-native commands (e.g. from plugins)
-    for command in agent.prompt_generator.commands:
-        if (
-            command_name == command.label.lower()
-            or command_name == command.name.lower()
-        ):
+    for name, command in agent.prompt_generator.commands.items():
+        if command_name == name or command_name.lower() == command.description.lower():
             try:
                 return command.function(**arguments)
             except AgentException:
