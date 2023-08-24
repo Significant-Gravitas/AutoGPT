@@ -23,6 +23,7 @@ from autogpt.command_decorator import command
             "required": True,
         }
     },
+    enabled=lambda config: not config.noninteractive_mode
 )
 def ask_user(question: str, agent: Agent) -> str:
     resp = clean_input(agent.config, f"{agent.ai_config.ai_name} asks: '{question}': ")

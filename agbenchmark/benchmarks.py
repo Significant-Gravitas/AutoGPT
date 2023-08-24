@@ -25,6 +25,7 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
     config.debug_mode = True
     config.continuous_mode = continuous_mode
     config.temperature = 0
+    config.noninteractive_mode = True
     config.plain_output = True
     config.memory_backend = "no_memory"
     config.workspace_path = Workspace.init_workspace_directory(config)

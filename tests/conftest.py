@@ -57,6 +57,7 @@ def config(
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
 
+    config.noninteractive_mode = True
     config.plain_output = True
 
     # avoid circular dependency
