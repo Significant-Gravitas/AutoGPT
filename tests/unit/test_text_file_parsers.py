@@ -1,7 +1,7 @@
 import json
 import logging
 import tempfile
-from unittest import TestCase
+from pathlib import Path
 from xml.etree import ElementTree
 
 import docx
@@ -136,17 +136,18 @@ respective_file_creation_functions = {
     ".md": mock_md_file,
     ".tex": mock_latex_file,
 }
+binary_files_extensions = [".pdf", ".docx"]
 
 
-class TestConfig(TestCase):
-    def test_parsers(self):
-        binary_files_extensions = [".pdf", ".docx"]
-        for (
-            file_extension,
-            c_file_creator,
-        ) in respective_file_creation_functions.items():
-            created_filepath = c_file_creator()
-            loaded_text = read_textual_file(created_filepath, logger)
-            self.assertIn(plain_text_str, loaded_text)
-            should_be_binary = file_extension in binary_files_extensions
-            self.assertEqual(should_be_binary, is_file_binary_fn(created_filepath))
+def test_parsers():
+    for (
+        file_extension,
+        c_file_creator,
+    ) in respective_file_creation_functions.items():
+        created_file_path = Path(c_file_creator())
+        loaded_text = read_textual_file(created_file_path, logger)
+
+        assert plain_text_str in loaded_text
+
+        should_be_binary = file_extension in binary_files_extensions
+        assert should_be_binary == is_file_binary_fn(created_file_path)

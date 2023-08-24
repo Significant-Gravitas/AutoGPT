@@ -45,9 +45,7 @@ def temp_plugins_config_file():
 
 
 @pytest.fixture()
-def config(
-    temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace
-) -> Config:
+def config(temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace):
     config = ConfigBuilder.build_config_from_env(workspace.root.parent)
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
