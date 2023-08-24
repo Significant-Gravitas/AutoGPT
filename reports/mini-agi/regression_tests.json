@@ -1,8 +1,4 @@
 {
-    "TestAdaptLink": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/adapatability/a3_book_price/data.json"
-    },
     "TestBasicContentGen": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/content_gen/1_summary/data.json"
@@ -34,9 +30,5 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestBasicMemory": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
     }
 }
