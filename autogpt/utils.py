@@ -12,6 +12,10 @@ from pathlib import Path
 
 import dotenv
 
+from .forge_log import CustomLogger
+
+LOG = CustomLogger(__name__)
+
 dotenv.load_dotenv()
 
 import openai
@@ -37,21 +41,21 @@ def chat_completion_request(
             user="TheForge",
         )
     except Exception as e:
-        print("Unable to generate ChatCompletion response")
-        print(f"Exception: {e}")
+        LOG.info("Unable to generate ChatCompletion response")
+        LOG.info(f"Exception: {e}")
         exit()
 
 
 def run(task: str):
     """Runs the agent for benchmarking"""
-    print("Running agent")
+    LOG.info("Running agent")
     steps = plan(task)
     execute_plan(steps)
     # check for artifacts in workspace
     items = glob.glob(os.path.join(workspace, "*"))
     if items:
         artifacts = []
-        print(f"Found {len(items)} artifacts in workspace")
+        LOG.info(f"Found {len(items)} artifacts in workspace")
         for item in items:
             with open(item, "r") as f:
                 item_contents = f.read()
@@ -69,7 +73,7 @@ def run(task: str):
 def execute_plan(plan: typing.List[str]) -> None:
     """Each step is valid python, join the steps together into a python script and execute it"""
     script = "\n".join(plan)
-    print(f"Executing script: \n{script}")
+    LOG.info(f"Executing script: \n{script}")
     exec(script)
 
 
@@ -101,9 +105,9 @@ def plan(task: str) -> typing.List[str]:
     Example answer:
     {json_format}
     """
-    response = chat_completion_request(
-        messages=[{"role": "user", "content": planning_prompt}]
-    )
+    messages = [{"role": "user", "content": planning_prompt}]
+
+    response = chat_completion_request(messages=messages)
 
     import json
 
@@ -137,7 +141,7 @@ def write_file(contents: str, filepath: str) -> bool:
             f.write(contents)
         success = True
     except Exception as e:
-        print(f"Unable to write file: {e}")
+        LOG.info(f"Unable to write file: {e}")
     return success
 
 
@@ -150,7 +154,7 @@ def read_file(filepath: str) -> typing.Optional[str]:
         with open(filepath, "r") as f:
             contents = f.read()
     except Exception as e:
-        print(f"Unable to read file: {e}")
+        LOG.info(f"Unable to read file: {e}")
     return contents
 
 
@@ -162,5 +166,11 @@ def read_webpage(url: str) -> typing.Optional[str]:
         if response.status_code == 200:
             contents = response.text
     except Exception as e:
-        print(f"Unable to read webpage: {e}")
+        LOG.info(f"Unable to read webpage: {e}")
     return contents
+
+
+if __name__ == "__main__":
+    test_messages = [{"role": "user", "content": "Hello, how are you?"}]
+    response = chat_completion_request(test_messages)
+    LOG.info(response)

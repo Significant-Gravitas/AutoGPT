@@ -1,18 +1,22 @@
 import asyncio
 import os
-import typing
 
-from fastapi import APIRouter, FastAPI, Response, UploadFile
+from fastapi import APIRouter, FastAPI, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from .db import AgentDB
+from .forge_log import CustomLogger
 from .middlewares import AgentMiddleware
 from .routes.agent_protocol import base_router
-from .schema import Artifact, Status, Step, StepRequestBody, Task, TaskRequestBody
+from .schema import *
+from .tracing import setup_tracing
 from .utils import run
-from .workspace import Workspace
+from .workspace import Workspace, load_from_uri
+
+LOG = CustomLogger(__name__)
 
 
 class Agent:
@@ -31,8 +35,22 @@ class Agent:
             description="Modified version of The Agent Protocol.",
             version="v0.4",
         )
+
+        # Add Prometheus metrics to the agent
+        # https://github.com/trallnag/prometheus-fastapi-instrumentator
+        instrumentator = Instrumentator().instrument(app)
+
+        @app.on_event("startup")
+        async def _startup():
+            instrumentator.expose(app)
+
         app.include_router(router)
         app.add_middleware(AgentMiddleware, agent=self)
+        setup_tracing(app)
+        config.loglevel = "ERROR"
+        config.bind = [f"0.0.0.0:{port}"]
+
+        LOG.info(f"Agent server starting on {config.bind}")
         asyncio.run(serve(app, config))
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
@@ -46,21 +64,21 @@ class Agent:
                 if task_request.additional_input
                 else None,
             )
-            print(task)
+            LOG.info(task.json())
         except Exception as e:
             return Response(status_code=500, content=str(e))
-        print(task)
         return task
 
-    async def list_tasks(self) -> typing.List[str]:
+    async def list_tasks(self, page: int = 1, pageSize: int = 10) -> TaskListResponse:
         """
-        List the IDs of all tasks that the agent has created.
+        List all tasks that the agent has created.
         """
         try:
-            task_ids = [task.task_id for task in await self.db.list_tasks()]
+            tasks, pagination = await self.db.list_tasks(page, pageSize)
+            response = TaskListResponse(tasks=tasks, pagination=pagination)
+            return Response(content=response.json(), media_type="application/json")
         except Exception as e:
-            return Response(status_code=500, content=str(e))
-        return task_ids
+            raise HTTPException(status_code=500, detail=str(e))
 
     async def get_task(self, task_id: str) -> Task:
         """
@@ -76,7 +94,9 @@ class Agent:
             return Response(status_code=500, content=str(e))
         return task
 
-    async def list_steps(self, task_id: str) -> typing.List[str]:
+    async def list_steps(
+        self, task_id: str, page: int = 1, pageSize: int = 10
+    ) -> TaskStepsListResponse:
         """
         List the IDs of all steps that the task has created.
         """
@@ -85,10 +105,11 @@ class Agent:
         if not isinstance(task_id, str):
             return Response(status_code=400, content="Task ID must be a string.")
         try:
-            steps_ids = [step.step_id for step in await self.db.list_steps(task_id)]
+            steps, pagination = await self.db.list_steps(task_id, page, pageSize)
+            response = TaskStepsListResponse(steps=steps, pagination=pagination)
+            return Response(content=response.json(), media_type="application/json")
         except Exception as e:
-            return Response(status_code=500, content=str(e))
-        return steps_ids
+            raise HTTPException(status_code=500, detail=str(e))
 
     async def create_and_execute_step(
         self, task_id: str, step_request: StepRequestBody
@@ -120,12 +141,18 @@ class Agent:
                 step.artifacts.append(art)
             step.status = "completed"
         else:
-            steps = await self.db.list_steps(task_id)
-            artifacts = await self.db.list_artifacts(task_id)
+            steps, steps_pagination = await self.db.list_steps(
+                task_id, page=1, per_page=100
+            )
+            artifacts, artifacts_pagination = await self.db.list_artifacts(
+                task_id, page=1, per_page=100
+            )
             step = steps[-1]
             step.artifacts = artifacts
             step.output = "No more steps to run."
-            step.is_last = True
+            # The step is the last step on this page so checking if this is the
+            # last page is sufficent to know if it is the last step
+            step.is_last = steps_pagination.current_page == steps_pagination.total_pages
         if isinstance(step.status, Status):
             step.status = step.status.value
         step.output = "Done some work"
@@ -149,7 +176,9 @@ class Agent:
             return Response(status_code=500, content=str(e))
         return step
 
-    async def list_artifacts(self, task_id: str) -> typing.List[Artifact]:
+    async def list_artifacts(
+        self, task_id: str, page: int = 1, pageSize: int = 10
+    ) -> TaskArtifactsListResponse:
         """
         List the artifacts that the task has created.
         """
@@ -158,10 +187,13 @@ class Agent:
         if not isinstance(task_id, str):
             return Response(status_code=400, content="Task ID must be a string.")
         try:
-            artifacts = await self.db.list_artifacts(task_id)
+            artifacts, pagination = await self.db.list_artifacts(
+                task_id, page, pageSize
+            )
         except Exception as e:
-            return Response(status_code=500, content=str(e))
-        return artifacts
+            raise HTTPException(status_code=500, detail=str(e))
+        response = TaskArtifactsListResponse(artifacts=artifacts, pagination=pagination)
+        return Response(content=response.json(), media_type="application/json")
 
     async def create_artifact(
         self,
@@ -183,10 +215,16 @@ class Agent:
                     data += contents
             except Exception as e:
                 return Response(status_code=500, content=str(e))
+        else:
+            try:
+                data = await load_from_uri(uri, task_id)
+                file_name = uri.split("/")[-1]
+            except Exception as e:
+                return Response(status_code=500, content=str(e))
 
-            file_path = os.path.join(task_id / file_name)
-            self.write(file_path, data)
-            self.db.save_artifact(task_id, artifact)
+        file_path = os.path.join(task_id / file_name)
+        self.write(file_path, data)
+        self.db.save_artifact(task_id, artifact)
 
         artifact = await self.create_artifact(
             task_id=task_id,
@@ -201,18 +239,20 @@ class Agent:
         """
         Get an artifact by ID.
         """
-        artifact = await self.db.get_artifact(task_id, artifact_id)
-        if not artifact.uri.startswith("file://"):
-            return Response(
-                status_code=500, content="Loading from none file uri not implemented"
-            )
-        file_path = artifact.uri.split("file://")[1]
-        if not self.workspace.exists(file_path):
-            return Response(status_code=500, content="File not found")
-        retrieved_artifact = self.workspace.read(file_path)
+        try:
+            artifact = await self.db.get_artifact(task_id, artifact_id)
+        except Exception as e:
+            return Response(status_code=500, content=str(e))
+        try:
+            retrieved_artifact = await self.load_from_uri(artifact.uri, artifact_id)
+        except Exception as e:
+            return Response(status_code=500, content=str(e))
         path = artifact.file_name
-        with open(path, "wb") as f:
-            f.write(retrieved_artifact)
+        try:
+            with open(path, "wb") as f:
+                f.write(retrieved_artifact)
+        except Exception as e:
+            return Response(status_code=500, content=str(e))
         return FileResponse(
             # Note: mimetype is guessed in the FileResponse constructor
             path=path,

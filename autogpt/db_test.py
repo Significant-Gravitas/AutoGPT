@@ -46,9 +46,9 @@ async def test_create_task():
 async def test_create_and_get_task():
     db_name = "sqlite:///test_db.sqlite3"
     agent_db = AgentDB(db_name)
-    await agent_db.create_task("task_input")
-    task = await agent_db.get_task(1)
-    assert task.input == "task_input"
+    task = await agent_db.create_task("test_input")
+    fetched_task = await agent_db.get_task(task.task_id)
+    assert fetched_task.input == "test_input"
     os.remove(db_name.split("///")[1])
 
 
@@ -76,9 +76,9 @@ async def test_get_task_not_found():
 async def test_create_and_get_step():
     db_name = "sqlite:///test_db.sqlite3"
     agent_db = AgentDB(db_name)
-    await agent_db.create_task("task_input")
-    await agent_db.create_step(1, "step_name")
-    step = await agent_db.get_step(1, 1)
+    task = await agent_db.create_task("task_input")
+    step = await agent_db.create_step(task.task_id, "step_name")
+    step = await agent_db.get_step(task.task_id, step.step_id)
     assert step.name == "step_name"
     os.remove(db_name.split("///")[1])
 
@@ -111,7 +111,7 @@ async def test_get_artifact():
     db = AgentDB(db_name)
 
     # Given: A task and its corresponding artifact
-    task = await db.create_task("test_input")
+    task = await db.create_task("test_input debug")
     step = await db.create_step(task.task_id, "step_name")
 
     # Create an artifact
@@ -124,10 +124,10 @@ async def test_get_artifact():
     )
 
     # When: The artifact is fetched by its ID
-    fetched_artifact = await db.get_artifact(int(task.task_id), artifact.artifact_id)
+    fetched_artifact = await db.get_artifact(task.task_id, artifact.artifact_id)
 
     # Then: The fetched artifact matches the original
-    assert fetched_artifact.file_name == "sample_file.txt"
+    assert fetched_artifact.artifact_id == artifact.artifact_id
     assert fetched_artifact.uri == "file:///path/to/sample_file.txt"
 
     os.remove(db_name.split("///")[1])
@@ -143,7 +143,7 @@ async def test_list_tasks():
     task2 = await db.create_task("test_input_2")
 
     # When: All tasks are fetched
-    fetched_tasks = await db.list_tasks()
+    fetched_tasks, pagination = await db.list_tasks()
 
     # Then: The fetched tasks list includes the created tasks
     task_ids = [task.task_id for task in fetched_tasks]
@@ -163,10 +163,10 @@ async def test_list_steps():
     step2 = await db.create_step(task.task_id, "step_2")
 
     # When: All steps for the task are fetched
-    fetched_steps = await db.list_steps(task.task_id)
+    fetched_steps, pagination = await db.list_steps(task.task_id)
 
     # Then: The fetched steps list includes the created steps
     step_ids = [step.step_id for step in fetched_steps]
-    assert str(step1.step_id) in step_ids
-    assert str(step2.step_id) in step_ids
+    assert step1.step_id in step_ids
+    assert step2.step_id in step_ids
     os.remove(db_name.split("///")[1])
