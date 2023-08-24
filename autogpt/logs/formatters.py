@@ -43,7 +43,7 @@ class AutoGptFormatter(logging.Formatter):
 
         # Determine color for title
         title = getattr(record, "title", "")
-        title_color = getattr(record, "title_color", level_color)
+        title_color = getattr(record, "title_color", "") or level_color
         if title and title_color:
             title = f"{title_color + Style.BRIGHT}{title}{Style.RESET_ALL}"
         # Make sure record.title is set, and padded with a space if not empty
