@@ -29,7 +29,6 @@ def dummy_agent(config: Config, memory_json_file):
             "Dummy Task",
         ],
     )
-    ai_config.command_registry = command_registry
 
     agent = Agent(
         memory=memory_json_file,

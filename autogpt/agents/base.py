@@ -322,9 +322,7 @@ class BaseAgent(metaclass=ABCMeta):
         for i, plugin in enumerate(self.config.plugins):
             if not plugin.can_handle_on_planning():
                 continue
-            plugin_response = plugin.on_planning(
-                self.ai_config.prompt_generator, prompt.raw()
-            )
+            plugin_response = plugin.on_planning(self.prompt_generator, prompt.raw())
             if not plugin_response or plugin_response == "":
                 continue
             message_to_add = Message("system", plugin_response)
