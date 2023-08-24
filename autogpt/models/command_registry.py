@@ -1,10 +1,21 @@
+from __future__ import annotations
+
 import importlib
 import inspect
-from typing import Any
+import logging
+from dataclasses import dataclass, field
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, Iterator
+
+if TYPE_CHECKING:
+    from autogpt.agents.base import BaseAgent
+    from autogpt.config import Config
+
 
 from autogpt.command_decorator import AUTO_GPT_COMMAND_IDENTIFIER
-from autogpt.logs import logger
 from autogpt.models.command import Command
+
+logger = logging.getLogger(__name__)
 
 
 class CommandRegistry:
@@ -18,9 +29,21 @@ class CommandRegistry:
     commands: dict[str, Command]
     commands_aliases: dict[str, Command]
 
+    # Alternative way to structure the registry; currently redundant with self.commands
+    categories: dict[str, CommandCategory]
+
+    @dataclass
+    class CommandCategory:
+        name: str
+        title: str
+        description: str
+        commands: list[Command] = field(default_factory=list[Command])
+        modules: list[ModuleType] = field(default_factory=list[ModuleType])
+
     def __init__(self):
         self.commands = {}
         self.commands_aliases = {}
+        self.categories = {}
 
     def __contains__(self, command_name: str):
         return command_name in self.commands or command_name in self.commands_aliases
@@ -70,21 +93,66 @@ class CommandRegistry:
         if name in self.commands_aliases:
             return self.commands_aliases[name]
 
-    def call(self, command_name: str, **kwargs) -> Any:
+    def call(self, command_name: str, agent: BaseAgent, **kwargs) -> Any:
         if command := self.get_command(command_name):
-            return command(**kwargs)
+            return command(**kwargs, agent=agent)
         raise KeyError(f"Command '{command_name}' not found in registry")
 
-    def command_prompt(self) -> str:
-        """
-        Returns a string representation of all registered `Command` objects for use in a prompt
-        """
-        commands_list = [
-            f"{idx + 1}. {str(cmd)}" for idx, cmd in enumerate(self.commands.values())
-        ]
-        return "\n".join(commands_list)
+    def list_available_commands(self, agent: BaseAgent) -> Iterator[Command]:
+        """Iterates over all registered commands and yields those that are available.
 
-    def import_commands(self, module_name: str) -> None:
+        Params:
+            agent (BaseAgent): The agent that the commands will be checked against.
+
+        Yields:
+            Command: The next available command.
+        """
+
+        for cmd in self.commands.values():
+            available = cmd.available
+            if callable(cmd.available):
+                available = cmd.available(agent)
+            if available:
+                yield cmd
+
+    # def command_specs(self) -> str:
+    #     """Returns a technical declaration of all commands in the registry for use in a prompt"""
+    #
+    #     Declaring functions or commands should be done in a model-specific way to achieve
+    #     optimal results. For this reason, it should NOT be implemented here, but in an
+    #     LLM provider module.
+    #     MUST take command AVAILABILITY into account.
+
+    @staticmethod
+    def with_command_modules(modules: list[str], config: Config) -> CommandRegistry:
+        new_registry = CommandRegistry()
+
+        logger.debug(
+            f"The following command categories are disabled: {config.disabled_command_categories}"
+        )
+        enabled_command_modules = [
+            x for x in modules if x not in config.disabled_command_categories
+        ]
+
+        logger.debug(
+            f"The following command categories are enabled: {enabled_command_modules}"
+        )
+
+        for command_module in enabled_command_modules:
+            new_registry.import_command_module(command_module)
+
+        # Unregister commands that are incompatible with the current config
+        for command in [c for c in new_registry.commands.values()]:
+            if callable(command.enabled) and not command.enabled(config):
+                new_registry.unregister(command)
+                logger.debug(
+                    f"Unregistering incompatible command '{command.name}':"
+                    f" \"{command.disabled_reason or 'Disabled by current config.'}\""
+                )
+
+        return new_registry
+
+    def import_command_module(self, module_name: str) -> None:
         """
         Imports the specified Python module containing command plugins.
 
@@ -99,16 +167,42 @@ class CommandRegistry:
 
         module = importlib.import_module(module_name)
 
+        category = self.register_module_category(module)
+
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
+
+            command = None
+
             # Register decorated functions
-            if hasattr(attr, AUTO_GPT_COMMAND_IDENTIFIER) and getattr(
-                attr, AUTO_GPT_COMMAND_IDENTIFIER
-            ):
-                self.register(attr.command)
+            if getattr(attr, AUTO_GPT_COMMAND_IDENTIFIER, False):
+                command = attr.command
+
             # Register command classes
             elif (
                 inspect.isclass(attr) and issubclass(attr, Command) and attr != Command
             ):
-                cmd_instance = attr()
-                self.register(cmd_instance)
+                command = attr()
+
+            if command:
+                self.register(command)
+                category.commands.append(command)
+
+    def register_module_category(self, module: ModuleType) -> CommandCategory:
+        if not (category_name := getattr(module, "COMMAND_CATEGORY", None)):
+            raise ValueError(f"Cannot import invalid command module {module.__name__}")
+
+        if category_name not in self.categories:
+            self.categories[category_name] = CommandRegistry.CommandCategory(
+                name=category_name,
+                title=getattr(
+                    module, "COMMAND_CATEGORY_TITLE", category_name.capitalize()
+                ),
+                description=getattr(module, "__doc__", ""),
+            )
+
+        category = self.categories[category_name]
+        if module not in category.modules:
+            category.modules.append(module)
+
+        return category

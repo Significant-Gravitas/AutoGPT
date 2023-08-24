@@ -1,10 +1,15 @@
 """ GTTS Voice. """
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING
 
 import gtts
 from playsound import playsound
 
-from autogpt.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.speech.base import VoiceBase
 
 

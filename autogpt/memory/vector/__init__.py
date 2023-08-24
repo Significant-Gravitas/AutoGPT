@@ -1,5 +1,6 @@
+import logging
+
 from autogpt.config import Config
-from autogpt.logs import logger
 
 from .memory_item import MemoryItem, MemoryItemRelevance
 from .providers.base import VectorMemoryProvider as VectorMemory

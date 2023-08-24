@@ -1,3 +1,4 @@
+import logging
 from contextlib import suppress
 from typing import Any, overload
 
@@ -6,7 +7,8 @@ import numpy as np
 from autogpt.config import Config
 from autogpt.llm.base import TText
 from autogpt.llm.providers import openai as iopenai
-from autogpt.logs import logger
+
+logger = logging.getLogger(__name__)
 
 Embedding = list[np.float32] | np.ndarray[Any, np.dtype[np.float32]]
 """Embedding vector"""

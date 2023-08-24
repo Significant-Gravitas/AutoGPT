@@ -55,8 +55,6 @@ def test_ai_config_file_not_exists(workspace):
     assert ai_config.ai_role == ""
     assert ai_config.ai_goals == []
     assert ai_config.api_budget == 0.0
-    assert ai_config.prompt_generator is None
-    assert ai_config.command_registry is None
 
 
 def test_ai_config_file_is_empty(workspace):
@@ -70,5 +68,3 @@ def test_ai_config_file_is_empty(workspace):
     assert ai_config.ai_role == ""
     assert ai_config.ai_goals == []
     assert ai_config.api_budget == 0.0
-    assert ai_config.prompt_generator is None
-    assert ai_config.command_registry is None

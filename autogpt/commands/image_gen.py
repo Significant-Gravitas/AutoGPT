@@ -1,6 +1,11 @@
-""" Image Generation Module for AutoGPT."""
+"""Commands to generate images based on text input"""
+
+COMMAND_CATEGORY = "text_to_image"
+COMMAND_CATEGORY_TITLE = "Text to Image"
+
 import io
 import json
+import logging
 import time
 import uuid
 from base64 import b64decode
@@ -11,7 +16,8 @@ from PIL import Image
 
 from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
-from autogpt.logs import logger
+
+logger = logging.getLogger(__name__)
 
 
 @command(

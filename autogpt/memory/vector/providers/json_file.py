@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Iterator
 
 import orjson
 
 from autogpt.config import Config
-from autogpt.logs import logger
 
 from ..memory_item import MemoryItem
 from .base import VectorMemoryProvider
+
+logger = logging.getLogger(__name__)
 
 
 class JSONFileMemory(VectorMemoryProvider):

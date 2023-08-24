@@ -4,23 +4,18 @@
 📖 *User Guide*: https://docs.agpt.co.
 👩 *Contributors Wiki*: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing.
 
-# v0.4.5 RELEASE HIGHLIGHTS! 🚀
+# v0.4.7 RELEASE HIGHLIGHTS! 🚀
 # -----------------------------
-This release includes under-the-hood improvements and bug fixes, such as more 
-accurate token counts for OpenAI functions, faster CI builds, improved plugin 
-handling, and refactoring of the Config class for better maintainability.
+This release introduces initial REST API support, powered by e2b's agent 
+protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). 
 
-We have also released some documentation updates, including:
+It also includes improvements to prompt generation and support 
+for our new benchmarking tool, Auto-GPT-Benchmarks
+(https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).
 
-- *How to share your system logs*
-  Visit [docs/share-your-logs.md] to learn how to how to share logs with us 
-  via a log analyzer graciously contributed by https://www.e2b.dev/
+We've also moved our documentation to Material Theme, at https://docs.agpt.co.
 
-- *Auto-GPT re-architecture documentation*
-  You can learn more about the inner-workings of the Auto-GPT re-architecture 
-  released last cycle, via these links:
-  * [autogpt/core/README.md]
-  * [autogpt/core/ARCHITECTURE_NOTES.md]
+As usual, we've squashed a few bugs and made some under-the-hood improvements.
 
-Take a look at the Release Notes on Github for the full changelog! 
+Take a look at the Release Notes on Github for the full changelog:
 https://github.com/Significant-Gravitas/Auto-GPT/releases.
