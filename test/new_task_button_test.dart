@@ -1,4 +1,4 @@
-import 'package:auto_gpt_flutter_client/views/new_task_button.dart';
+import 'package:auto_gpt_flutter_client/views/task/new_task_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

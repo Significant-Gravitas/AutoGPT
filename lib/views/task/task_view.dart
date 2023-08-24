@@ -1,5 +1,5 @@
-import 'package:auto_gpt_flutter_client/views/new_task_button.dart';
-import 'package:auto_gpt_flutter_client/views/task_list_tile.dart';
+import 'package:auto_gpt_flutter_client/views/task/new_task_button.dart';
+import 'package:auto_gpt_flutter_client/views/task/task_list_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 
@@ -34,11 +34,11 @@ class _TaskViewState extends State<TaskView> {
             padding: const EdgeInsets.all(8.0),
             child: Column(
               children: [
-                Text(
+                const Text(
                   'Tasks',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 NewTaskButton(
                   onPressed: () {
                     // TODO: Implement add new task action

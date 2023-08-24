@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
-import 'package:auto_gpt_flutter_client/views/task_list_tile.dart';
+import 'package:auto_gpt_flutter_client/views/task/task_list_tile.dart';
 import 'package:auto_gpt_flutter_client/models/task.dart';
 
 void main() {
