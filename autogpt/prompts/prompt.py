@@ -39,6 +39,24 @@ def build_default_prompt_generator(config: Config) -> PromptGenerator:
     return prompt_generator
 
 
+def __print_json_log(config: AIConfig):
+    logger.json_report(
+        "system",
+        """{} has been created with the following details
+    Name: {}
+    Role: {}
+    Goals: {}
+    API Budget: {} 
+        """.format(
+            config.ai_name,
+            config.ai_name,
+            config.ai_role,
+            config.ai_goals,
+            "infinite" if config.api_budget <= 0 else f"${config.api_budget}",
+        ),
+    )
+
+
 def construct_main_ai_config() -> AIConfig:
     """Construct the prompt for the AI to respond to
 
@@ -55,12 +73,19 @@ def construct_main_ai_config() -> AIConfig:
             Fore.GREEN,
             "infinite" if config.api_budget <= 0 else f"${config.api_budget}",
         )
+        __print_json_log(config)
     elif config.ai_name:
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True,
+        )
+        logger.json_report(
+            "system",
+            "Welcome back! Would you like me to return to being {}?".format(
+                config.ai_name
+            ),
         )
         should_continue = clean_input(
             logger.json_report(
@@ -70,7 +95,7 @@ def construct_main_ai_config() -> AIConfig:
     Role:  {config.ai_role}
     Goals: {config.ai_goals}
     API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-    Continue ({CFG.authorise_key}/{CFG.exit_key}): """
+    Continue ({CFG.authorise_key}/{CFG.exit_key}): """,
             )
         )
         if should_continue.lower() == CFG.exit_key:
@@ -97,7 +122,6 @@ def construct_main_ai_config() -> AIConfig:
         "has been created with the following details:",
         speak_text=True,
     )
-
     # Print the ai config details
     # Name
     logger.typewriter_log("Name:", Fore.GREEN, config.ai_name, speak_text=False)
@@ -107,5 +131,7 @@ def construct_main_ai_config() -> AIConfig:
     logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
     for goal in config.ai_goals:
         logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
+
+    __print_json_log(config)
 
     return config

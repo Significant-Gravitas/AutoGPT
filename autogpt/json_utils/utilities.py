@@ -71,7 +71,6 @@ def validate_dict(
             for error in errors:
                 logger.error(f"Error: {error.message}")
 
-        return {"errors": [{"error": error.message} for error in errors], "command": None}
     else:
         logger.debug("The JSON object is valid.")
 
