@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 import sys
@@ -5,7 +6,7 @@ import zipfile
 from glob import glob
 from pathlib import Path
 
-from autogpt.logs import logger
+logger = logging.getLogger(__name__)
 
 
 def install_plugin_dependencies():

@@ -3,6 +3,7 @@
 COMMAND_CATEGORY = "execute_code"
 COMMAND_CATEGORY_TITLE = "Execute Code"
 
+import logging
 import os
 import subprocess
 from pathlib import Path
@@ -12,11 +13,19 @@ from docker.errors import DockerException, ImageNotFound
 from docker.models.containers import Container as DockerContainer
 
 from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import (
+    AccessDeniedError,
+    CodeExecutionError,
+    CommandExecutionError,
+    InvalidArgumentError,
+    OperationNotAllowedError,
+)
 from autogpt.command_decorator import command
 from autogpt.config import Config
-from autogpt.logs import logger
 
 from .decorators import sanitize_path_arg
+
+logger = logging.getLogger(__name__)
 
 ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"
@@ -60,15 +69,17 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
     # so sanitization must be done here to prevent path traversal.
     file_path = agent.workspace.get_path(code_dir / name)
     if not file_path.is_relative_to(code_dir):
-        return "Error: 'name' argument resulted in path traversal, operation aborted"
+        raise AccessDeniedError(
+            "'name' argument resulted in path traversal, operation aborted"
+        )
 
     try:
         with open(file_path, "w+", encoding="utf-8") as f:
             f.write(code)
 
-        return execute_python_file(str(file_path), agent)
+        return execute_python_file(file_path, agent)
     except Exception as e:
-        return f"Error: {str(e)}"
+        raise CommandExecutionError(*e.args)
 
 
 @command(
@@ -83,11 +94,11 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
     },
 )
 @sanitize_path_arg("filename")
-def execute_python_file(filename: str, agent: Agent) -> str:
+def execute_python_file(filename: Path, agent: Agent) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
-        filename (str): The name of the file to execute
+        filename (Path): The name of the file to execute
 
     Returns:
         str: The output of the file
@@ -96,13 +107,13 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         f"Executing python file '{filename}' in working directory '{agent.config.workspace_path}'"
     )
 
-    if not filename.endswith(".py"):
-        return "Error: Invalid file type. Only .py files are allowed."
+    if not str(filename).endswith(".py"):
+        raise InvalidArgumentError("Invalid file type. Only .py files are allowed.")
 
-    file_path = Path(filename)
+    file_path = filename
     if not file_path.is_file():
         # Mimic the response that you get from the command line so that it's easier to identify
-        return (
+        raise FileNotFoundError(
             f"python: can't open file '{filename}': [Errno 2] No such file or directory"
         )
 
@@ -119,7 +130,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         if result.returncode == 0:
             return result.stdout
         else:
-            return f"Error: {result.stderr}"
+            raise CodeExecutionError(result.stderr)
 
     logger.debug("Auto-GPT is not running in a Docker container")
     try:
@@ -178,10 +189,7 @@ def execute_python_file(filename: str, agent: Agent) -> str:
         logger.warn(
             "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
         )
-        return f"Error: {str(e)}"
-
-    except Exception as e:
-        return f"Error: {str(e)}"
+        raise CommandExecutionError(f"Could not run the script in a container: {e}")
 
 
 def validate_command(command: str, config: Config) -> bool:
@@ -231,7 +239,7 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     """
     if not validate_command(command_line, agent.config):
         logger.info(f"Command '{command_line}' not allowed")
-        return "Error: This Shell Command is not allowed."
+        raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
@@ -278,7 +286,7 @@ def execute_shell_popen(command_line, agent: Agent) -> str:
     """
     if not validate_command(command_line, agent.config):
         logger.info(f"Command '{command_line}' not allowed")
-        return "Error: This Shell Command is not allowed."
+        raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = os.getcwd()
     # Change dir into workspace if necessary

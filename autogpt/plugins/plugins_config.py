@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Union
 
 import yaml
 from pydantic import BaseModel
 
-from autogpt.logs import logger
 from autogpt.plugins.plugin_config import PluginConfig
+
+logger = logging.getLogger(__name__)
 
 
 class PluginsConfig(BaseModel):

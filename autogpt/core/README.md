@@ -32,7 +32,7 @@ when you clone it.
 
 :star2: **This is the reference application I'm working with for now** :star2: 
 
-The first app is a straight CLI application.  I have not done anything yet to port all the friendly display stuff from the `logger.typewriter_log` logic.  
+The first app is a straight CLI application.  I have not done anything yet to port all the friendly display stuff from the ~~`logger.typewriter_log`~~`user_friendly_output` logic.  
 
 - [Entry Point](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_app/cli.py)
 - [Client Application](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_app/main.py)

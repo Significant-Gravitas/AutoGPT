@@ -11,8 +11,9 @@ from typing import Optional
 from colorama import Fore, Style
 
 from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
+from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.app.configurator import create_config
-from autogpt.app.setup import prompt_user
+from autogpt.app.setup import interactive_ai_config_setup
 from autogpt.app.spinner import Spinner
 from autogpt.app.utils import (
     clean_input,
@@ -24,7 +25,8 @@ from autogpt.app.utils import (
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
 from autogpt.llm.api_manager import ApiManager
-from autogpt.logs import logger
+from autogpt.logs.config import configure_chat_plugins, configure_logging
+from autogpt.logs.helpers import print_attribute
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
@@ -55,14 +57,7 @@ def run_auto_gpt(
     ai_role: Optional[str] = None,
     ai_goals: tuple[str] = tuple(),
 ):
-    # Configure logging before we do anything else.
-    logger.set_level(logging.DEBUG if debug else logging.INFO)
-
     config = ConfigBuilder.build_config_from_env(workdir=working_directory)
-
-    # HACK: This is a hack to allow the config into the logger without having to pass it around everywhere
-    # or import it directly.
-    logger.config = config
 
     # TODO: fill in llm values here
     check_openai_api_key(config)
@@ -84,16 +79,35 @@ def run_auto_gpt(
         skip_news,
     )
 
+    # Set up logging module
+    configure_logging(config)
+
+    logger = logging.getLogger(__name__)
+
     if config.continuous_mode:
         for line in get_legal_warning().split("\n"):
-            logger.warn(markdown_to_ansi_style(line), "LEGAL:", Fore.RED)
+            logger.warn(
+                extra={
+                    "title": "LEGAL:",
+                    "title_color": Fore.RED,
+                    "preserve_color": True,
+                },
+                msg=markdown_to_ansi_style(line),
+            )
 
     if not config.skip_news:
         motd, is_new_motd = get_latest_bulletin()
         if motd:
             motd = markdown_to_ansi_style(motd)
             for motd_line in motd.split("\n"):
-                logger.info(motd_line, "NEWS:", Fore.GREEN)
+                logger.info(
+                    extra={
+                        "title": "NEWS:",
+                        "title_color": Fore.GREEN,
+                        "preserve_color": True,
+                    },
+                    msg=motd_line,
+                )
             if is_new_motd and not config.chat_messages_enabled:
                 input(
                     Fore.MAGENTA
@@ -104,17 +118,13 @@ def run_auto_gpt(
 
         git_branch = get_current_git_branch()
         if git_branch and git_branch != "stable":
-            logger.typewriter_log(
-                "WARNING: ",
-                Fore.RED,
-                f"You are running on `{git_branch}` branch "
-                "- this is not a supported branch.",
+            logger.warn(
+                f"You are running on `{git_branch}` branch"
+                " - this is not a supported branch."
             )
         if sys.version_info < (3, 10):
-            logger.typewriter_log(
-                "WARNING: ",
-                Fore.RED,
-                "You are running on an older version of Python. "
+            logger.error(
+                "WARNING: You are running on an older version of Python. "
                 "Some people have observed problems with certain "
                 "parts of Auto-GPT with this version. "
                 "Please consider upgrading to Python 3.10 or higher.",
@@ -134,6 +144,7 @@ def run_auto_gpt(
     config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
 
     config.plugins = scan_plugins(config, config.debug_mode)
+    configure_chat_plugins(config)
 
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
@@ -144,24 +155,15 @@ def run_auto_gpt(
         role=ai_role,
         goals=ai_goals,
     )
-    ai_config.command_registry = command_registry
     # print(prompt)
-
-    # add chat plugins capable of report to logger
-    if config.chat_messages_enabled:
-        for plugin in config.plugins:
-            if hasattr(plugin, "can_handle_report") and plugin.can_handle_report():
-                logger.info(f"Loaded plugin into logger: {plugin.__class__.__name__}")
-                logger.chat_plugins.append(plugin)
 
     # Initialize memory and make sure it is empty.
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(config)
     memory.clear()
-    logger.typewriter_log(
-        "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
-    )
-    logger.typewriter_log("Using Browser:", Fore.GREEN, config.selenium_web_browser)
+    print_attribute("Configured Memory", memory.__class__.__name__)
+
+    print_attribute("Configured Browser", config.selenium_web_browser)
 
     agent = Agent(
         memory=memory,
@@ -174,7 +176,7 @@ def run_auto_gpt(
     run_interaction_loop(agent)
 
 
-def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | None:
+def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | float:
     # Translate from the continuous_mode/continuous_limit config
     # to a cycle_budget (maximum number of cycles to run without checking in with the
     # user) and a count of cycles_remaining before we check in..
@@ -208,7 +210,9 @@ def run_interaction_loop(
     # These contain both application config and agent config, so grab them here.
     config = agent.config
     ai_config = agent.ai_config
-    logger.debug(f"{ai_config.ai_name} System Prompt: {agent.system_prompt}")
+    logger = logging.getLogger(__name__)
+
+    logger.debug(f"{ai_config.ai_name} System Prompt:\n{agent.system_prompt}")
 
     cycle_budget = cycles_remaining = _get_cycle_budget(
         config.continuous_mode, config.continuous_limit
@@ -217,21 +221,16 @@ def run_interaction_loop(
 
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
         nonlocal cycle_budget, cycles_remaining, spinner
-        if cycles_remaining in [0, 1, math.inf]:
-            logger.typewriter_log(
-                "Interrupt signal received. Stopping continuous command execution "
-                "immediately.",
-                Fore.RED,
-            )
+        if cycles_remaining in [0, 1]:
+            logger.error("Interrupt signal received. Stopping Auto-GPT immediately.")
             sys.exit()
         else:
             restart_spinner = spinner.running
             if spinner.running:
                 spinner.stop()
 
-            logger.typewriter_log(
-                "Interrupt signal received. Stopping continuous command execution.",
-                Fore.RED,
+            logger.error(
+                "Interrupt signal received. Stopping continuous command execution."
             )
             cycles_remaining = 1
             if restart_spinner:
@@ -244,6 +243,9 @@ def run_interaction_loop(
     # Application Main Loop #
     #########################
 
+    # Keep track of consecutive failures of the agent
+    consecutive_failures = 0
+
     while cycles_remaining > 0:
         logger.debug(f"Cycle budget: {cycle_budget}; remaining: {cycles_remaining}")
 
@@ -252,7 +254,20 @@ def run_interaction_loop(
         ########
         # Have the agent determine the next action to take.
         with spinner:
-            command_name, command_args, assistant_reply_dict = agent.think()
+            try:
+                command_name, command_args, assistant_reply_dict = agent.think()
+            except InvalidAgentResponseError as e:
+                logger.warn(f"The agent's thoughts could not be parsed: {e}")
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    logger.error(
+                        f"The agent failed to output valid thoughts {consecutive_failures} "
+                        "times in a row. Terminating..."
+                    )
+                    sys.exit()
+                continue
+
+        consecutive_failures = 0
 
         ###############
         # Update User #
@@ -280,31 +295,32 @@ def run_interaction_loop(
                 else:
                     # Case 1: Continuous iteration was interrupted -> resume
                     if cycle_budget > 1:
-                        logger.typewriter_log(
-                            "RESUMING CONTINUOUS EXECUTION: ",
-                            Fore.MAGENTA,
+                        logger.info(
                             f"The cycle budget is {cycle_budget}.",
+                            extra={
+                                "title": "RESUMING CONTINUOUS EXECUTION",
+                                "title_color": Fore.MAGENTA,
+                            },
                         )
                     # Case 2: The agent used up its cycle budget -> reset
                     cycles_remaining = cycle_budget + 1
-                logger.typewriter_log(
+                logger.info(
                     "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-                    Fore.MAGENTA,
-                    "",
+                    extra={"color": Fore.MAGENTA},
                 )
             elif user_feedback == UserFeedback.EXIT:
-                logger.typewriter_log("Exiting...", Fore.YELLOW)
+                logger.warn("Exiting...")
                 exit()
             else:  # user_feedback == UserFeedback.TEXT
                 command_name = "human_feedback"
         else:
-            user_input = None
+            user_input = ""
             # First log new-line so user can differentiate sections better in console
-            logger.typewriter_log("\n")
+            print()
             if cycles_remaining != math.inf:
                 # Print authorized commands left value
-                logger.typewriter_log(
-                    "AUTHORISED COMMANDS LEFT: ", Fore.CYAN, f"{cycles_remaining}"
+                print_attribute(
+                    "AUTHORIZED_COMMANDS_LEFT", cycles_remaining, title_color=Fore.CYAN
                 )
 
         ###################
@@ -315,19 +331,28 @@ def run_interaction_loop(
         # and then having the decrement set it to 0, exiting the application.
         if command_name != "human_feedback":
             cycles_remaining -= 1
+
+        if not command_name:
+            continue
+
         result = agent.execute(command_name, command_args, user_input)
 
-        if result is not None:
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
-        else:
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+        if result.status == "success":
+            logger.info(
+                str(result.results),
+                extra={"title": "SYSTEM:", "title_color": Fore.YELLOW},
+            )
+        elif result.status == "error":
+            logger.warn(
+                f"Command {command_name} returned an error: {result.error or result.reason}"
+            )
 
 
 def update_user(
     config: Config,
     ai_config: AIConfig,
-    command_name: CommandName | None,
-    command_args: CommandArgs | None,
+    command_name: CommandName,
+    command_args: CommandArgs,
     assistant_reply_dict: AgentThoughts,
 ) -> None:
     """Prints the assistant's thoughts and the next command to the user.
@@ -339,35 +364,24 @@ def update_user(
         command_args: The arguments for the command.
         assistant_reply_dict: The assistant's reply.
     """
+    logger = logging.getLogger(__name__)
 
     print_assistant_thoughts(ai_config.ai_name, assistant_reply_dict, config)
 
-    if command_name is not None:
-        if command_name.lower().startswith("error"):
-            logger.typewriter_log(
-                "ERROR: ",
-                Fore.RED,
-                f"The Agent failed to select an action. "
-                f"Error message: {command_name}",
-            )
-        else:
-            if config.speak_mode:
-                say_text(f"I want to execute {command_name}", config)
+    if config.speak_mode:
+        say_text(f"I want to execute {command_name}", config)
 
-            # First log new-line so user can differentiate sections better in console
-            logger.typewriter_log("\n")
-            logger.typewriter_log(
-                "NEXT ACTION: ",
-                Fore.CYAN,
-                f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
-                f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
-            )
-    else:
-        logger.typewriter_log(
-            "NO ACTION SELECTED: ",
-            Fore.RED,
-            f"The Agent failed to select an action.",
-        )
+    # First log new-line so user can differentiate sections better in console
+    print()
+    logger.info(
+        f"COMMAND = {Fore.CYAN}{remove_ansi_escape(command_name)}{Style.RESET_ALL}  "
+        f"ARGUMENTS = {Fore.CYAN}{command_args}{Style.RESET_ALL}",
+        extra={
+            "title": "NEXT ACTION:",
+            "title_color": Fore.CYAN,
+            "preserve_color": True,
+        },
+    )
 
 
 def get_user_feedback(
@@ -384,6 +398,8 @@ def get_user_feedback(
         A tuple of the user's feedback, the user's input, and the number of
         cycles remaining if the user has initiated a continuous cycle.
     """
+    logger = logging.getLogger(__name__)
+
     # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
     # Get key press: Prompt the user to press enter to continue or escape
     # to exit
@@ -442,6 +458,8 @@ def construct_main_ai_config(
     Returns:
         str: The prompt string
     """
+    logger = logging.getLogger(__name__)
+
     ai_config = AIConfig.load(config.workdir / config.ai_settings_file)
 
     # Apply overrides
@@ -457,20 +475,17 @@ def construct_main_ai_config(
         or config.skip_reprompt
         and all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals])
     ):
-        logger.typewriter_log("Name :", Fore.GREEN, ai_config.ai_name)
-        logger.typewriter_log("Role :", Fore.GREEN, ai_config.ai_role)
-        logger.typewriter_log("Goals:", Fore.GREEN, f"{ai_config.ai_goals}")
-        logger.typewriter_log(
+        print_attribute("Name :", ai_config.ai_name)
+        print_attribute("Role :", ai_config.ai_role)
+        print_attribute("Goals:", ai_config.ai_goals)
+        print_attribute(
             "API Budget:",
-            Fore.GREEN,
             "infinite" if ai_config.api_budget <= 0 else f"${ai_config.api_budget}",
         )
     elif all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals]):
-        logger.typewriter_log(
-            "Welcome back! ",
-            Fore.GREEN,
-            f"Would you like me to return to being {ai_config.ai_name}?",
-            speak_text=True,
+        logger.info(
+            extra={"title": f"{Fore.GREEN}Welcome back!{Fore.RESET}"},
+            msg=f"Would you like me to return to being {ai_config.ai_name}?",
         )
         should_continue = clean_input(
             config,
@@ -485,36 +500,31 @@ Continue ({config.authorise_key}/{config.exit_key}): """,
             ai_config = AIConfig()
 
     if any([not ai_config.ai_name, not ai_config.ai_role, not ai_config.ai_goals]):
-        ai_config = prompt_user(config)
+        ai_config = interactive_ai_config_setup(config)
         ai_config.save(config.workdir / config.ai_settings_file)
 
     if config.restrict_to_workspace:
-        logger.typewriter_log(
-            "NOTE:All files/directories created by this agent can be found inside its workspace at:",
-            Fore.YELLOW,
-            f"{config.workspace_path}",
+        logger.info(
+            f"{Fore.YELLOW}NOTE: All files/directories created by this agent"
+            f" can be found inside its workspace at:{Fore.RESET} {config.workspace_path}",
+            extra={"preserve_color": True},
         )
     # set the total api budget
     api_manager = ApiManager()
     api_manager.set_total_budget(ai_config.api_budget)
 
     # Agent Created, print message
-    logger.typewriter_log(
-        ai_config.ai_name,
-        Fore.LIGHTBLUE_EX,
-        "has been created with the following details:",
-        speak_text=True,
+    logger.info(
+        f"{Fore.LIGHTBLUE_EX}{ai_config.ai_name}{Fore.RESET} has been created with the following details:",
+        extra={"preserve_color": True},
     )
 
     # Print the ai_config details
-    # Name
-    logger.typewriter_log("Name:", Fore.GREEN, ai_config.ai_name, speak_text=False)
-    # Role
-    logger.typewriter_log("Role:", Fore.GREEN, ai_config.ai_role, speak_text=False)
-    # Goals
-    logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
+    print_attribute("Name :", ai_config.ai_name)
+    print_attribute("Role :", ai_config.ai_role)
+    print_attribute("Goals:", "")
     for goal in ai_config.ai_goals:
-        logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
+        logger.info(f"- {goal}")
 
     return ai_config
 
@@ -525,6 +535,8 @@ def print_assistant_thoughts(
     config: Config,
 ) -> None:
     from autogpt.speech import say_text
+
+    logger = logging.getLogger(__name__)
 
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
@@ -544,12 +556,12 @@ def print_assistant_thoughts(
         assistant_thoughts_speak = remove_ansi_escape(
             assistant_thoughts.get("speak", "")
         )
-    logger.typewriter_log(
-        f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text
+    print_attribute(
+        f"{ai_name.upper()} THOUGHTS", assistant_thoughts_text, title_color=Fore.YELLOW
     )
-    logger.typewriter_log("REASONING:", Fore.YELLOW, str(assistant_thoughts_reasoning))
+    print_attribute("REASONING", assistant_thoughts_reasoning, title_color=Fore.YELLOW)
     if assistant_thoughts_plan:
-        logger.typewriter_log("PLAN:", Fore.YELLOW, "")
+        print_attribute("PLAN", "", title_color=Fore.YELLOW)
         # If it's a list, join it into a string
         if isinstance(assistant_thoughts_plan, list):
             assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
@@ -560,14 +572,17 @@ def print_assistant_thoughts(
         lines = assistant_thoughts_plan.split("\n")
         for line in lines:
             line = line.lstrip("- ")
-            logger.typewriter_log("- ", Fore.GREEN, line.strip())
-    logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
+            logger.info(line.strip(), extra={"title": "- ", "title_color": Fore.GREEN})
+    print_attribute(
+        "CRITICISM", f"{assistant_thoughts_criticism}", title_color=Fore.YELLOW
+    )
+
     # Speak the assistant's thoughts
     if assistant_thoughts_speak:
         if config.speak_mode:
             say_text(assistant_thoughts_speak, config)
         else:
-            logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
+            print_attribute("SPEAK", assistant_thoughts_speak, title_color=Fore.YELLOW)
 
 
 def remove_ansi_escape(s: str) -> str:

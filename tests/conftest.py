@@ -9,7 +9,7 @@ from pytest_mock import MockerFixture
 from autogpt.agents import Agent
 from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.llm.api_manager import ApiManager
-from autogpt.logs import logger
+from autogpt.logs.config import configure_logging
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
@@ -45,20 +45,18 @@ def temp_plugins_config_file():
 
 
 @pytest.fixture()
-def config(
-    temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace
-) -> Config:
+def config(temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace):
     config = ConfigBuilder.build_config_from_env(workspace.root.parent)
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
 
     config.workspace_path = workspace.root
 
-    # HACK: this is necessary to ensure PLAIN_OUTPUT takes effect
-    logger.config = config
-
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
+
+    config.noninteractive_mode = True
+    config.plain_output = True
 
     # avoid circular dependency
     from autogpt.plugins.plugins_config import PluginsConfig
@@ -78,6 +76,11 @@ def config(
     yield config
 
 
+@pytest.fixture(scope="session")
+def setup_logger(config: Config):
+    configure_logging(config, Path(__file__).parent / "logs")
+
+
 @pytest.fixture()
 def api_manager() -> ApiManager:
     if ApiManager in ApiManager._instances:
@@ -94,7 +97,6 @@ def agent(config: Config) -> Agent:
     )
 
     command_registry = CommandRegistry()
-    ai_config.command_registry = command_registry
     config.memory_backend = "json_file"
     memory_json_file = get_memory(config)
     memory_json_file.clear()

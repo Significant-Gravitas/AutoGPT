@@ -6,7 +6,7 @@ FROM python:3.10-slim AS autogpt-base
 
 # Install browsers
 RUN apt-get update && apt-get install -y \
-    chromium-driver firefox-esr ca-certificates \
+    chromium-driver firefox-esr ca-certificates gcc \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install utilities

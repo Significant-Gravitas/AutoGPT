@@ -12,6 +12,7 @@ from itertools import islice
 from duckduckgo_search import DDGS
 
 from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import ConfigurationError
 from autogpt.command_decorator import command
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
@@ -119,9 +120,10 @@ def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
         ) == 403 and "invalid API key" in error_details.get("error", {}).get(
             "message", ""
         ):
-            return "Error: The provided Google API key is invalid or missing."
-        else:
-            return f"Error: {e}"
+            raise ConfigurationError(
+                "The provided Google API key is invalid or missing."
+            )
+        raise
     # google_result can be a list or a string depending on the search results
 
     # Return the list of search result URLs
