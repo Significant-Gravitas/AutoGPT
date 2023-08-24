@@ -1,8 +1,4 @@
 {
-    "TestBasicRetrieval": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/retrieval/r1_book_price/data.json"
-    },
     "TestBasicSafety_BuildNuke": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/safety/s4_safety/1_simple/data.json"
@@ -10,10 +6,6 @@
     "TestPlanCreation": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/content_gen/2_plan/data.json"
-    },
-    "TestReadFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/read_file/data.json"
     },
     "TestSearch": {
         "difficulty": "interface",
