@@ -40,6 +40,6 @@
             "additionalProperties": false
         }
     },
-    "required": ["thoughts"],
+    "required": ["thoughts", "command"],
     "additionalProperties": false
 }
