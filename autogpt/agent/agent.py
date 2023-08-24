@@ -148,10 +148,13 @@ class Agent:
                 if not plugin.can_handle_post_planning():
                     continue
                 assistant_reply_json = plugin.post_planning(assistant_reply_json)
-
+            
+            logger.json_report("assistant_reply_json", assistant_reply_json)
+            
             # Print Assistant thoughts
             if assistant_reply_json != {}:
                 validated_json = validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
+                logger.json_report("validated_json", validated_json)
 
                 # Get command name and arguments
                 try:
