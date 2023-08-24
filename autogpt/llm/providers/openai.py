@@ -174,7 +174,7 @@ def retry_api(
     }
     api_key_error_msg = (
         f"Please double check that you have setup a "
-        f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
+        f"{Style.BRIGHT}PAID{Style.NORMAL} OpenAI API Account. You can "
         f"read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
     )
     backoff_msg = "Waiting {backoff} seconds..."

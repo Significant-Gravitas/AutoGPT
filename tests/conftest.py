@@ -58,7 +58,6 @@ def config(
     config.plugins_config_file = temp_plugins_config_file
 
     config.plain_output = True
-    configure_logging(config, Path(__file__).parent / "logs")
 
     # avoid circular dependency
     from autogpt.plugins.plugins_config import PluginsConfig
@@ -76,6 +75,11 @@ def config(
         file_logger_path=workspace.get_path("file_logger.txt"),
     )
     yield config
+
+
+@pytest.fixture(scope="session")
+def setup_logger(config: Config):
+    configure_logging(config, Path(__file__).parent / "logs")
 
 
 @pytest.fixture()
