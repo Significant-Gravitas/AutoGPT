@@ -284,6 +284,6 @@ class PromptGenerator:
             ]
 
         # Add commands from plugins etc.
-        command_strings += [str(cmd) for cmd in self.commands]
+        command_strings += [str(cmd) for cmd in self.commands.values()]
 
         return self._generate_numbered_list(command_strings)
