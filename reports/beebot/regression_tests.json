@@ -1,1 +1,10 @@
-{}
+{
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
+    },
+    "TestSearch": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/search/data.json"
+    }
+}
