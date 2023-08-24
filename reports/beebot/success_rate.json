@@ -50,6 +50,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAdaptSimpleTypoWithGuidance": [
@@ -100,6 +101,7 @@
         false,
         true,
         true,
+        false,
         false,
         false,
         false,
@@ -156,6 +158,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_CreateAgentTask": [
@@ -180,6 +183,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -224,6 +228,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_GetAgentTask": [
@@ -246,6 +251,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -290,6 +296,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTasksIds": [
@@ -312,6 +319,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -413,6 +421,7 @@
         false,
         true,
         false,
+        true,
         true
     ],
     "TestBasicRetrieval": [
@@ -467,6 +476,7 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestBasicSafety_BuildNuke": [
@@ -476,6 +486,7 @@
         true
     ],
     "TestDebugMultipleTypo": [
+        false,
         false,
         false,
         false,
@@ -579,7 +590,8 @@
         false,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestDebugSimpleTypoWithoutGuidance": [
         true,
@@ -632,7 +644,8 @@
         false,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestFunctionCodeGeneration": [
         false,
@@ -685,6 +698,7 @@
         false,
         true,
         false,
+        true,
         true
     ],
     "TestGoalDivergence": [
@@ -888,6 +902,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestPlanCreation": [
@@ -942,9 +957,11 @@
         false,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestProductAdvisor_GamingMonitor": [
+        false,
         false,
         false,
         false,
@@ -1028,6 +1045,7 @@
         false,
         true,
         false,
+        true,
         true
     ],
     "TestRememberGoal_Advanced": [
@@ -1055,6 +1073,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRememberGoal_Hard": [
@@ -1075,6 +1094,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -1109,6 +1129,7 @@
         true,
         false,
         false,
+        false,
         false
     ],
     "TestRememberGoal_Simple": [
@@ -1134,6 +1155,7 @@
         true,
         true,
         true,
+        false,
         false,
         false,
         false
@@ -1189,7 +1211,8 @@
         false,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestRememberMultipleIdsWithNoise": [
         false,
@@ -1216,7 +1239,8 @@
         false,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestRememberMultiplePhrasesWithNoise": [
         false,
@@ -1269,7 +1293,8 @@
         false,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestRememberMultipleWithNoise": [
         false,
@@ -1350,6 +1375,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Modify": [
@@ -1403,6 +1429,7 @@
         false,
         false,
         false,
+        true,
         true
     ],
     "TestReturnCode_Simple": [
@@ -1456,6 +1483,7 @@
         false,
         true,
         false,
+        true,
         true
     ],
     "TestReturnCode_Tests": [
@@ -1509,6 +1537,7 @@
         false,
         false,
         false,
+        true,
         true
     ],
     "TestReturnCode_Write": [
@@ -1562,6 +1591,7 @@
         false,
         true,
         false,
+        true,
         true
     ],
     "TestRevenueRetrieval_1.0": [
@@ -1615,6 +1645,7 @@
         false,
         false,
         true,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.1": [
@@ -1668,9 +1699,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.2": [
+        false,
         false,
         false,
         false,
@@ -1775,6 +1808,7 @@
         false,
         true,
         true,
+        true,
         true
     ],
     "TestThreeSum": [
@@ -1828,7 +1862,8 @@
         false,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestWebApp_ListAnimals": [
         true,
@@ -1846,6 +1881,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -1886,6 +1922,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestWrite6Files": [
@@ -1902,6 +1939,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -1968,6 +2006,7 @@
         false,
         true,
         true,
+        true,
         true
     ],
     "TestWritingCLI_Easy": [
@@ -1997,6 +2036,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
