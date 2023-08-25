@@ -1,7 +1,7 @@
 import pytest
 
 from autogpt.agents.agent import Agent
-from autogpt.commands.web_selenium import BrowsingError, browse_website
+from autogpt.commands.web_selenium import BrowsingError, read_webpage
 
 
 @pytest.mark.vcr
@@ -11,7 +11,7 @@ def test_browse_website_nonexistent_url(agent: Agent, patched_api_requestor: Non
     question = "How to execute a barrel roll"
 
     with pytest.raises(BrowsingError, match=r"NAME_NOT_RESOLVED") as raised:
-        browse_website(url, question, agent)
+        read_webpage(url=url, question=question, agent=agent)
 
         # Sanity check that the response is not too long
         assert len(raised.exconly()) < 200
