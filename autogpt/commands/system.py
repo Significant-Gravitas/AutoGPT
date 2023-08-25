@@ -53,7 +53,7 @@ def task_complete(reason: str, agent: Agent) -> None:
             "required": True,
         }
     },
-    available=lambda a: get_agent_context(a) is not None,
+    available=lambda a: bool(get_agent_context(a)),
 )
 def close_context_item(index: int, agent: Agent) -> str:
     assert (context := get_agent_context(agent)) is not None

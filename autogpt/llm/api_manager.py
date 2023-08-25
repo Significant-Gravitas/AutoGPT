@@ -45,7 +45,7 @@ class ApiManager(metaclass=Singleton):
         self.total_prompt_tokens += prompt_tokens
         self.total_completion_tokens += completion_tokens
         self.total_cost += prompt_tokens * model_info.prompt_token_cost / 1000
-        if issubclass(type(model_info), CompletionModelInfo):
+        if isinstance(model_info, CompletionModelInfo):
             self.total_cost += (
                 completion_tokens * model_info.completion_token_cost / 1000
             )
