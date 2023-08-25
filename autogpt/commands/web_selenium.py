@@ -56,24 +56,24 @@ class BrowsingError(CommandExecutionError):
 
 
 @command(
-    "browse_website",
-    "Browses a Website",
+    "read_webpage",
+    "Read a webpage, and extract specific information from it if a question is specified.",
     {
         "url": {"type": "string", "description": "The URL to visit", "required": True},
         "question": {
             "type": "string",
-            "description": "What you want to find on the website",
-            "required": True,
+            "description": "A question that you want to answer using the content of the webpage.",
+            "required": False,
         },
     },
 )
 @validate_url
-def browse_website(url: str, question: str, agent: Agent) -> str:
+def read_webpage(url: str, agent: Agent, question: str = "") -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
         url (str): The url of the website to browse
-        question (str): The question asked by the user
+        question (str): The question to answer using the content of the webpage
 
     Returns:
         str: The answer and links to the user and the webdriver
@@ -85,16 +85,28 @@ def browse_website(url: str, question: str, agent: Agent) -> str:
         text = scrape_text_with_selenium(driver)
         links = scrape_links_with_selenium(driver, url)
 
+        return_literal_content = True
+        summarized = False
         if not text:
             return f"Website did not contain any text.\n\nLinks: {links}"
         elif count_string_tokens(text, agent.llm.name) > TOKENS_TO_TRIGGER_SUMMARY:
-            text = summarize_memorize_webpage(url, text, question, agent, driver)
+            text = summarize_memorize_webpage(
+                url, text, question or None, agent, driver
+            )
+            return_literal_content = bool(question)
+            summarized = True
 
         # Limit links to LINKS_TO_RETURN
         if len(links) > LINKS_TO_RETURN:
             links = links[:LINKS_TO_RETURN]
 
-        return f"Answer gathered from website: {text}\n\nLinks: {links}"
+        text_fmt = f"'''{text}'''" if "\n" in text else f"'{text}'"
+        return (
+            f"Page content{' (summary)' if summarized else ''}:"
+            if return_literal_content
+            else "Answer gathered from webpage:"
+        ) + f" {text_fmt}\n\nLinks: {links}"
+
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
@@ -236,7 +248,7 @@ def close_browser(driver: WebDriver) -> None:
 def summarize_memorize_webpage(
     url: str,
     text: str,
-    question: str,
+    question: str | None,
     agent: Agent,
     driver: Optional[WebDriver] = None,
 ) -> str:
