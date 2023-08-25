@@ -81,6 +81,7 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                       const SizedBox(width: 20),
                       // Expand/Collapse button
                       IconButton(
+                        splashRadius: 0.1,
                         icon: Icon(isExpanded
                             ? Icons.keyboard_arrow_up
                             : Icons.keyboard_arrow_down),

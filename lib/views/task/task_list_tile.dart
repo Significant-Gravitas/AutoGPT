@@ -68,6 +68,7 @@ class _TaskListTileState extends State<TaskListTile> {
                 // If the task is selected, show a delete icon
                 if (_isSelected)
                   IconButton(
+                    splashRadius: 0.1,
                     icon: const Icon(Icons.close, color: Colors.black),
                     onPressed: widget.onDelete,
                   ),
