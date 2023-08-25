@@ -3,7 +3,7 @@ from autogpt.agents.agent import Agent, execute_command
 
 def test_agent_initialization(agent: Agent):
     assert agent.ai_config.ai_name == "Base"
-    assert agent.history.messages == []
+    assert agent.message_history.messages == []
     assert agent.cycle_budget is None
     assert "You are Base" in agent.system_prompt
 
