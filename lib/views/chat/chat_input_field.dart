@@ -39,7 +39,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
               child: Container(
                 width: inputWidth,
                 // Defining the minimum and maximum height for the TextField container
-                constraints: BoxConstraints(
+                constraints: const BoxConstraints(
                   minHeight: 50,
                   maxHeight: 400,
                 ),
@@ -58,7 +58,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
                     controller: _controller,
                     // Allowing the TextField to expand vertically and accommodate multiple lines
                     maxLines: null,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       hintText: 'Type a message...',
                       border: InputBorder.none,
                     ),
@@ -68,7 +68,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
             ),
             // Send button to trigger the provided onSendPressed callback
             IconButton(
-              icon: Icon(Icons.send),
+              icon: const Icon(Icons.send),
               onPressed: widget.onSendPressed,
             ),
           ],
