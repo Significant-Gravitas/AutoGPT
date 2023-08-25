@@ -1,11 +1,12 @@
-import 'package:auto_gpt_flutter_client/views/task_view.dart';
-import 'package:auto_gpt_flutter_client/views/chat_view.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/views/task/task_view.dart';
+import 'package:auto_gpt_flutter_client/views/chat/chat_view.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart'; // Importing the TaskViewModel
-import 'package:provider/provider.dart'; // Required for accessing the ViewModel
+import 'package:provider/provider.dart';
 
 class MainLayout extends StatelessWidget {
-  const MainLayout({Key? key}) : super(key: key); // Corrected the constructor
+  const MainLayout({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -15,17 +16,19 @@ class MainLayout extends StatelessWidget {
     // Access the TaskViewModel from the context
     final taskViewModel = Provider.of<TaskViewModel>(context);
 
+    // Access the ChatViewModel from the context
+    final chatViewModel = Provider.of<ChatViewModel>(context);
+
     // Check the screen width and return the appropriate layout
     if (width > 800) {
       // For larger screens, return a side-by-side layout
       return Row(
         children: [
-          SizedBox(
-              width: 280,
-              child: TaskView(
-                  viewModel:
-                      taskViewModel)), // Pass the viewModel to the TaskView
-          Expanded(child: ChatView()),
+          SizedBox(width: 280, child: TaskView(viewModel: taskViewModel)),
+          Expanded(
+              child: ChatView(
+            viewModel: chatViewModel,
+          )),
         ],
       );
     } else {
@@ -50,16 +53,14 @@ class MainLayout extends StatelessWidget {
             case 0:
               returnValue = CupertinoTabView(builder: (context) {
                 return CupertinoPageScaffold(
-                  child: TaskView(
-                      viewModel:
-                          taskViewModel), // Pass the viewModel to the TaskView
+                  child: TaskView(viewModel: taskViewModel),
                 );
               });
               break;
             case 1:
               returnValue = CupertinoTabView(builder: (context) {
-                return const CupertinoPageScaffold(
-                  child: ChatView(),
+                return CupertinoPageScaffold(
+                  child: ChatView(viewModel: chatViewModel),
                 );
               });
               break;
