@@ -338,10 +338,7 @@ def run_interaction_loop(
         result = agent.execute(command_name, command_args, user_input)
 
         if result.status == "success":
-            logger.info(
-                str(result.results),
-                extra={"title": "SYSTEM:", "title_color": Fore.YELLOW},
-            )
+            logger.info(result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW})
         elif result.status == "error":
             logger.warn(
                 f"Command {command_name} returned an error: {result.error or result.reason}"
