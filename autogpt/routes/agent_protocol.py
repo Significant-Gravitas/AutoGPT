@@ -22,15 +22,36 @@ the ones that require special attention due to their complexity are:
 Developers and contributors should be especially careful when making modifications to these routes to ensure 
 consistency and correctness in the system's behavior.
 """
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
+from autogpt.errors import *
+from autogpt.forge_log import CustomLogger
 from autogpt.schema import *
 from autogpt.tracing import tracing
 
 base_router = APIRouter()
+
+LOG = CustomLogger(__name__)
+
+
+@base_router.get("/", tags=["root"])
+async def root():
+    """
+    Root endpoint that returns a welcome message.
+    """
+    return Response(content="Welcome to the Auto-GPT Forge")
+
+
+@base_router.get("/heartbeat", tags=["server"])
+async def check_server_status():
+    """
+    Check if the server is running.
+    """
+    return Response(content="Server is running.", status_code=200)
 
 
 @base_router.get("/", tags=["root"])
@@ -75,15 +96,25 @@ async def create_agent_task(request: Request, task_request: TaskRequestBody) -> 
                 "input": "Write the word 'Washington' to a .txt file",
                 "additional_input": "python/code",
                 "artifacts": [],
-                "steps": []
             }
     """
     agent = request["agent"]
 
-    if task_request := await agent.create_task(task_request):
-        return task_request
-    else:
-        return Response(content={"error": "Task creation failed"}, status_code=400)
+    try:
+        task_request = await agent.create_task(task_request)
+        return Response(content=task_request.json(), status_code=200)
+    except NotFoundError:
+        return Response(
+            content=json.dumps({"error": "Task not found"}),
+            status_code=404,
+            media_type="application/json",
+        )
+    except Exception:
+        return Response(
+            content=json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            media_type="application/json",
+        )
 
 
 @base_router.get("/agent/tasks", tags=["agent"], response_model=TaskListResponse)
@@ -128,7 +159,21 @@ async def list_agent_tasks(
             }
     """
     agent = request["agent"]
-    return await agent.list_tasks(page, page_size)
+    try:
+        tasks = await agent.list_tasks(page, page_size)
+        return Response(content=tasks.json(), status_code=200)
+    except NotFoundError:
+        return Response(
+            content=json.dumps({"error": "Task not found"}),
+            status_code=404,
+            media_type="application/json",
+        )
+    except Exception:
+        return Response(
+            content=json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            media_type="application/json",
+        )
 
 
 @base_router.get("/agent/tasks/{task_id}", tags=["agent"], response_model=Task)
@@ -185,11 +230,21 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
             }
     """
     agent = request["agent"]
-    task = await agent.get_task(task_id)
-    if task:
-        return task
-    else:
-        return Response(content={"error": "Task not found"}, status_code=404)
+    try:
+        task = await agent.get_task(task_id)
+        return Response(content=task.json(), status_code=200)
+    except NotFoundError:
+        return Response(
+            content=json.dumps({"error": "Task not found"}),
+            status_code=404,
+            media_type="application/json",
+        )
+    except Exception:
+        return Response(
+            content=json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            media_type="application/json",
+        )
 
 
 @base_router.get(
@@ -236,7 +291,21 @@ async def list_agent_task_steps(
             }
     """
     agent = request["agent"]
-    return await agent.list_steps(task_id, page, page_size)
+    try:
+        steps = await agent.list_steps(task_id, page, page_size)
+        return Response(content=steps.json(), status_code=200)
+    except NotFoundError:
+        return Response(
+            content=json.dumps({"error": "Task not found"}),
+            status_code=404,
+            media_type="application/json",
+        )
+    except Exception:
+        return Response(
+            content=json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            media_type="application/json",
+        )
 
 
 @base_router.post("/agent/tasks/{task_id}/steps", tags=["agent"], response_model=Step)
@@ -284,7 +353,22 @@ async def execute_agent_task_step(
             }
     """
     agent = request["agent"]
-    return await agent.create_and_execute_step(task_id, step)
+    try:
+        step = await agent.create_and_execute_step(task_id, step)
+        return Response(content=step.json(), status_code=200)
+    except NotFoundError:
+        return Response(
+            content=json.dumps({"error": f"Task not found {task_id}"}),
+            status_code=404,
+            media_type="application/json",
+        )
+    except Exception as e:
+        LOG.exception("Error whilst trying to execute a test")
+        return Response(
+            content=json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            media_type="application/json",
+        )
 
 
 @base_router.get(
@@ -315,7 +399,21 @@ async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> S
             }
     """
     agent = request["agent"]
-    return await agent.get_step(task_id, step_id)
+    try:
+        step = await agent.get_step(task_id, step_id)
+        return Response(content=step.json(), status_code=200)
+    except NotFoundError:
+        return Response(
+            content=json.dumps({"error": "Task not found"}),
+            status_code=404,
+            media_type="application/json",
+        )
+    except Exception:
+        return Response(
+            content=json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            media_type="application/json",
+        )
 
 
 @base_router.get(
@@ -362,7 +460,21 @@ async def list_agent_task_artifacts(
             }
     """
     agent = request["agent"]
-    return await agent.list_artifacts(task_id, page, page_size)
+    try:
+        artifacts = await agent.list_artifacts(task_id, page, page_size)
+        return Response(content=artifacts.json(), status_code=200)
+    except NotFoundError:
+        return Response(
+            content=json.dumps({"error": "Task not found"}),
+            status_code=404,
+            media_type="application/json",
+        )
+    except Exception:
+        return Response(
+            content=json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            media_type="application/json",
+        )
 
 
 @base_router.post(
@@ -394,7 +506,6 @@ async def upload_agent_task_artifacts(
     Note:
         Either `file` or `uri` must be provided. If both are provided, the behavior depends on
         the agent's implementation. If neither is provided, the function will return an error.
-
     Example:
         Request:
             POST /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/artifacts
@@ -409,7 +520,35 @@ async def upload_agent_task_artifacts(
             }
     """
     agent = request["agent"]
-    return await agent.create_artifact(task_id, file, uri)
+    if file is None and uri is None:
+        return Response(
+            content={"error": "Either file or uri must be specified"}, status_code=404
+        )
+    if file is not None and uri is not None:
+        return Response(
+            content={"error": "Both file and uri cannot be specified at the same time"},
+            status_code=404,
+        )
+    if uri is not None and not uri.startswith(("http://", "https://", "file://")):
+        return Response(
+            content={"error": "URI must start with http, https or file"},
+            status_code=404,
+        )
+    try:
+        artifact = await agent.create_artifact(task_id, file, uri)
+        return Response(content=artifact.json(), status_code=200)
+    except NotFoundError:
+        return Response(
+            content=json.dumps({"error": "Task not found"}),
+            status_code=404,
+            media_type="application/json",
+        )
+    except Exception:
+        return Response(
+            content=json.dumps({"error": "Internal server error"}),
+            status_code=500,
+            media_type="application/json",
+        )
 
 
 @base_router.get(
@@ -438,4 +577,25 @@ async def download_agent_task_artifact(
             <file_content_of_artifact>
     """
     agent = request["agent"]
-    return await agent.get_artifact(task_id, artifact_id)
+    try:
+        return await agent.get_artifact(task_id, artifact_id)
+    except NotFoundError:
+        return Response(
+            content=json.dumps(
+                {
+                    "error": f"Artifact not found - task_id: {task_id}, artifact_id: {artifact_id}"
+                }
+            ),
+            status_code=404,
+            media_type="application/json",
+        )
+    except Exception:
+        return Response(
+            content=json.dumps(
+                {
+                    "error": f"Internal server error - task_id: {task_id}, artifact_id: {artifact_id}"
+                }
+            ),
+            status_code=500,
+            media_type="application/json",
+        )

@@ -27,7 +27,7 @@ if __name__ == "__main__":
     workspace = LocalWorkspace(os.getenv("AGENT_WORKSPACE"))
     port = os.getenv("PORT")
 
-    database = autogpt.db.AgentDB(database_name, debug_enabled=True)
+    database = autogpt.db.AgentDB(database_name, debug_enabled=False)
     agent = autogpt.agent.Agent(database=database, workspace=workspace)
 
     agent.start(port=port, router=router)
