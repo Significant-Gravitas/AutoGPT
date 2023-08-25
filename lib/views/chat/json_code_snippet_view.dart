@@ -48,6 +48,7 @@ class JsonCodeSnippetView extends StatelessWidget {
           // SizedBox to create a gap between the code snippet view and the copy button
           const SizedBox(width: 20),
           Material(
+            color: Colors.white,
             // IconButton to allow the user to copy the pretty-printed JSON to the clipboard
             child: IconButton(
               icon: const Icon(Icons.copy),
