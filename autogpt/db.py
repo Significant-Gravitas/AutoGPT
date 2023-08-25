@@ -29,7 +29,7 @@ class TaskModel(Base):
 
     task_id = Column(Integer, primary_key=True, autoincrement=True)
     input = Column(String)
-    additional_input = Column(String)
+    additional_input = Dict
 
     artifacts = relationship("ArtifactModel", back_populates="task")
 
