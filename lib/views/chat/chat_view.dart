@@ -34,11 +34,9 @@ class _ChatViewState extends State<ChatView> {
           // Chat messages list
           Expanded(
             child: ListView.builder(
-              reverse: true,
               itemCount: widget.viewModel.chats.length,
               itemBuilder: (context, index) {
-                final reversedChats = widget.viewModel.chats.reversed.toList();
-                final chat = reversedChats[index];
+                final chat = widget.viewModel.chats[index];
                 if (chat.messageType == MessageType.user) {
                   return UserMessageTile(message: chat.message);
                 } else {
