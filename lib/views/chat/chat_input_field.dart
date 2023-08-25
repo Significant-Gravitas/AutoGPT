@@ -31,47 +31,38 @@ class _ChatInputFieldState extends State<ChatInputField> {
         // Otherwise, the input width will be the chat view width minus 40.
         double inputWidth = (chatViewWidth >= 1000) ? 900 : chatViewWidth - 40;
 
-        return Row(
-          // Centering the children of the Row
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Container(
-                width: inputWidth,
-                // Defining the minimum and maximum height for the TextField container
-                constraints: const BoxConstraints(
-                  minHeight: 50,
-                  maxHeight: 400,
-                ),
-                // Styling the container with a border and rounded corners
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: Colors.black, width: 0.5),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                // Using SingleChildScrollView to ensure the TextField can scroll
-                // when the content exceeds its maximum height
-                child: SingleChildScrollView(
-                  reverse: true,
-                  child: TextField(
-                    controller: _controller,
-                    // Allowing the TextField to expand vertically and accommodate multiple lines
-                    maxLines: null,
-                    decoration: const InputDecoration(
-                      hintText: 'Type a message...',
-                      border: InputBorder.none,
-                    ),
-                  ),
+        return Container(
+          width: inputWidth,
+          // Defining the minimum and maximum height for the TextField container
+          constraints: const BoxConstraints(
+            minHeight: 50,
+            maxHeight: 400,
+          ),
+          // Styling the container with a border and rounded corners
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: Colors.black, width: 0.5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          // Using SingleChildScrollView to ensure the TextField can scroll
+          // when the content exceeds its maximum height
+          child: SingleChildScrollView(
+            reverse: true,
+            child: TextField(
+              controller: _controller,
+              // Allowing the TextField to expand vertically and accommodate multiple lines
+              maxLines: null,
+              decoration: InputDecoration(
+                hintText: 'Type a message...',
+                border: InputBorder.none,
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: widget.onSendPressed,
                 ),
               ),
             ),
-            // Send button to trigger the provided onSendPressed callback
-            IconButton(
-              icon: const Icon(Icons.send),
-              onPressed: widget.onSendPressed,
-            ),
-          ],
+          ),
         );
       },
     );
