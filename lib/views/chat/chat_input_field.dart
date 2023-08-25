@@ -57,6 +57,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
                 hintText: 'Type a message...',
                 border: InputBorder.none,
                 suffixIcon: IconButton(
+                  splashRadius: 0.1,
                   icon: const Icon(Icons.send),
                   onPressed: widget.onSendPressed,
                 ),
