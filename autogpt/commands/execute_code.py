@@ -122,7 +122,7 @@ def execute_python_file(filename: Path, agent: Agent) -> str:
             f"Auto-GPT is running in a Docker container; executing {file_path} directly..."
         )
         result = subprocess.run(
-            ["python", str(file_path)],
+            ["python", "-B", str(file_path)],
             capture_output=True,
             encoding="utf8",
             cwd=agent.config.workspace_path,
@@ -162,6 +162,7 @@ def execute_python_file(filename: Path, agent: Agent) -> str:
             image_name,
             [
                 "python",
+                "-B",
                 file_path.relative_to(agent.workspace.root).as_posix(),
             ],
             volumes={
