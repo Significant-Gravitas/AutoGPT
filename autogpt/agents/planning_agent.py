@@ -285,7 +285,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
 
             result_tlength = count_string_tokens(str(result), self.llm.name)
             memory_tlength = count_string_tokens(
-                str(self.history.summary_message()), self.llm.name
+                str(self.message_history.summary_message()), self.llm.name
             )
             if result_tlength + memory_tlength > self.send_token_limit:
                 result = ActionErrorResult(
@@ -303,7 +303,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
 
         # Check if there's a result from the command append it to the message
         if result.status == "success":
-            self.history.add(
+            self.message_history.add(
                 "system",
                 f"Command {command_name} returned: {result.results}",
                 "action_result",
@@ -316,7 +316,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
                 and result.error.hint
             ):
                 message = message.rstrip(".") + f". {result.error.hint}"
-            self.history.add("system", message, "action_result")
+            self.message_history.add("system", message, "action_result")
 
         return result
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterator, Literal, Optional
 
+from autogpt.prompts.utils import format_numbered_list
+
 
 @dataclass
 class Action:
@@ -20,7 +22,12 @@ class ActionSuccessResult:
     status: Literal["success"] = "success"
 
     def __str__(self) -> str:
-        return f"Action succeeded and returned: `{self.results}`"
+        results = (
+            f'"""{self.results}"""'
+            if type(self.results) == str and any(s in self.results for s in ("\n", '"'))
+            else f'"{self.results}"'
+        )
+        return f"Action succeeded, and returned: {results}"
 
 
 @dataclass
@@ -30,7 +37,7 @@ class ActionErrorResult:
     status: Literal["error"] = "error"
 
     def __str__(self) -> str:
-        return f"Action failed: `{self.reason}`"
+        return f"Action failed: '{self.reason}'"
 
 
 @dataclass
@@ -50,8 +57,13 @@ class ActionHistory:
 
     @dataclass
     class CycleRecord:
-        action: Action | None
+        action: Action
         result: ActionResult | None
+
+        def __str__(self):
+            executed_action = f"You executed `{self.action.format_call()}`."
+            action_result = f" Result: {self.result}" if self.result else ""
+            return executed_action + action_result
 
     cursor: int
     cycles: list[CycleRecord]
@@ -80,12 +92,10 @@ class ActionHistory:
 
     def register_action(self, action: Action) -> None:
         if not self.current_record:
-            self.cycles.append(self.CycleRecord(None, None))
+            self.cycles.append(self.CycleRecord(action, None))
             assert self.current_record
         elif self.current_record.action:
             raise ValueError("Action for current cycle already set")
-
-        self.current_record.action = action
 
     def register_result(self, result: ActionResult) -> None:
         if not self.current_record:
@@ -94,3 +104,7 @@ class ActionHistory:
             raise ValueError("Result for current cycle already set")
 
         self.current_record.result = result
+        self.cursor = len(self.cycles)
+
+    def generate_list(self) -> str:
+        return format_numbered_list(self.cycles)
