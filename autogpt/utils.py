@@ -32,6 +32,7 @@ def chat_completion_request(
     functions: typing.List[typing.Dict[str, str]] | None = None,
     function_call: typing.Optional[str] = None,
     model: str = "gpt-3.5-turbo",
+    temperature: float = 0,
 ) -> typing.Union[typing.Dict[str, typing.Any], Exception]:
     """Generate a response to a list of messages using OpenAI's API"""
     try:
@@ -39,6 +40,7 @@ def chat_completion_request(
             model=model,
             messages=messages,
             user="TheForge",
+            temperature=temperature,
         )
     except Exception as e:
         LOG.info("Unable to generate ChatCompletion response")
@@ -80,30 +82,31 @@ def execute_plan(plan: typing.List[str]) -> None:
 def plan(task: str) -> typing.List[str]:
     """Returns a list of tasks that needs to be executed to complete the task"""
     abilities = """
-    plan(task: str) -> typing.List[str]
-    write_file(contents: str, filepath: str) -> bool
-    read_file(filepath:str) -> typing.Optional[str]
-    append_to_file(contents: str, filepath: str, to_start: bool) -> bool
-    read_webpage(url: str) -> str
+    write_file(contents='The content you want to write', filepath='file_to_write.txt')
+    read_file(filepath='file_to_write.txt')
     """
     json_format = """
         {
         "steps": [
-            "write_file('The capital is xxx', 'answer.txt')",
-            "read_file('file_to_read.txt')",
+            "write_file(contents='The capital is xxx', filepath='answer.txt')",
+            "read_file(filepath='file_to_read.txt')",
         ]
     }
     """
     planning_prompt = f"""Answer in json format:
-    Determine the steps needed to complete the following task using only the defined list of steps with the parameters provided:
+    Determine the steps needed to complete the following task :
     {task}
     ---
-    Possible steps
+    Possible steps:
     {abilities}
 
     ---
     Example answer:
     {json_format}
+
+    ---
+    As you can see, we only use hard coded values when calling the functions.
+    Please write your answer below:
     """
     messages = [{"role": "user", "content": planning_prompt}]
 

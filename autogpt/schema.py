@@ -63,10 +63,11 @@ class StepOutput(BaseModel):
 class TaskRequestBody(BaseModel):
     input: str = Field(
         ...,
+        min_length=1,
         description="Input prompt for the task.",
         example="Write the words you receive to the file 'output.txt'.",
     )
-    additional_input: Optional[TaskInput] = None
+    additional_input: Optional[TaskInput] = {}
 
 
 class Task(TaskRequestBody):
@@ -102,9 +103,12 @@ class StepRequestBody(BaseModel):
         None, description="The name of the task step.", example="Write to file"
     )
     input: str = Field(
-        ..., description="Input prompt for the step.", example="Washington"
+        ...,
+        min_length=1,
+        description="Input prompt for the step.",
+        example="Washington",
     )
-    additional_input: Optional[StepInput] = None
+    additional_input: Optional[StepInput] = {}
 
 
 class Status(Enum):
@@ -147,7 +151,7 @@ class Step(StepRequestBody):
         description="Output of the task step.",
         example="I am going to use the write_to_file command and write Washington to a file called output.txt <write_to_file('output.txt', 'Washington')",
     )
-    additional_output: Optional[StepOutput] = None
+    additional_output: Optional[StepOutput] = {}
     artifacts: Optional[List[Artifact]] = Field(
         [], description="A list of artifacts that the step has produced."
     )

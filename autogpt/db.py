@@ -7,9 +7,17 @@ IT IS NOT ADVISED TO USE THIS IN PRODUCTION!
 import datetime
 import math
 import uuid
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, create_engine
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    String,
+    create_engine,
+)
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmaker
 
@@ -29,7 +37,7 @@ class TaskModel(Base):
 
     task_id = Column(String, primary_key=True, index=True)
     input = Column(String)
-    additional_input = Column(String)
+    additional_input = Column(JSON)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     modified_at = Column(
         DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
@@ -52,7 +60,7 @@ class StepModel(Base):
         DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
     )
 
-    additional_properties = Column(String)
+    additional_input = Column(JSON)
     artifacts = relationship("ArtifactModel", back_populates="step")
 
 
@@ -105,7 +113,7 @@ def convert_to_step(step_model: StepModel, debug_enabled: bool = False) -> Step:
         status=status,
         artifacts=step_artifacts,
         is_last=step_model.is_last == 1,
-        additional_properties=step_model.additional_properties,
+        additional_input=step_model.additional_input,
     )
 
 
@@ -131,7 +139,7 @@ class AgentDB:
         self.Session = sessionmaker(bind=self.engine)
 
     async def create_task(
-        self, input: Optional[str], additional_input: Optional[TaskInput] = None
+        self, input: Optional[str], additional_input: Optional[TaskInput] = {}
     ) -> Task:
         if self.debug_enabled:
             LOG.debug("Creating new task")
@@ -141,9 +149,7 @@ class AgentDB:
                 new_task = TaskModel(
                     task_id=str(uuid.uuid4()),
                     input=input,
-                    additional_input=additional_input.__root__
-                    if additional_input
-                    else None,
+                    additional_input=additional_input,
                 )
                 session.add(new_task)
                 session.commit()
@@ -165,7 +171,7 @@ class AgentDB:
         task_id: str,
         input: str,
         is_last: bool = False,
-        additional_properties: Optional[Dict[str, str]] = None,
+        additional_input: Optional[Dict[str, Any]] = {},
     ) -> Step:
         if self.debug_enabled:
             LOG.debug(f"Creating new step for task_id: {task_id}")
@@ -174,11 +180,11 @@ class AgentDB:
                 new_step = StepModel(
                     task_id=task_id,
                     step_id=str(uuid.uuid4()),
-                    name=input,
-                    input=input,
+                    name=input.name,
+                    input=input.input,
                     status="created",
                     is_last=is_last,
-                    additional_properties=additional_properties,
+                    additional_input=additional_input,
                 )
                 session.add(new_step)
                 session.commit()
@@ -299,7 +305,7 @@ class AgentDB:
         task_id: str,
         step_id: str,
         status: str,
-        additional_properties: Optional[Dict[str, str]] = None,
+        additional_input: Optional[Dict[str, Any]] = {},
     ) -> Step:
         if self.debug_enabled:
             LOG.debug(f"Updating step with task_id: {task_id} and step_id: {step_id}")
@@ -311,7 +317,7 @@ class AgentDB:
                     .first()
                 ):
                     step.status = status
-                    step.additional_properties = additional_properties
+                    step.additional_input = additional_input
                     session.commit()
                     return await self.get_step(task_id, step_id)
                 else:
@@ -364,8 +370,6 @@ class AgentDB:
                     .limit(per_page)
                     .all()
                 )
-                if not tasks:
-                    raise NotFoundError("No tasks found")
                 total = session.query(TaskModel).count()
                 pages = math.ceil(total / per_page)
                 pagination = Pagination(
@@ -400,8 +404,6 @@ class AgentDB:
                     .limit(per_page)
                     .all()
                 )
-                if not steps:
-                    raise NotFoundError("No steps found")
                 total = session.query(StepModel).filter_by(task_id=task_id).count()
                 pages = math.ceil(total / per_page)
                 pagination = Pagination(
@@ -436,8 +438,6 @@ class AgentDB:
                     .limit(per_page)
                     .all()
                 )
-                if not artifacts:
-                    raise NotFoundError("No artifacts found")
                 total = session.query(ArtifactModel).filter_by(task_id=task_id).count()
                 pages = math.ceil(total / per_page)
                 pagination = Pagination(
