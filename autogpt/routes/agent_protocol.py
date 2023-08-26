@@ -1,25 +1,25 @@
 """
 Routes for the Agent Service.
 
-This module defines the API routes for the Agent service. While there are multiple endpoints provided by the service, 
+This module defines the API routes for the Agent service. While there are multiple endpoints provided by the service,
 the ones that require special attention due to their complexity are:
 
-1. `execute_agent_task_step`: 
-   This route is significant because this is where the agent actually performs the work. The function handles 
-   executing the next step for a task based on its current state, and it requires careful implementation to ensure 
+1. `execute_agent_task_step`:
+   This route is significant because this is where the agent actually performs the work. The function handles
+   executing the next step for a task based on its current state, and it requires careful implementation to ensure
    all scenarios (like the presence or absence of steps or a step marked as `last_step`) are handled correctly.
 
-2. `upload_agent_task_artifacts`: 
-   This route allows for the upload of artifacts, supporting various URI types (e.g., s3, gcs, ftp, http). 
-   The support for different URI types makes it a bit more complex, and it's important to ensure that all 
-   supported URI types are correctly managed. NOTE: The Auto-GPT team will eventually handle the most common 
+2. `upload_agent_task_artifacts`:
+   This route allows for the upload of artifacts, supporting various URI types (e.g., s3, gcs, ftp, http).
+   The support for different URI types makes it a bit more complex, and it's important to ensure that all
+   supported URI types are correctly managed. NOTE: The Auto-GPT team will eventually handle the most common
    uri types for you.
 
-3. `create_agent_task`: 
-   While this is a simpler route, it plays a crucial role in the workflow, as it's responsible for the creation 
+3. `create_agent_task`:
+   While this is a simpler route, it plays a crucial role in the workflow, as it's responsible for the creation
    of a new task.
 
-Developers and contributors should be especially careful when making modifications to these routes to ensure 
+Developers and contributors should be especially careful when making modifications to these routes to ensure
 consistency and correctness in the system's behavior.
 """
 import json
@@ -102,7 +102,11 @@ async def create_agent_task(request: Request, task_request: TaskRequestBody) -> 
 
     try:
         task_request = await agent.create_task(task_request)
-        return Response(content=task_request.json(), status_code=200)
+        return Response(
+            content=task_request.json(),
+            status_code=200,
+            media_type="application/json",
+        )
     except NotFoundError:
         return Response(
             content=json.dumps({"error": "Task not found"}),
@@ -161,7 +165,11 @@ async def list_agent_tasks(
     agent = request["agent"]
     try:
         tasks = await agent.list_tasks(page, page_size)
-        return Response(content=tasks.json(), status_code=200)
+        return Response(
+            content=tasks.json(),
+            status_code=200,
+            media_type="application/json",
+        )
     except NotFoundError:
         return Response(
             content=json.dumps({"error": "Task not found"}),
@@ -232,7 +240,11 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
     agent = request["agent"]
     try:
         task = await agent.get_task(task_id)
-        return Response(content=task.json(), status_code=200)
+        return Response(
+            content=task.json(),
+            status_code=200,
+            media_type="application/json",
+        )
     except NotFoundError:
         return Response(
             content=json.dumps({"error": "Task not found"}),
@@ -293,7 +305,11 @@ async def list_agent_task_steps(
     agent = request["agent"]
     try:
         steps = await agent.list_steps(task_id, page, page_size)
-        return Response(content=steps.json(), status_code=200)
+        return Response(
+            content=steps.json(),
+            status_code=200,
+            media_type="application/json",
+        )
     except NotFoundError:
         return Response(
             content=json.dumps({"error": "Task not found"}),
@@ -355,7 +371,11 @@ async def execute_agent_task_step(
     agent = request["agent"]
     try:
         step = await agent.create_and_execute_step(task_id, step)
-        return Response(content=step.json(), status_code=200)
+        return Response(
+            content=step.json(),
+            status_code=200,
+            media_type="application/json",
+        )
     except NotFoundError:
         return Response(
             content=json.dumps({"error": f"Task not found {task_id}"}),
@@ -462,7 +482,7 @@ async def list_agent_task_artifacts(
     agent = request["agent"]
     try:
         artifacts = await agent.list_artifacts(task_id, page, page_size)
-        return Response(content=artifacts.json(), status_code=200)
+        return artifacts
     except NotFoundError:
         return Response(
             content=json.dumps({"error": "Task not found"}),
@@ -522,21 +542,31 @@ async def upload_agent_task_artifacts(
     agent = request["agent"]
     if file is None and uri is None:
         return Response(
-            content={"error": "Either file or uri must be specified"}, status_code=404
+            content=json.dumps({"error": "Either file or uri must be specified"}),
+            status_code=404,
+            media_type="application/json",
         )
     if file is not None and uri is not None:
         return Response(
-            content={"error": "Both file and uri cannot be specified at the same time"},
+            content=json.dumps(
+                {"error": "Both file and uri cannot be specified at the same time"}
+            ),
             status_code=404,
+            media_type="application/json",
         )
     if uri is not None and not uri.startswith(("http://", "https://", "file://")):
         return Response(
-            content={"error": "URI must start with http, https or file"},
+            content=json.dumps({"error": "URI must start with http, https or file"}),
             status_code=404,
+            media_type="application/json",
         )
     try:
         artifact = await agent.create_artifact(task_id, file, uri)
-        return Response(content=artifact.json(), status_code=200)
+        return Response(
+            content=artifact.json(),
+            status_code=200,
+            media_type="application/json",
+        )
     except NotFoundError:
         return Response(
             content=json.dumps({"error": "Task not found"}),

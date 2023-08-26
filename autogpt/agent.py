@@ -60,10 +60,8 @@ class Agent:
         """
         try:
             task = await self.db.create_task(
-                input=task_request.input if task_request.input else None,
-                additional_input=task_request.additional_input
-                if task_request.additional_input
-                else None,
+                input=task_request.input,
+                additional_input=task_request.additional_input,
             )
             return task
         except Exception as e:
@@ -112,10 +110,8 @@ class Agent:
         if step_request.input != "y":
             step = await self.db.create_step(
                 task_id=task_id,
-                input=step_request.input if step_request else None,
-                additional_properties=step_request.additional_input
-                if step_request
-                else None,
+                input=step_request,
+                additional_input=step_request.additional_input,
             )
             # utils.run
             artifacts = run(step.input)
@@ -143,7 +139,7 @@ class Agent:
                 step = await self.db.create_step(
                     task_id=task_id,
                     input="y",
-                    additional_properties=None,
+                    additional_input={},
                 )
                 step.status = "completed"
                 step.is_last = True
@@ -224,7 +220,7 @@ class Agent:
         Get an artifact by ID.
         """
         try:
-            artifact = await self.db.get_artifact(task_id, artifact_id)
+            artifact = await self.db.get_artifact(artifact_id)
             retrieved_artifact = await self.load_from_uri(artifact.uri, artifact_id)
             path = artifact.file_name
             with open(path, "wb") as f:
