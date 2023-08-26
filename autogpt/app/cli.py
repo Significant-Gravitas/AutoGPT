@@ -32,7 +32,10 @@ import click
     "--continuous-limit",
     "--continuous-count",
     type=int,
-    help="Defines the number of times to run in continuous mode",
+    help=(
+        "Defines the number of times to run in continuous mode. Example:"
+        " ./run.sh -c -n 10"
+    ),
 )
 @click.option("--speak", is_flag=True, help="Enable Speak Mode")
 @click.option("--debug", is_flag=True, help="Enable Debug Mode")
