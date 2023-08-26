@@ -28,7 +28,9 @@ import click
 )
 @click.option(
     "-l",
+    "-n",
     "--continuous-limit",
+    "--continuous-count",
     type=int,
     help="Defines the number of times to run in continuous mode",
 )

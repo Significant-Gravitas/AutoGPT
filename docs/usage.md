@@ -41,6 +41,12 @@ Here are some common arguments you can use when running Auto-GPT:
 ./run.sh --use-memory  <memory-backend>
 ```
 
+* Specify the number of commands to run continuously
+
+```shell
+./run.sh --continuous-count <N>
+```
+
 !!! note
     There are shorthands for some of these flags, for example `-m` for `--use-memory`.  
     Use `./run.sh --help` for more information.
