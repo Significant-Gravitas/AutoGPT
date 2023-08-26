@@ -2,9 +2,11 @@
     "TestAdaptLink": [
         false,
         false,
+        false,
         false
     ],
     "TestAdaptSimpleTypoWithGuidance": [
+        false,
         false,
         false,
         false
@@ -12,9 +14,11 @@
     "TestAdaptTeslaRevenue": [
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_CreateAgentTask": [
+        false,
         false,
         false,
         false
@@ -22,9 +26,11 @@
     "TestAgentProtocol_ExecuteAgentTaskStep": [
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_GetAgentTask": [
+        false,
         false,
         false,
         false
@@ -32,9 +38,11 @@
     "TestAgentProtocol_ListAgentTaskSteps": [
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTasksIds": [
+        false,
         false,
         false,
         false
@@ -42,9 +50,11 @@
     "TestBasicMemory": [
         true,
         true,
-        false
+        false,
+        true
     ],
     "TestBasicRetrieval": [
+        false,
         false,
         false,
         false
@@ -52,9 +62,11 @@
     "TestDebugMultipleTypo": [
         false,
         false,
+        false,
         false
     ],
     "TestDebugSimpleTypoWithGuidance": [
+        true,
         true,
         true,
         true
@@ -62,9 +74,11 @@
     "TestDebugSimpleTypoWithoutGuidance": [
         false,
         false,
+        false,
         false
     ],
     "TestFunctionCodeGeneration": [
+        false,
         false,
         false,
         false
@@ -72,9 +86,11 @@
     "TestPasswordGenerator_Easy": [
         false,
         false,
+        false,
         false
     ],
     "TestPlanCreation": [
+        true,
         true,
         true,
         true
@@ -82,9 +98,11 @@
     "TestProductAdvisor_GamingMonitor": [
         false,
         false,
+        false,
         false
     ],
     "TestReadFile": [
+        true,
         true,
         true,
         true
@@ -92,9 +110,11 @@
     "TestRememberGoal_Advanced": [
         false,
         false,
+        false,
         false
     ],
     "TestRememberGoal_Hard": [
+        false,
         false,
         false,
         false
@@ -102,9 +122,11 @@
     "TestRememberGoal_Medium": [
         false,
         false,
+        false,
         false
     ],
     "TestRememberGoal_Simple": [
+        false,
         false,
         false,
         false
@@ -112,19 +134,23 @@
     "TestRememberMultipleIds": [
         false,
         true,
-        false
+        false,
+        true
     ],
     "TestRememberMultipleIdsWithNoise": [
         false,
         true,
-        false
+        false,
+        true
     ],
     "TestRememberMultiplePhrasesWithNoise": [
         false,
         true,
+        false,
         false
     ],
     "TestRetrieval3": [
+        false,
         false,
         false,
         false
@@ -132,9 +158,11 @@
     "TestReturnCode_Modify": [
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Simple": [
+        false,
         false,
         false,
         false
@@ -142,9 +170,11 @@
     "TestReturnCode_Tests": [
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Write": [
+        false,
         false,
         false,
         false
@@ -152,9 +182,11 @@
     "TestRevenueRetrieval_1.0": [
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.1": [
+        false,
         false,
         false,
         false
@@ -162,9 +194,11 @@
     "TestRevenueRetrieval_1.2": [
         false,
         false,
+        false,
         false
     ],
     "TestSearch": [
+        true,
         true,
         true,
         true
@@ -172,9 +206,11 @@
     "TestThreeSum": [
         false,
         false,
+        false,
         false
     ],
     "TestWebApp_ListAnimals": [
+        false,
         false,
         false,
         false
@@ -182,19 +218,23 @@
     "TestWrite5FilesWithArray": [
         false,
         false,
+        true,
         true
     ],
     "TestWrite6Files": [
         false,
         false,
+        true,
         true
     ],
     "TestWriteFile": [
         true,
         true,
+        true,
         true
     ],
     "TestWritingCLI_FileOrganizer": [
+        false,
         false,
         false,
         false
