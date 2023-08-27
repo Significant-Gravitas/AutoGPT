@@ -4,13 +4,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-from agbenchmark.reports.ReportManager import ReportManager
-from agbenchmark.start_benchmark import (
-    CONFIG_PATH,
-    REGRESSION_TESTS_PATH,
-    REPORTS_PATH,
-    SUCCESS_RATE_PATH,
-)
+import agbenchmark.start_benchmark
 from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel, SuiteConfig
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.utils.utils import (
@@ -19,15 +13,6 @@ from agbenchmark.utils.utils import (
     get_test_path,
     replace_backslash,
 )
-
-# tests that consistently pass are considered regression tests
-regression_manager = ReportManager(REGRESSION_TESTS_PATH)
-
-# user facing reporting information
-info_manager = ReportManager(str(Path(REPORTS_PATH) / "report.json"))
-
-# internal db step in replacement track pass/fail rate
-internal_info = ReportManager(SUCCESS_RATE_PATH)
 
 
 def generate_combined_suite_report(
@@ -80,7 +65,7 @@ def generate_combined_suite_report(
             # add dependency fail here
 
             if not mock:  # don't remove if it's a mock test
-                regression_manager.remove_test(test_name)
+                agbenchmark.start_benchmark.REGRESSION_MANAGER.remove_test(test_name)
 
         prev_test_results: list[bool] = get_previous_test_results(
             test_name, test_info_details
@@ -113,12 +98,16 @@ def get_previous_test_results(
     agent_tests: dict[str, list[bool]] = {}
     mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
 
-    prev_test_results = internal_info.tests.get(test_name, [])
+    prev_test_results = agbenchmark.start_benchmark.INTERNAL_INFO_MANAGER.tests.get(
+        test_name, []
+    )
 
     if not mock:
         # only add if it's an actual test
         prev_test_results.append(info_details["metrics"]["success"])
-        internal_info.add_test(test_name, prev_test_results)
+        agbenchmark.start_benchmark.INTERNAL_INFO_MANAGER.add_test(
+            test_name, prev_test_results
+        )
 
     # can calculate success rate regardless of mock
     info_details["metrics"]["success_%"] = calculate_success_percentage(
@@ -137,7 +126,7 @@ def update_regression_tests(
     if len(prev_test_results) >= 3 and prev_test_results[-3:] == [True, True, True]:
         # if the last 3 tests were successful, add to the regression tests
         info_details["is_regression"] = True
-        regression_manager.add_test(test_name, test_details)
+        agbenchmark.start_benchmark.REGRESSION_MANAGER.add_test(test_name, test_details)
 
 
 def generate_single_call_report(
@@ -181,7 +170,7 @@ def generate_single_call_report(
         info_details["metrics"]["success"] = True
     else:
         if not mock:  # don't remove if it's a mock test
-            regression_manager.remove_test(test_name)
+            agbenchmark.start_benchmark.REGRESSION_MANAGER.remove_test(test_name)
         info_details["metrics"]["fail_reason"] = str(call.excinfo.value)
         if call.excinfo.typename == "Skipped":
             info_details["metrics"]["attempted"] = False
@@ -201,7 +190,7 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
     test_name = getattr(item, "test_name", "")
 
     if info_details and test_name:
-        if run_time:
+        if run_time is not None:
             cost = None
             if "--mock" not in sys.argv and os.environ.get("HELICONE_API_KEY"):
                 print("Getting cost from Helicone")
@@ -232,7 +221,7 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
                             nested_test_info, nested_test_name
                         )
 
-        info_manager.add_test(test_name, info_details)
+        agbenchmark.start_benchmark.INFO_MANAGER.add_test(test_name, info_details)
 
 
 def update_challenges_already_beaten(
@@ -271,9 +260,11 @@ def generate_separate_suite_reports(suite_reports: dict) -> None:
         }
 
         for name in suite_file_datum:
-            test_data = info_manager.tests[name]  # get the individual test reports
+            test_data = agbenchmark.start_benchmark.INFO_MANAGER.tests[
+                name
+            ]  # get the individual test reports
             data[name] = test_data  # this is for calculating highest difficulty
-            info_manager.remove_test(name)
+            agbenchmark.start_benchmark.INFO_MANAGER.remove_test(name)
 
             successes.append(test_data["metrics"]["success"])
             run_time += float(test_data["metrics"]["run_time"].split(" ")[0])
@@ -291,7 +282,7 @@ def generate_separate_suite_reports(suite_reports: dict) -> None:
             Path(next(iter(data.values()))["data_path"]).resolve().parent.parent
         )
         info_details["data_path"] = get_test_path(suite_path)
-        info_manager.add_test(prefix, info_details)
+        agbenchmark.start_benchmark.INFO_MANAGER.add_test(prefix, info_details)
 
 
 def session_finish(suite_reports: dict) -> None:
@@ -299,9 +290,9 @@ def session_finish(suite_reports: dict) -> None:
     if not flags:
         generate_separate_suite_reports(suite_reports)
 
-    with open(CONFIG_PATH, "r") as f:
+    with open(agbenchmark.start_benchmark.CONFIG_PATH, "r") as f:
         config = json.load(f)
 
-    internal_info.save()
-    info_manager.end_info_report(config)
-    regression_manager.save()
+    agbenchmark.start_benchmark.INTERNAL_INFO_MANAGER.save()
+    agbenchmark.start_benchmark.INFO_MANAGER.end_info_report(config)
+    agbenchmark.start_benchmark.REGRESSION_MANAGER.save()

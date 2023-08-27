@@ -1,4 +1,5 @@
 agbenchmark/workspace/
+backend/backend_stdout.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

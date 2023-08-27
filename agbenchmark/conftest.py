@@ -10,13 +10,13 @@ from typing import Any, Dict, Generator
 
 import pytest
 
+import agbenchmark.start_benchmark
 from agbenchmark.reports.reports import (
     finalize_reports,
     generate_combined_suite_report,
     generate_single_call_report,
     session_finish,
 )
-from agbenchmark.start_benchmark import CONFIG_PATH, HOME_DIRECTORY, get_regression_data
 from agbenchmark.utils.data_types import SuiteConfig
 
 GLOBAL_TIMEOUT = (
@@ -46,8 +46,8 @@ def resolve_workspace(workspace: str) -> str:
 
 @pytest.fixture(scope="module")
 def config(request: Any) -> None:
-    print(f"Config file: {CONFIG_PATH}")
-    with open(CONFIG_PATH, "r") as f:
+    print(f"Config file: {agbenchmark.start_benchmark.CONFIG_PATH}")
+    with open(agbenchmark.start_benchmark.CONFIG_PATH, "r") as f:
         config = json.load(f)
 
     if isinstance(config["workspace"], str):
@@ -103,7 +103,7 @@ def pytest_addoption(parser: Any) -> None:
 @pytest.fixture(autouse=True)
 def check_regression(request: Any) -> None:
     test_name = request.node.parent.name
-    data = get_regression_data()
+    data = agbenchmark.start_benchmark.get_regression_data()
 
     # Get the true location of the test
     challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
@@ -212,7 +212,7 @@ def scores(request: Any) -> None:
 
 # this is adding the dependency marker and category markers automatically from the json
 def pytest_collection_modifyitems(items: Any, config: Any) -> None:
-    data = get_regression_data()
+    data = agbenchmark.start_benchmark.get_regression_data()
 
     for item in items:
         # Assuming item.cls is your test class
@@ -249,7 +249,7 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def run_agent(request: Any) -> Any:
-    with open(CONFIG_PATH, "r") as f:
+    with open(agbenchmark.start_benchmark.CONFIG_PATH, "r") as f:
         config = json.load(f)
 
     if config.get("api_mode"):
@@ -259,7 +259,7 @@ def run_agent(request: Any) -> Any:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
-            cwd=HOME_DIRECTORY,
+            cwd=agbenchmark.start_benchmark.HOME_DIRECTORY,
         )
         time.sleep(3)
         yield

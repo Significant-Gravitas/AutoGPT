@@ -1,8 +1,11 @@
 # poetry install
+# poetry shell
 
 # cd backend
 # pip install -r requirement.txt
-# uvicorn your_module:app --reload
+# uvicorn main:app --reload
+
+# cd ..
 
 # cd frontend 
 # npm install
