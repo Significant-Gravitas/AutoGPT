@@ -10,8 +10,8 @@ from typing import Any, Dict, List
 import openai
 import pytest
 
+import agbenchmark.start_benchmark
 from agbenchmark.agent_api_interface import run_api_agent
-from agbenchmark.start_benchmark import OPTIONAL_CATEGORIES
 from agbenchmark.utils.data_types import ChallengeData, Ground
 from agbenchmark.utils.prompts import (
     END_PROMPT,
@@ -294,7 +294,7 @@ class Challenge(ABC):
         challenge_category = self.data.category
         categories = [
             category
-            for category in OPTIONAL_CATEGORIES
+            for category in agbenchmark.start_benchmark.OPTIONAL_CATEGORIES
             if category in challenge_category
         ]
         if not agent_eligibible_for_optional_categories(

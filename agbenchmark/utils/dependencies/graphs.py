@@ -10,6 +10,7 @@ import numpy as np
 from pyvis.network import Network
 
 from agbenchmark.generate_test import DATA_CATEGORY
+from agbenchmark.utils.utils import find_absolute_benchmark_path
 
 
 def bezier_curve(
@@ -276,8 +277,10 @@ def graph_interactive_network(
 
     json_graph = json.dumps(graph_data)
 
+    home_path = find_absolute_benchmark_path()
+
     # Optionally, save to a file
-    with open(Path("frontend/public/graph.json").resolve(), "w") as f:
+    with open(home_path / "frontend" / "public" / "graph.json", "w") as f:
         f.write(json_graph)
 
     if html_graph_path:

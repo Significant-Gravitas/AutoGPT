@@ -9,12 +9,6 @@ from typing import Any, Dict
 from agbenchmark.reports.processing.graphs import save_single_radar_chart
 from agbenchmark.reports.processing.process_report import get_agent_category
 from agbenchmark.reports.processing.report_types import Report
-from agbenchmark.start_benchmark import (
-    AGENT_GIT_COMMIT_SHA,
-    BENCHMARK_GIT_COMMIT_SHA,
-    BENCHMARK_START_TIME,
-    REPORTS_PATH,
-)
 from agbenchmark.utils.utils import get_highest_success_difficulty
 
 
@@ -57,16 +51,22 @@ class ReportManager:
             del self.tests[test_name]
             self.save()
 
+    def reset(self) -> None:
+        self.tests = {}
+        self.save()
+
     def end_info_report(self, config: Dict[str, Any]) -> None:
+        import agbenchmark.start_benchmark
+
         command = " ".join(sys.argv)
         self.tests = {
             "command": command.split(os.sep)[-1],
-            "benchmark_git_commit_sha": BENCHMARK_GIT_COMMIT_SHA,
-            "agent_git_commit_sha": AGENT_GIT_COMMIT_SHA,
+            "benchmark_git_commit_sha": agbenchmark.start_benchmark.BENCHMARK_GIT_COMMIT_SHA,
+            "agent_git_commit_sha": agbenchmark.start_benchmark.AGENT_GIT_COMMIT_SHA,
             "completion_time": datetime.now(timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%S+00:00"
             ),
-            "benchmark_start_time": BENCHMARK_START_TIME,
+            "benchmark_start_time": agbenchmark.start_benchmark.BENCHMARK_START_TIME,
             "metrics": {
                 "run_time": str(round(time.time() - self.start_time, 2)) + " seconds",
                 "highest_difficulty": get_highest_success_difficulty(self.tests),
@@ -80,7 +80,8 @@ class ReportManager:
         agent_categories = get_agent_category(converted_data)
 
         save_single_radar_chart(
-            agent_categories, Path(REPORTS_PATH) / "radar_chart.png"
+            agent_categories,
+            Path(agbenchmark.start_benchmark.REPORTS_PATH) / "radar_chart.png",
         )
 
         self.save()

@@ -187,6 +187,12 @@ def assign_paths(folder_path: Path) -> tuple[str, str, str, str, str]:
 def calculate_dynamic_paths() -> tuple[Path, str, str, str, str, str]:
     # the default home is where you're running from
     HOME_DIRECTORY = Path(os.getcwd())
+
+    if os.path.join("Auto-GPT-Benchmarks", "backend") in str(
+        HOME_DIRECTORY
+    ):  # accounting for backend calls
+        HOME_DIRECTORY = HOME_DIRECTORY.parent
+
     benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
 
     if AGENT_NAME and not os.path.join("Auto-GPT-Benchmarks", "agent") in str(
@@ -194,7 +200,7 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str, str, str]:
     ):
         # if the agent name is defined but the run is not from the agent repo, then home is the agent repo
         # used for development of both a benchmark and an agent
-        HOME_DIRECTORY = Path(os.getcwd()) / "agent" / AGENT_NAME
+        HOME_DIRECTORY = HOME_DIRECTORY / "agent" / AGENT_NAME
         benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
 
         (
@@ -251,10 +257,10 @@ def get_git_commit_sha(directory: Path) -> Optional[str]:
             remote_url = remote_url[:-4]
         git_commit_sha = f"{remote_url}/tree/{repo.head.commit.hexsha}"
 
-        print(f"GIT_COMMIT_SHA: {git_commit_sha}")
+        # print(f"GIT_COMMIT_SHA: {git_commit_sha}")
         return git_commit_sha
     except Exception:
-        print(f"{directory} is not a git repository!")
+        # print(f"{directory} is not a git repository!")
         return None
 
 
@@ -265,3 +271,25 @@ def agent_eligibible_for_optional_categories(
         if element not in agent_categories:
             return False
     return True
+
+
+def find_absolute_benchmark_path() -> Path:
+    # Find the absolute path to the current working directory
+    current_path = Path.cwd()
+
+    # Find the position of "Auto-GPT-Benchmarks" in the path
+    benchmark_path_index = (
+        current_path.parts.index("Auto-GPT-Benchmarks")
+        if "Auto-GPT-Benchmarks" in current_path.parts
+        else None
+    )
+
+    if benchmark_path_index is not None:
+        # Construct the absolute path starting from "Auto-GPT-Benchmarks"
+        benchmark_path = Path(*current_path.parts[: benchmark_path_index + 1])
+
+        return benchmark_path
+    else:
+        raise ValueError(
+            "The directory 'Auto-GPT-Benchmarks' is not found in the current path."
+        )

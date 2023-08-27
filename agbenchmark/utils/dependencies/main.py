@@ -224,6 +224,7 @@ class DependencyManager(object):
             data["name"] = node_name
             labels[item] = data
 
+        # only build the tree if it's specified in the env and is a whole run
         if BUILD_SKILL_TREE:
             # graph_spring_layout(dag, labels)
             graph_interactive_network(dag, labels, html_graph_path="")

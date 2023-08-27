@@ -1,4 +1,3 @@
-import asyncio
 import glob
 import importlib
 import json
@@ -11,7 +10,7 @@ from typing import Any, Callable, Dict, Optional
 
 import pytest
 
-from agbenchmark.start_benchmark import CHALLENGES_PATH, get_regression_data
+import agbenchmark.start_benchmark
 from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import ChallengeData, SuiteConfig
 from agbenchmark.utils.utils import get_test_path
@@ -98,7 +97,8 @@ def create_single_test(
     )
 
     # Define test method within the dynamically created class
-    def test_method(self, config: Dict[str, Any], request) -> None:  # type: ignore
+    @pytest.mark.asyncio
+    async def test_method(self, config: Dict[str, Any], request) -> None:  # type: ignore
         # create a random number between 0 and 1
         test_name = self.data.name
 
@@ -128,9 +128,8 @@ def create_single_test(
             timeout = 100000
         if "--cutoff" in sys.argv:
             timeout = int(sys.argv[sys.argv.index("--cutoff") + 1])
-        asyncio.get_event_loop().run_until_complete(
-            self.setup_challenge(config, timeout)
-        )
+
+        await self.setup_challenge(config, timeout)
 
         scores = self.get_scores(config)
         request.node.scores = scores  # store scores in request.node
@@ -222,8 +221,13 @@ def create_challenge(
 def generate_tests() -> None:  # sourcery skip: invert-any-all
     print("Generating tests...")
 
-    json_files = deque(glob.glob(f"{CHALLENGES_PATH}/**/data.json", recursive=True))
-    regression_tests = get_regression_data()
+    json_files = deque(
+        glob.glob(
+            f"{agbenchmark.start_benchmark.CHALLENGES_PATH}/**/data.json",
+            recursive=True,
+        )
+    )
+    regression_tests = agbenchmark.start_benchmark.get_regression_data()
 
     # for suites to know if the file has already been used to generate the tests
     # Dynamic class creation
