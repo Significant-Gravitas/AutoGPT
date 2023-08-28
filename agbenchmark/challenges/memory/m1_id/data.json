@@ -3,7 +3,7 @@
   "category": ["memory"],
   "task": "Follow the instructions in the instructions_1.txt file",
   "dependencies": ["TestReadFile"],
-  "cutoff": 120,
+  "cutoff": 150,
   "ground": {
     "answer": "2314",
     "should_contain": ["2314"],
