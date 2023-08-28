@@ -24,6 +24,7 @@ from autogpt.logs.log_cycle import (
     LogCycleHandler,
 )
 from autogpt.models.agent_actions import (
+    Action,
     ActionErrorResult,
     ActionInterruptedByHuman,
     ActionResult,
@@ -111,8 +112,8 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
                 kwargs["append_messages"] = []
             kwargs["append_messages"].append(budget_msg)
 
-        # Include message history in base prompt
-        kwargs["with_message_history"] = True
+        # # Include message history in base prompt
+        # kwargs["with_message_history"] = True
 
         return super().construct_base_prompt(*args, **kwargs)
 
@@ -124,7 +125,7 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
             self.ai_config.ai_name,
             self.created_at,
             self.cycle_count,
-            self.history.raw(),
+            self.message_history.raw(),
             FULL_MESSAGE_HISTORY_FILE_NAME,
         )
         self.log_cycle_handler.log_cycle(
@@ -146,7 +147,7 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
 
         if command_name == "human_feedback":
             result = ActionInterruptedByHuman(user_input)
-            self.history.add(
+            self.message_history.add(
                 "user",
                 "I interrupted the execution of the command you proposed "
                 f"to give you some feedback: {user_input}",
@@ -187,13 +188,11 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
             except AgentException as e:
                 result = ActionErrorResult(e.message, e)
 
-            logger.debug(f"Command result: {result}")
-
             result_tlength = count_string_tokens(str(result), self.llm.name)
-            memory_tlength = count_string_tokens(
-                str(self.history.summary_message()), self.llm.name
+            history_tlength = count_string_tokens(
+                self.event_history.fmt_paragraph(), self.llm.name
             )
-            if result_tlength + memory_tlength > self.send_token_limit:
+            if result_tlength + history_tlength > self.send_token_limit:
                 result = ActionErrorResult(
                     reason=f"Command {command_name} returned too much output. "
                     "Do not execute this command again with the same arguments."
@@ -203,15 +202,15 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
                 if not plugin.can_handle_post_command():
                     continue
                 if result.status == "success":
-                    result.results = plugin.post_command(command_name, result.results)
+                    result.outputs = plugin.post_command(command_name, result.outputs)
                 elif result.status == "error":
                     result.reason = plugin.post_command(command_name, result.reason)
 
         # Check if there's a result from the command append it to the message
         if result.status == "success":
-            self.history.add(
+            self.message_history.add(
                 "system",
-                f"Command {command_name} returned: {result.results}",
+                f"Command {command_name} returned: {result.outputs}",
                 "action_result",
             )
         elif result.status == "error":
@@ -225,7 +224,10 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
             ):
                 message = message.rstrip(".") + f". {result.error.hint}"
 
-            self.history.add("system", message, "action_result")
+            self.message_history.add("system", message, "action_result")
+
+        # Update action history
+        self.event_history.register_result(result)
 
         return result
 
@@ -264,6 +266,15 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
             assistant_reply_dict,
             NEXT_ACTION_FILE_NAME,
         )
+
+        self.event_history.register_action(
+            Action(
+                name=command_name,
+                args=arguments,
+                reasoning=assistant_reply_dict["thoughts"]["reasoning"],
+            )
+        )
+
         return response
 
 

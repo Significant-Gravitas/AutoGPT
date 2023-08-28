@@ -15,7 +15,7 @@ from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.memory.message_history import MessageHistory
-from autogpt.models.agent_actions import ActionResult
+from autogpt.models.agent_actions import ActionHistory, ActionResult
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
@@ -93,7 +93,9 @@ class BaseAgent(metaclass=ABCMeta):
         defaults to 75% of `llm.max_tokens`.
         """
 
-        self.history = MessageHistory(
+        self.event_history = ActionHistory()
+
+        self.message_history = MessageHistory(
             self.llm,
             max_summary_tlength=summary_max_tlength or self.send_token_limit // 6,
         )
@@ -177,6 +179,15 @@ class BaseAgent(metaclass=ABCMeta):
             reserve_tokens: Number of tokens to reserve for content that is added later
         """
 
+        if self.event_history:
+            prepend_messages.insert(
+                0,
+                Message(
+                    "system",
+                    "## Progress\n\n" f"{self.event_history.fmt_paragraph()}",
+                ),
+            )
+
         prompt = ChatSequence.for_model(
             self.llm.name,
             [Message("system", self.system_prompt)] + prepend_messages,
@@ -184,7 +195,7 @@ class BaseAgent(metaclass=ABCMeta):
 
         if with_message_history:
             # Reserve tokens for messages to be appended later, if any
-            reserve_tokens += self.history.max_summary_tlength
+            reserve_tokens += self.message_history.max_summary_tlength
             if append_messages:
                 reserve_tokens += count_message_tokens(append_messages, self.llm.name)
 
@@ -192,10 +203,10 @@ class BaseAgent(metaclass=ABCMeta):
             # Trim remaining historical messages and add them to the running summary.
             history_start_index = len(prompt)
             trimmed_history = add_history_upto_token_limit(
-                prompt, self.history, self.send_token_limit - reserve_tokens
+                prompt, self.message_history, self.send_token_limit - reserve_tokens
             )
             if trimmed_history:
-                new_summary_msg, _ = self.history.trim_messages(
+                new_summary_msg, _ = self.message_history.trim_messages(
                     list(prompt), self.config
                 )
                 prompt.insert(history_start_index, new_summary_msg)
@@ -359,8 +370,8 @@ class BaseAgent(metaclass=ABCMeta):
         """
 
         # Save assistant reply to message history
-        self.history.append(prompt[-1])
-        self.history.add(
+        self.message_history.append(prompt[-1])
+        self.message_history.add(
             "assistant", llm_response.content, "ai_response"
         )  # FIXME: support function calls
 
@@ -370,7 +381,7 @@ class BaseAgent(metaclass=ABCMeta):
             )
         except InvalidAgentResponseError as e:
             # TODO: tune this message
-            self.history.add(
+            self.message_history.add(
                 "system",
                 f"Your response could not be parsed: {e}"
                 "\n\nRemember to only respond using the specified format above!",

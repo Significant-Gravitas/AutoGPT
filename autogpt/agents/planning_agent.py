@@ -285,7 +285,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
 
             result_tlength = count_string_tokens(str(result), self.llm.name)
             memory_tlength = count_string_tokens(
-                str(self.history.summary_message()), self.llm.name
+                str(self.message_history.summary_message()), self.llm.name
             )
             if result_tlength + memory_tlength > self.send_token_limit:
                 result = ActionErrorResult(
@@ -297,15 +297,15 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
                 if not plugin.can_handle_post_command():
                     continue
                 if result.status == "success":
-                    result.results = plugin.post_command(command_name, result.results)
+                    result.outputs = plugin.post_command(command_name, result.outputs)
                 elif result.status == "error":
                     result.reason = plugin.post_command(command_name, result.reason)
 
         # Check if there's a result from the command append it to the message
         if result.status == "success":
-            self.history.add(
+            self.message_history.add(
                 "system",
-                f"Command {command_name} returned: {result.results}",
+                f"Command {command_name} returned: {result.outputs}",
                 "action_result",
             )
         elif result.status == "error":
@@ -316,7 +316,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
                 and result.error.hint
             ):
                 message = message.rstrip(".") + f". {result.error.hint}"
-            self.history.add("system", message, "action_result")
+            self.message_history.add("system", message, "action_result")
 
         return result
 
