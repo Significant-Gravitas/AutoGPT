@@ -188,14 +188,9 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
             except AgentException as e:
                 result = ActionErrorResult(e.message, e)
 
-            logger.debug(f"Command result: {result}")
-
             result_tlength = count_string_tokens(str(result), self.llm.name)
-            # history_tlength = count_string_tokens(
-            #     str(self.message_history.summary_message()), self.llm.name
-            # )
             history_tlength = count_string_tokens(
-                self.event_history.generate_list(), self.llm.name
+                self.event_history.fmt_paragraph(), self.llm.name
             )
             if result_tlength + history_tlength > self.send_token_limit:
                 result = ActionErrorResult(
@@ -207,7 +202,7 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
                 if not plugin.can_handle_post_command():
                     continue
                 if result.status == "success":
-                    result.results = plugin.post_command(command_name, result.results)
+                    result.outputs = plugin.post_command(command_name, result.outputs)
                 elif result.status == "error":
                     result.reason = plugin.post_command(command_name, result.reason)
 
@@ -215,7 +210,7 @@ class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
         if result.status == "success":
             self.message_history.add(
                 "system",
-                f"Command {command_name} returned: {result.results}",
+                f"Command {command_name} returned: {result.outputs}",
                 "action_result",
             )
         elif result.status == "error":
