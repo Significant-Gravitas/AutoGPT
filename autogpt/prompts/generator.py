@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from autogpt.config import AIConfig, AIDirectives, Config
     from autogpt.models.command_registry import CommandRegistry
 
+from .utils import format_numbered_list
+
 logger = logging.getLogger(__name__)
 
 
@@ -123,19 +125,6 @@ class PromptGenerator:
         """
         if best_practice not in self.best_practices:
             self.best_practices.append(best_practice)
-
-    def _generate_numbered_list(self, items: list[str], start_at: int = 1) -> str:
-        """
-        Generate a numbered list containing the given items.
-
-        Params:
-            items (list): A list of items to be numbered.
-            start_at (int, optional): The number to start the sequence with; defaults to 1.
-
-        Returns:
-            str: The formatted numbered list.
-        """
-        return "\n".join(f"{i}. {item}" for i, item in enumerate(items, start_at))
 
     def construct_system_prompt(self, agent: BaseAgent) -> str:
         """Constructs a system prompt containing the most important information for the AI.
@@ -257,15 +246,15 @@ class PromptGenerator:
         return [
             "## Constraints\n"
             "You operate within the following constraints:\n"
-            f"{self._generate_numbered_list(self.constraints + additional_constraints)}",
+            f"{format_numbered_list(self.constraints + additional_constraints)}",
             "## Resources\n"
             "You can leverage access to the following resources:\n"
-            f"{self._generate_numbered_list(self.resources + additional_resources)}",
+            f"{format_numbered_list(self.resources + additional_resources)}",
             "## Commands\n"
             "You have access to the following commands:\n"
             f"{self.list_commands(agent)}",
             "## Best practices\n"
-            f"{self._generate_numbered_list(self.best_practices + additional_best_practices)}",
+            f"{format_numbered_list(self.best_practices + additional_best_practices)}",
         ]
 
     def list_commands(self, agent: BaseAgent) -> str:
@@ -286,4 +275,4 @@ class PromptGenerator:
         # Add commands from plugins etc.
         command_strings += [str(cmd) for cmd in self.commands.values()]
 
-        return self._generate_numbered_list(command_strings)
+        return format_numbered_list(command_strings)
