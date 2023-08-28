@@ -1,5 +1,6 @@
 import functools
 import logging
+import re
 from pathlib import Path
 from typing import Callable
 
@@ -8,10 +9,12 @@ from autogpt.agents.agent import Agent
 logger = logging.getLogger(__name__)
 
 
-def sanitize_path_arg(arg_name: str, make_relative: bool = False):
+def sanitize_path_arg(
+    arg_name: str, make_relative: bool = False
+) -> Callable[[Callable], Callable]:
     """Sanitizes the specified path (str | Path) argument, resolving it to a Path"""
 
-    def decorator(func: Callable):
+    def decorator(func: Callable) -> Callable:
         # Get position of path parameter, in case it is passed as a positional argument
         try:
             arg_index = list(func.__annotations__.keys()).index(arg_name)
@@ -29,7 +32,7 @@ def sanitize_path_arg(arg_name: str, make_relative: bool = False):
             )
 
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args, **kwargs):  # type: ignore
             logger.debug(f"Sanitizing arg '{arg_name}' on function '{func.__name__}'")
 
             # Get Agent from the called function's arguments
@@ -44,7 +47,11 @@ def sanitize_path_arg(arg_name: str, make_relative: bool = False):
                 arg_name, len(args) > arg_index and args[arg_index] or None
             )
             if given_path:
-                if given_path in {"", "/"}:
+                if type(given_path) == str:
+                    # Fix workspace path from output in docker environment
+                    given_path = re.sub(r"^\/workspace", ".", given_path)
+
+                if given_path in {"", "/", "."}:
                     sanitized_path = agent.workspace.root
                 else:
                     sanitized_path = agent.workspace.get_path(given_path)

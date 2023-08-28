@@ -7,6 +7,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 import docker
 from docker.errors import DockerException, ImageNotFound
@@ -14,7 +15,6 @@ from docker.models.containers import Container as DockerContainer
 
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import (
-    AccessDeniedError,
     CodeExecutionError,
     CommandExecutionError,
     InvalidArgumentError,
@@ -33,21 +33,17 @@ DENYLIST_CONTROL = "denylist"
 
 @command(
     "execute_python_code",
-    "Creates a Python file and executes it",
+    "Executes the given Python code inside a single-use Docker container"
+    " with access to your workspace folder",
     {
         "code": {
             "type": "string",
             "description": "The Python code to run",
             "required": True,
         },
-        "name": {
-            "type": "string",
-            "description": "A name to be given to the python file",
-            "required": True,
-        },
     },
 )
-def execute_python_code(code: str, name: str, agent: Agent) -> str:
+def execute_python_code(code: str, agent: Agent) -> str:
     """Create and execute a Python file in a Docker container and return the STDOUT of the
     executed code. If there is any data that needs to be captured use a print statement
 
@@ -58,33 +54,25 @@ def execute_python_code(code: str, name: str, agent: Agent) -> str:
     Returns:
         str: The STDOUT captured from the code when it ran
     """
-    ai_name = agent.ai_config.ai_name
-    code_dir = agent.workspace.get_path(Path(ai_name, "executed_code"))
-    os.makedirs(code_dir, exist_ok=True)
 
-    if not name.endswith(".py"):
-        name = name + ".py"
-
-    # The `name` arg is not covered by @sanitize_path_arg,
-    # so sanitization must be done here to prevent path traversal.
-    file_path = agent.workspace.get_path(code_dir / name)
-    if not file_path.is_relative_to(code_dir):
-        raise AccessDeniedError(
-            "'name' argument resulted in path traversal, operation aborted"
-        )
+    tmp_code_file = NamedTemporaryFile(
+        "w", dir=agent.workspace.root, suffix=".py", encoding="utf-8"
+    )
+    tmp_code_file.write(code)
+    tmp_code_file.flush()
 
     try:
-        with open(file_path, "w+", encoding="utf-8") as f:
-            f.write(code)
-
-        return execute_python_file(file_path, agent)
+        return execute_python_file(tmp_code_file.name, agent)
     except Exception as e:
         raise CommandExecutionError(*e.args)
+    finally:
+        tmp_code_file.close()
 
 
 @command(
     "execute_python_file",
-    "Executes an existing Python file",
+    "Execute an existing Python file inside a single-use Docker container"
+    " with access to your workspace folder",
     {
         "filename": {
             "type": "string",
@@ -125,7 +113,7 @@ def execute_python_file(filename: Path, agent: Agent) -> str:
             ["python", "-B", str(file_path)],
             capture_output=True,
             encoding="utf8",
-            cwd=agent.config.workspace_path,
+            cwd=str(agent.workspace.root),
         )
         if result.returncode == 0:
             return result.stdout
@@ -166,7 +154,7 @@ def execute_python_file(filename: Path, agent: Agent) -> str:
                 file_path.relative_to(agent.workspace.root).as_posix(),
             ],
             volumes={
-                str(agent.config.workspace_path): {
+                str(agent.workspace.root): {
                     "bind": "/workspace",
                     "mode": "rw",
                 }
@@ -216,7 +204,7 @@ def validate_command(command: str, config: Config) -> bool:
 
 @command(
     "execute_shell",
-    "Executes a Shell Command, non-interactive commands only",
+    "Execute a Shell Command, non-interactive commands only",
     {
         "command_line": {
             "type": "string",
@@ -244,25 +232,25 @@ def execute_shell(command_line: str, agent: Agent) -> str:
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
-    if not current_dir.is_relative_to(agent.config.workspace_path):
-        os.chdir(agent.config.workspace_path)
+    if not current_dir.is_relative_to(agent.workspace.root):
+        os.chdir(agent.workspace.root)
 
     logger.info(
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
     )
 
     result = subprocess.run(command_line, capture_output=True, shell=True)
-    output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    output = f"STDOUT:\n{result.stdout.decode()}\nSTDERR:\n{result.stderr.decode()}"
 
     # Change back to whatever the prior working dir was
-
     os.chdir(current_dir)
+
     return output
 
 
 @command(
     "execute_shell_popen",
-    "Executes a Shell Command, non-interactive commands only",
+    "Execute a Shell Command, non-interactive commands only",
     {
         "command_line": {
             "type": "string",
@@ -275,7 +263,7 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config. Do not attempt to bypass the restriction.",
 )
-def execute_shell_popen(command_line, agent: Agent) -> str:
+def execute_shell_popen(command_line: str, agent: Agent) -> str:
     """Execute a shell command with Popen and returns an english description
     of the event and the process id
 
@@ -289,10 +277,10 @@ def execute_shell_popen(command_line, agent: Agent) -> str:
         logger.info(f"Command '{command_line}' not allowed")
         raise OperationNotAllowedError("This shell command is not allowed.")
 
-    current_dir = os.getcwd()
+    current_dir = Path.cwd()
     # Change dir into workspace if necessary
-    if agent.config.workspace_path not in current_dir:
-        os.chdir(agent.config.workspace_path)
+    if not current_dir.is_relative_to(agent.workspace.root):
+        os.chdir(agent.workspace.root)
 
     logger.info(
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
@@ -304,7 +292,6 @@ def execute_shell_popen(command_line, agent: Agent) -> str:
     )
 
     # Change back to whatever the prior working dir was
-
     os.chdir(current_dir)
 
     return f"Subprocess started with PID:'{str(process.pid)}'"
