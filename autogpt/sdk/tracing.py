@@ -3,7 +3,7 @@ from functools import wraps
 
 from dotenv import load_dotenv
 
-from autogpt.forge_log import CustomLogger
+from autogpt.sdk.forge_log import CustomLogger
 
 load_dotenv()
 
@@ -47,7 +47,7 @@ if ENABLE_TRACING:
     from opentelemetry.trace import NonRecordingSpan
     from pydantic import BaseModel
 
-    from autogpt.schema import Task
+    from autogpt.sdk.schema import Task
 
     tasks_context_db = {}
 
