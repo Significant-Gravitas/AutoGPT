@@ -20,8 +20,10 @@ class StreamElementsSpeech(VoiceBase):
 
     def _setup(self, config: Config) -> None:
         """Setup the voices, API key, etc."""
+        self.config = config
 
     def _speech(self, text: str, voice: str, _: int = 0) -> bool:
+        voice = self.config.streamelements_voice
         """Speak text using the streamelements API
 
         Args:
