@@ -125,7 +125,7 @@ async def create_agent_task(request: Request, task_request: TaskRequestBody) -> 
 async def list_agent_tasks(
     request: Request,
     page: Optional[int] = Query(1, ge=1),
-    page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
+    page_size: Optional[int] = Query(10, ge=1),
 ) -> TaskListResponse:
     """
     Retrieves a paginated list of all tasks.
