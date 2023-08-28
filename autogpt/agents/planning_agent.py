@@ -297,7 +297,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
                 if not plugin.can_handle_post_command():
                     continue
                 if result.status == "success":
-                    result.results = plugin.post_command(command_name, result.results)
+                    result.outputs = plugin.post_command(command_name, result.outputs)
                 elif result.status == "error":
                     result.reason = plugin.post_command(command_name, result.reason)
 
@@ -305,7 +305,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
         if result.status == "success":
             self.message_history.add(
                 "system",
-                f"Command {command_name} returned: {result.results}",
+                f"Command {command_name} returned: {result.outputs}",
                 "action_result",
             )
         elif result.status == "error":

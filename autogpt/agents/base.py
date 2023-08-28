@@ -180,13 +180,12 @@ class BaseAgent(metaclass=ABCMeta):
         """
 
         if self.event_history:
-            prepend_messages.append(
+            prepend_messages.insert(
+                0,
                 Message(
                     "system",
-                    "# Progress\n"
-                    "So far, the following things have happened:\n"
-                    f"{self.event_history.generate_list()}",
-                )
+                    "## Progress\n\n" f"{self.event_history.fmt_paragraph()}",
+                ),
             )
 
         prompt = ChatSequence.for_model(
