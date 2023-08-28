@@ -31,15 +31,11 @@ def sanitize_path_arg(arg_name: str, make_relative: bool = False):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             logger.debug(f"Sanitizing arg '{arg_name}' on function '{func.__name__}'")
-            logger.debug(f"Function annotations: {func.__annotations__}")
 
             # Get Agent from the called function's arguments
             agent = kwargs.get(
                 "agent", len(args) > agent_arg_index and args[agent_arg_index]
             )
-            logger.debug(f"Args: {args}")
-            logger.debug(f"KWArgs: {kwargs}")
-            logger.debug(f"Agent argument lifted from function call: {agent}")
             if not isinstance(agent, Agent):
                 raise RuntimeError("Could not get Agent from decorated command's args")
 
