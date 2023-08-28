@@ -11,7 +11,7 @@ import logging
 import os
 import os.path
 from pathlib import Path
-from typing import Generator, Literal
+from typing import Iterator, Literal
 
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import DuplicateOperationError
@@ -34,7 +34,9 @@ def text_checksum(text: str) -> str:
 
 def operations_from_log(
     log_path: str | Path,
-) -> Generator[tuple[Operation, str, str | None], None, None]:
+) -> Iterator[
+    tuple[Literal["write", "append"], str, str] | tuple[Literal["delete"], str, None]
+]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
         log = open(log_path, "r", encoding="utf-8")
@@ -48,11 +50,7 @@ def operations_from_log(
         operation, tail = line.split(": ", maxsplit=1)
         operation = operation.strip()
         if operation in ("write", "append"):
-            try:
-                path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
-            except ValueError:
-                logger.warn(f"File log entry lacks checksum: '{line}'")
-                path, checksum = tail.strip(), None
+            path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
             yield (operation, path, checksum)
         elif operation == "delete":
             yield (operation, tail.strip(), None)
@@ -228,7 +226,7 @@ def write_to_file(filename: Path, text: str, agent: Agent) -> str:
     with open(filename, "w", encoding="utf-8") as f:
         f.write(text)
     log_operation("write", filename, agent, checksum)
-    return "File written to successfully."
+    return f"File {filename.name} has been written successfully."
 
 
 @sanitize_path_arg("filename")
