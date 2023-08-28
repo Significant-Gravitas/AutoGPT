@@ -4,9 +4,11 @@
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestAdaptSimpleTypoWithGuidance": [
+        false,
         false,
         false,
         false,
@@ -18,9 +20,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_CreateAgentTask": [
+        false,
         false,
         false,
         false,
@@ -32,9 +36,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_GetAgentTask": [
+        false,
         false,
         false,
         false,
@@ -46,9 +52,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTasksIds": [
+        false,
         false,
         false,
         false,
@@ -60,16 +68,19 @@
         true,
         false,
         true,
-        true
+        true,
+        false
     ],
     "TestBasicRetrieval": [
         false,
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestDebugMultipleTypo": [
+        false,
         false,
         false,
         false,
@@ -81,9 +92,11 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestDebugSimpleTypoWithoutGuidance": [
+        false,
         false,
         false,
         false,
@@ -95,9 +108,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestPasswordGenerator_Easy": [
+        false,
         false,
         false,
         false,
@@ -109,9 +124,11 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestProductAdvisor_GamingMonitor": [
+        false,
         false,
         false,
         false,
@@ -123,9 +140,11 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestRememberGoal_Advanced": [
+        false,
         false,
         false,
         false,
@@ -137,9 +156,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRememberGoal_Medium": [
+        false,
         false,
         false,
         false,
@@ -151,6 +172,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRememberMultipleIds": [
@@ -158,6 +180,7 @@
         true,
         false,
         true,
+        false,
         false
     ],
     "TestRememberMultipleIdsWithNoise": [
@@ -165,6 +188,7 @@
         true,
         false,
         true,
+        false,
         false
     ],
     "TestRememberMultiplePhrasesWithNoise": [
@@ -172,9 +196,11 @@
         true,
         false,
         false,
+        false,
         false
     ],
     "TestRetrieval3": [
+        false,
         false,
         false,
         false,
@@ -186,9 +212,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Simple": [
+        false,
         false,
         false,
         false,
@@ -200,9 +228,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestReturnCode_Write": [
+        false,
         false,
         false,
         false,
@@ -214,9 +244,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.1": [
+        false,
         false,
         false,
         false,
@@ -228,9 +260,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestSearch": [
+        true,
         true,
         true,
         true,
@@ -242,9 +276,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestWebApp_ListAnimals": [
+        false,
         false,
         false,
         false,
@@ -256,11 +292,13 @@
         false,
         true,
         true,
+        true,
         true
     ],
     "TestWrite6Files": [
         false,
         false,
+        true,
         true,
         true,
         true
@@ -270,9 +308,11 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestWritingCLI_FileOrganizer": [
+        false,
         false,
         false,
         false,
