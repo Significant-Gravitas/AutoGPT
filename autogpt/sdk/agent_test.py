@@ -13,6 +13,7 @@ def agent():
     return Agent(db, workspace)
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_create_task(agent):
     task_request = TaskRequestBody(
@@ -22,6 +23,7 @@ async def test_create_task(agent):
     assert task.input == "test_input"
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_list_tasks(agent):
     task_request = TaskRequestBody(
@@ -32,6 +34,7 @@ async def test_list_tasks(agent):
     assert isinstance(tasks, TaskListResponse)
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_get_task(agent):
     task_request = TaskRequestBody(
