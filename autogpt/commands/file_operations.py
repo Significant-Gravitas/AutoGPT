@@ -190,41 +190,41 @@ def ingest_file(
 
 
 @command(
-    "write_to_file",
-    "Writes to a file",
+    "write_file",
+    "Write a file, creating it if necessary. If the file exists, it is overwritten.",
     {
         "filename": {
             "type": "string",
             "description": "The name of the file to write to",
             "required": True,
         },
-        "text": {
+        "contents": {
             "type": "string",
-            "description": "The text to write to the file",
+            "description": "The contents to write to the file",
             "required": True,
         },
     },
     aliases=["write_file", "create_file"],
 )
 @sanitize_path_arg("filename")
-def write_to_file(filename: Path, text: str, agent: Agent) -> str:
-    """Write text to a file
+def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
+    """Write contents to a file
 
     Args:
         filename (Path): The name of the file to write to
-        text (str): The text to write to the file
+        contents (str): The contents to write to the file
 
     Returns:
         str: A message indicating success or failure
     """
-    checksum = text_checksum(text)
+    checksum = text_checksum(contents)
     if is_duplicate_operation("write", filename, agent, checksum):
-        raise DuplicateOperationError("File has already been updated.")
+        raise DuplicateOperationError(f"File {filename.name} has already been updated.")
 
     directory = os.path.dirname(filename)
     os.makedirs(directory, exist_ok=True)
     with open(filename, "w", encoding="utf-8") as f:
-        f.write(text)
+        f.write(contents)
     log_operation("write", filename, agent, checksum)
     return f"File {filename.name} has been written successfully."
 
@@ -232,16 +232,13 @@ def write_to_file(filename: Path, text: str, agent: Agent) -> str:
 @sanitize_path_arg("filename")
 def append_to_file(
     filename: Path, text: str, agent: Agent, should_log: bool = True
-) -> str:
+) -> None:
     """Append text to a file
 
     Args:
         filename (Path): The name of the file to append to
         text (str): The text to append to the file
         should_log (bool): Should log output
-
-    Returns:
-        str: A message indicating success or failure
     """
     directory = os.path.dirname(filename)
     os.makedirs(directory, exist_ok=True)
@@ -253,33 +250,31 @@ def append_to_file(
             checksum = text_checksum(f.read())
         log_operation("append", filename, agent, checksum=checksum)
 
-    return "Text appended successfully."
-
 
 @command(
-    "list_files",
-    "Lists Files in a Directory",
+    "list_folder",
+    "List the items in a folder",
     {
-        "directory": {
+        "folder": {
             "type": "string",
-            "description": "The directory to list files in",
+            "description": "The folder to list files in",
             "required": True,
         }
     },
 )
-@sanitize_path_arg("directory")
-def list_files(directory: Path, agent: Agent) -> list[str]:
-    """lists files in a directory recursively
+@sanitize_path_arg("folder")
+def list_folder(folder: Path, agent: Agent) -> list[str]:
+    """Lists files in a folder recursively
 
     Args:
-        directory (Path): The directory to search in
+        folder (Path): The folder to search in
 
     Returns:
-        list[str]: A list of files found in the directory
+        list[str]: A list of files found in the folder
     """
     found_files = []
 
-    for root, _, files in os.walk(directory):
+    for root, _, files in os.walk(folder):
         for file in files:
             if file.startswith("."):
                 continue

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from autogpt.llm.base import ChatSequence
+    from autogpt.models.context_item import ContextItem
+
     from ..base import BaseAgent
 
 from autogpt.llm.base import Message
-from autogpt.models.context_item import ContextItem
 
 
 class AgentContext:
@@ -18,7 +20,7 @@ class AgentContext:
     def __bool__(self) -> bool:
         return len(self.items) > 0
 
-    def __contains__(self, item: ContextItem):
+    def __contains__(self, item: ContextItem) -> bool:
         return any([i.source == item.source for i in self.items])
 
     def add(self, item: ContextItem) -> None:
@@ -39,18 +41,27 @@ class ContextMixin:
 
     context: AgentContext
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         self.context = AgentContext()
 
         super(ContextMixin, self).__init__(**kwargs)
 
-    def construct_base_prompt(self, *args, **kwargs):
+    def construct_base_prompt(self, *args: Any, **kwargs: Any) -> ChatSequence:
         if kwargs.get("append_messages") is None:
             kwargs["append_messages"] = []
 
+        # Add context section to prompt
         if self.context:
             kwargs["append_messages"].insert(
-                0, Message("system", "# Context\n" + self.context.format_numbered())
+                0,
+                Message(
+                    "system",
+                    "## Context\n"
+                    + self.context.format_numbered()
+                    + "\n\nWhen a context item is no longer needed and you are not done yet,"
+                    " you can hide the item by specifying its number in the list above"
+                    " to `hide_context_item`.",
+                ),
             )
 
         return super(ContextMixin, self).construct_base_prompt(*args, **kwargs)  # type: ignore
