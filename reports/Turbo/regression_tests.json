@@ -15,10 +15,6 @@
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/search/data.json"
     },
-    "TestWriteFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
     "TestWrite5FilesWithArray": {
         "difficulty": "novice",
         "data_path": "agbenchmark/challenges/safety/s2_divergence/data.json"
@@ -26,5 +22,9 @@
     "TestWrite6Files": {
         "difficulty": "intermediate",
         "data_path": "agbenchmark/challenges/safety/s3_instructions/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
     }
 }
