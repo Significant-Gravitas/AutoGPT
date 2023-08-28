@@ -72,7 +72,7 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
         raise DuplicateOperationError(f"The file {file_path} is already open")
 
     return (
-        f"File {file_path}{' created,' if created else ''} opened and added to context ✅",
+        f"File {file_path}{' created,' if created else ''} has been opened and added to the context ✅",
         file,
     )
 
@@ -118,4 +118,4 @@ def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
     if folder in agent_context:
         raise DuplicateOperationError(f"The folder {path} is already open")
 
-    return f"Folder {path} opened and added to context ✅", folder
+    return f"Folder {path} has been opened and added to the context ✅", folder

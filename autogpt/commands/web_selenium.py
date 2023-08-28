@@ -57,7 +57,9 @@ class BrowsingError(CommandExecutionError):
 
 @command(
     "read_webpage",
-    "Read a webpage, and extract specific information from it if a question is specified.",
+    "Read a webpage, and extract specific information from it if a question is specified."
+    " If you are looking to extract specific information from the webpage, you should"
+    " specify a question.",
     {
         "url": {"type": "string", "description": "The URL to visit", "required": True},
         "question": {
