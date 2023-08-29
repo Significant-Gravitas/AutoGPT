@@ -11,6 +11,7 @@ from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.setup import CFG
 from autogpt.workspace.workspace import Workspace
+from typing import Union
 
 
 @command(
@@ -18,7 +19,7 @@ from autogpt.workspace.workspace import Workspace
     "Execute Python File",
     '"filename": "<filename>", "(optional) args": ["<arg>", ...]',
 )
-def execute_python_file(filename: str, config: Config, args: list = []) -> str:
+def execute_python_file(filename: str, config: Config, args: Union[list, str] = []) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
@@ -31,6 +32,9 @@ def execute_python_file(filename: str, config: Config, args: list = []) -> str:
     logger.info(
         f"Executing python file '{filename}' in working directory '{CFG.workspace_path}'"
     )
+    
+    if isinstance(args, str):
+        args = args.split() # Convert space-separated string to a list
 
     if not filename.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
