@@ -405,5 +405,5 @@ def get_regression_data() -> Any:
 #     return latest_report
 
 
-# if __name__ == "__main__":
-#     start()
+if __name__ == "__main__":
+    cli()
