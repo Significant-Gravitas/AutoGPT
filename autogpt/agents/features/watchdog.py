@@ -32,7 +32,11 @@ class WatchdogMixin:
             *args, **kwargs
         )
 
-        if not self.big_brain and len(self.event_history) > 1:
+        if (
+            not self.big_brain
+            and len(self.event_history) > 1
+            and self.config.fast_llm != self.config.smart_llm
+        ):
             # Detect repetitive commands
             previous_cycle = self.event_history.cycles[self.event_history.cursor - 1]
             if (
