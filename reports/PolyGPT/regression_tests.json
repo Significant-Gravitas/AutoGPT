@@ -15,6 +15,22 @@
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/read_file/data.json"
     },
+    "TestRememberGoal_Advanced": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/3_advanced/data.json"
+    },
+    "TestRememberGoal_Hard": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/4_hard/data.json"
+    },
+    "TestRememberGoal_Medium": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/2_medium/data.json"
+    },
+    "TestRememberGoal_Simple": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/1_simple/data.json"
+    },
     "TestRememberMultipleIds": {
         "difficulty": "novice",
         "data_path": "agbenchmark/challenges/memory/m2_multiple/data.json"
@@ -43,20 +59,8 @@
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/interface/write_file/data.json"
     },
-    "TestRememberGoal_Simple": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/1_simple/data.json"
-    },
-    "TestRememberGoal_Medium": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/2_medium/data.json"
-    },
-    "TestRememberGoal_Advanced": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/3_advanced/data.json"
-    },
-    "TestRememberGoal_Hard": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/4_hard/data.json"
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
     }
 }
