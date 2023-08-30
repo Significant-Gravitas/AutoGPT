@@ -55,7 +55,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     workspace_path: Optional[Path] = None
     file_logger_path: Optional[Path] = None
     # Model configuration
-    fast_llm: str = "gpt-3.5-turbo"
+    fast_llm: str = "gpt-3.5-turbo-16k"
     smart_llm: str = "gpt-4-0314"
     temperature: float = 0
     openai_functions: bool = False
