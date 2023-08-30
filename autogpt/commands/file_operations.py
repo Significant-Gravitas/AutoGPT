@@ -155,10 +155,10 @@ def read_file(filename: Path, agent: Agent) -> str:
     """
     content = read_textual_file(filename, logger)
 
-    # TODO: invalidate/update memory when file is edited
-    file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
-    if len(file_memory.chunks) > 1:
-        return file_memory.summary
+    # # TODO: invalidate/update memory when file is edited
+    # file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
+    # if len(file_memory.chunks) > 1:
+    #     return file_memory.summary
 
     return content
 

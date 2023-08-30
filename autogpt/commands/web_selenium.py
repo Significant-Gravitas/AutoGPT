@@ -40,8 +40,8 @@ if TYPE_CHECKING:
 from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
 from autogpt.llm.utils import count_string_tokens
-from autogpt.memory.vector import MemoryItem, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpt.processing.text import summarize_text
 from autogpt.url_utils.validators import validate_url
 
 logger = logging.getLogger(__name__)
@@ -271,8 +271,10 @@ def summarize_memorize_webpage(
     text_length = len(text)
     logger.info(f"Text length: {text_length} characters")
 
-    memory = get_memory(agent.config)
+    # memory = get_memory(agent.config)
 
-    new_memory = MemoryItem.from_webpage(text, url, agent.config, question=question)
-    memory.add(new_memory)
-    return new_memory.summary
+    # new_memory = MemoryItem.from_webpage(text, url, agent.config, question=question)
+    # memory.add(new_memory)
+
+    summary, _ = summarize_text(text, question=question, config=agent.config)
+    return summary
