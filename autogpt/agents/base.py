@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
     from autogpt.config import AIConfig, Config
+    from autogpt.llm.base import ChatModelInfo, ChatModelResponse
     from autogpt.models.command_registry import CommandRegistry
 
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.config.ai_directives import AIDirectives
-from autogpt.llm.base import ChatModelResponse, ChatSequence, Message
+from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.memory.message_history import MessageHistory
@@ -83,10 +84,6 @@ class BaseAgent(metaclass=ABCMeta):
         self.cycle_count = 0
         """The number of cycles that the agent has run since its initialization."""
 
-        llm_name = self.config.smart_llm if self.big_brain else self.config.fast_llm
-        self.llm = OPEN_AI_CHAT_MODELS[llm_name]
-        """The LLM that the agent uses to think."""
-
         self.send_token_limit = send_token_limit or self.llm.max_tokens * 3 // 4
         """
         The token limit for prompt construction. Should leave room for the completion;
@@ -110,6 +107,12 @@ class BaseAgent(metaclass=ABCMeta):
         available resources, and restrictions.
         """
         return self.prompt_generator.construct_system_prompt(self)
+
+    @property
+    def llm(self) -> ChatModelInfo:
+        """The LLM that the agent uses to think."""
+        llm_name = self.config.smart_llm if self.big_brain else self.config.fast_llm
+        return OPEN_AI_CHAT_MODELS[llm_name]
 
     def think(
         self,

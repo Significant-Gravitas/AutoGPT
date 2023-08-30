@@ -45,11 +45,13 @@ class Command:
     def __call__(self, *args, agent: BaseAgent, **kwargs) -> Any:
         if callable(self.enabled) and not self.enabled(agent.config):
             if self.disabled_reason:
-                return f"Command '{self.name}' is disabled: {self.disabled_reason}"
-            return f"Command '{self.name}' is disabled"
+                raise RuntimeError(
+                    f"Command '{self.name}' is disabled: {self.disabled_reason}"
+                )
+            raise RuntimeError(f"Command '{self.name}' is disabled")
 
         if callable(self.available) and not self.available(agent):
-            return f"Command '{self.name}' is not available"
+            raise RuntimeError(f"Command '{self.name}' is not available")
 
         return self.method(*args, **kwargs, agent=agent)
 
