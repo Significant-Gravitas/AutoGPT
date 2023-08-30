@@ -511,30 +511,34 @@ async def upload_agent_task_artifacts(
     request: Request, task_id: str, file: UploadFile, relative_path: str
 ) -> Artifact:
     """
-    Uploads an artifact for a specific task using a provided file.
+    This endpoint is used to upload an artifact associated with a specific task. The artifact is provided as a file.
 
     Args:
-        request (Request): FastAPI request object.
-        task_id (str): The ID of the task.
-        artifact_upload (ArtifactUpload): The uploaded file and its relative path.
+        request (Request): The FastAPI request object.
+        task_id (str): The unique identifier of the task for which the artifact is being uploaded.
+        file (UploadFile): The file being uploaded as an artifact.
+        relative_path (str): The relative path for the file. This is a query parameter.
 
     Returns:
-        Artifact: Details of the uploaded artifact.
+        Artifact: An object containing metadata of the uploaded artifact, including its unique identifier.
 
-    Note:
-        The `file` must be provided. If it is not provided, the function will return an error.
     Example:
         Request:
-            POST /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/artifacts
+            POST /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/artifacts?relative_path=my_folder/my_other_folder
             File: <uploaded_file>
 
         Response:
             {
-                "artifact_id": "artifact1_id",
-                ...
+                "artifact_id": "b225e278-8b4c-4f99-a696-8facf19f0e56",
+                "created_at": "2023-01-01T00:00:00Z",
+                "modified_at": "2023-01-01T00:00:00Z",
+                "agent_created": false,
+                "relative_path": "/my_folder/my_other_folder/",
+                "file_name": "main.py"
             }
     """
     agent = request["agent"]
+
 
     if file is None:
         return Response(
