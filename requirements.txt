@@ -31,7 +31,7 @@ en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_
 prompt_toolkit>=3.0.38
 pydantic
 inflection
-agbenchmark
+agbenchmark>=0.0.9
 agent-protocol>=0.1.1
 
 # web server
