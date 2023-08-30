@@ -30,6 +30,7 @@ pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
 watchdog = "^3.0.0"
 mock = "^5.1.0"
+autoflake = "^2.2.0"
 
 
 [tool.poetry.group.ui.dependencies]

@@ -15,7 +15,6 @@ from .middlewares import AgentMiddleware
 from .routes.agent_protocol import base_router
 from .schema import *
 from .tracing import setup_tracing
-from .utils import run
 from .workspace import Workspace
 
 LOG = CustomLogger(__name__)
@@ -102,54 +101,11 @@ class Agent:
         except Exception as e:
             raise
 
-    async def create_and_execute_step(
-        self, task_id: str, step_request: StepRequestBody
-    ) -> Step:
+    async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
         """
         Create a step for the task.
         """
-        if step_request.input != "y":
-            step = await self.db.create_step(
-                task_id=task_id,
-                input=step_request,
-                additional_input=step_request.additional_input,
-            )
-            # utils.run
-            artifacts = run(step.input)
-            for artifact in artifacts:
-                art = await self.db.create_artifact(
-                    task_id=step.task_id,
-                    file_name=artifact["file_name"],
-                    uri=artifact["uri"],
-                    agent_created=True,
-                    step_id=step.step_id,
-                )
-                assert isinstance(
-                    art, Artifact
-                ), f"Artifact not instance of Artifact {type(art)}"
-                step.artifacts.append(art)
-            step.status = "completed"
-        else:
-            steps, steps_pagination = await self.db.list_steps(
-                task_id, page=1, per_page=100
-            )
-            # Find the latest step that has not been completed
-            step = next((s for s in reversed(steps) if s.status != "completed"), None)
-            if step is None:
-                # If all steps have been completed, create a new placeholder step
-                step = await self.db.create_step(
-                    task_id=task_id,
-                    input="y",
-                    additional_input={},
-                )
-                step.status = "completed"
-                step.is_last = True
-                step.output = "No more steps to run."
-                step = await self.db.update_step(step)
-        if isinstance(step.status, Status):
-            step.status = step.status.value
-        step.output = "Done some work"
-        return step
+        raise NotImplementedError
 
     async def get_step(self, task_id: str, step_id: str) -> Step:
         """
