@@ -35,6 +35,7 @@ from autogpt.models.context_item import ContextItem
 
 from .base import BaseAgent
 from .features.context import ContextMixin
+from .features.watchdog import WatchdogMixin
 from .features.workspace import WorkspaceMixin
 from .utils.exceptions import (
     AgentException,
@@ -46,7 +47,7 @@ from .utils.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-class Agent(ContextMixin, WorkspaceMixin, BaseAgent):
+class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
     """Agent class for interacting with Auto-GPT."""
 
     def __init__(

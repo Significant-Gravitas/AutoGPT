@@ -103,6 +103,23 @@ class ActionHistory:
         self.current_record.result = result
         self.cursor = len(self.cycles)
 
+    def rewind(self, number_of_cycles: int = 0) -> None:
+        """Resets the history to an earlier state.
+
+        Params:
+            number_of_cycles (int): The number of cycles to rewind. Default is 0.
+                When set to 0, it will only reset the current cycle.
+        """
+        # Remove partial record of current cycle
+        if self.current_record:
+            if self.current_record.action and not self.current_record.result:
+                self.cycles.pop(self.cursor)
+
+        # Rewind the specified number of cycles
+        if number_of_cycles > 0:
+            self.cycles = self.cycles[:-number_of_cycles]
+            self.cursor = len(self.cycles)
+
     def fmt_list(self) -> str:
         return format_numbered_list(self.cycles)
 
