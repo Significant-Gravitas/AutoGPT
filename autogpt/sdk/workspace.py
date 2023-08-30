@@ -42,18 +42,18 @@ class LocalWorkspace(Workspace):
     def _resolve_path(self, task_id: str, path: str) -> Path:
         abs_path = (self.base_path / task_id / path).resolve()
         if not str(abs_path).startswith(str(self.base_path)):
+            print("Error")
             raise ValueError("Directory traversal is not allowed!")
-        (self.base_path / task_id).mkdir(parents=True, exist_ok=True)
+        abs_path.parent.mkdir(parents=True, exist_ok=True)
         return abs_path
 
     def read(self, task_id: str, path: str) -> bytes:
-        path = self.base_path / task_id / path
         with open(self._resolve_path(task_id, path), "rb") as f:
             return f.read()
 
     def write(self, task_id: str, path: str, data: bytes) -> None:
-        path = self.base_path / task_id / path
-        with open(self._resolve_path(task_id, path), "wb") as f:
+        file_path = self._resolve_path(task_id, path)
+        with open(file_path, "wb") as f:
             f.write(data)
 
     def delete(
@@ -77,28 +77,3 @@ class LocalWorkspace(Workspace):
         path = self.base_path / task_id / path
         base = self._resolve_path(task_id, path)
         return [str(p.relative_to(self.base_path / task_id)) for p in base.iterdir()]
-
-
-async def load_from_uri(self, uri: str, task_id: str, workspace: Workspace) -> bytes:
-    """
-    Load file from given URI and return its bytes.
-    """
-    file_path = None
-    try:
-        if uri.startswith("file://"):
-            file_path = uri.split("file://")[1]
-            if not workspace.exists(task_id, file_path):
-                return Response(status_code=500, content="File not found")
-            return workspace.read(task_id, file_path)
-        elif uri.startswith("http://") or uri.startswith("https://"):
-            async with aiohttp.ClientSession() as session:
-                async with session.get(uri) as resp:
-                    if resp.status != 200:
-                        return Response(
-                            status_code=500, content="Unable to load from URL"
-                        )
-                    return await resp.read()
-        else:
-            return Response(status_code=500, content="Loading from unsupported uri")
-    except Exception as e:
-        return Response(status_code=500, content=str(e))

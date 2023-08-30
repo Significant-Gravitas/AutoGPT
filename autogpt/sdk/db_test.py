@@ -54,7 +54,6 @@ async def test_task_schema():
             Artifact(
                 artifact_id="b225e278-8b4c-4f99-a696-8facf19f0e56",
                 agent_created=True,
-                uri="file:///path/to/artifact",
                 file_name="main.py",
                 relative_path="python/code/",
                 created_at=now,
@@ -88,7 +87,6 @@ async def test_step_schema():
                 created_at=now,
                 modified_at=now,
                 agent_created=True,
-                uri="file:///path/to/artifact",
             )
         ],
         is_last=False,
@@ -119,8 +117,9 @@ async def test_convert_to_task():
                 artifact_id="b225e278-8b4c-4f99-a696-8facf19f0e56",
                 created_at=now,
                 modified_at=now,
-                uri="file:///path/to/main.py",
+                relative_path="file:///path/to/main.py",
                 agent_created=True,
+                file_name="main.py",
             )
         ],
     )
@@ -147,8 +146,9 @@ async def test_convert_to_step():
                 artifact_id="b225e278-8b4c-4f99-a696-8facf19f0e56",
                 created_at=now,
                 modified_at=now,
-                uri="file:///path/to/main.py",
+                relative_path="file:///path/to/main.py",
                 agent_created=True,
+                file_name="main.py",
             )
         ],
         is_last=False,
@@ -170,12 +170,13 @@ async def test_convert_to_artifact():
         artifact_id="b225e278-8b4c-4f99-a696-8facf19f0e56",
         created_at=now,
         modified_at=now,
-        uri="file:///path/to/main.py",
+        relative_path="file:///path/to/main.py",
         agent_created=True,
+        file_name="main.py",
     )
     artifact = convert_to_artifact(artifact_model)
     assert artifact.artifact_id == "b225e278-8b4c-4f99-a696-8facf19f0e56"
-    assert artifact.uri == "file:///path/to/main.py"
+    assert artifact.relative_path == "file:///path/to/main.py"
     assert artifact.agent_created == True
 
 
@@ -210,25 +211,27 @@ async def test_get_task_not_found():
     os.remove(db_name.split("///")[1])
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_create_and_get_step():
     db_name = "sqlite:///test_db.sqlite3"
     agent_db = AgentDB(db_name)
     task = await agent_db.create_task("task_input")
-    step = await agent_db.create_step(task.task_id, "step_name")
+    step_input = StepInput(type="python/code")
+    request = StepRequestBody(input="test_input debug", additional_input=step_input)
+    step = await agent_db.create_step(task.task_id, request)
     step = await agent_db.get_step(task.task_id, step.step_id)
-    assert step.name == "step_name"
+    assert step.input == "test_input debug"
     os.remove(db_name.split("///")[1])
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_updating_step():
     db_name = "sqlite:///test_db.sqlite3"
     agent_db = AgentDB(db_name)
     created_task = await agent_db.create_task("task_input")
-    created_step = await agent_db.create_step(created_task.task_id, "step_name")
+    step_input = StepInput(type="python/code")
+    request = StepRequestBody(input="test_input debug", additional_input=step_input)
+    created_step = await agent_db.create_step(created_task.task_id, request)
     await agent_db.update_step(created_task.task_id, created_step.step_id, "completed")
 
     step = await agent_db.get_step(created_task.task_id, created_step.step_id)
@@ -245,7 +248,6 @@ async def test_get_step_not_found():
     os.remove(db_name.split("///")[1])
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_get_artifact():
     db_name = "sqlite:///test_db.sqlite3"
@@ -253,13 +255,16 @@ async def test_get_artifact():
 
     # Given: A task and its corresponding artifact
     task = await db.create_task("test_input debug")
-    step = await db.create_step(task.task_id, "step_name")
+    step_input = StepInput(type="python/code")
+    requst = StepRequestBody(input="test_input debug", additional_input=step_input)
+
+    step = await db.create_step(task.task_id, requst)
 
     # Create an artifact
     artifact = await db.create_artifact(
         task_id=task.task_id,
         file_name="test_get_artifact_sample_file.txt",
-        uri="file:///path/to/test_get_artifact_sample_file.txt",
+        relative_path="file:///path/to/test_get_artifact_sample_file.txt",
         agent_created=True,
         step_id=step.step_id,
     )
@@ -269,7 +274,10 @@ async def test_get_artifact():
 
     # Then: The fetched artifact matches the original
     assert fetched_artifact.artifact_id == artifact.artifact_id
-    assert fetched_artifact.uri == "file:///path/to/test_get_artifact_sample_file.txt"
+    assert (
+        fetched_artifact.relative_path
+        == "file:///path/to/test_get_artifact_sample_file.txt"
+    )
 
     os.remove(db_name.split("///")[1])
 
@@ -293,16 +301,19 @@ async def test_list_tasks():
     os.remove(db_name.split("///")[1])
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_list_steps():
     db_name = "sqlite:///test_db.sqlite3"
     db = AgentDB(db_name)
 
+    step_input = StepInput(type="python/code")
+    requst = StepRequestBody(input="test_input debug", additional_input=step_input)
+
     # Given: A task and multiple steps for that task
     task = await db.create_task("test_input")
-    step1 = await db.create_step(task.task_id, "step_1")
-    step2 = await db.create_step(task.task_id, "step_2")
+    step1 = await db.create_step(task.task_id, requst)
+    requst = StepRequestBody(input="step two", additional_input=step_input)
+    step2 = await db.create_step(task.task_id, requst)
 
     # When: All steps for the task are fetched
     fetched_steps, pagination = await db.list_steps(task.task_id)

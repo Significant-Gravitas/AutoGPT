@@ -8,7 +8,17 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
+from fastapi import UploadFile
 from pydantic import BaseModel, Field
+
+
+class ArtifactUpload(BaseModel):
+    file: str = Field(..., description="File to upload.", format="binary")
+    relative_path: str = Field(
+        ...,
+        description="Relative path of the artifact in the agent's workspace.",
+        example="python/code",
+    )
 
 
 class Pagination(BaseModel):
@@ -45,10 +55,15 @@ class Artifact(BaseModel):
         description="Whether the artifact has been created by the agent.",
         example=False,
     )
-    uri: str = Field(
+    relative_path: str = Field(
         ...,
-        description="URI of the artifact.",
-        example="file://home/bob/workspace/bucket/main.py",
+        description="Relative path of the artifact in the agents workspace.",
+        example="/my_folder/my_other_folder/",
+    )
+    file_name: str = Field(
+        ...,
+        description="Filename of the artifact.",
+        example="main.py",
     )
 
 

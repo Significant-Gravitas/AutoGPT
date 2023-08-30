@@ -1,5 +1,6 @@
 import asyncio
 import os
+from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, Response, UploadFile
 from fastapi.responses import FileResponse
@@ -15,7 +16,7 @@ from .routes.agent_protocol import base_router
 from .schema import *
 from .tracing import setup_tracing
 from .utils import run
-from .workspace import Workspace, load_from_uri
+from .workspace import Workspace
 
 LOG = CustomLogger(__name__)
 
@@ -178,41 +179,33 @@ class Agent:
             raise
 
     async def create_artifact(
-        self,
-        task_id: str,
-        file: UploadFile | None = None,
-        uri: str | None = None,
+        self, task_id: str, file: UploadFile, relative_path: str
     ) -> Artifact:
         """
         Create an artifact for the task.
         """
         data = None
-        if not uri:
-            file_name = file.filename or str(uuid4())
-            try:
-                data = b""
-                while contents := file.file.read(1024 * 1024):
-                    data += contents
-            except Exception as e:
-                raise
-        else:
-            try:
-                data = await load_from_uri(uri, task_id)
-                file_name = uri.split("/")[-1]
-            except Exception as e:
-                raise
+        file_name = file.filename or str(uuid4())
+        try:
+            data = b""
+            while contents := file.file.read(1024 * 1024):
+                data += contents
+            # Check if relative path ends with filename
+            if relative_path.endswith(file_name):
+                file_path = relative_path
+            else:
+                file_path = os.path.join(relative_path, file_name)
 
-        file_path = os.path.join(task_id / file_name)
-        self.write(file_path, data)
-        self.db.save_artifact(task_id, artifact)
+            self.workspace.write(task_id, file_path, data)
 
-        artifact = await self.create_artifact(
-            task_id=task_id,
-            file_name=file_name,
-            uri=f"file://{file_path}",
-            agent_created=False,
-        )
-
+            artifact = await self.db.create_artifact(
+                task_id=task_id,
+                file_name=file_name,
+                relative_path=relative_path,
+                agent_created=False,
+            )
+        except Exception as e:
+            raise
         return artifact
 
     async def get_artifact(self, task_id: str, artifact_id: str) -> Artifact:
@@ -221,7 +214,8 @@ class Agent:
         """
         try:
             artifact = await self.db.get_artifact(artifact_id)
-            retrieved_artifact = await self.load_from_uri(artifact.uri, artifact_id)
+            file_path = os.path.join(artifact.relative_path, artifact.file_name)
+            retrieved_artifact = self.workspace.read(task_id=task_id, path=file_path)
             path = artifact.file_name
             with open(path, "wb") as f:
                 f.write(retrieved_artifact)
