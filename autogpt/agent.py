@@ -1,10 +1,7 @@
-import autogpt.sdk.agent
-from autogpt.sdk.db import AgentDB
-from autogpt.sdk.schema import Step, StepRequestBody
-from autogpt.sdk.workspace import Workspace
+from autogpt.sdk import Agent, AgentDB, Step, StepRequestBody, Workspace
 
 
-class AutoGPTAgent(autogpt.sdk.agent.Agent):
+class AutoGPTAgent(Agent):
     """
     The goal of the Forge is to take care of the boilerplate code so you can focus on
     agent design.

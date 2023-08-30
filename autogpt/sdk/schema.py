@@ -174,11 +174,6 @@ class Step(StepRequestBody):
     )
 
 
-class AgentTasksTaskIdArtifactsPostRequest(BaseModel):
-    file: Optional[bytes] = Field(None, description="File to upload.")
-    uri: Optional[str] = Field(None, description="URI of the artifact.")
-
-
 class TaskListResponse(BaseModel):
     tasks: Optional[List[Task]] = None
     pagination: Optional[Pagination] = None

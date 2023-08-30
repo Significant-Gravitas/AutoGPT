@@ -3,13 +3,13 @@ from functools import wraps
 
 from dotenv import load_dotenv
 
-from autogpt.sdk.forge_log import CustomLogger
+from autogpt.sdk.forge_log import ForgeLogger
 
 load_dotenv()
 
 ENABLE_TRACING = os.environ.get("ENABLE_TRACING", "false").lower() == "true"
 
-LOG = CustomLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 
 def setup_tracing(app):

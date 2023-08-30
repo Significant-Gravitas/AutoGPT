@@ -29,13 +29,13 @@ from fastapi import APIRouter, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from autogpt.sdk.errors import *
-from autogpt.sdk.forge_log import CustomLogger
+from autogpt.sdk.forge_log import ForgeLogger
 from autogpt.sdk.schema import *
 from autogpt.sdk.tracing import tracing
 
 base_router = APIRouter()
 
-LOG = CustomLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 
 @base_router.get("/", tags=["root"])

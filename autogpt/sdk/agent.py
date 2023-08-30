@@ -10,14 +10,14 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from .db import AgentDB
 from .errors import NotFoundError
-from .forge_log import CustomLogger
+from .forge_log import ForgeLogger
 from .middlewares import AgentMiddleware
 from .routes.agent_protocol import base_router
 from .schema import *
 from .tracing import setup_tracing
 from .workspace import Workspace
 
-LOG = CustomLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 
 class Agent:

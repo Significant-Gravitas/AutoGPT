@@ -22,10 +22,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmaker
 
 from .errors import NotFoundError
-from .forge_log import CustomLogger
+from .forge_log import ForgeLogger
 from .schema import Artifact, Pagination, Status, Step, StepRequestBody, Task, TaskInput
 
-LOG = CustomLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 
 class Base(DeclarativeBase):

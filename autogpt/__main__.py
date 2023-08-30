@@ -10,7 +10,7 @@ ENABLE_TRACING = os.environ.get("ENABLE_TRACING", "false").lower() == "true"
 autogpt.sdk.forge_log.setup_logger()
 
 
-LOG = autogpt.sdk.forge_log.CustomLogger(__name__)
+LOG = autogpt.sdk.forge_log.ForgeLogger(__name__)
 
 if __name__ == "__main__":
     """Runs the agent server"""
