@@ -107,13 +107,8 @@ async def create_agent_task(request: Request, task_request: TaskRequestBody) -> 
             status_code=200,
             media_type="application/json",
         )
-    except NotFoundError:
-        return Response(
-            content=json.dumps({"error": "Task not found"}),
-            status_code=404,
-            media_type="application/json",
-        )
     except Exception:
+        LOG.exception(f"Error whilst trying to create a task: {task_request}")
         return Response(
             content=json.dumps({"error": "Internal server error"}),
             status_code=500,
@@ -171,12 +166,14 @@ async def list_agent_tasks(
             media_type="application/json",
         )
     except NotFoundError:
+        LOG.exception("Error whilst trying to list tasks")
         return Response(
-            content=json.dumps({"error": "Task not found"}),
+            content=json.dumps({"error": "Tasks not found"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
+        LOG.exception("Error whilst trying to list tasks")
         return Response(
             content=json.dumps({"error": "Internal server error"}),
             status_code=500,
@@ -246,12 +243,14 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
             media_type="application/json",
         )
     except NotFoundError:
+        LOG.exception(f"Error whilst trying to get task: {task_id}")
         return Response(
             content=json.dumps({"error": "Task not found"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
+        LOG.exception(f"Error whilst trying to get task: {task_id}")
         return Response(
             content=json.dumps({"error": "Internal server error"}),
             status_code=500,
@@ -311,12 +310,14 @@ async def list_agent_task_steps(
             media_type="application/json",
         )
     except NotFoundError:
+        LOG.exception("Error whilst trying to list steps")
         return Response(
-            content=json.dumps({"error": "Task not found"}),
+            content=json.dumps({"error": "Steps not found"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
+        LOG.exception("Error whilst trying to list steps")
         return Response(
             content=json.dumps({"error": "Internal server error"}),
             status_code=500,
@@ -377,13 +378,14 @@ async def execute_agent_task_step(
             media_type="application/json",
         )
     except NotFoundError:
+        LOG.exception(f"Error whilst trying to execute a task step: {task_id}")
         return Response(
             content=json.dumps({"error": f"Task not found {task_id}"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception as e:
-        LOG.exception("Error whilst trying to execute a test")
+        LOG.exception(f"Error whilst trying to execute a task step: {task_id}")
         return Response(
             content=json.dumps({"error": "Internal server error"}),
             status_code=500,
@@ -423,12 +425,14 @@ async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> S
         step = await agent.get_step(task_id, step_id)
         return Response(content=step.json(), status_code=200)
     except NotFoundError:
+        LOG.exception(f"Error whilst trying to get step: {step_id}")
         return Response(
-            content=json.dumps({"error": "Task not found"}),
+            content=json.dumps({"error": "Step not found"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
+        LOG.exception(f"Error whilst trying to get step: {step_id}")
         return Response(
             content=json.dumps({"error": "Internal server error"}),
             status_code=500,
@@ -484,12 +488,14 @@ async def list_agent_task_artifacts(
         artifacts = await agent.list_artifacts(task_id, page, page_size)
         return artifacts
     except NotFoundError:
+        LOG.exception("Error whilst trying to list artifacts")
         return Response(
-            content=json.dumps({"error": "Task not found"}),
+            content=json.dumps({"error": "Artifacts not found for task_id"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
+        LOG.exception("Error whilst trying to list artifacts")
         return Response(
             content=json.dumps({"error": "Internal server error"}),
             status_code=500,
@@ -502,36 +508,25 @@ async def list_agent_task_artifacts(
 )
 @tracing("Uploading task artifact")
 async def upload_agent_task_artifacts(
-    request: Request,
-    task_id: str,
-    file: UploadFile | None = None,
-    uri: str | None = None,
+    request: Request, task_id: str, file: UploadFile, relative_path: str
 ) -> Artifact:
     """
-    Uploads an artifact for a specific task using either a provided file or a URI.
-    At least one of the parameters, `file` or `uri`, must be specified. The `uri` can point to
-    cloud storage resources such as S3, GCS, etc., or to other resources like FTP or HTTP.
-
-    To check the supported URI types for the agent, use the `/agent/artifacts/uris` endpoint.
+    Uploads an artifact for a specific task using a provided file.
 
     Args:
         request (Request): FastAPI request object.
         task_id (str): The ID of the task.
-        file (UploadFile, optional): The uploaded file. Defaults to None.
-        uri (str, optional): The URI pointing to the resource. Defaults to None.
+        artifact_upload (ArtifactUpload): The uploaded file and its relative path.
 
     Returns:
         Artifact: Details of the uploaded artifact.
 
     Note:
-        Either `file` or `uri` must be provided. If both are provided, the behavior depends on
-        the agent's implementation. If neither is provided, the function will return an error.
+        The `file` must be provided. If it is not provided, the function will return an error.
     Example:
         Request:
             POST /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/artifacts
             File: <uploaded_file>
-            OR
-            URI: "s3://path/to/artifact"
 
         Response:
             {
@@ -540,40 +535,22 @@ async def upload_agent_task_artifacts(
             }
     """
     agent = request["agent"]
-    if file is None and uri is None:
+
+    if file is None:
         return Response(
-            content=json.dumps({"error": "Either file or uri must be specified"}),
-            status_code=404,
-            media_type="application/json",
-        )
-    if file is not None and uri is not None:
-        return Response(
-            content=json.dumps(
-                {"error": "Both file and uri cannot be specified at the same time"}
-            ),
-            status_code=404,
-            media_type="application/json",
-        )
-    if uri is not None and not uri.startswith(("http://", "https://", "file://")):
-        return Response(
-            content=json.dumps({"error": "URI must start with http, https or file"}),
+            content=json.dumps({"error": "File must be specified"}),
             status_code=404,
             media_type="application/json",
         )
     try:
-        artifact = await agent.create_artifact(task_id, file, uri)
+        artifact = await agent.create_artifact(task_id, file, relative_path)
         return Response(
             content=artifact.json(),
             status_code=200,
             media_type="application/json",
         )
-    except NotFoundError:
-        return Response(
-            content=json.dumps({"error": "Task not found"}),
-            status_code=404,
-            media_type="application/json",
-        )
     except Exception:
+        LOG.exception(f"Error whilst trying to upload artifact: {task_id}")
         return Response(
             content=json.dumps({"error": "Internal server error"}),
             status_code=500,
@@ -610,6 +587,7 @@ async def download_agent_task_artifact(
     try:
         return await agent.get_artifact(task_id, artifact_id)
     except NotFoundError:
+        LOG.exception(f"Error whilst trying to download artifact: {task_id}")
         return Response(
             content=json.dumps(
                 {
@@ -620,6 +598,7 @@ async def download_agent_task_artifact(
             media_type="application/json",
         )
     except Exception:
+        LOG.exception(f"Error whilst trying to download artifact: {task_id}")
         return Response(
             content=json.dumps(
                 {

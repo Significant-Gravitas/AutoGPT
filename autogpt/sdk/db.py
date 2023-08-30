@@ -23,7 +23,7 @@ from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmak
 
 from .errors import NotFoundError
 from .forge_log import CustomLogger
-from .schema import Artifact, Pagination, Status, Step, Task, TaskInput
+from .schema import Artifact, Pagination, Status, Step, StepRequestBody, Task, TaskInput
 
 LOG = CustomLogger(__name__)
 
@@ -72,7 +72,7 @@ class ArtifactModel(Base):
     step_id = Column(String, ForeignKey("steps.step_id"))
     agent_created = Column(Boolean, default=False)
     file_name = Column(String)
-    uri = Column(String)
+    relative_path = Column(String)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     modified_at = Column(
         DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
@@ -123,7 +123,8 @@ def convert_to_artifact(artifact_model: ArtifactModel) -> Artifact:
         created_at=artifact_model.created_at,
         modified_at=artifact_model.modified_at,
         agent_created=artifact_model.agent_created,
-        uri=artifact_model.uri,
+        relative_path=artifact_model.relative_path,
+        file_name=artifact_model.file_name,
     )
 
 
@@ -149,7 +150,9 @@ class AgentDB:
                 new_task = TaskModel(
                     task_id=str(uuid.uuid4()),
                     input=input,
-                    additional_input=additional_input,
+                    additional_input=additional_input.json()
+                    if additional_input
+                    else {},
                 )
                 session.add(new_task)
                 session.commit()
@@ -169,7 +172,7 @@ class AgentDB:
     async def create_step(
         self,
         task_id: str,
-        input: str,
+        input: StepRequestBody,
         is_last: bool = False,
         additional_input: Optional[Dict[str, Any]] = {},
     ) -> Step:
@@ -180,7 +183,7 @@ class AgentDB:
                 new_step = StepModel(
                     task_id=task_id,
                     step_id=str(uuid.uuid4()),
-                    name=input.name,
+                    name=input.input,
                     input=input.input,
                     status="created",
                     is_last=is_last,
@@ -205,7 +208,7 @@ class AgentDB:
         self,
         task_id: str,
         file_name: str,
-        uri: str,
+        relative_path: str,
         agent_created: bool = False,
         step_id: str | None = None,
     ) -> Artifact:
@@ -215,12 +218,14 @@ class AgentDB:
             with self.Session() as session:
                 if (
                     existing_artifact := session.query(ArtifactModel)
-                    .filter_by(uri=uri)
+                    .filter_by(relative_path=relative_path)
                     .first()
                 ):
                     session.close()
                     if self.debug_enabled:
-                        LOG.debug(f"Artifact already exists with uri: {uri}")
+                        LOG.debug(
+                            f"Artifact already exists with relative_path: {relative_path}"
+                        )
                     return convert_to_artifact(existing_artifact)
 
                 new_artifact = ArtifactModel(
@@ -229,7 +234,7 @@ class AgentDB:
                     step_id=step_id,
                     agent_created=agent_created,
                     file_name=file_name,
-                    uri=uri,
+                    relative_path=relative_path,
                 )
                 session.add(new_artifact)
                 session.commit()

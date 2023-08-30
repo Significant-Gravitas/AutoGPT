@@ -185,7 +185,7 @@ logging_config: dict = dict(
     },
     root={
         "handlers": ["h"],
-        "level": logging.WARNING,
+        "level": logging.DEBUG,
     },
     loggers={
         "autogpt": {
