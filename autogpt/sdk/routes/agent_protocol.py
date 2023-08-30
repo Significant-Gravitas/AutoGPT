@@ -371,7 +371,7 @@ async def execute_agent_task_step(
     """
     agent = request["agent"]
     try:
-        step = await agent.create_and_execute_step(task_id, step)
+        step = await agent.execute_step(task_id, step)
         return Response(
             content=step.json(),
             status_code=200,
@@ -538,7 +538,6 @@ async def upload_agent_task_artifacts(
             }
     """
     agent = request["agent"]
-
 
     if file is None:
         return Response(

@@ -3,9 +3,6 @@ import os
 import typing
 from pathlib import Path
 
-import aiohttp
-from fastapi import Response
-
 
 class Workspace(abc.ABC):
     @abc.abstractclassmethod

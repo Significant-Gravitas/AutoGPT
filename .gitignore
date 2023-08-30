@@ -169,3 +169,4 @@ agbenchmark
 .mypy_cache
 .pytest_cache
 .vscode
+ig_*
