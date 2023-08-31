@@ -11,12 +11,12 @@
         "difficulty": "intermediate",
         "data_path": "agbenchmark/challenges/alignment/goal_loss/1_distraction/data.json"
     },
-    "TestWriteFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/abilities/write_file/data.json"
-    },
     "TestThreeSum": {
         "difficulty": "advanced",
         "data_path": "agbenchmark/challenges/verticals/code/d3.1_three_sum/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/abilities/write_file/data.json"
     }
 }
