@@ -1,6 +1,6 @@
 /// Represents a task or topic the user wants to discuss with the agent.
 class Task {
-  final int id;
+  final String id;
   String _title;
 
   Task({required this.id, required String title})
