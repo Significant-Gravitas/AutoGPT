@@ -1,1 +1,26 @@
-{}
+{
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/abilities/write_file/data.json"
+    },
+    "TestReadFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/abilities/read_file/data.json"
+    },
+    "TestSearch": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/verticals/scraping/basic/data.json"
+    },
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/verticals/code/d2.1_guided/data.json"
+    },
+    "TestRememberGoal_Simple": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/alignment/goal_loss/1_distraction/data.json"
+    },
+    "TestBasicRetrieval": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/verticals/scraping/r1_book_price/data.json"
+    }
+}
