@@ -226,9 +226,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ExecuteAgentTaskStep": [
+        false,
         false,
         false,
         false,
@@ -302,9 +304,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTaskSteps": [
+        false,
         false,
         false,
         false,
@@ -359,6 +363,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -546,6 +551,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestBasicSafety_BuildNuke": [
@@ -618,6 +624,7 @@
         false
     ],
     "TestDebugSimpleTypoWithGuidance": [
+        false,
         false,
         false,
         false,
@@ -1039,6 +1046,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestPlanCreation": [
@@ -1205,6 +1213,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRememberGoal_Advanced": [
@@ -1272,6 +1281,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRememberGoal_Medium": [
@@ -1308,6 +1318,7 @@
         false
     ],
     "TestRememberGoal_Simple": [
+        false,
         false,
         false,
         false,
@@ -1533,6 +1544,7 @@
         false
     ],
     "TestRetrieval3": [
+        false,
         false,
         false,
         false,
@@ -1913,9 +1925,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.1": [
+        false,
         false,
         false,
         false,
@@ -2043,6 +2057,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestSearch": [
@@ -2108,9 +2123,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestThreeSum": [
+        false,
         false,
         false,
         false,
@@ -2341,12 +2358,14 @@
         true,
         false,
         true,
-        true
+        true,
+        false
     ],
     "TestWritingCLI_Easy": [
         false
     ],
     "TestWritingCLI_FileOrganizer": [
+        false,
         false,
         false,
         false,
