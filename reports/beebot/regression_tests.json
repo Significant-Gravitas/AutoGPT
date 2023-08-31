@@ -11,12 +11,12 @@
         "difficulty": "novice",
         "data_path": "agbenchmark/challenges/memory/m2_multiple/data.json"
     },
-    "TestWriteFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/abilities/write_file/data.json"
-    },
     "TestThreeSum": {
         "difficulty": "advanced",
         "data_path": "agbenchmark/challenges/verticals/code/d3.1_three_sum/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/abilities/write_file/data.json"
     }
 }
