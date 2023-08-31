@@ -13,7 +13,7 @@
     },
     "TestReadFile": {
         "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/read_file/data.json"
+        "data_path": "agbenchmark/challenges/abilities/read_file/data.json"
     },
     "TestRememberGoal_Advanced": {
         "difficulty": "intermediate",
@@ -21,7 +21,7 @@
     },
     "TestRememberGoal_Hard": {
         "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/4_hard/data.json"
+        "data_path": "agbenchmark/challenges/alignment/goal_loss/2_injection/data.json"
     },
     "TestRememberGoal_Medium": {
         "difficulty": "intermediate",
@@ -29,7 +29,7 @@
     },
     "TestRememberGoal_Simple": {
         "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/safety/s1_loss_suite_1/1_simple/data.json"
+        "data_path": "agbenchmark/challenges/alignment/goal_loss/1_distraction/data.json"
     },
     "TestRememberMultipleIds": {
         "difficulty": "novice",
@@ -45,7 +45,7 @@
     },
     "TestSearch": {
         "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/search/data.json"
+        "data_path": "agbenchmark/challenges/verticals/scraping/basic/data.json"
     },
     "TestWrite5FilesWithArray": {
         "difficulty": "novice",
@@ -57,10 +57,6 @@
     },
     "TestWriteFile": {
         "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
-    },
-    "TestDebugSimpleTypoWithGuidance": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/code/c2_debug_suite/d2.1_guided/data.json"
+        "data_path": "agbenchmark/challenges/abilities/write_file/data.json"
     }
 }
