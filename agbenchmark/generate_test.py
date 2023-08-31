@@ -235,6 +235,9 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
         json_file = (
             json_files.popleft()
         )  # Take and remove the first element from json_files
+
+        if challenge_should_be_ignored(json_file):
+            continue
         data = ChallengeData.get_json_from_path(json_file)
         suite_config = SuiteConfig.suite_data_if_suite(Path(json_file))
 
@@ -291,6 +294,10 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
             print(f"Generated suite for {suite_config.prefix}.")
         else:
             print(f"Generated test for {data['name']}.")
+
+
+def challenge_should_be_ignored(json_file):
+    return "challenges/deprecated" in json_file or "challenges/library" in json_file
 
 
 generate_tests()
