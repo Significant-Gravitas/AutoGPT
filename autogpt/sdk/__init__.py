@@ -5,6 +5,7 @@ core of the Forge.
 from .agent import Agent
 from .db import AgentDB
 from .forge_log import ForgeLogger
+from .prompting import PromptEngine
 from .schema import (
     Artifact,
     ArtifactUpload,
