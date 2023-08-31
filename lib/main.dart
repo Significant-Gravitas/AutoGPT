@@ -3,13 +3,32 @@ import 'views/main_layout.dart';
 import 'package:provider/provider.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/services/chat_service.dart';
+import 'package:auto_gpt_flutter_client/services/task_service.dart';
+import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
 
+// TODO: Update documentation throughout project for consistency
 void main() {
-  runApp(const MyApp());
+  // Initialize the RestApiUtility
+  final restApiUtility = RestApiUtility(
+      "https://ef4bfad4-dddd-4bad-a6d2-eb4c77e46759.mock.pstmn.io");
+
+  // Initialize the services
+  final chatService = ChatService(restApiUtility);
+  final taskService = TaskService(restApiUtility);
+
+  runApp(MyApp(
+    chatService: chatService,
+    taskService: taskService,
+  ));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  final ChatService chatService;
+  final TaskService taskService;
+
+  const MyApp({Key? key, required this.chatService, required this.taskService})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -20,8 +39,10 @@ class MyApp extends StatelessWidget {
       ),
       home: MultiProvider(
         providers: [
-          ChangeNotifierProvider(create: (context) => TaskViewModel()),
-          ChangeNotifierProvider(create: (context) => ChatViewModel()),
+          ChangeNotifierProvider(
+              create: (context) => ChatViewModel(chatService)),
+          ChangeNotifierProvider(
+              create: (context) => TaskViewModel(taskService)),
         ],
         child: const MainLayout(),
       ), // Set MainLayout as the home screen of the app
