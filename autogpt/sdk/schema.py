@@ -8,7 +8,6 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from fastapi import UploadFile
 from pydantic import BaseModel, Field
 
 
@@ -173,11 +172,6 @@ class Step(StepRequestBody):
     is_last: bool = Field(
         ..., description="Whether this is the last step in the task.", example=True
     )
-
-
-class AgentTasksTaskIdArtifactsPostRequest(BaseModel):
-    file: Optional[bytes] = Field(None, description="File to upload.")
-    uri: Optional[str] = Field(None, description="URI of the artifact.")
 
 
 class TaskListResponse(BaseModel):

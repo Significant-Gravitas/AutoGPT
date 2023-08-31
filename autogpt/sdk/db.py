@@ -22,10 +22,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmaker
 
 from .errors import NotFoundError
-from .forge_log import CustomLogger
+from .forge_log import ForgeLogger
 from .schema import Artifact, Pagination, Status, Step, StepRequestBody, Task, TaskInput
 
-LOG = CustomLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -218,7 +218,11 @@ class AgentDB:
             with self.Session() as session:
                 if (
                     existing_artifact := session.query(ArtifactModel)
-                    .filter_by(relative_path=relative_path)
+                    .filter_by(
+                        task_id=task_id,
+                        file_name=file_name,
+                        relative_path=relative_path,
+                    )
                     .first()
                 ):
                     session.close()

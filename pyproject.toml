@@ -10,10 +10,8 @@ readme = "README.md"
 python = "^3.10"
 python-dotenv = "^1.0.0"
 openai = "^0.27.8"
-helicone = "^1.0.6"
 tenacity = "^8.2.2"
 sqlalchemy = "^2.0.19"
-google-cloud-storage = "^2.10.0"
 aiohttp = "^3.8.5"
 colorlog = "^6.7.0"
 
@@ -30,6 +28,7 @@ pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
 watchdog = "^3.0.0"
 mock = "^5.1.0"
+autoflake = "^2.2.0"
 
 
 [tool.poetry.group.ui.dependencies]
@@ -39,14 +38,6 @@ dash = "^2.11.1"
 pandas = "^2.0.3"
 dash-bootstrap-components = "^1.4.2"
 
-
-[tool.poetry.group.monitoring.dependencies]
-prometheus-fastapi-instrumentator = "^6.1.0"
-opentelemetry-api = "^1.19.0"
-opentelemetry-sdk = "^1.19.0"
-opentelemetry-exporter-otlp = "^1.19.0"
-opentelemetry-instrumentation-fastapi = "^0.40b0"
-opentelemetry-exporter-jaeger = "^1.19.0"
 
 [build-system]
 requires = ["poetry-core"]

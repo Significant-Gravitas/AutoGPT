@@ -5,7 +5,6 @@ import logging.handlers
 import os
 import queue
 
-ENABLE_TRACING = os.environ.get("ENABLE_TRACING", "false").lower() == "true"
 JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
 
 CHAT = 29
@@ -101,7 +100,7 @@ class ConsoleFormatter(logging.Formatter):
         return logging.Formatter.format(self, rec)
 
 
-class CustomLogger(logging.Logger):
+class ForgeLogger(logging.Logger):
     """
     This adds extra logging functions such as logger.trade and also
     sets the logger to use the custom formatter
@@ -173,7 +172,7 @@ logging_config: dict = dict(
     formatters={
         "console": {
             "()": ConsoleFormatter,
-            "format": CustomLogger.COLOR_FORMAT,
+            "format": ForgeLogger.COLOR_FORMAT,
         },
     },
     handlers={

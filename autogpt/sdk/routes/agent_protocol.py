@@ -29,13 +29,12 @@ from fastapi import APIRouter, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from autogpt.sdk.errors import *
-from autogpt.sdk.forge_log import CustomLogger
+from autogpt.sdk.forge_log import ForgeLogger
 from autogpt.sdk.schema import *
-from autogpt.sdk.tracing import tracing
 
 base_router = APIRouter()
 
-LOG = CustomLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 
 @base_router.get("/", tags=["root"])
@@ -71,7 +70,6 @@ async def check_server_status():
 
 
 @base_router.post("/agent/tasks", tags=["agent"], response_model=Task)
-@tracing("Creating new task", is_create_task=True)
 async def create_agent_task(request: Request, task_request: TaskRequestBody) -> Task:
     """
     Creates a new task using the provided TaskRequestBody and returns a Task.
@@ -182,7 +180,6 @@ async def list_agent_tasks(
 
 
 @base_router.get("/agent/tasks/{task_id}", tags=["agent"], response_model=Task)
-@tracing("Getting task details")
 async def get_agent_task(request: Request, task_id: str) -> Task:
     """
     Gets the details of a task by ID.
@@ -326,9 +323,8 @@ async def list_agent_task_steps(
 
 
 @base_router.post("/agent/tasks/{task_id}/steps", tags=["agent"], response_model=Step)
-@tracing("Creating and executing Step")
 async def execute_agent_task_step(
-    request: Request, task_id: str, step: StepRequestBody
+    request: Request, task_id: str, step: Optional[StepRequestBody] = None
 ) -> Step:
     """
     Executes the next step for a specified task based on the current task status and returns the
@@ -371,7 +367,10 @@ async def execute_agent_task_step(
     """
     agent = request["agent"]
     try:
-        step = await agent.create_and_execute_step(task_id, step)
+        # An empty step request represents a yes to continue command
+        if not step:
+            step = StepRequestBody(input="y")
+        step = await agent.execute_step(task_id, step)
         return Response(
             content=step.json(),
             status_code=200,
@@ -396,7 +395,6 @@ async def execute_agent_task_step(
 @base_router.get(
     "/agent/tasks/{task_id}/steps/{step_id}", tags=["agent"], response_model=Step
 )
-@tracing("Getting Step Details")
 async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> Step:
     """
     Retrieves the details of a specific step for a given task.
@@ -445,7 +443,6 @@ async def get_agent_task_step(request: Request, task_id: str, step_id: str) -> S
     tags=["agent"],
     response_model=TaskArtifactsListResponse,
 )
-@tracing("Listing Task Artifacts")
 async def list_agent_task_artifacts(
     request: Request,
     task_id: str,
@@ -485,7 +482,10 @@ async def list_agent_task_artifacts(
     """
     agent = request["agent"]
     try:
-        artifacts = await agent.list_artifacts(task_id, page, page_size)
+        artifacts: TaskArtifactsListResponse = await agent.list_artifacts(
+            task_id, page, page_size
+        )
+        LOG.info(f"Artifacts: {artifacts.json()}")
         return artifacts
     except NotFoundError:
         LOG.exception("Error whilst trying to list artifacts")
@@ -506,32 +506,34 @@ async def list_agent_task_artifacts(
 @base_router.post(
     "/agent/tasks/{task_id}/artifacts", tags=["agent"], response_model=Artifact
 )
-@tracing("Uploading task artifact")
 async def upload_agent_task_artifacts(
-    request: Request, task_id: str, file: UploadFile, relative_path: str
+    request: Request, task_id: str, file: UploadFile, relative_path: Optional[str] = ""
 ) -> Artifact:
     """
-    Uploads an artifact for a specific task using a provided file.
+    This endpoint is used to upload an artifact associated with a specific task. The artifact is provided as a file.
 
     Args:
-        request (Request): FastAPI request object.
-        task_id (str): The ID of the task.
-        artifact_upload (ArtifactUpload): The uploaded file and its relative path.
+        request (Request): The FastAPI request object.
+        task_id (str): The unique identifier of the task for which the artifact is being uploaded.
+        file (UploadFile): The file being uploaded as an artifact.
+        relative_path (str): The relative path for the file. This is a query parameter.
 
     Returns:
-        Artifact: Details of the uploaded artifact.
+        Artifact: An object containing metadata of the uploaded artifact, including its unique identifier.
 
-    Note:
-        The `file` must be provided. If it is not provided, the function will return an error.
     Example:
         Request:
-            POST /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/artifacts
+            POST /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/artifacts?relative_path=my_folder/my_other_folder
             File: <uploaded_file>
 
         Response:
             {
-                "artifact_id": "artifact1_id",
-                ...
+                "artifact_id": "b225e278-8b4c-4f99-a696-8facf19f0e56",
+                "created_at": "2023-01-01T00:00:00Z",
+                "modified_at": "2023-01-01T00:00:00Z",
+                "agent_created": false,
+                "relative_path": "/my_folder/my_other_folder/",
+                "file_name": "main.py"
             }
     """
     agent = request["agent"]
@@ -561,7 +563,6 @@ async def upload_agent_task_artifacts(
 @base_router.get(
     "/agent/tasks/{task_id}/artifacts/{artifact_id}", tags=["agent"], response_model=str
 )
-@tracing("Downloading task artifact")
 async def download_agent_task_artifact(
     request: Request, task_id: str, artifact_id: str
 ) -> FileResponse:
