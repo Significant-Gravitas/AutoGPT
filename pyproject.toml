@@ -29,10 +29,10 @@ selenium = "^4.11.2"
 agent-protocol = "^0.2.3"
 agent-protocol-client = "^0.2.2"
 pytest-asyncio = "^0.21.1"
+uvicorn = "^0.23.2"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"
-mypy = "^1.01"
 isort = "^5.9.3"
 black = "22.3"
 autoflake = "^1.4"

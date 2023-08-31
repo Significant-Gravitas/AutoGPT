@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 from sample_code import multiply_int
 
 

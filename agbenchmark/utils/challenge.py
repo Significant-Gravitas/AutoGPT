@@ -66,14 +66,14 @@ class Challenge(ABC):
         )
         print(f"\033[1;30mTask: {self.task}\033[0m")
 
-        if "--mock" in sys.argv:
+        if "--api_mode" in sys.argv:
+            await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
+        elif "--mock" in sys.argv:
             print("Running mock agent")
             for path in artifact_paths:
                 copy_artifacts_into_workspace(
                     config["workspace"], "artifacts_out", path
                 )
-        elif config.get("api_mode"):
-            await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
         else:
             run_agent(self.task, cutoff)
 

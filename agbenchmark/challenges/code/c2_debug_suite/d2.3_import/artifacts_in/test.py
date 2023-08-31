@@ -1,5 +1,3 @@
-# mypy: ignore-errors
-# fmt: off
 from typing import List
 
 from import
