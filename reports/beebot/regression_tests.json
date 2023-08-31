@@ -5,7 +5,7 @@
     },
     "TestReadFile": {
         "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/read_file/data.json"
+        "data_path": "agbenchmark/challenges/abilities/read_file/data.json"
     },
     "TestRememberMultipleIds": {
         "difficulty": "novice",
@@ -13,6 +13,10 @@
     },
     "TestWriteFile": {
         "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
+        "data_path": "agbenchmark/challenges/abilities/write_file/data.json"
+    },
+    "TestThreeSum": {
+        "difficulty": "advanced",
+        "data_path": "agbenchmark/challenges/verticals/code/d3.1_three_sum/data.json"
     }
 }
