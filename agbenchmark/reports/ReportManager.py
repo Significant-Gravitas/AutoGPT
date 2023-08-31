@@ -59,6 +59,7 @@ class ReportManager:
         import agbenchmark.start_benchmark
 
         command = " ".join(sys.argv)
+
         self.tests = {
             "command": command.split(os.sep)[-1],
             "benchmark_git_commit_sha": agbenchmark.start_benchmark.BENCHMARK_GIT_COMMIT_SHA,
@@ -70,6 +71,7 @@ class ReportManager:
             "metrics": {
                 "run_time": str(round(time.time() - self.start_time, 2)) + " seconds",
                 "highest_difficulty": get_highest_success_difficulty(self.tests),
+                "total_cost": self.get_total_costs(),
             },
             "tests": self.tests,
             "config": config,
@@ -85,3 +87,17 @@ class ReportManager:
         )
 
         self.save()
+
+    def get_total_costs(self):
+        total_cost = 0
+        all_costs_none = True
+        for test_name, test_data in self.tests.items():
+            cost = test_data["metrics"].get(
+                "cost", 0
+            )  # gets the cost or defaults to 0 if cost is missing
+            if cost is not None:  # check if cost is not None
+                all_costs_none = False
+                total_cost += cost  # add cost to total
+        if all_costs_none:
+            total_cost = None
+        return total_cost
