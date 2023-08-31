@@ -2,7 +2,7 @@ import asyncio
 import os
 from uuid import uuid4
 
-from fastapi import APIRouter, FastAPI, Response, UploadFile
+from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.responses import FileResponse
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
@@ -116,10 +116,8 @@ class Agent:
             artifacts, pagination = await self.db.list_artifacts(
                 task_id, page, pageSize
             )
-            response = TaskArtifactsListResponse(
-                artifacts=artifacts, pagination=pagination
-            )
-            return Response(content=response.json(), media_type="application/json")
+            return TaskArtifactsListResponse(artifacts=artifacts, pagination=pagination)
+
         except Exception as e:
             raise
 

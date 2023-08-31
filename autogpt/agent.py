@@ -88,4 +88,19 @@ class AutoGPTAgent(Agent):
         multiple steps. Returning a request to continue in the step output, the user can then decide
         if they want the agent to continue or not.
         """
-        raise NotImplementedError
+
+        # An example that
+        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
+        step = await self.db.create_step(
+            task_id=task_id, input=step_request, is_last=True
+        )
+        artifact = await self.db.create_artifact(
+            task_id=task_id,
+            step_id=step.step_id,
+            file_name="output.txt",
+            relative_path="",
+            agent_created=True,
+        )
+        step.output = "Washington D.C"
+
+        return step

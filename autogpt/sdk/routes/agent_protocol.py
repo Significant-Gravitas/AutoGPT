@@ -324,7 +324,7 @@ async def list_agent_task_steps(
 
 @base_router.post("/agent/tasks/{task_id}/steps", tags=["agent"], response_model=Step)
 async def execute_agent_task_step(
-    request: Request, task_id: str, step: StepRequestBody
+    request: Request, task_id: str, step: Optional[StepRequestBody] = None
 ) -> Step:
     """
     Executes the next step for a specified task based on the current task status and returns the
@@ -367,6 +367,9 @@ async def execute_agent_task_step(
     """
     agent = request["agent"]
     try:
+        # An empty step request represents a yes to continue command
+        if not step:
+            step = StepRequestBody(input="y")
         step = await agent.execute_step(task_id, step)
         return Response(
             content=step.json(),
@@ -479,7 +482,10 @@ async def list_agent_task_artifacts(
     """
     agent = request["agent"]
     try:
-        artifacts = await agent.list_artifacts(task_id, page, page_size)
+        artifacts: TaskArtifactsListResponse = await agent.list_artifacts(
+            task_id, page, page_size
+        )
+        LOG.info(f"Artifacts: {artifacts.json()}")
         return artifacts
     except NotFoundError:
         LOG.exception("Error whilst trying to list artifacts")
@@ -501,7 +507,7 @@ async def list_agent_task_artifacts(
     "/agent/tasks/{task_id}/artifacts", tags=["agent"], response_model=Artifact
 )
 async def upload_agent_task_artifacts(
-    request: Request, task_id: str, file: UploadFile, relative_path: str
+    request: Request, task_id: str, file: UploadFile, relative_path: Optional[str] = ""
 ) -> Artifact:
     """
     This endpoint is used to upload an artifact associated with a specific task. The artifact is provided as a file.

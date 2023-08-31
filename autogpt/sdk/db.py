@@ -218,7 +218,11 @@ class AgentDB:
             with self.Session() as session:
                 if (
                     existing_artifact := session.query(ArtifactModel)
-                    .filter_by(relative_path=relative_path)
+                    .filter_by(
+                        task_id=task_id,
+                        file_name=file_name,
+                        relative_path=relative_path,
+                    )
                     .first()
                 ):
                     session.close()
