@@ -1,9 +1,13 @@
 import 'package:auto_gpt_flutter_client/models/message_type.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/chat/agent_message_tile.dart';
 import 'package:auto_gpt_flutter_client/views/chat/chat_input_field.dart';
 import 'package:auto_gpt_flutter_client/views/chat/user_message_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:provider/provider.dart';
+
+// TODO: Implement artifacts
 
 class ChatView extends StatefulWidget {
   final ChatViewModel viewModel;
@@ -21,13 +25,14 @@ class _ChatViewState extends State<ChatView> {
 
     // Schedule the fetchTasks call for after the initial build
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // TODO: Update to actual task id
-      widget.viewModel.fetchChatsForTask(1);
+      widget.viewModel.fetchChatsForTask();
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    // TODO: Do we want to have a reference to task view model in this class?
+    final taskViewModel = Provider.of<TaskViewModel>(context, listen: false);
     return Scaffold(
       body: Column(
         children: [
@@ -49,8 +54,14 @@ class _ChatViewState extends State<ChatView> {
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: ChatInputField(
-              onSendPressed: () {
-                // TODO: Implement passing the message back up
+              onSendPressed: (message) async {
+                if (widget.viewModel.currentTaskId != null) {
+                  widget.viewModel.sendChatMessage(message);
+                } else {
+                  String newTaskId = await taskViewModel.createTask(message);
+                  widget.viewModel.setCurrentTaskId(newTaskId);
+                  widget.viewModel.sendChatMessage(message);
+                }
               },
             ),
           ),
