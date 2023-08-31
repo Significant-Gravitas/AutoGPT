@@ -3,7 +3,7 @@ colorama==0.4.6
 distro==1.8.0
 openai==0.27.8
 playsound==1.2.2
-python-dotenv==0.21
+python-dotenv==1.0.0
 pyyaml==6.0
 PyPDF2
 python-docx
@@ -21,7 +21,7 @@ redis
 orjson==3.8.10
 ftfy>=6.1.1
 Pillow
-selenium==4.1.4
+selenium>=4.11.2
 webdriver-manager
 jsonschema
 click
@@ -45,7 +45,7 @@ numpy
 pre-commit
 black
 isort
-gitpython==3.1.31
+gitpython>=3.1.32
 auto-gpt-plugin-template @ git+https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template@0.1.0
 mkdocs
 mkdocs-material
