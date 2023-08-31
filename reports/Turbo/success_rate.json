@@ -45,9 +45,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ExecuteAgentTaskStep": [
+        false,
         false,
         false,
         false,
@@ -69,6 +71,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTaskSteps": [
@@ -81,9 +84,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTasksIds": [
+        false,
         false,
         false,
         false,
@@ -117,6 +122,7 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestDebugMultipleTypo": [
@@ -140,6 +146,7 @@
         true,
         false,
         false,
+        true,
         true,
         true
     ],
@@ -168,6 +175,7 @@
         true
     ],
     "TestPasswordGenerator_Easy": [
+        false,
         false,
         false,
         false,
@@ -213,6 +221,7 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestRememberGoal_Advanced": [
@@ -237,7 +246,8 @@
         false,
         false,
         false,
-        true
+        true,
+        false
     ],
     "TestRememberGoal_Medium": [
         false,
@@ -260,6 +270,7 @@
         false,
         false,
         false,
+        true,
         true,
         true
     ],
@@ -300,6 +311,7 @@
         false
     ],
     "TestRetrieval3": [
+        false,
         false,
         false,
         false,
@@ -369,9 +381,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.1": [
+        false,
         false,
         false,
         false,
@@ -393,6 +407,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestSearch": [
@@ -404,6 +419,7 @@
         true,
         false,
         false,
+        true,
         true,
         true
     ],
@@ -417,6 +433,7 @@
         false,
         false,
         false,
+        true,
         true
     ],
     "TestWebApp_ListAnimals": [
@@ -465,9 +482,11 @@
         false,
         false,
         true,
+        true,
         true
     ],
     "TestWritingCLI_FileOrganizer": [
+        false,
         false,
         false,
         false,
