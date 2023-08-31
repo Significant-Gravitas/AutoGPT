@@ -5,6 +5,6 @@
     },
     "TestWriteFile": {
         "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/interface/write_file/data.json"
+        "data_path": "agbenchmark/challenges/abilities/write_file/data.json"
     }
 }
