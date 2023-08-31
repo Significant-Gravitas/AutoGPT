@@ -1,7 +1,9 @@
+import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/task/new_task_button.dart';
 import 'package:auto_gpt_flutter_client/views/task/task_list_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
+import 'package:provider/provider.dart';
 
 class TaskView extends StatefulWidget {
   final TaskViewModel viewModel;
@@ -40,9 +42,13 @@ class _TaskViewState extends State<TaskView> {
                 ),
                 const SizedBox(height: 8),
                 NewTaskButton(
-                  onPressed: () {
-                    // TODO: Implement add new task action
-                    print('Add new task button pressed');
+                  onPressed: () async {
+                    // Update the current task ID and chats in ChatViewModel
+                    final chatViewModel =
+                        Provider.of<ChatViewModel>(context, listen: false);
+                    chatViewModel.clearCurrentTaskAndChats();
+                    print(
+                        'New Task button pressed, cleared current task ID and chats');
                   },
                 )
               ],
@@ -57,11 +63,27 @@ class _TaskViewState extends State<TaskView> {
                 return TaskListTile(
                   task: task,
                   onTap: () {
-                    // TODO: Implement the action when a task is tapped. This should trigger the TaskView to update.
+                    // Select the task in TaskViewModel
+                    widget.viewModel.selectTask(task.id);
+
+                    // Update the current task ID in ChatViewModel
+                    // TODO: Do we want to have a reference to chat view model in this class?
+                    final chatViewModel =
+                        Provider.of<ChatViewModel>(context, listen: false);
+                    chatViewModel.setCurrentTaskId(task.id);
+
                     print('Task ${task.title} tapped');
                   },
                   onDelete: () {
-                    // TODO: Implement the action when a task is needing to be deleted. This should trigger the TaskView to update.
+                    // Delete the task in TaskViewModel
+                    widget.viewModel.deleteTask(task.id);
+                    // TODO: Do we want to have a reference to chat view model in this class?
+                    final chatViewModel =
+                        Provider.of<ChatViewModel>(context, listen: false);
+                    if (chatViewModel.currentTaskId == task.id) {
+                      chatViewModel.clearCurrentTaskAndChats();
+                    }
+
                     print('Task ${task.title} delete button tapped');
                   },
                 );
