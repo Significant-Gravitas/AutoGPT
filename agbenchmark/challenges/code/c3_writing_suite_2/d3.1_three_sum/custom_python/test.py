@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 from typing import List
 
 from sample_code import three_sum

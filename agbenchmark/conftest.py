@@ -89,6 +89,8 @@ def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
 
 def pytest_addoption(parser: Any) -> None:
     parser.addoption("--mock", action="store_true", default=False)
+    parser.addoption("--api_mode", action="store_true", default=False)
+    parser.addoption("--host", action="store_true", default=None)
     parser.addoption("--category", action="store_true", default=False)
     parser.addoption("--nc", action="store_true", default=False)
     parser.addoption("--cutoff", action="store_true", default=False)
@@ -252,7 +254,7 @@ def run_agent(request: Any) -> Any:
     with open(agbenchmark.start_benchmark.CONFIG_PATH, "r") as f:
         config = json.load(f)
 
-    if config.get("api_mode"):
+    if "--api_mode" not in sys.argv:
         command = [sys.executable, "-m", "agbenchmark.benchmarks"]
         process = subprocess.Popen(
             command,
