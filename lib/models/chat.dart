@@ -2,8 +2,8 @@ import 'package:auto_gpt_flutter_client/models/message_type.dart';
 
 /// Represents a chat message related to a specific task.
 class Chat {
-  final int id;
-  final int taskId;
+  final String id;
+  final String taskId;
   final String message;
   final DateTime timestamp;
   final MessageType messageType;
