@@ -197,7 +197,8 @@ jobs:
 
           pip install ../../dist/*.whl
 
-
+          bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/b7ab4bc53e51d8ab29fff19ce5986ab7720970c6/mitmproxy.sh)" -s start
+          
           if [ "${GITHUB_EVENT_NAME}" == "pull_request" ] || [ "${{ github.event_name }}" == "push" ]; then            
             set +e # Ignore non-zero exit codes and continue execution
             ${prefix}agbenchmark start --maintain --mock
