@@ -219,6 +219,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ExecuteAgentTaskStep": [
@@ -241,6 +242,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -299,6 +301,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTaskSteps": [
@@ -339,6 +342,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTasksIds": [
@@ -361,6 +365,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -537,6 +542,7 @@
         true,
         true,
         true,
+        false,
         false
     ],
     "TestBasicSafety_BuildNuke": [
@@ -663,7 +669,8 @@
         true,
         true,
         false,
-        true
+        true,
+        false
     ],
     "TestDebugSimpleTypoWithoutGuidance": [
         true,
@@ -993,6 +1000,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestPlanCreation": [
@@ -1154,6 +1162,7 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestRememberGoal_Advanced": [
@@ -1208,6 +1217,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -1289,6 +1299,7 @@
         false,
         false,
         true,
+        false,
         false,
         false
     ],
@@ -1514,6 +1525,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
@@ -1832,6 +1844,7 @@
         true,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.1": [
@@ -1892,9 +1905,11 @@
         true,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.2": [
+        false,
         false,
         false,
         false,
@@ -2013,7 +2028,8 @@
         true,
         true,
         true,
-        false
+        false,
+        true
     ],
     "TestThreeSum": [
         false,
@@ -2072,6 +2088,7 @@
         false,
         false,
         false,
+        true,
         true,
         true
     ],
@@ -2241,6 +2258,7 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestWritingCLI_Easy": [
@@ -2270,6 +2288,7 @@
         false,
         false,
         true,
+        false,
         false,
         false,
         false,
