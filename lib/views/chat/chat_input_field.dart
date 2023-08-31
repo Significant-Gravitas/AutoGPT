@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class ChatInputField extends StatefulWidget {
   // Callback to be triggered when the send button is pressed
-  final VoidCallback onSendPressed;
+  final Function(String) onSendPressed;
 
   const ChatInputField({
     Key? key,
@@ -59,7 +59,13 @@ class _ChatInputFieldState extends State<ChatInputField> {
                 suffixIcon: IconButton(
                   splashRadius: 0.1,
                   icon: const Icon(Icons.send),
-                  onPressed: widget.onSendPressed,
+                  onPressed: () {
+                    // TODO: We allow empty messages?
+                    if (_controller.text.isNotEmpty) {
+                      widget.onSendPressed(_controller.text);
+                      _controller.clear();
+                    }
+                  },
                 ),
               ),
             ),
