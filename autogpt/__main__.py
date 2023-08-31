@@ -5,8 +5,6 @@ from dotenv import load_dotenv
 load_dotenv()
 import autogpt.sdk.forge_log
 
-ENABLE_TRACING = os.environ.get("ENABLE_TRACING", "false").lower() == "true"
-
 autogpt.sdk.forge_log.setup_logger()
 
 

@@ -6,7 +6,6 @@ from fastapi import APIRouter, FastAPI, Response, UploadFile
 from fastapi.responses import FileResponse
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
-from prometheus_fastapi_instrumentator import Instrumentator
 
 from .db import AgentDB
 from .errors import NotFoundError
@@ -14,7 +13,6 @@ from .forge_log import ForgeLogger
 from .middlewares import AgentMiddleware
 from .routes.agent_protocol import base_router
 from .schema import *
-from .tracing import setup_tracing
 from .workspace import Workspace
 
 LOG = ForgeLogger(__name__)
@@ -37,17 +35,8 @@ class Agent:
             version="v0.4",
         )
 
-        # Add Prometheus metrics to the agent
-        # https://github.com/trallnag/prometheus-fastapi-instrumentator
-        instrumentator = Instrumentator().instrument(app)
-
-        @app.on_event("startup")
-        async def _startup():
-            instrumentator.expose(app)
-
         app.include_router(router)
         app.add_middleware(AgentMiddleware, agent=self)
-        setup_tracing(app)
         config.loglevel = "ERROR"
         config.bind = [f"0.0.0.0:{port}"]
 

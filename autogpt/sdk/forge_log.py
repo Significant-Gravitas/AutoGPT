@@ -5,7 +5,6 @@ import logging.handlers
 import os
 import queue
 
-ENABLE_TRACING = os.environ.get("ENABLE_TRACING", "false").lower() == "true"
 JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
 
 CHAT = 29
