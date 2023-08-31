@@ -1,0 +1,21 @@
+{
+  "name": "TestAgentProtocol_ListAgentTasksIds",
+  "category": ["interface"],
+  "task": "",
+  "dependencies": ["TestAgentProtocol_CreateAgentTask"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "The agent should be able to list agent tasks ids.",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "interface",
+    "description": "Tests the agent's ability to list agent tasks ids.",
+    "side_effects": [""]
+  }
+}

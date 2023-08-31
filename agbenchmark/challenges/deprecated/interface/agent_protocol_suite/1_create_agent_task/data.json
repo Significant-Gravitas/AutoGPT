@@ -1,0 +1,21 @@
+{
+  "name": "TestAgentProtocol_CreateAgentTask",
+  "category": ["interface"],
+  "task": "",
+  "dependencies": [],
+  "cutoff": 60,
+  "ground": {
+    "answer": "The agent should be able to create a task.",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "interface",
+    "description": "Tests the agent's ability to create a task",
+    "side_effects": [""]
+  }
+}
