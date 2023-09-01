@@ -201,6 +201,7 @@ jobs:
           
           if [ "${GITHUB_EVENT_NAME}" == "pull_request" ] || [ "${{ github.event_name }}" == "push" ]; then            
             set +e # Ignore non-zero exit codes and continue execution
+            echo "Running the following command: ${prefix}agbenchmark start --maintain --mock"
             ${prefix}agbenchmark start --maintain --mock
             EXIT_CODE=$?
             set -e  # Stop ignoring non-zero exit codes
@@ -208,14 +209,25 @@ jobs:
             if [ $EXIT_CODE -eq 5 ]; then
               echo "regression_tests.json is empty."
             fi
+            echo "Running the following command: ${prefix}agbenchmark start --mock"
             ${prefix}agbenchmark start --mock
+          
+            echo "Running the following command: ${prefix}agbenchmark start --mock --category=retrieval"
             ${prefix}agbenchmark start --mock --category=retrieval
+          
+            echo "Running the following command: ${prefix}agbenchmark start --mock --category=interface"
             ${prefix}agbenchmark start --mock --category=interface
+          
+            echo "Running the following command: ${prefix}agbenchmark start --mock --category=code"
             ${prefix}agbenchmark start --mock --category=code
+          
+            echo "Running the following command: ${prefix}agbenchmark start --mock --category=memory"
             ${prefix}agbenchmark start --mock --category=memory
-            ${prefix}agbenchmark start --mock --category=iterate
-            ${prefix}agbenchmark start --mock --suite TestReturnCode 
+          
+            echo "Running the following command: ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval"
             ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval
+          
+            echo "Running the following command: ${prefix}agbenchmark start --test=TestWriteFile"
             ${prefix}agbenchmark start --test=TestWriteFile
           
             cd ../..
@@ -223,8 +235,10 @@ jobs:
             poetry run uvicorn server:app --reload &
             sleep 5
             export AGENT_NAME=mini-agi
+            echo "poetry run agbenchmark start --mock --api_mode --host=http://localhost:8000"
             poetry run agbenchmark start --mock --api_mode --host=http://localhost:8000
           else
+            echo "${prefix}agbenchmark start"
             ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
           fi
 

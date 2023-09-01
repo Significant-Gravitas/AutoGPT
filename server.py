@@ -106,6 +106,7 @@ async def create_steps(task_id: str):
 
 @app.post("/agent/tasks")
 async def create_tasks(task: Task):
+    artifacts.clear()
     return {
         "input": "random",
         "additional_input": {},
