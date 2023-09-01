@@ -1,8 +1,4 @@
 {
-    "TestDebugSimpleTypoWithGuidance": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/verticals/code/d2.1_guided/data.json"
-    },
     "TestReadFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/abilities/read_file/data.json"
