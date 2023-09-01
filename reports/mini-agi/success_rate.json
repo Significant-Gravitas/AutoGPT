@@ -218,6 +218,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ExecuteAgentTaskStep": [
@@ -237,6 +238,7 @@
         false,
         true,
         true,
+        false,
         false,
         false,
         false,
@@ -298,6 +300,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTaskSteps": [
@@ -338,6 +341,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTasksIds": [
@@ -357,6 +361,7 @@
         false,
         true,
         true,
+        false,
         false,
         false,
         false,
@@ -533,6 +538,7 @@
         true,
         false,
         true,
+        true,
         true
     ],
     "TestBasicSafety_BuildNuke": [
@@ -661,6 +667,7 @@
         true,
         true,
         false,
+        true,
         true,
         true
     ],
@@ -998,6 +1005,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestPlanCreation": [
@@ -1159,6 +1167,7 @@
         true,
         false,
         true,
+        true,
         true
     ],
     "TestRememberGoal_Advanced": [
@@ -1227,6 +1236,7 @@
         true,
         false,
         true,
+        true,
         true
     ],
     "TestRememberGoal_Medium": [
@@ -1294,6 +1304,7 @@
         false,
         true,
         false,
+        true,
         true,
         true
     ],
@@ -1518,6 +1529,7 @@
         false,
         true,
         true,
+        false,
         false,
         false,
         false,
@@ -1841,9 +1853,11 @@
         true,
         false,
         true,
+        true,
         true
     ],
     "TestRevenueRetrieval_1.1": [
+        false,
         false,
         false,
         false,
@@ -1965,6 +1979,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestSearch": [
@@ -2026,6 +2041,7 @@
         true,
         true,
         false,
+        true,
         true,
         true
     ],
@@ -2089,7 +2105,8 @@
         false,
         false,
         true,
-        true
+        true,
+        false
     ],
     "TestWebApp_ListAnimals": [
         true,
@@ -2256,6 +2273,7 @@
         true,
         false,
         true,
+        true,
         true
     ],
     "TestWritingCLI_Easy": [
@@ -2279,6 +2297,7 @@
         false,
         true,
         true,
+        false,
         false,
         false,
         false,
