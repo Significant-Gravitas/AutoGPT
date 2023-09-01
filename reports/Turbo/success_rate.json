@@ -49,9 +49,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ExecuteAgentTaskStep": [
+        false,
         false,
         false,
         false,
@@ -81,6 +83,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTaskSteps": [
@@ -97,9 +100,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestAgentProtocol_ListAgentTasksIds": [
+        false,
         false,
         false,
         false,
@@ -141,6 +146,7 @@
         true,
         false,
         false,
+        false,
         false
     ],
     "TestDebugMultipleTypo": [
@@ -169,7 +175,8 @@
         true,
         true,
         true,
-        false
+        false,
+        true
     ],
     "TestDebugSimpleTypoWithoutGuidance": [
         false,
@@ -196,6 +203,7 @@
         true
     ],
     "TestPasswordGenerator_Easy": [
+        false,
         false,
         false,
         false,
@@ -249,6 +257,7 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestRememberGoal_Advanced": [
@@ -277,7 +286,8 @@
         false,
         true,
         true,
-        false
+        false,
+        true
     ],
     "TestRememberGoal_Medium": [
         false,
@@ -300,6 +310,7 @@
         false,
         false,
         false,
+        true,
         true,
         true,
         true,
@@ -344,6 +355,7 @@
         false
     ],
     "TestRetrieval3": [
+        false,
         false,
         false,
         false,
@@ -421,9 +433,11 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestRevenueRetrieval_1.1": [
+        false,
         false,
         false,
         false,
@@ -453,6 +467,7 @@
         false,
         false,
         false,
+        false,
         false
     ],
     "TestSearch": [
@@ -469,6 +484,7 @@
         true,
         false,
         false,
+        false,
         false
     ],
     "TestThreeSum": [
@@ -481,6 +497,7 @@
         false,
         false,
         false,
+        true,
         true,
         true,
         true,
@@ -537,9 +554,11 @@
         true,
         true,
         true,
+        true,
         true
     ],
     "TestWritingCLI_FileOrganizer": [
+        false,
         false,
         false,
         false,
