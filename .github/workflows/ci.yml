@@ -123,7 +123,6 @@ jobs:
           sudo dpkg -i google-chrome-stable_current_amd64.deb
           sudo apt-get install -f
 
-
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
         with:
@@ -198,7 +197,7 @@ jobs:
           pip install ../../dist/*.whl
 
           bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/b7ab4bc53e51d8ab29fff19ce5986ab7720970c6/mitmproxy.sh)" -s start
-          
+
           if [ "${GITHUB_EVENT_NAME}" == "pull_request" ] || [ "${{ github.event_name }}" == "push" ]; then            
             set +e # Ignore non-zero exit codes and continue execution
             echo "Running the following command: ${prefix}agbenchmark start --maintain --mock"
@@ -211,25 +210,25 @@ jobs:
             fi
             echo "Running the following command: ${prefix}agbenchmark start --mock"
             ${prefix}agbenchmark start --mock
-          
+
             echo "Running the following command: ${prefix}agbenchmark start --mock --category=retrieval"
             ${prefix}agbenchmark start --mock --category=retrieval
-          
+
             echo "Running the following command: ${prefix}agbenchmark start --mock --category=interface"
             ${prefix}agbenchmark start --mock --category=interface
-          
+
             echo "Running the following command: ${prefix}agbenchmark start --mock --category=code"
             ${prefix}agbenchmark start --mock --category=code
-          
+
             echo "Running the following command: ${prefix}agbenchmark start --mock --category=memory"
             ${prefix}agbenchmark start --mock --category=memory
-          
+
             echo "Running the following command: ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval"
             ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval
-          
+
             echo "Running the following command: ${prefix}agbenchmark start --test=TestWriteFile"
             ${prefix}agbenchmark start --test=TestWriteFile
-          
+
             cd ../..
             poetry install
             poetry run uvicorn server:app --reload &
@@ -285,7 +284,7 @@ jobs:
               git rebase origin/$current_branch
               if git push origin HEAD; then
                   echo "Success!"
-                  poetry run python send_to_googledrive.py || echo "Failed to upload to Google Drive"
+                  poetry run python reports/send_to_googledrive.py || echo "Failed to upload to Google Drive"
                   exit 0
               else
                   echo "Attempt $(($attempts + 1)) failed. Retrying..."

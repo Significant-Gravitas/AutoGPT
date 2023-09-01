@@ -29,6 +29,15 @@ creds_info = json.loads(creds_string)
 # Define the base directory containing JSON files
 base_dir = "reports"
 
+# Get the current working directory
+current_dir = os.getcwd()
+
+# Check if the current directory ends with 'reports'
+if current_dir.endswith("reports"):
+    base_dir = "/"
+else:
+    base_dir = "reports"
+
 # Create a list to store each row of data
 rows = []
 
