@@ -1,10 +1,17 @@
 /// Represents a task or topic the user wants to discuss with the agent.
 class Task {
   final String id;
+  final Map<String, dynamic>? additionalInput;
+  final List<String>? artifacts;
+
   String _title;
 
-  Task({required this.id, required String title})
-      : assert(title.isNotEmpty, 'Title cannot be empty'),
+  Task({
+    required this.id,
+    this.additionalInput,
+    this.artifacts,
+    required String title,
+  })  : assert(title.isNotEmpty, 'Title cannot be empty'),
         _title = title;
 
   String get title => _title;
@@ -17,11 +24,24 @@ class Task {
     }
   }
 
-  // Convert a Map (usually from JSON) to a Task object
+// Convert a Map (usually from JSON) to a Task object
   factory Task.fromMap(Map<String, dynamic> map) {
+    Map<String, dynamic>? additionalInput;
+    List<String>? artifacts;
+
+    if (map['additional_input'] != null) {
+      additionalInput = Map<String, dynamic>.from(map['additional_input']);
+    }
+
+    if (map['artifacts'] != null) {
+      artifacts = List<String>.from(map['artifacts'].map((e) => e.toString()));
+    }
+
     return Task(
-      id: map['id'],
-      title: map['title'],
+      id: map['task_id'],
+      additionalInput: additionalInput,
+      artifacts: artifacts,
+      title: map['input'],
     );
   }
 
