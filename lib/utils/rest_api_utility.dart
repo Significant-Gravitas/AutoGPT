@@ -15,15 +15,6 @@ class RestApiUtility {
     }
   }
 
-  Future<List<dynamic>> getList(String endpoint) async {
-    final response = await http.get(Uri.parse('$baseUrl/$endpoint'));
-    if (response.statusCode == 200) {
-      return json.decode(response.body);
-    } else {
-      throw Exception('Failed to load data');
-    }
-  }
-
   Future<Map<String, dynamic>> post(
       String endpoint, Map<String, dynamic> payload) async {
     final response = await http.post(
