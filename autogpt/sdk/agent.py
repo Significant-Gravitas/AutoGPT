@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
 
@@ -33,6 +34,21 @@ class Agent:
             title="Auto-GPT Forge",
             description="Modified version of The Agent Protocol.",
             version="v0.4",
+        )
+
+        # Add CORS middleware
+        origins = [
+            "http://localhost:5000",
+            "http://127.0.0.1:5000",
+            # Add any other origins you want to whitelist
+        ]
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
         )
 
         app.include_router(router)
