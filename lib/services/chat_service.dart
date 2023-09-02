@@ -39,10 +39,10 @@ class ChatService {
   ///
   /// [taskId] is the ID of the task.
   /// [currentPage] and [pageSize] are optional pagination parameters.
-  Future<List<dynamic>> listTaskSteps(String taskId,
+  Future<Map<String, dynamic>> listTaskSteps(String taskId,
       {int currentPage = 1, int pageSize = 10}) async {
     try {
-      return await api.getList(
+      return await api.get(
           'agent/tasks/$taskId/steps?current_page=$currentPage&page_size=$pageSize');
     } catch (e) {
       throw Exception('Failed to list task steps: $e');
