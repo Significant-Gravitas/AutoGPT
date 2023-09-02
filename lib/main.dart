@@ -10,8 +10,7 @@ import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
 // TODO: Update documentation throughout project for consistency
 void main() {
   // Initialize the RestApiUtility
-  final restApiUtility = RestApiUtility(
-      "https://ef4bfad4-dddd-4bad-a6d2-eb4c77e46759.mock.pstmn.io");
+  final restApiUtility = RestApiUtility("http://127.0.0.1:8000");
 
   // Initialize the services
   final chatService = ChatService(restApiUtility);
