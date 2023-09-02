@@ -1,4 +1,5 @@
 import 'package:auto_gpt_flutter_client/models/task.dart';
+import 'package:auto_gpt_flutter_client/models/task_response.dart';
 import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart';
 import 'package:auto_gpt_flutter_client/services/task_service.dart';
@@ -45,13 +46,9 @@ class TaskViewModel with ChangeNotifier {
   /// Fetches tasks from the data source.
   void fetchTasks() async {
     try {
-      final fetchedTasks = await _taskService.listAllTasks();
-      _tasks = fetchedTasks.map((taskMap) {
-        return Task(
-          id: taskMap['task_id'].toString(),
-          title: taskMap['output'].toString(),
-        );
-      }).toList();
+      final TaskResponse tasksResponse = await _taskService.listAllTasks();
+      _tasks = tasksResponse.tasks;
+
       notifyListeners();
       print("Tasks fetched successfully!");
     } catch (error) {

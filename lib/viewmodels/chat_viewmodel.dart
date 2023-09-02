@@ -38,8 +38,11 @@ class ChatViewModel with ChangeNotifier {
     }
     try {
       // Fetch task steps from the data source
-      final List<dynamic> stepsJsonList =
+      final Map<String, dynamic> stepsResponse =
           await _chatService.listTaskSteps(_currentTaskId!);
+
+      // Extract steps from the response
+      final List<dynamic> stepsJsonList = stepsResponse['steps'] ?? [];
 
       // Convert each map into a Step object
       List<Step> steps =
