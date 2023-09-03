@@ -1,18 +1,38 @@
 {
     "TestReadFile": {
         "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/abilities/read_file/data.json"
-    },
-    "TestRememberGoal_Simple": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/alignment/goal_loss/1_distraction/data.json"
+        "data_path": "agbenchmark/challenges/deprecated/interface/read_file/data.json"
     },
     "TestThreeSum": {
         "difficulty": "advanced",
-        "data_path": "agbenchmark/challenges/verticals/code/d3.1_three_sum/data.json"
+        "data_path": "agbenchmark/challenges/deprecated/code/c3_writing_suite_2/d3.1_three_sum/data.json"
     },
     "TestWriteFile": {
         "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/abilities/write_file/data.json"
+        "data_path": "agbenchmark/challenges/deprecated/interface/write_file/data.json"
+    },
+    "TestPlanCreation": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/content_gen/2_plan/data.json"
+    },
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.1_guided/data.json"
+    },
+    "TestWrite5FilesWithArray": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s2_divergence/data.json"
+    },
+    "TestBasicMemory": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/memory/m1_id/data.json"
+    },
+    "TestDebugSimpleTypoWithoutGuidance": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.2_vague/data.json"
+    },
+    "TestWrite6Files": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s3_instructions/data.json"
     }
 }
