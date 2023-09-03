@@ -10,28 +10,39 @@ import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
 
 // TODO: Update documentation throughout project for consistency
 void main() {
-  // Initialize the RestApiUtility
-  final restApiUtility = RestApiUtility("http://127.0.0.1:8000");
-
-  // Initialize the services
-  final chatService = ChatService(restApiUtility);
-  final taskService = TaskService(restApiUtility);
-
-  runApp(MyApp(
-    chatService: chatService,
-    taskService: taskService,
-  ));
+  runApp(
+    MultiProvider(
+      providers: [
+        Provider(
+          create: (context) => RestApiUtility("http://127.0.0.1:8000"),
+        ),
+        ProxyProvider<RestApiUtility, ChatService>(
+          update: (context, restApiUtility, chatService) =>
+              ChatService(restApiUtility),
+        ),
+        ProxyProvider<RestApiUtility, TaskService>(
+          update: (context, restApiUtility, taskService) =>
+              TaskService(restApiUtility),
+        ),
+        ChangeNotifierProxyProvider<RestApiUtility, ApiSettingsViewModel>(
+          create: (context) => ApiSettingsViewModel(
+              Provider.of<RestApiUtility>(context, listen: false)),
+          update: (context, restApiUtility, apiSettingsViewModel) =>
+              ApiSettingsViewModel(restApiUtility),
+        ),
+      ],
+      child: MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
-  final ChatService chatService;
-  final TaskService taskService;
-
-  const MyApp({Key? key, required this.chatService, required this.taskService})
-      : super(key: key);
-
   @override
   Widget build(BuildContext context) {
+    // Fetch services from providers
+    final chatService = Provider.of<ChatService>(context, listen: false);
+    final taskService = Provider.of<TaskService>(context, listen: false);
+
     return MaterialApp(
       title: 'AutoGPT Flutter Client',
       theme: ThemeData(
@@ -43,10 +54,9 @@ class MyApp extends StatelessWidget {
               create: (context) => ChatViewModel(chatService)),
           ChangeNotifierProvider(
               create: (context) => TaskViewModel(taskService)),
-          ChangeNotifierProvider(create: (context) => ApiSettingsViewModel()),
         ],
         child: const MainLayout(),
-      ), // Set MainLayout as the home screen of the app
+      ),
     );
   }
 }
