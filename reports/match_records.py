@@ -6,6 +6,8 @@ from gql.transport.aiohttp import AIOHTTPTransport
 from gql import gql, Client
 import os
 
+from agbenchmark.reports.processing.report_types import Report, SuiteTest
+
 
 def get_reports():
     # Initialize an empty list to store the report data
@@ -22,6 +24,8 @@ def get_reports():
 
     # Iterate over all agent directories in the reports directory
     for agent_name in os.listdir(reports_dir):
+        if agent_name is None:
+            continue
         agent_dir = os.path.join(reports_dir, agent_name)
 
         # Check if the item is a directory (an agent directory)
@@ -40,38 +44,51 @@ def get_reports():
                     # Open the report.json file
                     with open(report_file, "r") as f:
                         # Load the JSON data from the file
-                        report = json.load(f)
+                        json_data = json.load(f)
+                        report = Report.parse_obj(json_data)
 
-                        # Iterate over all tests in the report
-                        for test_name, test_data in report["tests"].items():
-                            try:
-                                # Append the relevant data to the report_data list
-                                if agent_name is not None:
-                                    report_data.append(
-                                        {
-                                            "agent": agent_name.lower(),
-                                            "benchmark_start_time": report[
-                                                "benchmark_start_time"
-                                            ],
-                                            "challenge": test_name,
-                                            "categories": ", ".join(
-                                                test_data["category"]
-                                            ),
-                                            "task": test_data["task"],
-                                            "success": test_data["metrics"]["success"],
-                                            "difficulty": test_data["metrics"][
-                                                "difficulty"
-                                            ],
-                                            "success_%": test_data["metrics"][
-                                                "success_%"
-                                            ],
-                                            "run_time": test_data["metrics"][
-                                                "run_time"
-                                            ],
-                                        }
-                                    )
-                            except KeyError:
-                                pass
+                        for test_name, test_data in report.tests.items():
+                            test_json = {
+                                "agent": agent_name.lower(),
+                                "benchmark_start_time": report.benchmark_start_time
+                            }
+
+                            if isinstance(test_data, SuiteTest):
+                                if test_data.category: # this means it's a same task test
+                                    test_json["challenge"] = test_name
+                                    test_json["attempted"] = test_data.tests[list(test_data.tests.keys())[0]].metrics.attempted
+                                    test_json["categories"] = ", ".join(test_data.category)
+                                    test_json["task"] = test_data.task
+                                    test_json["success"] = test_data.metrics.percentage
+                                    test_json["difficulty"] = test_data.metrics.highest_difficulty
+                                    test_json["success_%"] = test_data.metrics.percentage
+                                    test_json["run_time"] = test_data.metrics.run_time
+                                    test_json["is_regression"] = test_data.tests[list(test_data.tests.keys())[0]].is_regression
+                                else: # separate tasks in 1 suite
+                                    for suite_test_name, suite_data in test_data.tests.items():
+                                        test_json["challenge"] = suite_test_name
+                                        test_json["attempted"] = suite_data.metrics.attempted
+                                        test_json["categories"] = ", ".join(suite_data.category)
+                                        test_json["task"] = suite_data.task
+                                        test_json["success"] = 100.0 if suite_data.metrics.success else 0
+                                        test_json["difficulty"] = suite_data.metrics.difficulty
+                                        test_json["success_%"] = suite_data.metrics.success_percent
+                                        test_json["run_time"] = suite_data.metrics.run_time
+                                        test_json["is_regression"] = suite_data.is_regression
+                                
+                            else:
+                                test_json["challenge"] = test_name
+                                test_json["attempted"] = test_data.metrics.attempted
+                                test_json["categories"] = ", ".join(test_data.category)
+                                test_json["task"] = test_data.task
+                                test_json["success"] = 100.0 if test_data.metrics.success else 0
+                                test_json["difficulty"] = test_data.metrics.difficulty
+                                test_json["success_%"] = test_data.metrics.success_percent
+                                test_json["run_time"] = test_data.metrics.run_time
+                                test_json["is_regression"] = test_data.is_regression
+                                
+                            report_data.append(test_json)
+                                
     return pd.DataFrame(report_data)
 
 
@@ -100,6 +117,7 @@ def get_helicone_data():
                     limit: $limit
                     offset: $offset
                 ) {
+                    costUSD
                     prompt
                     properties{
                         name
@@ -135,10 +153,12 @@ def get_helicone_data():
                     {
                         "createdAt": item["createdAt"],
                         "agent": properties.get("agent"),
+                        "costUSD": item["costUSD"],
                         "job_id": properties.get("job_id"),
                         "challenge": properties.get("challenge"),
                         "benchmark_start_time": properties.get("benchmark_start_time"),
                         "prompt": item["prompt"],
+                        "response": item["response"],
                         "model": item["requestBody"].get("model"),
                         "request": item["requestBody"].get("messages"),
                     }
@@ -158,14 +178,14 @@ def get_helicone_data():
     return df
 
 
-if os.path.exists("reports_raw.pkl") and os.path.exists("helicone_raw.pkl"):
-    reports_df = pd.read_pickle("reports_raw.pkl")
-    helicone_df = pd.read_pickle("helicone_raw.pkl")
+if os.path.exists("raw_reports.pkl") and os.path.exists("raw_helicone.pkl"):
+    reports_df = pd.read_pickle("raw_reports.pkl")
+    helicone_df = pd.read_pickle("raw_helicone.pkl")
 else:
     reports_df = get_reports()
-    reports_df.to_pickle("reports_raw.pkl")
+    reports_df.to_pickle("raw_reports.pkl")
     helicone_df = get_helicone_data()
-    helicone_df.to_pickle("helicone_raw.pkl")
+    helicone_df.to_pickle("raw_helicone.pkl")
 
 
 def try_formats(date_str):
@@ -199,13 +219,20 @@ assert pd.api.types.is_datetime64_any_dtype(
 
 reports_df["report_time"] = reports_df["benchmark_start_time"]
 
-df = pd.merge_asof(
-    helicone_df.sort_values("benchmark_start_time"),
-    reports_df.sort_values("benchmark_start_time"),
-    left_on="benchmark_start_time",
-    right_on="benchmark_start_time",
-    by=["agent", "challenge"],
-    direction="backward",
+# df = pd.merge_asof(
+#     helicone_df.sort_values("benchmark_start_time"),
+#     reports_df.sort_values("benchmark_start_time"),
+#     left_on="benchmark_start_time",
+#     right_on="benchmark_start_time",
+#     by=["agent", "challenge"],
+#     direction="backward",
+# )
+
+df = pd.merge(
+    helicone_df,
+    reports_df,
+    on=["benchmark_start_time", "agent", "challenge"],
+    how="left",
 )
 
 df.to_pickle("df.pkl")
