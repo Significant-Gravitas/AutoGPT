@@ -106,6 +106,7 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                         child: JsonCodeSnippetView(
                           // JSON code snippet view
                           jsonString:
+                              // TODO: Include the appropriate string
                               "{\"input\":\"Washington\",\"additional_input\":{\"file_to_refactor\":\"models.py\"},\"task_id\":\"50da533e-3904-4401-8a07-c49adf88b5eb\",\"step_id\":\"6bb1801a-fd80-45e8-899a-4dd723cc602e\",\"name\":\"Writetofile\",\"status\":\"created\",\"output\":\"Iamgoingtousethewrite_to_filecommandandwriteWashingtontoafilecalledoutput.txt<write_to_file('output.txt','Washington')\",\"additional_output\":{\"tokens\":7894,\"estimated_cost\":\"0,24\"},\"artifacts\":[],\"is_last\":false}",
                         ),
                       ),
