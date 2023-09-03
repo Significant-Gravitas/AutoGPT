@@ -1,26 +1,46 @@
 {
     "TestBasicMemory": {
         "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/memory/m1_id/data.json"
-    },
-    "TestReadFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/abilities/read_file/data.json"
-    },
-    "TestRememberMultipleIds": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/memory/m2_multiple/data.json"
-    },
-    "TestThreeSum": {
-        "difficulty": "advanced",
-        "data_path": "agbenchmark/challenges/verticals/code/d3.1_three_sum/data.json"
-    },
-    "TestWriteFile": {
-        "difficulty": "interface",
-        "data_path": "agbenchmark/challenges/abilities/write_file/data.json"
+        "data_path": "agbenchmark/challenges/deprecated/memory/m1_id/data.json"
     },
     "TestDebugSimpleTypoWithGuidance": {
         "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/verticals/code/d2.1_guided/data.json"
+        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.1_guided/data.json"
+    },
+    "TestReadFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/read_file/data.json"
+    },
+    "TestRememberMultipleIds": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/memory/m2_multiple/data.json"
+    },
+    "TestThreeSum": {
+        "difficulty": "advanced",
+        "data_path": "agbenchmark/challenges/deprecated/code/c3_writing_suite_2/d3.1_three_sum/data.json"
+    },
+    "TestWriteFile": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/write_file/data.json"
+    },
+    "TestSearch": {
+        "difficulty": "interface",
+        "data_path": "agbenchmark/challenges/deprecated/interface/search/data.json"
+    },
+    "TestReturnCode_Simple": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/code/c1_writing_suite_1/1_return/data.json"
+    },
+    "TestBasicRetrieval": {
+        "difficulty": "basic",
+        "data_path": "agbenchmark/challenges/deprecated/retrieval/r1_book_price/data.json"
+    },
+    "TestReturnCode_Write": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/code/c1_writing_suite_1/2_write/data.json"
+    },
+    "TestFunctionCodeGeneration": {
+        "difficulty": "advanced",
+        "data_path": "agbenchmark/challenges/deprecated/code/c3_writing_suite_2/d3_two_sum/data.json"
     }
 }
