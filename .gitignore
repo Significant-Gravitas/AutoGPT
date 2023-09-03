@@ -1,8 +1,7 @@
 agbenchmark/workspace/
 backend/backend_stdout.txt
-reports/df.pkl
-reports/df_backwards.pkl
-reports/reports_raw.pkl
+reports/df*.pkl
+reports/raw*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
