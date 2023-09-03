@@ -2,12 +2,16 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class RestApiUtility {
-  final String baseUrl;
+  String _baseUrl;
 
-  RestApiUtility(this.baseUrl);
+  RestApiUtility(this._baseUrl);
+
+  void updateBaseURL(String newBaseURL) {
+    _baseUrl = newBaseURL;
+  }
 
   Future<Map<String, dynamic>> get(String endpoint) async {
-    final response = await http.get(Uri.parse('$baseUrl/$endpoint'));
+    final response = await http.get(Uri.parse('$_baseUrl/$endpoint'));
     if (response.statusCode == 200) {
       return json.decode(response.body);
     } else {
@@ -18,7 +22,7 @@ class RestApiUtility {
   Future<Map<String, dynamic>> post(
       String endpoint, Map<String, dynamic> payload) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/$endpoint'),
+      Uri.parse('$_baseUrl/$endpoint'),
       body: json.encode(payload),
       headers: {"Content-Type": "application/json"},
     );
