@@ -45,7 +45,7 @@ class _ChatViewState extends State<ChatView> {
                 if (chat.messageType == MessageType.user) {
                   return UserMessageTile(message: chat.message);
                 } else {
-                  return AgentMessageTile(message: chat.message);
+                  return AgentMessageTile(chat: chat);
                 }
               },
             ),

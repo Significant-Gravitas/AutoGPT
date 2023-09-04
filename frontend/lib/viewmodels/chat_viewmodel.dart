@@ -54,7 +54,9 @@ class ChatViewModel with ChangeNotifier {
       // Generate current timestamp
       DateTime currentTimestamp = DateTime.now();
 
-      for (Step step in steps) {
+      for (int i = 0; i < steps.length; i++) {
+        Step step = steps[i];
+
         // Create a Chat object for 'input' if it exists and is not empty
         if (step.input.isNotEmpty) {
           chats.add(Chat(
@@ -73,6 +75,8 @@ class ChatViewModel with ChangeNotifier {
           message: step.output,
           timestamp: currentTimestamp,
           messageType: MessageType.agent,
+          jsonResponse:
+              stepsJsonList[i], // Include the specific step's JSON here
         ));
       }
 
@@ -118,12 +122,12 @@ class ChatViewModel with ChangeNotifier {
 
       // Create a Chat object for the agent message
       final agentChat = Chat(
-        id: executedStep.stepId,
-        taskId: executedStep.taskId,
-        message: executedStep.output,
-        timestamp: DateTime.now(),
-        messageType: MessageType.agent,
-      );
+          id: executedStep.stepId,
+          taskId: executedStep.taskId,
+          message: executedStep.output,
+          timestamp: DateTime.now(),
+          messageType: MessageType.agent,
+          jsonResponse: executedStepResponse);
 
       // Add the user and agent chats to the list
       _chats.add(userChat);
