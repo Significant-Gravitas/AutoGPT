@@ -53,6 +53,8 @@ class TaskListTile extends StatelessWidget {
                 Expanded(
                   child: Text(
                     task.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.black),
                   ),
                 ),
