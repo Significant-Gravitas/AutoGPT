@@ -1,0 +1,37 @@
+{
+    "command": "localhost:8000 --mock --test=TestWriteFile",
+    "benchmark_git_commit_sha": null,
+    "agent_git_commit_sha": "git@github.com:Significant-Gravitas/Auto-GPT-Benchmarks/tree/595e04def14655e9a4316c6de8d3a5cd49087621",
+    "completion_time": "2023-08-31T11:33:06+00:00",
+    "benchmark_start_time": "2023-08-31T11:33:06+00:00",
+    "metrics": {
+        "run_time": "0.51 seconds",
+        "highest_difficulty": "No successful tests",
+        "total_cost": null
+    },
+    "tests": {
+        "TestWriteFile": {
+            "data_path": "agbenchmark/challenges/abilities/write_file/data.json",
+            "is_regression": false,
+            "category": [
+                "interface"
+            ],
+            "task": "Write the word 'Washington' to a .txt file",
+            "answer": "The word 'Washington', printed to a .txt file named anything",
+            "description": "Tests the agents ability to write to a file",
+            "metrics": {
+                "difficulty": "interface",
+                "success": false,
+                "attempted": true,
+                "fail_reason": "1 validation error for Step\noutput\n  str type expected (type=type_error.str)",
+                "success_%": 0,
+                "cost": null,
+                "run_time": "0.125 seconds"
+            },
+            "reached_cutoff": false
+        }
+    },
+    "config": {
+        "workspace": "agbenchmark/workspace"
+    }
+}
