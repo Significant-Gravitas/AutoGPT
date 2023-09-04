@@ -82,6 +82,7 @@ class _TaskViewState extends State<TaskView> {
 
                     print('Task ${task.title} delete button tapped');
                   },
+                  selected: task.id == widget.viewModel.selectedTask?.id,
                 );
               },
             ),

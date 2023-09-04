@@ -1,26 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/models/task.dart';
 
-class TaskListTile extends StatefulWidget {
+class TaskListTile extends StatelessWidget {
   final Task task;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final bool selected;
 
   const TaskListTile({
     Key? key,
     required this.task,
     required this.onTap,
     required this.onDelete,
+    this.selected = false,
   }) : super(key: key);
 
-  @override
-  _TaskListTileState createState() => _TaskListTileState();
-}
-
-class _TaskListTileState extends State<TaskListTile> {
-  bool _isSelected = false;
-
-  @override
   Widget build(BuildContext context) {
     // Determine the width of the TaskView
     double taskViewWidth = MediaQuery.of(context).size.width;
@@ -31,10 +25,7 @@ class _TaskListTileState extends State<TaskListTile> {
 
     return GestureDetector(
       onTap: () {
-        setState(() {
-          _isSelected = !_isSelected;
-        });
-        widget.onTap();
+        onTap();
       },
       child: Material(
         // Use a transparent color to avoid any unnecessary color overlay
@@ -48,7 +39,7 @@ class _TaskListTileState extends State<TaskListTile> {
             height: 50,
             decoration: BoxDecoration(
               // Use conditional operator to determine background color based on selection
-              color: _isSelected ? Colors.grey[300] : Colors.white,
+              color: selected ? Colors.grey[300] : Colors.white,
               borderRadius: BorderRadius.circular(8.0),
             ),
             child: Row(
@@ -61,16 +52,16 @@ class _TaskListTileState extends State<TaskListTile> {
                 // Task title
                 Expanded(
                   child: Text(
-                    widget.task.title,
+                    task.title,
                     style: const TextStyle(color: Colors.black),
                   ),
                 ),
                 // If the task is selected, show a delete icon
-                if (_isSelected)
+                if (selected)
                   IconButton(
                     splashRadius: 0.1,
                     icon: const Icon(Icons.close, color: Colors.black),
-                    onPressed: widget.onDelete,
+                    onPressed: onDelete,
                   ),
               ],
             ),
