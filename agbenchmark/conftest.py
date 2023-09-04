@@ -24,6 +24,7 @@ GLOBAL_TIMEOUT = (
 )
 
 pytest_plugins = ["agbenchmark.utils.dependencies"]
+collect_ignore = ["challenges"]
 
 
 def resolve_workspace(workspace: str) -> str:
