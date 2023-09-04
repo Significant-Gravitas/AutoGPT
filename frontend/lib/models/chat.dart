@@ -7,6 +7,7 @@ class Chat {
   final String message;
   final DateTime timestamp;
   final MessageType messageType;
+  final Map<String, dynamic>? jsonResponse;
 
   Chat({
     required this.id,
@@ -14,6 +15,7 @@ class Chat {
     required this.message,
     required this.timestamp,
     required this.messageType,
+    this.jsonResponse,
   });
 
   // Convert a Map (usually from JSON) to a Chat object
