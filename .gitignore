@@ -2,3 +2,4 @@ agbenchmark
 .vscode
 .pytest_cache
 .benchmarks
+*.pkl
