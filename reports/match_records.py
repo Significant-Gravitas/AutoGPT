@@ -50,45 +50,78 @@ def get_reports():
                         for test_name, test_data in report.tests.items():
                             test_json = {
                                 "agent": agent_name.lower(),
-                                "benchmark_start_time": report.benchmark_start_time
+                                "benchmark_start_time": report.benchmark_start_time,
                             }
 
                             if isinstance(test_data, SuiteTest):
-                                if test_data.category: # this means it's a same task test
+                                if (
+                                    test_data.category
+                                ):  # this means it's a same task test
                                     test_json["challenge"] = test_name
-                                    test_json["attempted"] = test_data.tests[list(test_data.tests.keys())[0]].metrics.attempted
-                                    test_json["categories"] = ", ".join(test_data.category)
+                                    test_json["attempted"] = test_data.tests[
+                                        list(test_data.tests.keys())[0]
+                                    ].metrics.attempted
+                                    test_json["categories"] = ", ".join(
+                                        test_data.category
+                                    )
                                     test_json["task"] = test_data.task
                                     test_json["success"] = test_data.metrics.percentage
-                                    test_json["difficulty"] = test_data.metrics.highest_difficulty
-                                    test_json["success_%"] = test_data.metrics.percentage
+                                    test_json[
+                                        "difficulty"
+                                    ] = test_data.metrics.highest_difficulty
+                                    test_json[
+                                        "success_%"
+                                    ] = test_data.metrics.percentage
                                     test_json["run_time"] = test_data.metrics.run_time
-                                    test_json["is_regression"] = test_data.tests[list(test_data.tests.keys())[0]].is_regression
-                                else: # separate tasks in 1 suite
-                                    for suite_test_name, suite_data in test_data.tests.items():
+                                    test_json["is_regression"] = test_data.tests[
+                                        list(test_data.tests.keys())[0]
+                                    ].is_regression
+                                else:  # separate tasks in 1 suite
+                                    for (
+                                        suite_test_name,
+                                        suite_data,
+                                    ) in test_data.tests.items():
                                         test_json["challenge"] = suite_test_name
-                                        test_json["attempted"] = suite_data.metrics.attempted
-                                        test_json["categories"] = ", ".join(suite_data.category)
+                                        test_json[
+                                            "attempted"
+                                        ] = suite_data.metrics.attempted
+                                        test_json["categories"] = ", ".join(
+                                            suite_data.category
+                                        )
                                         test_json["task"] = suite_data.task
-                                        test_json["success"] = 100.0 if suite_data.metrics.success else 0
-                                        test_json["difficulty"] = suite_data.metrics.difficulty
-                                        test_json["success_%"] = suite_data.metrics.success_percent
-                                        test_json["run_time"] = suite_data.metrics.run_time
-                                        test_json["is_regression"] = suite_data.is_regression
-                                
+                                        test_json["success"] = (
+                                            100.0 if suite_data.metrics.success else 0
+                                        )
+                                        test_json[
+                                            "difficulty"
+                                        ] = suite_data.metrics.difficulty
+                                        test_json[
+                                            "success_%"
+                                        ] = suite_data.metrics.success_percent
+                                        test_json[
+                                            "run_time"
+                                        ] = suite_data.metrics.run_time
+                                        test_json[
+                                            "is_regression"
+                                        ] = suite_data.is_regression
+
                             else:
                                 test_json["challenge"] = test_name
                                 test_json["attempted"] = test_data.metrics.attempted
                                 test_json["categories"] = ", ".join(test_data.category)
                                 test_json["task"] = test_data.task
-                                test_json["success"] = 100.0 if test_data.metrics.success else 0
+                                test_json["success"] = (
+                                    100.0 if test_data.metrics.success else 0
+                                )
                                 test_json["difficulty"] = test_data.metrics.difficulty
-                                test_json["success_%"] = test_data.metrics.success_percent
+                                test_json[
+                                    "success_%"
+                                ] = test_data.metrics.success_percent
                                 test_json["run_time"] = test_data.metrics.run_time
                                 test_json["is_regression"] = test_data.is_regression
-                                
+
                             report_data.append(test_json)
-                                
+
     return pd.DataFrame(report_data)
 
 

@@ -126,6 +126,18 @@ class Challenge(ABC):
                 else:
                     with open(file_path, "r") as f:
                         files_contents.append(f.read())
+        else:
+            if ground.eval.type == "pytest":
+                result = subprocess.run(
+                    [sys.executable, "-m", "pytest"],
+                    cwd=os.path.abspath(workspace),
+                    capture_output=True,
+                    text=True,
+                )
+                if "error" in result.stderr or result.returncode != 0:
+                    print(result.stderr)
+                    assert False, result.stderr
+                files_contents.append(f"Output: {result.stdout}\n")
 
         return files_contents
 

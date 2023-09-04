@@ -75,4 +75,5 @@ def gamePlay():
     if winner(board) == 0:
         print("Draw")
 
-gamePlay()
+if __name__ == '__main__':
+    gamePlay()
