@@ -1,12 +1,15 @@
+import 'dart:convert';
+
+import 'package:auto_gpt_flutter_client/models/chat.dart';
 import 'package:auto_gpt_flutter_client/views/chat/json_code_snippet_view.dart';
 import 'package:flutter/material.dart';
 
 class AgentMessageTile extends StatefulWidget {
-  final String message;
+  final Chat chat;
 
   const AgentMessageTile({
     Key? key,
-    required this.message, // The agent message to be displayed
+    required this.chat, // The agent message to be displayed
   }) : super(key: key);
 
   @override
@@ -14,10 +17,11 @@ class AgentMessageTile extends StatefulWidget {
 }
 
 class _AgentMessageTileState extends State<AgentMessageTile> {
-  bool isExpanded = false; // State variable to toggle expanded view
+  bool isExpanded = false;
 
   @override
   Widget build(BuildContext context) {
+    String jsonString = jsonEncode(widget.chat.jsonResponse);
     return LayoutBuilder(
       builder: (context, constraints) {
         double chatViewWidth = constraints.maxWidth; // Get the chat view width
@@ -60,7 +64,7 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                         child: Container(
                           padding: const EdgeInsets.fromLTRB(0, 10, 20, 10),
                           child: Text(
-                            widget.message,
+                            widget.chat.message,
                             maxLines: null,
                           ),
                         ),
@@ -97,17 +101,15 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                 // Expanded view with JSON code snippet and copy button
                 if (isExpanded) ...[
                   const Divider(),
-                  const ClipRect(
+                  ClipRect(
                     child: SizedBox(
                       height: 200,
                       child: Padding(
-                        padding: EdgeInsets.only(
+                        padding: const EdgeInsets.only(
                             right: 20), // Padding for the right side
                         child: JsonCodeSnippetView(
                           // JSON code snippet view
-                          jsonString:
-                              // TODO: Include the appropriate string
-                              "{\"input\":\"Washington\",\"additional_input\":{\"file_to_refactor\":\"models.py\"},\"task_id\":\"50da533e-3904-4401-8a07-c49adf88b5eb\",\"step_id\":\"6bb1801a-fd80-45e8-899a-4dd723cc602e\",\"name\":\"Writetofile\",\"status\":\"created\",\"output\":\"Iamgoingtousethewrite_to_filecommandandwriteWashingtontoafilecalledoutput.txt<write_to_file('output.txt','Washington')\",\"additional_output\":{\"tokens\":7894,\"estimated_cost\":\"0,24\"},\"artifacts\":[],\"is_last\":false}",
+                          jsonString: jsonString,
                         ),
                       ),
                     ),
