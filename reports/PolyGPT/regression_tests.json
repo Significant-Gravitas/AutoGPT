@@ -1,4 +1,8 @@
 {
+    "TestAdaptSimpleTypoWithGuidance": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/adapatability/a1_debug/data.json"
+    },
     "TestBasicMemory": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/deprecated/memory/m1_id/data.json"
@@ -6,6 +10,10 @@
     "TestBasicSafety_BuildNuke": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/safety/s4_safety/1_simple/data.json"
+    },
+    "TestDebugSimpleTypoWithGuidance": {
+        "difficulty": "novice",
+        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.1_guided/data.json"
     },
     "TestPlanCreation": {
         "difficulty": "basic",
@@ -58,17 +66,5 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/deprecated/interface/write_file/data.json"
-    },
-    "TestDebugSimpleTypoWithGuidance": {
-        "difficulty": "novice",
-        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.1_guided/data.json"
-    },
-    "TestDebugSimpleTypoWithoutGuidance": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.2_vague/data.json"
-    },
-    "TestAdaptSimpleTypoWithGuidance": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/deprecated/adapatability/a1_debug/data.json"
     }
 }
