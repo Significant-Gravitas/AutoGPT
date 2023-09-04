@@ -53,14 +53,14 @@ class MainLayout extends StatelessWidget {
             case 0:
               returnValue = CupertinoTabView(builder: (context) {
                 return CupertinoPageScaffold(
-                  child: TaskView(viewModel: taskViewModel),
+                  child: SafeArea(child: TaskView(viewModel: taskViewModel)),
                 );
               });
               break;
             case 1:
               returnValue = CupertinoTabView(builder: (context) {
                 return CupertinoPageScaffold(
-                  child: ChatView(viewModel: chatViewModel),
+                  child: SafeArea(child: ChatView(viewModel: chatViewModel)),
                 );
               });
               break;
