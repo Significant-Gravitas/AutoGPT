@@ -6,6 +6,6 @@ Welcome to the future of agent development! This repository is your comprehensiv
 
 - The `forge` directory: Here lies the blueprint for your next innovation. This agent template has all the boilerplate code taken care of, allowing you to focus on what matters most - building out the next game-changing agent. It's not just a starting point, it's a launchpad for your ideas.
 
-- The `gui` directory: This is your command center. The Auto-GPT frontend is the tool for interacting with your agent, providing a user-friendly interface to control and monitor your creations.
+- The `frontend` directory: This is your command center. The Auto-GPT frontend is the tool for interacting with your agent, providing a user-friendly interface to control and monitor your creations.
 
 Embark on your journey with Auto-GPT and be a part of the AI revolution!
