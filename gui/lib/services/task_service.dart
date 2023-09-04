@@ -1,10 +1,12 @@
 import 'package:auto_gpt_flutter_client/models/task_request_body.dart';
 import 'package:auto_gpt_flutter_client/models/task_response.dart';
 import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service class for performing task-related operations.
 class TaskService {
   final RestApiUtility api;
+  List<String> _deletedTaskIds = [];
 
   TaskService(this.api);
 
@@ -58,5 +60,22 @@ class TaskService {
     } catch (e) {
       throw Exception('Failed to list task artifacts: $e');
     }
+  }
+
+  Future<void> loadDeletedTasks() async {
+    _deletedTaskIds =
+        (await SharedPreferences.getInstance()).getStringList('deletedTasks') ??
+            [];
+    print("Deleted tasks fetched successfully!");
+  }
+
+  void saveDeletedTask(String taskId) {
+    _deletedTaskIds.add(taskId);
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setStringList('deletedTasks', _deletedTaskIds));
+  }
+
+  bool isTaskDeleted(String taskId) {
+    return _deletedTaskIds.contains(taskId);
   }
 }

@@ -42,6 +42,7 @@ class MyApp extends StatelessWidget {
     // Fetch services from providers
     final chatService = Provider.of<ChatService>(context, listen: false);
     final taskService = Provider.of<TaskService>(context, listen: false);
+    taskService.loadDeletedTasks();
 
     return MaterialApp(
       title: 'AutoGPT Flutter Client',

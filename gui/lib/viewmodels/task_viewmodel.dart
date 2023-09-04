@@ -35,19 +35,21 @@ class TaskViewModel with ChangeNotifier {
   }
 
   /// Deletes a task.
-  void deleteTask(String id) async {
-    // TODO: Protocol doesn't support deleting tasks, we need to manually manage this list
-
-    // Update local tasks list and notify listeners
-    _tasks.removeWhere((task) => task.id == id);
+  void deleteTask(String taskId) {
+    _taskService.saveDeletedTask(taskId);
+    tasks.removeWhere((task) => task.id == taskId);
     notifyListeners();
+    print("Tasks deleted successfully!");
   }
 
   /// Fetches tasks from the data source.
   void fetchTasks() async {
     try {
       final TaskResponse tasksResponse = await _taskService.listAllTasks();
-      _tasks = tasksResponse.tasks;
+      final tasksFromApi = tasksResponse.tasks;
+      _tasks = tasksFromApi
+          .where((task) => !_taskService.isTaskDeleted(task.id))
+          .toList();
 
       notifyListeners();
       print("Tasks fetched successfully!");
