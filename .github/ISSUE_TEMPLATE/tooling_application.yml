@@ -1,0 +1,77 @@
+name: Tooling Application
+description: Apply to have your tooling part of the Agent Forge
+title: "[Tooling Application]: "
+labels: ["tooling", "review"]
+assignees:
+  - swiftyos, merwanehamadi
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for your interest in contributing to the Agent Forge! Please fill out the details below for your tooling application.
+  - type: input
+    id: tooling-name
+    attributes:
+      label: Name of the Tooling
+      placeholder: ex. AgentEnhancer3000
+    validations:
+      required: true
+  - type: input
+    id: tooling-repo
+    attributes:
+      label: Repository URL
+      placeholder: ex. https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks
+    validations:
+      required: true
+  - type: textarea
+    id: tooling-description
+    attributes:
+      label: Description
+      description: Briefly explain what your tooling does.
+      placeholder: Provide a short description of your tooling.
+    validations:
+      required: true
+  - type: textarea
+    id: utility
+    attributes:
+      label: Utility
+      description: How does your tooling help speed up the development of agents? Please provide specific examples or use-cases.
+      placeholder: Describe the utility of your tooling.
+    validations:
+      required: true
+  - type: textarea
+    id: competitive-analysis
+    attributes:
+      label: Competitive Analysis
+      description: List any other tools similar to yours and the benefits your tooling offers over the similar tools.
+      placeholder: Detail your tooling's advantages and similar tools.
+    validations:
+      required: true
+  - type: checkboxes
+    id: pr-submission
+    attributes:
+      label: PR Submission
+      description: Are you willing to create a PR (Pull Request) adding your tooling to the Agent Forge?
+      options:
+        - label: Yes, I am willing.
+          required: true
+        - label: No, I am not willing.
+          required: true
+  - type: checkboxes
+    id: tutorial
+    attributes:
+      label: Tutorial
+      description: Are you willing to write a tutorial showing how to leverage your tooling while creating an agent for the forge?
+      options:
+        - label: Yes, I am willing.
+          required: true
+        - label: No, I am not willing.
+          required: true
+  - type: textarea
+    id: additional-details
+    attributes:
+      label: Additional Details
+      description: Please provide any other details or information that you'd like us to know about your tooling.
+      placeholder: Any additional notes or comments.
+    validations:
+      required: false

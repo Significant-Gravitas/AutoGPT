@@ -1,0 +1,21 @@
+{
+  "name": "TestAgentProtocol_ListAgentTaskSteps",
+  "category": ["interface"],
+  "task": "",
+  "dependencies": ["TestAgentProtocol_GetAgentTask"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "The agent should be able to list the steps an agent took during his task.",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "interface",
+    "description": "Tests the agent's ability to to list the steps an agent took during his task",
+    "side_effects": [""]
+  }
+}

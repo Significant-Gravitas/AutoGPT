@@ -1,0 +1,21 @@
+{
+  "name": "TestAgentProtocol_ExecuteAgentTaskStep",
+  "category": ["interface"],
+  "task": "",
+  "dependencies": ["TestAgentProtocol_GetAgentTask"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "The agent should be able to execute the next step in the task.",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "interface",
+    "description": "Tests the agent's ability to to execute the next step in the task.",
+    "side_effects": [""]
+  }
+}

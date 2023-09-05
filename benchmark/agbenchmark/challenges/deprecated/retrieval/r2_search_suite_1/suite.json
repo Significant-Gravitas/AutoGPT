@@ -1,0 +1,8 @@
+{
+  "same_task": true,
+  "prefix": "TestRevenueRetrieval",
+  "dependencies": ["TestBasicRetrieval"],
+  "cutoff": 60,
+  "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion).",
+  "shared_category": ["retrieval"]
+}
