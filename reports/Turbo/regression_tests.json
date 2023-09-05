@@ -22,9 +22,5 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/deprecated/interface/write_file/data.json"
-    },
-    "TestReturnCode_Simple": {
-        "difficulty": "basic",
-        "data_path": "agbenchmark/challenges/deprecated/code/c1_writing_suite_1/1_return/data.json"
     }
 }
