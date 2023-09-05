@@ -14,7 +14,7 @@
     }
   },
   "info": {
-    "difficulty": "advanced",
+    "difficulty": "basic",
     "description": "Tests ability for the agent to create the three_sum function.",
     "side_effects": []
   }
