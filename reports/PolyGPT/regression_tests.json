@@ -1,8 +1,4 @@
 {
-    "TestAdaptSimpleTypoWithGuidance": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/deprecated/adapatability/a1_debug/data.json"
-    },
     "TestBasicMemory": {
         "difficulty": "basic",
         "data_path": "agbenchmark/challenges/deprecated/memory/m1_id/data.json"
@@ -42,14 +38,6 @@
     "TestRememberMultipleIds": {
         "difficulty": "novice",
         "data_path": "agbenchmark/challenges/deprecated/memory/m2_multiple/data.json"
-    },
-    "TestRememberMultipleIdsWithNoise": {
-        "difficulty": "intermediate",
-        "data_path": "agbenchmark/challenges/deprecated/memory/m3_noise/data.json"
-    },
-    "TestRememberMultiplePhrasesWithNoise": {
-        "difficulty": "advanced",
-        "data_path": "agbenchmark/challenges/deprecated/memory/m4_phrases/data.json"
     },
     "TestSearch": {
         "difficulty": "interface",
