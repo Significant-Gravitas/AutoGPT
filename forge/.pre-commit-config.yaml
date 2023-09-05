@@ -31,12 +31,13 @@ repos:
     hooks:
       - id: autoflake
         name: autoflake
-        entry: autoflake --in-place --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt
+        entry: autoflake --in-place --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring forge/autogpt
         language: python
         types: [ python ]
-      - id: pytest-check
-        name: pytest-check
-        entry: pytest 
-        language: system
-        pass_filenames: false
-        always_run: true
+      # Mono repo has bronken this TODO: fix
+      # - id: pytest-check
+      #   name: pytest-check
+      #   entry: pytest 
+      #   language: system
+      #   pass_filenames: false
+      #   always_run: true
