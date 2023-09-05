@@ -1,5 +1,4 @@
 import argparse
-import sys
 import base64
 
 URL_MAPPING = {}
