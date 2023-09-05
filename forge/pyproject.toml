@@ -14,6 +14,7 @@ tenacity = "^8.2.2"
 sqlalchemy = "^2.0.19"
 aiohttp = "^3.8.5"
 colorlog = "^6.7.0"
+chromadb = "^0.4.8"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -22,7 +23,6 @@ black = "^23.3.0"
 pre-commit = "^3.3.3"
 mypy = "^1.4.1"
 flake8 = "^6.0.0"
-agbenchmark = "^0.0.9"
 types-requests = "^2.31.0.2"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.21.1"
