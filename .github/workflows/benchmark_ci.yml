@@ -1,4 +1,7 @@
 name: CI
+defaults:
+  run:
+    working-directory: ./benchmark/
 
 on:
   workflow_dispatch:
@@ -15,7 +18,7 @@ on:
     paths-ignore:
       - 'reports/**'
   pull_request:
-    branches: [stable, master, release-*]
+    branches: [stable, master, release-*, develop]
 
 jobs:
   lint:
