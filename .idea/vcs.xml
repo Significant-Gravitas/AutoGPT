@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agbenchmark/challenges" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/Auto-GPT" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/Auto-GPT/tests/Auto-GPT-test-cassettes" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/BabyAGI" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/PolyGPT" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/SuperAGI" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/SuperAGI/tgwui/text-generation-webui" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/Turbo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/Turbo/tests/Auto-GPT-test-cassettes" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/beebot" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/gpt-engineer" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/mini-agi" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/agent/smol-developer" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/frontend" vcs="Git" />
+  </component>
+</project>
