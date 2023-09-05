@@ -1,0 +1,21 @@
+{
+  "name": "TestUrlShortener",
+  "category": ["code"],
+  "task": "Build a basic URL shortener using a python CLI. Here are the specifications.\n\nFunctionality: The program should have two primary functionalities.\n\nShorten a given URL.\nRetrieve the original URL from a shortened URL.\n\nCLI: The command-line interface should accept the URL to be shortened as its first input. After shortening, it should display ONLY the shortened URL, and it will prompt a url to access.\n\nYour primary requirements are:\n\nPrompt the user for the long url.\nReturn the shortened url.\nPrompt the user for a shortened url.\nReturn the long url.\n\nTechnical specifications:\nBuild a file called url_shortener.py. This file will be called through command lines.\n\nEdge cases:\nFor the sake of simplicity, there will be no edge cases, you can assume the input is always correct and the user immediately passes the shortened version of the url he just shortened.\n\nYou will be expected to create a python file called url_shortener.py that will run through command lines by using python url_shortener.py.\n\nThe url_shortener.py game will be tested this way:\n```\nimport unittest\nfrom url_shortener import shorten_url, retrieve_url\n\nclass TestURLShortener(unittest.TestCase):\n    def test_url_retrieval(self):\n        # Shorten the URL to get its shortened form\n        shortened_url = shorten_url('https://www.example.com')\n\n        # Retrieve the original URL using the shortened URL directly\n        retrieved_url = retrieve_url(shortened_url)\n\n        self.assertEqual(retrieved_url, 'https://www.example.com', \"Retrieved URL does not match the original!\")\n\nif __name__ == \"__main__\":\n    unittest.main()\n```",
+  "dependencies": [],
+  "cutoff": 150,
+  "ground": {
+    "answer": "The correct python file for a basic url shortener CLI",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Tests ability for the agent to create a URL shortener.",
+    "side_effects": []
+  }
+}
