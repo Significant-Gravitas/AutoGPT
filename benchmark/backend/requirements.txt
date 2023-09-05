@@ -1,2 +1,0 @@
-fastapi
-uvicorn
