@@ -1,0 +1,21 @@
+{
+  "name": "TestAgentProtocol_GetAgentTask",
+  "category": ["interface"],
+  "task": "",
+  "dependencies": ["TestAgentProtocol_ListAgentTasksIds"],
+  "cutoff": 60,
+  "ground": {
+    "answer": "The agent should be able to get a task.",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "interface",
+    "description": "Tests the agent's ability to get a task",
+    "side_effects": [""]
+  }
+}
