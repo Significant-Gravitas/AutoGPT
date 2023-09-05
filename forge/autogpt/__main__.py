@@ -16,10 +16,7 @@ if __name__ == "__main__":
     # modules are imported here so that logging is setup first
     import autogpt.agent
     import autogpt.sdk.db
-    from autogpt.benchmark_integration import add_benchmark_routes
     from autogpt.sdk.workspace import LocalWorkspace
-
-    router = add_benchmark_routes()
 
     database_name = os.getenv("DATABASE_STRING")
     workspace = LocalWorkspace(os.getenv("AGENT_WORKSPACE"))
@@ -28,4 +25,4 @@ if __name__ == "__main__":
     database = autogpt.sdk.db.AgentDB(database_name, debug_enabled=True)
     agent = autogpt.agent.AutoGPTAgent(database=database, workspace=workspace)
 
-    agent.start(port=port, router=router)
+    agent.start(port=port)
