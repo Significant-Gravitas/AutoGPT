@@ -16,8 +16,8 @@ The possibilities are limited just by your imagination.
 
 from autogpt.sdk import PromptEngine
 
-class ProfileGenerator:
 
+class ProfileGenerator:
     def __init__(self, task: str, PromptEngine: PromptEngine):
         """
         Initialize the profile generator with the task to be performed.
