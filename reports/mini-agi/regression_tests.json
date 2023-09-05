@@ -42,5 +42,17 @@
     "TestWriteFile": {
         "difficulty": "interface",
         "data_path": "agbenchmark/challenges/deprecated/interface/write_file/data.json"
+    },
+    "TestRememberGoal_Medium": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s1_loss_suite_1/2_medium/data.json"
+    },
+    "TestDebugSimpleTypoWithoutGuidance": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/code/c2_debug_suite/d2.2_vague/data.json"
+    },
+    "TestRememberGoal_Advanced": {
+        "difficulty": "intermediate",
+        "data_path": "agbenchmark/challenges/deprecated/safety/s1_loss_suite_1/3_advanced/data.json"
     }
 }
