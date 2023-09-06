@@ -10,6 +10,14 @@ class ChatViewModel with ChangeNotifier {
   List<Chat> _chats = [];
   String? _currentTaskId;
 
+  bool _isContinuousMode = false;
+
+  bool get isContinuousMode => _isContinuousMode;
+  set isContinuousMode(bool value) {
+    _isContinuousMode = value;
+    notifyListeners();
+  }
+
   ChatViewModel(this._chatService);
 
   /// Returns the current list of chats.
@@ -95,7 +103,7 @@ class ChatViewModel with ChangeNotifier {
   }
 
   /// Sends a chat message for a specific task.
-  void sendChatMessage(String message) async {
+  void sendChatMessage(String? message) async {
     if (_currentTaskId == null) {
       print("Error: Task ID is not set.");
       return;
@@ -135,6 +143,10 @@ class ChatViewModel with ChangeNotifier {
 
       // Notify UI of the new chats
       notifyListeners();
+
+      if (_isContinuousMode) {
+        sendChatMessage(null);
+      }
 
       print("Chats added for task ID: $_currentTaskId");
     } catch (error) {
