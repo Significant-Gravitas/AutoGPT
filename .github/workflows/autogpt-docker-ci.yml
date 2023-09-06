@@ -1,17 +1,22 @@
-name: Docker CI
+name: Auto-GPT Docker CI
 
 on:
   push:
     branches: [ master ]
-    paths-ignore:
-      - 'tests/Auto-GPT-test-cassettes'
-      - 'tests/challenges/current_score.json'
+    paths:
+      - 'autogpts/autogpt'
+      - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - '!autogpts/autogpt/tests/challenges/current_score.json'
   pull_request:
     branches: [ master, release-*, stable ]
 
 concurrency:
-  group: ${{ format('docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
+  group: ${{ format('autogpt-docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: autogpts/autogpt
 
 env:
   IMAGE_NAME: auto-gpt
@@ -38,12 +43,13 @@ jobs:
       name: Build image
       uses: docker/build-push-action@v3
       with:
+        context: autogpts/autogpt
         build-args: BUILD_TYPE=${{ matrix.build-type }}
         tags: ${{ env.IMAGE_NAME }}
         load: true    # save to docker images
         # cache layers in GitHub Actions cache to speed up builds
-        cache-from: type=gha,scope=docker-${{ matrix.build-type }}
-        cache-to: type=gha,scope=docker-${{ matrix.build-type }},mode=max
+        cache-from: type=gha,scope=autogpt-docker-${{ matrix.build-type }}
+        cache-to: type=gha,scope=autogpt-docker-${{ matrix.build-type }},mode=max
 
     - name: Generate build report
       env:
@@ -71,6 +77,7 @@ jobs:
         vars_json: ${{ toJSON(vars) }}
 
       run: .github/workflows/scripts/docker-ci-summary.sh >> $GITHUB_STEP_SUMMARY
+      working-directory: ./
       continue-on-error: true
 
   test:
@@ -89,12 +96,13 @@ jobs:
         name: Build image
         uses: docker/build-push-action@v3
         with:
+          context: autogpts/autogpt
           build-args: BUILD_TYPE=dev  # include pytest
           tags: ${{ env.IMAGE_NAME }}
           load: true                  # save to docker images
           # cache layers in GitHub Actions cache to speed up builds
-          cache-from: type=gha,scope=docker-dev
-          cache-to: type=gha,scope=docker-dev,mode=max
+          cache-from: type=gha,scope=autogpt-docker-dev
+          cache-to: type=gha,scope=autogpt-docker-dev,mode=max
 
       - id: test
         name: Run tests
