@@ -1,10 +1,47 @@
+import abc
 import hashlib
 
 import chromadb
 from chromadb.config import Settings
 
 
-class MemStore:
+class MemStore(abc.ABC):
+    """
+    An abstract class that represents a Memory Store
+    """
+
+    @abc.abstractmethod
+    def __init__(self, store_path: str):
+        pass
+
+    @abc.abstractmethod
+    def add(self, task_id: str, document: str, metadatas: dict) -> None:
+        pass
+
+    @abc.abstractmethod
+    def query(
+        self,
+        task_id: str,
+        query: str,
+        filters: dict = None,
+        document_search: dict = None,
+    ) -> dict:
+        pass
+
+    @abc.abstractmethod
+    def get(self, task_id: str, doc_ids: list = None, filters: dict = None) -> dict:
+        pass
+
+    @abc.abstractmethod
+    def update(self, task_id: str, doc_ids: list, documents: list, metadatas: list):
+        pass
+
+    @abc.abstractmethod
+    def delete(self, task_id: str, doc_id: str):
+        pass
+
+
+class ChromaMemStore(MemStore):
     """
     A class used to represent a Memory Store
     """
