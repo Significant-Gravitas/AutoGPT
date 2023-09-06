@@ -73,4 +73,11 @@ class TaskViewModel with ChangeNotifier {
       throw ArgumentError(errorMessage);
     }
   }
+
+  /// Deselects the currently selected task.
+  void deselectTask() {
+    _selectedTask = null;
+    print("Deselected the current task.");
+    notifyListeners(); // Notify listeners to rebuild UI
+  }
 }
