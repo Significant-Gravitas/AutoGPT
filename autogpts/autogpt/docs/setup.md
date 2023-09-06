@@ -102,7 +102,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 2. Navigate to the directory where you downloaded the repository
 
     ```shell
-    cd Auto-GPT
+    cd Auto-GPT/autogpts/autogpt
     ```
 
 ### Set up without Git/Docker

@@ -170,3 +170,4 @@ agbenchmark
 .pytest_cache
 .vscode
 ig_*
+agent.db
