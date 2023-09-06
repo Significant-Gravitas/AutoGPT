@@ -56,13 +56,20 @@ class _ChatViewState extends State<ChatView> {
             child: ChatInputField(
               onSendPressed: (message) async {
                 if (widget.viewModel.currentTaskId != null) {
-                  widget.viewModel.sendChatMessage(message);
+                  widget.viewModel
+                      .sendChatMessage((message == "") ? null : message);
                 } else {
                   String newTaskId = await taskViewModel.createTask(message);
                   widget.viewModel.setCurrentTaskId(newTaskId);
-                  widget.viewModel.sendChatMessage(message);
+                  widget.viewModel
+                      .sendChatMessage((message == "") ? null : message);
                 }
               },
+              onContinuousModePressed: () {
+                widget.viewModel.isContinuousMode =
+                    !widget.viewModel.isContinuousMode;
+              },
+              isContinuousMode: widget.viewModel.isContinuousMode,
             ),
           ),
         ],
