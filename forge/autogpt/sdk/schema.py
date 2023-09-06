@@ -117,7 +117,7 @@ class StepRequestBody(BaseModel):
         None, description="The name of the task step.", example="Write to file"
     )
     input: str = Field(
-        ...,
+        None,
         min_length=1,
         description="Input prompt for the step.",
         example="Washington",
