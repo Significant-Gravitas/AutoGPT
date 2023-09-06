@@ -20,6 +20,7 @@ class ChatInputField extends StatefulWidget {
 class _ChatInputFieldState extends State<ChatInputField> {
   // Controller for the TextField to manage its content
   final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
 
   @override
   Widget build(BuildContext context) {
@@ -53,10 +54,10 @@ class _ChatInputFieldState extends State<ChatInputField> {
           // when the content exceeds its maximum height
           child: SingleChildScrollView(
             reverse: true,
-            // TODO: Deselect text field after user goes into continous mode
             // TODO: Include tool tip to explain clicking text field will end continuous mode
             child: TextField(
               controller: _controller,
+              focusNode: _focusNode,
               // Allowing the TextField to expand vertically and accommodate multiple lines
               maxLines: null,
               decoration: InputDecoration(
@@ -86,6 +87,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
                         if (!widget.isContinuousMode) {
                           widget.onSendPressed(_controller.text);
                           _controller.clear();
+                          _focusNode.unfocus();
                         }
                         widget.onContinuousModePressed();
                       },
