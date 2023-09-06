@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 class RestApiUtility {
@@ -30,6 +31,21 @@ class RestApiUtility {
       return json.decode(response.body);
     } else {
       throw Exception('Failed to post data');
+    }
+  }
+
+  Future<Uint8List> getBinary(String endpoint) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/$endpoint'),
+      headers: {"Content-Type": "application/octet-stream"},
+    );
+
+    if (response.statusCode == 200) {
+      return response.bodyBytes;
+    } else if (response.statusCode == 404) {
+      throw Exception('Resource not found');
+    } else {
+      throw Exception('Failed to load binary data');
     }
   }
 }
