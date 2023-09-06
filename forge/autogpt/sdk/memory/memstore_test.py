@@ -3,12 +3,12 @@ import shutil
 
 import pytest
 
-from autogpt.sdk.memory.memstore import MemStore
+from autogpt.sdk.memory.memstore import ChromaMemStore
 
 
 @pytest.fixture
 def memstore():
-    mem = MemStore(".test_mem_store")
+    mem = ChromaMemStore(".test_mem_store")
     yield mem
     shutil.rmtree(".test_mem_store")
 
