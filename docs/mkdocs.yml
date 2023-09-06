@@ -1,7 +1,7 @@
 site_name: AutoGPT Documentation
 site_url: https://docs.agpt.co/
 repo_url: https://github.com/Significant-Gravitas/Auto-GPT
-docs_dir: .
+docs_dir: content
 nav:
   - Home: index.md
   - Setup: setup.md
@@ -42,7 +42,7 @@ theme:
   name: material
   icon:
     logo: material/book-open-variant
-  favicon: imgs/Auto_GPT_Logo.png
+  favicon: favicon.png
   features:
     - navigation.sections
     - toc.follow
