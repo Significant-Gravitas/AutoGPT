@@ -16,6 +16,7 @@ aiohttp = "^3.8.5"
 colorlog = "^6.7.0"
 chromadb = "^0.4.8"
 agbenchmark = { path = "../benchmark" }
+hypercorn = "^0.14.4"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"
