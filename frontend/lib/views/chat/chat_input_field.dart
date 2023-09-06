@@ -23,6 +23,22 @@ class _ChatInputFieldState extends State<ChatInputField> {
   final FocusNode _focusNode = FocusNode();
 
   @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus && widget.isContinuousMode) {
+        widget.onContinuousModePressed();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose(); // Dispose of the FocusNode when you're done.
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     // Using LayoutBuilder to provide the current constraints of the widget,
     // ensuring it rebuilds when the window size changes
@@ -54,7 +70,6 @@ class _ChatInputFieldState extends State<ChatInputField> {
           // when the content exceeds its maximum height
           child: SingleChildScrollView(
             reverse: true,
-            // TODO: Include tool tip to explain clicking text field will end continuous mode
             child: TextField(
               controller: _controller,
               focusNode: _focusNode,
