@@ -19,14 +19,43 @@ class ChatView extends StatefulWidget {
 }
 
 class _ChatViewState extends State<ChatView> {
+  final ScrollController _scrollController = ScrollController();
+  bool _isAtBottom = true;
+
   @override
   void initState() {
     super.initState();
+
+    // Listen for scroll events and determine whether the scroll is at the bottom
+    _scrollController.addListener(() {
+      if (_scrollController.position.atEdge) {
+        if (_scrollController.position.pixels == 0) {
+          _isAtBottom = false;
+        } else {
+          _isAtBottom = true;
+        }
+      }
+    });
 
     // Schedule the fetchTasks call for after the initial build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.viewModel.fetchChatsForTask();
     });
+  }
+
+  @override
+  void dispose() {
+    // Dispose of the ScrollController when the widget is removed
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
@@ -39,9 +68,18 @@ class _ChatViewState extends State<ChatView> {
           // Chat messages list
           Expanded(
             child: ListView.builder(
+              controller: _scrollController,
               itemCount: widget.viewModel.chats.length,
               itemBuilder: (context, index) {
                 final chat = widget.viewModel.chats[index];
+
+                // If the last message has been built and we're at the bottom of the list, scroll down
+                if (index == widget.viewModel.chats.length - 1 && _isAtBottom) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _scrollToBottom();
+                  });
+                }
+
                 if (chat.messageType == MessageType.user) {
                   return UserMessageTile(message: chat.message);
                 } else {
