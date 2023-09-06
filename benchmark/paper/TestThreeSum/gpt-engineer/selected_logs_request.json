@@ -1,0 +1,58 @@
+{
+    "2023-09-01 08:13:53+00:00": {
+        "1": [
+            {
+                "role": "system",
+                "content": "You will read instructions and not carry them out, only seek to clarify them.\nSpecifically you will first summarise a list of super short bullets of areas that need clarification.\nThen you will pick one clarifying question, and wait for an answer from the user.\n"
+            },
+            {
+                "role": "user",
+                "content": "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
+            }
+        ],
+        "2": [
+            {
+                "role": "system",
+                "content": "You will read instructions and not carry them out, only seek to clarify them.\nSpecifically you will first summarise a list of super short bullets of areas that need clarification.\nThen you will pick one clarifying question, and wait for an answer from the user.\n"
+            },
+            {
+                "role": "user",
+                "content": "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
+            },
+            {
+                "role": "assistant",
+                "content": "Summary of areas that need clarification:\n\n1. The programming language to be used for creating the function.\n2. The format of the input: whether the array and target are given as separate arguments or as a single list.\n3. The handling of cases where there are multiple valid solutions.\n4. The handling of cases where there are no valid solutions.\n5. The handling of cases where the array contains fewer than three elements.\n6. The handling of cases where the array contains duplicate elements.\n\nClarifying question: \nWhat programming language should be used to create the 'three_sum' function?"
+            },
+            {
+                "role": "user",
+                "content": "Make your own assumptions and state them explicitly before starting"
+            }
+        ],
+        "3": [
+            {
+                "role": "system",
+                "content": "You will get instructions for code to write.\nYou will write a very long answer. Make sure that every detail of the architecture is, in the end, implemented as code.\n\nThink step by step and reason yourself to the right decisions to make sure we get it right.\nYou will first lay out the names of the core classes, functions, methods that will be necessary, as well as a quick comment on their purpose.\n\nThen you will output the content of each file including ALL code.\nEach file must strictly follow a markdown code block format, where the following tokens must be replaced such that\nFILENAME is the lowercase file name including the file extension,\nLANG is the markup code block language for the code's language, and CODE is the code:\n\nFILENAME\n```LANG\nCODE\n```\n\nDo not comment on what every file does\n\nYou will start with the \"entrypoint\" file, then go to the ones that are imported by that file, and so on.\nPlease note that the code should be fully functional. No placeholders.\n\nFollow a language and framework appropriate best practice file naming convention.\nMake sure that files contain all imports, types etc. Make sure that code in different files are compatible with each other.\nEnsure to implement all code, if you are unsure, write a plausible implementation.\nInclude module dependency or package manager dependency definition file.\nBefore you finish, double check that all parts of the architecture is present in the files.\n\nUseful to know:\nYou almost always put different classes in different files.\nFor Python, you always create an appropriate requirements.txt file.\nFor NodeJS, you always create an appropriate package.json file.\nYou always add a comment briefly describing the purpose of the function definition.\nYou try to add comments explaining very complex bits of logic.\nYou always follow the best practices for the requested languages in terms of describing the code written as a defined\npackage/project.\n\n\nPython toolbelt preferences:\n- pytest\n- dataclasses\n"
+            },
+            {
+                "role": "user",
+                "content": "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
+            },
+            {
+                "role": "assistant",
+                "content": "Summary of areas that need clarification:\n\n1. The programming language to be used for creating the function.\n2. The format of the input: whether the array and target are given as separate arguments or as a single list.\n3. The handling of cases where there are multiple valid solutions.\n4. The handling of cases where there are no valid solutions.\n5. The handling of cases where the array contains fewer than three elements.\n6. The handling of cases where the array contains duplicate elements.\n\nClarifying question: \nWhat programming language should be used to create the 'three_sum' function?"
+            },
+            {
+                "role": "user",
+                "content": "Make your own assumptions and state them explicitly before starting"
+            },
+            {
+                "role": "assistant",
+                "content": "Assumptions:\n\n1. The programming language to be used is Python, as it is commonly used for such tasks.\n2. The function will take two arguments: an array of integers and a target integer.\n3. If there are multiple valid solutions, the function will return any one of them.\n4. If there are no valid solutions, the function will return an empty list.\n5. If the array contains fewer than three elements, the function will return an empty list.\n6. If the array contains duplicate elements, they can be used as long as they are not used more than once in the same solution.\n\nClarifying question: \nAre these assumptions acceptable for the task at hand?"
+            },
+            {
+                "role": "user",
+                "content": "Please now remember the steps:\n\nThink step by step and reason yourself to the right decisions to make sure we get it right.\nFirst lay out the names of the core classes, functions, methods that will be necessary, As well as a quick comment on their purpose.\n\nThen you will output the content of each file including ALL code.\nEach file must strictly follow a markdown code block format, where the following tokens must be replaced such that\nFILENAME is the lowercase file name including the file extension,\nLANG is the markup code block language for the code's language, and CODE is the code:\n\nFILENAME\n```LANG\nCODE\n```\n\nPlease note that the code should be fully functional. No placeholders.\n\nYou will start with the \"entrypoint\" file, then go to the ones that are imported by that file, and so on.\nFollow a language and framework appropriate best practice file naming convention.\nMake sure that files contain all imports, types etc. The code should be fully functional. Make sure that code in different files are compatible with each other.\nBefore you finish, double check that all parts of the architecture is present in the files.\n"
+            }
+        ]
+    }
+}
