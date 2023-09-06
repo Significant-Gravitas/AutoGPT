@@ -32,14 +32,6 @@ mock = "^5.1.0"
 autoflake = "^2.2.0"
 
 
-[tool.poetry.group.ui.dependencies]
-gradio = "^3.40.1"
-plotly = "^5.16.0"
-dash = "^2.11.1"
-pandas = "^2.0.3"
-dash-bootstrap-components = "^1.4.2"
-
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
