@@ -67,30 +67,36 @@ class _ChatInputFieldState extends State<ChatInputField> {
                   mainAxisSize: MainAxisSize.min, // Set to minimum space
                   children: [
                     if (!widget.isContinuousMode)
-                      // TODO: Include tool tip to explain single message sending
-                      IconButton(
+                      Tooltip(
+                        message: 'Send a single message',
+                        child: IconButton(
+                          splashRadius: 0.1,
+                          icon: const Icon(Icons.send),
+                          onPressed: () {
+                            widget.onSendPressed(_controller.text);
+                            _controller.clear();
+                          },
+                        ),
+                      ),
+                    // TODO: Include pop up to explain continuous mode reprecussions
+                    Tooltip(
+                      message: widget.isContinuousMode
+                          ? ''
+                          : 'Enable continuous mode',
+                      child: IconButton(
                         splashRadius: 0.1,
-                        icon: const Icon(Icons.send),
+                        icon: Icon(widget.isContinuousMode
+                            ? Icons.pause
+                            : Icons.fast_forward),
                         onPressed: () {
-                          widget.onSendPressed(_controller.text);
-                          _controller.clear();
+                          if (!widget.isContinuousMode) {
+                            widget.onSendPressed(_controller.text);
+                            _controller.clear();
+                            _focusNode.unfocus();
+                          }
+                          widget.onContinuousModePressed();
                         },
                       ),
-                    // TODO: Include tool tip to explain continuous mode
-                    // TODO: Include pop up to explain continuous mode reprecussions
-                    IconButton(
-                      splashRadius: 0.1,
-                      icon: Icon(widget.isContinuousMode
-                          ? Icons.pause
-                          : Icons.fast_forward),
-                      onPressed: () {
-                        if (!widget.isContinuousMode) {
-                          widget.onSendPressed(_controller.text);
-                          _controller.clear();
-                          _focusNode.unfocus();
-                        }
-                        widget.onContinuousModePressed();
-                      },
                     )
                   ],
                 ),
