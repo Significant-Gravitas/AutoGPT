@@ -1,0 +1,74 @@
+{
+    "2023-08-31 15:25:08+00:00": {
+        "1": [
+            {
+                "role": "system",
+                "content": "You are an AI developer who is trying to write a program that will generate code for the user based on their intent.\n\n    When given their intent, create a complete, exhaustive list of filepaths that the user would write to make the program.\n\n    only list the filepaths you would write, and return them as a python list of strings.\n    do not add any other explanation, only return a python list of strings.\n    "
+            },
+            {
+                "role": "user",
+                "content": "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
+            }
+        ]
+    },
+    "2023-08-31 15:33:23+00:00": {
+        "1": [
+            {
+                "role": "system",
+                "content": "You are an AI developer who is trying to write a program that will generate code for the user based on their intent.\n\n    When given their intent, create a complete, exhaustive list of filepaths that the user would write to make the program.\n\n    only list the filepaths you would write, and return them as a python list of strings.\n    do not add any other explanation, only return a python list of strings.\n    "
+            },
+            {
+                "role": "user",
+                "content": "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
+            }
+        ]
+    },
+    "2023-09-01 08:13:11+00:00": {
+        "1": [
+            {
+                "role": "system",
+                "content": "You are an AI developer who is trying to write a program that will generate code for the user based on their intent.\n\n    When given their intent, create a complete, exhaustive list of filepaths that the user would write to make the program.\n\n    only list the filepaths you would write, and return them as a python list of strings.\n    do not add any other explanation, only return a python list of strings.\n    "
+            },
+            {
+                "role": "user",
+                "content": "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
+            }
+        ]
+    },
+    "2023-09-01 15:37:02+00:00": {
+        "1": [
+            {
+                "role": "system",
+                "content": "You are an AI developer who is trying to write a program that will generate code for the user based on their intent.\n\n    When given their intent, create a complete, exhaustive list of filepaths that the user would write to make the program.\n\n    only list the filepaths you would write, and return them as a python list of strings.\n    do not add any other explanation, only return a python list of strings.\n    "
+            },
+            {
+                "role": "user",
+                "content": "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
+            }
+        ]
+    },
+    "2023-09-01 16:08:58+00:00": {
+        "1": [
+            {
+                "role": "system",
+                "content": "You are an AI developer who is trying to write a program that will generate code for the user based on their intent.\n\n    When given their intent, create a complete, exhaustive list of filepaths that the user would write to make the program.\n\n    only list the filepaths you would write, and return them as a python list of strings.\n    do not add any other explanation, only return a python list of strings.\n    "
+            },
+            {
+                "role": "user",
+                "content": "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
+            }
+        ]
+    },
+    "2023-09-01 17:17:30+00:00": {
+        "1": [
+            {
+                "role": "system",
+                "content": "You are an AI developer who is trying to write a program that will generate code for the user based on their intent.\n\n    When given their intent, create a complete, exhaustive list of filepaths that the user would write to make the program.\n\n    only list the filepaths you would write, and return them as a python list of strings.\n    do not add any other explanation, only return a python list of strings.\n    "
+            },
+            {
+                "role": "user",
+                "content": "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
+            }
+        ]
+    }
+}

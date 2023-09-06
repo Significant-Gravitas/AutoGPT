@@ -1,0 +1,27 @@
+{
+  "command": "agbenchmark start --test TestSearch",
+  "completion_time": "2023-07-17-13:35",
+  "metrics": {
+    "run_time": "20.58 seconds",
+    "highest_difficulty": "interface: 1"
+  },
+  "tests": {
+    "TestSearch": {
+      "data_path": "agbenchmark/challenges/interface/search",
+      "is_regression": true,
+      "reached_cutoff": false,
+      "metrics": {
+        "difficulty": "interface",
+        "success": true,
+        "success_%": 100.0,
+        "run_time": "20.367 seconds"
+      }
+    }
+  },
+  "config": {
+    "workspace": "${os.path.join(Path.home(), 'miniagi')}"
+  },
+  "additional": {
+    "model": "gpt-3.5-turbo"
+  }
+}
