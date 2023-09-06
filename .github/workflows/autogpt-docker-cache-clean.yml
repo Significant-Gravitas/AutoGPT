@@ -1,4 +1,4 @@
-name: Purge Docker CI cache
+name: Purge Auto-GPT Docker CI cache
 
 on:
   schedule:
@@ -28,7 +28,7 @@ jobs:
         build-args: BUILD_TYPE=${{ matrix.build-type }}
         load: true    # save to docker images
         # use GHA cache as read-only
-        cache-to: type=gha,scope=docker-${{ matrix.build-type }},mode=max
+        cache-to: type=gha,scope=autogpt-docker-${{ matrix.build-type }},mode=max
 
     - name: Generate build report
       env:

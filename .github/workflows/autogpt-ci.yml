@@ -3,17 +3,22 @@ name: Python CI
 on:
   push:
     branches: [ master, ci-test* ]
-    paths-ignore:
-      - 'tests/Auto-GPT-test-cassettes'
-      - 'tests/challenges/current_score.json'
+    paths:
+      - 'autogpts/autogpt'
+      - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - '!autogpts/autogpt/tests/challenges/current_score.json'
   pull_request:
     branches: [ stable, master, release-* ]
   pull_request_target:
     branches: [ master, release-*, ci-test* ]
 
 concurrency:
-  group: ${{ format('ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  group: ${{ format('autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+defaults:
+  run:
+    working-directory: autogpts/autogpt
 
 jobs:
   lint:
@@ -258,4 +263,4 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: test-logs
-          path: logs/
+          path: autogpts/autogpt/logs/

@@ -1,4 +1,4 @@
-name: Docker Release
+name: Auto-GPT Docker Release
 
 on:
   release:
@@ -9,6 +9,10 @@ on:
       no_cache:
         type: boolean
         description: 'Build from scratch, without using cached layers'
+
+defaults:
+  run:
+    working-directory: autogpts/autogpt
 
 env:
   IMAGE_NAME: auto-gpt
@@ -41,6 +45,7 @@ jobs:
       name: Build image
       uses: docker/build-push-action@v3
       with:
+        context: autogpts/autogpt
         build-args: BUILD_TYPE=release
         load: true    # save to docker images
         # push: true  # TODO: uncomment when this issue is fixed: https://github.com/moby/buildkit/issues/1555
@@ -50,8 +55,8 @@ jobs:
           ${{ env.DEPLOY_IMAGE_NAME }}:${{ steps.sanitize_tag.outputs.tag }}
 
         # cache layers in GitHub Actions cache to speed up builds
-        cache-from: ${{ !inputs.no_cache && 'type=gha' || '' }},scope=docker-release
-        cache-to: type=gha,scope=docker-release,mode=max
+        cache-from: ${{ !inputs.no_cache && 'type=gha' || '' }},scope=autogpt-docker-release
+        cache-to: type=gha,scope=autogpt-docker-release,mode=max
 
     - name: Push image to Docker Hub
       run: docker push --all-tags ${{ env.DEPLOY_IMAGE_NAME }}
@@ -78,4 +83,5 @@ jobs:
         vars_json: ${{ toJSON(vars) }}
 
       run: .github/workflows/scripts/docker-release-summary.sh >> $GITHUB_STEP_SUMMARY
+      working-directory: ./
       continue-on-error: true
