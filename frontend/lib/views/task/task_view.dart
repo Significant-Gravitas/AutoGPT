@@ -46,6 +46,7 @@ class _TaskViewState extends State<TaskView> {
                   final chatViewModel =
                       Provider.of<ChatViewModel>(context, listen: false);
                   chatViewModel.clearCurrentTaskAndChats();
+                  widget.viewModel.deselectTask();
                   print(
                       'New Task button pressed, cleared current task ID and chats');
                 },
