@@ -13,6 +13,7 @@ jobs:
     steps:
       - uses: actions/stale@v8
         with:
+          operations-per-run: 750
           stale-issue-message: >
             This issue has automatically been marked as _stale_ because it has not had
             any activity in the last 50 days. You can _unstale_ it by commenting or
