@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 class ChatInputField extends StatefulWidget {
   // Callback to be triggered when the send button is pressed
   final Function(String) onSendPressed;
+  final Function() onContinuousModePressed;
+  final bool isContinuousMode;
 
   const ChatInputField({
     Key? key,
     required this.onSendPressed,
+    required this.onContinuousModePressed,
+    this.isContinuousMode = false,
   }) : super(key: key);
 
   @override
@@ -16,6 +20,23 @@ class ChatInputField extends StatefulWidget {
 class _ChatInputFieldState extends State<ChatInputField> {
   // Controller for the TextField to manage its content
   final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus && widget.isContinuousMode) {
+        widget.onContinuousModePressed();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose(); // Dispose of the FocusNode when you're done.
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,21 +72,48 @@ class _ChatInputFieldState extends State<ChatInputField> {
             reverse: true,
             child: TextField(
               controller: _controller,
+              focusNode: _focusNode,
               // Allowing the TextField to expand vertically and accommodate multiple lines
               maxLines: null,
               decoration: InputDecoration(
                 hintText: 'Type a message...',
                 border: InputBorder.none,
-                suffixIcon: IconButton(
-                  splashRadius: 0.1,
-                  icon: const Icon(Icons.send),
-                  onPressed: () {
-                    // TODO: We allow empty messages?
-                    if (_controller.text.isNotEmpty) {
-                      widget.onSendPressed(_controller.text);
-                      _controller.clear();
-                    }
-                  },
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min, // Set to minimum space
+                  children: [
+                    if (!widget.isContinuousMode)
+                      Tooltip(
+                        message: 'Send a single message',
+                        child: IconButton(
+                          splashRadius: 0.1,
+                          icon: const Icon(Icons.send),
+                          onPressed: () {
+                            widget.onSendPressed(_controller.text);
+                            _controller.clear();
+                          },
+                        ),
+                      ),
+                    // TODO: Include pop up to explain continuous mode reprecussions
+                    Tooltip(
+                      message: widget.isContinuousMode
+                          ? ''
+                          : 'Enable continuous mode',
+                      child: IconButton(
+                        splashRadius: 0.1,
+                        icon: Icon(widget.isContinuousMode
+                            ? Icons.pause
+                            : Icons.fast_forward),
+                        onPressed: () {
+                          if (!widget.isContinuousMode) {
+                            widget.onSendPressed(_controller.text);
+                            _controller.clear();
+                            _focusNode.unfocus();
+                          }
+                          widget.onContinuousModePressed();
+                        },
+                      ),
+                    )
+                  ],
                 ),
               ),
             ),

@@ -10,6 +10,14 @@ class ChatViewModel with ChangeNotifier {
   List<Chat> _chats = [];
   String? _currentTaskId;
 
+  bool _isContinuousMode = false;
+
+  bool get isContinuousMode => _isContinuousMode;
+  set isContinuousMode(bool value) {
+    _isContinuousMode = value;
+    notifyListeners();
+  }
+
   ChatViewModel(this._chatService);
 
   /// Returns the current list of chats.
@@ -95,7 +103,7 @@ class ChatViewModel with ChangeNotifier {
   }
 
   /// Sends a chat message for a specific task.
-  void sendChatMessage(String message) async {
+  void sendChatMessage(String? message) async {
     if (_currentTaskId == null) {
       print("Error: Task ID is not set.");
       return;
@@ -112,13 +120,17 @@ class ChatViewModel with ChangeNotifier {
       Step executedStep = Step.fromMap(executedStepResponse);
 
       // Create a Chat object for the user message
-      final userChat = Chat(
-        id: executedStep.stepId,
-        taskId: executedStep.taskId,
-        message: executedStep.input,
-        timestamp: DateTime.now(),
-        messageType: MessageType.user,
-      );
+      if (executedStep.input.isNotEmpty) {
+        final userChat = Chat(
+          id: executedStep.stepId,
+          taskId: executedStep.taskId,
+          message: executedStep.input,
+          timestamp: DateTime.now(),
+          messageType: MessageType.user,
+        );
+
+        _chats.add(userChat);
+      }
 
       // Create a Chat object for the agent message
       final agentChat = Chat(
@@ -129,12 +141,14 @@ class ChatViewModel with ChangeNotifier {
           messageType: MessageType.agent,
           jsonResponse: executedStepResponse);
 
-      // Add the user and agent chats to the list
-      _chats.add(userChat);
       _chats.add(agentChat);
 
       // Notify UI of the new chats
       notifyListeners();
+
+      if (_isContinuousMode) {
+        sendChatMessage(null);
+      }
 
       print("Chats added for task ID: $_currentTaskId");
     } catch (error) {
