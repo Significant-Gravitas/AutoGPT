@@ -120,13 +120,17 @@ class ChatViewModel with ChangeNotifier {
       Step executedStep = Step.fromMap(executedStepResponse);
 
       // Create a Chat object for the user message
-      final userChat = Chat(
-        id: executedStep.stepId,
-        taskId: executedStep.taskId,
-        message: executedStep.input,
-        timestamp: DateTime.now(),
-        messageType: MessageType.user,
-      );
+      if (executedStep.input.isNotEmpty) {
+        final userChat = Chat(
+          id: executedStep.stepId,
+          taskId: executedStep.taskId,
+          message: executedStep.input,
+          timestamp: DateTime.now(),
+          messageType: MessageType.user,
+        );
+
+        _chats.add(userChat);
+      }
 
       // Create a Chat object for the agent message
       final agentChat = Chat(
@@ -137,8 +141,6 @@ class ChatViewModel with ChangeNotifier {
           messageType: MessageType.agent,
           jsonResponse: executedStepResponse);
 
-      // Add the user and agent chats to the list
-      _chats.add(userChat);
       _chats.add(agentChat);
 
       // Notify UI of the new chats
