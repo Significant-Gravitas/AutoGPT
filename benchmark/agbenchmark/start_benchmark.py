@@ -95,7 +95,8 @@ def run_benchmark(
     test: Optional[str] = None,
     suite: Optional[str] = None,
     cutoff: Optional[int] = None,
-    server: bool = False,
+    api_mode: bool = False,
+    host: Optional[str] = None,
 ) -> int:
     """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
     # Check if configuration file exists and is not empty
@@ -132,7 +133,12 @@ def run_benchmark(
             config = json.load(f)
     else:
         config = {}
-
+    host = host or config.get("host")
+    api_mode = api_mode or config.get("api_mode")
+    if host:
+        config["host"] = host
+    if api_mode:
+        config["api_mode"] = api_mode
     print("benchmark run path", CONFIG_PATH, HOME_DIRECTORY)
     if not config.get("workspace"):
         config["workspace"] = click.prompt(
@@ -141,7 +147,7 @@ def run_benchmark(
             show_default=True,
         )
 
-    if config.get("api_mode") and not config.get("host"):
+    if api_mode and not host:
         config["host"] = click.prompt(
             "Please enter the Agent API host address",
             default="http://localhost:8000",
@@ -195,7 +201,10 @@ def run_benchmark(
         elif explore:
             print("Only attempt challenges that have never been beaten")
             pytest_args.append("--explore")
-
+    if host:
+        pytest_args.append(f"--host={host}")
+    if api_mode:
+        pytest_args.append("--api_mode")
     if mock:
         pytest_args.append("--mock")
 
@@ -215,6 +224,8 @@ def run_benchmark(
         print(f"Setting cuttoff override to {cutoff} seconds.")
 
     pytest_args.extend((str(CURRENT_DIRECTORY), "--cache-clear"))
+    pytest_args.append("--disable-warnings")
+
     return pytest.main(pytest_args)
 
 
@@ -249,6 +260,8 @@ def cli() -> None:
 )
 @click.option("--nc", is_flag=True, help="Run without cutoff")
 @click.option("--cutoff", help="Set or override tests cutoff (seconds)")
+@click.option("--api_mode", help="API mode")
+@click.option("--host", help="Define API host")
 def start(
     maintain: bool,
     improve: bool,
@@ -262,6 +275,8 @@ def start(
     suite: Optional[str] = None,
     cutoff: Optional[int] = None,
     backend: Optional[bool] = False,
+    api_mode: bool = False,
+    host: Optional[str] = None,
 ) -> Any:
     # Redirect stdout if backend is True
     original_stdout = sys.stdout  # Save the original standard output
@@ -282,6 +297,8 @@ def start(
                 test=test,
                 suite=suite,
                 cutoff=cutoff,
+                api_mode=api_mode,
+                host=host,
             )
 
         sys.stdout = original_stdout
@@ -404,4 +421,4 @@ def get_regression_data() -> Any:
 
 
 # if __name__ == "__main__":
-#     start()
+# start()
