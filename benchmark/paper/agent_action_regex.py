@@ -1,5 +1,5 @@
-import re
 import json
+import re
 
 
 def is_action_auto_gpt(log):
