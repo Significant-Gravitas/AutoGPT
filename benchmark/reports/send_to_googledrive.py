@@ -2,7 +2,7 @@ import base64
 import json
 import os
 import re
-
+from datetime import datetime, timedelta
 import gspread
 import pandas as pd
 from dotenv import load_dotenv
@@ -125,6 +125,17 @@ for agent_dir in os.listdir(base_dir):
                     pattern = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00")
                     if not pattern.fullmatch(benchmark_start_time):
                         continue  # Skip processing this report if the date is not in the correct format
+
+                    # Parse the benchmark_start_time to a datetime object
+                    benchmark_datetime = datetime.strptime(
+                        benchmark_start_time, "%Y-%m-%dT%H:%M:%S+00:00"
+                    )
+
+                    # Check if benchmark_start_time is older than 3 days
+                    current_datetime = datetime.utcnow()
+                    if current_datetime - benchmark_datetime > timedelta(days=3):
+                        continue  # Skip processing this report if it's more than 3 days old
+
                     # Loop through each test
                     for test_name, test_info in data["tests"].items():
                         process_test(test_name, test_info, agent_dir, data)
