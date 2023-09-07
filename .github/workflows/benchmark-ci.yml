@@ -240,6 +240,8 @@ jobs:
             poetry run uvicorn server:app --reload &
             sleep 5
             export AGENT_NAME=mini-agi
+            echo "poetry run agbenchmark start --mock --api_mode --host=http://localhost:8000"
+            poetry run agbenchmark start --mock --api_mode --host=http://localhost:8000
           else
             echo "${prefix}agbenchmark start"
             ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
