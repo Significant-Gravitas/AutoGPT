@@ -146,9 +146,12 @@ jobs:
           mkdir agent
           link=$(jq -r '.["'"$AGENT_NAME"'"].url' agents_to_benchmark.json)
           branch=$(jq -r '.["'"$AGENT_NAME"'"].branch' agents_to_benchmark.json)
+          commit=$(jq -r '.["'"$AGENT_NAME"'"].commit' agents_to_benchmark.json)
           cd agent
           git clone "$link" -b "$branch"
           cd $AGENT_NAME
+          git checkout "$commit" || echo "Commit not found, using latest commit on branch"
+
           prefix=""
           if [ "$AGENT_NAME" == "gpt-engineer" ]; then
             make install
@@ -259,7 +262,6 @@ jobs:
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
           HELICONE_CACHE_ENABLED: false
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
-          REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
           WOLFRAM_ALPHA_APPID: ${{ secrets.WOLFRAM_ALPHA_APPID }}
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
           BING_SUBSCRIPTION_KEY: ${{ secrets.BING_SUBSCRIPTION_KEY }}
@@ -273,11 +275,12 @@ jobs:
 
       - name: Authenticate and Push to Branch
         working-directory: ./benchmark/
-        if: (success() || failure()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        if: (success() || failure()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'ci-test-'))
         run: |
           git config --global user.email "github-bot@agpt.co"
           git config --global user.name "Auto-GPT-Bot"
-
+          cp -rn agent/$AGENT_NAME/agbenchmark/reports/* reports/$AGENT_NAME/
+          rm -rf agent
           git add reports/* || echo "nothing to commit"
           commit_message="${{ matrix.agent-name }}-$(date +'%Y%m%d%H%M%S')"
           git commit -m "${commit_message}"
@@ -303,3 +306,4 @@ jobs:
         env:
           GDRIVE_BASE64: ${{ secrets.GDRIVE_BASE64 }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          AGENT_NAME: ${{ matrix.agent-name }}
