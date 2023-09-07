@@ -1,0 +1,38 @@
+{
+    "Auto-GPT": {
+        "url": "https://github.com/Significant-Gravitas/Auto-GPT",
+        "branch": "master"
+    },
+    "gpt-engineer": {
+        "url": "https://github.com/merwanehamadi/gpt-engineer.git",
+        "branch": "benchmark-integration"
+    },
+    "mini-agi": {
+        "url": "https://github.com/SilenNaihin/mini-agi.git",
+        "branch": "benchmark-integration"
+    },
+    "smol-developer": {
+        "url": "https://github.com/e2b-dev/smol-developer.git",
+        "branch": "benchmarks"
+    },
+    "SuperAGI": {
+        "url": "https://github.com/SilenNaihin/SuperAGI.git",
+        "branch": "benchmark-integration"
+    },
+    "BabyAGI": {
+        "url": "https://github.com/SilenNaihin/babyagi.git",
+        "branch": "benchmark-integration"
+    },
+    "beebot": {
+        "url": "https://github.com/AutoPackAI/beebot.git",
+        "branch": "main"
+    },
+    "PolyGPT": {
+        "url": "https://github.com/polywrap/PolyGPT.git",
+        "branch": "nerfzael-use-local-wrap-library"
+    },
+    "Turbo": {
+        "url": "https://github.com/lc0rp/Auto-GPT-Turbo.git",
+        "branch": "main"
+    }
+}
