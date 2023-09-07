@@ -1,0 +1,301 @@
+name: Benchmark CI
+
+on:
+  workflow_dispatch:
+    branches: [master]
+    inputs:
+      agents:
+        description: 'Agents to run (comma-separated)'
+        required: false
+        default: 'gpt-engineer,smol-developer,Auto-GPT,mini-agi,beebot,BabyAGI,PolyGPT,Turbo' # Default agents if none are specified
+  schedule:
+    - cron: '0 8 * * *'
+  push:
+    branches: [master, ci-test*]
+    paths:
+      - 'benchmark/**'
+      - '!benchmark/reports/**'
+  pull_request:
+    branches: [stable, master, release-*]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      min-python-version: '3.10'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - id: get_date
+        name: Get date
+        working-directory: ./benchmark/
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Install Poetry
+        working-directory: ./benchmark/
+        run: |
+          curl -sSL https://install.python-poetry.org | python -
+
+      - name: Install dependencies
+        working-directory: ./benchmark/
+        run: |
+          export POETRY_VIRTUALENVS_IN_PROJECT=true
+          poetry install -vvv
+
+      - name: Lint with flake8
+        working-directory: ./benchmark/
+        run: poetry run flake8
+
+      - name: Check black formatting
+        working-directory: ./benchmark/
+        run: poetry run  black . --exclude test.py --check
+        if: success() || failure()
+
+      - name: Check isort formatting
+        working-directory: ./benchmark/
+        run: poetry run  isort . --check
+        if: success() || failure()
+
+      - name: Check for unused imports and pass statements
+        working-directory: ./benchmark/
+        run: |
+          cmd="poetry run autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring agbenchmark"
+          $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
+        if: success() || failure()
+  matrix-setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      env-name: ${{ steps.set-matrix.outputs.env-name }}
+    steps:
+      - id: set-matrix
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            echo "::set-output name=env-name::production"
+            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI', 'PolyGPT', 'Turbo' ]"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            IFS=',' read -ra matrix_array <<< "${{ github.event.inputs.agents }}"
+            matrix_string="[ \"$(echo "${matrix_array[@]}" | sed 's/ /", "/g')\" ]"
+            echo "::set-output name=env-name::production"
+            echo "::set-output name=matrix::$matrix_string"
+          else
+            echo "::set-output name=env-name::develop"
+            echo "::set-output name=matrix::[ 'mini-agi' ]"
+          fi
+
+  tests:
+    environment:
+      name: '${{ needs.matrix-setup.outputs.env-name }}'
+    needs: matrix-setup
+    env:
+      min-python-version: '3.10'
+    name: '${{ matrix.agent-name }}'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        agent-name: ${{fromJson(needs.matrix-setup.outputs.matrix)}}
+    steps:
+      - name: Print Environment Name
+        run: |
+          echo "Matrix Setup Environment Name: ${{ needs.matrix-setup.outputs.env-name }}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          token: ${{ secrets.PAT_REVIEW }}
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - id: get_date
+        name: Get date
+        working-directory: ./benchmark/
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python -
+
+      - name: Install dependencies
+        working-directory: ./benchmark/
+        run: |
+          poetry install -vvv
+          poetry build
+
+      - name: Run regression tests
+        working-directory: ./benchmark/
+        run: |
+          mkdir agent
+          cd agent
+          git clone https://github.com/SilenNaihin/mini-agi -b benchmark-integration
+          cd $AGENT_NAME
+          prefix=""
+          if [ "$AGENT_NAME" == "gpt-engineer" ]; then
+            make install
+            source venv/bin/activate
+          elif [ "$AGENT_NAME" == "Auto-GPT" ]; then
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+            pip uninstall agbenchmark -y
+          elif [ "$AGENT_NAME" == "mini-agi" ]; then
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+            cp .env_example .env
+          elif [ "$AGENT_NAME" == "smol-developer" ]; then
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+          elif [ "$AGENT_NAME" == "BabyAGI" ]; then
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+          elif [ "$AGENT_NAME" == "SuperAGI" ]; then
+            cp config_template.yaml config.yaml
+            sed -i 's/OPENAI_API_KEY:.*/OPENAI_API_KEY: "'"${{ secrets.OPENAI_API_KEY }}"'"/' config.yaml
+            docker-compose up -d --build
+          elif [ "$AGENT_NAME" == "beebot" ]; then
+            poetry install
+            poetry run playwright install
+            poetry run uvicorn beebot.initiator.api:create_app --factory  --timeout-graceful-shutdown=1 &
+            prefix="poetry run "
+          elif [ "$AGENT_NAME" == "PolyGPT" ]; then
+            cp .env.template .env
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
+            export NVM_DIR=$HOME/.nvm
+            source $NVM_DIR/nvm.sh
+            nvm install && nvm use
+            yarn install
+            export NODE_TLS_REJECT_UNAUTHORIZED=0
+          elif [ "$AGENT_NAME" == "Turbo" ]; then
+            python -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+            cp .env.template .env
+            sed -i 's/your-openai-api-key/${{ secrets.OPENAI_API_KEY }}/g' .env
+          else
+            echo "Unknown agent name: $AGENT_NAME"
+            exit 1
+          fi
+
+          pip install ../../dist/*.whl
+          
+          bash -c "$(curl -fsSL https://raw.githubusercontent.com/merwanehamadi/helicone/b7ab4bc53e51d8ab29fff19ce5986ab7720970c6/mitmproxy.sh)" -s start
+
+          cd ../..
+          if [ "${GITHUB_EVENT_NAME}" == "pull_request" ] || [ "${{ github.event_name }}" == "push" ]; then            
+            set +e # Ignore non-zero exit codes and continue execution
+            echo "Running the following command: ${prefix}agbenchmark start --maintain --mock"
+            ${prefix}agbenchmark start --maintain --mock
+            EXIT_CODE=$?
+            set -e  # Stop ignoring non-zero exit codes
+            # Check if the exit code was 5, and if so, exit with 0 instead
+            if [ $EXIT_CODE -eq 5 ]; then
+              echo "regression_tests.json is empty."
+            fi
+          
+            echo "Running the following command: ${prefix}agbenchmark start --mock"
+            ${prefix}agbenchmark start --mock
+
+            echo "Running the following command: ${prefix}agbenchmark start --mock --category=retrieval"
+            ${prefix}agbenchmark start --mock --category=retrieval
+
+            echo "Running the following command: ${prefix}agbenchmark start --mock --category=interface"
+            ${prefix}agbenchmark start --mock --category=interface
+
+            echo "Running the following command: ${prefix}agbenchmark start --mock --category=code"
+            ${prefix}agbenchmark start --mock --category=code
+
+            echo "Running the following command: ${prefix}agbenchmark start --mock --category=memory"
+            ${prefix}agbenchmark start --mock --category=memory
+
+            echo "Running the following command: ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval"
+            ${prefix}agbenchmark start --mock --suite TestRevenueRetrieval
+
+            echo "Running the following command: ${prefix}agbenchmark start --test=TestWriteFile"
+            ${prefix}agbenchmark start --test=TestWriteFile
+
+            poetry install
+            poetry run uvicorn server:app --reload &
+            sleep 5
+            export AGENT_NAME=mini-agi
+          else
+            echo "${prefix}agbenchmark start"
+            ${prefix}agbenchmark start || echo "This command will always return a non zero exit code unless all the challenges are solved."
+          fi
+
+          cd ../..
+
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AGENT_NAME: ${{ matrix.agent-name }}
+          PROMPT_USER: false # For mini-agi. TODO: Remove this and put it in benchmarks.py
+          HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
+          BASERUN_API_KEY: ${{ secrets.BASERUN_API_KEY }}
+          REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+          HELICONE_CACHE_ENABLED: false
+          HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
+          REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
+          WOLFRAM_ALPHA_APPID: ${{ secrets.WOLFRAM_ALPHA_APPID }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          BING_SUBSCRIPTION_KEY: ${{ secrets.BING_SUBSCRIPTION_KEY }}
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.agent-name }}
+          path: reports/${{ matrix.agent-name }}
+
+      - name: Authenticate and Push to Branch
+        working-directory: ./benchmark/
+        if: (success() || failure()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        run: |
+          git config --global user.email "github-bot@agpt.co"
+          git config --global user.name "Auto-GPT-Bot"
+
+          git add reports/* || echo "nothing to commit"
+          commit_message="${{ matrix.agent-name }}-$(date +'%Y%m%d%H%M%S')"
+          git commit -m "${commit_message}"
+          git stash
+          current_branch=${{ github.ref_name }}
+          attempts=0
+          max_attempts=3
+
+          while [ $attempts -lt $max_attempts ]; do
+              git fetch origin $current_branch
+              git rebase origin/$current_branch
+              if git push origin HEAD; then
+                  echo "Success!"
+                  poetry run python reports/send_to_googledrive.py || echo "Failed to upload to Google Drive"
+                  exit 0
+              else
+                  echo "Attempt $(($attempts + 1)) failed. Retrying..."
+                  attempts=$(($attempts + 1))
+              fi
+          done
+
+          echo "Failed after $max_attempts attempts."
+        env:
+          GDRIVE_BASE64: ${{ secrets.GDRIVE_BASE64 }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
