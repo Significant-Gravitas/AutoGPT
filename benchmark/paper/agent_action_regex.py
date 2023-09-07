@@ -11,6 +11,7 @@ def is_action_auto_gpt(log):
     - browse_website
     - execute_python_file
     - list_files
+    - execute_python_code
     Internal actions
     - goals_accomplished
 
@@ -36,6 +37,8 @@ def is_action_auto_gpt(log):
                 "browse_website",
                 "execute_python_file",
                 "list_files",
+                "execute_python_code",
+                "read_file",
             ]
 
             # Check if the command name matches any in the list
@@ -56,21 +59,36 @@ def is_openai_function(log):
     - execute_python_file
     - google_search
     - wikipedia
+    - install_python_package
+    - execute_python_file_in_background
+    - get_process_status
+    - kill_process
+    - analyze_webpage_content
+    - get_website_text_content
+    - gmail_get_message
+    - gmail_create_draft
+    - disk_usage
     Internal actions
     - get_more_tools
     - exit
     - rewind_actions
+    - delegate_task
+    - function_summary
 
     PolyGPT
     World state actions
-    - http.sendRequest
-    - http.post
-    - http.get
-    - filesystem.writeFile
-    - ethers.sendRpc
+    - http.
+    - filesystem.
+    - ethers.
+    - ipfs.
+    - web-scraper.
+    - ens.
+    - safe-factory.
+    - safe-manager.
     Internal actions
     - LearnWrap
     - InvokeWrap
+    - user
 
     Input
         The entire LLM response
@@ -85,23 +103,32 @@ def is_openai_function(log):
 
             # List of function names that signify an action
             action_function_names = [
-                "get_html_content",
                 "read_file",
-                "write_file",
+                "write_",
                 "wolfram_alpha_query",
-                "write_python_code",
-                "execute_python_file",
-                "google_search",
+                "execute_",
+                "install_python_package",
+                "get_",
+                "kill_process",
+                "encyclopedia",
+                "gmail_",
+                "disk_usage",
+                "os_name_and_version",
+                "analyze_webpage_content",
+                "google_",
                 "wikipedia",
-                "http.sendRequest",
-                "http.post",
-                "http.get",
-                "filesystem.writeFile",
-                "ethers.sendRpc",
+                "http.",
+                "filesystem.",
+                "ethers.",
+                "ipfs.",
+                "web-scraper.",
+                "ens.",
+                "safe-factory.",
+                "safe-manager.",
             ]
 
             # Check if the function name matches any in the list
-            return function_name in action_function_names
+            return any(function_name in action for action in action_function_names)
 
     return False
 
@@ -111,12 +138,22 @@ def is_action_miniagi(log):
     World state actions
     - execute_python
     - web_search
+    - execute_shell
+    - ingest_data
+    - process_data
     Internal actions
     - done
     - talk_to_user
+    - memorize_thoughts
     """
     # List of function names that signify an action
-    action_function_names = ["execute_python", "web_search"]
+    action_function_names = [
+        "execute_python",
+        "web_search",
+        "execute_shell",
+        "ingest_data",
+        "process_data",
+    ]
 
     # Check for the <c>...</c> pattern and whether it matches any action function names
     c_pattern_match = False
@@ -146,7 +183,7 @@ def is_action_turbo(log):
     - end
     """
     # List of function names that signify an action
-    action_function_names = ["search", "www", "py", "aol", "put", "pyf"]
+    action_function_names = ["search", "www", "py", "aol", "put", "pyf", "sh", "ls"]
 
     # Check for the "cmd" key pattern and whether its "name" field matches any action function names
     cmd_pattern_match = False
@@ -157,14 +194,14 @@ def is_action_turbo(log):
     return cmd_pattern_match
 
 
-def is_action_general(log):
-    """General actions are defined by the presence of specific keywords such as 'write', 'start', 'create', etc."""
-    return bool(
-        re.search(
-            r"\b(write|start|create|execute|post|modify|mutate|delete|put|search|find|get|browse|query|www|read|list)\b",
-            log,
-        )
-    )
+# def is_action_general(log):
+#     """General actions are defined by the presence of specific keywords such as 'write', 'start', 'create', etc."""
+#     return bool(
+#         re.search(
+#             r"\b(write|start|create|execute|post|modify|mutate|delete|put|search|find|get|browse|query|www|read|list)\b",
+#             log,
+#         )
+#     )
 
 
 # post, get, put, delete
