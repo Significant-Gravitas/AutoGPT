@@ -46,24 +46,24 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
     ```yaml
     version: "3.9"
     services:
-        auto-gpt:
+      auto-gpt:
         image: significantgravitas/auto-gpt
         env_file:
-            - .env
+          - .env
         profiles: ["exclude-from-up"]
         volumes:
-            - ./auto_gpt_workspace:/app/auto_gpt_workspace
-            - ./data:/app/data
-            ## allow auto-gpt to write logs to disk
-            - ./logs:/app/logs
-            ## uncomment following lines if you want to make use of these files
-            ## you must have them existing in the same folder as this docker-compose.yml
-            #- type: bind
-            #  source: ./azure.yaml
-            #  target: /app/azure.yaml
-            #- type: bind
-            #  source: ./ai_settings.yaml
-            #  target: /app/ai_settings.yaml
+          - ./auto_gpt_workspace:/app/auto_gpt_workspace
+          - ./data:/app/data
+          ## allow auto-gpt to write logs to disk
+          - ./logs:/app/logs
+          ## uncomment following lines if you want to make use of these files
+          ## you must have them existing in the same folder as this docker-compose.yml
+          #- type: bind
+          #  source: ./azure.yaml
+          #  target: /app/azure.yaml
+          #- type: bind
+          #  source: ./ai_settings.yaml
+          #  target: /app/ai_settings.yaml
     ```
 
 4. Create the necessary [configuration](#configuration) files. If needed, you can find
