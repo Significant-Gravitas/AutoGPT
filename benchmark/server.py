@@ -17,10 +17,6 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 artifacts: List[Dict[str, Any]] = []
 
-with open("agent/gpt-engineer/agbenchmark/config.json", "r") as file:
-    config = json.load(file)
-    logger.info("Loaded configuration")
-
 
 class Task(BaseModel):
     input: str
@@ -34,7 +30,11 @@ async def upload_file(
         "Uploading file for task_id: %s with relative path: %s", task_id, relative_path
     )
     absolute_directory_path = Path(__file__).parent.absolute()
-    save_path = absolute_directory_path / "agent/gpt-engineer" / config["workspace"]
+    save_path = (
+        absolute_directory_path
+        / "agent/gpt-engineer"
+        / "projects/my-new-project/workspace"
+    )
 
     random_string = str(randint(0, 100000))
     while random_string in artifacts:
