@@ -39,7 +39,7 @@ flutter pub get
 
 4. **Run the app:**
 ```
-flutter run
+flutter run -d chrome --web-port 5000
 ```
 
 ## Project Structure
