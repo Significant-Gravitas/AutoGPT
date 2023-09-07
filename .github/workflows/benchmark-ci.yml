@@ -144,8 +144,10 @@ jobs:
         working-directory: ./benchmark/
         run: |
           mkdir agent
+          link=$(jq -r '.["'"$AGENT_NAME"'"].url' agents_to_benchmark.json)
+          branch=$(jq -r '.["'"$AGENT_NAME"'"].branch' agents_to_benchmark.json)
           cd agent
-          git clone https://github.com/SilenNaihin/mini-agi -b benchmark-integration
+          git clone "$link" -b "$branch"
           cd $AGENT_NAME
           prefix=""
           if [ "$AGENT_NAME" == "gpt-engineer" ]; then
