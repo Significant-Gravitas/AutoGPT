@@ -5,13 +5,13 @@ on:
     branches: [ master ]
     paths:
       - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - '!autogpts/autogpt/tests/vcr_cassettes'
       - '!autogpts/autogpt/tests/challenges/current_score.json'
   pull_request:
     branches: [ master, release-*, stable ]
     paths:
       - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - '!autogpts/autogpt/tests/vcr_cassettes'
       - '!autogpts/autogpt/tests/challenges/current_score.json'
 
 concurrency:
