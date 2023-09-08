@@ -21,7 +21,7 @@ def test_initial_values(config: Config) -> None:
     assert config.debug_mode == False
     assert config.continuous_mode == False
     assert config.speak_mode == False
-    assert config.fast_llm == "gpt-3.5-turbo"
+    assert config.fast_llm == "gpt-3.5-turbo-16k"
     assert config.smart_llm == "gpt-4-0314"
 
 
