@@ -27,6 +27,7 @@ DEBUG_LOG_FORMAT = (
     "  %(title)s%(message)s"
 )
 
+SPEECH_OUTPUT_LOGGER = "VOICE"
 USER_FRIENDLY_OUTPUT_LOGGER = "USER_FRIENDLY_OUTPUT"
 
 _chat_plugins: list[AutoGPTPluginTemplate] = []
@@ -95,6 +96,11 @@ def configure_logging(config: Config, log_dir: Path = LOG_DIR) -> None:
     user_friendly_output_logger.addHandler(error_log_handler)
     user_friendly_output_logger.addHandler(stderr)
     user_friendly_output_logger.propagate = False
+
+    speech_output_logger = logging.getLogger(SPEECH_OUTPUT_LOGGER)
+    speech_output_logger.setLevel(logging.INFO)
+    speech_output_logger.addHandler(TTSHandler(config))
+    speech_output_logger.propagate = False
 
     # JSON logger with better formatting
     json_logger = logging.getLogger("JSON_LOGGER")
