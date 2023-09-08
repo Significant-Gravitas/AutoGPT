@@ -4,13 +4,21 @@ on:
   push:
     branches: [ master, ci-test* ]
     paths:
-      - 'autogpts/autogpt'
+      - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
       - '!autogpts/autogpt/tests/challenges/current_score.json'
   pull_request:
     branches: [ stable, master, release-* ]
+    paths:
+      - 'autogpts/autogpt/**'
+      - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - '!autogpts/autogpt/tests/challenges/current_score.json'
   pull_request_target:
     branches: [ master, release-*, ci-test* ]
+    paths:
+      - 'autogpts/autogpt/**'
+      - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - '!autogpts/autogpt/tests/challenges/current_score.json'
 
 concurrency:
   group: ${{ format('autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
