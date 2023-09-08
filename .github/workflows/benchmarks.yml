@@ -1,4 +1,4 @@
-name: Benchmarks
+name: Benchmarks (legacy)
 
 on:
   schedule:
