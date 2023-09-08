@@ -41,28 +41,15 @@ def test_execute_python_file(python_test_file: str, random_string: str, agent: A
 
 
 def test_execute_python_code(random_code: str, random_string: str, agent: Agent):
-    ai_name = agent.ai_config.ai_name
-
-    result: str = sut.execute_python_code(random_code, "test_code", agent=agent)
+    result: str = sut.execute_python_code(random_code, agent=agent)
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
-
-    # Check that the code is stored
-    destination = os.path.join(
-        agent.config.workspace_path, ai_name, "executed_code", "test_code.py"
-    )
-    with open(destination) as f:
-        assert f.read() == random_code
 
 
 def test_execute_python_code_disallows_name_arg_path_traversal(
     random_code: str, agent: Agent
 ):
     with pytest.raises(AccessDeniedError, match="path traversal"):
-        sut.execute_python_code(random_code, name="../../test_code", agent=agent)
-
-    # Check that the code is not stored in parent directory
-    dst_with_traversal = agent.workspace.get_path("test_code.py")
-    assert not dst_with_traversal.is_file(), "Path traversal by filename not prevented"
+        sut.execute_python_code(random_code, agent=agent)
 
 
 def test_execute_python_code_overwrites_file(random_code: str, agent: Agent):
@@ -75,7 +62,7 @@ def test_execute_python_code_overwrites_file(random_code: str, agent: Agent):
     with open(destination, "w+") as f:
         f.write("This will be overwritten")
 
-    sut.execute_python_code(random_code, "test_code.py", agent=agent)
+    sut.execute_python_code(random_code, agent=agent)
 
     # Check that the file is updated with the new code
     with open(destination) as f:

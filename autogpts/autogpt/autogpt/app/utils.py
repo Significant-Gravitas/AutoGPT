@@ -61,7 +61,7 @@ def clean_input(config: Config, prompt: str = ""):
 def get_bulletin_from_web():
     try:
         response = requests.get(
-            "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md"
+            "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/autogpts/autogpt/BULLETIN.md"
         )
         if response.status_code == 200:
             return response.text
