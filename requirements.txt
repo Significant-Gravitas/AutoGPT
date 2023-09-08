@@ -31,7 +31,7 @@ numpy
 pre-commit
 black
 isort
-gitpython==3.1.31
+gitpython==3.1.35
 auto-gpt-plugin-template
 mkdocs
 
