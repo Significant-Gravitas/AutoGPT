@@ -1,6 +1,7 @@
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
-import 'package:auto_gpt_flutter_client/views/side_bar_view.dart';
+import 'package:auto_gpt_flutter_client/views/side_bar/side_bar_view.dart';
+import 'package:auto_gpt_flutter_client/views/skill_tree/skill_tree_view.dart';
 import 'package:auto_gpt_flutter_client/views/task/task_view.dart';
 import 'package:auto_gpt_flutter_client/views/chat/chat_view.dart';
 import 'package:flutter/cupertino.dart';
@@ -35,7 +36,7 @@ class MainLayout extends StatelessWidget {
                 return SizedBox(
                     width: 280, child: TaskView(viewModel: taskViewModel));
               } else {
-                return Expanded(child: Text("SkillTreeView")); // placeholder
+                return const Expanded(child: SkillTreeView());
               }
             },
           ),
