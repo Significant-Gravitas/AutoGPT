@@ -26,12 +26,11 @@ from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_chat_plugins, configure_logging
-from autogpt.logs.helpers import print_attribute
+from autogpt.logs.helpers import print_attribute, speak
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
-from autogpt.speech import say_text
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
@@ -366,7 +365,7 @@ def update_user(
     print_assistant_thoughts(ai_config.ai_name, assistant_reply_dict, config)
 
     if config.speak_mode:
-        say_text(f"I want to execute {command_name}", config)
+        speak(f"I want to execute {command_name}")
 
     # First log new-line so user can differentiate sections better in console
     print()
@@ -531,8 +530,6 @@ def print_assistant_thoughts(
     assistant_reply_json_valid: dict,
     config: Config,
 ) -> None:
-    from autogpt.speech import say_text
-
     logger = logging.getLogger(__name__)
 
     assistant_thoughts_reasoning = None
@@ -577,7 +574,7 @@ def print_assistant_thoughts(
     # Speak the assistant's thoughts
     if assistant_thoughts_speak:
         if config.speak_mode:
-            say_text(assistant_thoughts_speak, config)
+            speak(assistant_thoughts_speak)
         else:
             print_attribute("SPEAK", assistant_thoughts_speak, title_color=Fore.YELLOW)
 
