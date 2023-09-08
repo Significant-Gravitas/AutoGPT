@@ -24,7 +24,7 @@
         "branch": "benchmark-integration",
         "commit": "48b2101374264b97dbdfc2c0bb0ae45e769e157d"
     },
-    "BabyAGI": {
+    "babyagi": {
         "url": "https://github.com/SilenNaihin/babyagi.git",
         "branch": "benchmark-integration",
         "commit": "16f1b9519fea5543695203be0262a1b41c77cbba"
@@ -39,7 +39,7 @@
         "branch": "nerfzael-use-local-wrap-library",
         "commit": "d621adf5f54cc0f9a6d191139fb67ac3d1436d7b"
     },
-    "Turbo": {
+    "Auto-GPT-Turbo": {
         "url": "https://github.com/lc0rp/Auto-GPT-Turbo.git",
         "branch": "main",
         "commit": "8469e09ae204f2d5f41d489b217551544597ee14"
