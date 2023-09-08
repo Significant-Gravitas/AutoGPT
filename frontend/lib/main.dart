@@ -56,7 +56,7 @@ class MyApp extends StatelessWidget {
           ChangeNotifierProvider(
               create: (context) => TaskViewModel(taskService)),
         ],
-        child: const MainLayout(),
+        child: MainLayout(),
       ),
     );
   }
