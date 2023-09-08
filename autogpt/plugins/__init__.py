@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import json
+import logging
 import os
 import sys
 import zipfile
@@ -20,12 +21,9 @@ from openapi_python_client.config import Config as OpenAPIConfig
 if TYPE_CHECKING:
     from autogpt.config import Config
 
-from autogpt.logs import logger
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
-DEFAULT_PLUGINS_CONFIG_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "plugins_config.yaml"
-)
+logger = logging.getLogger(__name__)
 
 
 def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
@@ -234,7 +232,11 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
         plugin_module_name = plugin_module_path[-1]
         qualified_module_name = ".".join(plugin_module_path)
 
-        __import__(qualified_module_name)
+        try:
+            __import__(qualified_module_name)
+        except:
+            logger.error(f"Failed to load {qualified_module_name}")
+            continue
         plugin = sys.modules[qualified_module_name]
 
         if not plugins_config.is_enabled(plugin_module_name):
@@ -258,7 +260,10 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                 module = Path(module)
                 logger.debug(f"Zipped Plugin: {plugin}, Module: {module}")
                 zipped_package = zipimporter(str(plugin))
-                zipped_module = zipped_package.load_module(str(module.parent))
+                try:
+                    zipped_module = zipped_package.load_module(str(module.parent))
+                except:
+                    logger.error(f"Failed to load {str(module.parent)}")
 
                 for key in dir(zipped_module):
                     if key.startswith("__"):
@@ -291,9 +296,11 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                                 f"Zipped plugins should use the class name ({plugin_name}) as the key."
                             )
                     else:
-                        if a_module.__name__ != "AutoGPTPluginTemplate":
+                        if (
+                            module_name := getattr(a_module, "__name__", str(a_module))
+                        ) != "AutoGPTPluginTemplate":
                             logger.debug(
-                                f"Skipping '{key}' because it doesn't subclass AutoGPTPluginTemplate."
+                                f"Skipping '{module_name}' because it doesn't subclass AutoGPTPluginTemplate."
                             )
 
     # OpenAI plugins

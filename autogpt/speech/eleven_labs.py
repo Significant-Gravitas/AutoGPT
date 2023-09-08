@@ -1,6 +1,7 @@
 """ElevenLabs speech module"""
 from __future__ import annotations
 
+import logging
 import os
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,8 @@ from playsound import playsound
 if TYPE_CHECKING:
     from autogpt.config import Config
 from .base import VoiceBase
+
+logger = logging.getLogger(__name__)
 
 PLACEHOLDERS = {"your-voice-id"}
 
@@ -43,10 +46,7 @@ class ElevenLabsSpeech(VoiceBase):
         self._voices = default_voices.copy()
         if config.elevenlabs_voice_id in voice_options:
             config.elevenlabs_voice_id = voice_options[config.elevenlabs_voice_id]
-        if config.elevenlabs_voice_2_id in voice_options:
-            config.elevenlabs_voice_2_id = voice_options[config.elevenlabs_voice_2_id]
         self._use_custom_voice(config.elevenlabs_voice_id, 0)
-        self._use_custom_voice(config.elevenlabs_voice_2_id, 1)
 
     def _use_custom_voice(self, voice, voice_index) -> None:
         """Use a custom voice if provided and not a placeholder
@@ -72,8 +72,6 @@ class ElevenLabsSpeech(VoiceBase):
         Returns:
             bool: True if the request was successful, False otherwise
         """
-        from autogpt.logs import logger
-
         tts_url = (
             f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_index]}"
         )

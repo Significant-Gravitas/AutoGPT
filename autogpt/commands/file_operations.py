@@ -1,20 +1,28 @@
-"""File operations for AutoGPT"""
+"""Commands to perform operations on files"""
+
 from __future__ import annotations
+
+COMMAND_CATEGORY = "file_operations"
+COMMAND_CATEGORY_TITLE = "File Operations"
 
 import contextlib
 import hashlib
+import logging
 import os
 import os.path
 from pathlib import Path
-from typing import Generator, Literal
+from typing import Iterator, Literal
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.command_decorator import command
-from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
 
 from .decorators import sanitize_path_arg
+from .file_context import open_file, open_folder  # NOQA
 from .file_operations_utils import read_textual_file
+
+logger = logging.getLogger(__name__)
 
 Operation = Literal["write", "append", "delete"]
 
@@ -25,8 +33,10 @@ def text_checksum(text: str) -> str:
 
 
 def operations_from_log(
-    log_path: str,
-) -> Generator[tuple[Operation, str, str | None], None, None]:
+    log_path: str | Path,
+) -> Iterator[
+    tuple[Literal["write", "append"], str, str] | tuple[Literal["delete"], str, None]
+]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
         log = open(log_path, "r", encoding="utf-8")
@@ -40,11 +50,7 @@ def operations_from_log(
         operation, tail = line.split(": ", maxsplit=1)
         operation = operation.strip()
         if operation in ("write", "append"):
-            try:
-                path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
-            except ValueError:
-                logger.warn(f"File log entry lacks checksum: '{line}'")
-                path, checksum = tail.strip(), None
+            path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
             yield (operation, path, checksum)
         elif operation == "delete":
             yield (operation, tail.strip(), None)
@@ -52,7 +58,7 @@ def operations_from_log(
     log.close()
 
 
-def file_operations_state(log_path: str) -> dict[str, str]:
+def file_operations_state(log_path: str | Path) -> dict[str, str]:
     """Iterates over the operations log and returns the expected state.
 
     Parses a log file at config.file_logger_path to construct a dictionary that maps
@@ -75,49 +81,49 @@ def file_operations_state(log_path: str) -> dict[str, str]:
     return state
 
 
-@sanitize_path_arg("filename")
+@sanitize_path_arg("file_path")
 def is_duplicate_operation(
-    operation: Operation, filename: str, agent: Agent, checksum: str | None = None
+    operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
 ) -> bool:
     """Check if the operation has already been performed
 
     Args:
         operation: The operation to check for
-        filename: The name of the file to check for
+        file_path: The name of the file to check for
         agent: The agent
         checksum: The checksum of the contents to be written
 
     Returns:
         True if the operation has already been performed on the file
     """
-    # Make the filename into a relative path if possible
+    # Make the file path into a relative path if possible
     with contextlib.suppress(ValueError):
-        filename = str(Path(filename).relative_to(agent.workspace.root))
+        file_path = file_path.relative_to(agent.workspace.root)
 
     state = file_operations_state(agent.config.file_logger_path)
-    if operation == "delete" and filename not in state:
+    if operation == "delete" and str(file_path) not in state:
         return True
-    if operation == "write" and state.get(filename) == checksum:
+    if operation == "write" and state.get(str(file_path)) == checksum:
         return True
     return False
 
 
-@sanitize_path_arg("filename")
+@sanitize_path_arg("file_path")
 def log_operation(
-    operation: Operation, filename: str, agent: Agent, checksum: str | None = None
+    operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
 ) -> None:
     """Log the file operation to the file_logger.txt
 
     Args:
         operation: The operation to log
-        filename: The name of the file the operation was performed on
+        file_path: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
-    # Make the filename into a relative path if possible
+    # Make the file path into a relative path if possible
     with contextlib.suppress(ValueError):
-        filename = str(Path(filename).relative_to(agent.workspace.root))
+        file_path = file_path.relative_to(agent.workspace.root)
 
-    log_entry = f"{operation}: {filename}"
+    log_entry = f"{operation}: {file_path}"
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
@@ -138,26 +144,23 @@ def log_operation(
     },
 )
 @sanitize_path_arg("filename")
-def read_file(filename: str, agent: Agent) -> str:
+def read_file(filename: Path, agent: Agent) -> str:
     """Read a file and return the contents
 
     Args:
-        filename (str): The name of the file to read
+        filename (Path): The name of the file to read
 
     Returns:
         str: The contents of the file
     """
-    try:
-        content = read_textual_file(filename, logger)
+    content = read_textual_file(filename, logger)
 
-        # TODO: invalidate/update memory when file is edited
-        file_memory = MemoryItem.from_text_file(content, filename, agent.config)
-        if len(file_memory.chunks) > 1:
-            return file_memory.summary
+    # # TODO: invalidate/update memory when file is edited
+    # file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
+    # if len(file_memory.chunks) > 1:
+    #     return file_memory.summary
 
-        return content
-    except Exception as e:
-        return f"Error: {str(e)}"
+    return content
 
 
 def ingest_file(
@@ -187,148 +190,91 @@ def ingest_file(
 
 
 @command(
-    "write_to_file",
-    "Writes to a file",
+    "write_file",
+    "Write a file, creating it if necessary. If the file exists, it is overwritten.",
     {
         "filename": {
             "type": "string",
             "description": "The name of the file to write to",
             "required": True,
         },
-        "text": {
+        "contents": {
             "type": "string",
-            "description": "The text to write to the file",
+            "description": "The contents to write to the file",
             "required": True,
         },
     },
     aliases=["write_file", "create_file"],
 )
 @sanitize_path_arg("filename")
-def write_to_file(filename: str, text: str, agent: Agent) -> str:
-    """Write text to a file
+def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
+    """Write contents to a file
 
     Args:
-        filename (str): The name of the file to write to
-        text (str): The text to write to the file
+        filename (Path): The name of the file to write to
+        contents (str): The contents to write to the file
 
     Returns:
         str: A message indicating success or failure
     """
-    checksum = text_checksum(text)
+    checksum = text_checksum(contents)
     if is_duplicate_operation("write", filename, agent, checksum):
-        return "Error: File has already been updated."
-    try:
-        directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(text)
-        log_operation("write", filename, agent, checksum)
-        return "File written to successfully."
-    except Exception as err:
-        return f"Error: {err}"
+        raise DuplicateOperationError(f"File {filename.name} has already been updated.")
+
+    directory = os.path.dirname(filename)
+    os.makedirs(directory, exist_ok=True)
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(contents)
+    log_operation("write", filename, agent, checksum)
+    return f"File {filename.name} has been written successfully."
 
 
-@command(
-    "append_to_file",
-    "Appends to a file",
-    {
-        "filename": {
-            "type": "string",
-            "description": "The name of the file to write to",
-            "required": True,
-        },
-        "text": {
-            "type": "string",
-            "description": "The text to write to the file",
-            "required": True,
-        },
-    },
-)
 @sanitize_path_arg("filename")
 def append_to_file(
-    filename: str, text: str, agent: Agent, should_log: bool = True
-) -> str:
+    filename: Path, text: str, agent: Agent, should_log: bool = True
+) -> None:
     """Append text to a file
 
     Args:
-        filename (str): The name of the file to append to
+        filename (Path): The name of the file to append to
         text (str): The text to append to the file
         should_log (bool): Should log output
-
-    Returns:
-        str: A message indicating success or failure
     """
-    try:
-        directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
-        with open(filename, "a", encoding="utf-8") as f:
-            f.write(text)
+    directory = os.path.dirname(filename)
+    os.makedirs(directory, exist_ok=True)
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(text)
 
-        if should_log:
-            with open(filename, "r", encoding="utf-8") as f:
-                checksum = text_checksum(f.read())
-            log_operation("append", filename, agent, checksum=checksum)
-
-        return "Text appended successfully."
-    except Exception as err:
-        return f"Error: {err}"
+    if should_log:
+        with open(filename, "r", encoding="utf-8") as f:
+            checksum = text_checksum(f.read())
+        log_operation("append", filename, agent, checksum=checksum)
 
 
 @command(
-    "delete_file",
-    "Deletes a file",
+    "list_folder",
+    "List the items in a folder",
     {
-        "filename": {
+        "folder": {
             "type": "string",
-            "description": "The name of the file to delete",
+            "description": "The folder to list files in",
             "required": True,
         }
     },
 )
-@sanitize_path_arg("filename")
-def delete_file(filename: str, agent: Agent) -> str:
-    """Delete a file
+@sanitize_path_arg("folder")
+def list_folder(folder: Path, agent: Agent) -> list[str]:
+    """Lists files in a folder recursively
 
     Args:
-        filename (str): The name of the file to delete
+        folder (Path): The folder to search in
 
     Returns:
-        str: A message indicating success or failure
-    """
-    if is_duplicate_operation("delete", filename, agent):
-        return "Error: File has already been deleted."
-    try:
-        os.remove(filename)
-        log_operation("delete", filename, agent)
-        return "File deleted successfully."
-    except Exception as err:
-        return f"Error: {err}"
-
-
-@command(
-    "list_files",
-    "Lists Files in a Directory",
-    {
-        "directory": {
-            "type": "string",
-            "description": "The directory to list files in",
-            "required": True,
-        }
-    },
-)
-@sanitize_path_arg("directory")
-def list_files(directory: str, agent: Agent) -> list[str]:
-    """lists files in a directory recursively
-
-    Args:
-        directory (str): The directory to search in
-
-    Returns:
-        list[str]: A list of files found in the directory
+        list[str]: A list of files found in the folder
     """
     found_files = []
 
-    for root, _, files in os.walk(directory):
+    for root, _, files in os.walk(folder):
         for file in files:
             if file.startswith("."):
                 continue

@@ -2,7 +2,8 @@ import pytest
 from git.exc import GitCommandError
 from git.repo.base import Repo
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.commands.git_operations import clone_repository
 
 
@@ -17,7 +18,7 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, agent: Agent):
     repo = "github.com/Significant-Gravitas/Auto-GPT.git"
     scheme = "https://"
     url = scheme + repo
-    clone_path = str(workspace.get_path("auto-gpt-repo"))
+    clone_path = workspace.get_path("auto-gpt-repo")
 
     expected_output = f"Cloned {url} to {clone_path}"
 
@@ -32,12 +33,11 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, agent: Agent):
 
 def test_clone_repository_error(workspace, mock_clone_from, agent: Agent):
     url = "https://github.com/this-repository/does-not-exist.git"
-    clone_path = str(workspace.get_path("does-not-exist"))
+    clone_path = workspace.get_path("does-not-exist")
 
     mock_clone_from.side_effect = GitCommandError(
         "clone", "fatal: repository not found", ""
     )
 
-    result = clone_repository(url=url, clone_path=clone_path, agent=agent)
-
-    assert "Error: " in result
+    with pytest.raises(CommandExecutionError):
+        clone_repository(url=url, clone_path=clone_path, agent=agent)

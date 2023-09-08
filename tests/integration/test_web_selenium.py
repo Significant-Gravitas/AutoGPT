@@ -1,17 +1,17 @@
 import pytest
-from pytest_mock import MockerFixture
 
-from autogpt.agent.agent import Agent
-from autogpt.commands.web_selenium import browse_website
+from autogpt.agents.agent import Agent
+from autogpt.commands.web_selenium import BrowsingError, read_webpage
 
 
 @pytest.mark.vcr
 @pytest.mark.requires_openai_api_key
-def test_browse_website(agent: Agent, patched_api_requestor: MockerFixture):
-    url = "https://barrel-roll.com"
+def test_browse_website_nonexistent_url(agent: Agent, patched_api_requestor: None):
+    url = "https://auto-gpt-thinks-this-website-does-not-exist.com"
     question = "How to execute a barrel roll"
 
-    response = browse_website(url, question, agent)
-    assert "error" in response.lower()
-    # Sanity check that the response is not too long
-    assert len(response) < 200
+    with pytest.raises(BrowsingError, match=r"NAME_NOT_RESOLVED") as raised:
+        read_webpage(url=url, question=question, agent=agent)
+
+        # Sanity check that the response is not too long
+        assert len(raised.exconly()) < 200

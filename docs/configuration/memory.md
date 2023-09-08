@@ -1,6 +1,6 @@
 !!! warning
-    The Pinecone, Milvus and Weaviate memory backends were rendered incompatible
-    by work on the memory system, and have been removed in `master`.
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
     feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
@@ -18,6 +18,12 @@ to the value that you want:
 * `milvus` will use the milvus cache that you configured
 * `weaviate` will use the weaviate cache that you configured
 
+!!! warning
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+
 ## Memory Backend Setup
 
 Links to memory backends
@@ -26,6 +32,12 @@ Links to memory backends
 - [Milvus](https://milvus.io/) &ndash; [self-hosted](https://milvus.io/docs), or managed with [Zilliz Cloud](https://zilliz.com/)
 - [Redis](https://redis.io)
 - [Weaviate](https://weaviate.io)
+
+!!! warning
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
 ### Redis Setup
 
@@ -39,17 +51,19 @@ Links to memory backends
 
 1. Launch Redis container
 
-        :::shell
-        docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+    ```shell
+    docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+    ```
 
 3. Set the following settings in `.env`
 
-        :::ini
-        MEMORY_BACKEND=redis
-        REDIS_HOST=localhost
-        REDIS_PORT=6379
-        REDIS_PASSWORD=<PASSWORD>
-
+    ```shell
+    MEMORY_BACKEND=redis
+    REDIS_HOST=localhost
+    REDIS_PORT=6379
+    REDIS_PASSWORD=<PASSWORD>
+    ```
+    
     Replace `<PASSWORD>` by your password, omitting the angled brackets (<>).
 
     Optional configuration:
@@ -61,6 +75,12 @@ Links to memory backends
 !!! info
     See [redis-stack-server](https://hub.docker.com/r/redis/redis-stack-server) for
     setting a password and additional configuration.
+
+!!! warning
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
 ### 🌲 Pinecone API Key Setup
 
@@ -75,6 +95,12 @@ In the `.env` file set:
 - `PINECONE_API_KEY`
 - `PINECONE_ENV` (example: `us-east4-gcp`)
 - `MEMORY_BACKEND=pinecone`
+
+!!! warning
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
 ### Milvus Setup
 
@@ -114,6 +140,12 @@ deployed with docker, or as a cloud service provided by [Zilliz Cloud](https://z
     - `MILVUS_COLLECTION` to change the collection name to use in Milvus.
         Defaults to `autogpt`.
 
+!!! warning
+    The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+
 ### Weaviate Setup
 [Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store
 data objects and vector embeddings from ML-models and scales seamlessly to billion of
@@ -127,7 +159,7 @@ To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip insta
 
 Install the Weaviate client before usage.
 
-``` shell
+```shell
 $ pip install weaviate-client
 ```
 
@@ -135,7 +167,7 @@ $ pip install weaviate-client
 
 In your `.env` file set the following:
 
-``` ini
+```ini
 MEMORY_BACKEND=weaviate
 WEAVIATE_HOST="127.0.0.1" # the IP or domain of the running Weaviate instance
 WEAVIATE_PORT="8080" 
@@ -154,9 +186,18 @@ View memory usage by using the `--debug` flag :)
 
 
 ## 🧠 Memory pre-seeding
+
+!!! warning
+    Data ingestion is broken in v0.4.7 and possibly earlier versions. This is a known issue that will be addressed in future releases. Follow these issues for updates.
+    [Issue 4435](https://github.com/Significant-Gravitas/Auto-GPT/issues/4435)
+    [Issue 4024](https://github.com/Significant-Gravitas/Auto-GPT/issues/4024)
+    [Issue 2076](https://github.com/Significant-Gravitas/Auto-GPT/issues/2076)
+
+
+
 Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.
 
-``` shell
+```shell
 $ python data_ingestion.py -h 
 usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
 
@@ -173,7 +214,7 @@ options:
 # python data_ingestion.py --dir DataFolder --init --overlap 100 --max_length 2000
 ```
 
-In the example above, the script initializes the memory, ingests all files within the `Auto-Gpt/autogpt/auto_gpt_workspace/DataFolder` directory into memory with an overlap between chunks of 100 and a maximum length of each chunk of 2000.
+In the example above, the script initializes the memory, ingests all files within the `Auto-Gpt/auto_gpt_workspace/DataFolder` directory into memory with an overlap between chunks of 100 and a maximum length of each chunk of 2000.
 
 Note that you can also use the `--file` argument to ingest a single file into memory and that data_ingestion.py will only ingest files within the `/auto_gpt_workspace` directory.
 

@@ -31,7 +31,7 @@ def error_factory(error_instance, error_count, retry_count, warn_user=True):
     return RaisesError()
 
 
-def test_retry_open_api_no_error(capsys):
+def test_retry_open_api_no_error(caplog: pytest.LogCaptureFixture):
     """Tests the retry functionality with no errors expected"""
 
     @openai.retry_api()
@@ -41,9 +41,9 @@ def test_retry_open_api_no_error(capsys):
     result = f()
     assert result == 1
 
-    output = capsys.readouterr()
-    assert output.out == ""
-    assert output.err == ""
+    output = caplog.text
+    assert output == ""
+    assert output == ""
 
 
 @pytest.mark.parametrize(
@@ -51,7 +51,9 @@ def test_retry_open_api_no_error(capsys):
     [(2, 10, False), (2, 2, False), (10, 2, True), (3, 2, True), (1, 0, True)],
     ids=["passing", "passing_edge", "failing", "failing_edge", "failing_no_retries"],
 )
-def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure):
+def test_retry_open_api_passing(
+    caplog: pytest.LogCaptureFixture, error, error_count, retry_count, failure
+):
     """Tests the retry with simulated errors [RateLimitError, ServiceUnavailableError, APIError], but should ulimately pass"""
     call_count = min(error_count, retry_count) + 1
 
@@ -65,20 +67,20 @@ def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure
 
     assert raises.count == call_count
 
-    output = capsys.readouterr()
+    output = caplog.text
 
     if error_count and retry_count:
         if type(error) == RateLimitError:
-            assert "Reached rate limit" in output.out
-            assert "Please double check" in output.out
+            assert "Reached rate limit" in output
+            assert "Please double check" in output
         if type(error) == ServiceUnavailableError:
-            assert "The OpenAI API engine is currently overloaded" in output.out
-            assert "Please double check" in output.out
+            assert "The OpenAI API engine is currently overloaded" in output
+            assert "Please double check" in output
     else:
-        assert output.out == ""
+        assert output == ""
 
 
-def test_retry_open_api_rate_limit_no_warn(capsys):
+def test_retry_open_api_rate_limit_no_warn(caplog: pytest.LogCaptureFixture):
     """Tests the retry logic with a rate limit error"""
     error_count = 2
     retry_count = 10
@@ -89,13 +91,13 @@ def test_retry_open_api_rate_limit_no_warn(capsys):
     assert result == call_count
     assert raises.count == call_count
 
-    output = capsys.readouterr()
+    output = caplog.text
 
-    assert "Reached rate limit" in output.out
-    assert "Please double check" not in output.out
+    assert "Reached rate limit" in output
+    assert "Please double check" not in output
 
 
-def test_retry_open_api_service_unavairable_no_warn(capsys):
+def test_retry_open_api_service_unavairable_no_warn(caplog: pytest.LogCaptureFixture):
     """Tests the retry logic with a service unavairable error"""
     error_count = 2
     retry_count = 10
@@ -108,13 +110,13 @@ def test_retry_open_api_service_unavairable_no_warn(capsys):
     assert result == call_count
     assert raises.count == call_count
 
-    output = capsys.readouterr()
+    output = caplog.text
 
-    assert "The OpenAI API engine is currently overloaded" in output.out
-    assert "Please double check" not in output.out
+    assert "The OpenAI API engine is currently overloaded" in output
+    assert "Please double check" not in output
 
 
-def test_retry_openapi_other_api_error(capsys):
+def test_retry_openapi_other_api_error(caplog: pytest.LogCaptureFixture):
     """Tests the Retry logic with a non rate limit error such as HTTP500"""
     error_count = 2
     retry_count = 10
@@ -126,5 +128,5 @@ def test_retry_openapi_other_api_error(capsys):
     call_count = 1
     assert raises.count == call_count
 
-    output = capsys.readouterr()
-    assert output.out == ""
+    output = caplog.text
+    assert output == ""

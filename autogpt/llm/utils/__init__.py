@@ -119,7 +119,9 @@ def create_chat_completion(
         temperature = config.temperature
     if max_tokens is None:
         prompt_tlength = prompt.token_length
-        max_tokens = OPEN_AI_CHAT_MODELS[model].max_tokens - prompt_tlength
+        max_tokens = (
+            OPEN_AI_CHAT_MODELS[model].max_tokens - prompt_tlength - 1
+        )  # the -1 is just here because we have a bug and we don't know how to fix it. When using gpt-4-0314 we get a token error.
         logger.debug(f"Prompt length: {prompt_tlength} tokens")
         if functions:
             functions_tlength = count_openai_functions_tokens(functions, model)
@@ -154,6 +156,9 @@ def create_chat_completion(
             function.schema for function in functions
         ]
 
+    # Print full prompt to debug log
+    logger.debug(prompt.dump())
+
     response = iopenai.create_chat_completion(
         messages=prompt.raw(),
         **chat_completion_kwargs,
@@ -183,25 +188,3 @@ def create_chat_completion(
         if function_call
         else None,
     )
-
-
-def check_model(
-    model_name: str,
-    model_type: Literal["smart_llm", "fast_llm"],
-    config: Config,
-) -> str:
-    """Check if model is available for use. If not, return gpt-3.5-turbo."""
-    openai_credentials = config.get_openai_credentials(model_name)
-    api_manager = ApiManager()
-    models = api_manager.get_models(**openai_credentials)
-
-    if any(model_name in m["id"] for m in models):
-        return model_name
-
-    logger.typewriter_log(
-        "WARNING: ",
-        Fore.YELLOW,
-        f"You do not have access to {model_name}. Setting {model_type} to "
-        f"gpt-3.5-turbo.",
-    )
-    return "gpt-3.5-turbo"

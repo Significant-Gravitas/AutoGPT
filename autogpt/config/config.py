@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 import yaml
@@ -12,12 +13,14 @@ from colorama import Fore
 from pydantic import Field, validator
 
 from autogpt.core.configuration.schema import Configurable, SystemSettings
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.plugins.plugins_config import PluginsConfig
 
-AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
-PLUGINS_CONFIG_FILE = os.path.join(
-    os.path.dirname(__file__), "../..", "plugins_config.yaml"
-)
+AI_SETTINGS_FILE = "ai_settings.yaml"
+AZURE_CONFIG_FILE = "azure.yaml"
+PLUGINS_CONFIG_FILE = "plugins_config.yaml"
+PROMPT_SETTINGS_FILE = "prompt_settings.yaml"
+
 GPT_4_MODEL = "gpt-4"
 GPT_3_MODEL = "gpt-3.5-turbo"
 
@@ -34,6 +37,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     exit_key: str = "n"
     debug_mode: bool = False
     plain_output: bool = False
+    noninteractive_mode: bool = False
     chat_messages_enabled: bool = True
     # TTS configuration
     speak_mode: bool = False
@@ -45,13 +49,14 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Agent Control Settings #
     ##########################
     # Paths
-    ai_settings_file: str = "ai_settings.yaml"
-    prompt_settings_file: str = "prompt_settings.yaml"
-    workspace_path: Optional[str] = None
-    file_logger_path: Optional[str] = None
+    ai_settings_file: str = AI_SETTINGS_FILE
+    prompt_settings_file: str = PROMPT_SETTINGS_FILE
+    workdir: Path = None
+    workspace_path: Optional[Path] = None
+    file_logger_path: Optional[Path] = None
     # Model configuration
-    fast_llm: str = "gpt-3.5-turbo"
-    smart_llm: str = "gpt-4"
+    fast_llm: str = "gpt-3.5-turbo-16k"
+    smart_llm: str = "gpt-4-0314"
     temperature: float = 0
     openai_functions: bool = False
     embedding_model: str = "text-embedding-ada-002"
@@ -144,6 +149,15 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
         ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
         return p
 
+    @validator("openai_functions")
+    def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
+        if v:
+            smart_llm = values["smart_llm"]
+            assert OPEN_AI_CHAT_MODELS[smart_llm].supports_functions, (
+                f"Model {smart_llm} does not support OpenAI Functions. "
+                "Please disable OPENAI_FUNCTIONS or choose a suitable model."
+            )
+
     def get_openai_credentials(self, model: str) -> dict[str, str]:
         credentials = {
             "api_key": self.openai_api_key,
@@ -210,15 +224,18 @@ class ConfigBuilder(Configurable[Config]):
     default_settings = Config()
 
     @classmethod
-    def build_config_from_env(cls) -> Config:
+    def build_config_from_env(cls, workdir: Path) -> Config:
         """Initialize the Config class"""
         config_dict = {
+            "workdir": workdir,
             "authorise_key": os.getenv("AUTHORISE_COMMAND_KEY"),
             "exit_key": os.getenv("EXIT_KEY"),
             "plain_output": os.getenv("PLAIN_OUTPUT", "False") == "True",
             "shell_command_control": os.getenv("SHELL_COMMAND_CONTROL"),
-            "ai_settings_file": os.getenv("AI_SETTINGS_FILE"),
-            "prompt_settings_file": os.getenv("PROMPT_SETTINGS_FILE"),
+            "ai_settings_file": os.getenv("AI_SETTINGS_FILE", AI_SETTINGS_FILE),
+            "prompt_settings_file": os.getenv(
+                "PROMPT_SETTINGS_FILE", PROMPT_SETTINGS_FILE
+            ),
             "fast_llm": os.getenv("FAST_LLM", os.getenv("FAST_LLM_MODEL")),
             "smart_llm": os.getenv("SMART_LLM", os.getenv("SMART_LLM_MODEL")),
             "embedding_model": os.getenv("EMBEDDING_MODEL"),
@@ -255,7 +272,9 @@ class ConfigBuilder(Configurable[Config]):
             "redis_password": os.getenv("REDIS_PASSWORD"),
             "wipe_redis_on_start": os.getenv("WIPE_REDIS_ON_START", "True") == "True",
             "plugins_dir": os.getenv("PLUGINS_DIR"),
-            "plugins_config_file": os.getenv("PLUGINS_CONFIG_FILE"),
+            "plugins_config_file": os.getenv(
+                "PLUGINS_CONFIG_FILE", PLUGINS_CONFIG_FILE
+            ),
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
         }
 
@@ -277,24 +296,19 @@ class ConfigBuilder(Configurable[Config]):
         config_dict["elevenlabs_voice_id"] = os.getenv(
             "ELEVENLABS_VOICE_ID", os.getenv("ELEVENLABS_VOICE_1_ID")
         )
-        elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        if os.getenv("USE_MAC_OS_TTS"):
-            default_tts_provider = "macos"
-        elif elevenlabs_api_key:
-            default_tts_provider = "elevenlabs"
-        elif os.getenv("USE_BRIAN_TTS"):
-            default_tts_provider = "streamelements"
-        else:
-            default_tts_provider = "gtts"
-        config_dict["text_to_speech_provider"] = default_tts_provider
+        if not config_dict["text_to_speech_provider"]:
+            if os.getenv("USE_MAC_OS_TTS"):
+                default_tts_provider = "macos"
+            elif config_dict["elevenlabs_api_key"]:
+                default_tts_provider = "elevenlabs"
+            elif os.getenv("USE_BRIAN_TTS"):
+                default_tts_provider = "streamelements"
+            else:
+                default_tts_provider = "gtts"
+            config_dict["text_to_speech_provider"] = default_tts_provider
 
         config_dict["plugins_allowlist"] = _safe_split(os.getenv("ALLOWLISTED_PLUGINS"))
         config_dict["plugins_denylist"] = _safe_split(os.getenv("DENYLISTED_PLUGINS"))
-        config_dict["plugins_config"] = PluginsConfig.load_config(
-            config_dict["plugins_config_file"],
-            config_dict["plugins_denylist"],
-            config_dict["plugins_allowlist"],
-        )
 
         with contextlib.suppress(TypeError):
             config_dict["image_size"] = int(os.getenv("IMAGE_SIZE"))
@@ -304,7 +318,9 @@ class ConfigBuilder(Configurable[Config]):
             config_dict["temperature"] = float(os.getenv("TEMPERATURE"))
 
         if config_dict["use_azure"]:
-            azure_config = cls.load_azure_config(config_dict["azure_config_file"])
+            azure_config = cls.load_azure_config(
+                workdir / config_dict["azure_config_file"]
+            )
             config_dict.update(azure_config)
 
         elif os.getenv("OPENAI_API_BASE_URL"):
@@ -318,16 +334,26 @@ class ConfigBuilder(Configurable[Config]):
             k: v for k, v in config_dict.items() if v is not None
         }
 
-        return cls.build_agent_configuration(config_dict_without_none_values)
+        config = cls.build_agent_configuration(config_dict_without_none_values)
+
+        # Set secondary config variables (that depend on other config variables)
+
+        config.plugins_config = PluginsConfig.load_config(
+            config.workdir / config.plugins_config_file,
+            config.plugins_denylist,
+            config.plugins_allowlist,
+        )
+
+        return config
 
     @classmethod
-    def load_azure_config(cls, config_file: str = AZURE_CONFIG_FILE) -> Dict[str, str]:
+    def load_azure_config(cls, config_file: Path) -> Dict[str, str]:
         """
         Loads the configuration parameters for Azure hosting from the specified file
           path as a yaml file.
 
         Parameters:
-            config_file(str): The path to the config yaml file. DEFAULT: "../azure.yaml"
+            config_file (Path): The path to the config yaml file.
 
         Returns:
             Dict
@@ -367,7 +393,7 @@ def check_openai_api_key(config: Config) -> None:
             print(
                 Fore.GREEN
                 + "OpenAI API key successfully set!\n"
-                + Fore.ORANGE
+                + Fore.YELLOW
                 + "NOTE: The API key you've set is only temporary.\n"
                 + "For longer sessions, please set it in .env file"
                 + Fore.RESET

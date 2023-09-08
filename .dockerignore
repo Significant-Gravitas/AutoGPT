@@ -4,6 +4,11 @@
 *.yml
 !prompt_settings.yaml
 
+data/*
+logs/*
+agbenchmark/logs/*
+agbenchmark/reports/*
+
 *.md
 *.png
 !BULLETIN.md

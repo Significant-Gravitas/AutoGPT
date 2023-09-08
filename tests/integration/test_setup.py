@@ -2,16 +2,16 @@ from unittest.mock import patch
 
 import pytest
 
+from autogpt.app.setup import generate_aiconfig_automatic, interactive_ai_config_setup
 from autogpt.config.ai_config import AIConfig
-from autogpt.setup import generate_aiconfig_automatic, prompt_user
 
 
 @pytest.mark.vcr
 @pytest.mark.requires_openai_api_key
 def test_generate_aiconfig_automatic_default(patched_api_requestor, config):
     user_inputs = [""]
-    with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
-        ai_config = prompt_user(config)
+    with patch("autogpt.app.utils.session.prompt", side_effect=user_inputs):
+        ai_config = interactive_ai_config_setup(config)
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name is not None
@@ -43,8 +43,8 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor, config):
         "",
         "",
     ]
-    with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
-        ai_config = prompt_user(config)
+    with patch("autogpt.app.utils.session.prompt", side_effect=user_inputs):
+        ai_config = interactive_ai_config_setup(config)
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name == "Chef-GPT"
@@ -64,8 +64,8 @@ def test_prompt_user_manual_mode(patched_api_requestor, config):
         "",
         "",
     ]
-    with patch("autogpt.utils.session.prompt", side_effect=user_inputs):
-        ai_config = prompt_user(config)
+    with patch("autogpt.app.utils.session.prompt", side_effect=user_inputs):
+        ai_config = interactive_ai_config_setup(config)
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name == "Chef-GPT"

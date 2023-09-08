@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
-from autogpt.agent import Agent
+from autogpt.agents import Agent
 from autogpt.commands.execute_code import execute_python_file
 from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
@@ -57,7 +57,7 @@ def test_debug_code_challenge_a(
 
     output = execute_python_file(
         get_workspace_path(workspace, TEST_FILE_PATH),
-        dummy_agent,
+        agent=dummy_agent,
     )
 
     assert "error" not in output.lower(), f"Errors found in output: {output}!"

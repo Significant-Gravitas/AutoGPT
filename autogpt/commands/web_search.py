@@ -1,5 +1,9 @@
-"""Google search command for Autogpt."""
+"""Commands to search the web with"""
+
 from __future__ import annotations
+
+COMMAND_CATEGORY = "web_search"
+COMMAND_CATEGORY_TITLE = "Web Search"
 
 import json
 import time
@@ -7,7 +11,8 @@ from itertools import islice
 
 from duckduckgo_search import DDGS
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import ConfigurationError
 from autogpt.command_decorator import command
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
@@ -115,9 +120,10 @@ def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
         ) == 403 and "invalid API key" in error_details.get("error", {}).get(
             "message", ""
         ):
-            return "Error: The provided Google API key is invalid or missing."
-        else:
-            return f"Error: {e}"
+            raise ConfigurationError(
+                "The provided Google API key is invalid or missing."
+            )
+        raise
     # google_result can be a list or a string depending on the search results
 
     # Return the list of search result URLs

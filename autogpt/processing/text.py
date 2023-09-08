@@ -1,6 +1,7 @@
 """Text processing functions"""
+import logging
 from math import ceil
-from typing import Optional
+from typing import Iterator, Optional, Sequence, TypeVar
 
 import spacy
 import tiktoken
@@ -9,8 +10,21 @@ from autogpt.config import Config
 from autogpt.llm.base import ChatSequence
 from autogpt.llm.providers.openai import OPEN_AI_MODELS
 from autogpt.llm.utils import count_string_tokens, create_chat_completion
-from autogpt.logs import logger
-from autogpt.utils import batch
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def batch(
+    sequence: Sequence[T], max_batch_length: int, overlap: int = 0
+) -> Iterator[Sequence[T]]:
+    """Batch data from iterable into slices of length N. The last batch may be shorter."""
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if max_batch_length < 1:
+        raise ValueError("n must be at least one")
+    for i in range(0, len(sequence), max_batch_length - overlap):
+        yield sequence[i : i + max_batch_length]
 
 
 def _max_chunk_length(model: str, max: Optional[int] = None) -> int:
@@ -32,8 +46,8 @@ def chunk_content(
     content: str,
     for_model: str,
     max_chunk_length: Optional[int] = None,
-    with_overlap=True,
-):
+    with_overlap: bool = True,
+) -> Iterator[tuple[str, int]]:
     """Split content into chunks of approximately equal token length."""
 
     MAX_OVERLAP = 200  # limit overlap to save tokens
@@ -112,7 +126,6 @@ def summarize_text(
             # "Only respond with a concise summary or description of the user message."
         )
 
-        logger.debug(f"Summarizing with {model}:\n{summarization_prompt.dump()}\n")
         summary = create_chat_completion(
             prompt=summarization_prompt, config=config, temperature=0, max_tokens=500
         ).content
@@ -146,9 +159,9 @@ def split_text(
     text: str,
     for_model: str,
     config: Config,
-    with_overlap=True,
+    with_overlap: bool = True,
     max_chunk_length: Optional[int] = None,
-):
+) -> Iterator[tuple[str, int]]:
     """Split text into chunks of sentences, with each chunk not exceeding the maximum length
 
     Args:
@@ -167,8 +180,6 @@ def split_text(
 
     max_length = _max_chunk_length(for_model, max_chunk_length)
 
-    # flatten paragraphs to improve performance
-    text = text.replace("\n", " ")
     text_length = count_string_tokens(text, for_model)
 
     if text_length < max_length:

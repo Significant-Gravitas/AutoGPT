@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
 from autogpt.commands.image_gen import generate_image, generate_image_with_sd_webui
 
 

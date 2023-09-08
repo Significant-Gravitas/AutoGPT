@@ -4,15 +4,14 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from autogpt.config import Config
-from autogpt.json_utils.utilities import extract_json_from_response, validate_json
-from autogpt.utils import (
+from autogpt.app.utils import (
     get_bulletin_from_web,
     get_current_git_branch,
     get_latest_bulletin,
-    readable_file_size,
-    validate_yaml_file,
 )
+from autogpt.config import Config
+from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
+from autogpt.utils import validate_yaml_file
 from tests.utils import skip_in_ci
 
 
@@ -77,13 +76,6 @@ def test_validate_yaml_file_invalid():
     assert "There was an issue while trying to read" in message
 
 
-def test_readable_file_size():
-    size_in_bytes = 1024 * 1024 * 3.5  # 3.5 MB
-    readable_size = readable_file_size(size_in_bytes)
-
-    assert readable_size == "3.50 MB"
-
-
 @patch("requests.get")
 def test_get_bulletin_from_web_success(mock_get):
     expected_content = "Test bulletin from web"
@@ -127,7 +119,7 @@ def test_get_latest_bulletin_with_file():
     with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
         f.write(expected_content)
 
-    with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
+    with patch("autogpt.app.utils.get_bulletin_from_web", return_value=""):
         bulletin, is_new = get_latest_bulletin()
         assert expected_content in bulletin
         assert is_new == False
@@ -140,7 +132,9 @@ def test_get_latest_bulletin_with_new_bulletin():
         f.write("Old bulletin")
 
     expected_content = "New bulletin from web"
-    with patch("autogpt.utils.get_bulletin_from_web", return_value=expected_content):
+    with patch(
+        "autogpt.app.utils.get_bulletin_from_web", return_value=expected_content
+    ):
         bulletin, is_new = get_latest_bulletin()
         assert "::NEW BULLETIN::" in bulletin
         assert expected_content in bulletin
@@ -154,7 +148,9 @@ def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
     with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
         f.write(expected_content)
 
-    with patch("autogpt.utils.get_bulletin_from_web", return_value=expected_content):
+    with patch(
+        "autogpt.app.utils.get_bulletin_from_web", return_value=expected_content
+    ):
         bulletin, is_new = get_latest_bulletin()
         assert expected_content in bulletin
         assert is_new == False
@@ -170,7 +166,7 @@ def test_get_current_git_branch():
     assert branch_name != ""
 
 
-@patch("autogpt.utils.Repo")
+@patch("autogpt.app.utils.Repo")
 def test_get_current_git_branch_success(mock_repo):
     mock_repo.return_value.active_branch.name = "test-branch"
     branch_name = get_current_git_branch()
@@ -178,7 +174,7 @@ def test_get_current_git_branch_success(mock_repo):
     assert branch_name == "test-branch"
 
 
-@patch("autogpt.utils.Repo")
+@patch("autogpt.app.utils.Repo")
 def test_get_current_git_branch_failure(mock_repo):
     mock_repo.side_effect = Exception()
     branch_name = get_current_git_branch()
@@ -187,22 +183,26 @@ def test_get_current_git_branch_failure(mock_repo):
 
 
 def test_validate_json_valid(valid_json_response, config: Config):
-    assert validate_json(valid_json_response, config)
+    valid, errors = validate_dict(valid_json_response, config)
+    assert valid
+    assert errors is None
 
 
 def test_validate_json_invalid(invalid_json_response, config: Config):
-    assert not validate_json(valid_json_response, config)
+    valid, errors = validate_dict(valid_json_response, config)
+    assert not valid
+    assert errors is not None
 
 
 def test_extract_json_from_response(valid_json_response: dict):
     emulated_response_from_openai = str(valid_json_response)
     assert (
-        extract_json_from_response(emulated_response_from_openai) == valid_json_response
+        extract_dict_from_response(emulated_response_from_openai) == valid_json_response
     )
 
 
 def test_extract_json_from_response_wrapped_in_code_block(valid_json_response: dict):
     emulated_response_from_openai = "```" + str(valid_json_response) + "```"
     assert (
-        extract_json_from_response(emulated_response_from_openai) == valid_json_response
+        extract_dict_from_response(emulated_response_from_openai) == valid_json_response
     )

@@ -1,11 +1,18 @@
+from __future__ import annotations
+
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import requests
 from playsound import playsound
 
-from autogpt.config import Config
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 from autogpt.speech.base import VoiceBase
+
+logger = logging.getLogger(__name__)
 
 
 class StreamElementsSpeech(VoiceBase):
@@ -13,8 +20,10 @@ class StreamElementsSpeech(VoiceBase):
 
     def _setup(self, config: Config) -> None:
         """Setup the voices, API key, etc."""
+        self.config = config
 
     def _speech(self, text: str, voice: str, _: int = 0) -> bool:
+        voice = self.config.streamelements_voice
         """Speak text using the streamelements API
 
         Args:
@@ -36,7 +45,7 @@ class StreamElementsSpeech(VoiceBase):
             os.remove("speech.mp3")
             return True
         else:
-            logging.error(
+            logger.error(
                 "Request failed with status code: %s, response content: %s",
                 response.status_code,
                 response.content,

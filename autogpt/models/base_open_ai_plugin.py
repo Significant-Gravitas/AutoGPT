@@ -198,18 +198,20 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
     def can_handle_text_embedding(self, text: str) -> bool:
         """This method is called to check that the plugin can
           handle the text_embedding method.
-        Args:
-            text (str): The text to be convert to embedding.
-          Returns:
-              bool: True if the plugin can handle the text_embedding method."""
-        return False
 
-    def handle_text_embedding(self, text: str) -> list:
-        """This method is called when the chat completion is done.
         Args:
             text (str): The text to be convert to embedding.
         Returns:
-            list: The text embedding.
+            bool: True if the plugin can handle the text_embedding method."""
+        return False
+
+    def handle_text_embedding(self, text: str) -> list[float]:
+        """This method is called to create a text embedding.
+
+        Args:
+            text (str): The text to be convert to embedding.
+        Returns:
+            list[float]: The created embedding vector.
         """
 
     def can_handle_user_input(self, user_input: str) -> bool:

@@ -12,7 +12,8 @@ import pytest
 from pytest_mock import MockerFixture
 
 import autogpt.commands.file_operations as file_ops
-from autogpt.agent.agent import Agent
+from autogpt.agents.agent import Agent
+from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.config import Config
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
@@ -199,8 +200,8 @@ def test_read_file(
 
 def test_read_file_not_found(agent: Agent):
     filename = "does_not_exist.txt"
-    content = file_ops.read_file(filename, agent=agent)
-    assert "Error:" in content and filename in content and "no such file" in content
+    with pytest.raises(FileNotFoundError):
+        file_ops.read_file(filename, agent=agent)
 
 
 def test_write_to_file_relative_path(test_file_name: Path, agent: Agent):
@@ -236,8 +237,8 @@ def test_write_file_fails_if_content_exists(test_file_name: Path, agent: Agent):
         agent=agent,
         checksum=file_ops.text_checksum(new_content),
     )
-    result = file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
-    assert result == "Error: File has already been updated."
+    with pytest.raises(DuplicateOperationError):
+        file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
 
 
 def test_write_file_succeeds_if_content_different(
@@ -280,24 +281,6 @@ def test_append_to_file_uses_checksum_from_appended_file(
         f"append: {test_file_name} #{checksum1}\n"
         f"append: {test_file_name} #{checksum2}\n"
     )
-
-
-def test_delete_file(test_file_with_content_path: Path, agent: Agent):
-    result = file_ops.delete_file(str(test_file_with_content_path), agent=agent)
-    assert result == "File deleted successfully."
-    assert os.path.exists(test_file_with_content_path) is False
-
-
-def test_delete_missing_file(agent: Agent):
-    filename = "path/to/file/which/does/not/exist"
-    # confuse the log
-    file_ops.log_operation("write", filename, agent=agent, checksum="fake")
-    try:
-        os.remove(agent.workspace.get_path(filename))
-    except FileNotFoundError as err:
-        assert str(err) in file_ops.delete_file(filename, agent=agent)
-        return
-    assert False, f"Failed to test delete_file; {filename} not expected to exist"
 
 
 def test_list_files(workspace: Workspace, test_directory: Path, agent: Agent):
