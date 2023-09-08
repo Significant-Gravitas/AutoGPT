@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class SideBarView extends StatelessWidget {
   final ValueNotifier<String> selectedViewNotifier;
 
-  SideBarView({required this.selectedViewNotifier});
+  const SideBarView({super.key, required this.selectedViewNotifier});
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +20,7 @@ class SideBarView extends StatelessWidget {
                     splashRadius: 0.1,
                     color:
                         selectedView == 'TaskView' ? Colors.blue : Colors.black,
-                    icon: Icon(Icons.chat),
+                    icon: const Icon(Icons.chat),
                     onPressed: () => selectedViewNotifier.value = 'TaskView',
                   ),
                   IconButton(
@@ -28,7 +28,7 @@ class SideBarView extends StatelessWidget {
                     color: selectedView == 'SkillTreeView'
                         ? Colors.blue
                         : Colors.black,
-                    icon: Icon(Icons.emoji_events), // trophy icon
+                    icon: const Icon(Icons.emoji_events), // trophy icon
                     onPressed: () =>
                         selectedViewNotifier.value = 'SkillTreeView',
                   ),
