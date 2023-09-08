@@ -7,7 +7,7 @@ on:
       agents:
         description: 'Agents to run (comma-separated)'
         required: false
-        default: 'gpt-engineer,smol-developer,Auto-GPT,mini-agi,beebot,BabyAGI,PolyGPT,Turbo' # Default agents if none are specified
+        default: 'gpt-engineer,smol-developer,Auto-GPT,mini-agi,beebot,babyagi,PolyGPT,Auto-GPT-Turbo' # Default agents if none are specified
   schedule:
     - cron: '0 8 * * *'
   push:
@@ -83,7 +83,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "schedule" ]; then
             echo "::set-output name=env-name::production"
-            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI', 'PolyGPT', 'Turbo' ]"
+            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'babyagi', 'PolyGPT', 'Auto-GPT-Turbo' ]"
           elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             IFS=',' read -ra matrix_array <<< "${{ github.event.inputs.agents }}"
             matrix_string="[ \"$(echo "${matrix_array[@]}" | sed 's/ /", "/g')\" ]"
@@ -170,7 +170,7 @@ jobs:
             python -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt
-          elif [ "$AGENT_NAME" == "BabyAGI" ]; then
+          elif [ "$AGENT_NAME" == "babyagi" ]; then
             python -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt
@@ -191,7 +191,7 @@ jobs:
             nvm install && nvm use
             yarn install
             export NODE_TLS_REJECT_UNAUTHORIZED=0
-          elif [ "$AGENT_NAME" == "Turbo" ]; then
+          elif [ "$AGENT_NAME" == "Auto-GPT-Turbo" ]; then
             python -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt
