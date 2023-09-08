@@ -1,12 +1,15 @@
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/views/side_bar_view.dart';
 import 'package:auto_gpt_flutter_client/views/task/task_view.dart';
 import 'package:auto_gpt_flutter_client/views/chat/chat_view.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 class MainLayout extends StatelessWidget {
-  const MainLayout({Key? key}) : super(key: key);
+  final ValueNotifier<String> selectedViewNotifier = ValueNotifier('TaskView');
+
+  MainLayout({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +27,18 @@ class MainLayout extends StatelessWidget {
       // For larger screens, return a side-by-side layout
       return Row(
         children: [
-          SizedBox(width: 280, child: TaskView(viewModel: taskViewModel)),
+          SideBarView(selectedViewNotifier: selectedViewNotifier),
+          ValueListenableBuilder(
+            valueListenable: selectedViewNotifier,
+            builder: (context, String value, _) {
+              if (value == 'TaskView') {
+                return SizedBox(
+                    width: 280, child: TaskView(viewModel: taskViewModel));
+              } else {
+                return Expanded(child: Text("SkillTreeView")); // placeholder
+              }
+            },
+          ),
           Expanded(
               child: ChatView(
             viewModel: chatViewModel,
