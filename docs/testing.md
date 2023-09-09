@@ -2,12 +2,13 @@
 
 To run all tests, use the following command:
 
-``` shell
+```shell
 pytest
 ```
 
 If `pytest` is not found:
-``` shell
+
+```shell
 python -m pytest
 ```
 
@@ -15,18 +16,21 @@ python -m pytest
 
 - To run without integration tests:
 
-        :::shell
-        pytest --without-integration
+```shell
+pytest --without-integration
+```
 
 - To run without *slow* integration tests:
 
-        :::shell
-        pytest --without-slow-integration
+```shell
+pytest --without-slow-integration
+```
 
 - To run tests and see coverage:
 
-        :::shell
-        pytest --cov=autogpt --without-integration --without-slow-integration
+```shell
+pytest --cov=autogpt --without-integration --without-slow-integration
+```
 
 ## Running the linter
 
@@ -36,11 +40,12 @@ See the [flake8 rules](https://www.flake8rules.com/) for more information.
 
 To run the linter:
 
-``` shell
+```shell
 flake8 .
 ```
 
 Or:
-``` shell
+
+```shell
 python -m flake8 .
 ```

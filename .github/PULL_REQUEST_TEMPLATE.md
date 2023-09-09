@@ -41,7 +41,7 @@ By following these guidelines, your PRs are more likely to be merged quickly aft
     black .
     isort .
     mypy
-    autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports autogpt tests --in-place
+    autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests --in-place
     ```
 
 <!-- If you haven't added tests, please explain why. If you have, check the appropriate box. If you've ensured your PR is atomic and well-documented, check the corresponding boxes. -->

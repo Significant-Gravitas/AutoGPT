@@ -1,7 +1,12 @@
-"""Selenium web scraping module."""
+"""Commands for browsing a website"""
+
 from __future__ import annotations
 
+COMMAND_CATEGORY = "web_browse"
+COMMAND_CATEGORY_TITLE = "Web Browsing"
+
 import logging
+import re
 from pathlib import Path
 from sys import platform
 from typing import TYPE_CHECKING, Optional, Type
@@ -12,6 +17,7 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
 from selenium.webdriver.chrome.webdriver import WebDriver as ChromeDriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.options import ArgOptions as BrowserOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.service import Service as EdgeDriverService
 from selenium.webdriver.edge.webdriver import WebDriver as EdgeDriver
@@ -27,63 +33,151 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
-from autogpt.commands.command import command
-from autogpt.logs import logger
-from autogpt.memory.vector import MemoryItem, get_memory
-from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
-from autogpt.url_utils.validators import validate_url
-
 if TYPE_CHECKING:
     from autogpt.config import Config
+    from autogpt.agents.agent import Agent
 
-BrowserOptions = ChromeOptions | EdgeOptions | FirefoxOptions | SafariOptions
+from autogpt.agents.utils.exceptions import CommandExecutionError
+from autogpt.command_decorator import command
+from autogpt.llm.utils import count_string_tokens
+from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpt.processing.text import summarize_text
+from autogpt.url_utils.validators import validate_url
+
+logger = logging.getLogger(__name__)
 
 FILE_DIR = Path(__file__).parent.parent
+TOKENS_TO_TRIGGER_SUMMARY = 50
+LINKS_TO_RETURN = 20
+
+
+class BrowsingError(CommandExecutionError):
+    """An error occurred while trying to browse the page"""
 
 
 @command(
-    "browse_website",
-    "Browse Website",
-    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+    "read_webpage",
+    "Read a webpage, and extract specific information from it if a question is specified."
+    " If you are looking to extract specific information from the webpage, you should"
+    " specify a question.",
+    {
+        "url": {"type": "string", "description": "The URL to visit", "required": True},
+        "question": {
+            "type": "string",
+            "description": "A question that you want to answer using the content of the webpage.",
+            "required": False,
+        },
+    },
 )
 @validate_url
-def browse_website(url: str, question: str, config: Config) -> str:
+def read_webpage(url: str, agent: Agent, question: str = "") -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
         url (str): The url of the website to browse
-        question (str): The question asked by the user
+        question (str): The question to answer using the content of the webpage
 
     Returns:
-        Tuple[str, WebDriver]: The answer and links to the user and the webdriver
+        str: The answer and links to the user and the webdriver
     """
+    driver = None
     try:
-        driver, text = scrape_text_with_selenium(url, config)
+        driver = open_page_in_browser(url, agent.config)
+
+        text = scrape_text_with_selenium(driver)
+        links = scrape_links_with_selenium(driver, url)
+
+        return_literal_content = True
+        summarized = False
+        if not text:
+            return f"Website did not contain any text.\n\nLinks: {links}"
+        elif count_string_tokens(text, agent.llm.name) > TOKENS_TO_TRIGGER_SUMMARY:
+            text = summarize_memorize_webpage(
+                url, text, question or None, agent, driver
+            )
+            return_literal_content = bool(question)
+            summarized = True
+
+        # Limit links to LINKS_TO_RETURN
+        if len(links) > LINKS_TO_RETURN:
+            links = links[:LINKS_TO_RETURN]
+
+        text_fmt = f"'''{text}'''" if "\n" in text else f"'{text}'"
+        return (
+            f"Page content{' (summary)' if summarized else ''}:"
+            if return_literal_content
+            else "Answer gathered from webpage:"
+        ) + f" {text_fmt}\n\nLinks: {links}"
+
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
         msg = e.msg.split("\n")[0]
-        return f"Error: {msg}"
-
-    add_header(driver)
-    summary = summarize_memorize_webpage(url, text, question, config, driver)
-    links = scrape_links_with_selenium(driver, url)
-
-    # Limit links to 5
-    if len(links) > 5:
-        links = links[:5]
-    close_browser(driver)
-    return f"Answer gathered from website: {summary}\n\nLinks: {links}"
+        if "net::" in msg:
+            raise BrowsingError(
+                f"A networking error occurred while trying to load the page: "
+                + re.sub(r"^unknown error: ", "", msg)
+            )
+        raise CommandExecutionError(msg)
+    finally:
+        if driver:
+            close_browser(driver)
 
 
-def scrape_text_with_selenium(url: str, config: Config) -> tuple[WebDriver, str]:
-    """Scrape text from a website using selenium
+def scrape_text_with_selenium(driver: WebDriver) -> str:
+    """Scrape text from a browser window using selenium
 
     Args:
-        url (str): The url of the website to scrape
+        driver (WebDriver): A driver object representing the browser window to scrape
 
     Returns:
-        Tuple[WebDriver, str]: The webdriver and the text scraped from the website
+        str: the text scraped from the website
+    """
+
+    # Get the HTML content directly from the browser's DOM
+    page_source = driver.execute_script("return document.body.outerHTML;")
+    soup = BeautifulSoup(page_source, "html.parser")
+
+    for script in soup(["script", "style"]):
+        script.extract()
+
+    text = soup.get_text()
+    lines = (line.strip() for line in text.splitlines())
+    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+    text = "\n".join(chunk for chunk in chunks if chunk)
+    return text
+
+
+def scrape_links_with_selenium(driver: WebDriver, base_url: str) -> list[str]:
+    """Scrape links from a website using selenium
+
+    Args:
+        driver (WebDriver): A driver object representing the browser window to scrape
+        base_url (str): The base URL to use for resolving relative links
+
+    Returns:
+        List[str]: The links scraped from the website
+    """
+    page_source = driver.page_source
+    soup = BeautifulSoup(page_source, "html.parser")
+
+    for script in soup(["script", "style"]):
+        script.extract()
+
+    hyperlinks = extract_hyperlinks(soup, base_url)
+
+    return format_hyperlinks(hyperlinks)
+
+
+def open_page_in_browser(url: str, config: Config) -> WebDriver:
+    """Open a browser window and load a web page using Selenium
+
+    Params:
+        url (str): The URL of the page to load
+        config (Config): The applicable application configuration
+
+    Returns:
+        driver (WebDriver): A driver object representing the browser window to scrape
     """
     logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
@@ -138,38 +232,7 @@ def scrape_text_with_selenium(url: str, config: Config) -> tuple[WebDriver, str]
         EC.presence_of_element_located((By.TAG_NAME, "body"))
     )
 
-    # Get the HTML content directly from the browser's DOM
-    page_source = driver.execute_script("return document.body.outerHTML;")
-    soup = BeautifulSoup(page_source, "html.parser")
-
-    for script in soup(["script", "style"]):
-        script.extract()
-
-    text = soup.get_text()
-    lines = (line.strip() for line in text.splitlines())
-    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-    text = "\n".join(chunk for chunk in chunks if chunk)
-    return driver, text
-
-
-def scrape_links_with_selenium(driver: WebDriver, url: str) -> list[str]:
-    """Scrape links from a website using selenium
-
-    Args:
-        driver (WebDriver): The webdriver to use to scrape the links
-
-    Returns:
-        List[str]: The links scraped from the website
-    """
-    page_source = driver.page_source
-    soup = BeautifulSoup(page_source, "html.parser")
-
-    for script in soup(["script", "style"]):
-        script.extract()
-
-    hyperlinks = extract_hyperlinks(soup, url)
-
-    return format_hyperlinks(hyperlinks)
+    return driver
 
 
 def close_browser(driver: WebDriver) -> None:
@@ -184,28 +247,11 @@ def close_browser(driver: WebDriver) -> None:
     driver.quit()
 
 
-def add_header(driver: WebDriver) -> None:
-    """Add a header to the website
-
-    Args:
-        driver (WebDriver): The webdriver to use to add the header
-
-    Returns:
-        None
-    """
-    try:
-        with open(f"{FILE_DIR}/js/overlay.js", "r") as overlay_file:
-            overlay_script = overlay_file.read()
-        driver.execute_script(overlay_script)
-    except Exception as e:
-        print(f"Error executing overlay.js: {e}")
-
-
 def summarize_memorize_webpage(
     url: str,
     text: str,
-    question: str,
-    config: Config,
+    question: str | None,
+    agent: Agent,
     driver: Optional[WebDriver] = None,
 ) -> str:
     """Summarize text using the OpenAI API
@@ -220,13 +266,15 @@ def summarize_memorize_webpage(
         str: The summary of the text
     """
     if not text:
-        return "Error: No text to summarize"
+        raise ValueError("No text to summarize")
 
     text_length = len(text)
     logger.info(f"Text length: {text_length} characters")
 
-    memory = get_memory(config)
+    # memory = get_memory(agent.config)
 
-    new_memory = MemoryItem.from_webpage(text, url, question=question)
-    memory.add(new_memory)
-    return new_memory.summary
+    # new_memory = MemoryItem.from_webpage(text, url, agent.config, question=question)
+    # memory.add(new_memory)
+
+    summary, _ = summarize_text(text, question=question, config=agent.config)
+    return summary

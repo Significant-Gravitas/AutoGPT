@@ -1,12 +1,14 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Generator, Optional
 
 import pytest
 from _pytest.config import Config
 from _pytest.config.argparsing import Parser
 from _pytest.fixtures import FixtureRequest
+from pytest_mock import MockerFixture
 
+from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge import Challenge
-from tests.vcr import BASE_VCR_CONFIG, before_record_response
+from tests.vcr import before_record_response
 
 
 def before_record_response_filter_errors(
@@ -20,9 +22,9 @@ def before_record_response_filter_errors(
 
 
 @pytest.fixture(scope="module")
-def vcr_config() -> Dict[str, Any]:
+def vcr_config(get_base_vcr_config: Dict[str, Any]) -> Dict[str, Any]:
     # this fixture is called by the pytest-recording vcr decorator.
-    return BASE_VCR_CONFIG | {
+    return get_base_vcr_config | {
         "before_record_response": before_record_response_filter_errors,
     }
 
@@ -51,6 +53,25 @@ def level_to_run(request: FixtureRequest) -> int:
     return request.config.option.level
 
 
+@pytest.fixture
+def challenge_name() -> str:
+    return Challenge.DEFAULT_CHALLENGE_NAME
+
+
 @pytest.fixture(autouse=True)
 def check_beat_challenges(request: FixtureRequest) -> None:
     Challenge.BEAT_CHALLENGES = request.config.getoption("--beat-challenges")
+
+
+@pytest.fixture
+def patched_make_workspace(mocker: MockerFixture, workspace: Workspace) -> Generator:
+    def patched_make_workspace(*args: Any, **kwargs: Any) -> str:
+        return workspace.root
+
+    mocker.patch.object(
+        Workspace,
+        "make_workspace",
+        new=patched_make_workspace,
+    )
+
+    yield

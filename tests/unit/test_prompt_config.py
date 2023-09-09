@@ -1,4 +1,4 @@
-from autogpt.config.prompt_config import PromptConfig
+from autogpt.config.ai_directives import AIDirectives
 
 """
 Test cases for the PromptConfig class, which handles loads the Prompts configuration
@@ -18,15 +18,15 @@ resources:
 - A test resource
 - Another test resource
 - A third test resource
-performance_evaluations:
-- A test performance evaluation
-- Another test performance evaluation
-- A third test performance evaluation
+best_practices:
+- A test best-practice
+- Another test best-practice
+- A third test best-practice
 """
-    config_file = tmp_path / "test_prompt_settings.yaml"
-    config_file.write_text(yaml_content)
+    prompt_settings_file = tmp_path / "test_prompt_settings.yaml"
+    prompt_settings_file.write_text(yaml_content)
 
-    prompt_config = PromptConfig(config_file)
+    prompt_config = AIDirectives.from_file(prompt_settings_file)
 
     assert len(prompt_config.constraints) == 3
     assert prompt_config.constraints[0] == "A test constraint"
@@ -36,13 +36,7 @@ performance_evaluations:
     assert prompt_config.resources[0] == "A test resource"
     assert prompt_config.resources[1] == "Another test resource"
     assert prompt_config.resources[2] == "A third test resource"
-    assert len(prompt_config.performance_evaluations) == 3
-    assert prompt_config.performance_evaluations[0] == "A test performance evaluation"
-    assert (
-        prompt_config.performance_evaluations[1]
-        == "Another test performance evaluation"
-    )
-    assert (
-        prompt_config.performance_evaluations[2]
-        == "A third test performance evaluation"
-    )
+    assert len(prompt_config.best_practices) == 3
+    assert prompt_config.best_practices[0] == "A test best-practice"
+    assert prompt_config.best_practices[1] == "Another test best-practice"
+    assert prompt_config.best_practices[2] == "A third test best-practice"

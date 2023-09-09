@@ -3,7 +3,7 @@
 ## Command Line Arguments
 Running with `--help` lists all the possible command line arguments you can pass:
 
-``` shell
+```shell
 ./run.sh --help     # on Linux / macOS
 
 .\run.bat --help    # on Windows
@@ -11,11 +11,12 @@ Running with `--help` lists all the possible command line arguments you can pass
 
 !!! info
     For use with Docker, replace the script in the examples with
-    `docker-compose run --rm auto-gpt`:
+    `docker compose run --rm auto-gpt`:
 
-        :::shell
-        docker-compose run --rm auto-gpt --help
-        docker-compose run --rm auto-gpt --ai-settings <filename>
+    ```shell
+    docker compose run --rm auto-gpt --help
+    docker compose run --rm auto-gpt --ai-settings <filename>
+    ```
 
 !!! note
     Replace anything in angled brackets (<>) to a value you want to specify
@@ -23,18 +24,22 @@ Running with `--help` lists all the possible command line arguments you can pass
 Here are some common arguments you can use when running Auto-GPT:
 
 * Run Auto-GPT with a different AI Settings file
-    ``` shell
-    ./run.sh --ai-settings <filename>
-    ```
+
+```shell
+./run.sh --ai-settings <filename>
+```
+
 * Run Auto-GPT with a different Prompt Settings file
-    ``` shell
-    ./run.sh --prompt-settings <filename>
-    ```
+
+```shell
+./run.sh --prompt-settings <filename>
+```
+
 * Specify a memory backend
 
-        :::shell
-        ./run.sh --use-memory  <memory-backend>
-
+```shell
+./run.sh --use-memory  <memory-backend>
+```
 
 !!! note
     There are shorthands for some of these flags, for example `-m` for `--use-memory`.  
@@ -44,7 +49,7 @@ Here are some common arguments you can use when running Auto-GPT:
 
 Enter this command to use TTS _(Text-to-Speech)_ for Auto-GPT
 
-``` shell
+```shell
 ./run.sh --speak
 ```
 
@@ -55,9 +60,10 @@ Continuous mode is NOT recommended.
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorize.
 Use at your own risk.
 
-``` shell
+```shell
 ./run.sh --continuous
 ```
+
 To exit the program, press ++ctrl+c++
 
 ### ♻️ Self-Feedback Mode ⚠️
@@ -68,18 +74,18 @@ Running Self-Feedback will **INCREASE** token use and thus cost more. This featu
 
 If you don't have access to GPT-4, this mode allows you to use Auto-GPT!
 
-``` shell
+```shell
 ./run.sh --gpt3only
 ```
 
-You can achieve the same by setting `SMART_LLM_MODEL` in `.env` to `gpt-3.5-turbo`.
+You can achieve the same by setting `SMART_LLM` in `.env` to `gpt-3.5-turbo`.
 
 ### GPT-4 ONLY Mode
 
 If you have access to GPT-4, this mode allows you to use Auto-GPT solely with GPT-4.
 This may give your bot increased intelligence.
 
-``` shell
+```shell
 ./run.sh --gpt4only
 ```
 
@@ -89,12 +95,20 @@ This may give your bot increased intelligence.
 
 ## Logs
 
-Activity and error logs are located in the `./output/logs`
+Activity, Error, and Debug logs are located in `./logs`
+
+!!! tip 
+    Do you notice weird behavior with your agent? Do you have an interesting use case? Do you have a bug you want to report?
+    Follow the step below to enable your logs. You can include these logs when making an issue report or discussing an issue with us.
 
 To print out debug logs:
 
-``` shell
-./run.sh --debug
+```shell
+./run.sh --debug     # on Linux / macOS
+
+.\run.bat --debug    # on Windows
+
+docker-compose run --rm auto-gpt --debug    # in Docker
 ```
 
 ## Disabling Command Categories
@@ -104,5 +118,5 @@ If you want to selectively disable some command groups, you can use the `DISABLE
 For example, to disable coding related features, set it to the value below:
 
 ```ini
-DISABLED_COMMAND_CATEGORIES=autogpt.commands.analyze_code,autogpt.commands.execute_code,autogpt.commands.git_operations,autogpt.commands.improve_code,autogpt.commands.write_tests
+DISABLED_COMMAND_CATEGORIES=autogpt.commands.execute_code
 ```

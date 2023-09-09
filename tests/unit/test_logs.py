@@ -1,6 +1,6 @@
 import pytest
 
-from autogpt.logs import remove_color_codes
+from autogpt.logs.utils import remove_color_codes
 
 
 @pytest.mark.parametrize(
