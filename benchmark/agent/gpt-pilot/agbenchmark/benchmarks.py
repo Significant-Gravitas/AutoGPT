@@ -9,7 +9,7 @@ def run_specific_agent(task: str) -> Tuple[str, int]:
     # os.makedirs("workspace_path", exist_ok=True)
 
     # Run the agent command
-    print(f'benchmarking GPT-Pilot, task: {task}')
+    print(f'benchmarking gpt-pilot, task: {task}')
     child = pexpect.spawn(f"python main.py {task}")
 
     # Create a loop to continuously read output
