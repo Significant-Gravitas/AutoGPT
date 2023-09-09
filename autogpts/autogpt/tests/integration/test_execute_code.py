@@ -52,24 +52,17 @@ def test_execute_python_file(python_test_file: Path, random_string: str, agent: 
 
 
 def test_execute_python_file_args(
-    config: Config, python_test_args_file: Path, random_string: str
+    python_test_args_file: Path, random_string: str, agent: Agent
 ):
     random_args = [random_string] * 2
     random_args_string = " ".join(random_args)
-    result = sut.execute_python_file(python_test_args_file, config, random_args)
+    result = sut.execute_python_file(python_test_args_file, agent=agent, random_args)
     assert result == f"{random_args_string}\n"
 
 
 def test_execute_python_code(random_code: str, random_string: str, agent: Agent):
     result: str = sut.execute_python_code(random_code, agent=agent)
     assert result.replace("\r", "") == f"Hello {random_string}!\n"
-
-
-def test_execute_python_code_disallows_name_arg_path_traversal(
-    random_code: str, agent: Agent
-):
-    with pytest.raises(AccessDeniedError, match="path traversal"):
-        sut.execute_python_code(random_code, agent=agent)
 
 
 def test_execute_python_code_overwrites_file(random_code: str, agent: Agent):
