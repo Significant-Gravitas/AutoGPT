@@ -2,7 +2,7 @@ name: Benchmark CI
 
 on:
   workflow_dispatch:
-    branches: [master]
+    branches: [master, feature/benchmark_gpt-pilot]
     inputs:
       agents:
         description: 'Agents to run (comma-separated)'
@@ -11,7 +11,7 @@ on:
   schedule:
     - cron: '0 8 * * *'
   push:
-    branches: [master, ci-test*]
+    branches: [master, ci-test*, feature/benchmark_gpt-pilot]
     paths:
       - 'benchmark/**'
       - '!benchmark/reports/**'
