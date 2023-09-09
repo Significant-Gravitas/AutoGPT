@@ -188,14 +188,14 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str, str, str]:
     # the default home is where you're running from
     HOME_DIRECTORY = Path(os.getcwd())
 
-    if os.path.join("Auto-GPT-Benchmarks", "backend") in str(
+    if os.path.join("benchmark", "backend") in str(
         HOME_DIRECTORY
     ):  # accounting for backend calls
         HOME_DIRECTORY = HOME_DIRECTORY.parent
 
     benchmarks_folder_path = HOME_DIRECTORY / "agbenchmark"
 
-    if AGENT_NAME and not os.path.join("Auto-GPT-Benchmarks", "agent") in str(
+    if AGENT_NAME and not os.path.join("benchmark", "agent") in str(
         HOME_DIRECTORY
     ):
         # if the agent name is defined but the run is not from the agent repo, then home is the agent repo
@@ -275,21 +275,24 @@ def agent_eligibible_for_optional_categories(
 
 def find_absolute_benchmark_path() -> Path:
     # Find the absolute path to the current working directory
-    current_path = Path.cwd()
+    # current_path = os.path.abspath(__file__)
+    # root_path = os.path.dirname(current_path)
+    #
+    # # Loop until the folder 'benchmark' is found in the path or the root is reached
+    # while os.path.basename(root_path) != 'benchmark' and os.path.basename(root_path) != '':
+    #     root_path = os.path.dirname(root_path)
+    #
+    # # If 'benchmark' was found, return the parent directory, otherwise, return None
+    # if os.path.basename(root_path) == 'benchmark':
+    #     print(f'benchmark path: {os.path.dirname(root_path)}')
+    #     return os.path.dirname(root_path)
+    current_path = Path(__file__).resolve()  # Gets the absolute path of the current file
 
-    # Find the position of "Auto-GPT-Benchmarks" in the path
-    benchmark_path_index = (
-        current_path.parts.index("Auto-GPT-Benchmarks")
-        if "Auto-GPT-Benchmarks" in current_path.parts
-        else None
+    # Traverse up in the path until the folder 'benchmark' is found or the root is reached
+    for parent in current_path.parents:
+        if parent.name == 'benchmark':
+            return parent
+
+    raise ValueError(
+        "The directory 'benchmarks' is not found in the current path."
     )
-
-    if benchmark_path_index is not None:
-        # Construct the absolute path starting from "Auto-GPT-Benchmarks"
-        benchmark_path = Path(*current_path.parts[: benchmark_path_index + 1])
-
-        return benchmark_path
-    else:
-        raise ValueError(
-            "The directory 'Auto-GPT-Benchmarks' is not found in the current path."
-        )
