@@ -43,5 +43,10 @@
         "url": "https://github.com/lc0rp/Auto-GPT-Turbo.git",
         "branch": "main",
         "commit": "8469e09ae204f2d5f41d489b217551544597ee14"
+    },
+    "GPT-Pilot": {
+        "url": "https://github.com/nalbion/gpt-pilot.git",
+        "branch": "feature/agbenchmark",
+        "commit": "5e414ad854bb20bf9bbccd514cc39b74a6bf7d8b"
     }
 }
