@@ -93,8 +93,8 @@ def execute_python_file(
     """Execute a Python file in a Docker container and return the output
 
     Args:
-        filename (str): The name of the file to execute
-        (optional) args (list): The arguments of the python script
+        filename (Path): The name of the file to execute
+        args (list, optional): The arguments with which to run the python script
 
     Returns:
         str: The output of the file
