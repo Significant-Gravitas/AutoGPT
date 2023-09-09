@@ -1,0 +1,21 @@
+{
+  "name": "TestWritingCLI_FileOrganizer",
+  "category": ["code"],
+  "task": "Create a file organizer CLI tool in Python that sorts files in a directory based on their file types (e.g., images, documents, audio) and moves them into these corresponding folders: 'images', 'documents', 'audio'. The entry point will be a python file that can be run this way: python organize_files.py --directory_path=YOUR_DIRECTORY_PATH",
+  "dependencies": ["TestPasswordGenerator_Easy"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "The correct python file is written and organizes the files accordingly",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Tests ability for the agent to create a random password generator.",
+    "side_effects": []
+  }
+}
