@@ -16,6 +16,10 @@ class SkillTreeViewModel extends ChangeNotifier {
   void initializeSkillTree() {
     _skillTreeNodes = [];
     _skillTreeEdges = [];
+    _selectedNode = null;
+
+    graph.nodes.clear();
+    graph.edges.clear();
 
     // Add nodes to _skillTreeNodes
     _skillTreeNodes.addAll([
