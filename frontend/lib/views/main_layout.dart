@@ -1,3 +1,4 @@
+import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/side_bar/side_bar_view.dart';
@@ -23,6 +24,9 @@ class MainLayout extends StatelessWidget {
     // Access the ChatViewModel from the context
     final chatViewModel = Provider.of<ChatViewModel>(context);
 
+    // Access the ChatViewModel from the context
+    final skillTreeViewModel = Provider.of<SkillTreeViewModel>(context);
+
     // Check the screen width and return the appropriate layout
     if (width > 800) {
       // For larger screens, return a side-by-side layout
@@ -36,7 +40,8 @@ class MainLayout extends StatelessWidget {
                 return SizedBox(
                     width: 280, child: TaskView(viewModel: taskViewModel));
               } else {
-                return const Expanded(child: SkillTreeView());
+                return Expanded(
+                    child: SkillTreeView(viewModel: skillTreeViewModel));
               }
             },
           ),
