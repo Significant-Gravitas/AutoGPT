@@ -35,7 +35,11 @@ numpy
 pre-commit
 black
 isort
+< snyk-fix-50508afd37b1b96f67c8a1f6b11a57fa
+gitpython==3.1.33
+=
 gitpython==3.1.35
+> master
 auto-gpt-plugin-template @ git+https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template@0.1.0
 mkdocs
 pymdown-extensions
