@@ -5,8 +5,8 @@ from typing import Any, Dict, Optional
 
 from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
 
-from agbenchmark.agent_interface import get_list_of_file_paths
-from agbenchmark.utils.data_types import ChallengeData
+from benchmark.agent_interface import get_list_of_file_paths
+from benchmark.utils.data_types import ChallengeData
 
 
 async def run_api_agent(

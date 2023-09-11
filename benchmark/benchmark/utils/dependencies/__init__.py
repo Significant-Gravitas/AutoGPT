@@ -67,7 +67,6 @@ def pytest_addoption(parser: Parser) -> None:
         for action in group.options:
             current_options += action._short_opts + action._long_opts
 
-    print(current_options)
 
     group = parser.getgroup("depends")
 
