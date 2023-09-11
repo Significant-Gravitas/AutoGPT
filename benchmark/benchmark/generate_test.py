@@ -10,10 +10,9 @@ from typing import Any, Callable, Dict, Optional
 
 import pytest
 
-import agbenchmark.start_benchmark
-from agbenchmark.utils.challenge import Challenge
-from agbenchmark.utils.data_types import ChallengeData, SuiteConfig
-from agbenchmark.utils.utils import get_test_path
+from benchmark.utils.challenge import Challenge
+from benchmark.utils.data_types import ChallengeData, SuiteConfig, AgentBenchmarkConfig
+from benchmark.utils.utils import get_test_path
 
 DATA_CATEGORY = {}
 
@@ -72,7 +71,7 @@ def create_single_test(
 
     # Define test class dynamically
     challenge_class = types.new_class(data["name"], (Challenge,))
-
+    print(challenge_location)
     clean_challenge_location = get_test_path(challenge_location)
     setattr(challenge_class, "CHALLENGE_LOCATION", clean_challenge_location)
 
@@ -132,6 +131,8 @@ def create_single_test(
         await self.setup_challenge(config, timeout)
 
         scores = self.get_scores(config)
+        request.node.answers = scores["answers"]  # store answers in request.node
+        del scores["answers"]  # remove answers from scores
         request.node.scores = scores  # store scores in request.node
         assert 1 in scores["values"]
 
@@ -221,14 +222,34 @@ def create_challenge(
 def generate_tests() -> None:  # sourcery skip: invert-any-all
     print("Generating tests...")
 
+    challenges_path = os.path.join(os.path.dirname(__file__), 'challenges')
+
     json_files = deque(
         glob.glob(
-            f"{agbenchmark.start_benchmark.CHALLENGES_PATH}/**/data.json",
+            f"{challenges_path}/**/data.json",
             recursive=True,
         )
     )
-    regression_tests = agbenchmark.start_benchmark.get_regression_data()
 
+    agent_config_path = None
+    if "--agent-config" in sys.argv:
+        agent_benchmark_config_path = sys.argv[sys.argv.index("--agent-config") + 1]
+    else:
+        print(sys.argv)
+    try:
+        with open(agent_benchmark_config_path, "r") as f:
+            agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
+            agent_benchmark_config.agent_benchmark_config_path = agent_benchmark_config_path
+    except json.JSONDecodeError:
+        print("Error: benchmark_config.json is not a valid JSON file.")
+        raise
+
+    regression_reports_path = agent_benchmark_config.get_regression_reports_path()
+    if regression_reports_path and os.path.exists(regression_reports_path):
+        with open(regression_reports_path, 'r') as f:
+            regression_tests = json.load(f)
+    else:
+        regression_tests = {}
     # for suites to know if the file has already been used to generate the tests
     # Dynamic class creation
 
@@ -287,7 +308,6 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
             # ):
             #     # a part of the suite but not the one specified
             #     continue
-
         json_files = create_challenge(data, json_file, suite_config, json_files)
 
         if suite_config and not (test_flag or maintain_flag or improve_flag):

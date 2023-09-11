@@ -10,16 +10,15 @@ from typing import Any, Dict, List
 import openai
 import pytest
 
-import agbenchmark.start_benchmark
-from agbenchmark.agent_api_interface import run_api_agent
-from agbenchmark.utils.data_types import ChallengeData, Ground
-from agbenchmark.utils.prompts import (
+from benchmark.agent_api_interface import run_api_agent
+from benchmark.utils.data_types import ChallengeData, Ground
+from benchmark.utils.prompts import (
     END_PROMPT,
     FEW_SHOT_EXAMPLES,
     PROMPT_MAP,
     SCORING_MAP,
 )
-from agbenchmark.utils.utils import agent_eligibible_for_optional_categories
+from benchmark.utils.utils import agent_eligibible_for_optional_categories
 
 
 class Challenge(ABC):
@@ -48,7 +47,7 @@ class Challenge(ABC):
         return self.data.dependencies
 
     async def setup_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
-        from agbenchmark.agent_interface import copy_artifacts_into_workspace, run_agent
+        from benchmark.agent_interface import copy_artifacts_into_workspace, run_agent
 
         artifact_paths = [
             self.ARTIFACTS_LOCATION,
@@ -210,15 +209,16 @@ class Challenge(ABC):
         scores = []
         scores_dict: Any = {}
         percentage = None
-
+        answers = {}
         try:
             if self.data.task == "" and "--mock" in sys.argv:
                 scores = [1.0]
+                answers = {"mock": "This is a mock answer"}
             elif isinstance(self.data.ground, Ground):
                 files_contents = self.get_artifacts_out(
                     config["workspace"], self.data.ground
                 )
-
+                answers = {"answer": files_contents}
                 for file_content in files_contents:
                     score = self.scoring(config, file_content, self.data.ground)
                     print("\033[1;32mYour score is:\033[0m", score)
@@ -240,6 +240,7 @@ class Challenge(ABC):
                 for ground_key in self.data.ground:
                     ground = self.data.ground[ground_key]
                     files_contents = self.get_artifacts_out(config["workspace"], ground)
+                    answers[ground_key] = files_contents
 
                     for file_content in files_contents:
                         score = self.scoring(config, file_content, ground)
@@ -289,6 +290,7 @@ class Challenge(ABC):
             "values": scores,
             "scores_obj": scores_dict,
             "percentage": percentage,
+            "answers": answers,
         }
 
         self.scores[self.__class__.__name__] = scores_data
@@ -306,7 +308,7 @@ class Challenge(ABC):
         challenge_category = self.data.category
         categories = [
             category
-            for category in agbenchmark.start_benchmark.OPTIONAL_CATEGORIES
+            for category in benchmark.start_benchmark.OPTIONAL_CATEGORIES
             if category in challenge_category
         ]
         if not agent_eligibible_for_optional_categories(

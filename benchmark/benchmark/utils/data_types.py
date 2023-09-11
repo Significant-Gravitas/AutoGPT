@@ -3,10 +3,9 @@ import json
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
+import sys
 from pydantic import BaseModel, root_validator, validator
-
-
+from datetime import datetime, timezone
 class DifficultyLevel(Enum):
     interface = "interface"
     basic = "basic"
@@ -30,6 +29,77 @@ DIFFICULTY_MAP = {
 
 STRING_DIFFICULTY_MAP = {e.value: DIFFICULTY_MAP[e] for e in DifficultyLevel}
 
+def calculate_info_test_path(base_path: Path) -> Path:
+    """
+    Calculates the path to the directory where the test report will be saved.
+    """
+    # Ensure the reports path exists
+    base_path.mkdir(parents=True, exist_ok=True)
+
+    # Get current UTC date-time stamp
+    date_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+
+    # Default run name
+    run_name = "full_run"
+
+    # Map command-line arguments to their respective labels
+    arg_labels = {
+        "--test": None,
+        "--suite": None,
+        "--category": None,
+        "--maintain": "maintain",
+        "--improve": "improve",
+        "--explore": "explore",
+    }
+
+    # Identify the relevant command-line argument
+    for arg, label in arg_labels.items():
+        if arg in sys.argv:
+            test_arg = sys.argv[sys.argv.index(arg) + 1] if label is None else None
+            run_name = arg.strip("--")
+            if test_arg:
+                run_name = f"{run_name}_{test_arg}"
+            break
+
+    # Create the full new directory path with ISO standard UTC date-time stamp
+    report_path = base_path / f"{date_stamp}_{run_name}"
+
+    # Ensure the new directory is created
+    report_path.mkdir(exist_ok=True)
+
+    return report_path
+
+class AgentBenchmarkConfig(BaseModel):
+    """
+    This class represents the configuration for the Agent Benchmark.
+    It includes the following attributes:
+    - entry_path: The path to the file that, when run, starts the agent configured for benchmarking, realtive location from the config_file.
+    - workspace: The path to the workspace where the benchmark will be run.
+    - reports_folder: The path to the folder where the benchmark reports will be stored.
+    - api_mode: A boolean indicating whether the benchmark is run in API mode.
+    - host: The host where the benchmark is run.
+    """
+    agent_benchmark_config_path: Path | None = None
+    entry_path: Path
+    workspace: Path
+    reports_folder: Path | None = None
+    api_mode: bool = False
+    host: str | None
+
+    def get_reports_location(self) -> Path:
+        if not self.reports_folder:
+            self.reports_folder = (self.agent_benchmark_config_path / self.entry_path.parent / ".." / "reports").resolve()
+        return self.reports_folder
+    
+    def get_reports_path(self) -> Path:
+        return calculate_info_test_path(self.get_reports_location())
+    
+    def get_regression_reports_path(self) -> Path:
+
+        return self.get_reports_location() / "regression_tests.json"
+    
+    def get_success_rate_path(self) -> Path:
+        return self.get_reports_location() / "success_rate.json"
 
 class Info(BaseModel):
     difficulty: DifficultyLevel
@@ -100,6 +170,7 @@ class ChallengeData(BaseModel):
     cutoff: int
     ground: Ground | Dict[str, Ground]
     info: Info | Dict[str, Info]
+    metadata: Optional[Dict[str, Any]] = None
 
     def serialize(self, path: str) -> None:
         with open(path, "w") as file:
