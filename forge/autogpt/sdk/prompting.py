@@ -12,9 +12,10 @@ I want the following functions:
 class PromptEngine:
 
     def __init__(self, model):
-        
-    def load_prompt(model, prompt_name, prompt_ags) -> str:
+        pass
 
+    def load_prompt(model, prompt_name, prompt_ags) -> str:
+        pass
 """
 
 import glob
