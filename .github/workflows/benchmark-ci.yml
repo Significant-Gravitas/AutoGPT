@@ -17,6 +17,9 @@ on:
       - '!benchmark/reports/**'
   pull_request:
     branches: [stable, master, release-*]
+    paths:
+      - 'benchmark/**'
+      - '!benchmark/reports/**'
 
 jobs:
   lint:
