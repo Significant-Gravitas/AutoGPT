@@ -16,9 +16,6 @@ AGENT_NAME = os.getenv("AGENT_NAME")
 REPORT_LOCATION = os.getenv("REPORT_LOCATION", None)
 
 
-
-
-
 def replace_backslash(value: Any) -> Any:
     if isinstance(value, str):
         return re.sub(
