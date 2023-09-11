@@ -9,12 +9,14 @@ from typing import Any, Optional
 import click
 import pytest
 from helicone.lock import HeliconeLockManager
+import sys
+sys.path.append('/Users/swifty/dev/Auto-GPT/benchmark')
 
 from agbenchmark.reports.ReportManager import ReportManager
 from agbenchmark.utils.utils import (
     AGENT_NAME,
     calculate_dynamic_paths,
-    get_git_commit_sha,
+    # get_git_commit_sha,
 )
 
 CURRENT_DIRECTORY = Path(__file__).resolve().parent
@@ -32,8 +34,8 @@ if os.environ.get("HELICONE_API_KEY"):
     SUCCESS_RATE_PATH,
     CHALLENGES_PATH,
 ) = calculate_dynamic_paths()
-BENCHMARK_GIT_COMMIT_SHA = get_git_commit_sha(HOME_DIRECTORY / ".." / "..")
-AGENT_GIT_COMMIT_SHA = get_git_commit_sha(HOME_DIRECTORY)
+BENCHMARK_GIT_COMMIT_SHA = "---" # get_git_commit_sha(HOME_DIRECTORY / ".." / "..")
+AGENT_GIT_COMMIT_SHA = "---" # get_git_commit_sha(HOME_DIRECTORY)
 # open a file in the challenges/optional_categories
 with open(
     Path(__file__).resolve().parent / "challenges" / "optional_categories.json"
@@ -332,6 +334,14 @@ def get_regression_data() -> Any:
 
     return data
 
+@cli.command()
+def version():
+    """Print the version of the benchmark tool."""
+    import toml
+    version = toml.load(CURRENT_DIRECTORY / ".." / "pyproject.toml")["tool"]["poetry"]["version"]
+    print(f"Benchmark Tool Version {version}")
+
+
 
 # def run_from_backend(
 #     maintain: bool = False,
@@ -420,5 +430,10 @@ def get_regression_data() -> Any:
 #     return latest_report
 
 
+<<<<<<< HEAD:benchmark/agbenchmark/start_benchmark.py
 # if __name__ == "__main__":
 # start()
+=======
+if __name__ == "__main__":
+    cli()
+>>>>>>> 61b4afcb (Fixing benchmarks):benchmark/benchmark/start_benchmark.py

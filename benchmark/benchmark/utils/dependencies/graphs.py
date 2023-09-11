@@ -9,8 +9,8 @@ import networkx as nx
 import numpy as np
 from pyvis.network import Network
 
-from agbenchmark.generate_test import DATA_CATEGORY
-from agbenchmark.utils.utils import find_absolute_benchmark_path
+from benchmark.generate_test import DATA_CATEGORY
+from benchmark.utils.utils import find_absolute_benchmark_path
 
 
 def bezier_curve(

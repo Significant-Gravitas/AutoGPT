@@ -10,52 +10,13 @@ import git
 from dotenv import load_dotenv
 
 load_dotenv()
-
-from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
+from benchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
 
 AGENT_NAME = os.getenv("AGENT_NAME")
 REPORT_LOCATION = os.getenv("REPORT_LOCATION", None)
 
 
-def calculate_info_test_path(base_path: Path) -> str:
-    """
-    Calculates the path to the directory where the test report will be saved.
-    """
-    # Ensure the reports path exists
-    base_path.mkdir(parents=True, exist_ok=True)
 
-    # Get current UTC date-time stamp
-    date_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-
-    # Default run name
-    run_name = "full_run"
-
-    # Map command-line arguments to their respective labels
-    arg_labels = {
-        "--test": None,
-        "--suite": None,
-        "--category": None,
-        "--maintain": "maintain",
-        "--improve": "improve",
-        "--explore": "explore",
-    }
-
-    # Identify the relevant command-line argument
-    for arg, label in arg_labels.items():
-        if arg in sys.argv:
-            test_arg = sys.argv[sys.argv.index(arg) + 1] if label is None else None
-            run_name = arg.strip("--")
-            if test_arg:
-                run_name = f"{run_name}_{test_arg}"
-            break
-
-    # Create the full new directory path with ISO standard UTC date-time stamp
-    report_path = base_path / f"{date_stamp}_{run_name}"
-
-    # Ensure the new directory is created
-    report_path.mkdir(exist_ok=True)
-
-    return str(report_path)
 
 
 def replace_backslash(value: Any) -> Any:
@@ -88,7 +49,7 @@ def get_test_path(json_file: str | Path) -> str:
 
     # Find the index of "agbenchmark" in the path parts
     try:
-        agbenchmark_index = json_file.parts.index("agbenchmark")
+        agbenchmark_index = json_file.parts.index("benchmark")
     except ValueError:
         raise ValueError("Invalid challenge location.")
 
@@ -249,19 +210,19 @@ def calculate_dynamic_paths() -> tuple[Path, str, str, str, str, str]:
     )
 
 
-def get_git_commit_sha(directory: Path) -> Optional[str]:
-    try:
-        repo = git.Repo(directory)
-        remote_url = repo.remotes.origin.url
-        if remote_url.endswith(".git"):
-            remote_url = remote_url[:-4]
-        git_commit_sha = f"{remote_url}/tree/{repo.head.commit.hexsha}"
+# def get_git_commit_sha(directory: Path) -> Optional[str]:
+#     try:
+#         repo = git.Repo(directory)
+#         remote_url = repo.remotes.origin.url
+#         if remote_url.endswith(".git"):
+#             remote_url = remote_url[:-4]
+#         git_commit_sha = f"{remote_url}/tree/{repo.head.commit.hexsha}"
 
-        # print(f"GIT_COMMIT_SHA: {git_commit_sha}")
-        return git_commit_sha
-    except Exception:
-        # print(f"{directory} is not a git repository!")
-        return None
+#         # print(f"GIT_COMMIT_SHA: {git_commit_sha}")
+#         return git_commit_sha
+#     except Exception:
+#         # print(f"{directory} is not a git repository!")
+#         return None
 
 
 def agent_eligibible_for_optional_categories(

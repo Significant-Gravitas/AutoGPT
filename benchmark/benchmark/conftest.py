@@ -10,21 +10,35 @@ from typing import Any, Dict, Generator
 
 import pytest
 
-import agbenchmark.start_benchmark
-from agbenchmark.reports.reports import (
+from benchmark.reports.reports import (
     finalize_reports,
     generate_combined_suite_report,
     generate_single_call_report,
     session_finish,
 )
-from agbenchmark.utils.data_types import SuiteConfig
+from benchmark.utils.data_types import SuiteConfig, AgentBenchmarkConfig
 
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
 )
 
-pytest_plugins = ["agbenchmark.utils.dependencies"]
+pytest_plugins = ["benchmark.utils.dependencies"]
 collect_ignore = ["challenges"]
+
+
+def load_config_from_request(request: Any) -> AgentBenchmarkConfig:
+    agent_benchmark_config_path = request.config.getoption("--agent_config_path")
+    try:
+        with open(agent_benchmark_config_path, "r") as f:
+            agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
+            agent_benchmark_config.agent_benchmark_config_path = agent_benchmark_config_path
+            return agent_benchmark_config
+    except json.JSONDecodeError:
+        print("Error: benchmark_config.json is not a valid JSON file.")
+        raise
+
+
+    
 
 
 def resolve_workspace(workspace: str) -> str:
@@ -46,16 +60,21 @@ def resolve_workspace(workspace: str) -> str:
 
 
 @pytest.fixture(scope="module")
-def config(request: Any) -> None:
-    print(f"Config file: {agbenchmark.start_benchmark.CONFIG_PATH}")
-    with open(agbenchmark.start_benchmark.CONFIG_PATH, "r") as f:
-        config = json.load(f)
+def config(request: Any) -> Any:
+    agent_benchmark_config_path = request.config.getoption("--agent_config_path")
+    try:
+        with open(agent_benchmark_config_path, "r") as f:
+            agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
+            agent_benchmark_config.agent_benchmark_config_path = agent_benchmark_config_path
+    except json.JSONDecodeError:
+        print("Error: benchmark_config.json is not a valid JSON file.")
+        raise
 
     if isinstance(config["workspace"], str):
-        config["workspace"] = resolve_workspace(config["workspace"])
+        config["workspace"] = resolve_workspace(agent_benchmark_config.workspace)
     else:  # it's a input output dict
-        config["workspace"]["input"] = resolve_workspace(config["workspace"]["input"])
-        config["workspace"]["output"] = resolve_workspace(config["workspace"]["output"])
+        config["workspace"]["input"] = resolve_workspace(agent_benchmark_config.workspace / "input")
+        config["workspace"]["output"] = resolve_workspace(agent_benchmark_config.workspace / "output")
 
     return config
 
@@ -89,6 +108,7 @@ def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
 
 
 def pytest_addoption(parser: Any) -> None:
+    parser.addoption("--agent_config_path", action="store_true", default=False)
     parser.addoption("--mock", action="store_true", default=False)
     parser.addoption("--api_mode", action="store_true", default=False)
     parser.addoption("--host", action="store_true", default=None)
@@ -106,7 +126,9 @@ def pytest_addoption(parser: Any) -> None:
 @pytest.fixture(autouse=True)
 def check_regression(request: Any) -> None:
     test_name = request.node.parent.name
-    data = agbenchmark.start_benchmark.get_regression_data()
+    agent_benchmark_config = load_config_from_request(request)
+
+    data = json.loads(agent_benchmark_config.get_regression_reports_path())
 
     # Get the true location of the test
     challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
@@ -215,7 +237,15 @@ def scores(request: Any) -> None:
 
 # this is adding the dependency marker and category markers automatically from the json
 def pytest_collection_modifyitems(items: Any, config: Any) -> None:
-    data = agbenchmark.start_benchmark.get_regression_data()
+    try:
+        with open(config.getoption('--agent_config_path'), "r") as f:
+            agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
+            agent_benchmark_config.agent_benchmark_config_path = config.getoption('--agent_config_path')
+    except json.JSONDecodeError:
+        print("Error: benchmark_config.json is not a valid JSON file.")
+        raise
+
+    data = json.loads(agent_benchmark_config.get_regression_reports_path())
 
     for item in items:
         # Assuming item.cls is your test class
@@ -252,17 +282,15 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def run_agent(request: Any) -> Any:
-    with open(agbenchmark.start_benchmark.CONFIG_PATH, "r") as f:
-        config = json.load(f)
-
+    agent_benchmark_config_path = request.config.getoption("--agent_config_path")
     if "--api_mode" not in sys.argv:
-        command = [sys.executable, "-m", "agbenchmark.benchmarks"]
+        command = [sys.executable, "-m", "benchmark.benchmarks"]
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
-            cwd=agbenchmark.start_benchmark.HOME_DIRECTORY,
+            cwd=agent_benchmark_config_path.entry_path.parent.parent,
         )
         time.sleep(3)
         yield
