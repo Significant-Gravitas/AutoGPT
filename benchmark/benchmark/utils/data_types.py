@@ -1,11 +1,14 @@
 import glob
 import json
+import sys
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import sys
+
 from pydantic import BaseModel, root_validator, validator
-from datetime import datetime, timezone
+
+
 class DifficultyLevel(Enum):
     interface = "interface"
     basic = "basic"
@@ -28,6 +31,7 @@ DIFFICULTY_MAP = {
 }
 
 STRING_DIFFICULTY_MAP = {e.value: DIFFICULTY_MAP[e] for e in DifficultyLevel}
+
 
 def calculate_info_test_path(base_path: Path) -> Path:
     """
@@ -69,6 +73,7 @@ def calculate_info_test_path(base_path: Path) -> Path:
 
     return report_path
 
+
 class AgentBenchmarkConfig(BaseModel):
     """
     This class represents the configuration for the Agent Benchmark.
@@ -79,6 +84,7 @@ class AgentBenchmarkConfig(BaseModel):
     - api_mode: A boolean indicating whether the benchmark is run in API mode.
     - host: The host where the benchmark is run.
     """
+
     agent_benchmark_config_path: Path | None = None
     entry_path: Path
     workspace: Path
@@ -88,18 +94,23 @@ class AgentBenchmarkConfig(BaseModel):
 
     def get_reports_location(self) -> Path:
         if not self.reports_folder:
-            self.reports_folder = (self.agent_benchmark_config_path / self.entry_path.parent / ".." / "reports").resolve()
+            self.reports_folder = (
+                self.agent_benchmark_config_path
+                / self.entry_path.parent
+                / ".."
+                / "reports"
+            ).resolve()
         return self.reports_folder
-    
+
     def get_reports_path(self) -> Path:
         return calculate_info_test_path(self.get_reports_location())
-    
-    def get_regression_reports_path(self) -> Path:
 
+    def get_regression_reports_path(self) -> Path:
         return self.get_reports_location() / "regression_tests.json"
-    
+
     def get_success_rate_path(self) -> Path:
         return self.get_reports_location() / "success_rate.json"
+
 
 class Info(BaseModel):
     difficulty: DifficultyLevel

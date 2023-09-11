@@ -67,7 +67,6 @@ def pytest_addoption(parser: Parser) -> None:
         for action in group.options:
             current_options += action._short_opts + action._long_opts
 
-
     group = parser.getgroup("depends")
 
     # Add a flag to list all names + the tests they resolve to

@@ -16,7 +16,7 @@ from benchmark.reports.reports import (
     generate_single_call_report,
     session_finish,
 )
-from benchmark.utils.data_types import SuiteConfig, AgentBenchmarkConfig
+from benchmark.utils.data_types import AgentBenchmarkConfig, SuiteConfig
 
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
@@ -31,14 +31,13 @@ def load_config_from_request(request: Any) -> AgentBenchmarkConfig:
     try:
         with open(agent_benchmark_config_path, "r") as f:
             agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-            agent_benchmark_config.agent_benchmark_config_path = agent_benchmark_config_path
+            agent_benchmark_config.agent_benchmark_config_path = (
+                agent_benchmark_config_path
+            )
             return agent_benchmark_config
     except json.JSONDecodeError:
         print("Error: benchmark_config.json is not a valid JSON file.")
         raise
-
-
-    
 
 
 def resolve_workspace(workspace: str) -> str:
@@ -65,7 +64,9 @@ def config(request: Any) -> Any:
     try:
         with open(agent_benchmark_config_path, "r") as f:
             agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-            agent_benchmark_config.agent_benchmark_config_path = agent_benchmark_config_path
+            agent_benchmark_config.agent_benchmark_config_path = (
+                agent_benchmark_config_path
+            )
     except json.JSONDecodeError:
         print("Error: benchmark_config.json is not a valid JSON file.")
         raise
@@ -73,8 +74,12 @@ def config(request: Any) -> Any:
     if isinstance(config["workspace"], str):
         config["workspace"] = resolve_workspace(agent_benchmark_config.workspace)
     else:  # it's a input output dict
-        config["workspace"]["input"] = resolve_workspace(agent_benchmark_config.workspace / "input")
-        config["workspace"]["output"] = resolve_workspace(agent_benchmark_config.workspace / "output")
+        config["workspace"]["input"] = resolve_workspace(
+            agent_benchmark_config.workspace / "input"
+        )
+        config["workspace"]["output"] = resolve_workspace(
+            agent_benchmark_config.workspace / "output"
+        )
 
     return config
 
@@ -238,9 +243,11 @@ def scores(request: Any) -> None:
 # this is adding the dependency marker and category markers automatically from the json
 def pytest_collection_modifyitems(items: Any, config: Any) -> None:
     try:
-        with open(config.getoption('--agent_config_path'), "r") as f:
+        with open(config.getoption("--agent_config_path"), "r") as f:
             agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-            agent_benchmark_config.agent_benchmark_config_path = config.getoption('--agent_config_path')
+            agent_benchmark_config.agent_benchmark_config_path = config.getoption(
+                "--agent_config_path"
+            )
     except json.JSONDecodeError:
         print("Error: benchmark_config.json is not a valid JSON file.")
         raise

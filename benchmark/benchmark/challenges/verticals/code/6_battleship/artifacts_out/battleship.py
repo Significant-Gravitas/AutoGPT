@@ -86,9 +86,7 @@ class Battleship(AbstractBattleship):
         game.turns.append(turn)
 
         if hit_ship == "hit":
-            return TurnResponse(
-                result="miss", ship_type=None
-            )
+            return TurnResponse(result="miss", ship_type=None)
 
         if hit_ship:
             ship_placement = next(sp for sp in game.ships if sp.ship_type == hit_ship)
@@ -133,9 +131,7 @@ class Battleship(AbstractBattleship):
         )
 
         if hits == total_ships_length:
-            return GameStatus(
-                is_game_over=True, winner="player"
-            )
+            return GameStatus(is_game_over=True, winner="player")
         else:
             return GameStatus(is_game_over=False, winner=None)
 
