@@ -4,7 +4,13 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-from benchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel, SuiteConfig, AgentBenchmarkConfig
+from benchmark.reports.ReportManager import ReportManager
+from benchmark.utils.data_types import (
+    DIFFICULTY_MAP,
+    AgentBenchmarkConfig,
+    DifficultyLevel,
+    SuiteConfig,
+)
 from benchmark.utils.get_data_from_helicone import get_data_from_helicone
 from benchmark.utils.utils import (
     calculate_success_percentage,
@@ -12,8 +18,6 @@ from benchmark.utils.utils import (
     get_test_path,
     replace_backslash,
 )
-from benchmark.reports.ReportManager import ReportManager
-
 
 
 def get_agent_benchmark_config() -> AgentBenchmarkConfig:
@@ -24,23 +28,32 @@ def get_agent_benchmark_config() -> AgentBenchmarkConfig:
     try:
         with open(agent_benchmark_config_path, "r") as f:
             agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-            agent_benchmark_config.agent_benchmark_config_path = agent_benchmark_config_path
+            agent_benchmark_config.agent_benchmark_config_path = (
+                agent_benchmark_config_path
+            )
             return agent_benchmark_config
     except json.JSONDecodeError:
         print("Error: benchmark_config.json is not a valid JSON file.")
         raise
 
+
 def get_report_managers() -> tuple[ReportManager, ReportManager, ReportManager]:
     agent_benchmark_config = get_agent_benchmark_config()
     # tests that consistently pass are considered regression tests
-    REGRESSION_MANAGER = ReportManager(agent_benchmark_config.get_regression_reports_path())
+    REGRESSION_MANAGER = ReportManager(
+        agent_benchmark_config.get_regression_reports_path()
+    )
 
     # print(f"Using {REPORTS_PATH} for reports")
     # user facing reporting information
-    INFO_MANAGER = ReportManager(str(agent_benchmark_config.get_reports_path() / "report.json"))
+    INFO_MANAGER = ReportManager(
+        str(agent_benchmark_config.get_reports_path() / "report.json")
+    )
 
     # internal db step in replacement track pass/fail rate
-    INTERNAL_INFO_MANAGER = ReportManager(agent_benchmark_config.get_success_rate_path())
+    INTERNAL_INFO_MANAGER = ReportManager(
+        agent_benchmark_config.get_success_rate_path()
+    )
 
     return REGRESSION_MANAGER, INFO_MANAGER, INTERNAL_INFO_MANAGER
 
@@ -110,7 +123,7 @@ def generate_combined_suite_report(
         )
 
         tests[test_name] = test_info_details
-        
+
     info_details: Any = {
         "data_path": challenge_location,
         "task": challenge_data["task"],
@@ -132,16 +145,12 @@ def get_previous_test_results(
     agent_tests: dict[str, list[bool]] = {}
     mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
 
-    prev_test_results = INTERNAL_INFO_MANAGER.tests.get(
-        test_name, []
-    )
+    prev_test_results = INTERNAL_INFO_MANAGER.tests.get(test_name, [])
 
     if not mock:
         # only add if it's an actual test
         prev_test_results.append(info_details["metrics"]["success"])
-        INTERNAL_INFO_MANAGER.add_test(
-            test_name, prev_test_results
-        )
+        INTERNAL_INFO_MANAGER.add_test(test_name, prev_test_results)
 
     # can calculate success rate regardless of mock
     info_details["metrics"]["success_%"] = calculate_success_percentage(
@@ -199,8 +208,8 @@ def generate_single_call_report(
         },
         "answers": answers,
     }
-    if 'metadata' in challenge_data:
-        info_details['metadata'] = challenge_data['metadata']
+    if "metadata" in challenge_data:
+        info_details["metadata"] = challenge_data["metadata"]
 
     mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
 
@@ -298,9 +307,7 @@ def generate_separate_suite_reports(suite_reports: dict) -> None:
         }
 
         for name in suite_file_datum:
-            test_data = INFO_MANAGER.tests[
-                name
-            ]  # get the individual test reports
+            test_data = INFO_MANAGER.tests[name]  # get the individual test reports
             data[name] = test_data  # this is for calculating highest difficulty
             INFO_MANAGER.remove_test(name)
 
@@ -329,7 +336,6 @@ def session_finish(suite_reports: dict) -> None:
         generate_separate_suite_reports(suite_reports)
 
     agent_benchmark_config = get_agent_benchmark_config()
-
 
     INTERNAL_INFO_MANAGER.save()
     INFO_MANAGER.end_info_report(agent_benchmark_config)

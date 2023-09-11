@@ -5,10 +5,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
-import toml
 
 import click
 import pytest
+import toml
 from helicone.lock import HeliconeLockManager
 
 from benchmark.utils.data_types import AgentBenchmarkConfig
@@ -72,7 +72,9 @@ def run_benchmark(
     try:
         with open(agent_benchmark_config_path, "r") as f:
             agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-            agent_benchmark_config.agent_benchmark_config_path = agent_benchmark_config_path
+            agent_benchmark_config.agent_benchmark_config_path = (
+                agent_benchmark_config_path
+            )
     except json.JSONDecodeError:
         print("Error: benchmark_config.json is not a valid JSON file.")
         return 1
@@ -96,9 +98,10 @@ def run_benchmark(
             "Error: If you're running a specific suite make sure no other options are selected. Please just pass the --suite."
         )
         return 1
-    
-    assert not(agent_benchmark_config.api_mode and not agent_benchmark_config.host), \
-        "Error: host needs to be added to the config if api_mode is set to True."
+
+    assert not (
+        agent_benchmark_config.api_mode and not agent_benchmark_config.host
+    ), "Error: host needs to be added to the config if api_mode is set to True."
 
     print("Current configuration:")
     for key, value in vars(agent_benchmark_config).items():
@@ -200,7 +203,12 @@ def cli() -> None:
 )
 @click.option("--nc", is_flag=True, help="Run without cutoff")
 @click.option("--cutoff", help="Set or override tests cutoff (seconds)")
-@click.option("--agent-config", type=click.Path(exists=True), help="Path to the agent benchmark_config.json file,", required=True)
+@click.option(
+    "--agent-config",
+    type=click.Path(exists=True),
+    help="Path to the agent benchmark_config.json file,",
+    required=True,
+)
 def start(
     maintain: bool,
     improve: bool,
@@ -220,8 +228,9 @@ def start(
     original_stdout = sys.stdout  # Save the original standard output
     exit_code = None
 
-
-    assert "benchmark_config.json" in agent_config, "benchmark_config.json must be provided"
+    assert (
+        "benchmark_config.json" in agent_config
+    ), "benchmark_config.json must be provided"
 
     if backend:
         with open("backend/backend_stdout.txt", "w") as f:
@@ -266,7 +275,9 @@ def start(
 def version():
     """Print the version of the benchmark tool."""
     current_directory = Path(__file__).resolve().parent
-    version = toml.load(current_directory / ".." / "pyproject.toml")["tool"]["poetry"]["version"]
+    version = toml.load(current_directory / ".." / "pyproject.toml")["tool"]["poetry"][
+        "version"
+    ]
     print(f"Benchmark Tool Version {version}")
 
 

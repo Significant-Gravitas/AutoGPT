@@ -12,7 +12,6 @@ from typing import Any, List
 import psutil
 from dotenv import load_dotenv
 
-
 load_dotenv()
 
 helicone_graphql_logs = os.getenv("HELICONE_GRAPHQL_LOGS")

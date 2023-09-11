@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, Optional
 import pytest
 
 from benchmark.utils.challenge import Challenge
-from benchmark.utils.data_types import ChallengeData, SuiteConfig, AgentBenchmarkConfig
+from benchmark.utils.data_types import AgentBenchmarkConfig, ChallengeData, SuiteConfig
 from benchmark.utils.utils import get_test_path
 
 DATA_CATEGORY = {}
@@ -222,7 +222,7 @@ def create_challenge(
 def generate_tests() -> None:  # sourcery skip: invert-any-all
     print("Generating tests...")
 
-    challenges_path = os.path.join(os.path.dirname(__file__), 'challenges')
+    challenges_path = os.path.join(os.path.dirname(__file__), "challenges")
 
     json_files = deque(
         glob.glob(
@@ -239,14 +239,16 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
     try:
         with open(agent_benchmark_config_path, "r") as f:
             agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
-            agent_benchmark_config.agent_benchmark_config_path = agent_benchmark_config_path
+            agent_benchmark_config.agent_benchmark_config_path = (
+                agent_benchmark_config_path
+            )
     except json.JSONDecodeError:
         print("Error: benchmark_config.json is not a valid JSON file.")
         raise
 
     regression_reports_path = agent_benchmark_config.get_regression_reports_path()
     if regression_reports_path and os.path.exists(regression_reports_path):
-        with open(regression_reports_path, 'r') as f:
+        with open(regression_reports_path, "r") as f:
             regression_tests = json.load(f)
     else:
         regression_tests = {}

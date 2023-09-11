@@ -6,12 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
+from benchmark.__main__ import BENCHMARK_START_TIME
 from benchmark.reports.processing.graphs import save_single_radar_chart
 from benchmark.reports.processing.process_report import get_agent_category
 from benchmark.reports.processing.report_types import Report
-from benchmark.utils.utils import get_highest_success_difficulty
 from benchmark.utils.data_types import AgentBenchmarkConfig
-from benchmark.__main__ import BENCHMARK_START_TIME
+from benchmark.utils.utils import get_highest_success_difficulty
+
 
 class ReportManager:
     """Abstracts interaction with the regression tests file"""
@@ -24,9 +25,9 @@ class ReportManager:
     def load(self) -> None:
         if not os.path.exists(self.filename):
             os.makedirs(os.path.dirname(self.filename), exist_ok=True)
-            with open(self.filename, 'w') as f:
+            with open(self.filename, "w") as f:
                 pass
-        
+
         try:
             with open(self.filename, "r") as f:
                 file_content = (
@@ -62,13 +63,12 @@ class ReportManager:
         self.save()
 
     def end_info_report(self, config: AgentBenchmarkConfig) -> None:
-
         command = " ".join(sys.argv)
 
         self.tests = {
             "command": command.split(os.sep)[-1],
-            "benchmark_git_commit_sha": '---',
-            "agent_git_commit_sha": '---',
+            "benchmark_git_commit_sha": "---",
+            "agent_git_commit_sha": "---",
             "completion_time": datetime.now(timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%S+00:00"
             ),
@@ -79,7 +79,9 @@ class ReportManager:
                 "total_cost": self.get_total_costs(),
             },
             "tests": self.tests,
-            "config": {k: v for k, v in json.loads(config.json()).items() if v is not None},
+            "config": {
+                k: v for k, v in json.loads(config.json()).items() if v is not None
+            },
         }
 
         converted_data = Report.parse_obj(self.tests)
@@ -88,7 +90,6 @@ class ReportManager:
 
         save_single_radar_chart(
             agent_categories,
-            
             config.get_reports_path() / "radar_chart.png",
         )
 
