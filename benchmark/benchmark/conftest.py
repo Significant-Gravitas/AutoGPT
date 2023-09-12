@@ -51,7 +51,7 @@ def load_config_from_request(request: Any) -> AgentBenchmarkConfig:
         raise
 
 
-def resolve_workspace(workspace: str) -> str:
+def resolve_workspace(workspace: Path) -> Path:
     """
     This function resolves the workspace path.
 
@@ -64,7 +64,7 @@ def resolve_workspace(workspace: str) -> str:
     Raises:
         ValueError: If the workspace path expression is invalid.
     """
-    if workspace.startswith("${") and workspace.endswith("}"):
+    if isinstance(workspace, str) and workspace.startswith("${") and workspace.endswith("}"):
         # Extract the string inside ${...}
         path_expr = workspace[2:-1]
 
@@ -77,8 +77,10 @@ def resolve_workspace(workspace: str) -> str:
             return path_value
         else:
             raise ValueError("Invalid workspace path expression.")
+    elif isinstance(workspace, Path):
+        return os.path.abspath(workspace)
     else:
-        return os.path.abspath(Path(os.getcwd()) / workspace)
+        raise ValueError("Invalid workspace type. Expected str or Path.")
 
 
 @pytest.fixture(scope="module")
@@ -98,6 +100,7 @@ def config(request: Any) -> Any:
         json.JSONDecodeError: If the benchmark configuration file is not a valid JSON file.
     """
     agent_benchmark_config_path = request.config.getoption("--agent_config_path")
+    config = {'workspace': {}}
     try:
         with open(agent_benchmark_config_path, "r") as f:
             agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
@@ -186,19 +189,19 @@ def pytest_addoption(parser: Any) -> None:
     Args:
         parser (Any): The parser object to which the command-line options are added.
     """
-    parser.addoption("--agent_config_path", action="store_true", default=False)
+    parser.addoption("--agent_config_path", action="store", default=False)
+    parser.addoption("--no_dep", action="store_true", default=False)
+    parser.addoption("--suite", action="store_true", default=False)
     parser.addoption("--mock", action="store_true", default=False)
     parser.addoption("--api_mode", action="store_true", default=False)
     parser.addoption("--host", action="store_true", default=None)
-    parser.addoption("--category", action="store_true", default=False)
     parser.addoption("--nc", action="store_true", default=False)
     parser.addoption("--cutoff", action="store_true", default=False)
+    parser.addoption("--category", action="store_true", default=False)
+    parser.addoption("--test", action="store_true", default=None)
     parser.addoption("--improve", action="store_true", default=False)
     parser.addoption("--maintain", action="store_true", default=False)
     parser.addoption("--explore", action="store_true", default=False)
-    parser.addoption("--test", action="store_true", default=None)
-    parser.addoption("--no_dep", action="store_true", default=False)
-    parser.addoption("--suite", action="store_true", default=False)
 
 
 @pytest.fixture(autouse=True)
@@ -433,7 +436,8 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         print("Error: benchmark_config.json is not a valid JSON file.")
         raise
 
-    data = json.loads(agent_benchmark_config.get_regression_reports_path())
+    regression_file = agent_benchmark_config.get_regression_reports_path()
+    data = json.loads(open(regression_file, 'r').read()) if os.path.exists(regression_file) else {}
 
     for item in items:
         # Assuming item.cls is your test class
@@ -444,19 +448,19 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
 
         # Then you can access your properties
         name = item.parent.cls.__name__
-        dependencies = test_class_instance.data.dependencies
+        # dependencies = test_class_instance.data.dependencies
 
         # Filter dependencies if they exist in regression data if its an improvement test
-        if config.getoption("--improve") or config.getoption(
-            "--category"
-        ):  # TODO: same task suite
-            dependencies = [dep for dep in dependencies if not data.get(dep, None)]
-        if (  # TODO: separate task suite
-            config.getoption("--test")
-            or config.getoption("--no_dep")
-            or config.getoption("--maintain")
-        ):
-            dependencies = []
+        # if config.getoption("--improve") or config.getoption(
+        #     "--category"
+        # ):  # TODO: same task suite
+        #     dependencies = [dep for dep in dependencies if not data.get(dep, None)]
+        # if (  # TODO: separate task suite
+        #     config.getoption("--test")
+        #     or config.getoption("--no_dep")
+        #     or config.getoption("--maintain")
+        # ):
+        dependencies = []
 
         # Add depends marker dynamically
         item.add_marker(pytest.mark.depends(on=dependencies, name=name))
