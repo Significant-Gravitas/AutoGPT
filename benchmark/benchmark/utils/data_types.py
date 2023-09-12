@@ -1,6 +1,7 @@
 import glob
 import json
 import sys
+import os
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -68,9 +69,9 @@ def calculate_info_test_path(base_path: Path) -> Path:
     # Create the full new directory path with ISO standard UTC date-time stamp
     report_path = base_path / f"{date_stamp}_{run_name}"
 
+
     # Ensure the new directory is created
     report_path.mkdir(exist_ok=True)
-
     return report_path
 
 
@@ -78,6 +79,8 @@ class AgentBenchmarkConfig(BaseModel):
     """
     This class represents the configuration for the Agent Benchmark.
     It includes the following attributes:
+    - agent_benchmark_config_path: The path to the agent benchmark config that this object was created from.
+    - entry_path: The path to the entry point of the benchmark for the agent, relative to the agent_benchmark_config_path.
     - workspace: The path to the workspace where the benchmark will be run.
     - reports_folder: The path to the folder where the benchmark reports will be stored.
     - api_mode: A boolean indicating whether the benchmark is run in API mode.
@@ -85,6 +88,7 @@ class AgentBenchmarkConfig(BaseModel):
     """
 
     agent_benchmark_config_path: Path | None = None
+    entry_path: str
     workspace: Path
     reports_folder: Path | None = None
     api_mode: bool = False
@@ -93,7 +97,7 @@ class AgentBenchmarkConfig(BaseModel):
     def get_reports_location(self) -> Path:
         if not self.reports_folder:
             self.reports_folder = (
-                self.agent_benchmark_config_path / "reports"
+                Path(self.agent_benchmark_config_path).parent / "reports"
             ).resolve()
         return self.reports_folder
 
@@ -105,7 +109,12 @@ class AgentBenchmarkConfig(BaseModel):
 
     def get_success_rate_path(self) -> Path:
         return self.get_reports_location() / "success_rate.json"
+    
+    def get_agent_home_directory(self) -> Path:
+        return Path(self.agent_benchmark_config_path).resolve().parent
 
+    def get_agent_entry_path(self) -> Path:
+        return (self.get_agent_home_directory() / self.entry_path).resolve()
 
 class Info(BaseModel):
     difficulty: DifficultyLevel

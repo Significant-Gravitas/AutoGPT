@@ -72,8 +72,8 @@ def create_single_test(
     # Define test class dynamically
     challenge_class = types.new_class(data["name"], (Challenge,))
     print(challenge_location)
-    clean_challenge_location = get_test_path(challenge_location)
-    setattr(challenge_class, "CHALLENGE_LOCATION", clean_challenge_location)
+    # clean_challenge_location = get_test_path(challenge_location)
+    setattr(challenge_class, "CHALLENGE_LOCATION", challenge_location)
 
     # in the case of a suite
     if isinstance(challenge_data, ChallengeData):
@@ -86,7 +86,7 @@ def create_single_test(
         setattr(
             challenge_class,
             "_data_cache",
-            {clean_challenge_location: challenge_data},
+            {challenge_location: challenge_data},
         )
 
     setattr(
@@ -161,6 +161,7 @@ def create_challenge(
     json_files: deque,
 ) -> deque:
     path = Path(json_file).resolve()
+    print("Creating challenge for", path)
     if suite_config is not None:
         grandparent_dir = path.parent.parent
 
@@ -212,6 +213,7 @@ def create_challenge(
 
     else:
         create_single_test(data, str(path))
+    print("Creation complete for", path)
 
     return json_files
 
@@ -223,6 +225,7 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
     print("Generating tests...")
 
     challenges_path = os.path.join(os.path.dirname(__file__), "challenges")
+    print(f"Looking for challenges in {challenges_path}...")
 
     json_files = deque(
         glob.glob(
@@ -231,7 +234,8 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
         )
     )
 
-    agent_benchmark_config_path = Path.cwd() / "agbenchmark" / "config.json"
+    print(f"Found {len(json_files)} challenges.")
+    print(f"Sample path: {json_files[0]}")
 
     if "--agent-config" in sys.argv:
         agent_benchmark_config_path = sys.argv[sys.argv.index("--agent-config") + 1]
@@ -266,7 +270,7 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
         suite_config = SuiteConfig.suite_data_if_suite(Path(json_file))
 
         commands = sys.argv
-        # --category flag
+        # --by flag
         if "--category" in commands:
             categories = data.get("category", [])
             commands_set = set(commands)
@@ -317,6 +321,7 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
             print(f"Generated suite for {suite_config.prefix}.")
         else:
             print(f"Generated test for {data['name']}.")
+    print("Test generation complete.")
 
 
 def challenge_should_be_ignored(json_file):
