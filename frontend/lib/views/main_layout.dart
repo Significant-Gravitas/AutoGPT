@@ -22,7 +22,6 @@ class MainLayout extends StatelessWidget {
     // Access the various ViewModels from the context
     final taskViewModel = Provider.of<TaskViewModel>(context);
     final chatViewModel = Provider.of<ChatViewModel>(context);
-    final skillTreeViewModel = Provider.of<SkillTreeViewModel>(context);
 
     // Initialize the width for the SideBarView
     double sideBarWidth = 60.0;
@@ -47,44 +46,51 @@ class MainLayout extends StatelessWidget {
           ValueListenableBuilder(
             valueListenable: selectedViewNotifier,
             builder: (context, String value, _) {
-              if (value == 'TaskView') {
-                chatViewWidth = remainingWidth - taskViewWidth;
-                return Row(
-                  children: [
-                    SizedBox(
-                        width: taskViewWidth,
-                        child: TaskView(viewModel: taskViewModel)),
-                    SizedBox(
-                        width: chatViewWidth,
-                        child: ChatView(viewModel: chatViewModel))
-                  ],
-                );
-              } else {
-                if (skillTreeViewModel.selectedNode != null) {
-                  // If TaskQueueView should be displayed
-                  testQueueViewWidth = remainingWidth * 0.25;
-                  skillTreeViewWidth = remainingWidth * 0.25;
-                  chatViewWidth = remainingWidth * 0.5;
-                } else {
-                  // If only SkillTreeView and ChatView should be displayed
-                  skillTreeViewWidth = remainingWidth * 0.5;
-                  chatViewWidth = remainingWidth * 0.5;
-                }
+              return Consumer<SkillTreeViewModel>(
+                builder: (context, skillTreeViewModel, _) {
+                  if (value == 'TaskView') {
+                    skillTreeViewModel.resetState();
+                    chatViewWidth = remainingWidth - taskViewWidth;
+                    return Row(
+                      children: [
+                        SizedBox(
+                            width: taskViewWidth,
+                            child: TaskView(viewModel: taskViewModel)),
+                        SizedBox(
+                            width: chatViewWidth,
+                            child: ChatView(viewModel: chatViewModel))
+                      ],
+                    );
+                  } else {
+                    if (skillTreeViewModel.selectedNode != null) {
+                      // If TaskQueueView should be displayed
+                      testQueueViewWidth = remainingWidth * 0.25;
+                      skillTreeViewWidth = remainingWidth * 0.25;
+                      chatViewWidth = remainingWidth * 0.5;
+                    } else {
+                      // If only SkillTreeView and ChatView should be displayed
+                      skillTreeViewWidth = remainingWidth * 0.5;
+                      chatViewWidth = remainingWidth * 0.5;
+                    }
 
-                return Row(
-                  children: [
-                    SizedBox(
-                        width: skillTreeViewWidth,
-                        child: SkillTreeView(viewModel: skillTreeViewModel)),
-                    if (skillTreeViewModel.selectedNode != null)
-                      SizedBox(
-                          width: testQueueViewWidth, child: TestQueueView()),
-                    SizedBox(
-                        width: chatViewWidth,
-                        child: ChatView(viewModel: chatViewModel)),
-                  ],
-                );
-              }
+                    return Row(
+                      children: [
+                        SizedBox(
+                            width: skillTreeViewWidth,
+                            child:
+                                SkillTreeView(viewModel: skillTreeViewModel)),
+                        if (skillTreeViewModel.selectedNode != null)
+                          SizedBox(
+                              width: testQueueViewWidth,
+                              child: TaskQueueView()),
+                        SizedBox(
+                            width: chatViewWidth,
+                            child: ChatView(viewModel: chatViewModel)),
+                      ],
+                    );
+                  }
+                },
+              );
             },
           ),
         ],
