@@ -10,13 +10,7 @@ from typing import Any, Dict, Generator
 
 import pytest
 
-from benchmark.reports.reports import (
-    finalize_reports,
-    generate_combined_suite_report,
-    generate_single_call_report,
-    session_finish,
-)
-from benchmark.utils.data_types import AgentBenchmarkConfig, SuiteConfig
+from benchmark.utils.data_types import AgentBenchmarkConfig
 
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
@@ -297,7 +291,7 @@ def run_agent(request: Any) -> Any:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
-            cwd=agent_benchmark_config_path.entry_path.parent.parent,
+            # cwd=agent_benchmark_config_path.entry_path.parent.parent, # even if it's necessary to make it work, let's get rid ot that, this is too complex
         )
         time.sleep(3)
         yield
