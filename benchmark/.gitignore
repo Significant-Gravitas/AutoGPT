@@ -1,4 +1,4 @@
-agbenchmark/workspace/
+agbenchmark_config/workspace/
 backend/backend_stdout.txt
 reports/df*.pkl
 reports/raw*
@@ -167,4 +167,4 @@ cython_debug/
 ```
 secrets.json
 challenges_already_beaten.json
-agbenchmark/challenges/pri_*
+agbenchmark_config/challenges/pri_*
