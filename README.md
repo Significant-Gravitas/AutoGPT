@@ -2,8 +2,6 @@
 
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)](https://github.com/Significant-Gravitas/Auto-GPT/stargazers) [![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/Auto_GPT) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🚀 Elevate Your Agent Development
-
 **Auto-GPT** is your go-to toolkit for supercharging agents. With its modular and extensible framework, you're empowered to focus on:
 
 - 🏗️ **Building** - Lay the foundation for something amazing.
