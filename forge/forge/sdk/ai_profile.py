@@ -14,7 +14,7 @@ aspects of the agent such as memory, planning, and actions available.
 The possibilities are limited just by your imagination.
 """
 
-from autogpt.sdk import PromptEngine
+from forge.sdk import PromptEngine
 
 
 class ProfileGenerator:
