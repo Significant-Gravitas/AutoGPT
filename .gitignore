@@ -165,3 +165,9 @@ agbenchmark/reports/
 # Nodejs
 package-lock.json
 package.json
+
+# Allow for locally private items
+# private
+pri* 
+# ignore
+ig*
