@@ -6,55 +6,7 @@ from gql.transport.aiohttp import AIOHTTPTransport
 from gql import gql, Client
 import os
 
-# from agbenchmark.reports.processing.report_types import Report, SuiteTest
-
-from typing import Dict, List, Optional, Union
-
-from pydantic import BaseModel, Field
-
-
-class Metrics(BaseModel):
-    difficulty: str
-    success: bool
-    success_percent: float = Field(..., alias="success_%")
-    run_time: Optional[str] = None
-    fail_reason: Optional[str] = None
-    attempted: Optional[bool] = None
-
-
-class MetricsOverall(BaseModel):
-    run_time: str
-    highest_difficulty: str
-    percentage: Optional[float] = None
-
-
-class Test(BaseModel):
-    data_path: str
-    is_regression: bool
-    answer: str
-    description: str
-    metrics: Metrics
-    category: List[str]
-    task: Optional[str] = None
-    reached_cutoff: Optional[bool] = None
-
-
-class SuiteTest(BaseModel):
-    data_path: str
-    metrics: MetricsOverall
-    tests: Dict[str, Test]
-    category: Optional[List[str]] = None
-    task: Optional[str] = None
-    reached_cutoff: Optional[bool] = None
-
-
-class Report(BaseModel):
-    command: str
-    completion_time: str
-    benchmark_start_time: str
-    metrics: MetricsOverall
-    tests: Dict[str, Union[Test, SuiteTest]]
-    config: Dict[str, str | dict[str, str]]
+from agbenchmark.reports.processing.report_types import Report, SuiteTest
 
 
 def get_reports():
@@ -79,21 +31,13 @@ def get_reports():
         # Check if the item is a directory (an agent directory)
         if os.path.isdir(agent_dir):
             # Construct the path to the report.json file
-            # Get all directories and files, but note that this will also include any file, not just directories.
+            # Use glob to find all run directories in the agent_dir
             run_dirs = glob.glob(os.path.join(agent_dir, "*"))
 
-            # Get all json files starting with 'file'
-            # old_report_files = glob.glob(os.path.join(agent_dir, "file*.json"))
-
             # For each run directory, add the report.json to the end
-            # Only include the path if it's actually a directory
             report_files = [
-                os.path.join(run_dir, "report.json")
-                for run_dir in run_dirs
-                if os.path.isdir(run_dir)
+                os.path.join(run_dir, "report.json") for run_dir in run_dirs
             ]
-            # old_report_files already contains the full paths, so no need to join again
-            # report_files = report_files + old_report_files
             for report_file in report_files:
                 # Check if the report.json file exists
                 if os.path.isfile(report_file):
@@ -101,7 +45,6 @@ def get_reports():
                     with open(report_file, "r") as f:
                         # Load the JSON data from the file
                         json_data = json.load(f)
-                        print(f"Processing {report_file}")
                         report = Report.parse_obj(json_data)
 
                         for test_name, test_data in report.tests.items():
@@ -322,7 +265,7 @@ df = pd.merge(
     helicone_df,
     reports_df,
     on=["benchmark_start_time", "agent", "challenge"],
-    how="inner",
+    how="left",
 )
 
 df.to_pickle("df.pkl")

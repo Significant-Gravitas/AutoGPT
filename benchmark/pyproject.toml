@@ -31,7 +31,6 @@ pytest-asyncio = "^0.21.1"
 uvicorn = "^0.23.2"
 fastapi = "^0.103.1"
 python-multipart = "^0.0.6"
-toml = "^0.10.2"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -71,6 +70,8 @@ filterwarnings = [
     "ignore::matplotlib.MatplotlibDeprecationWarning"
 ]
 
+[tool.poetry.scripts]
+agbenchmark = "agbenchmark.start_benchmark:cli"
 
 [tool.black]
 line-length = 88
@@ -89,6 +90,3 @@ ensure_newline_before_comments = true
 line_length = 88
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 skip_glob = [".tox", "__pycache__", "*.pyc", "venv*/*", "reports", "venv", "env", "node_modules", ".env", ".venv", "dist", "agent/*", "agbenchmark/challenges/*"]
-
-[tool.poetry.scripts]
-agbenchmark = "benchmark.start_benchmark:cli"
