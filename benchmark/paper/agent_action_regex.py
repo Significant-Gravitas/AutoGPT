@@ -235,7 +235,7 @@ GENERAL, no specificity
 """
 
 
-def is_action_agent(log, agent="", test="", response=""):
+def is_action_agent(log, agent, test="", response=""):
     """Determines if a log contains an action based on patterns from different agents."""
     is_action = False
 

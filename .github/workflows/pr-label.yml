@@ -5,8 +5,9 @@ on:
   push:
     branches: [ master, release-* ]
     paths-ignore:
-      - 'autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - 'autogpts/autogpt/tests/vcr_cassettes'
       - 'autogpts/autogpt/tests/challenges/current_score.json'
+      - 'benchmark/reports/**'
   # So that the `dirtyLabel` is removed if conflicts are resolve
   # We recommend `pull_request_target` so that github secrets are available.
   # In `pull_request` we wouldn't be able to change labels of fork PRs
