@@ -6,8 +6,8 @@
 
 data/*
 logs/*
-agbenchmark/logs/*
-agbenchmark/reports/*
+agbenchmark_config/logs/*
+agbenchmark_config/reports/*
 
 *.md
 *.png
