@@ -6,7 +6,7 @@ from typing import Any, Generator
 
 import pytest
 
-from agbenchmark.benchmarks import run_specific_agent
+from agbenchmark_config.benchmarks import run_specific_agent
 from autogpt.logs import LogCycleHandler
 from autogpt.workspace import Workspace
 from tests.challenges.schema import Task

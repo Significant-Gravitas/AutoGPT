@@ -13,10 +13,6 @@ from _pytest.nodes import Item
 
 from .main import DependencyManager
 
-# Each test suite run should have a single manager object. For regular runs, a simple singleton would suffice, but for
-# our own tests this causes problems, as the nested pytest runs get the same instance. This can be worked around by
-# running them all in subprocesses, but this slows the tests down massively. Instead, keep a stack of managers, so each
-# test suite will have its own manager, even nested ones.
 managers: list[DependencyManager] = []
 
 
@@ -66,8 +62,6 @@ def pytest_addoption(parser: Parser) -> None:
     for group in parser._groups:
         for action in group.options:
             current_options += action._short_opts + action._long_opts
-
-    print(current_options)
 
     group = parser.getgroup("depends")
 
