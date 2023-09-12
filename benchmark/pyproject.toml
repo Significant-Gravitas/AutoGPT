@@ -70,8 +70,6 @@ filterwarnings = [
     "ignore::matplotlib.MatplotlibDeprecationWarning"
 ]
 
-[tool.poetry.scripts]
-agbenchmark = "agbenchmark.start_benchmark:cli"
 
 [tool.black]
 line-length = 88

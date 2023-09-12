@@ -7,7 +7,7 @@ on:
       agents:
         description: 'Agents to run (comma-separated)'
         required: false
-        default: 'gpt-engineer,smol-developer,Auto-GPT,mini-agi,beebot,BabyAGI,PolyGPT,Turbo' # Default agents if none are specified
+        default: 'gpt-engineer,smol-developer,Auto-GPT,mini-agi,beebot,babyagi,PolyGPT,Auto-GPT-Turbo' # Default agents if none are specified
   schedule:
     - cron: '0 8 * * *'
   push:
@@ -17,6 +17,9 @@ on:
       - '!benchmark/reports/**'
   pull_request:
     branches: [stable, master, release-*]
+    paths:
+      - 'benchmark/**'
+      - '!benchmark/reports/**'
 
 jobs:
   lint:
@@ -83,7 +86,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "schedule" ]; then
             echo "::set-output name=env-name::production"
-            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI', 'PolyGPT', 'Turbo' ]"
+            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'babyagi', 'PolyGPT', 'Auto-GPT-Turbo' ]"
           elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             IFS=',' read -ra matrix_array <<< "${{ github.event.inputs.agents }}"
             matrix_string="[ \"$(echo "${matrix_array[@]}" | sed 's/ /", "/g')\" ]"
@@ -146,9 +149,12 @@ jobs:
           mkdir agent
           link=$(jq -r '.["'"$AGENT_NAME"'"].url' agents_to_benchmark.json)
           branch=$(jq -r '.["'"$AGENT_NAME"'"].branch' agents_to_benchmark.json)
+          commit=$(jq -r '.["'"$AGENT_NAME"'"].commit' agents_to_benchmark.json)
           cd agent
           git clone "$link" -b "$branch"
           cd $AGENT_NAME
+          git checkout "$commit" || echo "Commit not found, using latest commit on branch"
+
           prefix=""
           if [ "$AGENT_NAME" == "gpt-engineer" ]; then
             make install
@@ -167,7 +173,7 @@ jobs:
             python -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt
-          elif [ "$AGENT_NAME" == "BabyAGI" ]; then
+          elif [ "$AGENT_NAME" == "babyagi" ]; then
             python -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt
@@ -188,7 +194,7 @@ jobs:
             nvm install && nvm use
             yarn install
             export NODE_TLS_REJECT_UNAUTHORIZED=0
-          elif [ "$AGENT_NAME" == "Turbo" ]; then
+          elif [ "$AGENT_NAME" == "Auto-GPT-Turbo" ]; then
             python -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt
@@ -259,7 +265,6 @@ jobs:
           REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
           HELICONE_CACHE_ENABLED: false
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
-          REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
           WOLFRAM_ALPHA_APPID: ${{ secrets.WOLFRAM_ALPHA_APPID }}
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
           BING_SUBSCRIPTION_KEY: ${{ secrets.BING_SUBSCRIPTION_KEY }}
@@ -273,11 +278,12 @@ jobs:
 
       - name: Authenticate and Push to Branch
         working-directory: ./benchmark/
-        if: (success() || failure()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        if: (success() || failure()) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'ci-test-'))
         run: |
           git config --global user.email "github-bot@agpt.co"
           git config --global user.name "Auto-GPT-Bot"
-
+          cp -rn agent/$AGENT_NAME/agbenchmark/reports/* reports/$AGENT_NAME/
+          rm -rf agent
           git add reports/* || echo "nothing to commit"
           commit_message="${{ matrix.agent-name }}-$(date +'%Y%m%d%H%M%S')"
           git commit -m "${commit_message}"
@@ -303,3 +309,4 @@ jobs:
         env:
           GDRIVE_BASE64: ${{ secrets.GDRIVE_BASE64 }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          AGENT_NAME: ${{ matrix.agent-name }}

@@ -47,7 +47,7 @@ def get_base_vcr_config(request):
 @pytest.fixture()
 def vcr_cassette_dir(request):
     test_name = os.path.splitext(request.node.name)[0]
-    return os.path.join("tests/Auto-GPT-test-cassettes", test_name)
+    return os.path.join("tests/vcr_cassettes", test_name)
 
 
 def patch_api_base(requestor: openai.api_requestor.APIRequestor):
