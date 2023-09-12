@@ -19,7 +19,7 @@ You can access the design document [here](https://docs.google.com/document/d/1S-
 
 - Flutter 3.x
 - Dart 3.x
-
+Flutter comes with Dart, to install Flutter, follow the instructions here: https://docs.flutter.dev/get-started/install
 ## Installation
 
 1. **Clone the repo:**
