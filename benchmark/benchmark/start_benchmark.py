@@ -430,6 +430,3 @@ def version():
 #         latest_report = json.load(file)
 
 #     return latest_report
-
-if __name__ == "__main__":
-    cli()
