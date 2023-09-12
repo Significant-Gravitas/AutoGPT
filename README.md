@@ -1,14 +1,14 @@
-# 🌟 Auto-GPT: the heart of the open-source agent ecosystem
+# 🌟 AutoGPT: the heart of the open-source agent ecosystem
 
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)](https://github.com/Significant-Gravitas/Auto-GPT/stargazers) [![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/Auto_GPT) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Auto-GPT** is your go-to toolkit for supercharging agents. With its modular and extensible framework, you're empowered to focus on:
+**AutoGPT** is your go-to toolkit for supercharging agents. With its modular and extensible framework, you're empowered to focus on:
 
 - 🏗️ **Building** - Lay the foundation for something amazing.
 - 🧪 **Testing** - Fine-tune your agent to perfection.
 - 👀 **Viewing** - See your progress come to life.
 
-Be part of the revolution! **Auto-GPT** stays at the forefront of AI innovation, featuring the codebase for the reigning champion in the Open-Source ecosystem.
+Be part of the revolution! **AutoGPT** stays at the forefront of AI innovation, featuring the codebase for the reigning champion in the Open-Source ecosystem.
 
 ---
 
@@ -27,7 +27,7 @@ Be part of the revolution! **Auto-GPT** stays at the forefront of AI innovation,
 
 ## 🥇 Current Best Agent: AutoGPT
 
-Among our currently benchmarked agents, Auto-GPT scores the best. This will change after the hackathon - the top-performing generalist agent will earn the esteemed position as the primary AutoGPT 🎊
+Among our currently benchmarked agents, AutoGPT scores the best. This will change after the hackathon - the top-performing generalist agent will earn the esteemed position as the primary AutoGPT 🎊
 
 📈 To enter, submit your benchmark run through the UI.
 
@@ -35,7 +35,7 @@ Among our currently benchmarked agents, Auto-GPT scores the best. This will chan
 
 - **Jumpstart your journey!** 🌠 To activate the best agent, follow the guide [here](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpts/autogpt/README.md).
 
-Want to build your own groundbreaking agent using Auto-GPT? 🛠️ Fork this repository! Detailed guidance is on the way. There are three major components to focus on:
+Want to build your own groundbreaking agent using AutoGPT? 🛠️ Fork this repository! Detailed guidance is on the way. There are three major components to focus on:
 
 ### 🏗️ the Forge
 
@@ -59,7 +59,7 @@ Want to build your own groundbreaking agent using Auto-GPT? 🛠️ Fork this re
 
 ### 🔄 Agent Protocol
 
-🔌 **Standardize to Maximize!** To maintain a uniform standard and ensure seamless compatibility, Auto-GPT employs the [agent protocol](https://github.com/AI-Engineers-Foundation/agent-protocol) from the AI Engineer Foundation. This standardizes the communication pathways from your agent to the frontend and benchmark.
+🔌 **Standardize to Maximize!** To maintain a uniform standard and ensure seamless compatibility, AutoGPT employs the [agent protocol](https://github.com/AI-Engineers-Foundation/agent-protocol) from the AI Engineer Foundation. This standardizes the communication pathways from your agent to the frontend and benchmark.
 
 ### 🤔 Questions? Problems? Suggestions?
 
