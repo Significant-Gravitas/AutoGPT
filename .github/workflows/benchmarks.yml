@@ -49,7 +49,7 @@ jobs:
 
       - name: Run pytest with coverage
         run: |
-          rm -rf tests/Auto-GPT-test-cassettes
+          rm -rf tests/vcr_cassettes
           pytest -n auto --record-mode=all ${{ matrix.config.task }}
         env:
           CI: true
@@ -70,4 +70,4 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: cassettes-${{ matrix.config.task-name }}
-          path: tests/Auto-GPT-test-cassettes/
+          path: tests/vcr_cassettes/

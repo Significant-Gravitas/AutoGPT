@@ -31,8 +31,6 @@ __pycache__/
 build/
 develop-eggs/
 dist/
-/plugins/
-plugins_config.yaml
 downloads/
 eggs/
 .eggs/
