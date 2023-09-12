@@ -18,13 +18,7 @@ class SkillTreeViewModel extends ChangeNotifier {
 
   void initializeSkillTree() {
     // TODO: Load from JSON
-    _skillTreeNodes = [];
-    _skillTreeEdges = [];
-    _selectedNode = null;
-
-    graph.nodes.clear();
-    graph.edges.clear();
-
+    resetState();
     // Add nodes to _skillTreeNodes
     _skillTreeNodes.addAll([
       SkillTreeNode(color: 'red', id: 1),
@@ -63,6 +57,16 @@ class SkillTreeViewModel extends ChangeNotifier {
       ..orientation = (BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT);
 
     notifyListeners();
+  }
+
+  void resetState() {
+    _skillTreeNodes = [];
+    _skillTreeEdges = [];
+    _selectedNode = null;
+    _selectedNodeHierarchy = null;
+
+    graph.nodes.clear();
+    graph.edges.clear();
   }
 
   void toggleNodeSelection(int nodeId) {
