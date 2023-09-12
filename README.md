@@ -27,7 +27,7 @@ Be part of the revolution! **Auto-GPT** stays at the forefront of AI innovation,
 
 ## 🥇 Current Best Agent: AutoGPT
 
-Out currently benchmarked agents Auto-GPT scores the best. This will change after the hackathon - the top-performing generalist agent will earn the esteemed position as the primary AutoGPT 🎊
+Among our currently benchmarked agents, Auto-GPT scores the best. This will change after the hackathon - the top-performing generalist agent will earn the esteemed position as the primary AutoGPT 🎊
 
 📈 To enter, submit your benchmark run through the UI.
 
