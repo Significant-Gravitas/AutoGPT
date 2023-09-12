@@ -31,6 +31,7 @@ pytest-asyncio = "^0.21.1"
 uvicorn = "^0.23.2"
 fastapi = "^0.103.1"
 python-multipart = "^0.0.6"
+toml = "^0.10.2"
 
 
 [tool.poetry.group.dev.dependencies]
