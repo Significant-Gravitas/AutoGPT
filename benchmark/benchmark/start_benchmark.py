@@ -431,11 +431,5 @@ def version():
 
 #     return latest_report
 
-
-<<<<<<< HEAD:benchmark/agbenchmark/start_benchmark.py
-# if __name__ == "__main__":
-# start()
-=======
 if __name__ == "__main__":
     cli()
->>>>>>> 61b4afcb (Fixing benchmarks):benchmark/benchmark/start_benchmark.py
