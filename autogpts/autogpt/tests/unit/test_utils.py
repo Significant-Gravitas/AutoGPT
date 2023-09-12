@@ -86,7 +86,7 @@ def test_get_bulletin_from_web_success(mock_get):
 
     assert expected_content in bulletin
     mock_get.assert_called_with(
-        "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md"
+        "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/autogpts/autogpt/BULLETIN.md"
     )
 
 

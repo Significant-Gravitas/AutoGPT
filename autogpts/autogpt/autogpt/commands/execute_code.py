@@ -79,14 +79,22 @@ def execute_python_code(code: str, agent: Agent) -> str:
             "description": "The name of te file to execute",
             "required": True,
         },
+        "args": {
+            "type": "list[str]",
+            "description": "The (command line) arguments to pass to the script",
+            "required": False,
+        },
     },
 )
 @sanitize_path_arg("filename")
-def execute_python_file(filename: Path, agent: Agent) -> str:
+def execute_python_file(
+    filename: Path, agent: Agent, args: list[str] | str = []
+) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
         filename (Path): The name of the file to execute
+        args (list, optional): The arguments with which to run the python script
 
     Returns:
         str: The output of the file
@@ -94,6 +102,9 @@ def execute_python_file(filename: Path, agent: Agent) -> str:
     logger.info(
         f"Executing python file '{filename}' in working directory '{agent.config.workspace_path}'"
     )
+
+    if isinstance(args, str):
+        args = args.split()  # Convert space-separated string to a list
 
     if not str(filename).endswith(".py"):
         raise InvalidArgumentError("Invalid file type. Only .py files are allowed.")
@@ -110,7 +121,7 @@ def execute_python_file(filename: Path, agent: Agent) -> str:
             f"Auto-GPT is running in a Docker container; executing {file_path} directly..."
         )
         result = subprocess.run(
-            ["python", "-B", str(file_path)],
+            ["python", "-B", str(file_path)] + args,
             capture_output=True,
             encoding="utf8",
             cwd=str(agent.workspace.root),
@@ -152,7 +163,7 @@ def execute_python_file(filename: Path, agent: Agent) -> str:
                 "python",
                 "-B",
                 file_path.relative_to(agent.workspace.root).as_posix(),
-            ],
+            ] + args,
             volumes={
                 str(agent.workspace.root): {
                     "bind": "/workspace",

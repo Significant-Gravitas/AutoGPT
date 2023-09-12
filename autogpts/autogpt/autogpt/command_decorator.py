@@ -30,7 +30,7 @@ def command(
 ) -> Callable[..., CommandOutput]:
     """The command decorator is used to create Command objects from ordinary functions."""
 
-    def decorator(func: Callable[..., CommandOutput]) -> Command:
+    def decorator(func: Callable[..., CommandOutput]):
         typed_parameters = [
             CommandParameter(
                 name=param_name,
@@ -55,8 +55,7 @@ def command(
         def wrapper(*args, **kwargs) -> Any:
             return func(*args, **kwargs)
 
-        wrapper.command = cmd
-
+        setattr(wrapper, "command", cmd)
         setattr(wrapper, AUTO_GPT_COMMAND_IDENTIFIER, True)
 
         return wrapper
