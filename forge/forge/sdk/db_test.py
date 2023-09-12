@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from autogpt.sdk.db import (
+from forge.sdk.db import (
     AgentDB,
     ArtifactModel,
     StepModel,
@@ -13,8 +13,8 @@ from autogpt.sdk.db import (
     convert_to_step,
     convert_to_task,
 )
-from autogpt.sdk.errors import NotFoundError as DataNotFoundError
-from autogpt.sdk.schema import *
+from forge.sdk.errors import NotFoundError as DataNotFoundError
+from forge.sdk.schema import *
 
 
 @pytest.mark.asyncio
