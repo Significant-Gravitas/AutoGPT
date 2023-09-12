@@ -231,7 +231,8 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
         )
     )
 
-    agent_config_path = None
+    agent_benchmark_config_path = Path.cwd() / "agbenchmark" / "config.json"
+
     if "--agent-config" in sys.argv:
         agent_benchmark_config_path = sys.argv[sys.argv.index("--agent-config") + 1]
     else:

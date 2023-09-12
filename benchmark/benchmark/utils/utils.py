@@ -9,6 +9,8 @@ from typing import Any, List, Optional
 import git
 from dotenv import load_dotenv
 
+from benchmark.utils.data_types import calculate_info_test_path
+
 load_dotenv()
 from benchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
 

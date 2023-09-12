@@ -12,8 +12,8 @@ from helicone.lock import HeliconeLockManager
 
 sys.path.append("/Users/swifty/dev/Auto-GPT/benchmark")
 
-from agbenchmark.reports.ReportManager import ReportManager
-from agbenchmark.utils.utils import (  # get_git_commit_sha,
+from benchmark.reports.ReportManager import ReportManager
+from benchmark.utils.utils import (  # get_git_commit_sha,
     AGENT_NAME,
     calculate_dynamic_paths,
 )
