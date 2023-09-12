@@ -91,4 +91,4 @@ sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 skip_glob = [".tox", "__pycache__", "*.pyc", "venv*/*", "reports", "venv", "env", "node_modules", ".env", ".venv", "dist", "agent/*", "agbenchmark/challenges/*"]
 
 [tool.poetry.scripts]
-agbenchmark = "benchmark.start_benchmark:cli"
+agbenchmark = "agbenchmark.__main__:cli"

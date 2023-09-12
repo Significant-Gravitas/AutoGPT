@@ -1,0 +1,21 @@
+{
+  "name": "TestWebAppListAnimals",
+  "category": ["code"],
+  "task": "Build a web page with a list of animals. When someone clicks on the word 'Dog', a message should appear that says 'Dogs are known as man's best friend!'. You'll need to make a list with the name 'Dog' and then write a little bit of JavaScript to make the message appear when the name is clicked. Mark the div containing dog with the id 'dog'. Put the message inside a <div> with the id 'info'. Create a single html file called animal_list.html.",
+  "dependencies": ["TestWritingCLIFileOrganizer"],
+  "cutoff": 90,
+  "ground": {
+    "answer": "A web app where we can list animals and have details about dogs.",
+    "should_contain": [],
+    "should_not_contain": [],
+    "files": ["test.py"],
+    "eval": {
+      "type": "python"
+    }
+  },
+  "info": {
+    "difficulty": "basic",
+    "description": "Tests the agent's ability to build a basic html app.",
+    "side_effects": []
+  }
+}
