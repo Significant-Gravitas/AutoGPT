@@ -1,62 +1,73 @@
-# Auto-GPT: An open-source agent ecosystem
+# 🌟 Auto-GPT: the heart of the open-source agent ecosystem
 
-https://lablab.ai/event/autogpt-arena-hacks
+[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)](https://github.com/Significant-Gravitas/Auto-GPT/stargazers) [![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/Auto_GPT) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
-[![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)](https://github.com/Significant-Gravitas/Auto-GPT/stargazers)
-[![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/Auto_GPT)
+## 🚀 Elevate Your Agent Development
 
-## 💡 Get help - [Discord 💬](https://discord.gg/autogpt)
+**Auto-GPT** is your go-to toolkit for supercharging agents. With its modular and extensible framework, you're empowered to focus on:
 
-<hr/>
+- 🏗️ **Building** - Lay the foundation for something amazing.
+- 🧪 **Testing** - Fine-tune your agent to perfection.
+- 👀 **Viewing** - See your progress come to life.
 
-## Quickstart
+Be part of the revolution! **Auto-GPT** stays at the forefront of AI innovation, featuring the codebase for the reigning champion in the Open-Source ecosystem.
 
-0. Check out the [wiki](https://github.com/Significant-Gravitas/Nexus/wiki)
-1. Get an OpenAI [API Key](https://platform.openai.com/account/api-keys)
-2. Download the [latest release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
-3. Follow the [installation instructions][docs/setup]
-4. Configure any additional features you want, or install some [plugins][docs/plugins]
-5. [Run][docs/usage] the app
+---
 
-Please see the [documentation][docs] for full setup instructions and configuration options.
+<p align="center">
+  <a href="https://lablab.ai/event/autogpt-arena-hacks">
+    <img src="https://lablab.ai/_next/image?url=https%3A%2F%2Fstorage.googleapis.com%2Flablab-static-eu%2Fimages%2Fevents%2Fcll6p5cxj0000356zslac05gg%2Fcll6p5cxj0000356zslac05gg_imageLink_mtd14jk.jpg&w=1080&q=75" alt="AutoGPT Arena Hacks Hackathon" />
+  </a>
+</p>
+<p align="center">
+  <strong>We're hosting a Hackathon!</strong>
+  <br>
+  Click the banner above for details and registration!
+</p>
 
-[docs]: https://docs.agpt.co/
+---
 
-## 📖 Documentation
+## 🥇 Current Best Agent: AutoGPT
 
-- [⚙️ Setup][docs/setup]
-- [💻 Usage][docs/usage]
-- [🔌 Plugins][docs/plugins]
-- Configuration
-  - [🔍 Web Search](https://docs.agpt.co/configuration/search/)
-  - [🧠 Memory](https://docs.agpt.co/configuration/memory/)
-  - [🗣️ Voice (TTS)](https://docs.agpt.co/configuration/voice/)
-  - [🖼️ Image Generation](https://docs.agpt.co/configuration/imagegen/)
+Out currently benchmarked agents Auto-GPT scores the best. This will change after the hackathon - the top-performing generalist agent will earn the esteemed position as the primary AutoGPT 🎊
 
-[docs/setup]: https://docs.agpt.co/setup/
-[docs/usage]: https://docs.agpt.co/usage/
-[docs/plugins]: https://docs.agpt.co/plugins/
+📈 To enter, submit your benchmark run through the UI.
 
-## 🛡 Disclaimer
+## 🌟 Quickstart
 
-This project, Auto-GPT, is an experimental application and is provided "as-is" without any warranty, express or implied. By using this software, you agree to assume all risks associated with its use, including but not limited to data loss, system failure, or any other issues that may arise.
+- **Jumpstart your journey!** 🌠 To activate the best agent, follow the guide [right here](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpts/autogpt/README.md).
 
-The developers and contributors of this project do not accept any responsibility or liability for any losses, damages, or other consequences that may occur as a result of using this software. You are solely responsible for any decisions and actions taken based on the information provided by Auto-GPT.
+Want to build your own groundbreaking agent using Auto-GPT? 🛠️ Fork this repository! Detailed guidance is on the way. There are three major components to focus on:
 
-**Please note that the use of the GPT-4 language model can be expensive due to its token usage.** By utilizing this project, you acknowledge that you are responsible for monitoring and managing your own token usage and the associated costs. It is highly recommended to check your OpenAI API usage regularly and set up any necessary limits or alerts to prevent unexpected charges.
+### 🏗️ the Forge
 
-As an autonomous experiment, Auto-GPT may generate content or take actions that are not in line with real-world business practices or legal requirements. It is your responsibility to ensure that any actions or decisions made based on the output of this software comply with all applicable laws, regulations, and ethical standards. The developers and contributors of this project shall not be held responsible for any consequences arising from the use of this software.
+**Forge your future!** The `forge` is your innovation lab. All the boilerplate code is already handled, letting you channel all your creativity into building a revolutionary agent. It's more than a starting point, it's a launchpad 🚀 for your ideas.
 
-By using Auto-GPT, you agree to indemnify, defend, and hold harmless the developers, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software or your violation of these terms.
+📘 [Learn More](https://github.com/Significant-Gravitas/Auto-GPT/tree/master/forge)
 
-## 🐦 Connect with Us on Twitter
+### 🎯 the Benchmark
 
-Stay up-to-date with the latest news, updates, and insights about Auto-GPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
+**Test to impress!** The `benchmark` offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 
-- **Developer**: Follow [@siggravitas](https://twitter.com/siggravitas) for insights into the development process, project updates, and related topics from the creator of Entrepreneur-GPT.
+📘 [Learn More](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/benchmark)
 
-We look forward to connecting with you and hearing your thoughts, ideas, and experiences with Auto-GPT. Join us on Twitter and let's explore the future of AI together!
+### 🎮 the UI
+
+**Take Control!** The `frontend` is your personal command center. It gives you a user-friendly interface to control and monitor your agents, making it easier to bring your ideas to life.
+
+📘 [Learn More](https://github.com/Significant-Gravitas/Auto-GPT/tree/master/frontend)
+
+---
+
+### 🔄 Agent Protocol
+
+🔌 **Standardize to Maximize!** To maintain a uniform standard and ensure seamless compatibility, Auto-GPT employs the [agent protocol](https://github.com/AI-Engineers-Foundation/agent-protocol) from the AI Engineer Foundation. This standardizes the communication pathways from your agent to the frontend and benchmark.
+
+### 🤔 Questions? Problems? Suggestions?
+
+#### Get help - [Discord 💬](https://discord.gg/autogpt)
+
+To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/Auto-GPT/issues/new/choose). Please ensure someone else hasn’t created an issue for the same topic.
 
 <p align="center">
   <a href="https://star-history.com/#Torantulino/auto-gpt&Date">
