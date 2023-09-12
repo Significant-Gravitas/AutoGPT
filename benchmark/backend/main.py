@@ -9,9 +9,10 @@ from typing import Any
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-from agbenchmark.utils.utils import find_absolute_benchmark_path
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+
+from agbenchmark.utils.utils import find_absolute_benchmark_path
 
 app = FastAPI()
 
