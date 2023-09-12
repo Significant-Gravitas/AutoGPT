@@ -33,7 +33,7 @@ Among our currently benchmarked agents, Auto-GPT scores the best. This will chan
 
 ## 🌟 Quickstart
 
-- **Jumpstart your journey!** 🌠 To activate the best agent, follow the guide [right here](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpts/autogpt/README.md).
+- **Jumpstart your journey!** 🌠 To activate the best agent, follow the guide [here](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpts/autogpt/README.md).
 
 Want to build your own groundbreaking agent using Auto-GPT? 🛠️ Fork this repository! Detailed guidance is on the way. There are three major components to focus on:
 
