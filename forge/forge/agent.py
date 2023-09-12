@@ -1,4 +1,4 @@
-from autogpt.sdk import Agent, AgentDB, Step, StepRequestBody, Workspace
+from forge.sdk import Agent, AgentDB, Step, StepRequestBody, Workspace
 
 
 class AutoGPTAgent(Agent):
