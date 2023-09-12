@@ -1,5 +1,6 @@
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_edge.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:graphview/GraphView.dart';
 
@@ -7,20 +8,17 @@ class SkillTreeViewModel extends ChangeNotifier {
   List<SkillTreeNode> _skillTreeNodes = [];
   List<SkillTreeEdge> _skillTreeEdges = [];
   SkillTreeNode? _selectedNode;
+  List<SkillTreeNode>? _selectedNodeHierarchy;
 
   SkillTreeNode? get selectedNode => _selectedNode;
+  List<SkillTreeNode>? get selectedNodeHierarchy => _selectedNodeHierarchy;
 
   final Graph graph = Graph()..isTree = true;
   BuchheimWalkerConfiguration builder = BuchheimWalkerConfiguration();
 
   void initializeSkillTree() {
-    _skillTreeNodes = [];
-    _skillTreeEdges = [];
-    _selectedNode = null;
-
-    graph.nodes.clear();
-    graph.edges.clear();
-
+    // TODO: Load from JSON
+    resetState();
     // Add nodes to _skillTreeNodes
     _skillTreeNodes.addAll([
       SkillTreeNode(color: 'red', id: 1),
@@ -61,15 +59,60 @@ class SkillTreeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void resetState() {
+    _skillTreeNodes = [];
+    _skillTreeEdges = [];
+    _selectedNode = null;
+    _selectedNodeHierarchy = null;
+
+    graph.nodes.clear();
+    graph.edges.clear();
+  }
+
   void toggleNodeSelection(int nodeId) {
     if (_selectedNode?.id == nodeId) {
       // Unselect the node if it's already selected
       _selectedNode = null;
+      _selectedNodeHierarchy = null;
     } else {
       // Select the new node
       _selectedNode = _skillTreeNodes.firstWhere((node) => node.id == nodeId);
+      populateSelectedNodeHierarchy(nodeId);
     }
     notifyListeners();
+  }
+
+  void populateSelectedNodeHierarchy(int startNodeId) {
+    // Initialize an empty list to hold the nodes in the hierarchy.
+    _selectedNodeHierarchy = [];
+
+    // Find the starting node (the selected node) in the skill tree nodes list.
+    SkillTreeNode? currentNode =
+        _skillTreeNodes.firstWhere((node) => node.id == startNodeId);
+
+    // Loop through the tree to populate the hierarchy list.
+    // The loop will continue as long as there's a valid current node.
+    while (currentNode != null) {
+      // Add the current node to the hierarchy list.
+      _selectedNodeHierarchy!.add(currentNode);
+
+      // Find the parent node by looking through the skill tree edges.
+      // We find the edge where the 'to' field matches the ID of the current node.
+      SkillTreeEdge? parentEdge = _skillTreeEdges
+          .firstWhereOrNull((edge) => edge.to == currentNode?.id.toString());
+
+      // If a parent edge is found, find the corresponding parent node.
+      if (parentEdge != null) {
+        // The 'from' field of the edge gives us the ID of the parent node.
+        // We find that node in the skill tree nodes list.
+        currentNode = _skillTreeNodes
+            .firstWhereOrNull((node) => node.id.toString() == parentEdge.from);
+      } else {
+        // If no parent edge is found, it means we've reached the root node.
+        // We set currentNode to null to exit the loop.
+        currentNode = null;
+      }
+    }
   }
 
   // Getter to expose nodes for the View
