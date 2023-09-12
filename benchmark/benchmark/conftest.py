@@ -9,8 +9,13 @@ from pathlib import Path  # noqa
 from typing import Any, Dict, Generator
 
 import pytest
-
-from benchmark.utils.data_types import AgentBenchmarkConfig
+from benchmark.utils.data_types import AgentBenchmarkConfig, SuiteConfig
+from benchmark.reports.reports import (
+    finalize_reports,
+    generate_combined_suite_report,
+    generate_single_call_report,
+    session_finish,
+)
 
 GLOBAL_TIMEOUT = (
     1500  # The tests will stop after 25 minutes so we can send the reports.
@@ -21,6 +26,18 @@ collect_ignore = ["challenges"]
 
 
 def load_config_from_request(request: Any) -> AgentBenchmarkConfig:
+    """
+    This function loads the configuration for the agent benchmark from a given request.
+
+    Args:
+        request (Any): The request object from which the agent benchmark configuration is to be loaded.
+
+    Returns:
+        AgentBenchmarkConfig: The loaded agent benchmark configuration.
+
+    Raises:
+        json.JSONDecodeError: If the benchmark configuration file is not a valid JSON file.
+    """
     agent_benchmark_config_path = request.config.getoption("--agent_config_path")
     try:
         with open(agent_benchmark_config_path, "r") as f:
@@ -35,6 +52,18 @@ def load_config_from_request(request: Any) -> AgentBenchmarkConfig:
 
 
 def resolve_workspace(workspace: str) -> str:
+    """
+    This function resolves the workspace path.
+
+    Args:
+        workspace (str): The workspace path which can be an absolute path or a path expression.
+
+    Returns:
+        str: The absolute path of the workspace.
+
+    Raises:
+        ValueError: If the workspace path expression is invalid.
+    """
     if workspace.startswith("${") and workspace.endswith("}"):
         # Extract the string inside ${...}
         path_expr = workspace[2:-1]
@@ -54,6 +83,20 @@ def resolve_workspace(workspace: str) -> str:
 
 @pytest.fixture(scope="module")
 def config(request: Any) -> Any:
+    """
+    This pytest fixture is responsible for loading the agent benchmark configuration from a given request.
+    It also resolves the workspace path based on the configuration.
+    This fixture is scoped to the module level, meaning it's invoked once per test module.
+
+    Args:
+        request (Any): The request object from which the agent benchmark configuration is to be loaded.
+
+    Returns:
+        Any: The loaded configuration dictionary.
+
+    Raises:
+        json.JSONDecodeError: If the benchmark configuration file is not a valid JSON file.
+    """
     agent_benchmark_config_path = request.config.getoption("--agent_config_path")
     try:
         with open(agent_benchmark_config_path, "r") as f:
@@ -64,6 +107,8 @@ def config(request: Any) -> Any:
     except json.JSONDecodeError:
         print("Error: benchmark_config.json is not a valid JSON file.")
         raise
+
+    config['AgentBenchmarkConfig'] = agent_benchmark_config
 
     if isinstance(config["workspace"], str):
         config["workspace"] = resolve_workspace(agent_benchmark_config.workspace)
@@ -80,6 +125,19 @@ def config(request: Any) -> Any:
 
 @pytest.fixture(autouse=True)
 def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
+    """
+    This pytest fixture is responsible for setting up and tearing down the workspace for each test.
+    It is automatically used in every test due to the 'autouse=True' parameter.
+    The workspace path is retrieved from the configuration dictionary.
+    If the workspace path does not exist, it is created.
+    After the test function completes, the workspace is cleaned up unless 'keep_workspace_files' is set to True in the configuration.
+
+    Args:
+        config (Dict[str, Any]): The configuration dictionary where the workspace path is defined.
+
+    Yields:
+        str: The workspace path.
+    """
     output_path = config["workspace"]
 
     # checks if its an input output paradigm
@@ -107,6 +165,27 @@ def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
 
 
 def pytest_addoption(parser: Any) -> None:
+    """
+    This function is a pytest hook that is called to add command-line options.
+    It is used to add custom command-line options that are specific to the agent benchmark tests.
+    These options can be used to control the behavior of the tests.
+    For example, the "--agent_config_path" option is used to specify the path to the agent benchmark configuration file.
+    The "--mock" option is used to run the tests in mock mode.
+    The "--api_mode" option is used to run the tests in API mode.
+    The "--host" option is used to specify the host for the tests.
+    The "--category" option is used to run only tests of a specific category.
+    The "--nc" option is used to run the tests without caching.
+    The "--cutoff" option is used to specify a cutoff time for the tests.
+    The "--improve" option is used to run only the tests that are marked for improvement.
+    The "--maintain" option is used to run only the tests that are marked for maintenance.
+    The "--explore" option is used to run the tests in exploration mode.
+    The "--test" option is used to run a specific test.
+    The "--no_dep" option is used to run the tests without dependencies.
+    The "--suite" option is used to run a specific suite of tests.
+
+    Args:
+        parser (Any): The parser object to which the command-line options are added.
+    """
     parser.addoption("--agent_config_path", action="store_true", default=False)
     parser.addoption("--mock", action="store_true", default=False)
     parser.addoption("--api_mode", action="store_true", default=False)
@@ -124,6 +203,17 @@ def pytest_addoption(parser: Any) -> None:
 
 @pytest.fixture(autouse=True)
 def check_regression(request: Any) -> None:
+    """
+    This pytest fixture is responsible for checking if a test is a regression test.
+    It is automatically used in every test due to the 'autouse=True' parameter.
+    The test name and the agent benchmark configuration are retrieved from the request object.
+    The regression reports are loaded from the path specified in the agent benchmark configuration.
+    If the "--improve" option is used and the test name exists in the regression tests, the test is skipped.
+    If the "--maintain" option is used and the test name does not exist in the regression tests, the test is also skipped.
+
+    Args:
+        request (Any): The request object from which the test name and the agent benchmark configuration are retrieved.
+    """
     test_name = request.node.parent.name
     agent_benchmark_config = load_config_from_request(request)
 
@@ -144,16 +234,53 @@ def check_regression(request: Any) -> None:
 # this is to get the challenge_data from every test
 @pytest.fixture(autouse=True)
 def challenge_data(request: Any) -> None:
+    """
+    This pytest fixture is responsible for providing the challenge data for each test.
+    It is automatically used in every test due to the 'autouse=True' parameter.
+    The challenge data is retrieved from the request object's parameters.
+    This fixture is essential for the pytest system as it provides the necessary data for each test.
+
+    Args:
+        request (Any): The request object from which the challenge data is retrieved.
+
+    Returns:
+        None: The challenge data is directly passed to the test function and does not need to be returned.
+    """
     return request.param
 
 
 @pytest.fixture(autouse=True, scope="session")
 def mock(request: Any) -> None:
+    """
+    This pytest fixture is responsible for retrieving the value of the "--mock" command-line option.
+    It is automatically used in every test session due to the 'autouse=True' parameter and 'session' scope.
+    The "--mock" option is used to run the tests in mock mode.
+    This fixture is essential for the pytest system as it provides the necessary command-line option value for each test session.
+
+    Args:
+        request (Any): The request object from which the "--mock" option value is retrieved.
+
+    Returns:
+        None: The "--mock" option value is directly passed to the test session and does not need to be returned.
+    """
     return request.config.getoption("--mock")
 
 
 @pytest.fixture(autouse=True, scope="function")
 def timer(request: Any) -> Any:
+    """
+    This pytest fixture is responsible for timing the execution of each test.
+    It is automatically used in every test due to the 'autouse=True' parameter and 'function' scope.
+    At the start of each test, it records the current time.
+    After the test function completes, it calculates the run time and appends it to the test node's user properties.
+    This allows the run time of each test to be accessed later for reporting or analysis.
+
+    Args:
+        request (Any): The request object from which the test node is retrieved.
+
+    Yields:
+        None: Control is yielded back to the test function.
+    """
     start_time = time.time()
     yield
     run_time = time.time() - start_time
@@ -164,6 +291,19 @@ suite_reports: dict[str, list] = {}
 
 
 def pytest_runtest_makereport(item: Any, call: Any) -> None:
+    """
+    This function is a pytest hook that is called when a test report is being generated.
+    It is used to generate and finalize reports for each test.
+    The function checks if the test is part of a suite and handles the report generation accordingly.
+    If the test is part of a suite with the same task, a combined report is generated.
+    If the test is not part of a suite or is part of a suite with different tasks, a single call report is generated.
+    After the test function completes, the reports are finalized.
+    This function is essential for the pytest system as it provides the necessary report generation for each test.
+
+    Args:
+        item (Any): The test item for which the report is being generated.
+        call (Any): The call object from which the test result is retrieved.
+    """
     challenge_data = item.funcargs.get("challenge_data", None)
 
     if not challenge_data:
@@ -209,6 +349,14 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
 
 
 def timeout_monitor(start_time: int) -> None:
+    """
+    This function is responsible for monitoring the total execution time of the test suite.
+    It runs in a separate thread and checks every second if the total execution time has exceeded the global timeout.
+    If the global timeout is exceeded, it terminates the pytest session with a specific return code.
+
+    Args:
+        start_time (int): The start time of the test suite.
+    """
     while time.time() - start_time < GLOBAL_TIMEOUT:
         time.sleep(1)  # check every second
 
@@ -216,6 +364,14 @@ def timeout_monitor(start_time: int) -> None:
 
 
 def pytest_sessionstart(session: Any) -> None:
+    """
+    This function is a pytest hook that is called at the start of the test session.
+    It starts the timeout monitor in a separate thread.
+    The timeout monitor checks if the total execution time of the test suite has exceeded the global timeout.
+
+    Args:
+        session (Any): The pytest session object.
+    """
     start_time = time.time()
     t = threading.Thread(target=timeout_monitor, args=(start_time,))
     t.daemon = True  # Daemon threads are abruptly stopped at shutdown
@@ -223,19 +379,50 @@ def pytest_sessionstart(session: Any) -> None:
 
 
 def pytest_sessionfinish(session: Any) -> None:
-    """Called at the end of the session to save regression tests and info"""
+    """
+    This function is a pytest hook that is called at the end of the test session.
+    It is used to finalize and save the test reports.
+    The reports are saved in a specific location defined in the suite reports.
 
+    Args:
+        session (Any): The pytest session object.
+    """
     session_finish(suite_reports)
 
 
 @pytest.fixture
 def scores(request: Any) -> None:
+    """
+    This pytest fixture is responsible for retrieving the scores of the test class.
+    The scores are retrieved from the test class's 'scores' attribute using the test class name.
+    This fixture is essential for the pytest system as it provides the necessary scores for each test.
+
+    Args:
+        request (Any): The request object from which the test class is retrieved.
+
+    Returns:
+        None: The scores are directly passed to the test function and do not need to be returned.
+    """
     test_class_name = request.node.cls.__name__
     return request.node.cls.scores.get(test_class_name)
 
 
 # this is adding the dependency marker and category markers automatically from the json
 def pytest_collection_modifyitems(items: Any, config: Any) -> None:
+    """
+    This function is a pytest hook that is called after the test collection has been performed.
+    It is used to modify the collected test items based on the agent benchmark configuration.
+    The function loads the agent benchmark configuration from the specified path and retrieves the regression reports.
+    For each test item, it checks if the test method exists and retrieves the dependencies and categories from the test class instance.
+    If the "--improve" or "--category" options are used, the dependencies are filtered based on the regression data.
+    If the "--test", "--no_dep", or "--maintain" options are used, the dependencies are cleared.
+    The function then dynamically adds the 'depends' and 'category' markers to the test item.
+    This function is essential for the pytest system as it provides the necessary modification of the test items based on the agent benchmark configuration.
+
+    Args:
+        items (Any): The collected test items to be modified.
+        config (Any): The pytest configuration object from which the agent benchmark configuration path is retrieved.
+    """
     try:
         with open(config.getoption("--agent_config_path"), "r") as f:
             agent_benchmark_config = AgentBenchmarkConfig(**json.load(f))
@@ -283,6 +470,19 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def run_agent(request: Any) -> Any:
+    """
+    This pytest fixture is responsible for running the agent. It is automatically used in every test session due to the 'autouse=True' parameter and 'session' scope.
+    If the "--api_mode" argument is not in the command line arguments, it starts a subprocess running the benchmark.
+    The subprocess is terminated after the test session.
+    If the "--api_mode" argument is present, it simply yields control back to the test session.
+    This fixture is essential for the pytest system as it provides the necessary setup and teardown for running the agent in each test session.
+
+    Args:
+        request (Any): The request object from which the agent benchmark configuration path is retrieved.
+
+    Yields:
+        None: Control is yielded back to the test session.
+    """
     agent_benchmark_config_path = request.config.getoption("--agent_config_path")
     if "--api_mode" not in sys.argv:
         command = [sys.executable, "-m", "benchmark.benchmarks"]
@@ -299,3 +499,4 @@ def run_agent(request: Any) -> Any:
         process.terminate()
     else:
         yield
+
