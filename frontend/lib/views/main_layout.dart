@@ -5,6 +5,7 @@ import 'package:auto_gpt_flutter_client/views/side_bar/side_bar_view.dart';
 import 'package:auto_gpt_flutter_client/views/skill_tree/skill_tree_view.dart';
 import 'package:auto_gpt_flutter_client/views/task/task_view.dart';
 import 'package:auto_gpt_flutter_client/views/chat/chat_view.dart';
+import 'package:auto_gpt_flutter_client/views/task_queue/task_queue_view.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
@@ -18,37 +19,80 @@ class MainLayout extends StatelessWidget {
     // Get the screen width
     double width = MediaQuery.of(context).size.width;
 
-    // Access the TaskViewModel from the context
+    // Access the various ViewModels from the context
     final taskViewModel = Provider.of<TaskViewModel>(context);
-
-    // Access the ChatViewModel from the context
     final chatViewModel = Provider.of<ChatViewModel>(context);
 
-    // Access the ChatViewModel from the context
-    final skillTreeViewModel = Provider.of<SkillTreeViewModel>(context);
+    // Initialize the width for the SideBarView
+    double sideBarWidth = 60.0;
 
-    // Check the screen width and return the appropriate layout
+    // Initialize the width for the TaskView
+    double taskViewWidth = 280.0;
+
+    // Calculate remaining width after subtracting the width of the SideBarView
+    double remainingWidth = width - sideBarWidth;
+
+    // Declare variables to hold the widths of SkillTreeView, TestQueueView, and ChatView
+    double skillTreeViewWidth = 0;
+    double testQueueViewWidth = 0;
+    double chatViewWidth = 0;
+
     if (width > 800) {
-      // For larger screens, return a side-by-side layout
       return Row(
         children: [
-          SideBarView(selectedViewNotifier: selectedViewNotifier),
+          SizedBox(
+              width: sideBarWidth,
+              child: SideBarView(selectedViewNotifier: selectedViewNotifier)),
           ValueListenableBuilder(
             valueListenable: selectedViewNotifier,
             builder: (context, String value, _) {
-              if (value == 'TaskView') {
-                return SizedBox(
-                    width: 280, child: TaskView(viewModel: taskViewModel));
-              } else {
-                return Expanded(
-                    child: SkillTreeView(viewModel: skillTreeViewModel));
-              }
+              return Consumer<SkillTreeViewModel>(
+                builder: (context, skillTreeViewModel, _) {
+                  if (value == 'TaskView') {
+                    skillTreeViewModel.resetState();
+                    chatViewWidth = remainingWidth - taskViewWidth;
+                    return Row(
+                      children: [
+                        SizedBox(
+                            width: taskViewWidth,
+                            child: TaskView(viewModel: taskViewModel)),
+                        SizedBox(
+                            width: chatViewWidth,
+                            child: ChatView(viewModel: chatViewModel))
+                      ],
+                    );
+                  } else {
+                    if (skillTreeViewModel.selectedNode != null) {
+                      // If TaskQueueView should be displayed
+                      testQueueViewWidth = remainingWidth * 0.25;
+                      skillTreeViewWidth = remainingWidth * 0.25;
+                      chatViewWidth = remainingWidth * 0.5;
+                    } else {
+                      // If only SkillTreeView and ChatView should be displayed
+                      skillTreeViewWidth = remainingWidth * 0.5;
+                      chatViewWidth = remainingWidth * 0.5;
+                    }
+
+                    return Row(
+                      children: [
+                        SizedBox(
+                            width: skillTreeViewWidth,
+                            child:
+                                SkillTreeView(viewModel: skillTreeViewModel)),
+                        if (skillTreeViewModel.selectedNode != null)
+                          SizedBox(
+                              width: testQueueViewWidth,
+                              child: TaskQueueView()),
+                        SizedBox(
+                            width: chatViewWidth,
+                            child: ChatView(viewModel: chatViewModel)),
+                      ],
+                    );
+                  }
+                },
+              );
             },
           ),
-          Expanded(
-              child: ChatView(
-            viewModel: chatViewModel,
-          )),
         ],
       );
     } else {
