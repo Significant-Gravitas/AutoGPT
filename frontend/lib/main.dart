@@ -1,4 +1,5 @@
 import 'package:auto_gpt_flutter_client/viewmodels/api_settings_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:flutter/material.dart';
 import 'views/main_layout.dart';
 import 'package:provider/provider.dart';
@@ -55,8 +56,11 @@ class MyApp extends StatelessWidget {
               create: (context) => ChatViewModel(chatService)),
           ChangeNotifierProvider(
               create: (context) => TaskViewModel(taskService)),
+          ChangeNotifierProvider(
+            create: (context) => SkillTreeViewModel(),
+          ),
         ],
-        child: const MainLayout(),
+        child: MainLayout(),
       ),
     );
   }
