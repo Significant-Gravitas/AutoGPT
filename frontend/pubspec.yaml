@@ -39,6 +39,7 @@ dependencies:
   provider: ^6.0.5
   http: ^1.1.0
   shared_preferences: ^2.2.1
+  graphview: ^1.2.0
 
 dev_dependencies:
   flutter_test:

@@ -1,12 +1,17 @@
+import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/views/side_bar/side_bar_view.dart';
+import 'package:auto_gpt_flutter_client/views/skill_tree/skill_tree_view.dart';
 import 'package:auto_gpt_flutter_client/views/task/task_view.dart';
 import 'package:auto_gpt_flutter_client/views/chat/chat_view.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 class MainLayout extends StatelessWidget {
-  const MainLayout({Key? key}) : super(key: key);
+  final ValueNotifier<String> selectedViewNotifier = ValueNotifier('TaskView');
+
+  MainLayout({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -19,12 +24,27 @@ class MainLayout extends StatelessWidget {
     // Access the ChatViewModel from the context
     final chatViewModel = Provider.of<ChatViewModel>(context);
 
+    // Access the ChatViewModel from the context
+    final skillTreeViewModel = Provider.of<SkillTreeViewModel>(context);
+
     // Check the screen width and return the appropriate layout
     if (width > 800) {
       // For larger screens, return a side-by-side layout
       return Row(
         children: [
-          SizedBox(width: 280, child: TaskView(viewModel: taskViewModel)),
+          SideBarView(selectedViewNotifier: selectedViewNotifier),
+          ValueListenableBuilder(
+            valueListenable: selectedViewNotifier,
+            builder: (context, String value, _) {
+              if (value == 'TaskView') {
+                return SizedBox(
+                    width: 280, child: TaskView(viewModel: taskViewModel));
+              } else {
+                return Expanded(
+                    child: SkillTreeView(viewModel: skillTreeViewModel));
+              }
+            },
+          ),
           Expanded(
               child: ChatView(
             viewModel: chatViewModel,
