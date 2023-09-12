@@ -23,6 +23,6 @@ if __name__ == "__main__":
     port = os.getenv("PORT")
 
     database = forge.sdk.db.AgentDB(database_name, debug_enabled=True)
-    agent = forge.agent.forgeAgent(database=database, workspace=workspace)
+    agent = forge.agent.ForgeAgent(database=database, workspace=workspace)
 
     agent.start(port=port)
