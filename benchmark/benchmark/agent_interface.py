@@ -12,6 +12,8 @@ from typing import Any, List
 import psutil
 from dotenv import load_dotenv
 
+from benchmark.utils.data_types import AgentBenchmarkConfig
+
 load_dotenv()
 
 helicone_graphql_logs = os.getenv("HELICONE_GRAPHQL_LOGS")
@@ -72,20 +74,21 @@ def run_windows_env(process: Any, start_time: float, timeout: float) -> None:
         process.terminate()
 
 
-def run_agent(task: str, timeout: int) -> None:
+def run_agent(task: str, timeout: int, agent_config: AgentBenchmarkConfig) -> None:
     """Calling to get a response"""
 
-    entry_path = "benchmark.benchmarks"
-
+    entry_path = agent_config.get_agent_entry_path()
     print(f"Running '{entry_path}' with timeout {timeout}")
 
-    command = [sys.executable, "-m", entry_path, str(task)]
+    command = [sys.executable, entry_path, str(task)]
+
+    
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
-        cwd=benchmark.start_benchmark.HOME_DIRECTORY,
+        cwd=agent_config.get_agent_directory(),
         bufsize=1,
     )
 

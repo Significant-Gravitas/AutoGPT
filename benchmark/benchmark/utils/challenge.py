@@ -11,7 +11,7 @@ import openai
 import pytest
 
 from benchmark.agent_api_interface import run_api_agent
-from benchmark.utils.data_types import ChallengeData, Ground
+from benchmark.utils.data_types import ChallengeData, Ground, AgentBenchmarkConfig
 from benchmark.utils.prompts import (
     END_PROMPT,
     FEW_SHOT_EXAMPLES,
@@ -74,7 +74,8 @@ class Challenge(ABC):
                     config["workspace"], "artifacts_out", path
                 )
         else:
-            run_agent(self.task, cutoff)
+            agent_benchmark_config: AgentBenchmarkConfig = config["AgentBenchmarkConfig"]
+            run_agent(self.task, cutoff, agent_config=agent_benchmark_config)
 
         # hidden files are added after the agent runs. Hidden files can be python test files.
         # We copy them in the workspace to make it easy to import the code produced by the agent
