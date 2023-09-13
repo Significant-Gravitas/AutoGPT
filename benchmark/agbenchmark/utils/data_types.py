@@ -17,7 +17,9 @@ class DifficultyLevel(Enum):
     expert = "expert"
     human = "human"
 
-
+class Workspace(BaseModel):
+    input: str
+    output: str
 # map from enum to difficulty level (numeric)
 DIFFICULTY_MAP = {
     DifficultyLevel.interface: 1,
@@ -85,7 +87,7 @@ class AgentBenchmarkConfig(BaseModel):
 
     agent_benchmark_config_path: Path | None = None
     entry_path: str
-    workspace: Path
+    workspace: Workspace
     reports_folder: Path | None = None
     api_mode: bool = False
     host: str | None
