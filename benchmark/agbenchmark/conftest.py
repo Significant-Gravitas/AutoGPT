@@ -313,7 +313,8 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
     )
 
     if call.when == "call":
-        generate_single_call_report(item, call, challenge_data)
+        answers = getattr(item, 'answers', None)
+        generate_single_call_report(item, call, challenge_data, answers)
 
     if call.when == "teardown":
         finalize_reports(item, challenge_data)

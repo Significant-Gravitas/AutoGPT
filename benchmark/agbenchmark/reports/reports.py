@@ -53,7 +53,7 @@ def update_regression_tests(
 
 
 def generate_single_call_report(
-    item: Any, call: Any, challenge_data: dict[str, Any]
+    item: Any, call: Any, challenge_data: dict[str, Any], answers: dict[str, Any]
 ) -> None:
     try:
         difficulty = challenge_data["info"]["difficulty"]
@@ -87,6 +87,9 @@ def generate_single_call_report(
         },
         # "answers": answers,
     }
+    if answers:
+        info_details["answers"] = answers
+        
     if "metadata" in challenge_data:
         info_details["metadata"] = challenge_data["metadata"]
 
