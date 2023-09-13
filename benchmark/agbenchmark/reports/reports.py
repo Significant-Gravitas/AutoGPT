@@ -89,7 +89,7 @@ def generate_single_call_report(
     }
     if answers:
         info_details["answers"] = answers
-        
+
     if "metadata" in challenge_data:
         info_details["metadata"] = challenge_data["metadata"]
 

@@ -4,7 +4,6 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from agbenchmark.__main__ import BENCHMARK_START_TIME
 from agbenchmark.reports.processing.graphs import save_single_radar_chart
 from agbenchmark.reports.processing.process_report import get_agent_category
 from agbenchmark.reports.processing.report_types import Report
@@ -15,9 +14,11 @@ from agbenchmark.utils.utils import get_highest_success_difficulty
 class ReportManager:
     """Abstracts interaction with the regression tests file"""
 
-    def __init__(self, filename: str):
+    def __init__(self, filename: str, benchmark_start_time: str):
         self.filename = filename
         self.start_time = time.time()
+        self.benchmark_start_time = benchmark_start_time
+
         self.load()
 
     def load(self) -> None:
@@ -70,7 +71,7 @@ class ReportManager:
             "completion_time": datetime.now(timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%S+00:00"
             ),
-            "benchmark_start_time": BENCHMARK_START_TIME,
+            "benchmark_start_time": self.benchmark_start_time,
             "metrics": {
                 "run_time": str(round(time.time() - self.start_time, 2)) + " seconds",
                 "highest_difficulty": get_highest_success_difficulty(self.tests),

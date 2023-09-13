@@ -186,6 +186,7 @@ def pytest_addoption(parser: Any) -> None:
     The "--explore" option is used to run the tests in exploration mode.
     The "--test" option is used to run a specific test.
     The "--no_dep" option is used to run the tests without dependencies.
+    The "--keep_answers" option is used to keep the answers of the tests.
 
     Args:
         parser (Any): The parser object to which the command-line options are added.
@@ -201,6 +202,7 @@ def pytest_addoption(parser: Any) -> None:
     parser.addoption("--improve", action="store_true", default=False)
     parser.addoption("--maintain", action="store_true", default=False)
     parser.addoption("--explore", action="store_true", default=False)
+    parser.addoption("--keep-answers", action="store_true", default=False)
 
 
 @pytest.fixture(autouse=True)
@@ -313,7 +315,7 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
     )
 
     if call.when == "call":
-        answers = getattr(item, 'answers', None)
+        answers = getattr(item, "answers", None)
         generate_single_call_report(item, call, challenge_data, answers)
 
     if call.when == "teardown":
