@@ -51,7 +51,6 @@ async def run_api_agent(
 
         artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
         for artifact in artifacts:
-
             if artifact.relative_path:
                 folder_path = os.path.join(config["workspace"], artifact.relative_path)
             else:

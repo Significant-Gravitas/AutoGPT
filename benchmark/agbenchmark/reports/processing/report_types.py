@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -29,19 +29,10 @@ class Test(BaseModel):
     reached_cutoff: Optional[bool] = None
 
 
-class SuiteTest(BaseModel):
-    data_path: str
-    metrics: MetricsOverall
-    tests: Dict[str, Test]
-    category: Optional[List[str]] = None
-    task: Optional[str] = None
-    reached_cutoff: Optional[bool] = None
-
-
 class Report(BaseModel):
     command: str
     completion_time: str
     benchmark_start_time: str
     metrics: MetricsOverall
-    tests: Dict[str, Union[Test, SuiteTest]]
+    tests: Dict[str, Test]
     config: Dict[str, str | dict[str, str]]

@@ -1,8 +1,7 @@
 import pytest
-
 from abstract_class import ShipPlacement, Turn
-
 from battleship import Battleship
+
 
 @pytest.fixture
 def battleship_game():

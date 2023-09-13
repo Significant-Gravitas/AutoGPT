@@ -4,7 +4,7 @@ from typing import Optional
 
 import requests
 
-import agbenchmark.start_benchmark
+from agbenchmark.__main__ import BENCHMARK_START_TIME
 from agbenchmark.agent_interface import HELICONE_GRAPHQL_LOGS
 
 
@@ -31,7 +31,7 @@ query ExampleQuery($properties: [PropertyFilter!]){
                 "name": "agent",
             },
             {
-                "value": {"equals": agbenchmark.start_benchmark.BENCHMARK_START_TIME},
+                "value": {"equals": BENCHMARK_START_TIME},
                 "name": "benchmark_start_time",
             },
             {"value": {"equals": challenge}, "name": "challenge"},

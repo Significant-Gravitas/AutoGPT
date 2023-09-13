@@ -1,10 +1,12 @@
-import glob
+import datetime
 import json
+import sys
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, root_validator, validator
+from pydantic import BaseModel, validator
 
 
 class DifficultyLevel(Enum):
@@ -15,6 +17,11 @@ class DifficultyLevel(Enum):
     advanced = "advanced"
     expert = "expert"
     human = "human"
+
+
+class Workspace(BaseModel):
+    input: str
+    output: str
 
 
 # map from enum to difficulty level (numeric)
@@ -29,6 +36,91 @@ DIFFICULTY_MAP = {
 }
 
 STRING_DIFFICULTY_MAP = {e.value: DIFFICULTY_MAP[e] for e in DifficultyLevel}
+
+
+def calculate_info_test_path(
+    base_path: Path, benchmark_start_time: datetime
+) -> Path:
+    """
+    Calculates the path to the directory where the test report will be saved.
+    """
+    # Ensure the reports path exists
+    base_path.mkdir(parents=True, exist_ok=True)
+
+    # Get current UTC date-time stamp
+    date_stamp = benchmark_start_time.strftime("%Y%m%dT%H%M%S")
+
+    # Default run name
+    run_name = "full_run"
+
+    # Map command-line arguments to their respective labels
+    arg_labels = {
+        "--test": None,
+        "--category": None,
+        "--maintain": "maintain",
+        "--improve": "improve",
+        "--explore": "explore",
+    }
+
+    # Identify the relevant command-line argument
+    for arg, label in arg_labels.items():
+        if arg in sys.argv:
+            test_arg = sys.argv[sys.argv.index(arg) + 1] if label is None else None
+            run_name = arg.strip("--")
+            if test_arg:
+                run_name = f"{run_name}_{test_arg}"
+            break
+
+    # Create the full new directory path with ISO standard UTC date-time stamp
+    report_path = base_path / f"{date_stamp}_{run_name}"
+
+    # Ensure the new directory is created
+    report_path.mkdir(exist_ok=True)
+    return report_path
+
+
+class AgentBenchmarkConfig(BaseModel):
+    """
+    This class represents the configuration for the Agent agbenchmark.
+    It includes the following attributes:
+    - agent_benchmark_config_path: The path to the agent benchmark config that this object was created from.
+    - entry_path: The path to the entry point of the benchmark for the agent, relative to the agent_benchmark_config_path.
+    - workspace: The path to the workspace where the benchmark will be run.
+    - reports_folder: The path to the folder where the benchmark reports will be stored.
+    - api_mode: A boolean indicating whether the benchmark is run in API mode.
+    - host: The host where the benchmark is run.
+    """
+
+    agent_benchmark_config_path: Path | None = None
+    entry_path: str
+    workspace: Workspace
+    reports_folder: Path | None = None
+    api_mode: bool = False
+    host: str | None
+
+    def get_reports_location(self) -> Path:
+        # if not self.reports_folder:
+        #     self.reports_folder = (
+        #         Path(self.agent_benchmark_config_path).parent / "reports"
+        #     ).resolve()
+        return Path.cwd() / "agbenchmark_config" / "reports"
+
+    def get_reports_path(self, benchmark_start_time: datetime) -> Path:
+        return calculate_info_test_path(
+            self.get_reports_location(), benchmark_start_time
+        )
+
+    def get_regression_reports_path(self) -> Path:
+        return self.get_reports_location() / "regression_tests.json"
+
+    def get_success_rate_path(self) -> Path:
+        return self.get_reports_location() / "success_rate.json"
+
+    def get_agent_home_directory(self) -> Path:
+        return Path(self.agent_benchmark_config_path).resolve().parent
+
+    def get_agent_entry_path(self) -> Path:
+        return (self.get_agent_home_directory() / self.entry_path).resolve()
 
 
 class Info(BaseModel):
@@ -100,6 +192,7 @@ class ChallengeData(BaseModel):
     cutoff: int
     ground: Ground | Dict[str, Ground]
     info: Info | Dict[str, Info]
+    metadata: Optional[Dict[str, Any]] = None
 
     def serialize(self, path: str) -> None:
         with open(path, "w") as file:
@@ -126,75 +219,6 @@ class ChallengeData(BaseModel):
 
         return ChallengeData(**data)
 
-
-class SuiteConfig(BaseModel):
-    same_task: bool
-    reverse_order: Optional[bool] = None
-    prefix: str
-    task: Optional[str] = None
-    cutoff: Optional[int] = None
-    dependencies: Optional[List[str]] = None
-    shared_category: Optional[List[str]] = None
-    info: Optional[Dict[str, Info]] = None
-    ground: Optional[Dict[str, Ground]] = None
-
-    @root_validator
-    def check_attributes(cls: Any, values: Dict[str, Any]) -> Dict[str, Any]:
-        same_task = values.get("same_task")
-        if same_task:
-            if (
-                values.get("task") is None
-                or values.get("cutoff") is None
-                or values.get("dependencies") is None
-                or values.get("shared_category") is None
-            ):
-                raise ValueError(
-                    f"task, cutoff, dependencies, and shared_category must be provided when same_task is True for test {cls.prefix}."
-                )
-        else:
-            if values.get("reverse_order") is None:
-                raise ValueError(
-                    f"reverse_order must be provided when same_task is False for test {cls.prefix}."
-                )
-
-        return values
-
-    @staticmethod
-    def suite_data_if_suite(json_path: Path) -> Optional["SuiteConfig"]:
-        """Return the suite data if the path is in a suite."""
-        if SuiteConfig.check_if_suite(json_path):
-            return SuiteConfig.deserialize_from_test_data(json_path)
-        else:
-            return None
-
-    @staticmethod
-    def check_if_suite(json_path: Path) -> bool:
-        """Check if the json file is in a suite."""
-
-        # if its in a suite, suite.json is in the parent suite/suite.json & 1_challenge/data.json
-        suite_path = json_path.parent.parent / "suite.json"
-
-        # validation and loading data from suite.json
-        return suite_path.exists()
-
-    @staticmethod
-    def deserialize_from_test_data(data_path: Path) -> "SuiteConfig":
-        """Deserialize from a children path when children and order of children does not matter."""
-
-        suite_path = data_path.parent.parent / "suite.json"
-
-        return SuiteConfig.deserialize(suite_path)
-
-    @staticmethod
-    def deserialize(suite_path: Path) -> "SuiteConfig":
-        with open(suite_path, "r") as file:
-            data = json.load(file)
-        return SuiteConfig(**data)
-
-    @staticmethod
-    def get_data_paths(suite_path: Path | str) -> List[str]:
-        return glob.glob(f"{suite_path}/**/data.json", recursive=True)
-
     def challenge_from_datum(self, file_datum: list[dict[str, Any]]) -> "ChallengeData":
         same_task_data = {
             "name": self.prefix,
@@ -204,7 +228,6 @@ class SuiteConfig(BaseModel):
             "cutoff": self.cutoff,
         }
 
-        # if the SuiteConfig does not yet have info or ground, we use the info and ground from the data.json
         if not self.info:
             same_task_data["info"] = {
                 datum["name"]: datum["info"] for datum in file_datum

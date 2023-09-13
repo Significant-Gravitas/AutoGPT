@@ -31,8 +31,6 @@ __pycache__/
 build/
 develop-eggs/
 dist/
-/plugins/
-plugins_config.yaml
 downloads/
 eggs/
 .eggs/
@@ -167,3 +165,9 @@ agbenchmark/reports/
 # Nodejs
 package-lock.json
 package.json
+
+# Allow for locally private items
+# private
+pri* 
+# ignore
+ig*

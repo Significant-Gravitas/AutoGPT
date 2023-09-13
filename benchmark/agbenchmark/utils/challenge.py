@@ -10,9 +10,9 @@ from typing import Any, Dict, List
 import openai
 import pytest
 
-import agbenchmark.start_benchmark
+from agbenchmark.__main__ import OPTIONAL_CATEGORIES
 from agbenchmark.agent_api_interface import run_api_agent
-from agbenchmark.utils.data_types import ChallengeData, Ground
+from agbenchmark.utils.data_types import AgentBenchmarkConfig, ChallengeData, Ground
 from agbenchmark.utils.prompts import (
     END_PROMPT,
     FEW_SHOT_EXAMPLES,
@@ -28,7 +28,6 @@ class Challenge(ABC):
 
     _data_cache: Dict[str, ChallengeData] = {}
     CHALLENGE_LOCATION: str = ""
-    ARTIFACTS_LOCATION: str = ""  # this is for suites
     scores: dict[str, Any] = {}  # this is for suites
 
     @property
@@ -75,7 +74,10 @@ class Challenge(ABC):
                     config["workspace"], "artifacts_out", path
                 )
         else:
-            run_agent(self.task, cutoff)
+            agent_benchmark_config: AgentBenchmarkConfig = config[
+                "AgentBenchmarkConfig"
+            ]
+            run_agent(self.task, cutoff, agent_config=agent_benchmark_config)
 
         # hidden files are added after the agent runs. Hidden files can be python test files.
         # We copy them in the workspace to make it easy to import the code produced by the agent
@@ -210,15 +212,16 @@ class Challenge(ABC):
         scores = []
         scores_dict: Any = {}
         percentage = None
-
+        answers = {}
         try:
             if self.data.task == "" and "--mock" in sys.argv:
                 scores = [1.0]
+                answers = {"mock": "This is a mock answer"}
             elif isinstance(self.data.ground, Ground):
                 files_contents = self.get_artifacts_out(
                     config["workspace"], self.data.ground
                 )
-
+                answers = {"answer": files_contents}
                 for file_content in files_contents:
                     score = self.scoring(config, file_content, self.data.ground)
                     print("\033[1;32mYour score is:\033[0m", score)
@@ -235,53 +238,6 @@ class Challenge(ABC):
                     print("\033[1;32mYour score is:\033[0m", llm_eval)
 
                     scores.append(llm_eval)
-            elif isinstance(self.data.ground, dict):
-                # if it's a dict then we know its a combined suite
-                for ground_key in self.data.ground:
-                    ground = self.data.ground[ground_key]
-                    files_contents = self.get_artifacts_out(config["workspace"], ground)
-
-                    for file_content in files_contents:
-                        score = self.scoring(config, file_content, ground)
-                        scores_dict.setdefault(ground_key, []).append(score)
-                        print(
-                            f"\033[1;35mScore for {ground_key}:\033[0m",
-                            scores_dict[ground_key],
-                        )
-
-                    if ground.eval.type == "llm":
-                        llm_eval = self.llm_eval(
-                            config, "\n".join(files_contents), ground
-                        )
-
-                        if ground.eval.scoring == "percentage":
-                            scores_dict[ground_key].append(math.ceil(llm_eval / 100))
-                        elif ground.eval.scoring == "scale":
-                            scores_dict[ground_key].append(math.ceil(llm_eval / 10))
-                        scores_dict[ground_key].append(llm_eval)
-
-                # Count the number of times the value 1.0 appears in the dictionary
-                num_ones = sum(
-                    1
-                    for scores in scores_dict.values()
-                    for score in scores
-                    if score == 1.0
-                )
-
-                # Calculate the percentage
-                percentage = round((num_ones / len(scores_dict)) * 100, 2)
-
-                # Print the result in green
-                print(f"\033[1;92mPercentage of 1.0 scores:\033[0m {percentage}%")
-
-                # TODO: in an ideal world it only returns 1.0 if all of the tests pass but then the dependencies break.
-                # So for now we return 1.0 if there's any that pass
-                if percentage > 0:
-                    scores.append(1.0)
-                    if percentage != 100:
-                        print(
-                            "\033[1;93mWARNING:\033[0m Your agent did not pass all the tests in the suite."
-                        )
         except Exception as e:
             print("Error getting scores", e)
 
@@ -289,6 +245,7 @@ class Challenge(ABC):
             "values": scores,
             "scores_obj": scores_dict,
             "percentage": percentage,
+            "answers": answers,
         }
 
         self.scores[self.__class__.__name__] = scores_data
@@ -306,7 +263,7 @@ class Challenge(ABC):
         challenge_category = self.data.category
         categories = [
             category
-            for category in agbenchmark.start_benchmark.OPTIONAL_CATEGORIES
+            for category in OPTIONAL_CATEGORIES
             if category in challenge_category
         ]
         if not agent_eligibible_for_optional_categories(

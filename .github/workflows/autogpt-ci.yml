@@ -5,19 +5,19 @@ on:
     branches: [ master, ci-test* ]
     paths:
       - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - '!autogpts/autogpt/tests/vcr_cassettes'
       - '!autogpts/autogpt/tests/challenges/current_score.json'
   pull_request:
     branches: [ stable, master, release-* ]
     paths:
       - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - '!autogpts/autogpt/tests/vcr_cassettes'
       - '!autogpts/autogpt/tests/challenges/current_score.json'
   pull_request_target:
     branches: [ master, release-*, ci-test* ]
     paths:
       - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - '!autogpts/autogpt/tests/vcr_cassettes'
       - '!autogpts/autogpt/tests/challenges/current_score.json'
 
 concurrency:
@@ -122,7 +122,7 @@ jobs:
         run: |
           cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
           cassette_base_branch="${{ github.event.pull_request.base.ref }}"
-          cd tests/Auto-GPT-test-cassettes
+          cd tests/vcr_cassettes
 
           if ! git ls-remote --exit-code --heads origin $cassette_base_branch ; then
             cassette_base_branch="master"
@@ -192,7 +192,7 @@ jobs:
           git config "$config_key" \
             "Authorization: Basic $base64_pat"
 
-          cd tests/Auto-GPT-test-cassettes
+          cd tests/vcr_cassettes
           git config "$config_key" \
             "Authorization: Basic $base64_pat"
 
@@ -223,7 +223,7 @@ jobs:
             cassette_branch="${{ github.ref_name }}"
           fi
 
-          cd tests/Auto-GPT-test-cassettes
+          cd tests/vcr_cassettes
           # Commit & push changes to cassettes if any
           if ! git diff --quiet; then
             git add .
@@ -231,7 +231,7 @@ jobs:
             git push origin HEAD:$cassette_branch
             if [ ! $is_pull_request ]; then
               cd ../..
-              git add tests/Auto-GPT-test-cassettes
+              git add tests/vcr_cassettes
               git commit -m "Update cassette submodule"
               git push origin HEAD:$cassette_branch
             fi

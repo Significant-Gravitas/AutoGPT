@@ -12,7 +12,7 @@ from typing import Any, List
 import psutil
 from dotenv import load_dotenv
 
-import agbenchmark.start_benchmark
+from agbenchmark.utils.data_types import AgentBenchmarkConfig
 
 load_dotenv()
 
@@ -74,20 +74,16 @@ def run_windows_env(process: Any, start_time: float, timeout: float) -> None:
         process.terminate()
 
 
-def run_agent(task: str, timeout: int) -> None:
-    """Calling to get a response"""
+def run_agent(task: str, timeout: int, agent_config: AgentBenchmarkConfig) -> None:
+    print(f"Running agbenchmark/benchmarks.py with timeout {timeout}")
 
-    entry_path = "agbenchmark.benchmarks"
+    command = [sys.executable, "-m", "agbenchmark_config.benchmarks", str(task)]
 
-    print(f"Running '{entry_path}' with timeout {timeout}")
-
-    command = [sys.executable, "-m", entry_path, str(task)]
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
-        cwd=agbenchmark.start_benchmark.HOME_DIRECTORY,
         bufsize=1,
     )
 
@@ -109,8 +105,6 @@ def get_list_of_file_paths(
 ) -> List[str]:
     # this file is at agbenchmark\agent_interface.py
     source_dir = os.path.join(
-        agbenchmark.start_benchmark.CURRENT_DIRECTORY,
-        "..",
         challenge_dir_path,
         artifact_folder_name,
     )

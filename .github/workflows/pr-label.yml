@@ -5,7 +5,7 @@ on:
   push:
     branches: [ master, release-* ]
     paths-ignore:
-      - 'autogpts/autogpt/tests/Auto-GPT-test-cassettes'
+      - 'autogpts/autogpt/tests/vcr_cassettes'
       - 'autogpts/autogpt/tests/challenges/current_score.json'
       - 'benchmark/reports/**'
   # So that the `dirtyLabel` is removed if conflicts are resolve

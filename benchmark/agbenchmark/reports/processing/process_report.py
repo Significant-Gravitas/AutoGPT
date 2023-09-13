@@ -6,7 +6,7 @@ from typing import Any
 from agbenchmark.reports.processing.get_files import (
     get_latest_report_from_agent_directories,
 )
-from agbenchmark.reports.processing.report_types import Report, SuiteTest, Test
+from agbenchmark.reports.processing.report_types import Report, Test
 from agbenchmark.utils.data_types import STRING_DIFFICULTY_MAP
 
 
@@ -49,11 +49,7 @@ def get_agent_category(report: Report) -> dict[str, Any]:
                     categories[category] = num_dif
 
     for _, test_data in report.tests.items():
-        if isinstance(test_data, SuiteTest):
-            for _, test_data in test_data.tests.items():
-                get_highest_category_difficulty(test_data)
-        else:
-            get_highest_category_difficulty(test_data)
+        get_highest_category_difficulty(test_data)
 
     return categories
 

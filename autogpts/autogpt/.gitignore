@@ -31,7 +31,7 @@ __pycache__/
 build/
 develop-eggs/
 dist/
-/plugins/
+/plugins/*
 plugins_config.yaml
 downloads/
 eggs/
@@ -162,8 +162,11 @@ openai/
 CURRENT_BULLETIN.md
 
 # AgBenchmark
-agbenchmark/reports/
+agbenchmark_config/reports/
 
 # Nodejs
 package-lock.json
 package.json
+
+# Keep
+!.keep

@@ -147,7 +147,7 @@ class Workspace:
 
     @staticmethod
     def build_file_logger_path(workspace_directory: Path) -> Path:
-        file_logger_path = workspace_directory / "file_logger.txt"
+        file_logger_path = workspace_directory / "file_logger.log"
         if not file_logger_path.exists():
             with file_logger_path.open(mode="w", encoding="utf-8") as f:
                 f.write("File Operation Logger ")
