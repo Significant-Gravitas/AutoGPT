@@ -71,7 +71,7 @@ def config(temp_plugins_config_file: str, mocker: MockerFixture, workspace: Work
     mocker.patch.multiple(
         config,
         workspace_path=workspace.root,
-        file_logger_path=workspace.get_path("file_logger.txt"),
+        file_logger_path=workspace.get_path("file_logger.log"),
     )
     yield config
 

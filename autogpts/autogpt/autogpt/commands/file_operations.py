@@ -112,7 +112,7 @@ def is_duplicate_operation(
 def log_operation(
     operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
 ) -> None:
-    """Log the file operation to the file_logger.txt
+    """Log the file operation to the file_logger.log
 
     Args:
         operation: The operation to log
