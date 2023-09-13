@@ -53,7 +53,7 @@ def load_config_from_request(request: Any) -> AgentBenchmarkConfig:
         raise
 
 
-def resolve_workspace(workspace: Path) -> Path:
+def resolve_workspace_path(workspace: Path) -> Path:
     """
     This function resolves the workspace path.
 
@@ -83,10 +83,10 @@ def resolve_workspace(workspace: Path) -> Path:
             return path_value
         else:
             raise ValueError("Invalid workspace path expression.")
-    elif isinstance(workspace, Path):
-        return os.path.abspath(workspace)
+    elif isinstance(workspace, str):
+        return os.path.abspath(Path.cwd() / workspace)
     else:
-        raise ValueError("Invalid workspace type. Expected str or Path.")
+        raise ValueError("Invalid workspace type. Expected str")
 
 
 @pytest.fixture(scope="module")
@@ -119,15 +119,12 @@ def config(request: Any) -> Any:
 
     config["AgentBenchmarkConfig"] = agent_benchmark_config
 
-    if isinstance(config["workspace"], str):
-        config["workspace"] = resolve_workspace(agent_benchmark_config.workspace)
-    else:  # it's a input output dict
-        config["workspace"]["input"] = resolve_workspace(
-            agent_benchmark_config.workspace / "input"
-        )
-        config["workspace"]["output"] = resolve_workspace(
-            agent_benchmark_config.workspace / "output"
-        )
+    config["workspace"]["input"] = resolve_workspace_path(
+        agent_benchmark_config.workspace.input
+    )
+    config["workspace"]["output"] = resolve_workspace_path(
+        agent_benchmark_config.workspace.output
+    )
 
     return config
 

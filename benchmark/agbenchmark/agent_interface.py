@@ -75,19 +75,15 @@ def run_windows_env(process: Any, start_time: float, timeout: float) -> None:
 
 
 def run_agent(task: str, timeout: int, agent_config: AgentBenchmarkConfig) -> None:
-    """Calling to get a response"""
+    print(f"Running agbenchmark/benchmarks.py with timeout {timeout}")
 
-    entry_path = agent_config.get_agent_entry_path()
-    print(f"Running '{entry_path}' with timeout {timeout}")
-
-    command = [sys.executable, entry_path, str(task)]
+    command = [sys.executable, "-m", "agbenchmark_config.benchmarks", str(task)]
 
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
-        cwd=agent_config.get_agent_directory(),
         bufsize=1,
     )
 
