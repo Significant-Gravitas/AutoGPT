@@ -39,7 +39,7 @@ STRING_DIFFICULTY_MAP = {e.value: DIFFICULTY_MAP[e] for e in DifficultyLevel}
 
 
 def calculate_info_test_path(
-    base_path: Path, benchmark_start_time: datetime.datetime
+    base_path: Path, benchmark_start_time: datetime
 ) -> Path:
     """
     Calculates the path to the directory where the test report will be saved.
@@ -105,7 +105,7 @@ class AgentBenchmarkConfig(BaseModel):
         #     ).resolve()
         return Path.cwd() / "agbenchmark_config" / "reports"
 
-    def get_reports_path(self, benchmark_start_time: datetime.datetime) -> Path:
+    def get_reports_path(self, benchmark_start_time: datetime) -> Path:
         return calculate_info_test_path(
             self.get_reports_location(), benchmark_start_time
         )
