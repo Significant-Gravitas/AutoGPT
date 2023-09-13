@@ -17,9 +17,12 @@ class DifficultyLevel(Enum):
     expert = "expert"
     human = "human"
 
+
 class Workspace(BaseModel):
     input: str
     output: str
+
+
 # map from enum to difficulty level (numeric)
 DIFFICULTY_MAP = {
     DifficultyLevel.interface: 1,
