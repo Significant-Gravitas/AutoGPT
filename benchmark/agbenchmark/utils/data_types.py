@@ -1,3 +1,4 @@
+import datetime
 import json
 import sys
 from datetime import datetime, timezone
@@ -37,7 +38,9 @@ DIFFICULTY_MAP = {
 STRING_DIFFICULTY_MAP = {e.value: DIFFICULTY_MAP[e] for e in DifficultyLevel}
 
 
-def calculate_info_test_path(base_path: Path) -> Path:
+def calculate_info_test_path(
+    base_path: Path, benchmark_start_time: datetime.datetime
+) -> Path:
     """
     Calculates the path to the directory where the test report will be saved.
     """
@@ -45,7 +48,7 @@ def calculate_info_test_path(base_path: Path) -> Path:
     base_path.mkdir(parents=True, exist_ok=True)
 
     # Get current UTC date-time stamp
-    date_stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    date_stamp = benchmark_start_time.strftime("%Y%m%dT%H%M%S")
 
     # Default run name
     run_name = "full_run"
@@ -102,8 +105,10 @@ class AgentBenchmarkConfig(BaseModel):
         #     ).resolve()
         return Path.cwd() / "agbenchmark_config" / "reports"
 
-    def get_reports_path(self) -> Path:
-        return calculate_info_test_path(self.get_reports_location())
+    def get_reports_path(self, benchmark_start_time: datetime.datetime) -> Path:
+        return calculate_info_test_path(
+            self.get_reports_location(), benchmark_start_time
+        )
 
     def get_regression_reports_path(self) -> Path:
         return self.get_reports_location() / "regression_tests.json"

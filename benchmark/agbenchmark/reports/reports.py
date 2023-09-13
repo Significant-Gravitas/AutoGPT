@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-from agbenchmark import (
+from agbenchmark.__main__ import (
     INFO_MANAGER,
     INTERNAL_INFO_MANAGER,
     REGRESSION_MANAGER,
