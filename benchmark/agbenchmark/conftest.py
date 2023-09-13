@@ -176,7 +176,6 @@ def pytest_addoption(parser: Any) -> None:
     It is used to add custom command-line options that are specific to the agent benchmark tests.
     These options can be used to control the behavior of the tests.
     The "--mock" option is used to run the tests in mock mode.
-    The "--api_mode" option is used to run the tests in API mode.
     The "--host" option is used to specify the host for the tests.
     The "--category" option is used to run only tests of a specific category.
     The "--nc" option is used to run the tests without caching.
@@ -193,7 +192,6 @@ def pytest_addoption(parser: Any) -> None:
     """
     parser.addoption("--no_dep", action="store_true", default=False)
     parser.addoption("--mock", action="store_true", default=False)
-    parser.addoption("--api_mode", action="store_true", default=False)
     parser.addoption("--host", action="store_true", default=None)
     parser.addoption("--nc", action="store_true", default=False)
     parser.addoption("--cutoff", action="store_true", default=False)
@@ -443,35 +441,3 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         # Add category marker dynamically
         for category in categories:
             item.add_marker(getattr(pytest.mark, category))
-
-
-@pytest.fixture(scope="session", autouse=True)
-def run_agent(request: Any) -> Any:
-    """
-    This pytest fixture is responsible for running the agent. It is automatically used in every test session due to the 'autouse=True' parameter and 'session' scope.
-    If the "--api_mode" argument is not in the command line arguments, it starts a subprocess running the agbenchmark.
-    The subprocess is terminated after the test session.
-    If the "--api_mode" argument is present, it simply yields control back to the test session.
-    This fixture is essential for the pytest system as it provides the necessary setup and teardown for running the agent in each test session.
-
-    Args:
-        request (Any): The request object from which the agent benchmark configuration path is retrieved.
-
-    Yields:
-        None: Control is yielded back to the test session.
-    """
-    if "--api_mode" not in sys.argv:
-        command = [sys.executable, "-m", "agbenchmark.benchmarks"]
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            # cwd=agent_benchmark_config_path.entry_path.parent.parent, # even if it's necessary to make it work, let's get rid ot that, this is too complex
-        )
-        time.sleep(3)
-        yield
-        print(f"Terminating agent")
-        process.terminate()
-    else:
-        yield
