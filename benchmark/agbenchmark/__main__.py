@@ -11,9 +11,8 @@ import pytest
 import toml
 from helicone.lock import HeliconeLockManager
 
+from agbenchmark import BENCHMARK_START_TIME
 from agbenchmark.utils.data_types import AgentBenchmarkConfig
-
-BENCHMARK_START_TIME = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 if os.environ.get("HELICONE_API_KEY"):
     HeliconeLockManager.write_custom_property(
@@ -58,6 +57,7 @@ def run_benchmark(
     mock: bool = False,
     no_dep: bool = False,
     nc: bool = False,
+    keep_answers: bool = False,
     category: Optional[list[str]] = None,
     skip_category: Optional[list[str]] = None,
     test: Optional[str] = None,
@@ -98,6 +98,9 @@ def run_benchmark(
         print(f"{key}: {value}")
 
     pytest_args = ["-vs"]
+    if keep_answers:
+        pytest_args.append("--keep-answers")
+
     if test:
         print("Running specific test:", test)
         pytest_args.extend(["-k", test, "--test"])
@@ -187,6 +190,7 @@ def cli() -> None:
     help="Run without dependencies",
 )
 @click.option("--nc", is_flag=True, help="Run without cutoff")
+@click.option("--keep-answers", is_flag=True, help="Keep answers")
 @click.option("--cutoff", help="Set or override tests cutoff (seconds)")
 def start(
     maintain: bool,
@@ -195,6 +199,7 @@ def start(
     mock: bool,
     no_dep: bool,
     nc: bool,
+    keep_answers: bool,
     category: Optional[list[str]] = None,
     skip_category: Optional[list[str]] = None,
     test: Optional[str] = None,
@@ -215,6 +220,7 @@ def start(
                 mock=mock,
                 no_dep=no_dep,
                 nc=nc,
+                keep_answers=keep_answers,
                 category=category,
                 skip_category=skip_category,
                 test=test,
@@ -231,6 +237,7 @@ def start(
             mock=mock,
             no_dep=no_dep,
             nc=nc,
+            keep_answers=keep_answers,
             category=category,
             skip_category=skip_category,
             test=test,

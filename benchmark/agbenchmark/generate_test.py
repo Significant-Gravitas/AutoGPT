@@ -77,7 +77,9 @@ def create_single_test(
         await self.setup_challenge(config, timeout)
 
         scores = self.get_scores(config)
-        request.node.answers = scores["answers"]  # store answers in request.node
+        request.node.answers = (
+            scores["answers"] if "--keep-answers" in sys.argv else None
+        )
         del scores["answers"]  # remove answers from scores
         request.node.scores = scores  # store scores in request.node
         assert 1 in scores["values"]
