@@ -1,0 +1,4 @@
+{
+  "workspace": {"input":  "workspace", "output": "workspace"},
+  "host": "http://localhost:8000"
+}
