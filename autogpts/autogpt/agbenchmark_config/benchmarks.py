@@ -22,8 +22,9 @@ def run_specific_agent(task: str, continuous_mode: bool = False) -> None:
 
 def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
     config = ConfigBuilder.build_config_from_env(workdir=PROJECT_DIR)
-    config.debug_mode = True
+    config.debug_mode = False
     config.continuous_mode = continuous_mode
+    config.continuous_limit = 20
     config.temperature = 0
     config.noninteractive_mode = True
     config.plain_output = True
