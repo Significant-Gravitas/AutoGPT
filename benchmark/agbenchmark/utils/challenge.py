@@ -64,20 +64,14 @@ class Challenge(ABC):
             f"\033[1;35m============Starting {self.data.name} challenge============\033[0m"
         )
         print(f"\033[1;30mTask: {self.task}\033[0m")
-
-        if "--api_mode" in sys.argv:
-            await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
-        elif "--mock" in sys.argv:
+        if "--mock" in sys.argv:
             print("Running mock agent")
             for path in artifact_paths:
                 copy_artifacts_into_workspace(
                     config["workspace"], "artifacts_out", path
                 )
         else:
-            agent_benchmark_config: AgentBenchmarkConfig = config[
-                "AgentBenchmarkConfig"
-            ]
-            run_agent(self.task, cutoff, agent_config=agent_benchmark_config)
+            await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
 
         # hidden files are added after the agent runs. Hidden files can be python test files.
         # We copy them in the workspace to make it easy to import the code produced by the agent

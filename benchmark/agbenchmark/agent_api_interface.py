@@ -14,11 +14,7 @@ async def run_api_agent(
 ) -> None:
     host_value = None
 
-    for arg in sys.argv:
-        if arg.startswith("--host="):
-            _, host_value = arg.split("=")
-            break
-    configuration = Configuration(host=host_value)
+    configuration = Configuration(host=config["AgentBenchmarkConfig"].host)
     async with ApiClient(configuration) as api_client:
         api_instance = AgentApi(api_client)
         task_request_body = TaskRequestBody(input=task.task)
