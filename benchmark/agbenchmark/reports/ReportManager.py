@@ -71,7 +71,9 @@ class ReportManager:
             "completion_time": datetime.now(timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%S+00:00"
             ),
-            "benchmark_start_time": self.benchmark_start_time,
+            "benchmark_start_time": self.benchmark_start_time.strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00"
+            ),
             "metrics": {
                 "run_time": str(round(time.time() - self.start_time, 2)) + " seconds",
                 "highest_difficulty": get_highest_success_difficulty(self.tests),
@@ -89,7 +91,7 @@ class ReportManager:
 
         save_single_radar_chart(
             agent_categories,
-            config.get_reports_path() / "radar_chart.png",
+            config.get_reports_path(self.benchmark_start_time) / "radar_chart.png",
         )
 
         self.save()
