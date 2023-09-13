@@ -84,18 +84,14 @@ class AgentBenchmarkConfig(BaseModel):
     This class represents the configuration for the Agent agbenchmark.
     It includes the following attributes:
     - agent_benchmark_config_path: The path to the agent benchmark config that this object was created from.
-    - entry_path: The path to the entry point of the benchmark for the agent, relative to the agent_benchmark_config_path.
     - workspace: The path to the workspace where the benchmark will be run.
     - reports_folder: The path to the folder where the benchmark reports will be stored.
-    - api_mode: A boolean indicating whether the benchmark is run in API mode.
     - host: The host where the benchmark is run.
     """
 
     agent_benchmark_config_path: Path | None = None
-    entry_path: str
     workspace: Workspace
     reports_folder: Path | None = None
-    api_mode: bool = False
     host: str | None
 
     def get_reports_location(self) -> Path:
@@ -118,9 +114,6 @@ class AgentBenchmarkConfig(BaseModel):
 
     def get_agent_home_directory(self) -> Path:
         return Path(self.agent_benchmark_config_path).resolve().parent
-
-    def get_agent_entry_path(self) -> Path:
-        return (self.get_agent_home_directory() / self.entry_path).resolve()
 
 
 class Info(BaseModel):

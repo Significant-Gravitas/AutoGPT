@@ -139,9 +139,8 @@ def run_benchmark(
         )
         return 1
 
-    assert not (
-        agent_benchmark_config.api_mode and not agent_benchmark_config.host
-    ), "Error: host needs to be added to the config if api_mode is set to True."
+    assert agent_benchmark_config.host, "Error: host needs to be added to the config."
+
 
     print("Current configuration:")
     for key, value in vars(agent_benchmark_config).items():
