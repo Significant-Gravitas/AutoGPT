@@ -18,6 +18,7 @@ chromadb = "^0.4.10"
 agbenchmark = { path = "../../benchmark" }
 hypercorn = "^0.14.4"
 python-multipart = "^0.0.6"
+toml = "^0.10.2"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"
