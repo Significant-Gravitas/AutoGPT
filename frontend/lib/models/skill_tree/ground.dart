@@ -15,11 +15,11 @@ class Ground {
 
   factory Ground.fromJson(Map<String, dynamic> json) {
     return Ground(
-      answer: json['answer'],
-      shouldContain: List<String>.from(json['should_contain']),
-      shouldNotContain: List<String>.from(json['should_not_contain']),
-      files: List<String>.from(json['files']),
-      eval: json['eval'],
+      answer: json['answer'] ?? "",
+      shouldContain: List<String>.from(json['should_contain'] ?? []),
+      shouldNotContain: List<String>.from(json['should_not_contain'] ?? []),
+      files: List<String>.from(json['files'] ?? []),
+      eval: json['eval'] ?? {},
     );
   }
 }
