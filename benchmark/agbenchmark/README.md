@@ -21,7 +21,8 @@
 4. `poetry install`
 5. `cp .env_example .env`
 6. `git submodule update --init --remote --recursive`
-7. `agbenchmark start --mock`
+7. `uvicorn server:app --reload`
+8. `agbenchmark start --mock`
    Keep config the same and watch the logs :)
 
 ### To run with mini-agi
@@ -41,10 +42,6 @@ If you push at any point and break things - it'll happen to everyone - fix it as
 Let people know what beautiful code you write does, document everything well
 
 Share your progress :)
-
-## Workspace
-
-If `--mock` flag is used it is at `agbenchmark/workspace`. Otherwise for mini-agi it is at `C:/Users/<name>/miniagi` - it will be automitcally set on config
 
 #### Dataset
 
