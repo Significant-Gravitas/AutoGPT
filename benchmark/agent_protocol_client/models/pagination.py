@@ -22,20 +22,15 @@ from typing import Optional
 from pydantic import BaseModel, Field, StrictStr
 
 
-class Artifact(BaseModel):
+class Pagination(BaseModel):
     """
-    Artifact that the task has produced.
+    Pagination that the task has produced.
     """
+    total_items: int
+    total_pages: int
+    current_page: int
+    page_size: int
 
-    artifact_id: StrictStr = Field(..., description="ID of the artifact.")
-    file_name: StrictStr = Field(..., description="Filename of the artifact.")
-    relative_path: Optional[StrictStr] = Field(
-        None, description="Relative path of the artifact in the agent's workspace."
-    )
-    __properties = ["artifact_id", "file_name", "relative_path"]
-    created_at: StrictStr = Field(..., description="Creation date of the artifact.")
-    # modified_at: StrictStr = Field(..., description="Modification date of the artifact.")
-    agent_created: bool = Field( ..., description="True if created by the agent")
 
     class Config:
         """Pydantic configuration"""
@@ -52,8 +47,8 @@ class Artifact(BaseModel):
         return json.dumps(self.to_dict())
 
     @classmethod
-    def from_json(cls, json_str: str) -> Artifact:
-        """Create an instance of Artifact from a JSON string"""
+    def from_json(cls, json_str: str) -> Pagination:
+        """Create an instance of Pagination from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self):
@@ -62,22 +57,20 @@ class Artifact(BaseModel):
         return _dict
 
     @classmethod
-    def from_dict(cls, obj: dict) -> Artifact:
-        """Create an instance of Artifact from a dict"""
+    def from_dict(cls, obj: dict) -> Pagination:
+        """Create an instance of Pagination from a dict"""
         if obj is None:
             return None
 
         if not isinstance(obj, dict):
-            return Artifact.parse_obj(obj)
+            return Pagination.parse_obj(obj)
 
-        _obj = Artifact.parse_obj(
+        _obj = Pagination.parse_obj(
             {
-                "artifact_id": obj.get("artifact_id"),
-                "file_name": obj.get("file_name"),
-                "relative_path": obj.get("relative_path"),
-                "created_at": obj.get("created_at"),
-                "modifed_at": obj.get("modifed_at"),
-                "agent_created": obj.get("agent_created"),
+                "total_items": obj.get("total_items"),
+                "total_pages": obj.get("total_pages"),
+                "current_page": obj.get("current_page"),
+                "page_size": obj.get("page_size"),
             }
         )
         return _obj
