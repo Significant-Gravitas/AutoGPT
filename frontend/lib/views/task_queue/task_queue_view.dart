@@ -30,8 +30,9 @@ class TaskQueueView extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4), // small corner radius
                 ),
                 child: ListTile(
-                  title: Center(child: Text('Node ID: ${node.id}')),
-                  subtitle: Center(child: Text('Color: ${node.color}')),
+                  title: Center(child: Text('${node.label}')),
+                  subtitle:
+                      Center(child: Text('${node.data.info.description}')),
                 ),
               );
             },
