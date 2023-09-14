@@ -1,7 +1,7 @@
 import datetime
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -19,11 +19,6 @@ class DifficultyLevel(Enum):
     human = "human"
 
 
-class Workspace(BaseModel):
-    input: str
-    output: str
-
-
 # map from enum to difficulty level (numeric)
 DIFFICULTY_MAP = {
     DifficultyLevel.interface: 1,
@@ -38,9 +33,7 @@ DIFFICULTY_MAP = {
 STRING_DIFFICULTY_MAP = {e.value: DIFFICULTY_MAP[e] for e in DifficultyLevel}
 
 
-def calculate_info_test_path(
-    base_path: Path, benchmark_start_time: datetime
-) -> Path:
+def calculate_info_test_path(base_path: Path, benchmark_start_time: datetime) -> Path:
     """
     Calculates the path to the directory where the test report will be saved.
     """
@@ -84,13 +77,11 @@ class AgentBenchmarkConfig(BaseModel):
     This class represents the configuration for the Agent agbenchmark.
     It includes the following attributes:
     - agent_benchmark_config_path: The path to the agent benchmark config that this object was created from.
-    - workspace: The path to the workspace where the benchmark will be run.
     - reports_folder: The path to the folder where the benchmark reports will be stored.
     - host: The host where the benchmark is run.
     """
 
     agent_benchmark_config_path: Path | None = None
-    workspace: Workspace
     reports_folder: Path | None = None
     host: str | None
 
