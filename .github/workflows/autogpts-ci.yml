@@ -1,4 +1,4 @@
-name: AutoGPTs CI
+name: Valid AutoGPTs
 
 on:
   workflow_dispatch:
@@ -8,17 +8,19 @@ on:
   push:
     branches: [master, ci-test*]
     paths:
-      - 'autogpts/forge/**'
-      - '.github/workflows/autogpts-ci.yml'
+      - 'autogpts/**'
   pull_request:
     branches: [stable, master, release-*]
     paths:
-      - 'autogpts/forge/**'
-      - '.github/workflows/autogpts-ci.yml'
+      - 'autogpts/**'
 
 jobs:
-  agent-protocol-test:
+  run-tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        agent-name: [ autogpt, forge ]
+      fail-fast: false
     timeout-minutes: 20
     steps:
       - name: Checkout repository
@@ -35,14 +37,14 @@ jobs:
           python-version: ${{ env.min-python-version }}
 
       - name: Install Poetry
-        working-directory: ./autogpts/forge/
+        working-directory: ./autogpts/${{ matrix.agent-name }}/
         run: |
           curl -sSL https://install.python-poetry.org | python -
 
       - name: Run regression tests
-        working-directory: ./autogpts/forge/
+        working-directory: ./autogpts/${{ matrix.agent-name }}/
         run: |
-          sh run_agent.sh
+          sh run
           URL=http://127.0.0.1:8000 bash -c "$(curl -fsSL https://raw.githubusercontent.com/AI-Engineers-Foundation/agent-protocol/main/testing_suite/test.sh)"
           poetry run agbenchmark start --mock
           poetry run agbenchmark start --test=TestWriteFile
