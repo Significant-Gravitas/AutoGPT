@@ -15,7 +15,7 @@
 import io
 import re  # noqa: F401
 import warnings
-from typing import Awaitable, List, Optional, Union, overload
+from typing import Awaitable, List, Optional, Union, overload, Any
 
 from pydantic import Field, StrictBytes, StrictStr, ValidationError, validate_arguments
 from typing_extensions import Annotated
@@ -936,7 +936,7 @@ class AgentApi(object):
         self,
         task_id: Annotated[StrictStr, Field(..., description="ID of the task")],
         **kwargs,
-    ) -> List[Artifact]:  # noqa: E501
+    ) -> Any:  # noqa: E501
         ...
 
     @overload
@@ -945,7 +945,7 @@ class AgentApi(object):
         task_id: Annotated[StrictStr, Field(..., description="ID of the task")],
         async_req: Optional[bool] = True,
         **kwargs,
-    ) -> List[Artifact]:  # noqa: E501
+    ) -> Any:  # noqa: E501
         ...
 
     @validate_arguments
@@ -954,7 +954,7 @@ class AgentApi(object):
         task_id: Annotated[StrictStr, Field(..., description="ID of the task")],
         async_req: Optional[bool] = None,
         **kwargs,
-    ) -> Union[List[Artifact], Awaitable[List[Artifact]]]:  # noqa: E501
+    ) -> Union[Any, Awaitable[Any]]:  # noqa: E501
         """List all artifacts that have been created for the given task.  # noqa: E501
 
         This method makes a synchronous HTTP request by default. To make an
@@ -1078,7 +1078,7 @@ class AgentApi(object):
         _auth_settings = []  # noqa: E501
 
         _response_types_map = {
-            "200": "List[Artifact]",
+            "200": "Artifacts",
         }
 
         return self.api_client.call_api(
