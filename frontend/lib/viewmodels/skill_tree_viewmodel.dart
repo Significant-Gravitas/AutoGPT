@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_edge.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:graphview/GraphView.dart';
 
 class SkillTreeViewModel extends ChangeNotifier {
@@ -16,47 +18,41 @@ class SkillTreeViewModel extends ChangeNotifier {
   final Graph graph = Graph()..isTree = true;
   BuchheimWalkerConfiguration builder = BuchheimWalkerConfiguration();
 
-  void initializeSkillTree() {
-    // TODO: Load from JSON
-    resetState();
-    // Add nodes to _skillTreeNodes
-    _skillTreeNodes.addAll([
-      SkillTreeNode(color: 'red', id: 1),
-      SkillTreeNode(color: 'blue', id: 2),
-      SkillTreeNode(color: 'green', id: 3),
-      SkillTreeNode(color: 'yellow', id: 4),
-      SkillTreeNode(color: 'orange', id: 5),
-      SkillTreeNode(color: 'purple', id: 6),
-      SkillTreeNode(color: 'brown', id: 7),
-      SkillTreeNode(color: 'pink', id: 8),
-      SkillTreeNode(color: 'grey', id: 9),
-      SkillTreeNode(color: 'cyan', id: 10),
-      SkillTreeNode(color: 'magenta', id: 11),
-      SkillTreeNode(color: 'lime', id: 12)
-    ]);
+  Future<void> initializeSkillTree() async {
+    try {
+      resetState();
 
-    // Add edges to _skillTreeEdges
-    _skillTreeEdges.addAll([
-      SkillTreeEdge(id: '1_to_2', from: '1', to: '2', arrows: 'to'),
-      SkillTreeEdge(id: '1_to_3', from: '1', to: '3', arrows: 'to'),
-      SkillTreeEdge(id: '1_to_4', from: '1', to: '4', arrows: 'to'),
-      SkillTreeEdge(id: '2_to_5', from: '2', to: '5', arrows: 'to'),
-      SkillTreeEdge(id: '2_to_6', from: '2', to: '6', arrows: 'to'),
-      SkillTreeEdge(id: '6_to_7', from: '6', to: '7', arrows: 'to'),
-      SkillTreeEdge(id: '6_to_8', from: '6', to: '8', arrows: 'to'),
-      SkillTreeEdge(id: '4_to_9', from: '4', to: '9', arrows: 'to'),
-      SkillTreeEdge(id: '4_to_10', from: '4', to: '10', arrows: 'to'),
-      SkillTreeEdge(id: '4_to_11', from: '4', to: '11', arrows: 'to'),
-      SkillTreeEdge(id: '11_to_12', from: '11', to: '12', arrows: 'to')
-    ]);
+      // Read the JSON file from assets
+      String jsonContent =
+          await rootBundle.loadString('assets/tree_structure.json');
 
-    builder
-      ..siblingSeparation = (100)
-      ..levelSeparation = (150)
-      ..subtreeSeparation = (150)
-      ..orientation = (BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT);
+      // Decode the JSON string
+      Map<String, dynamic> decodedJson = jsonDecode(jsonContent);
 
-    notifyListeners();
+      // Create SkillTreeNodes from the decoded JSON
+      for (var nodeMap in decodedJson['nodes']) {
+        SkillTreeNode node = SkillTreeNode.fromJson(nodeMap);
+        _skillTreeNodes.add(node);
+      }
+
+      // Create SkillTreeEdges from the decoded JSON
+      for (var edgeMap in decodedJson['edges']) {
+        SkillTreeEdge edge = SkillTreeEdge.fromJson(edgeMap);
+        _skillTreeEdges.add(edge);
+      }
+
+      builder
+        ..siblingSeparation = (50)
+        ..levelSeparation = (50)
+        ..subtreeSeparation = (50)
+        ..orientation = (BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT);
+
+      notifyListeners();
+
+      return Future.value(); // Explicitly return a completed Future
+    } catch (e) {
+      print(e);
+    }
   }
 
   void resetState() {
@@ -64,12 +60,9 @@ class SkillTreeViewModel extends ChangeNotifier {
     _skillTreeEdges = [];
     _selectedNode = null;
     _selectedNodeHierarchy = null;
-
-    graph.nodes.clear();
-    graph.edges.clear();
   }
 
-  void toggleNodeSelection(int nodeId) {
+  void toggleNodeSelection(String nodeId) {
     if (_selectedNode?.id == nodeId) {
       // Unselect the node if it's already selected
       _selectedNode = null;
@@ -82,7 +75,7 @@ class SkillTreeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void populateSelectedNodeHierarchy(int startNodeId) {
+  void populateSelectedNodeHierarchy(String startNodeId) {
     // Initialize an empty list to hold the nodes in the hierarchy.
     _selectedNodeHierarchy = [];
 
@@ -99,19 +92,30 @@ class SkillTreeViewModel extends ChangeNotifier {
       // Find the parent node by looking through the skill tree edges.
       // We find the edge where the 'to' field matches the ID of the current node.
       SkillTreeEdge? parentEdge = _skillTreeEdges
-          .firstWhereOrNull((edge) => edge.to == currentNode?.id.toString());
+          .firstWhereOrNull((edge) => edge.to == currentNode?.id);
 
       // If a parent edge is found, find the corresponding parent node.
       if (parentEdge != null) {
         // The 'from' field of the edge gives us the ID of the parent node.
         // We find that node in the skill tree nodes list.
         currentNode = _skillTreeNodes
-            .firstWhereOrNull((node) => node.id.toString() == parentEdge.from);
+            .firstWhereOrNull((node) => node.id == parentEdge.from);
       } else {
         // If no parent edge is found, it means we've reached the root node.
         // We set currentNode to null to exit the loop.
         currentNode = null;
       }
+    }
+  }
+
+  // Function to get a node by its ID
+  SkillTreeNode? getNodeById(String nodeId) {
+    try {
+      // Find the node in the list where the ID matches
+      return _skillTreeNodes.firstWhere((node) => node.id == nodeId);
+    } catch (e) {
+      print("Node with ID $nodeId not found: $e");
+      return null;
     }
   }
 
