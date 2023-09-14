@@ -50,12 +50,10 @@ class _TreeNodeViewState extends State<TreeNodeView> {
                 ),
               ),
             ),
-            // Adding the node.data.name right beneath the rectangle
-            SizedBox(height: 4), // You can adjust the spacing as needed
+            SizedBox(height: 4),
             Text(
-              widget.node.label, // Assuming node.data.name holds the name
-              style: TextStyle(
-                  fontSize: 12), // You can adjust the styling as needed
+              widget.node.label,
+              style: TextStyle(fontSize: 12),
             ),
           ],
         ),
