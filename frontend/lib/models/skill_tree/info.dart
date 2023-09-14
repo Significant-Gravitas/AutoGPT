@@ -11,9 +11,9 @@ class Info {
 
   factory Info.fromJson(Map<String, dynamic> json) {
     return Info(
-      difficulty: json['difficulty'],
-      description: json['description'],
-      sideEffects: List<String>.from(json['side_effects']),
+      difficulty: json['difficulty'] ?? "",
+      description: json['description'] ?? "",
+      sideEffects: List<String>.from(json['side_effects'] ?? []),
     );
   }
 }
