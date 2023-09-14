@@ -10,9 +10,9 @@ from typing import Any, Dict, List
 import openai
 import pytest
 
-from agbenchmark.__main__ import OPTIONAL_CATEGORIES
+from agbenchmark.__main__ import OPTIONAL_CATEGORIES, TEMP_FOLDER_ABS_PATH
 from agbenchmark.agent_api_interface import run_api_agent
-from agbenchmark.utils.data_types import AgentBenchmarkConfig, ChallengeData, Ground
+from agbenchmark.utils.data_types import ChallengeData, Ground
 from agbenchmark.utils.prompts import (
     END_PROMPT,
     FEW_SHOT_EXAMPLES,
@@ -47,15 +47,12 @@ class Challenge(ABC):
         return self.data.dependencies
 
     async def setup_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
-        from agbenchmark.agent_interface import copy_artifacts_into_workspace, run_agent
+        from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
 
         artifact_paths = [
             self.ARTIFACTS_LOCATION,
             str(Path(self.CHALLENGE_LOCATION).parent),
         ]
-
-        for path in artifact_paths:
-            copy_artifacts_into_workspace(config["workspace"], "artifacts_in", path)
 
         if not self.task:
             return
@@ -64,30 +61,16 @@ class Challenge(ABC):
             f"\033[1;35m============Starting {self.data.name} challenge============\033[0m"
         )
         print(f"\033[1;30mTask: {self.task}\033[0m")
-        if "--mock" in sys.argv:
-            print("Running mock agent")
-            for path in artifact_paths:
-                copy_artifacts_into_workspace(
-                    config["workspace"], "artifacts_out", path
-                )
-        else:
-            await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
+
+        await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
 
         # hidden files are added after the agent runs. Hidden files can be python test files.
-        # We copy them in the workspace to make it easy to import the code produced by the agent
-
+        # We copy them in the temporary folder to make it easy to import the code produced by the agent
         for path in artifact_paths:
-            copy_artifacts_into_workspace(config["workspace"], "custom_python", path)
+            copy_artifacts_into_temp_folder(TEMP_FOLDER_ABS_PATH, "custom_python", path)
 
     def test_method(self, config: Dict[str, Any]) -> None:
         raise NotImplementedError
-
-    @staticmethod
-    def open_file(workspace: str, filename: str) -> str:
-        script_dir = workspace
-        workspace_dir = os.path.join(script_dir, filename)
-        with open(workspace_dir, "r") as f:
-            return f.read()
 
     def get_artifacts_out(
         self, workspace: str | dict[str, str], ground: Ground
@@ -126,7 +109,7 @@ class Challenge(ABC):
             if ground.eval.type == "pytest":
                 result = subprocess.run(
                     [sys.executable, "-m", "pytest"],
-                    cwd=os.path.abspath(workspace),
+                    cwd=TEMP_FOLDER_ABS_PATH,
                     capture_output=True,
                     text=True,
                 )
@@ -136,24 +119,6 @@ class Challenge(ABC):
                 files_contents.append(f"Output: {result.stdout}\n")
 
         return files_contents
-
-    @staticmethod
-    def write_to_file(workspace: str, filename: str, content: str) -> None:
-        script_dir = workspace
-        print("Writing file at", script_dir)
-        workspace_dir = os.path.join(script_dir, filename)
-
-        # Open the file in write mode.
-        with open(workspace_dir, "w") as f:
-            # Write the content to the file.
-            f.write(content)
-
-    def get_filenames_in_workspace(self, workspace: str) -> List[str]:
-        return [
-            filename
-            for filename in os.listdir(workspace)
-            if os.path.isfile(os.path.join(workspace, filename))
-        ]
 
     def scoring(self, config: Dict[str, Any], content: str, ground: Ground) -> float:
         print("\033[1;34mScoring content:\033[0m", content)
@@ -213,7 +178,7 @@ class Challenge(ABC):
                 answers = {"mock": "This is a mock answer"}
             elif isinstance(self.data.ground, Ground):
                 files_contents = self.get_artifacts_out(
-                    config["workspace"], self.data.ground
+                    TEMP_FOLDER_ABS_PATH, self.data.ground
                 )
                 answers = {"answer": files_contents}
                 for file_content in files_contents:

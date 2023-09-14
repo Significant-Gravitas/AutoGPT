@@ -1,12 +1,11 @@
-import os
 import sys
 import time
 from typing import Any, Dict, Optional
 
-from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
-
+from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH
 from agbenchmark.agent_interface import get_list_of_file_paths
 from agbenchmark.utils.data_types import ChallengeData
+from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
 
 
 async def run_api_agent(
@@ -40,6 +39,7 @@ async def run_api_agent(
                 raise TimeoutError("Time limit exceeded")
             if not step or step.is_last:
                 steps_remaining = False
+        # if we're calling a mock agent, we "cheat" and give the correct artifacts to pass the tests
         if "--mock" in sys.argv:
             await upload_artifacts(
                 api_instance, artifacts_location, task_id, "artifacts_out"
@@ -47,12 +47,12 @@ async def run_api_agent(
 
         artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
         for artifact in artifacts:
+            # current absolute path of the directory of the file
+            directory_location = TEMP_FOLDER_ABS_PATH
             if artifact.relative_path:
-                folder_path = os.path.join(config["workspace"], artifact.relative_path)
-            else:
-                folder_path = os.path.join(config["workspace"])
+                directory_location = directory_location / artifact.relative_path
 
-            with open(os.path.join(folder_path, artifact.file_name), "wb") as f:
+            with open(directory_location / artifact.file_name, "wb") as f:
                 content = await api_instance.download_agent_task_artifact(
                     task_id=task_id, artifact_id=artifact.artifact_id
                 )

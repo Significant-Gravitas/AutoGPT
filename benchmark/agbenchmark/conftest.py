@@ -2,15 +2,15 @@ import contextlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 import threading
 import time
 from pathlib import Path  # noqa
-from typing import Any, Dict, Generator
+from typing import Any, Generator
 
 import pytest
 
+from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH
 from agbenchmark.reports.reports import (
     finalize_reports,
     generate_single_call_report,
@@ -53,47 +53,10 @@ def load_config_from_request(request: Any) -> AgentBenchmarkConfig:
         raise
 
 
-def resolve_workspace_path(workspace: Path) -> Path:
-    """
-    This function resolves the workspace path.
-
-    Args:
-        workspace (str): The workspace path which can be an absolute path or a path expression.
-
-    Returns:
-        str: The absolute path of the workspace.
-
-    Raises:
-        ValueError: If the workspace path expression is invalid.
-    """
-    if (
-        isinstance(workspace, str)
-        and workspace.startswith("${")
-        and workspace.endswith("}")
-    ):
-        # Extract the string inside ${...}
-        path_expr = workspace[2:-1]
-
-        # Check if it starts with "os.path.join"
-        if path_expr.strip().startswith("os.path.join"):
-            # Evaluate the path string
-            path_value = eval(path_expr)
-
-            # Replace the original string with the evaluated result
-            return path_value
-        else:
-            raise ValueError("Invalid workspace path expression.")
-    elif isinstance(workspace, str):
-        return os.path.abspath(Path.cwd() / workspace)
-    else:
-        raise ValueError("Invalid workspace type. Expected str")
-
-
 @pytest.fixture(scope="module")
 def config(request: Any) -> Any:
     """
     This pytest fixture is responsible for loading the agent benchmark configuration from a given request.
-    It also resolves the workspace path based on the configuration.
     This fixture is scoped to the module level, meaning it's invoked once per test module.
 
     Args:
@@ -105,7 +68,7 @@ def config(request: Any) -> Any:
     Raises:
         json.JSONDecodeError: If the benchmark configuration file is not a valid JSON file.
     """
-    config = {"workspace": {}}
+    config = {}
     agent_benchmark_config_path = Path.cwd() / "agbenchmark_config" / "config.json"
     try:
         with open(agent_benchmark_config_path, "r") as f:
@@ -119,48 +82,26 @@ def config(request: Any) -> Any:
 
     config["AgentBenchmarkConfig"] = agent_benchmark_config
 
-    config["workspace"]["input"] = resolve_workspace_path(
-        agent_benchmark_config.workspace.input
-    )
-    config["workspace"]["output"] = resolve_workspace_path(
-        agent_benchmark_config.workspace.output
-    )
-
     return config
 
 
 @pytest.fixture(autouse=True)
-def workspace(config: Dict[str, Any]) -> Generator[str, None, None]:
+def temp_folder() -> Generator[str, None, None]:
     """
-    This pytest fixture is responsible for setting up and tearing down the workspace for each test.
+    This pytest fixture is responsible for setting up and tearing down the temporary folder for each test.
     It is automatically used in every test due to the 'autouse=True' parameter.
-    The workspace path is retrieved from the configuration dictionary.
-    If the workspace path does not exist, it is created.
-    After the test function completes, the workspace is cleaned up unless 'keep_workspace_files' is set to True in the configuration.
-
-    Args:
-        config (Dict[str, Any]): The configuration dictionary where the workspace path is defined.
-
-    Yields:
-        str: The workspace path.
+    It is used in order to let agbenchmark store files so they can then be evaluated.
     """
-    output_path = config["workspace"]
-
-    # checks if its an input output paradigm
-    if not isinstance(config["workspace"], str):
-        output_path = config["workspace"]["output"]
-        if not os.path.exists(config["workspace"]["input"]):
-            os.makedirs(config["workspace"]["input"], exist_ok=True)
 
     # create output directory if it doesn't exist
-    if not os.path.exists(output_path):
-        os.makedirs(output_path, exist_ok=True)
+    if not os.path.exists(TEMP_FOLDER_ABS_PATH):
+        os.makedirs(TEMP_FOLDER_ABS_PATH, exist_ok=True)
 
-    yield config["workspace"]
+    yield
     # teardown after test function completes
-    if not config.get("keep_workspace_files", False):
-        for filename in os.listdir(output_path):
-            file_path = os.path.join(output_path, filename)
+    if not os.getenv("KEEP_TEMP_FOLDER_FILES"):
+        for filename in os.listdir(TEMP_FOLDER_ABS_PATH):
+            file_path = os.path.join(TEMP_FOLDER_ABS_PATH, filename)
             try:
                 if os.path.isfile(file_path) or os.path.islink(file_path):
                     os.unlink(file_path)
