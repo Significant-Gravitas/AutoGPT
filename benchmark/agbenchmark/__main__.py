@@ -18,6 +18,7 @@ from .utils.data_types import AgentBenchmarkConfig
 
 BENCHMARK_START_TIME_DT = datetime.now(timezone.utc)
 BENCHMARK_START_TIME = BENCHMARK_START_TIME_DT.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+TEMP_FOLDER_ABS_PATH = Path(os.path.dirname(os.path.abspath(__file__))) / "temp_folder"
 
 
 def get_agent_benchmark_config() -> AgentBenchmarkConfig:
@@ -140,7 +141,6 @@ def run_benchmark(
         return 1
 
     assert agent_benchmark_config.host, "Error: host needs to be added to the config."
-
 
     print("Current configuration:")
     for key, value in vars(agent_benchmark_config).items():
