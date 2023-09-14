@@ -4,7 +4,7 @@
 
 ### 🌌 Dive into the Universe of Auto-GPT Creation! 🌌
 
-Ever dreamt of becoming the genius behind an AI agent? Dive into the *Auto-GPT-Forge*, where **you** become the creator!
+Ever dreamt of becoming the genius behind an AI agent? Dive into the *Forge*, where **you** become the creator!
 
 ---
 
@@ -14,31 +14,13 @@ Ever dreamt of becoming the genius behind an AI agent? Dive into the *Auto-GPT-F
 - 🛠️ **Tooling ecosystem!** We work with the best in class tools to bring you the best experience possible!
 ---
 
-### 🎁 **Features & Toolset**:
-
-1. **[autopack](https://github.com/AutoPackAI/autopack)**: Equip your agent with the best tools without the fuss!
-   
-2. **[agbenchmark](https://github.com/AutoPackAI/Auto-GPT-Benchmarks)**: Test your agent against basic tasks to see how you perform!
-   
-3. **[Helicone](https://www.helicone.ai/)**: Log your LLM interactions effortlessly, so you know what your agent is doing.
-   
-4. **[Agent communication protocol](https://github.com/e2b-dev/sdk)** from e2b's SDK: deploy your agent easily.
-   
-5. **More building blocks coming soon!**: We constantly work with partners to bring the best in class tools to kickstart agent creation !
-
----
-
 ### 🚀 **Get Started!**
 
-1. **[Fork the Project](https://github.com/Significant-Gravitas/Auto-GPT-Forge)**
+1. **[Fork the Project](https://github.com/Significant-Gravitas/Auto-GPT)**
 2. Clone your repo
-3. Add your api keys
+3. run `create_new_agent.sh name` changing name to the name you want to give your agent
+4. `cd autogpts/name` where name is the name you entered above
+5. `cp .env.example .env` Then add your api keys to `.env`
 4. Let the magic happen! Create your specialized or general AI!
 
 ---
-
-### 🔗 **Connect & Contribute!**
-
-⭐ **Show Your Support!** Star the repo and let us know you're interested!
-
-💡 **Stay Updated**: This is just the beginning. Keep an eye on our repository for more!
