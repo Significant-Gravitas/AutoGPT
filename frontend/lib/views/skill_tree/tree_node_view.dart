@@ -1,31 +1,64 @@
+import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-class TreeNodeView extends StatelessWidget {
-  final int nodeId;
+class TreeNodeView extends StatefulWidget {
+  final SkillTreeNode node;
   final bool selected;
 
-  TreeNodeView({required this.nodeId, this.selected = false});
+  TreeNodeView({required this.node, this.selected = false});
+
+  @override
+  _TreeNodeViewState createState() => _TreeNodeViewState();
+}
+
+class _TreeNodeViewState extends State<TreeNodeView> {
+  bool _isHovering = false;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return GestureDetector(
       onTap: () {
-        print('Node $nodeId clicked');
+        print('Node ${widget.node.id} clicked');
         Provider.of<SkillTreeViewModel>(context, listen: false)
-            .toggleNodeSelection(nodeId);
+            .toggleNodeSelection(widget.node.id);
       },
-      child: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: selected ? Colors.red : Colors.white,
-          borderRadius: BorderRadius.circular(4),
-          boxShadow: [
-            BoxShadow(color: Colors.red, spreadRadius: 1),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovering = true),
+        onExit: (_) => setState(() => _isHovering = false),
+        child: Column(
+          mainAxisSize: MainAxisSize.min, // Use minimum space
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: Colors.grey[300], // Light grey
+                borderRadius:
+                    BorderRadius.circular(8), // Slight rounded corners
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.star,
+                  color: widget.selected
+                      ? Colors.red
+                      : (_isHovering
+                          ? Colors.red
+                          : Colors
+                              .black), // Black when not hovering or selected
+                ),
+              ),
+            ),
+            // Adding the node.data.name right beneath the rectangle
+            SizedBox(height: 4), // You can adjust the spacing as needed
+            Text(
+              widget.node.label, // Assuming node.data.name holds the name
+              style: TextStyle(
+                  fontSize: 12), // You can adjust the styling as needed
+            ),
           ],
         ),
-        child: Text('Node $nodeId'),
       ),
     );
   }
