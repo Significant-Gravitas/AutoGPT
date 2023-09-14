@@ -1,25 +1,98 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
+[tool.poetry]
 name = "agpt"
 version = "0.4.7"
 authors = [
-  { name="Torantulino", email="support@agpt.co" },
+  "Significant Gravitas <support@agpt.co>",
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+description = "An open-source attempt to make GPT-4 autonomous"
+homepage = "https://github.com/Significant-Gravitas/Auto-GPT/tree/master/autogpts/autogpt"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-description = "An open-source attempt to make GPT-4 autonomous"
 
-[project.urls]
-"Homepage" = "https://github.com/Significant-Gravitas/Auto-GPT"
-"Bug Tracker" = "https://github.com/Significant-Gravitas/Auto-GPT"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+beautifulsoup4 = "^4.12.2"
+colorama = "^0.4.6"
+distro = "^1.8.0"
+openai = "^0.27.8"
+playsound = "^1.2.2"
+python-dotenv = "^1.0.0"
+pyyaml = "^6.0"
+PyPDF2 = "*"
+python-docx = "*"
+markdown = "*"
+pylatexenc = "*"
+readability-lxml = "^0.8.1"
+requests = "*"
+tiktoken = "^0.3.3"
+gTTS = "^2.3.1"
+docker = "*"
+duckduckgo-search = "^3.0.2"
+google-api-python-client = "*"
+pinecone-client = "^2.2.1"
+redis = "*"
+orjson = "^3.8.10"
+ftfy = "^6.1.1"
+Pillow = "*"
+selenium = "^4.11.2"
+webdriver-manager = "*"
+jsonschema = "*"
+click = "*"
+charset-normalizer = "^3.1.0"
+spacy = "^3.0.0"
+en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl"}
+prompt_toolkit = "^3.0.38"
+pydantic = "*"
+inflection = "*"
+agent-protocol = "^0.1.1"
+
+# web server
+fastapi = "*"
+uvicorn = "*"
+
+# OpenAI and Generic plugins import
+openapi-python-client = "^0.13.4"
+
+[tool.poetry.group.dev.dependencies]
+coverage = "*"
+flake8 = "*"
+numpy = "*"
+pre-commit = "*"
+black = "*"
+isort = "*"
+gitpython = "^3.1.32"
+auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
+mypy = "*"
+types-Markdown = "*"
+types-beautifulsoup4 = "*"
+types-colorama = "*"
+types-Pillow = "*"
+
+# Testing dependencies
+pytest = "*"
+asynctest = "*"
+pytest-asyncio = "*"
+pytest-benchmark = "*"
+pytest-cov = "*"
+pytest-integration = "*"
+pytest-mock = "*"
+vcrpy = {git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master"}
+pytest-recording = "*"
+pytest-xdist = "*"
+
+[tool.poetry.group.benchmark.dependencies]
+agbenchmark = "0.0.9"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
 
 [tool.black]
 line-length = 88
@@ -55,6 +128,7 @@ skip = '''
     dist/*
 
 '''
+
 
 [tool.pytest.ini_options]
 markers = [

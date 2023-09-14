@@ -16,11 +16,11 @@ function find_python_command() {
 PYTHON_CMD=$(find_python_command)
 
 if $PYTHON_CMD -c "import sys; sys.exit(sys.version_info < (3, 10))"; then
-    $PYTHON_CMD scripts/check_requirements.py requirements.txt
+    $PYTHON_CMD scripts/check_requirements.py pyproject.toml
     if [ $? -eq 1 ]
     then
         echo Installing missing packages...
-        $PYTHON_CMD -m pip install -r requirements.txt
+        $PYTHON_CMD -m poetry install --without dev
     fi
     $PYTHON_CMD -m autogpt "$@"
     read -p "Press any key to continue..."

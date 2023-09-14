@@ -17,25 +17,28 @@ RUN apt-get update && apt-get install -y \
 # Set environment variables
 ENV PIP_NO_CACHE_DIR=yes \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_CREATE=0 \
+    POETRY_NO_INTERACTION=1
 
-# Install the required python packages globally
-ENV PATH="$PATH:/root/.local/bin"
-COPY requirements.txt .
+# Install and configure Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="$POETRY_HOME/bin:$PATH"
+RUN poetry config installer.max-workers 10
 
 # Set the entrypoint
-ENTRYPOINT ["python", "-m", "autogpt", "--install-plugin-deps"]
+CMD ["poetry", "run", "--install-plugin-deps"]
 
 # dev build -> include everything
 FROM autogpt-base as autogpt-dev
-RUN pip install --no-cache-dir -r requirements.txt
+RUN poetry install
 WORKDIR /app
 ONBUILD COPY . ./
 
 # release build -> include bare minimum
 FROM autogpt-base as autogpt-release
-RUN sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
-	pip install --no-cache-dir -r requirements.txt
+RUN poetry install --without dev,benchmark
 WORKDIR /app
 ONBUILD COPY autogpt/ ./autogpt
 ONBUILD COPY scripts/ ./scripts

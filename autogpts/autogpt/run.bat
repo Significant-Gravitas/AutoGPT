@@ -15,10 +15,10 @@ pause
 exit /B 1
 
 :Found
-%PYTHON_CMD% scripts/check_requirements.py requirements.txt
+%PYTHON_CMD% scripts/check_requirements.py pyproject.toml
 if errorlevel 1 (
     echo Installing missing packages...
-    %PYTHON_CMD% -m pip install -r requirements.txt
+    %PYTHON_CMD% -m poetry install --without dev
 )
 %PYTHON_CMD% -m autogpt %*
 pause
