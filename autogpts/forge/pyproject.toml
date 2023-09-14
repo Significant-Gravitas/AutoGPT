@@ -14,8 +14,8 @@ tenacity = "^8.2.2"
 sqlalchemy = "^2.0.19"
 aiohttp = "^3.8.5"
 colorlog = "^6.7.0"
-chromadb = "^0.4.8"
-agbenchmark = { path = "../benchmark" }
+chromadb = "^0.4.10"
+agbenchmark = { path = "../../benchmark" }
 hypercorn = "^0.14.4"
 python-multipart = "^0.0.6"
 
