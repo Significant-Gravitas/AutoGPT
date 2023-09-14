@@ -22,13 +22,13 @@ class SkillNodeData {
 
   factory SkillNodeData.fromJson(Map<String, dynamic> json) {
     return SkillNodeData(
-      name: json['name'],
-      category: List<String>.from(json['category']),
-      task: json['task'],
-      dependencies: List<String>.from(json['dependencies']),
-      cutoff: json['cutoff'],
-      ground: Ground.fromJson(json['ground']),
-      info: Info.fromJson(json['info']),
+      name: json['name'] ?? "",
+      category: List<String>.from(json['category'] ?? []),
+      task: json['task'] ?? "",
+      dependencies: List<String>.from(json['dependencies'] ?? []),
+      cutoff: json['cutoff'] ?? 0,
+      ground: Ground.fromJson(json['ground'] ?? {}),
+      info: Info.fromJson(json['info'] ?? {}),
     );
   }
 }
