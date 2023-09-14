@@ -1,0 +1,475 @@
+{
+    "TestAdaptSimpleTypoWithGuidance": {
+        "2023-08-24 03:24:19+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run sample_code.py\\n- Read test.py\\n- Modify test.py\\n- Repeat steps until sample_code.py runs without errors\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"sample_code.py\"\n    }\n  }\n}"
+            },
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run sample_code.py\\n- Read test.py\\n- Modify test.py\\n- Repeat steps until sample_code.py runs without errors\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"sample_code.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-25 08:14:19+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run sample_code.py\\n- Read test.py\\n- Modify test.py\\n- Repeat steps until sample_code.py runs without errors\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"sample_code.py\"\n    }\n  }\n}"
+            },
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run sample_code.py\\n- Read test.py\\n- Modify test.py\\n- Repeat steps until sample_code.py runs without errors\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"sample_code.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-27 08:12:54+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run sample_code.py\\n- Read test.py\\n- Modify test.py\\n- Repeat steps until sample_code.py runs without errors\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"sample_code.py\"\n    }\n  }\n}"
+            },
+            "5": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run sample_code.py\\n- Read test.py\\n- Modify test.py\\n- Repeat steps until sample_code.py runs without errors\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"sample_code.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-28 08:14:13+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run sample_code.py\\n- Read test.py\\n- Modify test.py\\n- Repeat steps until sample_code.py runs without errors\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"sample_code.py\"\n    }\n  }\n}"
+            },
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run sample_code.py\\n- Read test.py\\n- Modify test.py\\n- Repeat steps until sample_code.py runs without errors\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"sample_code.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestRememberMultiplePhrasesWithNoise": {
+        "2023-08-24 08:13:33+00:00": {},
+        "2023-08-30 13:02:02+00:00": {}
+    },
+    "TestSearch": {
+        "2023-08-24 03:24:19+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Use www command to browse the website and get the text\\n- Use write command to save the text to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"https://silennaihin.com/random/plain.html\",\n      \"question\": \"What is the text on the page?\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-24 08:13:33+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Use www command to browse the website and get the text\\n- Use write command to save the text to a .txt file\\n- Use done command to indicate completion\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"https://silennaihin.com/random/plain.html\",\n      \"question\": \"get all text\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-25 08:14:19+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Use www command to browse the website and get the text\\n- Use write command to save the text in a .txt file\\n- Use done command to indicate completion\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"https://silennaihin.com/random/plain.html\",\n      \"question\": \"What is the text on the page?\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-27 08:12:54+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Browse the website and extract text\\n- Save the text to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"https://silennaihin.com/random/plain.html\",\n      \"question\": \"Extract all text from the page\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-28 08:14:13+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Browse the website and get the text\\n- Save the text to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"https://silennaihin.com/random/plain.html\",\n      \"question\": \"What is the text on the page?\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {},
+        "2023-08-31 15:35:06+00:00": {},
+        "2023-09-01 08:13:41+00:00": {},
+        "2023-09-01 17:05:12+00:00": {}
+    },
+    "TestBasicMemory": {
+        "2023-08-24 03:24:19+00:00": {},
+        "2023-08-24 08:13:33+00:00": {},
+        "2023-08-25 08:14:19+00:00": {},
+        "2023-08-27 08:12:54+00:00": {},
+        "2023-08-28 08:14:13+00:00": {},
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestDebugSimpleTypoWithGuidance": {
+        "2023-08-24 03:24:19+00:00": {},
+        "2023-08-24 08:13:33+00:00": {},
+        "2023-08-25 08:14:19+00:00": {},
+        "2023-08-27 08:12:54+00:00": {},
+        "2023-08-28 08:14:13+00:00": {},
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {},
+        "2023-08-31 15:35:06+00:00": {},
+        "2023-09-01 08:13:41+00:00": {},
+        "2023-09-01 17:05:12+00:00": {}
+    },
+    "TestAdaptTeslaRevenue": {},
+    "TestReturnCode_Simple": {
+        "2023-08-24 03:24:19+00:00": {
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 2\\\\n'''; code = code.replace('num * 2', 'num * 10'); code\",\n      \"file\": \"modified_sample_code.py\"\n    }\n  }\n}"
+            },
+            "4": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"test.py\"\n    }\n  }\n}"
+            },
+            "6": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Re-modify the multiply_int function\\n- Re-write the modified code to sample_code.py\\n- Re-run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 10\\\\n'''; code = code.replace('num * 10', 'num * 8'); code\",\n      \"file\": \"modified_sample_code.py\"\n    }\n  }\n}"
+            },
+            "8": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Re-run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"test.py\"\n    }\n  }\n}"
+            },
+            "10": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Re-modify the multiply_int function\\n- Re-write the modified code to sample_code.py\\n- Re-run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 8\\\\n'''; code = code.replace('num * 8', 'num * 10'); code\",\n      \"file\": \"modified_sample_code.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-24 08:13:33+00:00": {
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 2\\\\n'''; code = code.replace('num * 2', 'num * 10'); code\",\n      \"file\": \"modified_multiply_int.py\"\n    }\n  }\n}"
+            },
+            "3": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Write the modified code to sample_code.py\\n- Run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"modified_multiply_int.py\"\n    }\n  }\n}"
+            },
+            "4": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 2\\\\n'''; code = code.replace('num * 2', 'num * 10'); code\",\n      \"file\": \"modified_multiply_int.py\"\n    }\n  }\n}"
+            },
+            "6": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 2\\\\n'''; code = code.replace('num * 2', 'num * 10'); code\",\n      \"file\": \"modified_multiply_int.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-25 08:14:19+00:00": {
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py to verify the correctness\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 2\\\\n'''; code = code.replace('num * 2', 'num * 10'); code\",\n      \"file\": \"modified_sample_code.py\"\n    }\n  }\n}"
+            },
+            "3": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Write the modified code to sample_code.py\\n- Run test.py to verify the correctness\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"cp modified_sample_code.py sample_code.py\"\n    }\n  }\n}"
+            },
+            "4": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py to verify the correctness\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 2\\\\n'''; code = code.replace('num * 2', 'num * 10'); code\",\n      \"file\": \"modified_sample_code.py\"\n    }\n  }\n}"
+            },
+            "6": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run test.py to verify the correctness\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"test.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-27 08:12:54+00:00": {
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 2\\\\n'''; code = code.replace('num * 2', 'num * 10'); code\",\n      \"file\": \"modified_sample_code.py\"\n    }\n  }\n}"
+            },
+            "4": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"test.py\"\n    }\n  }\n}"
+            },
+            "6": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 10\\\\n'''; code = code.replace('num * 10', 'num * 8'); code\",\n      \"file\": \"modified_sample_code.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-28 08:14:13+00:00": {
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py to verify the result\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 2\\\\n'''; code = code.replace('num * 2', 'num * 10'); code\",\n      \"file\": \"modified_sample_code.py\"\n    }\n  }\n}"
+            },
+            "4": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py to verify the result\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 2\\\\n'''; code = code.replace('num * 2', 'num * 10'); code\",\n      \"file\": \"modified_sample_code.py\"\n    }\n  }\n}"
+            },
+            "6": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Modify the multiply_int function\\n- Write the modified code to sample_code.py\\n- Run test.py to verify the result\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"code = '''# mypy: ignore-errors\\\\n\\\\ndef multiply_int(num: int) -> int:\\\\n    multiplied_num = num * 2\\\\n'''; code = code.replace('num * 2', 'num * 10'); code\",\n      \"file\": \"modified_sample_code.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestBasicRetrieval": {
+        "2023-08-24 03:24:19+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Browse the book URL\\n- Extract the book price\\n- Write the price to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"http://books.toscrape.com/catalogue/meditations_33/index.html\",\n      \"question\": \"What is the price of the book?\"\n    }\n  }\n}"
+            },
+            "3": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Extract the book price from the answer\\n- Write the price to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"import re\\n\\nanswer = 'Answer gathered from website: The price of the book \\\"Meditations\\\" is \u00a325.89. The book is written in Greek by Marcus Aurelius and offers spiritual reflections and exercises. The prices and ratings on the website are randomly assigned and have no real meaning.'\\n\\nprice = re.search(r'\u00a3\\\\d+\\\\.\\\\d+', answer).group()\\nprice\",\n      \"file\": \"extract_price.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-24 08:13:33+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Browse the book URL\\n- Extract the book price\\n- Write the book price to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"http://books.toscrape.com/catalogue/meditations_33/index.html\",\n      \"question\": \"What is the price of the book?\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-25 08:14:19+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Use www command to get the book price from the URL\\n- Write the book price to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"http://books.toscrape.com/catalogue/meditations_33/index.html\",\n      \"question\": \"What is the price of the book?\"\n    }\n  }\n}"
+            },
+            "3": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Extract the book price from the www command result\\n- Write the book price to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"import re\\n\\nresult = 'Answer gathered from website: The price of the book \\\"Meditations\\\" is \u00a325.89. The book is written in Greek by Marcus Aurelius and offers spiritual reflections and exercises. The prices and ratings on the website are randomly assigned and have no real meaning.'\\n\\nprice = re.search(r'\u00a3\\\\d+\\\\.\\\\d+', result).group()\\nprice\",\n      \"file\": \"extract_price.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-27 08:12:54+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Browse the URL to get the book price\\n- Write the book price to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"http://books.toscrape.com/catalogue/meditations_33/index.html\",\n      \"question\": \"What is the price of the book?\"\n    }\n  }\n}"
+            },
+            "3": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Extract the book price from the answer\\n- Write the book price to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"import re\\n\\nanswer = 'Answer gathered from website: The price of the book \\\"Meditations\\\" is \u00a325.89. The book is written in Greek by Marcus Aurelius and offers spiritual reflections and exercises. The prices and ratings on the website are randomly assigned and have no real meaning.'\\n\\nprice = re.search('\u00a3\\\\d+\\\\.\\\\d{2}', answer).group()\\nprice\",\n      \"file\": \"extract_price.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-28 08:14:13+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Use www to browse the book URL and extract the price.\\n- Write the price to a .txt file.\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"http://books.toscrape.com/catalogue/meditations_33/index.html\",\n      \"question\": \"What is the price of the book?\"\n    }\n  }\n}"
+            },
+            "3": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Extract the price from the www command output.\\n- Write the price to a .txt file.\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"import re\\n\\noutput = 'Answer gathered from website: The price of the book \\\"Meditations\\\" is \u00a325.89. The book is written in Greek by Marcus Aurelius and offers spiritual reflections and exercises. The prices and ratings on the website are randomly assigned and have no real meaning.'\\n\\nprice = re.search(r'\u00a3\\\\d+\\\\.\\\\d{2}', output).group()\\nprice\",\n      \"file\": \"extract_price.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestWrite6Files": {
+        "2023-08-25 08:14:19+00:00": {},
+        "2023-08-27 08:12:54+00:00": {},
+        "2023-08-28 08:14:13+00:00": {},
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestWriteFile": {
+        "2023-08-24 03:24:19+00:00": {},
+        "2023-08-24 08:13:33+00:00": {},
+        "2023-08-25 08:14:19+00:00": {},
+        "2023-08-27 08:12:54+00:00": {},
+        "2023-08-28 08:14:13+00:00": {},
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {},
+        "2023-08-31 15:35:06+00:00": {},
+        "2023-09-01 08:13:41+00:00": {},
+        "2023-09-01 17:05:12+00:00": {}
+    },
+    "TestRememberGoal_Advanced": {
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestRevenueRetrieval": {
+        "2023-08-27 08:12:54+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- search for Tesla's revenue in 2022\\n- extract the revenue value\\n- round the value to the nearest million dollars\\n- write the rounded value to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"search\",\n    \"args\": {\n      \"query\": \"Tesla's exact revenue in 2022\"\n    }\n  }\n}"
+            },
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- visit the Statista website with Tesla's revenue\\n- extract the revenue value\\n- round the value to the nearest million dollars\\n- write the rounded value to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"https://www.statista.com/statistics/272120/revenue-of-tesla/\",\n      \"question\": \"What is Tesla's exact revenue in 2022?\"\n    }\n  }\n}"
+            },
+            "7": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- calculate Tesla's exact revenue in 2022\\n- round the value to the nearest million dollars\\n- write the rounded value to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"revenue_2021 = 71 / 1.51\\nrevenue_2022 = revenue_2021 * 1.51\\nrevenue_2022\",\n      \"file\": \"calculate_revenue.py\"\n    }\n  }\n}"
+            },
+            "8": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- round the value to the nearest million dollars\\n- write the rounded value to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"py\",\n    \"args\": {\n      \"code\": \"rounded_revenue_2022 = round(revenue_2022, -6)\\nrounded_revenue_2022\",\n      \"file\": \"round_revenue.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestReadFile": {
+        "2023-08-24 03:24:19+00:00": {},
+        "2023-08-24 08:13:33+00:00": {},
+        "2023-08-25 08:14:19+00:00": {},
+        "2023-08-27 08:12:54+00:00": {},
+        "2023-08-28 08:14:13+00:00": {},
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {},
+        "2023-08-31 15:35:06+00:00": {},
+        "2023-09-01 08:13:41+00:00": {},
+        "2023-09-01 17:05:12+00:00": {}
+    },
+    "TestFunctionCodeGeneration": {
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestRememberGoal_Hard": {
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {},
+        "2023-08-31 15:35:06+00:00": {},
+        "2023-09-01 08:13:41+00:00": {},
+        "2023-09-01 17:05:12+00:00": {}
+    },
+    "TestWebApp_ListAnimals": {},
+    "TestWritingCLI_FileOrganizer": {},
+    "TestReturnCode_Modify": {
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestRememberGoal_Medium": {
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestGoalLoss_Simple": {},
+    "TestRetrieval3": {},
+    "TestBasicContentGen": {},
+    "TestThreeSum": {
+        "2023-08-30 23:11:52+00:00": {},
+        "2023-08-31 15:35:06+00:00": {},
+        "2023-09-01 08:13:41+00:00": {},
+        "2023-09-01 17:05:12+00:00": {}
+    },
+    "TestWritingCLI_Easy": {},
+    "TestDebugMultipleTypo": {
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestRememberGoal_Simple": {
+        "2023-08-24 03:24:19+00:00": {},
+        "2023-08-24 08:13:33+00:00": {},
+        "2023-08-25 08:14:19+00:00": {},
+        "2023-08-27 08:12:54+00:00": {},
+        "2023-08-28 08:14:13+00:00": {},
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {},
+        "2023-08-31 15:35:06+00:00": {},
+        "2023-09-01 08:13:41+00:00": {},
+        "2023-09-01 17:05:12+00:00": {}
+    },
+    "TestRememberMultipleIdsWithNoise": {
+        "2023-08-24 08:13:33+00:00": {},
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestReturnCode_Tests": {
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestRememberMultipleIds": {
+        "2023-08-24 03:24:19+00:00": {},
+        "2023-08-27 08:12:54+00:00": {},
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestGoalDivergence": {},
+    "TestWrite5FilesWithArray": {
+        "2023-08-24 03:24:19+00:00": {},
+        "2023-08-25 08:14:19+00:00": {},
+        "2023-08-27 08:12:54+00:00": {},
+        "2023-08-28 08:14:13+00:00": {},
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestReturnCode_Write": {
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestPlanCreation": {
+        "2023-08-24 03:24:19+00:00": {},
+        "2023-08-24 08:13:33+00:00": {},
+        "2023-08-25 08:14:19+00:00": {},
+        "2023-08-27 08:12:54+00:00": {},
+        "2023-08-28 08:14:13+00:00": {},
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestDebugSimpleTypoWithoutGuidance": {
+        "2023-08-24 03:24:19+00:00": {},
+        "2023-08-25 08:14:19+00:00": {
+            "3": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Check if there are any errors in test.py\\n- If there are errors, fix them\\n- Run test.py without errors\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"test.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-27 08:12:54+00:00": {},
+        "2023-08-28 08:14:13+00:00": {
+            "5": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Analyze test.py for errors\\n- Fix errors if any\\n- Run test.py\"\n  },\n  \"cmd\": {\n    \"name\": \"pyf\",\n    \"args\": {\n      \"path\": \"test.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    },
+    "TestPasswordGenerator_Easy": {
+        "2023-08-24 03:24:19+00:00": {
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Test the script\\n- Test importing as a module\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"python password_generator.py --len 12\"\n    }\n  }\n}"
+            },
+            "4": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Test importing as a module\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"python test_import.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-24 08:13:33+00:00": {
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Test the script with the command line argument.\\n- Test the script without the command line argument.\\n- Test importing the module and calling the generate_password function.\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"python3 password_generator.py --len 12\"\n    }\n  }\n}"
+            },
+            "3": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Test the script without the command line argument.\\n- Test importing the module and calling the generate_password function.\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"python3 password_generator.py\"\n    }\n  }\n}"
+            },
+            "5": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Test importing the module and calling the generate_password function.\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"python3 test_password_generator.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-25 08:14:19+00:00": {
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Test the password generator by running the Python file.\\n- Test the password generator as an importable module.\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"python password_generator.py --len 10\"\n    }\n  }\n}"
+            },
+            "4": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Run the test_password_generator.py file to test the password generator as an importable module.\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"python test_password_generator.py\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-27 08:12:54+00:00": {
+            "3": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Move the password_generator.py file to the executed_code directory.\\n- Test the password generator by running the file with different lengths.\\n- Test the password generator as an imported module.\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"mv password_generator.py ./Turbo/executed_code/\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-28 08:14:13+00:00": {
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Test the script\\n- Verify the password_generator.py functionality\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"python password_generator.py\"\n    }\n  }\n}"
+            },
+            "3": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Test the script with a custom length\\n- Verify the password_generator.py functionality\"\n  },\n  \"cmd\": {\n    \"name\": \"sh\",\n    \"args\": {\n      \"cmd\": \"python password_generator.py --len 12\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {},
+        "2023-08-31 15:35:06+00:00": {},
+        "2023-09-01 08:13:41+00:00": {},
+        "2023-09-01 17:05:12+00:00": {}
+    },
+    "TestAdaptLink": {
+        "2023-08-27 08:12:54+00:00": {
+            "1": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Browse the book URL to find the price\\n- Write the price to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"books.toscrape.com/catalogue/meditations_33/index.html\",\n      \"question\": \"What is the price of the book?\"\n    }\n  }\n}"
+            },
+            "2": {
+                "role": "assistant",
+                "content": "{\n  \"mind\": {\n    \"plan\": \"- Browse the book URL to find the price\\n- Write the price to a .txt file\"\n  },\n  \"cmd\": {\n    \"name\": \"www\",\n    \"args\": {\n      \"url\": \"http://books.toscrape.com/catalogue/meditations_33/index.html\",\n      \"question\": \"What is the price of the book?\"\n    }\n  }\n}"
+            }
+        },
+        "2023-08-30 13:02:02+00:00": {},
+        "2023-08-30 23:11:52+00:00": {}
+    }
+}

@@ -12,6 +12,7 @@ def is_action_auto_gpt(log):
     - execute_python_file
     - list_files
     - execute_python_code
+    - read_file
     Internal actions
     - goals_accomplished
 
@@ -194,45 +195,53 @@ def is_action_turbo(log):
     return cmd_pattern_match
 
 
-# def is_action_general(log):
-#     """General actions are defined by the presence of specific keywords such as 'write', 'start', 'create', etc."""
-#     return bool(
-#         re.search(
-#             r"\b(write|start|create|execute|post|modify|mutate|delete|put|search|find|get|browse|query|www|read|list)\b",
-#             log,
-#         )
-#     )
+def is_action_general(log):
+    """General actions are defined by the presence of specific keywords such as 'write', 'start', 'create', etc.
+    KEYWORDS FOUND SO FAR
+    WRITE
+    - write
+    - start
+    - create
+    - execute
+    - post
+    MODIFY
+    - modify
+    - mutate
+    - delete
+    - put
+    READ
+    - read
+    - list
+    - search
+    - find
+    - get
+    - browse
+    - query
+    - www
+    GENERAL, no specificity
+    - command
+    - call
+    - function
+    - action
+    - http
+    """
+    if log is None:
+        return False
 
+    if log.get("content", ""):
+        log = log["content"]
+    elif log.get("function_call", ""):
+        log = json.dumps(log["function_call"])
 
-# post, get, put, delete
-"""KEYWORDS FOUND SO FAR
-WRITE
-- write
-- start
-- create
-- execute
-- post
-MODIFY
-- modify
-- mutate
-- delete
-- put
-SEARCH
-- search
-- find
-- get
-- browse
-- query
-- www
-READ
-- read
-- list
-GENERAL, no specificity
-- command
-- call
-- function
-- action
-"""
+    if isinstance(log, dict):
+        print("log is dict", log)
+
+    return bool(
+        re.search(
+            r"\b(write|start|create|execute|post|modify|mutate|delete|put|search|find|get|browse|query|www|read|list|http)\b",
+            log,
+        )
+    )
 
 
 def is_action_agent(log, agent, test="", response=""):
