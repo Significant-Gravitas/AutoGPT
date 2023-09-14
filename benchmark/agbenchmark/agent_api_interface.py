@@ -46,7 +46,7 @@ async def run_api_agent(
             )
 
         artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
-        for artifact in artifacts:
+        for artifact in artifacts.artifacts:
             # current absolute path of the directory of the file
             directory_location = TEMP_FOLDER_ABS_PATH
             if artifact.relative_path:
