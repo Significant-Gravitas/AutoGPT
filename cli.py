@@ -425,10 +425,10 @@ def enter(agent_name, branch):
         # Get the commit hash of HEAD of the branch_to_use
         commit_hash_to_benchmark = subprocess.check_output(['git', 'rev-parse', branch_to_use]).decode('utf-8').strip()
         
-
+        arena_submission_branch = f'arena_submission_{agent_name}'
         # Create a new branch called arena_submission_{agent_name}
-        subprocess.check_call(['git', 'checkout', '-b', f'arena_submission_{agent_name}'])
-
+        # subprocess.check_call(['git', 'checkout', '-b', arena_submission_branch])
+        subprocess.check_call(['git', 'checkout', arena_submission_branch])
         # Create a dictionary with the necessary fields
         data = {
             "github_repo_url": github_repo_url,
@@ -452,7 +452,7 @@ def enter(agent_name, branch):
         subprocess.check_call(['git', 'commit', '-m', f'{agent_name} entering the arena'])
 
         # Push the commit
-        subprocess.check_call(['git', 'push', 'origin', f'arena_submission_{agent_name}'])
+        subprocess.check_call(['git', 'push', 'origin', arena_submission_branch])
 
         # Create a PR into the parent repository
         g = Github(github_access_token)
@@ -482,6 +482,8 @@ Please replace this text with your own introduction, the names of your team memb
         
     except Exception as e:
         click.echo(click.style(f"❌ An error occurred: {e}", fg='red'))
+        # Switch back to the master branch
+        subprocess.check_call(['git', 'checkout', branch_to_use])
 
 @arena.command()
 @click.argument('agent_name')
@@ -491,6 +493,7 @@ def submit(agent_name, branch):
     from github import Github
     from datetime import datetime
     import json
+    import os
     agent_dir = f'./autogpts/{agent_name}'
     if not os.path.exists(agent_dir):
         click.echo(click.style(f"❌ The directory for agent '{agent_name}' does not exist in the autogpts directory.", fg='red'))
@@ -508,6 +511,7 @@ def submit(agent_name, branch):
         # Load GitHub access token from file
         with open('.github_access_token', 'r') as file:
             github_access_token = file.read().strip()
+        arena_submission_branch = f'arena_submission_{agent_name}'
 
         # Get GitHub repository URL
         github_repo_url = subprocess.check_output(['git', 'config', '--get', 'remote.origin.url']).decode('utf-8').strip()
@@ -519,7 +523,7 @@ def submit(agent_name, branch):
         subprocess.check_call(['git', 'stash'])
 
         # Switch to the arena_submission branch
-        subprocess.check_call(['git', 'checkout', f'arena_submission_{agent_name}'])
+        subprocess.check_call(['git', 'checkout', arena_submission_branch])
 
         # Update the agent_name.json file in the arena folder with the new hash and timestamp
         json_file_path = f'arena/{agent_name}.json'
@@ -535,7 +539,7 @@ def submit(agent_name, branch):
         # Commit and push the changes
         subprocess.check_call(['git', 'add', json_file_path])
         subprocess.check_call(['git', 'commit', '-m', f'{agent_name} submitting to the arena'])
-        subprocess.check_call(['git', 'push', 'origin', f'arena_submission_{agent_name}'])
+        subprocess.check_call(['git', 'push', 'origin', arena_submission_branch])
 
         # Create a new PR onto the fork's parent repo
         g = Github(github_access_token)
@@ -551,7 +555,7 @@ def submit(agent_name, branch):
 **Changes made to the agent:** 
 
 Please replace this text with your own introduction, the names of your team members, a brief description of your work, and the changes you have made to your agent.''',
-                head=f'arena_submission_{agent_name}',
+                head=f'{repo.owner.login}:{arena_submission_branch}',
                 base=branch,
             )
             click.echo(click.style(f"🚀 {agent_name} has been submitted to the arena!", fg='green'))
