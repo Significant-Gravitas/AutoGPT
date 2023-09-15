@@ -230,8 +230,8 @@ docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuou
 Create a virtual environment to run in.
 
 ```shell
-python -m venv venvAutoGPT
-source venvAutoGPT/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip3 install --upgrade pip
 ```
 

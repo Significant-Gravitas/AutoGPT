@@ -57,13 +57,13 @@ jobs:
       - name: Set up Python dependency cache
         uses: actions/cache@v3
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ steps.get_date.outputs.date }}
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          curl -sSL https://install.python-poetry.org | python3 -
+          poetry install
 
       - name: Lint with flake8
         run: flake8
@@ -156,20 +156,21 @@ jobs:
       - name: Set up Python dependency cache
         uses: actions/cache@v3
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ steps.get_date.outputs.date }}
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('autogpts/autogpt/pyproject.toml') }}-${{ steps.get_date.outputs.date }}
 
       - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          curl -sSL https://install.python-poetry.org | python3 -
+          poetry install
 
       - name: Run pytest with coverage
         run: |
-          pytest -vv --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+          poetry run pytest -vv \
+            --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
             --numprocesses=logical --durations=10 \
             tests/unit tests/integration tests/challenges
-          python tests/challenges/utils/build_current_score.py
+          poetry run python tests/challenges/utils/build_current_score.py
         env:
           CI: true
           PROXY: ${{ github.event_name == 'pull_request_target' && secrets.PROXY || '' }}

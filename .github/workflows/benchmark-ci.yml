@@ -162,8 +162,8 @@ jobs:
           elif [ "$AGENT_NAME" == "Auto-GPT" ]; then
             python -m venv venv
             source venv/bin/activate
-            pip install -r requirements.txt
-            pip uninstall agbenchmark -y
+            curl -sSL https://install.python-poetry.org | python3 -
+            poetry install --without benchmark
           elif [ "$AGENT_NAME" == "mini-agi" ]; then
             python -m venv venv
             source venv/bin/activate
