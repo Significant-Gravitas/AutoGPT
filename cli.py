@@ -1,8 +1,10 @@
 try:
     import click
+    import github
 except ImportError:
     import os
     os.system('pip3 install click')
+    os.system('pip3 install PyGithub')
     import click
 
 
@@ -19,9 +21,99 @@ def setup():
     setup_script = os.path.join(script_dir, 'setup.sh')
     if os.path.exists(setup_script):
         subprocess.Popen([setup_script], cwd=script_dir)
-        click.echo("Setup initiated")
+        click.echo(click.style("🚀 Setup initiated", fg='green'))
     else:
-        click.echo("Error: setup.sh does not exist in the current directory.")
+        click.echo(click.style("❌ Error: setup.sh does not exist in the current directory.", fg='red'))
+
+    try:
+        # Check if GitHub user name is configured
+        user_name = subprocess.check_output(['git', 'config', 'user.name']).decode('utf-8').strip()
+        user_email = subprocess.check_output(['git', 'config', 'user.email']).decode('utf-8').strip()
+        
+        if user_name and user_email:
+            click.echo(click.style(f"✅ GitHub account is configured with username: {user_name} and email: {user_email}", fg='green'))
+        else:
+            raise subprocess.CalledProcessError(returncode=1, cmd='git config user.name or user.email')
+            
+    except subprocess.CalledProcessError:
+        # If the GitHub account is not configured, print instructions on how to set it up
+        click.echo(click.style("❌ GitHub account is not configured.", fg='red'))
+        click.echo(click.style("To configure your GitHub account, use the following commands:", fg='red'))
+        click.echo(click.style("  git config --global user.name \"Your GitHub Username\"", fg='red'))
+        click.echo(click.style("  git config --global user.email \"Your GitHub Email\"", fg='red'))
+
+    # Check for the existence of the .github_access_token file
+    if os.path.exists('.github_access_token'):
+        with open('.github_access_token', 'r') as file:
+            github_access_token = file.read().strip()
+            if github_access_token:
+                click.echo(click.style("✅ GitHub access token loaded successfully.", fg='green'))
+                # Check if the token has the required permissions
+                import requests
+                headers = {'Authorization': f'token {github_access_token}'}
+                response = requests.get('https://api.github.com/user', headers=headers)
+                if response.status_code == 200:
+                    scopes = response.headers.get('X-OAuth-Scopes')
+                    if 'public_repo' in scopes or 'repo' in scopes:
+                        click.echo(click.style("✅ GitHub access token has the required permissions.", fg='green'))
+                    else:
+                        click.echo(click.style("❌ GitHub access token does not have the required permissions. Please ensure it has 'public_repo' or 'repo' scope.", fg='red'))
+                else:
+                    click.echo(click.style("❌ Failed to validate GitHub access token. Please ensure it is correct.", fg='red'))
+            else:
+                click.echo(click.style("❌ GitHub access token file is empty. Please follow the instructions below to set up your GitHub access token.", fg='red'))
+    else:
+        # Create the .github_access_token file if it doesn't exist
+        with open('.github_access_token', 'w') as file:
+            file.write('')
+
+        # Instructions to set up GitHub access token
+        click.echo(click.style("❌ To configure your GitHub access token, follow these steps:", fg='red'))
+        click.echo(click.style("\t1. Ensure you are logged into your GitHub account", fg='red'))
+        click.echo(click.style("\t2. Navigate to https://github.com/settings/tokens", fg='red'))
+        click.echo(click.style("\t6. Click on 'Generate new token'.", fg='red'))
+        click.echo(click.style("\t7. Fill out the form to generate a new token. Ensure you select the 'repo' scope.", fg='red'))
+        click.echo(click.style("\t8. Open the '.github_access_token' file in the same directory as this script and paste the token into this file.", fg='red'))
+        click.echo(click.style("\t9. Save the file and run the setup command again.", fg='red'))
+
+@cli.command()
+@click.option('--branch', default='master', help='Branch to sync with the parent repository')
+def sync(branch):
+    import subprocess
+
+    try:
+        # Get GitHub repository URL
+        github_repo_url = subprocess.check_output(['git', 'config', '--get', 'remote.origin.url']).decode('utf-8').strip()
+
+        # Initialize GitHub API client
+        with open('.github_access_token', 'r') as file:
+            github_access_token = file.read().strip()
+        g = github.Github(github_access_token)
+        repo = g.get_repo(github_repo_url.split(':')[-1].split('.git')[0])
+        
+        # Get parent repository URL
+        parent_repo = repo.parent
+        if parent_repo:
+            parent_repo_url = parent_repo.clone_url
+        else:
+            click.echo(click.style("❌ This repository does not have a parent repository to sync with.", fg='red'))
+            return
+        
+        # Add the parent repository as a remote named 'upstream' (if not already added)
+        remotes = subprocess.check_output(['git', 'remote']).decode('utf-8').strip().split('\n')
+        if 'upstream' not in remotes:
+            subprocess.check_call(['git', 'remote', 'add', 'upstream', parent_repo_url])
+
+        # Fetch the updates from the parent repository
+        subprocess.check_call(['git', 'fetch', 'upstream'])
+
+        # Merge the updates into the local master branch (or another specified branch)
+        subprocess.check_call(['git', 'merge', f'upstream/{branch}', branch])
+
+        click.echo(click.style(f"✅ Synced local {branch} branch with upstream {branch} branch.", fg='green'))
+    
+    except Exception as e:
+        click.echo(click.style(f"❌ An error occurred: {e}", fg='red'))
 
 @cli.group()
 def agents():
@@ -275,6 +367,165 @@ def frontend():
         click.echo("Launching frontend")
     else:
         click.echo("Error: Frontend directory or run file does not exist.")
+
+
+
+@cli.group()
+def arena():
+    """Commands to enter the arena"""
+    pass
+
+@arena.command()
+@click.argument('agent_name')
+@click.option('--branch', default='master', help='Branch to use instead of master')
+def enter(agent_name, branch):
+    import subprocess
+    from github import Github
+    from datetime import datetime
+    import os
+    import json
+    # Check if the agent_name directory exists in the autogpts directory
+    agent_dir = f'./autogpts/{agent_name}'
+    if not os.path.exists(agent_dir):
+        click.echo(click.style(f"❌ The directory for agent '{agent_name}' does not exist in the autogpts directory.", fg='red'))
+        click.echo(click.style(f"🚀 Run './run agents create {agent_name}' to create the agent.", fg='yellow'))
+
+        
+        return
+    else:
+        click.echo(click.style(f"✅ The directory for agent '{agent_name}' exists in the autogpts directory.", fg='green'))
+    
+    try:
+        # Load GitHub access token from file
+        with open('.github_access_token', 'r') as file:
+            github_access_token = file.read().strip()
+
+        # Get GitHub repository URL
+        github_repo_url = subprocess.check_output(['git', 'config', '--get', 'remote.origin.url']).decode('utf-8').strip()
+
+        # If --branch is passed, use it instead of master
+        if branch:
+            branch_to_use = branch
+        else:
+            branch_to_use = "master"
+
+        # Get the commit hash of HEAD of the branch_to_use
+        commit_hash_to_benchmark = subprocess.check_output(['git', 'rev-parse', branch_to_use]).decode('utf-8').strip()
+
+        # Create a new branch called arena_submission
+        subprocess.check_call(['git', 'checkout', '-b', 'arena_submission'])
+
+        # Create a dictionary with the necessary fields
+        data = {
+            "github_repo_url": github_repo_url,
+            "timestamp": datetime.utcnow().isoformat(),
+            "commit_hash_to_benchmark": commit_hash_to_benchmark,
+        }
+
+        # If --branch was passed, add branch_to_benchmark to the JSON file
+        if branch:
+            data["branch_to_benchmark"] = branch
+
+        # Create agent directory if it does not exist
+        subprocess.check_call(['mkdir', '-p', 'agent'])
+
+        # Create a JSON file with the data
+        with open(f'agent/{agent_name}.json', 'w') as json_file:
+            json.dump(data, json_file, indent=4)
+
+        # Create a commit with the specified message
+        subprocess.check_call(['git', 'add', f'agent/{agent_name}.json'])
+        subprocess.check_call(['git', 'commit', '-m', f'{agent_name} entering the arena'])
+
+        # Push the commit
+        subprocess.check_call(['git', 'push', 'origin', 'arena_submission'])
+
+        # Create a PR into the parent repository
+        g = Github(github_access_token)
+        repo = g.get_repo(github_repo_url.split(':')[-1].split('.git')[0])
+        parent_repo = repo.parent
+        if parent_repo:
+            parent_repo.create_pull(
+                title=f'{agent_name} entering the arena',
+                body='',
+                head='arena_submission',
+                base=branch_to_use,
+            )
+            click.echo(click.style(f"🚀 {agent_name} has entered the arena!", fg='green'))
+        else:
+            click.echo(click.style("❌ This repository does not have a parent repository to sync with.", fg='red'))
+            return
+
+        # Switch back to the master branch
+        subprocess.check_call(['git', 'checkout', branch_to_use])
+        
+    except Exception as e:
+        click.echo(click.style(f"❌ An error occurred: {e}", fg='red'))
+
+@arena.command()
+@click.argument('agent_name')
+@click.option('--branch', default='master', help='Branch to get the git hash from')
+def submit(agent_name, branch):
+    import subprocess
+    from github import Github
+    from datetime import datetime
+    import json
+    try:
+        # Load GitHub access token from file
+        with open('.github_access_token', 'r') as file:
+            github_access_token = file.read().strip()
+
+        # Get GitHub repository URL
+        github_repo_url = subprocess.check_output(['git', 'config', '--get', 'remote.origin.url']).decode('utf-8').strip()
+
+        # Get the git hash of the head of master or the provided branch
+        commit_hash_to_benchmark = subprocess.check_output(['git', 'rev-parse', branch]).decode('utf-8').strip()
+
+        # Stash any uncommitted changes
+        subprocess.check_call(['git', 'stash'])
+
+        # Switch to the arena_submission branch
+        subprocess.check_call(['git', 'checkout', 'arena_submission'])
+
+        # Update the agent_name.json file in the arena folder with the new hash and timestamp
+        json_file_path = f'agent/{agent_name}.json'
+        with open(json_file_path, 'r') as json_file:
+            data = json.load(json_file)
+
+        data['commit_hash_to_benchmark'] = commit_hash_to_benchmark
+        data['timestamp'] = datetime.utcnow().isoformat()
+
+        with open(json_file_path, 'w') as json_file:
+            json.dump(data, json_file, indent=4)
+
+        # Commit and push the changes
+        subprocess.check_call(['git', 'add', json_file_path])
+        subprocess.check_call(['git', 'commit', '-m', f'{agent_name} submitting to the arena'])
+        subprocess.check_call(['git', 'push', 'origin', 'arena_submission'])
+
+        # Create a new PR onto the fork's parent repo
+        g = Github(github_access_token)
+        repo = g.get_repo(github_repo_url.split(':')[-1].split('.git')[0])
+        parent_repo = repo.parent
+        if parent_repo:
+            parent_repo.create_pull(
+                title=f'{agent_name} submitting to the arena',
+                body='',
+                head='arena_submission',
+                base=branch,
+            )
+            click.echo(click.style(f"🚀 {agent_name} has been submitted to the arena!", fg='green'))
+        else:
+            click.echo(click.style("❌ This repository does not have a parent repository to sync with.", fg='red'))
+            return
+
+        # Switch back to the original branch and pop the stashed changes
+        subprocess.check_call(['git', 'checkout', branch])
+        subprocess.check_call(['git', 'stash', 'pop'])
+
+    except Exception as e:
+        click.echo(click.style(f"❌ An error occurred: {e}", fg='red'))
+
 
 if __name__ == '__main__':
     cli()
