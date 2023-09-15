@@ -40,6 +40,9 @@ dependencies:
   http: ^1.1.0
   shared_preferences: ^2.2.1
   graphview: ^1.2.0
+  firebase_core: ^2.15.1
+  firebase_auth: ^4.9.0
+  google_sign_in: ^6.1.5
 
 dev_dependencies:
   flutter_test:
@@ -65,6 +68,8 @@ flutter:
 
   assets:
   - assets/tree_structure.json
+  - assets/google_logo.svg.png
+  - assets/github_logo.svg.png
 
 
   # An image asset can refer to one or more resolution-specific "variants", see
