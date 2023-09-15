@@ -132,7 +132,9 @@ def create(agent_name):
         return
     try:
         new_agent_dir = f'./autogpts/{agent_name}'
-        if not os.path.exists(new_agent_dir):
+        agent_json_file = f'./arena/{agent_name}.json'
+        
+        if not os.path.exists(new_agent_dir) and not os.path.exists(agent_json_file):
             shutil.copytree('./autogpts/forge', new_agent_dir)
             click.echo(click.style(f"🎉 New agent '{agent_name}' created. The code for your new agent is in: autogpts/{agent_name}", fg='green'))
             click.echo(click.style(f"🚀 If you would like to enter the arena, run './run arena enter {agent_name}'", fg='yellow'))
@@ -495,19 +497,13 @@ def submit(agent_name, branch):
         click.echo(click.style(f"❌ The directory for agent '{agent_name}' does not exist in the autogpts directory.", fg='red'))
         click.echo(click.style(f"🚀 Run './run agents create {agent_name}' to create the agent. Then you can enter the arena with ./run arena enter", fg='yellow'))
         return
-    else:    
-        # Check if the agent has already entered the arena
-        if not os.path.exists(f'arena/{agent_name}.json'):
-            click.echo(click.style(f"❌ The agent '{agent_name}' has not yet entered the arena. Please enter the arena with './run arena enter'", fg='red'))
-            return
+    
 
     # Check if there are staged changes
     staged_changes = [line for line in subprocess.check_output(['git', 'status', '--porcelain']).decode('utf-8').split('\n') if line and line[0] in ('A', 'M', 'D', 'R', 'C')]
     if staged_changes:
         click.echo(click.style(f"❌ There are staged changes. Please commit or stash them and run the command again.", fg='red'))
         return
-
-
     
     try:
         # Load GitHub access token from file
