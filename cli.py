@@ -116,11 +116,11 @@ def sync(branch):
         click.echo(click.style(f"❌ An error occurred: {e}", fg='red'))
 
 @cli.group()
-def agents():
+def agent():
     """Commands to create, start and stop agents"""
     pass
 
-@agents.command()
+@agent.command()
 @click.argument('agent_name')
 def create(agent_name):
     """Create's a new agent with the agent name provieded"""
@@ -135,13 +135,14 @@ def create(agent_name):
         if not os.path.exists(new_agent_dir):
             shutil.copytree('./autogpts/forge', new_agent_dir)
             click.echo(click.style(f"🎉 New agent '{agent_name}' created. The code for your new agent is in: autogpts/{agent_name}", fg='green'))
+            click.echo(click.style(f"🚀 If you would like to enter the arena, run './run arena enter {agent_name}'", fg='yellow'))
         else:
             click.echo(click.style(f"😞 Agent '{agent_name}' already exists. Enter a different name for your agent", fg='red'))
     except Exception as e:
         click.echo(click.style(f"😢 An error occurred: {e}", fg='red'))
 
 
-@agents.command()
+@agent.command()
 @click.argument('agent_name')
 def start(agent_name):
     """Start agent command"""
@@ -159,7 +160,7 @@ def start(agent_name):
     else:
         click.echo(click.style(f"😞 Run command does not exist in the agent '{agent_name}' directory.", fg='red'))
 
-@agents.command()
+@agent.command()
 def stop():
     """Stop agent command"""
     import subprocess
@@ -175,7 +176,7 @@ def stop():
         click.echo("Error: No process with the specified PID was found.")
 
 
-@agents.command()
+@agent.command()
 def list():
     """List agents command"""
     import os
