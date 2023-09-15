@@ -60,6 +60,11 @@ Please see the [documentation][docs] for full setup instructions and configurati
 [docs/usage]: https://docs.agpt.co/usage/
 [docs/plugins]: https://docs.agpt.co/plugins/
 
+## 🏗️ Setting up for development
+1. Make sure `poetry` is installed: `python3 -m pip install poetry`
+2. Install all dependencies: `poetry install`
+
+
 <h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
 <p align="center">
 If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help to push the boundaries of fully autonomous AI!
