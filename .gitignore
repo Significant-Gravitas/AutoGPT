@@ -171,3 +171,4 @@ package.json
 pri* 
 # ignore
 ig*
+.github_access_token
