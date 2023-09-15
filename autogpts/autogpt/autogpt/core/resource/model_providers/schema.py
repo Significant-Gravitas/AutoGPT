@@ -132,7 +132,7 @@ class ModelProviderBudget(ProviderBudget):
 
 
 class ModelProviderSettings(ProviderSettings):
-    resource_type = ResourceType.MODEL
+    resource_type: ResourceType = ResourceType.MODEL
     credentials: ModelProviderCredentials
     budget: ModelProviderBudget
 
@@ -159,7 +159,7 @@ class ModelProvider(abc.ABC):
 class EmbeddingModelProviderModelInfo(ModelProviderModelInfo):
     """Struct for embedding model information."""
 
-    model_service = ModelProviderService.EMBEDDING
+    llm_service: ModelProviderService = ModelProviderService.EMBEDDING
     embedding_dimensions: int
 
 
@@ -196,7 +196,7 @@ class EmbeddingModelProvider(ModelProvider):
 class LanguageModelProviderModelInfo(ModelProviderModelInfo):
     """Struct for language model information."""
 
-    model_service = ModelProviderService.LANGUAGE
+    llm_service: ModelProviderService = ModelProviderService.LANGUAGE
     max_tokens: int
 
 
