@@ -447,7 +447,7 @@ def enter(agent_name, branch):
             json.dump(data, json_file, indent=4)
 
         # Create a commit with the specified message
-        subprocess.check_call(['git', 'add', f'agent/{agent_name}.json'])
+        subprocess.check_call(['git', 'add', f'arena/{agent_name}.json'])
         subprocess.check_call(['git', 'commit', '-m', f'{agent_name} entering the arena'])
 
         # Push the commit
@@ -527,7 +527,7 @@ def submit(agent_name, branch):
         subprocess.check_call(['git', 'checkout', 'arena_submission'])
 
         # Update the agent_name.json file in the arena folder with the new hash and timestamp
-        json_file_path = f'agent/{agent_name}.json'
+        json_file_path = f'arena/{agent_name}.json'
         with open(json_file_path, 'r') as json_file:
             data = json.load(json_file)
 
