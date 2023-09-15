@@ -12,7 +12,7 @@ def cli():
 
 @cli.command()
 def setup():
-    """Setup command"""
+    """Installs dependencies needed for your system. Works with Linux, MacOS and Windows WSL."""
     import os
     import subprocess
     script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -25,7 +25,7 @@ def setup():
 
 @cli.group()
 def agents():
-    """Agents group command"""
+    """Commands to create, start and stop agents"""
     pass
 
 @agents.command()
@@ -104,7 +104,7 @@ def list():
 
 @cli.group()
 def benchmark():
-    """Benchmark group command"""
+    """Commands to start the benchmark and list tests and categories"""
     pass
 
 @benchmark.command(context_settings=dict(
@@ -255,7 +255,7 @@ def benchmark_tests_details(test_name):
                 continue
 @cli.command()
 def frontend():
-    """Frontend command group"""
+    """Starts the frontend"""
     import os
     import subprocess
     import socket
