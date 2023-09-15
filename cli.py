@@ -458,8 +458,15 @@ def enter(agent_name, branch):
         if parent_repo:
             pr = parent_repo.create_pull(
                 title=f'{agent_name} entering the arena',
-                body='**Your Name:** \n\n**What you are working on:** \n\nPlease replace this text with your own introduction and a brief description of your work.',
+                body='''**Introduction:** 
+
+**Team Members:** 
+
+**What we are working on:** 
+
+Please replace this text with your own introduction, the names of your team members, and a brief description of your work.''',
                 head='arena_submission',
+
                 base=branch_to_use,
             )
             click.echo(click.style(f"🚀 {agent_name} has entered the arena! Please edit your PR description at the following URL: {pr.html_url}", fg='green'))
@@ -538,7 +545,13 @@ def submit(agent_name, branch):
         if parent_repo:
             parent_repo.create_pull(
                 title=f'{agent_name} submitting to the arena',
-                body='',
+                body='''**Introduction:** 
+
+**Team Members:** 
+
+**Changes made to the agent:** 
+
+Please replace this text with your own introduction, the names of your team members, a brief description of your work, and the changes you have made to your agent.''',
                 head='arena_submission',
                 base=branch,
             )
