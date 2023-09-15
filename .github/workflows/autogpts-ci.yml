@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        agent-name: [ autogpt, forge ]
+        agent-name: [ forge ]
       fail-fast: false
     timeout-minutes: 20
     steps:

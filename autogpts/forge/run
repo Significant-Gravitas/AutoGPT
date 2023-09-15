@@ -1,9 +1,11 @@
 #!/bin/bash
 
 kill $(lsof -t -i :8000)
+kill $(lsof -t -i :8080)
 poetry install
 if [ ! -f .env ]; then
   cp .env.example .env
   echo "Please add your api keys to the .env file."
 fi
 poetry run python -m forge &
+agbenchmark serve &
