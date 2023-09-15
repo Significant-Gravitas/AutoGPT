@@ -153,14 +153,14 @@ data objects. To set up a Weaviate database, check out their [Quickstart Tutoria
 
 Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded)
 is supported which allows the Auto-GPT process itself to start a Weaviate instance.
-To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip install "weaviate-client>=3.15.4"`.
+To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `poetry add weaviate-client@^3.15.4`.
 
 #### Install the Weaviate client
 
 Install the Weaviate client before usage.
 
 ```shell
-$ pip install weaviate-client
+$ poetry add weaviate-client
 ```
 
 #### Setting up environment variables
