@@ -12,6 +12,11 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+packages = [{ include = "autogpt" }]
+
+
+[tool.poetry.scripts]
+autogpt = "autogpt.app.cli:main"
 
 
 [tool.poetry.dependencies]
@@ -31,7 +36,7 @@ gTTS = "^2.3.1"
 inflection = "*"
 jsonschema = "*"
 markdown = "*"
-openai = "^0.28.0"
+openai = "^0.27.10"
 orjson = "^3.8.10"
 Pillow = "*"
 pinecone-client = "^2.2.1"
