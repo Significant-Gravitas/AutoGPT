@@ -1,36 +1,37 @@
-import re
+import contextlib
+import os
 import sys
+from importlib.metadata import version
 
-import pkg_resources
+try:
+    import poetry.factory
+except ModuleNotFoundError:
+    os.system(f"{sys.executable} -m pip install 'poetry>=1.6.1,<2.0.0'")
+
+from poetry.factory import Factory
+from poetry.core.constraints.version.version import Version
 
 
 def main():
-    requirements_file = sys.argv[1]
-    with open(requirements_file, "r") as f:
-        required_packages = [
-            line.strip().split("#")[0].strip() for line in f.readlines()
-        ]
-
-    installed_packages = {pkg.key: pkg.version for pkg in pkg_resources.working_set}
+    poetry_project = Factory().create_poetry()
+    # repository = poetry_project.locker.locked_repository()
+    # dependencies = repository.packages
+    dependency_group = poetry_project.package.dependency_group("main")
 
     missing_packages = []
-    for required_package in required_packages:
-        if not required_package:  # Skip empty lines
-            continue
-        pkg = pkg_resources.Requirement.parse(required_package)
-        if (
-            pkg.key not in installed_packages
-            or pkg_resources.parse_version(installed_packages[pkg.key])
-            not in pkg.specifier
-        ):
-            missing_packages.append(str(pkg))
+    for dep in dependency_group.dependencies:
+        # Try to verify that the installed version is suitable
+        with contextlib.suppress(ModuleNotFoundError):
+            installed_version = version(dep.name)   # if this fails -> not installed
+            if dep.constraint.allows(Version.parse(installed_version)):
+                continue
+        # If the above verification fails, mark the package as missing
+        missing_packages.append(str(dep))
 
     if missing_packages:
         print("Missing packages:")
         print(", ".join(missing_packages))
         sys.exit(1)
-    else:
-        print("All packages are installed.")
 
 
 if __name__ == "__main__":
