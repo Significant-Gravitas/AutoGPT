@@ -1,18 +1,26 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:auto_gpt_flutter_client/models/benchmark_service/api_type.dart';
 import 'package:http/http.dart' as http;
 
 class RestApiUtility {
-  String _baseUrl;
+  String _agentBaseUrl;
+  final String _benchmarkBaseUrl = "http://127.0.0.1:8080";
 
-  RestApiUtility(this._baseUrl);
+  RestApiUtility(this._agentBaseUrl);
 
   void updateBaseURL(String newBaseURL) {
-    _baseUrl = newBaseURL;
+    _agentBaseUrl = newBaseURL;
   }
 
-  Future<Map<String, dynamic>> get(String endpoint) async {
-    final response = await http.get(Uri.parse('$_baseUrl/$endpoint'));
+  String _getEffectiveBaseUrl(ApiType apiType) {
+    return apiType == ApiType.agent ? _agentBaseUrl : _benchmarkBaseUrl;
+  }
+
+  Future<Map<String, dynamic>> get(String endpoint,
+      {ApiType apiType = ApiType.agent}) async {
+    final effectiveBaseUrl = _getEffectiveBaseUrl(apiType);
+    final response = await http.get(Uri.parse('$effectiveBaseUrl/$endpoint'));
     if (response.statusCode == 200) {
       return json.decode(response.body);
     } else {
@@ -21,9 +29,11 @@ class RestApiUtility {
   }
 
   Future<Map<String, dynamic>> post(
-      String endpoint, Map<String, dynamic> payload) async {
+      String endpoint, Map<String, dynamic> payload,
+      {ApiType apiType = ApiType.agent}) async {
+    final effectiveBaseUrl = _getEffectiveBaseUrl(apiType);
     final response = await http.post(
-      Uri.parse('$_baseUrl/$endpoint'),
+      Uri.parse('$effectiveBaseUrl/$endpoint'),
       body: json.encode(payload),
       headers: {"Content-Type": "application/json"},
     );
@@ -34,9 +44,11 @@ class RestApiUtility {
     }
   }
 
-  Future<Uint8List> getBinary(String endpoint) async {
+  Future<Uint8List> getBinary(String endpoint,
+      {ApiType apiType = ApiType.agent}) async {
+    final effectiveBaseUrl = _getEffectiveBaseUrl(apiType);
     final response = await http.get(
-      Uri.parse('$_baseUrl/$endpoint'),
+      Uri.parse('$effectiveBaseUrl/$endpoint'),
       headers: {"Content-Type": "application/octet-stream"},
     );
 
