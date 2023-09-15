@@ -13,6 +13,7 @@ from helicone.lock import HeliconeLockManager
 
 from agbenchmark.utils.data_types import AgentBenchmarkConfig
 
+from agbenchmark.app import app
 from .reports.ReportManager import ReportManager
 from .utils.data_types import AgentBenchmarkConfig
 
@@ -305,6 +306,12 @@ def version():
     ]
     print(f"Benchmark Tool Version {version}")
 
+@cli.command()
+def serve():
+    import uvicorn
+
+    # Run the FastAPI application using uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
 
 if __name__ == "__main__":
     cli()
