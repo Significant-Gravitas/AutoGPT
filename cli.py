@@ -440,7 +440,7 @@ def enter(agent_name, branch):
             data["branch_to_benchmark"] = branch
 
         # Create agent directory if it does not exist
-        subprocess.check_call(['mkdir', '-p', 'agent'])
+        subprocess.check_call(['mkdir', '-p', 'arena'])
 
         # Create a JSON file with the data
         with open(f'arena/{agent_name}.json', 'w') as json_file:
