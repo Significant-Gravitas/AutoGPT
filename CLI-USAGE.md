@@ -19,10 +19,10 @@ Options:
   --help  Show this message and exit.
 
 Commands:
-  agents     Agents group command
-  benchmark  Benchmark group command
-  frontend   Frontend command group
-  setup      Setup command
+  agents     Commands to create, start and stop agents
+  benchmark  Commands to start the benchmark and list tests and categories
+  frontend   Starts the frontend
+  setup      Installs dependencies needed for your system.
 ```
 
 If you need assistance with any command, simply add the `--help` parameter to the end of your command, like so:
