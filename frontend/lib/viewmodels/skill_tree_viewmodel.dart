@@ -1,12 +1,16 @@
 import 'dart:convert';
+import 'package:auto_gpt_flutter_client/models/benchmark_service/report_request_body.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_edge.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
+import 'package:auto_gpt_flutter_client/services/benchmark_service.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:graphview/GraphView.dart';
 
 class SkillTreeViewModel extends ChangeNotifier {
+  final BenchmarkService benchmarkService;
+
   List<SkillTreeNode> _skillTreeNodes = [];
   List<SkillTreeEdge> _skillTreeEdges = [];
   SkillTreeNode? _selectedNode;
@@ -17,6 +21,8 @@ class SkillTreeViewModel extends ChangeNotifier {
 
   final Graph graph = Graph()..isTree = true;
   BuchheimWalkerConfiguration builder = BuchheimWalkerConfiguration();
+
+  SkillTreeViewModel(this.benchmarkService);
 
   Future<void> initializeSkillTree() async {
     try {
@@ -116,6 +122,26 @@ class SkillTreeViewModel extends ChangeNotifier {
     } catch (e) {
       print("Node with ID $nodeId not found: $e");
       return null;
+    }
+  }
+
+// TODO: Update to actual implementation
+  Future<void> callGenerateReport(ReportRequestBody reportRequestBody) async {
+    try {
+      final result = await benchmarkService.generateReport(reportRequestBody);
+      print("Report generated: $result");
+    } catch (e) {
+      print("Failed to generate report: $e");
+    }
+  }
+
+// TODO: Update to actual implementation
+  Future<void> callPollUpdates(int lastUpdateTime) async {
+    try {
+      final result = await benchmarkService.pollUpdates(lastUpdateTime);
+      print("Updates polled: $result");
+    } catch (e) {
+      print("Failed to poll updates: $e");
     }
   }
 
