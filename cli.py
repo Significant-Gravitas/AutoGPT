@@ -399,11 +399,12 @@ def enter(agent_name, branch):
             click.echo(click.style(f"⚠️  The agent '{agent_name}' has already entered the arena. Use './run arena submit' to update your submission.", fg='yellow'))
             return
     
-    # Check if there are uncommitted changes
+    # Check if there are staged or unstaged changes
     changes = subprocess.check_output(['git', 'status', '--porcelain']).decode('utf-8').strip()
     if changes:
-        click.echo(click.style(f"❌ There are uncommitted changes. Please commit or stash them and run the command again.", fg='red'))
+        click.echo(click.style(f"❌ There are staged or unstaged changes. Please commit or unstage them and run the command again.", fg='red'))
         return
+
 
     try:
         # Load GitHub access token from file
@@ -499,11 +500,12 @@ def submit(agent_name, branch):
             click.echo(click.style(f"❌ The agent '{agent_name}' has not yet entered the arena. Please enter the arena with './run arena enter'", fg='red'))
             return
 
-    # Check if there are uncommitted changes
+    # Check if there are staged or unstaged changes
     changes = subprocess.check_output(['git', 'status', '--porcelain']).decode('utf-8').strip()
     if changes:
-        click.echo(click.style(f"❌ There are uncommitted changes. Please commit or stash them and run the command again.", fg='red'))
+        click.echo(click.style(f"❌ There are staged or unstaged changes. Please commit or unstage them and run the command again.", fg='red'))
         return
+
     
     try:
         # Load GitHub access token from file
