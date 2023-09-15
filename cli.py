@@ -393,9 +393,18 @@ def enter(agent_name, branch):
 
         
         return
-    else:
-        click.echo(click.style(f"✅ The directory for agent '{agent_name}' exists in the autogpts directory.", fg='green'))
+    else:    
+        # Check if the agent has already entered the arena
+        if os.path.exists(f'arena/{agent_name}.json'):
+            click.echo(click.style(f"⚠️  The agent '{agent_name}' has already entered the arena. Use './run arena submit' to update your submission.", fg='yellow'))
+            return
     
+    # Check if there are uncommitted changes
+    changes = subprocess.check_output(['git', 'status', '--porcelain']).decode('utf-8').strip()
+    if changes:
+        click.echo(click.style(f"❌ There are uncommitted changes. Please commit or stash them and run the command again.", fg='red'))
+        return
+
     try:
         # Load GitHub access token from file
         with open('.github_access_token', 'r') as file:
@@ -412,6 +421,7 @@ def enter(agent_name, branch):
 
         # Get the commit hash of HEAD of the branch_to_use
         commit_hash_to_benchmark = subprocess.check_output(['git', 'rev-parse', branch_to_use]).decode('utf-8').strip()
+        
 
         # Create a new branch called arena_submission
         subprocess.check_call(['git', 'checkout', '-b', 'arena_submission'])
@@ -431,7 +441,7 @@ def enter(agent_name, branch):
         subprocess.check_call(['mkdir', '-p', 'agent'])
 
         # Create a JSON file with the data
-        with open(f'agent/{agent_name}.json', 'w') as json_file:
+        with open(f'arena/{agent_name}.json', 'w') as json_file:
             json.dump(data, json_file, indent=4)
 
         # Create a commit with the specified message
@@ -446,13 +456,13 @@ def enter(agent_name, branch):
         repo = g.get_repo(github_repo_url.split(':')[-1].split('.git')[0])
         parent_repo = repo.parent
         if parent_repo:
-            parent_repo.create_pull(
+            pr = parent_repo.create_pull(
                 title=f'{agent_name} entering the arena',
-                body='',
+                body='**Your Name:** \n\n**What you are working on:** \n\nPlease replace this text with your own introduction and a brief description of your work.',
                 head='arena_submission',
                 base=branch_to_use,
             )
-            click.echo(click.style(f"🚀 {agent_name} has entered the arena!", fg='green'))
+            click.echo(click.style(f"🚀 {agent_name} has entered the arena! Please edit your PR description at the following URL: {pr.html_url}", fg='green'))
         else:
             click.echo(click.style("❌ This repository does not have a parent repository to sync with.", fg='red'))
             return
@@ -471,6 +481,23 @@ def submit(agent_name, branch):
     from github import Github
     from datetime import datetime
     import json
+    agent_dir = f'./autogpts/{agent_name}'
+    if not os.path.exists(agent_dir):
+        click.echo(click.style(f"❌ The directory for agent '{agent_name}' does not exist in the autogpts directory.", fg='red'))
+        click.echo(click.style(f"🚀 Run './run agents create {agent_name}' to create the agent. Then you can enter the arena with ./run arena enter", fg='yellow'))
+        return
+    else:    
+        # Check if the agent has already entered the arena
+        if not os.path.exists(f'arena/{agent_name}.json'):
+            click.echo(click.style(f"❌ The agent '{agent_name}' has not yet entered the arena. Please enter the arena with './run arena enter'", fg='red'))
+            return
+
+    # Check if there are uncommitted changes
+    changes = subprocess.check_output(['git', 'status', '--porcelain']).decode('utf-8').strip()
+    if changes:
+        click.echo(click.style(f"❌ There are uncommitted changes. Please commit or stash them and run the command again.", fg='red'))
+        return
+    
     try:
         # Load GitHub access token from file
         with open('.github_access_token', 'r') as file:
