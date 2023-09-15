@@ -161,7 +161,8 @@ openai/
 # news
 CURRENT_BULLETIN.md
 
-agbenchmark
+agbenchmark_config/workspace
+agbenchmark_config/reports
 *.sqlite
 .agbench
 .agbenchmark
