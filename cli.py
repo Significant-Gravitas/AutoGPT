@@ -42,7 +42,7 @@ def create(agent_name):
         new_agent_dir = f'./autogpts/{agent_name}'
         if not os.path.exists(new_agent_dir):
             shutil.copytree('./autogpts/forge', new_agent_dir)
-            click.echo(click.style(f"🎉 New agent '{agent_name}' created and switched to the new directory in autogpts folder.", fg='green'))
+            click.echo(click.style(f"🎉 New agent '{agent_name}' created. The code for your new agent is in: autogpts/{agent_name}", fg='green'))
         else:
             click.echo(click.style(f"😞 Agent '{agent_name}' already exists. Enter a different name for your agent", fg='red'))
     except Exception as e:
