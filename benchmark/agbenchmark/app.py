@@ -44,8 +44,9 @@ app.add_middleware(
 
 general_command = ["poetry", "run", "agbenchmark", "start", "--backend"]
 class CreateReportRequest(BaseModel):
-    tests: List[str]
-    category: str
+    tests: Optional[List[str]]
+    category: Optional[str]
+
 
 updates_list = []
 
