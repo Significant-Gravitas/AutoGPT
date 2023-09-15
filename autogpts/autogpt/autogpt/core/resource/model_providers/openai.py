@@ -276,7 +276,7 @@ async def _create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
 
     Args:
         text str: The text to embed.
-        model_name str: The name of the model to use.
+        model str: The name of the model to use.
 
     Returns:
         str: The embedding.
