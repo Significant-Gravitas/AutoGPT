@@ -391,7 +391,7 @@ def enter(agent_name, branch):
     agent_dir = f'./autogpts/{agent_name}'
     if not os.path.exists(agent_dir):
         click.echo(click.style(f"❌ The directory for agent '{agent_name}' does not exist in the autogpts directory.", fg='red'))
-        click.echo(click.style(f"🚀 Run './run agents create {agent_name}' to create the agent.", fg='yellow'))
+        click.echo(click.style(f"🚀 Run './run agent create {agent_name}' to create the agent.", fg='yellow'))
         
         return
     else:    
@@ -497,7 +497,7 @@ def submit(agent_name, branch):
     agent_dir = f'./autogpts/{agent_name}'
     if not os.path.exists(agent_dir):
         click.echo(click.style(f"❌ The directory for agent '{agent_name}' does not exist in the autogpts directory.", fg='red'))
-        click.echo(click.style(f"🚀 Run './run agents create {agent_name}' to create the agent. Then you can enter the arena with ./run arena enter", fg='yellow'))
+        click.echo(click.style(f"🚀 Run './run agent create {agent_name}' to create the agent. Then you can enter the arena with ./run arena enter", fg='yellow'))
         return
     
 
