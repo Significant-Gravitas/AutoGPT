@@ -1,12 +1,16 @@
-import 'package:auto_gpt_flutter_client/viewmodels/api_settings_viewmodel.dart';
-import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:flutter/material.dart';
 import 'views/main_layout.dart';
 import 'package:provider/provider.dart';
+
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/api_settings_viewmodel.dart';
+
 import 'package:auto_gpt_flutter_client/services/chat_service.dart';
 import 'package:auto_gpt_flutter_client/services/task_service.dart';
+import 'package:auto_gpt_flutter_client/services/benchmark_service.dart';
+
 import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
 
 // TODO: Update documentation throughout project for consistency
@@ -24,6 +28,10 @@ void main() {
         ProxyProvider<RestApiUtility, TaskService>(
           update: (context, restApiUtility, taskService) =>
               TaskService(restApiUtility),
+        ),
+        ProxyProvider<RestApiUtility, BenchmarkService>(
+          update: (context, restApiUtility, taskService) =>
+              BenchmarkService(restApiUtility),
         ),
         ChangeNotifierProxyProvider<RestApiUtility, ApiSettingsViewModel>(
           create: (context) => ApiSettingsViewModel(
@@ -43,6 +51,8 @@ class MyApp extends StatelessWidget {
     // Fetch services from providers
     final chatService = Provider.of<ChatService>(context, listen: false);
     final taskService = Provider.of<TaskService>(context, listen: false);
+    final benchmarkService =
+        Provider.of<BenchmarkService>(context, listen: false);
     taskService.loadDeletedTasks();
 
     return MaterialApp(
@@ -57,7 +67,7 @@ class MyApp extends StatelessWidget {
           ChangeNotifierProvider(
               create: (context) => TaskViewModel(taskService)),
           ChangeNotifierProvider(
-            create: (context) => SkillTreeViewModel(),
+            create: (context) => SkillTreeViewModel(benchmarkService),
           ),
         ],
         child: MainLayout(),
