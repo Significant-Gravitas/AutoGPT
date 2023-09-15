@@ -12,7 +12,8 @@ from openai.util import logger as openai_logger
 if TYPE_CHECKING:
     from autogpt.config import Config
 
-from .filters import BelowLevelFilter
+from autogpt.core.runner.client_lib.logging import BelowLevelFilter
+
 from .formatters import AutoGptFormatter
 from .handlers import TTSHandler, TypingConsoleHandler
 
