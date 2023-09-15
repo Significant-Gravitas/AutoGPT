@@ -168,3 +168,4 @@ cython_debug/
 secrets.json
 challenges_already_beaten.json
 agbenchmark_config/challenges/pri_*
+updates.json
