@@ -51,5 +51,3 @@ elif [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" ==
 else
     echo "Unsupported OS. Please install Google Chrome manually from https://www.google.com/chrome/"
 fi
-
-echo "Installation has been completed."
