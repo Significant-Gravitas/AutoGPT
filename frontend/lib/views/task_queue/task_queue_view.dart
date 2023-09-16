@@ -13,6 +13,10 @@ class TaskQueueView extends StatelessWidget {
     final reversedHierarchy =
         viewModel.selectedNodeHierarchy?.reversed.toList() ?? [];
 
+    // Convert reversedHierarchy to a list of test names
+    final List<String> testNames =
+        reversedHierarchy.map((node) => node.data.name).toList();
+
     return Material(
       color: Colors.white,
       child: Stack(
@@ -49,8 +53,8 @@ class TaskQueueView extends StatelessWidget {
                 onPressed: () {
                   // Create a ReportRequestBody with hardcoded values
                   ReportRequestBody reportRequestBody = ReportRequestBody(
-                    category: "coding",
-                    tests: [],
+                    category: "",
+                    tests: testNames,
                     mock: true,
                   );
 
