@@ -4,10 +4,9 @@ version = "0.1.0"
 description = ""
 authors = ["Merwane Hamadi <merwanehamadi@gmail.com>"]
 readme = "README.md"
-packages = [{include = "auto_gpt"}]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 
 
 [build-system]
