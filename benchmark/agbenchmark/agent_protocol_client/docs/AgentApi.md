@@ -1,4 +1,4 @@
-# agent_protocol_client.AgentApi
+# agbenchmark.agent_protocol_client.AgentApi
 
 All URIs are relative to _http://localhost_
 
@@ -26,23 +26,23 @@ Creates a task for the agent.
 import time
 import os
 import agent_protocol_client
-from agent_protocol_client.models.task import Task
-from agent_protocol_client.models.task_request_body import TaskRequestBody
-from agent_protocol_client.rest import ApiException
+from agbenchmark.agent_protocol_client.models.task import Task
+from agbenchmark.agent_protocol_client.models.task_request_body import TaskRequestBody
+from agbenchmark.agent_protocol_client.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = agent_protocol_client.Configuration(
+configuration = agbenchmark.agent_protocol_client.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with agent_protocol_client.ApiClient(configuration) as api_client:
+async with agbenchmark.agent_protocol_client.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = agent_protocol_client.AgentApi(api_client)
-    task_request_body = agent_protocol_client.TaskRequestBody() # TaskRequestBody |  (optional)
+    api_instance = agbenchmark.agent_protocol_client.AgentApi(api_client)
+    task_request_body = agbenchmark.agent_protocol_client.TaskRequestBody() # TaskRequestBody |  (optional)
 
     try:
         # Creates a task for the agent.
@@ -93,20 +93,20 @@ Download a specified artifact.
 import time
 import os
 import agent_protocol_client
-from agent_protocol_client.rest import ApiException
+from agbenchmark.agent_protocol_client.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = agent_protocol_client.Configuration(
+configuration = agbenchmark.agent_protocol_client.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with agent_protocol_client.ApiClient(configuration) as api_client:
+async with agbenchmark.agent_protocol_client.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = agent_protocol_client.AgentApi(api_client)
+    api_instance = agbenchmark.agent_protocol_client.AgentApi(api_client)
     task_id = 'task_id_example' # str | ID of the task
     artifact_id = 'artifact_id_example' # str | ID of the artifact
 
@@ -160,24 +160,24 @@ Execute a step in the specified agent task.
 import time
 import os
 import agent_protocol_client
-from agent_protocol_client.models.step import Step
-from agent_protocol_client.models.step_request_body import StepRequestBody
-from agent_protocol_client.rest import ApiException
+from agbenchmark.agent_protocol_client.models.step import Step
+from agbenchmark.agent_protocol_client.models.step_request_body import StepRequestBody
+from agbenchmark.agent_protocol_client.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = agent_protocol_client.Configuration(
+configuration = agbenchmark.agent_protocol_client.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with agent_protocol_client.ApiClient(configuration) as api_client:
+async with agbenchmark.agent_protocol_client.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = agent_protocol_client.AgentApi(api_client)
+    api_instance = agbenchmark.agent_protocol_client.AgentApi(api_client)
     task_id = 'task_id_example' # str | ID of the task
-    step_request_body = agent_protocol_client.StepRequestBody() # StepRequestBody |  (optional)
+    step_request_body = agbenchmark.agent_protocol_client.StepRequestBody() # StepRequestBody |  (optional)
 
     try:
         # Execute a step in the specified agent task.
@@ -229,21 +229,21 @@ Get details about a specified agent task.
 import time
 import os
 import agent_protocol_client
-from agent_protocol_client.models.task import Task
-from agent_protocol_client.rest import ApiException
+from agbenchmark.agent_protocol_client.models.task import Task
+from agbenchmark.agent_protocol_client.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = agent_protocol_client.Configuration(
+configuration = agbenchmark.agent_protocol_client.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with agent_protocol_client.ApiClient(configuration) as api_client:
+async with agbenchmark.agent_protocol_client.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = agent_protocol_client.AgentApi(api_client)
+    api_instance = agbenchmark.agent_protocol_client.AgentApi(api_client)
     task_id = 'task_id_example' # str | ID of the task
 
     try:
@@ -295,21 +295,21 @@ Get details about a specified task step.
 import time
 import os
 import agent_protocol_client
-from agent_protocol_client.models.step import Step
-from agent_protocol_client.rest import ApiException
+from agbenchmark.agent_protocol_client.models.step import Step
+from agbenchmark.agent_protocol_client.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = agent_protocol_client.Configuration(
+configuration = agbenchmark.agent_protocol_client.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with agent_protocol_client.ApiClient(configuration) as api_client:
+async with agbenchmark.agent_protocol_client.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = agent_protocol_client.AgentApi(api_client)
+    api_instance = agbenchmark.agent_protocol_client.AgentApi(api_client)
     task_id = 'task_id_example' # str | ID of the task
     step_id = 'step_id_example' # str | ID of the step
 
@@ -363,21 +363,21 @@ List all artifacts that have been created for the given task.
 import time
 import os
 import agent_protocol_client
-from agent_protocol_client.models.artifact import Artifact
-from agent_protocol_client.rest import ApiException
+from agbenchmark.agent_protocol_client.models.artifact import Artifact
+from agbenchmark.agent_protocol_client.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = agent_protocol_client.Configuration(
+configuration = agbenchmark.agent_protocol_client.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with agent_protocol_client.ApiClient(configuration) as api_client:
+async with agbenchmark.agent_protocol_client.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = agent_protocol_client.AgentApi(api_client)
+    api_instance = agbenchmark.agent_protocol_client.AgentApi(api_client)
     task_id = 'task_id_example' # str | ID of the task
 
     try:
@@ -429,20 +429,20 @@ List all steps for the specified task.
 import time
 import os
 import agent_protocol_client
-from agent_protocol_client.rest import ApiException
+from agbenchmark.agent_protocol_client.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = agent_protocol_client.Configuration(
+configuration = agbenchmark.agent_protocol_client.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with agent_protocol_client.ApiClient(configuration) as api_client:
+async with agbenchmark.agent_protocol_client.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = agent_protocol_client.AgentApi(api_client)
+    api_instance = agbenchmark.agent_protocol_client.AgentApi(api_client)
     task_id = 'task_id_example' # str | ID of the task
 
     try:
@@ -494,20 +494,20 @@ List all tasks that have been created for the agent.
 import time
 import os
 import agent_protocol_client
-from agent_protocol_client.rest import ApiException
+from agbenchmark.agent_protocol_client.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = agent_protocol_client.Configuration(
+configuration = agbenchmark.agent_protocol_client.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with agent_protocol_client.ApiClient(configuration) as api_client:
+async with agbenchmark.agent_protocol_client.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = agent_protocol_client.AgentApi(api_client)
+    api_instance = agbenchmark.agent_protocol_client.AgentApi(api_client)
 
     try:
         # List all tasks that have been created for the agent.
@@ -556,21 +556,21 @@ Upload an artifact for the specified task.
 import time
 import os
 import agent_protocol_client
-from agent_protocol_client.models.artifact import Artifact
-from agent_protocol_client.rest import ApiException
+from agbenchmark.agent_protocol_client.models.artifact import Artifact
+from agbenchmark.agent_protocol_client.rest import ApiException
 from pprint import pprint
 
 # Defining the host is optional and defaults to http://localhost
 # See configuration.py for a list of all supported configuration parameters.
-configuration = agent_protocol_client.Configuration(
+configuration = agbenchmark.agent_protocol_client.Configuration(
     host = "http://localhost"
 )
 
 
 # Enter a context with an instance of the API client
-async with agent_protocol_client.ApiClient(configuration) as api_client:
+async with agbenchmark.agent_protocol_client.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = agent_protocol_client.AgentApi(api_client)
+    api_instance = agbenchmark.agent_protocol_client.AgentApi(api_client)
     task_id = 'task_id_example' # str | ID of the task
     file = None # bytearray | File to upload.
     relative_path = 'relative_path_example' # str | Relative path of the artifact in the agent's workspace. (optional)
