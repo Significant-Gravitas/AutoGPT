@@ -659,8 +659,7 @@ def enter(agent_name, branch):
 
         arena_submission_branch = f"arena_submission_{agent_name}"
         # Create a new branch called arena_submission_{agent_name}
-        # subprocess.check_call(['git', 'checkout', '-b', arena_submission_branch])
-        subprocess.check_call(["git", "checkout", arena_submission_branch])
+        subprocess.check_call(['git', 'checkout', '-b', arena_submission_branch])
         # Create a dictionary with the necessary fields
         data = {
             "github_repo_url": github_repo_url,
@@ -731,7 +730,7 @@ Hey there amazing builders! We're thrilled to have you join this exciting journe
 - [ ] We confirm that our project will be open-source and adhere to the MIT License.
 - [ ] Our lablab.ai registration email matches our OpenAI account to claim the bonus credits (if applicable).
 """,
-                head=f"arena_submission_{agent_name}",
+                head=f'{repo.owner.login}:{arena_submission_branch}',
                 base=branch_to_use,
             )
             click.echo(
