@@ -15,7 +15,7 @@
 import io
 import re  # noqa: F401
 import warnings
-from typing import Awaitable, List, Optional, Union, overload, Any
+from typing import Any, Awaitable, List, Optional, Union, overload
 
 from pydantic import Field, StrictBytes, StrictStr, ValidationError, validate_arguments
 from typing_extensions import Annotated

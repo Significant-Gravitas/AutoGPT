@@ -1,11 +1,13 @@
-import sys
+import json
+import os
 import time
 from typing import Any, Dict, Optional
 
-from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH
+from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH, UPDATES_JSON_PATH
 from agbenchmark.agent_interface import get_list_of_file_paths
 from agbenchmark.utils.data_types import ChallengeData
 from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
+from agent_protocol_client.models.step import Step
 
 
 async def run_api_agent(
@@ -31,7 +33,11 @@ async def run_api_agent(
         i = 1
         steps_remaining = True
         while steps_remaining:
+            # Read the existing JSON data from the file
+
             step = await api_instance.execute_agent_task_step(task_id=task_id)
+            await append_updates_file(step)
+
             print(f"[{task.name}] - step {step.name} ({i}. request)")
             i += 1
 
@@ -39,8 +45,12 @@ async def run_api_agent(
                 raise TimeoutError("Time limit exceeded")
             if not step or step.is_last:
                 steps_remaining = False
+            if os.getenv("IS_MOCK"):
+                time.sleep(
+                    1
+                )  # will help with the integration og the "polling updates" features since mock agent is too fast.
         # if we're calling a mock agent, we "cheat" and give the correct artifacts to pass the tests
-        if "--mock" in sys.argv:
+        if os.getenv("IS_MOCK"):
             await upload_artifacts(
                 api_instance, artifacts_location, task_id, "artifacts_out"
             )
@@ -60,6 +70,18 @@ async def run_api_agent(
                 f.write(content)
 
 
+async def append_updates_file(step: Step):
+    with open(UPDATES_JSON_PATH, "r") as file:
+        existing_data = json.load(file)
+    # Append the new update to the existing array
+    new_update = create_update_json(step)
+
+    existing_data.append(new_update)
+    # Write the updated array back to the file
+    with open(UPDATES_JSON_PATH, "w") as file:
+        file.write(json.dumps(existing_data, indent=2))
+
+
 async def upload_artifacts(
     api_instance: ApiClient, artifacts_location: str, task_id: str, type: str
 ) -> None:
@@ -73,3 +95,10 @@ async def upload_artifacts(
         await api_instance.upload_agent_task_artifacts(
             task_id=task_id, file=file_path, relative_path=relative_path
         )
+
+
+def create_update_json(step: Step):
+    now = int(time.time())
+    content = {"content": step.to_dict(), "timestamp": now}
+
+    return content

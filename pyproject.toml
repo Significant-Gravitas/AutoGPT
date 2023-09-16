@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "auto-gpt"
+version = "0.1.0"
+description = ""
+authors = ["Merwane Hamadi <merwanehamadi@gmail.com>"]
+readme = "README.md"
+packages = [{include = "auto_gpt"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

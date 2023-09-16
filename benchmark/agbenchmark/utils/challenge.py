@@ -146,7 +146,7 @@ class Challenge(ABC):
 
     def llm_eval(self, config: Dict[str, Any], content: str, ground: Ground) -> float:
         openai.api_key = os.getenv("OPENAI_API_KEY")
-        if "--mock" in sys.argv:
+        if os.getenv("IS_MOCK"):
             return 1.0
 
         # the validation for this is done in the Eval BaseModel
@@ -173,7 +173,7 @@ class Challenge(ABC):
         percentage = None
         answers = {}
         try:
-            if self.data.task == "" and "--mock" in sys.argv:
+            if self.data.task == "" and os.getenv("IS_MOCK"):
                 scores = [1.0]
                 answers = {"mock": "This is a mock answer"}
             elif isinstance(self.data.ground, Ground):
