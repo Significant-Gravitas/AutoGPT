@@ -10,8 +10,10 @@ from typing import Any, Dict, Optional
 
 import pytest
 
+from agbenchmark.agent_api_interface import append_updates_file
 from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import AgentBenchmarkConfig, ChallengeData
+from agent_protocol_client.models.step import Step
 
 DATA_CATEGORY = {}
 
@@ -82,7 +84,24 @@ def create_single_test(
         )
         del scores["answers"]  # remove answers from scores
         request.node.scores = scores  # store scores in request.node
-        assert 1 in scores["values"]
+        is_score_100 = 1 in scores["values"]
+
+        evaluation = "Correct!" if is_score_100 else "Incorrect."
+        eval_step = Step(
+            input=evaluation,
+            additional_input=None,
+            task_id="irrelevant, this step is a hack",
+            step_id="irrelevant, this step is a hack",
+            name="",
+            status="created",
+            output=None,
+            additional_output=None,
+            artifacts=[],
+            is_last=True,
+        )
+        await append_updates_file(eval_step)
+
+        assert is_score_100
 
     # Parametrize the method here
     test_method = pytest.mark.parametrize(

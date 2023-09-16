@@ -23,7 +23,7 @@ def get_previous_test_results(
     test_name: str, info_details: dict[str, Any]
 ) -> list[bool]:
     agent_tests: dict[str, list[bool]] = {}
-    mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
+    mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
 
     prev_test_results = INTERNAL_INFO_MANAGER.tests.get(test_name, [])
 
@@ -93,7 +93,7 @@ def generate_single_call_report(
     if "metadata" in challenge_data:
         info_details["metadata"] = challenge_data["metadata"]
 
-    mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
+    mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
 
     if call.excinfo is None:
         info_details["metrics"]["success"] = True

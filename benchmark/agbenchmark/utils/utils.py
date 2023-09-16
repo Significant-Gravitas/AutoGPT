@@ -6,7 +6,6 @@ from typing import Any, List, Optional
 
 from dotenv import load_dotenv
 
-
 load_dotenv()
 from agbenchmark.utils.data_types import DIFFICULTY_MAP, DifficultyLevel
 
