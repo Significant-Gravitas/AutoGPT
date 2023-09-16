@@ -192,8 +192,12 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
                 continue
 
         # --test flag, only run the test if it's the exact one specified
-        test_flag = "--test" in commands
-        if test_flag and data["name"] not in commands:
+        tests = []
+        for command in commands:
+            if command.startswith("--test="):
+                tests.append(command.split("=")[1])
+
+        if tests and data["name"] not in tests:
             continue
 
         # --maintain and --improve flag
