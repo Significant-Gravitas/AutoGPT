@@ -17,11 +17,10 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
-from typing import List
 
 from pydantic import BaseModel, Field, StrictStr, conlist
 
-from agent_protocol_client.models.artifact import Artifact
+from agbenchmark.agent_protocol_client.models.artifact import Artifact
 
 
 class TaskAllOf(BaseModel):

@@ -31,7 +31,6 @@ fastapi = "^0.99.0"
 python-multipart = "^0.0.6"
 toml = "^0.10.2"
 helicone = "^1.0.9"
-agent-protocol-client= { path = "agent_protocol_client" }
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"

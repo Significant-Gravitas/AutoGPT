@@ -17,20 +17,20 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
-from typing import Optional
 
-from pydantic import BaseModel, Field, StrictStr
+from pydantic import BaseModel
+
+from agbenchmark.agent_protocol_client.models.artifact import Artifact
+from agbenchmark.agent_protocol_client.models.pagination import Pagination
 
 
-class Pagination(BaseModel):
+class Artifacts(BaseModel):
     """
-    Pagination that the task has produced.
+    Artifacts that the task has produced.
     """
 
-    total_items: int
-    total_pages: int
-    current_page: int
-    page_size: int
+    artifacts: list[Artifact]
+    pagination: Pagination
 
     class Config:
         """Pydantic configuration"""
@@ -47,8 +47,8 @@ class Pagination(BaseModel):
         return json.dumps(self.to_dict())
 
     @classmethod
-    def from_json(cls, json_str: str) -> Pagination:
-        """Create an instance of Pagination from a JSON string"""
+    def from_json(cls, json_str: str) -> Artifacts:
+        """Create an instance of Artifacts from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self):
@@ -57,20 +57,21 @@ class Pagination(BaseModel):
         return _dict
 
     @classmethod
-    def from_dict(cls, obj: dict) -> Pagination:
-        """Create an instance of Pagination from a dict"""
+    def from_dict(cls, obj: dict) -> Artifacts:
+        """Create an instance of Artifacts from a dict"""
         if obj is None:
             return None
 
         if not isinstance(obj, dict):
-            return Pagination.parse_obj(obj)
+            return Artifacts.parse_obj(obj)
 
-        _obj = Pagination.parse_obj(
+        _obj = Artifacts.parse_obj(
             {
-                "total_items": obj.get("total_items"),
-                "total_pages": obj.get("total_pages"),
-                "current_page": obj.get("current_page"),
-                "page_size": obj.get("page_size"),
+                "artifacts": obj.get("artifacts"),
+                "pagination": obj.get("pagination"),
             }
         )
         return _obj
+
+
+Artifacts.update_forward_refs()

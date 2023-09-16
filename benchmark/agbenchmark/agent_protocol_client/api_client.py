@@ -24,11 +24,11 @@ from urllib.parse import quote
 
 from dateutil.parser import parse
 
-import agent_protocol_client.models
-from agent_protocol_client import rest
-from agent_protocol_client.api_response import ApiResponse
-from agent_protocol_client.configuration import Configuration
-from agent_protocol_client.exceptions import ApiException, ApiValueError
+import agbenchmark.agent_protocol_client.models
+from agbenchmark.agent_protocol_client import rest
+from agbenchmark.agent_protocol_client.api_response import ApiResponse
+from agbenchmark.agent_protocol_client.configuration import Configuration
+from agbenchmark.agent_protocol_client.exceptions import ApiException, ApiValueError
 
 
 class ApiClient(object):
@@ -362,7 +362,7 @@ class ApiClient(object):
             if klass in self.NATIVE_TYPES_MAPPING:
                 klass = self.NATIVE_TYPES_MAPPING[klass]
             else:
-                klass = getattr(agent_protocol_client.models, klass)
+                klass = getattr(agbenchmark.agent_protocol_client.models, klass)
 
         if klass in self.PRIMITIVE_TYPES:
             return self.__deserialize_primitive(data, klass)
