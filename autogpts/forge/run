@@ -2,6 +2,14 @@
 
 kill $(lsof -t -i :8000)
 kill $(lsof -t -i :8080)
+ENV_PATH=$(poetry env info --path)
+if [ -d "$ENV_PATH" ]; then
+    rm -rf $ENV_PATH
+    echo "Removed the poetry environment at $ENV_PATH."
+else
+    echo "No poetry environment found."
+fi
+
 poetry install
 if [ ! -f .env ]; then
   cp .env.example .env
@@ -9,4 +17,4 @@ if [ ! -f .env ]; then
 fi
 poetry run python -m forge &
 
-agbenchmark serve & #voluntarily not using poetry run so that it runs in editable mode
+poetry run agbenchmark serve &
