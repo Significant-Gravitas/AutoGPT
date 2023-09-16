@@ -85,14 +85,17 @@ class ReportManager:
             },
         }
 
-        converted_data = Report.parse_obj(self.tests)
+        try:
+            converted_data = Report.parse_obj(self.tests)
+        except:
+            test = "ok"
 
         agent_categories = get_agent_category(converted_data)
-
-        save_single_radar_chart(
-            agent_categories,
-            config.get_reports_path(self.benchmark_start_time) / "radar_chart.png",
-        )
+        if len(agent_categories) > 1:
+            save_single_radar_chart(
+                agent_categories,
+                config.get_reports_path(self.benchmark_start_time) / "radar_chart.png",
+            )
 
         self.save()
 
@@ -100,12 +103,15 @@ class ReportManager:
         total_cost = 0
         all_costs_none = True
         for test_name, test_data in self.tests.items():
-            cost = test_data["metrics"].get(
-                "cost", 0
-            )  # gets the cost or defaults to 0 if cost is missing
-            if cost is not None:  # check if cost is not None
-                all_costs_none = False
-                total_cost += cost  # add cost to total
+            try:
+                cost = test_data["metrics"].get(
+                    "cost", 0
+                )  # gets the cost or defaults to 0 if cost is missing
+                if cost is not None:  # check if cost is not None
+                    all_costs_none = False
+                    total_cost += cost  # add cost to total
+            except:
+                test = "ok"
         if all_costs_none:
             total_cost = None
         return total_cost

@@ -26,11 +26,11 @@ class Pagination(BaseModel):
     """
     Pagination that the task has produced.
     """
+
     total_items: int
     total_pages: int
     current_page: int
     page_size: int
-
 
     class Config:
         """Pydantic configuration"""

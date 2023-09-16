@@ -35,7 +35,7 @@ class Artifact(BaseModel):
     __properties = ["artifact_id", "file_name", "relative_path"]
     created_at: StrictStr = Field(..., description="Creation date of the artifact.")
     # modified_at: StrictStr = Field(..., description="Modification date of the artifact.")
-    agent_created: bool = Field( ..., description="True if created by the agent")
+    agent_created: bool = Field(..., description="True if created by the agent")
 
     class Config:
         """Pydantic configuration"""

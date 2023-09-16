@@ -166,6 +166,6 @@ cython_debug/
 .DS_Store
 ```
 secrets.json
-challenges_already_beaten.json
+agbenchmark_config/challenges_already_beaten.json
 agbenchmark_config/challenges/pri_*
-updates.json
+agbenchmark_config/updates.json

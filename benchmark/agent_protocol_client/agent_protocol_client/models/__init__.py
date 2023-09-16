@@ -17,7 +17,6 @@
 from agent_protocol_client.models.artifact import Artifact
 from agent_protocol_client.models.artifacts import Artifacts
 from agent_protocol_client.models.pagination import Pagination
-
 from agent_protocol_client.models.step import Step
 from agent_protocol_client.models.step_all_of import StepAllOf
 from agent_protocol_client.models.step_request_body import StepRequestBody
