@@ -1,3 +1,9 @@
+"""
+This is a minimal file intended to be run by users to help them manage the autogpt projects.
+
+If you want to contribute, please use only libraries that come as part of Python. 
+To ensure efficiency, add the imports to the functions so only what is needed is imported.
+"""
 try:
     import click
     import github
@@ -20,11 +26,28 @@ def setup():
     import os
     import subprocess
 
+    click.echo(
+        click.style(
+            """
+       d8888          888             .d8888b.  8888888b. 88888888888 
+      d88888          888            d88P  Y88b 888   Y88b    888     
+     d88P888          888            888    888 888    888    888     
+    d88P 888 888  888 888888 .d88b.  888        888   d88P    888     
+   d88P  888 888  888 888   d88""88b 888  88888 8888888P"     888     
+  d88P   888 888  888 888   888  888 888    888 888           888     
+ d8888888888 Y88b 888 Y88b. Y88..88P Y88b  d88P 888           888     
+d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888     
+                                                                                                                                       
+""",
+            fg="green",
+        )
+    )
+
     script_dir = os.path.dirname(os.path.realpath(__file__))
     setup_script = os.path.join(script_dir, "setup.sh")
     if os.path.exists(setup_script):
+        click.echo(click.style("🚀 Setup initiated...\n", fg="green"))
         subprocess.Popen([setup_script], cwd=script_dir)
-        click.echo(click.style("🚀 Setup initiated", fg="green"))
     else:
         click.echo(
             click.style(
