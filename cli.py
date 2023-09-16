@@ -582,7 +582,19 @@ def enter(agent_name, branch):
         return
     else:
         # Check if the agent has already entered the arena
-        if os.path.exists(f"arena/{agent_name}.json"):
+        try:
+            subprocess.check_output(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    "--quiet",
+                    f"arena_submission_{agent_name}",
+                ]
+            )
+        except subprocess.CalledProcessError:
+            pass
+        else:
             click.echo(
                 click.style(
                     f"⚠️  The agent '{agent_name}' has already entered the arena. To update your submission, follow these steps:",
@@ -644,6 +656,13 @@ def enter(agent_name, branch):
             .strip()
         )
 
+        if github_repo_url.startswith("git@"):
+            github_repo_url = (
+                github_repo_url.replace("git@", "https://")
+                .replace(".git", "")
+                .replace(":", "/")
+            )
+
         # If --branch is passed, use it instead of master
         if branch:
             branch_to_use = branch
@@ -659,7 +678,7 @@ def enter(agent_name, branch):
 
         arena_submission_branch = f"arena_submission_{agent_name}"
         # Create a new branch called arena_submission_{agent_name}
-        subprocess.check_call(['git', 'checkout', '-b', arena_submission_branch])
+        subprocess.check_call(["git", "checkout", "-b", arena_submission_branch])
         # Create a dictionary with the necessary fields
         data = {
             "github_repo_url": github_repo_url,
@@ -703,7 +722,7 @@ Hey there amazing builders! We're thrilled to have you join this exciting journe
 
 - **Agent Name:** {agent_name}
 - **Team Members:** (Who are the amazing minds behind this team? Do list everyone along with their roles!)
-- **Repository Link:** (Do share the link where all the magic is happening)
+- **Repository Link:** [{github_repo_url.replace('https://github.com/', '')}]({github_repo_url})
 
 #### 🌟 Project Vision
 
@@ -730,7 +749,7 @@ Hey there amazing builders! We're thrilled to have you join this exciting journe
 - [ ] We confirm that our project will be open-source and adhere to the MIT License.
 - [ ] Our lablab.ai registration email matches our OpenAI account to claim the bonus credits (if applicable).
 """,
-                head=f'{repo.owner.login}:{arena_submission_branch}',
+                head=f"{repo.owner.login}:{arena_submission_branch}",
                 base=branch_to_use,
             )
             click.echo(
@@ -755,6 +774,7 @@ Hey there amazing builders! We're thrilled to have you join this exciting journe
         click.echo(click.style(f"❌ An error occurred: {e}", fg="red"))
         # Switch back to the master branch
         subprocess.check_call(["git", "checkout", branch_to_use])
+
 
 @arena.command()
 @click.argument("agent_name")
@@ -783,7 +803,7 @@ def update(agent_name, hash, branch):
             )
         )
         return
-    
+
     if not os.path.exists(agent_json_file):
         click.echo(
             click.style(
