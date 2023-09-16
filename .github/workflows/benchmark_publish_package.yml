@@ -25,13 +25,17 @@ jobs:
       run: |
         curl -sSL https://install.python-poetry.org | python3 -
         echo "$HOME/.poetry/bin" >> $GITHUB_PATH
+    
     - name: Build project for distribution
+      working-directory: ./benchmark/
       run: poetry build
 
     - name: Install dependencies
       working-directory: ./benchmark/
       run: poetry install
+      
     - name: Check Version
+      working-directory: ./benchmark/
       id: check-version
       run: |
         echo version=$(poetry version --short) >> $GITHUB_OUTPUT
