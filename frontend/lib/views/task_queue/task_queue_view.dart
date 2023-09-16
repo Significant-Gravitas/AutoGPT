@@ -1,3 +1,4 @@
+import 'package:auto_gpt_flutter_client/models/benchmark_service/report_request_body.dart';
 import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:provider/provider.dart';
@@ -46,7 +47,15 @@ class TaskQueueView extends StatelessWidget {
               message: 'Run suite of tests',
               child: ElevatedButton(
                 onPressed: () {
-                  // Add your logic here to run the suite of tests
+                  // Create a ReportRequestBody with hardcoded values
+                  ReportRequestBody reportRequestBody = ReportRequestBody(
+                    category: "coding",
+                    tests: [],
+                    mock: true,
+                  );
+
+                  // Call callGenerateReport method from SkillTreeViewModel
+                  viewModel.callGenerateReport(reportRequestBody);
                 },
                 child: Icon(Icons.check, color: Colors.green),
                 style: ButtonStyle(
