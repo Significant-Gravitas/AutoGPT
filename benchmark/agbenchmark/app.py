@@ -54,7 +54,18 @@ app.add_middleware(
 def run_single_test(body: CreateReportRequest) -> Any:
     from agbenchmark.__main__ import run_benchmark
 
-    run_benchmark(category=[body.category], mock=body.mock)
+    # it's a hack because other parts of the code are using sys.argv
+    sys.argv = [sys.argv[0]]
+    sys.argv.append("start")
+    if body.category:
+        sys.argv.append(f"--category={body.category}")
+    for body_test in body.tests:
+        sys.argv.append(f"--test={body_test}")
+    categories = None
+    if body.category:
+        categories = tuple([body.category])
+
+    run_benchmark(category=categories, mock=body.mock, test=tuple(body.tests))
     import json
     from pathlib import Path
 
@@ -95,6 +106,8 @@ from fastapi import FastAPI, Request, Response
 
 @app.get("/updates")
 def get_updates(request: Request) -> Any:
+    from agbenchmark.__main__ import UPDATES_JSON_PATH
+
     try:
         # Read data from the "update.json" file (provide the correct file path)
         with open(UPDATES_JSON_PATH, "r") as file:

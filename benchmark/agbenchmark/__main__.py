@@ -114,8 +114,8 @@ def run_benchmark(
     no_dep: bool = False,
     nc: bool = False,
     keep_answers: bool = False,
-    category: Optional[list[str]] = None,
-    skip_category: Optional[list[str]] = None,
+    category: Optional[tuple[str]] = None,
+    skip_category: Optional[tuple[str]] = None,
     test: Optional[str] = None,
     cutoff: Optional[int] = None,
     server: bool = False,
@@ -157,7 +157,6 @@ def run_benchmark(
 
     if test:
         print("Running specific test:", test)
-        pytest_args.extend(["-k", test, "--test"])
     else:
         # Categories that are used in the challenges
         categories = get_unique_categories()
