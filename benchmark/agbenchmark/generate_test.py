@@ -12,9 +12,9 @@ import pytest
 
 from agbenchmark.__main__ import CHALLENGES_ALREADY_BEATEN, UPDATES_JSON_PATH
 from agbenchmark.agent_api_interface import append_updates_file
+from agbenchmark.agent_protocol_client.models.step import Step
 from agbenchmark.utils.challenge import Challenge
 from agbenchmark.utils.data_types import AgentBenchmarkConfig, ChallengeData
-from agent_protocol_client.models.step import Step
 
 DATA_CATEGORY = {}
 

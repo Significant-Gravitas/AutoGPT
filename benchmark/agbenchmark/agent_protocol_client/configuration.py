@@ -19,8 +19,6 @@ import sys
 
 import urllib3
 
-from agent_protocol_client.exceptions import ApiValueError
-
 JSON_SCHEMA_VALIDATION_KEYWORDS = {
     "multipleOf",
     "maximum",

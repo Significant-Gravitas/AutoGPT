@@ -5,9 +5,14 @@ from typing import Any, Dict, Optional
 
 from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH, UPDATES_JSON_PATH
 from agbenchmark.agent_interface import get_list_of_file_paths
+from agbenchmark.agent_protocol_client import (
+    AgentApi,
+    ApiClient,
+    Configuration,
+    TaskRequestBody,
+)
+from agbenchmark.agent_protocol_client.models.step import Step
 from agbenchmark.utils.data_types import ChallengeData
-from agent_protocol_client import AgentApi, ApiClient, Configuration, TaskRequestBody
-from agent_protocol_client.models.step import Step
 
 
 async def run_api_agent(
