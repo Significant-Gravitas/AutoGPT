@@ -76,44 +76,6 @@ def setup():
         click.echo(click.style("\t8. Open the '.github_access_token' file in the same directory as this script and paste the token into this file.", fg='red'))
         click.echo(click.style("\t9. Save the file and run the setup command again.", fg='red'))
 
-@cli.command()
-@click.option('--branch', default='master', help='Branch to sync with the parent repository')
-def sync(branch):
-    import subprocess
-
-    try:
-        # Get GitHub repository URL
-        github_repo_url = subprocess.check_output(['git', 'config', '--get', 'remote.origin.url']).decode('utf-8').strip()
-
-        # Initialize GitHub API client
-        with open('.github_access_token', 'r') as file:
-            github_access_token = file.read().strip()
-        g = github.Github(github_access_token)
-        repo = g.get_repo(github_repo_url.split(':')[-1].split('.git')[0])
-        
-        # Get parent repository URL
-        parent_repo = repo.parent
-        if parent_repo:
-            parent_repo_url = parent_repo.clone_url
-        else:
-            click.echo(click.style("❌ This repository does not have a parent repository to sync with.", fg='red'))
-            return
-        
-        # Add the parent repository as a remote named 'upstream' (if not already added)
-        remotes = subprocess.check_output(['git', 'remote']).decode('utf-8').strip().split('\n')
-        if 'upstream' not in remotes:
-            subprocess.check_call(['git', 'remote', 'add', 'upstream', parent_repo_url])
-
-        # Fetch the updates from the parent repository
-        subprocess.check_call(['git', 'fetch', 'upstream'])
-
-        # Merge the updates into the local master branch (or another specified branch)
-        subprocess.check_call(['git', 'merge', f'upstream/{branch}', branch])
-
-        click.echo(click.style(f"✅ Synced local {branch} branch with upstream {branch} branch.", fg='green'))
-    
-    except Exception as e:
-        click.echo(click.style(f"❌ An error occurred: {e}", fg='red'))
 
 @cli.group()
 def agent():
