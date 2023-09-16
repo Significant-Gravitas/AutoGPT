@@ -16,11 +16,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-UPDATES_JSON_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "updates.json"
-)
-
-
 # Change the current working directory to the benchmark path
 # home_path = find_absolute_benchmark_path()
 # os.chdir(home_path)
@@ -51,24 +46,10 @@ app.add_middleware(
 )
 
 
-def initialize_updates_file():
-    if os.path.exists(UPDATES_JSON_PATH):
-        # If the file already exists, overwrite it with an empty list
-        with open(UPDATES_JSON_PATH, "w") as file:
-            json.dump([], file, indent=2)
-        print("Initialized updates.json by overwriting with an empty array")
-    else:
-        # If the file doesn't exist, create it and write an empty list
-        with open(UPDATES_JSON_PATH, "w") as file:
-            json.dump([], file, indent=2)
-        print("Created updates.json and initialized it with an empty array")
-
-
 @app.post("/reports")
 def run_single_test(body: CreateReportRequest) -> Any:
     from agbenchmark.__main__ import run_benchmark
 
-    initialize_updates_file()  # Initialize the file before entering the loop
     run_benchmark(category=[body.category], mock=body.mock)
     import json
     from pathlib import Path
