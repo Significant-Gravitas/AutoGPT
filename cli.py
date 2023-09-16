@@ -585,7 +585,31 @@ def enter(agent_name, branch):
         if os.path.exists(f"arena/{agent_name}.json"):
             click.echo(
                 click.style(
-                    f"⚠️  The agent '{agent_name}' has already entered the arena. Use './run arena submit' to update your submission.",
+                    f"⚠️  The agent '{agent_name}' has already entered the arena. To update your submission, follow these steps:",
+                    fg="yellow",
+                )
+            )
+            click.echo(
+                click.style(
+                    f"1. Get the git hash of your submission by running 'git rev-parse HEAD' on the branch you want to submit to the arena.",
+                    fg="yellow",
+                )
+            )
+            click.echo(
+                click.style(
+                    f"2. Change the branch to 'arena_submission_{agent_name}' by running 'git checkout arena_submission_{agent_name}'.",
+                    fg="yellow",
+                )
+            )
+            click.echo(
+                click.style(
+                    f"3. Modify the 'arena/{agent_name}.json' to include the new commit hash of your submission (the hash you got from step 1) and an up-to-date timestamp by running './run arena update {agent_name} hash --branch x'.",
+                    fg="yellow",
+                )
+            )
+            click.echo(
+                click.style(
+                    f"Note: The '--branch' option is only needed if you want to change the branch that will be used.",
                     fg="yellow",
                 )
             )
@@ -671,13 +695,42 @@ def enter(agent_name, branch):
         if parent_repo:
             pr = parent_repo.create_pull(
                 title=f"{agent_name} entering the arena",
-                body="""**Introduction:** 
+                body=f"""
+### 🌟 Welcome to the AutoGPT Arena Hacks Hackathon! 🌟
 
-**Team Members:** 
+Hey there amazing builders! We're thrilled to have you join this exciting journey. Before you dive deep into building, we'd love to know more about you and the awesome project you are envisioning. Fill out the template below to kickstart your hackathon journey. May the best agent win! 🏆
 
-**What we are working on:** 
+#### 🤖 Team Introduction
 
-Please replace this text with your own introduction, the names of your team members, and a brief description of your work.""",
+- **Agent Name:** {agent_name}
+- **Team Members:** (Who are the amazing minds behind this team? Do list everyone along with their roles!)
+- **Repository Link:** (Do share the link where all the magic is happening)
+
+#### 🌟 Project Vision
+
+- **Starting Point:** (Are you building from scratch or starting with an existing agent? Do tell!)
+- **Preliminary Ideas:** (Share your initial ideas and what kind of project you are aiming to build. We are all ears!)
+  
+#### 🏆 Prize Category
+
+- **Target Prize:** (Which prize caught your eye? Which one are you aiming for?)
+- **Why this Prize:** (We'd love to know why this prize feels like the right fit for your team!)
+
+#### 🎬 Introduction Video
+
+- **Video Link:** (If you'd like, share a short video where you introduce your team and talk about your project. We'd love to see your enthusiastic faces!)
+
+#### 📝 Notes and Compliance
+
+- **Additional Notes:** (Any other things you want to share? We're here to listen!)
+- **Compliance with Hackathon Rules:** (Just a gentle reminder to stick to the rules outlined for the hackathon)
+
+#### ✅ Checklist
+
+- [ ] We have read and are aligned with the [Hackathon Rules](https://lablab.ai/event/autogpt-arena-hacks).
+- [ ] We confirm that our project will be open-source and adhere to the MIT License.
+- [ ] Our lablab.ai registration email matches our OpenAI account to claim the bonus credits (if applicable).
+""",
                 head=f"arena_submission_{agent_name}",
                 base=branch_to_use,
             )
@@ -703,6 +756,72 @@ Please replace this text with your own introduction, the names of your team memb
         click.echo(click.style(f"❌ An error occurred: {e}", fg="red"))
         # Switch back to the master branch
         subprocess.check_call(["git", "checkout", branch_to_use])
+
+@arena.command()
+@click.argument("agent_name")
+@click.argument("hash")
+@click.option("--branch", default=None, help="Branch to use instead of current branch")
+def update(agent_name, hash, branch):
+    import json
+    import os
+    from datetime import datetime
+    import subprocess
+
+    # Check if the agent_name.json file exists in the arena directory
+    agent_json_file = f"./arena/{agent_name}.json"
+    # Check if they are on the correct branch
+    current_branch = (
+        subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        .decode("utf-8")
+        .strip()
+    )
+    correct_branch = f"arena_submission_{agent_name}"
+    if current_branch != correct_branch:
+        click.echo(
+            click.style(
+                f"❌ You are not on the correct branch. Please switch to the '{correct_branch}' branch.",
+                fg="red",
+            )
+        )
+        return
+    
+    if not os.path.exists(agent_json_file):
+        click.echo(
+            click.style(
+                f"❌ The file for agent '{agent_name}' does not exist in the arena directory.",
+                fg="red",
+            )
+        )
+        click.echo(
+            click.style(
+                f"⚠️ You need to enter the arena first. Run './run arena enter {agent_name}'",
+                fg="yellow",
+            )
+        )
+        return
+    else:
+        # Load the existing data
+        with open(agent_json_file, "r") as json_file:
+            data = json.load(json_file)
+
+        # Update the commit hash and timestamp
+        data["commit_hash_to_benchmark"] = hash
+        data["timestamp"] = datetime.utcnow().isoformat()
+
+        # If --branch was passed, update the branch_to_benchmark in the JSON file
+        if branch:
+            data["branch_to_benchmark"] = branch
+
+        # Write the updated data back to the JSON file
+        with open(agent_json_file, "w") as json_file:
+            json.dump(data, json_file, indent=4)
+
+        click.echo(
+            click.style(
+                f"🚀 The file for agent '{agent_name}' has been updated in the arena directory.",
+                fg="green",
+            )
+        )
 
 
 if __name__ == "__main__":
