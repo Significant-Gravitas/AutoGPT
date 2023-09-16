@@ -1,6 +1,6 @@
 {
-    "github_repo_url": "git@github.com:Swiftyos/LocalLlama.git",
-    "timestamp": "2023-09-16T17:11:57.776939",
-    "commit_hash_to_benchmark": "f4f2fc951e0cd2a941cd2a920f2b25197866ea76",
+    "github_repo_url": "https///github.com/Swiftyos/LocalLlama",
+    "timestamp": "2023-09-16T17:27:27.427681",
+    "commit_hash_to_benchmark": "53d3351de8e80d9d4b394886a06a8115bcca18ac",
     "branch_to_benchmark": "master"
 }
