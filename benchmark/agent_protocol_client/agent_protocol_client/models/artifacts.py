@@ -20,9 +20,10 @@ import re  # noqa: F401
 from typing import Optional
 
 from pydantic import BaseModel, Field, StrictStr
-from agent_protocol_client.models.artifact import Artifact
 
+from agent_protocol_client.models.artifact import Artifact
 from agent_protocol_client.models.pagination import Pagination
+
 
 class Artifacts(BaseModel):
     """
@@ -72,5 +73,6 @@ class Artifacts(BaseModel):
             }
         )
         return _obj
+
 
 Artifacts.update_forward_refs()

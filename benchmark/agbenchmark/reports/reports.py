@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from agbenchmark.__main__ import (
+    CHALLENGES_ALREADY_BEATEN,
     INFO_MANAGER,
     INTERNAL_INFO_MANAGER,
     REGRESSION_MANAGER,
@@ -23,7 +24,7 @@ def get_previous_test_results(
     test_name: str, info_details: dict[str, Any]
 ) -> list[bool]:
     agent_tests: dict[str, list[bool]] = {}
-    mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
+    mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
 
     prev_test_results = INTERNAL_INFO_MANAGER.tests.get(test_name, [])
 
@@ -93,7 +94,7 @@ def generate_single_call_report(
     if "metadata" in challenge_data:
         info_details["metadata"] = challenge_data["metadata"]
 
-    mock = "--mock" in sys.argv  # Check if --mock is in sys.argv
+    mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
 
     if call.excinfo is None:
         info_details["metrics"]["success"] = True
@@ -158,7 +159,7 @@ def update_challenges_already_beaten(
 ) -> None:
     current_run_successful = info_details["metrics"]["success"]
     try:
-        with open("challenges_already_beaten.json", "r") as f:
+        with open(CHALLENGES_ALREADY_BEATEN, "r") as f:
             challenge_data = json.load(f)
     except:
         challenge_data = {}
@@ -168,7 +169,7 @@ def update_challenges_already_beaten(
     if challenge_beaten_in_the_past is None and not current_run_successful:
         challenge_data[test_name] = False
 
-    with open("challenges_already_beaten.json", "w") as f:
+    with open(CHALLENGES_ALREADY_BEATEN, "w") as f:
         json.dump(challenge_data, f, indent=4)
 
 

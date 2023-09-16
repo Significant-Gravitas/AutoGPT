@@ -8,4 +8,4 @@ if [ ! -f .env ]; then
   echo "Please add your api keys to the .env file."
 fi
 poetry run python -m forge &
-agbenchmark serve &
+poetry run agbenchmark serve &

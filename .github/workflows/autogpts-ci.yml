@@ -7,12 +7,8 @@ on:
     - cron: '0 8 * * *'
   push:
     branches: [master, ci-test*]
-    paths:
-      - 'autogpts/**'
   pull_request:
     branches: [stable, master, release-*]
-    paths:
-      - 'autogpts/**'
 
 jobs:
   run-tests:

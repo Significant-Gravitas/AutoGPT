@@ -11,15 +11,19 @@ import pytest
 import toml
 from helicone.lock import HeliconeLockManager
 
+from agbenchmark.app import app
 from agbenchmark.utils.data_types import AgentBenchmarkConfig
 
-from agbenchmark.app import app
 from .reports.ReportManager import ReportManager
 from .utils.data_types import AgentBenchmarkConfig
 
 BENCHMARK_START_TIME_DT = datetime.now(timezone.utc)
 BENCHMARK_START_TIME = BENCHMARK_START_TIME_DT.strftime("%Y-%m-%dT%H:%M:%S+00:00")
-TEMP_FOLDER_ABS_PATH = Path(os.path.dirname(os.path.abspath(__file__))) / "temp_folder"
+TEMP_FOLDER_ABS_PATH = Path.cwd() / "agbenchmark_config" / "temp_folder"
+CHALLENGES_ALREADY_BEATEN = (
+    Path.cwd() / "agbenchmark_config" / "challenges_already_beaten.json"
+)
+UPDATES_JSON_PATH = Path.cwd() / "agbenchmark_config" / "updates.json"
 
 
 def get_agent_benchmark_config() -> AgentBenchmarkConfig:
@@ -190,6 +194,9 @@ def run_benchmark(
 
     if mock:
         pytest_args.append("--mock")
+        os.environ[
+            "IS_MOCK"
+        ] = "True"  # ugly hack to make the mock work when calling from API
 
     if no_dep:
         pytest_args.append("--no_dep")
@@ -306,12 +313,14 @@ def version():
     ]
     print(f"Benchmark Tool Version {version}")
 
+
 @cli.command()
 def serve():
     import uvicorn
 
     # Run the FastAPI application using uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
 
 if __name__ == "__main__":
     cli()
