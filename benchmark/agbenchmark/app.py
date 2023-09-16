@@ -35,7 +35,11 @@ updates_list = []
 
 import json
 
-origins = ["http://localhost:8080"]
+origins = [
+    "http://localhost:8080",
+    "http://127.0.0.1:5000",
+    "http://localhost:5000",
+]
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
