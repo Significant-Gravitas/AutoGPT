@@ -45,15 +45,23 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
     setup_script = os.path.join(script_dir, "setup.sh")
+    install_error = False
     if os.path.exists(setup_script):
         click.echo(click.style("🚀 Setup initiated...\n", fg="green"))
-        subprocess.Popen([setup_script], cwd=script_dir)
+        try:
+            subprocess.check_call([setup_script], cwd=script_dir)
+        except subprocess.CalledProcessError:
+            click.echo(
+                click.style("❌ There was an issue with the installation.", fg="red")
+            )
+            install_error = True
     else:
         click.echo(
             click.style(
                 "❌ Error: setup.sh does not exist in the current directory.", fg="red"
             )
         )
+        install_error = True
 
     try:
         # Check if GitHub user name is configured
@@ -99,7 +107,8 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
                 '  git config --global user.email "Your GitHub Email"', fg="red"
             )
         )
-
+        install_error = True
+    print_access_token_instructions = False
     # Check for the existence of the .github_access_token file
     if os.path.exists(".github_access_token"):
         with open(".github_access_token", "r") as file:
@@ -125,6 +134,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
                             )
                         )
                     else:
+                        install_error = True
                         click.echo(
                             click.style(
                                 "❌ GitHub access token does not have the required permissions. Please ensure it has 'public_repo' or 'repo' scope.",
@@ -132,6 +142,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
                             )
                         )
                 else:
+                    install_error = True
                     click.echo(
                         click.style(
                             "❌ Failed to validate GitHub access token. Please ensure it is correct.",
@@ -139,17 +150,22 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
                         )
                     )
             else:
+                install_error = True
                 click.echo(
                     click.style(
                         "❌ GitHub access token file is empty. Please follow the instructions below to set up your GitHub access token.",
                         fg="red",
                     )
                 )
+                print_access_token_instructions = True
     else:
         # Create the .github_access_token file if it doesn't exist
         with open(".github_access_token", "w") as file:
             file.write("")
+        install_error = True
+        print_access_token_instructions = True
 
+    if print_access_token_instructions:
         # Instructions to set up GitHub access token
         click.echo(
             click.style(
@@ -177,6 +193,14 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         )
         click.echo(
             click.style("\t9. Save the file and run the setup command again.", fg="red")
+        )
+    if install_error:
+        click.echo(
+            click.style(
+                "\n\n🔴 If you need help, please raise a ticket on GitHub at https://github.com/Significant-Gravitas/Auto-GPT/issues\n\n",
+                fg="magenta",
+                bold=True,
+            )
         )
 
 
