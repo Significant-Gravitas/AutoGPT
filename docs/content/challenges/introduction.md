@@ -27,7 +27,7 @@ We look forward to your contributions and the exciting solutions that the commun
     We're slowly transitioning to agbenchmark. agbenchmark is a simpler way to improve Auto-GPT. Simply run:
     
     ```
-    agbenchmark start
+    agbenchmark
     ```
     
     and beat as many challenges as possible.

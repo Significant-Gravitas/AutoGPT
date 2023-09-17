@@ -217,12 +217,7 @@ def run_benchmark(
     return pytest.main(pytest_args)
 
 
-@click.group()
-def cli() -> None:
-    pass
-
-
-@cli.command()
+@click.group(invoke_without_command=True)
 @click.option("--backend", is_flag=True, help="If it's being run from the cli")
 @click.option("-c", "--category", multiple=True, help="Specific category to run")
 @click.option(
@@ -248,7 +243,7 @@ def cli() -> None:
 @click.option("--nc", is_flag=True, help="Run without cutoff")
 @click.option("--keep-answers", is_flag=True, help="Keep answers")
 @click.option("--cutoff", help="Set or override tests cutoff (seconds)")
-def start(
+def cli(
     maintain: bool,
     improve: bool,
     explore: bool,
