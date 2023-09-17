@@ -106,7 +106,7 @@ OPEN_AI_LANGUAGE_MODELS = {
         ),
     ]
 }
-# Copy entries for equivalent models
+# Copy entries for models with equivalent specs
 chat_model_mapping = {
     OpenAIModelName.GPT3: [OpenAIModelName.GPT3_v1, OpenAIModelName.GPT3_v2],
     OpenAIModelName.GPT3_16k: [OpenAIModelName.GPT3_v2_16k],

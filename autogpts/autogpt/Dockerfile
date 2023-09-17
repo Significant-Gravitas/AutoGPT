@@ -31,8 +31,8 @@ WORKDIR /app
 COPY pyproject.toml poetry.lock ./
 
 # Set the entrypoint
-ENTRYPOINT ["poetry"]
-CMD ["run", "autogpt", "--install-plugin-deps"]
+ENTRYPOINT ["poetry", "run", "autogpt", "--install-plugin-deps"]
+CMD []
 
 # dev build -> include everything
 FROM autogpt-base as autogpt-dev
