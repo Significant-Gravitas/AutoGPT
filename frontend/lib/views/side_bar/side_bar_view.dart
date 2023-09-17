@@ -1,4 +1,6 @@
+import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class SideBarView extends StatelessWidget {
   final ValueNotifier<String> selectedViewNotifier;
@@ -7,6 +9,9 @@ class SideBarView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // TODO: should we pass this in as a dependency?
+    final skillTreeViewModel =
+        Provider.of<SkillTreeViewModel>(context, listen: false);
     return Material(
       child: ValueListenableBuilder(
           valueListenable: selectedViewNotifier,
@@ -21,7 +26,9 @@ class SideBarView extends StatelessWidget {
                     color:
                         selectedView == 'TaskView' ? Colors.blue : Colors.black,
                     icon: const Icon(Icons.chat),
-                    onPressed: () => selectedViewNotifier.value = 'TaskView',
+                    onPressed: skillTreeViewModel.isBenchmarkRunning
+                        ? null
+                        : () => selectedViewNotifier.value = 'TaskView',
                   ),
                   IconButton(
                     splashRadius: 0.1,
@@ -29,8 +36,9 @@ class SideBarView extends StatelessWidget {
                         ? Colors.blue
                         : Colors.black,
                     icon: const Icon(Icons.emoji_events), // trophy icon
-                    onPressed: () =>
-                        selectedViewNotifier.value = 'SkillTreeView',
+                    onPressed: skillTreeViewModel.isBenchmarkRunning
+                        ? null
+                        : () => selectedViewNotifier.value = 'SkillTreeView',
                   ),
                 ],
               ),
