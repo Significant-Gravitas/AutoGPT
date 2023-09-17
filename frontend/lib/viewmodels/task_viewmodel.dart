@@ -39,7 +39,7 @@ class TaskViewModel with ChangeNotifier {
     _taskService.saveDeletedTask(taskId);
     tasks.removeWhere((task) => task.id == taskId);
     notifyListeners();
-    print("Tasks deleted successfully!");
+    print("Task $taskId deleted successfully!");
   }
 
   /// Fetches tasks from the data source.
