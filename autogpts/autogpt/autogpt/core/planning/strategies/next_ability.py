@@ -1,3 +1,5 @@
+import logging
+
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.schema import (
@@ -11,6 +13,8 @@ from autogpt.core.resource.model_providers import (
     LanguageModelMessage,
     MessageRole,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class NextAbilityConfiguration(SystemConfiguration):
@@ -61,7 +65,7 @@ class NextAbility(PromptStrategy):
         },
     }
 
-    default_configuration = NextAbilityConfiguration(
+    default_configuration: NextAbilityConfiguration = NextAbilityConfiguration(
         model_classification=LanguageModelClassification.SMART_MODEL,
         system_prompt_template=DEFAULT_SYSTEM_PROMPT_TEMPLATE,
         system_info=DEFAULT_SYSTEM_INFO,
@@ -171,13 +175,17 @@ class NextAbility(PromptStrategy):
             The parsed response.
 
         """
-        function_name = response_content["function_call"]["name"]
-        function_arguments = json_loads(response_content["function_call"]["arguments"])
-        parsed_response = {
-            "motivation": function_arguments.pop("motivation"),
-            "self_criticism": function_arguments.pop("self_criticism"),
-            "reasoning": function_arguments.pop("reasoning"),
-            "next_ability": function_name,
-            "ability_arguments": function_arguments,
-        }
+        try:
+            function_name = response_content["function_call"]["name"]
+            function_arguments = json_loads(response_content["function_call"]["arguments"])
+            parsed_response = {
+                "motivation": function_arguments.pop("motivation"),
+                "self_criticism": function_arguments.pop("self_criticism"),
+                "reasoning": function_arguments.pop("reasoning"),
+                "next_ability": function_name,
+                "ability_arguments": function_arguments,
+            }
+        except KeyError:
+            logger.debug(f"Failed to parse this response content: {response_content}")
+            raise
         return parsed_response

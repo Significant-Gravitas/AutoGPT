@@ -1,3 +1,5 @@
+import logging
+
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.schema import (
@@ -12,6 +14,8 @@ from autogpt.core.resource.model_providers import (
     LanguageModelMessage,
     MessageRole,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class InitialPlanConfiguration(SystemConfiguration):
@@ -98,7 +102,7 @@ class InitialPlan(PromptStrategy):
         },
     }
 
-    default_configuration = InitialPlanConfiguration(
+    default_configuration: InitialPlanConfiguration = InitialPlanConfiguration(
         model_classification=LanguageModelClassification.SMART_MODEL,
         system_prompt_template=DEFAULT_SYSTEM_PROMPT_TEMPLATE,
         system_info=DEFAULT_SYSTEM_INFO,
@@ -183,8 +187,12 @@ class InitialPlan(PromptStrategy):
             The parsed response.
 
         """
-        parsed_response = json_loads(response_content["function_call"]["arguments"])
-        parsed_response["task_list"] = [
-            Task.parse_obj(task) for task in parsed_response["task_list"]
-        ]
+        try:
+            parsed_response = json_loads(response_content["function_call"]["arguments"])
+            parsed_response["task_list"] = [
+                Task.parse_obj(task) for task in parsed_response["task_list"]
+            ]
+        except KeyError:
+            logger.debug(f"Failed to parse this response content: {response_content}")
+            raise
         return parsed_response

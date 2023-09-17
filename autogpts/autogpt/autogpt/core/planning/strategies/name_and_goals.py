@@ -1,3 +1,5 @@
+import logging
+
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.schema import (
@@ -11,6 +13,7 @@ from autogpt.core.resource.model_providers import (
     MessageRole,
 )
 
+logger = logging.getLogger(__name__)
 
 class NameAndGoalsConfiguration(SystemConfiguration):
     model_classification: LanguageModelClassification = UserConfigurable()
@@ -21,12 +24,16 @@ class NameAndGoalsConfiguration(SystemConfiguration):
 
 class NameAndGoals(PromptStrategy):
     DEFAULT_SYSTEM_PROMPT = (
-        "Your job is to respond to a user-defined task by invoking the `create_agent` function "
-        "to generate an autonomous agent to complete the task. You should supply a role-based "
-        "name for the agent, an informative description for what the agent does, and 1 to 5 "
-        "goals that are optimally aligned with the successful completion of its assigned task.\n\n"
+        "Your job is to respond to a user-defined task, given in triple quotes, by "
+        "invoking the `create_agent` function to generate an autonomous agent to "
+        "complete the task. "
+        "You should supply a role-based name for the agent, "
+        "an informative description for what the agent does, and "
+        "1 to 5 goals that are optimally aligned with the successful completion of "
+        "its assigned task.\n"
+        "\n"
         "Example Input:\n"
-        "Help me with marketing my business\n\n"
+        '"""Help me with marketing my business"""\n\n'
         "Example Function Call:\n"
         "create_agent(name='CMOGPT', "
         "description='A professional digital marketer AI that assists Solopreneurs in "
@@ -43,7 +50,7 @@ class NameAndGoals(PromptStrategy):
         "remains on track.'])"
     )
 
-    DEFAULT_USER_PROMPT_TEMPLATE = "'{user_objective}'"
+    DEFAULT_USER_PROMPT_TEMPLATE = '"""{user_objective}"""'
 
     DEFAULT_CREATE_AGENT_FUNCTION = {
         "name": "create_agent",
@@ -77,7 +84,7 @@ class NameAndGoals(PromptStrategy):
         },
     }
 
-    default_configuration = NameAndGoalsConfiguration(
+    default_configuration: NameAndGoalsConfiguration = NameAndGoalsConfiguration(
         model_classification=LanguageModelClassification.SMART_MODEL,
         system_prompt=DEFAULT_SYSTEM_PROMPT,
         user_prompt_template=DEFAULT_USER_PROMPT_TEMPLATE,
@@ -135,5 +142,9 @@ class NameAndGoals(PromptStrategy):
             The parsed response.
 
         """
-        parsed_response = json_loads(response_content["function_call"]["arguments"])
+        try:
+            parsed_response = json_loads(response_content["function_call"]["arguments"])
+        except KeyError:
+            logger.debug(f"Failed to parse this response content: {response_content}")
+            raise
         return parsed_response

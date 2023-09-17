@@ -24,16 +24,7 @@ def configure_root_logger():
     logging.basicConfig(level=logging.DEBUG, handlers=[stdout, stderr])
 
     # Disable debug logging from OpenAI library
-    openai_logger.setLevel(logging.INFO)
-
-
-def get_client_logger():
-    # Configure logging before we do anything else.
-    # Application logs need a place to live.
-    client_logger = logging.getLogger("autogpt_client_application")
-    client_logger.setLevel(logging.DEBUG)
-
-    return client_logger
+    openai_logger.setLevel(logging.WARNING)
 
 
 class FancyConsoleFormatter(logging.Formatter):
