@@ -11,7 +11,7 @@ class SideBarView extends StatelessWidget {
   Widget build(BuildContext context) {
     // TODO: should we pass this in as a dependency?
     final skillTreeViewModel =
-        Provider.of<SkillTreeViewModel>(context, listen: false);
+        Provider.of<SkillTreeViewModel>(context, listen: true);
     return Material(
       child: ValueListenableBuilder(
           valueListenable: selectedViewNotifier,
