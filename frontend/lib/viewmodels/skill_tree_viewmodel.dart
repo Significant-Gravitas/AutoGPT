@@ -149,7 +149,7 @@ class SkillTreeViewModel extends ChangeNotifier {
   }
 
 // TODO: Update to actual implementation
-  Future<void> callPollUpdates(int lastUpdateTime) async {
+  Future<void> requestBenchmarkStatusUpdate(int lastUpdateTime) async {
     try {
       final result = await benchmarkService.pollUpdates(lastUpdateTime);
       print("Updates polled: $result");
