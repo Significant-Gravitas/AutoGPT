@@ -43,7 +43,6 @@ class TaskQueueView extends StatelessWidget {
             },
           ),
 
-// Checkmark button at the bottom of the screen
           Positioned(
             bottom: 20,
             left: 20,
