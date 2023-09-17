@@ -126,10 +126,12 @@ class SkillTreeViewModel extends ChangeNotifier {
   }
 
 // TODO: Update to actual implementation
-  Future<void> callGenerateReport(ReportRequestBody reportRequestBody) async {
+  Future<void> runBenchmark(ReportRequestBody reportRequestBody) async {
     try {
       final result = await benchmarkService.generateReport(reportRequestBody);
-      print("Report generated: $result");
+      // Pretty-print the JSON result
+      String prettyResult = JsonEncoder.withIndent('  ').convert(result);
+      print("Report generated: $prettyResult");
     } catch (e) {
       print("Failed to generate report: $e");
     }
