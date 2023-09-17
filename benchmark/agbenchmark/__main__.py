@@ -243,6 +243,7 @@ def run_benchmark(
 @click.option("--nc", is_flag=True, help="Run without cutoff")
 @click.option("--keep-answers", is_flag=True, help="Keep answers")
 @click.option("--cutoff", help="Set or override tests cutoff (seconds)")
+@click.argument("value", type=str, required=False)
 def cli(
     maintain: bool,
     improve: bool,
@@ -256,8 +257,13 @@ def cli(
     test: Optional[str] = None,
     cutoff: Optional[int] = None,
     backend: Optional[bool] = False,
+    value: Optional[str] = None,
 ) -> Any:
     # Redirect stdout if backend is True
+    if value == "start":
+        raise ("`agbenchmark start` is removed. Run `agbenchmark` instead.")
+    if value == "serve":
+        return serve()
     original_stdout = sys.stdout  # Save the original standard output
     exit_code = None
 
@@ -308,7 +314,6 @@ def version():
     print(f"Benchmark Tool Version {version}")
 
 
-@cli.command()
 def serve():
     import uvicorn
 

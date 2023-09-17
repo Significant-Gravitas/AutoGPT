@@ -1,8 +1,8 @@
 {
-  "name": "TestGetEthereumGasPrice",
+  "name": "GetEthereumGasPrice",
   "category": ["ethereum"],
   "task": "Get the price of Ethereum in usd and save its digits to a file named 'output.txt'",
-  "dependencies": ["TestWriteFile"],
+  "dependencies": ["WriteFile"],
   "cutoff": 75,
   "ground": {
     "answer": "Should be a number within a 50 USD range of the actual price according to coingecko.",

@@ -1,8 +1,8 @@
 {
-  "name": "TestAdaptLink",
+  "name": "AdaptLink",
   "category": ["adaptability"],
   "task": "Write the price of the book in this url 'books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
-  "dependencies": ["TestBasicRetrieval"],
+  "dependencies": ["BasicRetrieval"],
   "cutoff": 60,
   "ground": {
     "answer": "£25.89",
