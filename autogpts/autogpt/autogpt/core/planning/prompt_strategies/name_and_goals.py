@@ -1,12 +1,12 @@
 import logging
 
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.planning.base import PromptStrategy
-from autogpt.core.planning.schema import (
+from autogpt.core.prompting import PromptStrategy
+from autogpt.core.prompting.schema import (
     LanguageModelClassification,
     LanguageModelPrompt,
 )
-from autogpt.core.planning.strategies.utils import json_loads
+from autogpt.core.prompting.utils import json_loads
 from autogpt.core.resource.model_providers import (
     LanguageModelFunction,
     LanguageModelMessage,
@@ -14,6 +14,7 @@ from autogpt.core.resource.model_providers import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 class NameAndGoalsConfiguration(SystemConfiguration):
     model_classification: LanguageModelClassification = UserConfigurable()
