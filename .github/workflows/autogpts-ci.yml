@@ -40,7 +40,7 @@ jobs:
       - name: Run regression tests
         working-directory: ./autogpts/${{ matrix.agent-name }}/
         run: |
-          sh run
+          sh run &
           URL=http://127.0.0.1:8000 bash -c "$(curl -fsSL https://raw.githubusercontent.com/AI-Engineers-Foundation/agent-protocol/main/testing_suite/test.sh)"
           poetry run agbenchmark --mock
           poetry run agbenchmark --test=TestWriteFile

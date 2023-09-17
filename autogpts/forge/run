@@ -1,7 +1,6 @@
 #!/bin/bash
 
 kill $(lsof -t -i :8000)
-kill $(lsof -t -i :8080)
 ENV_PATH=$(poetry env info --path)
 if [ -d "$ENV_PATH" ]; then
     rm -rf $ENV_PATH
@@ -15,6 +14,4 @@ if [ ! -f .env ]; then
   cp .env.example .env
   echo "Please add your api keys to the .env file."
 fi
-poetry run python -m forge &
-
-poetry run agbenchmark serve &
+poetry run python -m forge

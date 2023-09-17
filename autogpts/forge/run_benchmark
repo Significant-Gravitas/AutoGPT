@@ -1,0 +1,5 @@
+#!/bin/bash
+
+kill $(lsof -t -i :8080)
+
+poetry run agbenchmark serve
