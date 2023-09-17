@@ -1,8 +1,8 @@
 {
-  "name": "TestBasicContentGen",
+  "name": "BasicContentGen",
   "category": ["content_gen"],
   "task": "Create a brief report or summary highlighting how one or more companies from companies.txt are addressing or capitalizing on challenges or trends from challenges.txt. Write a file called output.txt.",
-  "dependencies": ["TestReadFile"],
+  "dependencies": ["ReadFile"],
   "cutoff": 240,
   "ground": {
     "answer": "A report highlighting elements from the 2 files.",
@@ -19,7 +19,7 @@
   },
   "info": {
     "difficulty": "basic",
-    "description": "Tests ability to generate content based on the content of 2 files.",
+    "description": "s ability to generate content based on the content of 2 files.",
     "side_effects": []
   }
 }

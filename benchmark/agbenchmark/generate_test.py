@@ -33,7 +33,7 @@ def create_single_test(
     DATA_CATEGORY[data["name"]] = data["category"][0]
 
     # Define test class dynamically
-    challenge_class = types.new_class(data["name"], (Challenge,))
+    challenge_class = types.new_class(f"Test{data['name']}", (Challenge,))
     print(challenge_location)
     # clean_challenge_location = get_test_path(challenge_location)
     setattr(challenge_class, "CHALLENGE_LOCATION", challenge_location)
@@ -115,7 +115,7 @@ def create_single_test(
 
     # Attach the new class to a module so it can be discovered by pytest
     module = importlib.import_module(__name__)
-    setattr(module, data["name"], challenge_class)
+    setattr(module, f"Test{data['name']}", challenge_class)
 
 
 def create_single_suite_challenge(challenge_data: ChallengeData, path: Path) -> None:

@@ -1,8 +1,8 @@
 {
-  "name": "TestReadFile",
+  "name": "ReadFile",
   "category": ["interface"],
   "task": "Read the file called file_to_read.txt and write its content to a file called output.txt",
-  "dependencies": ["TestWriteFile"],
+  "dependencies": ["WriteFile"],
   "cutoff": 60,
   "ground": {
     "answer": "The content of output.txt should be 'Hello World!'",
@@ -13,7 +13,7 @@
     }
   },
   "info": {
-    "description": "Tests the ability for an agent to read a file.",
+    "description": "s the ability for an agent to read a file.",
     "difficulty": "interface",
     "side_effects": [""]
   }

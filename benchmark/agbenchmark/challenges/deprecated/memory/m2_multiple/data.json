@@ -1,8 +1,8 @@
 {
-  "name": "TestRememberMultipleIds",
+  "name": "RememberMultipleIds",
   "category": ["memory"],
   "task": "Follow the instructions in the instructions_1.txt file",
-  "dependencies": ["TestBasicMemory"],
+  "dependencies": ["BasicMemory"],
   "cutoff": 120,
   "ground": {
     "answer": "3145\n3791\n9317\n9471",
@@ -15,7 +15,7 @@
   },
   "info": {
     "difficulty": "novice",
-    "description": "Tests ability for the agent to remember information between each action. Multiple ids are presented in different files and the last file instructs the agent to write these ids into another file.",
+    "description": "s ability for the agent to remember information between each action. Multiple ids are presented in different files and the last file instructs the agent to write these ids into another file.",
     "side_effects": []
   }
 }

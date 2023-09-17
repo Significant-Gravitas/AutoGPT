@@ -1,8 +1,8 @@
 {
-  "name": "TestAdaptSimpleTypoWithGuidance",
+  "name": "AdaptSimpleTypoWithGuidance",
   "category": ["adaptability"],
   "task": "1- Run sample_code.py.\n2- Read test.py.\n3- Modify test.py.\nRepeat step 1, 2 and 3 until sample_code.py runs without errors.\n",
-  "dependencies": ["TestDebugSimpleTypoWithGuidance"],
+  "dependencies": ["DebugSimpleTypoWithGuidance"],
   "cutoff": 75,
   "ground": {
     "answer": "Same as the original DebugWithGuidance test - [0, 1] [2, 5] [0, 3]",
