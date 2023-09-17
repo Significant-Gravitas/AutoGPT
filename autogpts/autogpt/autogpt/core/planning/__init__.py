@@ -2,7 +2,6 @@
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
     LanguageModelPrompt,
-    LanguageModelResponse,
     Task,
     TaskStatus,
     TaskType,

@@ -14,14 +14,15 @@ from autogpt.core.planning import strategies
 from autogpt.core.planning.base import PromptStrategy
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
-    LanguageModelResponse,
     Task,
 )
 from autogpt.core.resource.model_providers import (
     LanguageModelProvider,
+    LanguageModelResponse,
     ModelProviderName,
     OpenAIModelName,
 )
+from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.core.workspace import Workspace
 
 
@@ -153,7 +154,7 @@ class SimplePlanner(Configurable):
         template_kwargs.update(kwargs)
         prompt = prompt_strategy.build_prompt(**template_kwargs)
 
-        self._logger.debug(f"Using prompt:\n{prompt}\n\n")
+        self._logger.debug(f"Using prompt:\n{dump_prompt(prompt)}\n")
         response = await provider.create_language_completion(
             model_prompt=prompt.messages,
             functions=prompt.functions,

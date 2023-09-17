@@ -28,6 +28,7 @@ inflection = "^0.5.1"
 openai = "^0.28.0"
 pydantic = "^1.10.12"
 pyyaml = "^6.0.0"
+tiktoken = "^0.5.1"
 
 [build-system]
 requires = ["poetry-core"]

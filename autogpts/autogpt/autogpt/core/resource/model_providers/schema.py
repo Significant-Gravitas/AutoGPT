@@ -18,13 +18,13 @@ from autogpt.core.resource.schema import (
 class ModelProviderService(str, enum.Enum):
     """A ModelService describes what kind of service the model provides."""
 
-    EMBEDDING: str = "embedding"
-    LANGUAGE: str = "language"
-    TEXT: str = "text"
+    EMBEDDING = "embedding"
+    LANGUAGE = "language"
+    TEXT = "text"
 
 
 class ModelProviderName(str, enum.Enum):
-    OPENAI: str = "openai"
+    OPENAI = "openai"
 
 
 class MessageRole(str, enum.Enum):
@@ -42,7 +42,7 @@ class LanguageModelFunction(BaseModel):
     json_schema: dict
 
 
-class ModelProviderModelInfo(BaseModel):
+class ModelInfo(BaseModel):
     """Struct for model information.
 
     Would be lovely to eventually get this directly from APIs, but needs to be
@@ -57,12 +57,12 @@ class ModelProviderModelInfo(BaseModel):
     completion_token_cost: float = 0.0
 
 
-class ModelProviderModelResponse(BaseModel):
+class ModelResponse(BaseModel):
     """Standard response struct for a response from a model."""
 
     prompt_tokens_used: int
     completion_tokens_used: int
-    model_info: ModelProviderModelInfo
+    model_info: ModelInfo
 
 
 class ModelProviderCredentials(ProviderCredentials):
@@ -101,7 +101,7 @@ class ModelProviderUsage(ProviderUsage):
 
     def update_usage(
         self,
-        model_response: ModelProviderModelResponse,
+        model_response: ModelResponse,
     ) -> None:
         self.completion_tokens += model_response.completion_tokens_used
         self.prompt_tokens += model_response.prompt_tokens_used
@@ -118,7 +118,7 @@ class ModelProviderBudget(ProviderBudget):
 
     def update_usage_and_cost(
         self,
-        model_response: ModelProviderModelResponse,
+        model_response: ModelResponse,
     ) -> None:
         """Update the usage and cost of the provider."""
         model_info = model_response.model_info
@@ -126,7 +126,7 @@ class ModelProviderBudget(ProviderBudget):
         incremental_cost = (
             model_response.completion_tokens_used * model_info.completion_token_cost
             + model_response.prompt_tokens_used * model_info.prompt_token_cost
-        ) / 1000.0
+        )
         self.total_cost += incremental_cost
         self.remaining_budget -= incremental_cost
 
@@ -143,6 +143,10 @@ class ModelProvider(abc.ABC):
     defaults: ClassVar[ModelProviderSettings]
 
     @abc.abstractmethod
+    def count_tokens(self, text: str, model_name: str) -> int:
+        ...
+
+    @abc.abstractmethod
     def get_token_limit(self, model_name: str) -> int:
         ...
 
@@ -156,14 +160,15 @@ class ModelProvider(abc.ABC):
 ####################
 
 
-class EmbeddingModelProviderModelInfo(ModelProviderModelInfo):
+class EmbeddingModelInfo(ModelInfo):
     """Struct for embedding model information."""
 
-    llm_service: ModelProviderService = ModelProviderService.EMBEDDING
+    llm_service = ModelProviderService.EMBEDDING
+    max_tokens: int
     embedding_dimensions: int
 
 
-class EmbeddingModelProviderModelResponse(ModelProviderModelResponse):
+class EmbeddingModelResponse(ModelResponse):
     """Standard response struct for a response from an embedding model."""
 
     embedding: Embedding = Field(default_factory=list)
@@ -184,7 +189,7 @@ class EmbeddingModelProvider(ModelProvider):
         model_name: str,
         embedding_parser: Callable[[Embedding], Embedding],
         **kwargs,
-    ) -> EmbeddingModelProviderModelResponse:
+    ) -> EmbeddingModelResponse:
         ...
 
 
@@ -193,20 +198,28 @@ class EmbeddingModelProvider(ModelProvider):
 ###################
 
 
-class LanguageModelProviderModelInfo(ModelProviderModelInfo):
+class LanguageModelInfo(ModelInfo):
     """Struct for language model information."""
 
-    llm_service: ModelProviderService = ModelProviderService.LANGUAGE
+    llm_service = ModelProviderService.LANGUAGE
     max_tokens: int
 
 
-class LanguageModelProviderModelResponse(ModelProviderModelResponse):
+class LanguageModelResponse(ModelResponse):
     """Standard response struct for a response from a language model."""
 
     content: dict = None
 
 
 class LanguageModelProvider(ModelProvider):
+    @abc.abstractmethod
+    def count_message_tokens(
+        self,
+        messages: LanguageModelMessage | list[LanguageModelMessage],
+        model_name: str,
+    ) -> int:
+        ...
+
     @abc.abstractmethod
     async def create_language_completion(
         self,
@@ -215,5 +228,5 @@ class LanguageModelProvider(ModelProvider):
         model_name: str,
         completion_parser: Callable[[dict], dict],
         **kwargs,
-    ) -> LanguageModelProviderModelResponse:
+    ) -> LanguageModelResponse:
         ...
