@@ -38,7 +38,7 @@ Intial setup:
 ### 📊 **Benchmarking**
 
 
-To run the benchmark, use the `agbenchmark start` command. Here are some options you can use with this command:
+To run the benchmark, use the `agbenchmark` command. Here are some options you can use with this command:
 
 - `--backend`: If it's being run from the cli
 - `-c, --category TEXT`: Specific category to run
@@ -55,12 +55,12 @@ To run the benchmark, use the `agbenchmark start` command. Here are some options
 - `--help`: Show this message and exit.
 
 For example, if you want to run a specific test, you can use the `--test` option like this:
-`agbenchmark start --test your_test_name`
+`agbenchmark --test your_test_name`
 
 If you want to run the benchmark without dependencies, you can use the `--no_dep` option like this:
-`agbenchmark start --no_dep`
+`agbenchmark --no_dep`
 
 You can combine multiple options as well. For example, to run a specific test without dependencies, you can do:
-`agbenchmark start --test your_test_name --no_dep`
+`agbenchmark --test your_test_name --no_dep`
 
 Remember to replace `your_test_name` with the name of the test you want to run.

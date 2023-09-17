@@ -42,8 +42,8 @@ jobs:
         run: |
           sh run
           URL=http://127.0.0.1:8000 bash -c "$(curl -fsSL https://raw.githubusercontent.com/AI-Engineers-Foundation/agent-protocol/main/testing_suite/test.sh)"
-          poetry run agbenchmark start --mock
-          poetry run agbenchmark start --test=TestWriteFile
+          poetry run agbenchmark --mock
+          poetry run agbenchmark --test=TestWriteFile
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
