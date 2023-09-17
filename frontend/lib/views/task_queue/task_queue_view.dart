@@ -43,12 +43,16 @@ class TaskQueueView extends StatelessWidget {
             },
           ),
 
-          // Checkmark button at the bottom right
+// Checkmark button at the bottom of the screen
           Positioned(
-            bottom: 50,
-            right: 50,
-            child: Tooltip(
-              message: 'Run suite of tests',
+            bottom: 20,
+            left: 20,
+            right: 20,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8.0),
+                border: Border.all(color: Colors.green, width: 3),
+              ),
               child: ElevatedButton(
                 onPressed: () {
                   // Create a ReportRequestBody with hardcoded values
@@ -58,21 +62,38 @@ class TaskQueueView extends StatelessWidget {
                     mock: true,
                   );
 
-                  // Call callGenerateReport method from SkillTreeViewModel
-                  viewModel.callGenerateReport(reportRequestBody);
+                  // Call runBenchmark method from SkillTreeViewModel
+                  viewModel.runBenchmark(reportRequestBody);
                 },
-                child: Icon(Icons.check, color: Colors.green),
+                child: Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.center, // Center the children
+                  children: [
+                    Text(
+                      'Initiate test suite',
+                      style: TextStyle(
+                        color: Colors.green, // Text color is set to green
+                        fontWeight: FontWeight.bold, // Make text bold
+                        fontSize: 16, // Increase font size
+                      ),
+                    ),
+                    SizedBox(width: 10), // Gap of 10 between text and icon
+                    Icon(
+                      Icons.play_arrow,
+                      color: Colors.green, // Icon color is set to green
+                      size: 24, // Increase icon size
+                    ),
+                  ],
+                ),
                 style: ButtonStyle(
+                  backgroundColor: MaterialStateProperty.all(Colors.white),
                   shape: MaterialStateProperty.all<RoundedRectangleBorder>(
                     RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8.0),
                     ),
                   ),
-                  backgroundColor: MaterialStateProperty.all(Colors.white),
-                  side: MaterialStateProperty.all(
-                      BorderSide(color: Colors.green, width: 3)),
-                  minimumSize:
-                      MaterialStateProperty.all(Size(50, 50)), // Square size
+                  minimumSize: MaterialStateProperty.all(
+                      Size(double.infinity, 50)), // Full width
                   padding: MaterialStateProperty.all(EdgeInsets.all(0)),
                 ),
               ),
