@@ -48,7 +48,7 @@ class SimpleAbilityRegistry(AbilityRegistry, Configurable):
         self._memory = memory
         self._workspace = workspace
         self._model_providers = model_providers
-        self._abilities = []
+        self._abilities: list[Ability] = []
         for (
             ability_name,
             ability_configuration,
