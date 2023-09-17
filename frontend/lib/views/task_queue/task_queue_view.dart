@@ -53,17 +53,19 @@ class TaskQueueView extends StatelessWidget {
                 border: Border.all(color: Colors.green, width: 3),
               ),
               child: ElevatedButton(
-                onPressed: () {
-                  // Create a ReportRequestBody with hardcoded values
-                  ReportRequestBody reportRequestBody = ReportRequestBody(
-                    category: "",
-                    tests: testNames,
-                    mock: true,
-                  );
+                onPressed: viewModel.isBenchmarkRunning
+                    ? null
+                    : () {
+                        // Create a ReportRequestBody with hardcoded values
+                        ReportRequestBody reportRequestBody = ReportRequestBody(
+                          category: "",
+                          tests: testNames,
+                          mock: true,
+                        );
 
-                  // Call runBenchmark method from SkillTreeViewModel
-                  viewModel.runBenchmark(reportRequestBody);
-                },
+                        // Call runBenchmark method from SkillTreeViewModel
+                        viewModel.runBenchmark(reportRequestBody);
+                      },
                 child: Row(
                   mainAxisAlignment:
                       MainAxisAlignment.center, // Center the children
