@@ -9,11 +9,15 @@ import 'package:flutter/services.dart';
 import 'package:graphview/GraphView.dart';
 
 class SkillTreeViewModel extends ChangeNotifier {
+  // TODO: Potentially move to task queue view model when we create one
   final BenchmarkService benchmarkService;
+  // TODO: Potentially move to task queue view model when we create one
+  bool isBenchmarkRunning = false;
 
   List<SkillTreeNode> _skillTreeNodes = [];
   List<SkillTreeEdge> _skillTreeEdges = [];
   SkillTreeNode? _selectedNode;
+  // TODO: Potentially move to task queue view model when we create one
   List<SkillTreeNode>? _selectedNodeHierarchy;
 
   SkillTreeNode? get selectedNode => _selectedNode;
@@ -69,6 +73,7 @@ class SkillTreeViewModel extends ChangeNotifier {
   }
 
   void toggleNodeSelection(String nodeId) {
+    if (isBenchmarkRunning) return;
     if (_selectedNode?.id == nodeId) {
       // Unselect the node if it's already selected
       _selectedNode = null;
@@ -126,17 +131,25 @@ class SkillTreeViewModel extends ChangeNotifier {
   }
 
 // TODO: Update to actual implementation
-  Future<void> callGenerateReport(ReportRequestBody reportRequestBody) async {
+  Future<void> runBenchmark(ReportRequestBody reportRequestBody) async {
+    isBenchmarkRunning = true;
+    notifyListeners();
+
     try {
       final result = await benchmarkService.generateReport(reportRequestBody);
-      print("Report generated: $result");
+      // Pretty-print the JSON result
+      String prettyResult = JsonEncoder.withIndent('  ').convert(result);
+      print("Report generated: $prettyResult");
     } catch (e) {
       print("Failed to generate report: $e");
     }
+
+    isBenchmarkRunning = false;
+    notifyListeners();
   }
 
 // TODO: Update to actual implementation
-  Future<void> callPollUpdates(int lastUpdateTime) async {
+  Future<void> requestBenchmarkStatusUpdate(int lastUpdateTime) async {
     try {
       final result = await benchmarkService.pollUpdates(lastUpdateTime);
       print("Updates polled: $result");
