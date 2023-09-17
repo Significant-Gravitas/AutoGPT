@@ -1,8 +1,8 @@
 {
-  "name": "TestReturnCodeTests",
+  "name": "ReturnCodeTests",
   "category": ["code", "iterate"],
   "task": "First, modify testfile.py to fill in the test case to be able to test the code in sample_code.py. Next, modify the multiply_int function in sample_code.py to be able to pass in a 'multiplier' argument to multiply the 'num' by 'multiplier'. Both arguments are integers. You can make sure you have correctly done this by running testfile.py that you previously modified.",
-  "dependencies": ["TestReturnCodeModify"],
+  "dependencies": ["ReturnCodeModify"],
   "cutoff": 120,
   "ground": {
     "answer": "Just a simple multiple by 2 function. Num is 4 so answer is 8",

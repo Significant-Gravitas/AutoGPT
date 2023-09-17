@@ -48,6 +48,8 @@ class ReportManager:
             json.dump(self.tests, f, indent=4)
 
     def add_test(self, test_name: str, test_details: dict | list) -> None:
+        if test_name.startswith("Test"):
+            test_name = test_name[4:]
         self.tests[test_name] = test_details
 
         self.save()
@@ -85,10 +87,7 @@ class ReportManager:
             },
         }
 
-        try:
-            converted_data = Report.parse_obj(self.tests)
-        except:
-            test = "ok"
+        converted_data = Report.parse_obj(self.tests)
 
         agent_categories = get_agent_category(converted_data)
         if len(agent_categories) > 1:
@@ -103,15 +102,12 @@ class ReportManager:
         total_cost = 0
         all_costs_none = True
         for test_name, test_data in self.tests.items():
-            try:
-                cost = test_data["metrics"].get(
-                    "cost", 0
-                )  # gets the cost or defaults to 0 if cost is missing
-                if cost is not None:  # check if cost is not None
-                    all_costs_none = False
-                    total_cost += cost  # add cost to total
-            except:
-                test = "ok"
+            cost = test_data["metrics"].get(
+                "cost", 0
+            )  # gets the cost or defaults to 0 if cost is missing
+            if cost is not None:  # check if cost is not None
+                all_costs_none = False
+                total_cost += cost  # add cost to total
         if all_costs_none:
             total_cost = None
         return total_cost

@@ -1,5 +1,5 @@
 {
-  "name": "TestWriteFile",
+  "name": "WriteFile",
   "category": ["interface"],
   "task": "Write the word 'Washington' to a .txt file",
   "dependencies": [],
@@ -15,7 +15,7 @@
   },
   "info": {
     "difficulty": "interface",
-    "description": "Tests the agents ability to write to a file",
+    "description": "s the agents ability to write to a file",
     "side_effects": [""]
   }
 }

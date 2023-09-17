@@ -39,7 +39,7 @@ info_text = info_div.text
 # Assert that the text is what we expect
 assert info_text == "Dogs are known as man's best friend!"
 
-print("Test passed!")
+print(" passed!")
 
 # Wait for 5 seconds
 time.sleep(5)
