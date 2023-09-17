@@ -1,8 +1,8 @@
 {
-  "name": "TestSearch",
+  "name": "Search",
   "category": ["interface"],
   "task": "Open 'https://silennaihin.com/random/plain.html' and paste all of the text on the page in a .txt file",
-  "dependencies": ["TestWriteFile"],
+  "dependencies": ["WriteFile"],
   "cutoff": 120,
   "ground": {
     "answer": "This is a Heading\nThis is a paragraph.",
@@ -15,7 +15,7 @@
   },
   "info": {
     "difficulty": "interface",
-    "description": "Tests if an llm can search",
+    "description": "s if an llm can search",
     "side_effects": [""]
   }
 }

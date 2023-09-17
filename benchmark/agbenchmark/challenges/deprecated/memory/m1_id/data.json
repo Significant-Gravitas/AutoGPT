@@ -1,8 +1,8 @@
 {
-  "name": "TestBasicMemory",
+  "name": "BasicMemory",
   "category": ["memory"],
   "task": "Follow the instructions in the instructions_1.txt file",
-  "dependencies": ["TestReadFile"],
+  "dependencies": ["ReadFile"],
   "cutoff": 150,
   "ground": {
     "answer": "2314",
@@ -15,7 +15,7 @@
   },
   "info": {
     "difficulty": "basic",
-    "description": "Tests ability for the agent to remember information between each action. An id is presented initially and the agent has to remember it after reading 4 other files",
+    "description": "s ability for the agent to remember information between each action. An id is presented initially and the agent has to remember it after reading 4 other files",
     "side_effects": []
   }
 }

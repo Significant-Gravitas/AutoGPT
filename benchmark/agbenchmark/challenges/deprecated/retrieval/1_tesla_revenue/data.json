@@ -1,8 +1,8 @@
 {
-  "name": "TestRevenueRetrieval1.0",
+  "name": "RevenueRetrieval1.0",
   "category": ["retrieval"],
   "task": "Write tesla's revenue in 2022 into a .txt file.",
-  "dependencies": ["TestBasicRetrieval"],
+  "dependencies": ["BasicRetrieval"],
   "cutoff": 60,
   "ground": {
     "answer": "It was $81.462 billion in 2022.",

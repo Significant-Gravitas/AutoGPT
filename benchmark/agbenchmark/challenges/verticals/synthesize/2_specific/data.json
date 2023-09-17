@@ -1,8 +1,8 @@
 {
-  "name": "TestRevenueRetrieval1.1",
+  "name": "RevenueRetrieval1.1",
   "category": ["retrieval"],
   "task": "Write Tesla's revenue in 2022, rounded to the nearest million dollars, into a .txt file.",
-  "dependencies": ["TestRevenueRetrieval_1.0"],
+  "dependencies": ["RevenueRetrieval_1.0"],
   "cutoff": 60,
   "ground": {
     "answer": "It was $81.462 billion in 2022.",
