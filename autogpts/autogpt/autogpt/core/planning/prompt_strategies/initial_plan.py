@@ -1,14 +1,13 @@
 import logging
 
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.planning.base import PromptStrategy
-from autogpt.core.planning.schema import (
+from autogpt.core.planning.schema import Task, TaskType
+from autogpt.core.prompting import PromptStrategy
+from autogpt.core.prompting.schema import (
     LanguageModelClassification,
     LanguageModelPrompt,
-    Task,
-    TaskType,
 )
-from autogpt.core.planning.strategies.utils import json_loads, to_numbered_list
+from autogpt.core.prompting.utils import json_loads, to_numbered_list
 from autogpt.core.resource.model_providers import (
     LanguageModelFunction,
     LanguageModelMessage,

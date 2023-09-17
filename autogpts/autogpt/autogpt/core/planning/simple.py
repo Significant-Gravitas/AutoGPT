@@ -10,12 +10,10 @@ from autogpt.core.configuration import (
     SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.planning import strategies
-from autogpt.core.planning.base import PromptStrategy
-from autogpt.core.planning.schema import (
-    LanguageModelClassification,
-    Task,
-)
+from autogpt.core.planning import prompt_strategies
+from autogpt.core.planning.schema import Task
+from autogpt.core.prompting import PromptStrategy
+from autogpt.core.prompting.schema import LanguageModelClassification
 from autogpt.core.resource.model_providers import (
     LanguageModelProvider,
     LanguageModelResponse,
@@ -35,9 +33,9 @@ class LanguageModelConfiguration(SystemConfiguration):
 
 
 class PromptStrategiesConfiguration(SystemConfiguration):
-    name_and_goals: strategies.NameAndGoalsConfiguration
-    initial_plan: strategies.InitialPlanConfiguration
-    next_ability: strategies.NextAbilityConfiguration
+    name_and_goals: prompt_strategies.NameAndGoalsConfiguration
+    initial_plan: prompt_strategies.InitialPlanConfiguration
+    next_ability: prompt_strategies.NextAbilityConfiguration
 
 
 class PlannerConfiguration(SystemConfiguration):
@@ -73,9 +71,9 @@ class SimplePlanner(Configurable):
                 ),
             },
             prompt_strategies=PromptStrategiesConfiguration(
-                name_and_goals=strategies.NameAndGoals.default_configuration,
-                initial_plan=strategies.InitialPlan.default_configuration,
-                next_ability=strategies.NextAbility.default_configuration,
+                name_and_goals=prompt_strategies.NameAndGoals.default_configuration,
+                initial_plan=prompt_strategies.InitialPlan.default_configuration,
+                next_ability=prompt_strategies.NextAbility.default_configuration,
             ),
         ),
     )
@@ -96,13 +94,13 @@ class SimplePlanner(Configurable):
             self._providers[model] = model_providers[model_config.provider_name]
 
         self._prompt_strategies = {
-            "name_and_goals": strategies.NameAndGoals(
+            "name_and_goals": prompt_strategies.NameAndGoals(
                 **self._configuration.prompt_strategies.name_and_goals.dict()
             ),
-            "initial_plan": strategies.InitialPlan(
+            "initial_plan": prompt_strategies.InitialPlan(
                 **self._configuration.prompt_strategies.initial_plan.dict()
             ),
-            "next_ability": strategies.NextAbility(
+            "next_ability": prompt_strategies.NextAbility(
                 **self._configuration.prompt_strategies.next_ability.dict()
             ),
         }
