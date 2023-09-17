@@ -63,9 +63,10 @@ class TaskService {
   }
 
   Future<void> loadDeletedTasks() async {
-    _deletedTaskIds =
-        (await SharedPreferences.getInstance()).getStringList('deletedTasks') ??
-            [];
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    _deletedTaskIds = prefs.getStringList('deletedTasks') ?? [];
+
+    // Print out all deleted task IDs
     print("Deleted tasks fetched successfully!");
   }
 

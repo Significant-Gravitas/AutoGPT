@@ -65,6 +65,9 @@ void main() async {
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final taskService = Provider.of<TaskService>(context, listen: false);
+    taskService.loadDeletedTasks();
+
     return MaterialApp(
       title: 'AutoGPT Flutter Client',
       theme: ThemeData(
