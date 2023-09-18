@@ -705,9 +705,9 @@ def enter(agent_name, branch):
 
         if github_repo_url.startswith("git@"):
             github_repo_url = (
-                github_repo_url.replace("git@", "https://")
+                github_repo_url.replace(":", "/")
+                .replace("git@", "https://")
                 .replace(".git", "")
-                .replace(":", "/")
             )
 
         # If --branch is passed, use it instead of master
@@ -755,12 +755,11 @@ def enter(agent_name, branch):
 
         # Create a PR into the parent repository
         g = Github(github_access_token)
-        repo = g.get_repo(github_repo_url.split(":")[-1].split(".git")[0])
+        repo_name = github_repo_url.replace("https://github.com/", '')
+        repo = g.get_repo(repo_name)
         parent_repo = repo.parent
         if parent_repo:
-            pr = parent_repo.create_pull(
-                title=f"{agent_name} entering the arena",
-                body=f"""
+            pr_message = f"""
 ### 🌟 Welcome to the AutoGPT Arena Hacks Hackathon! 🌟
 
 Hey there amazing builders! We're thrilled to have you join this exciting journey. Before you dive deep into building, we'd love to know more about you and the awesome project you are envisioning. Fill out the template below to kickstart your hackathon journey. May the best agent win! 🏆
@@ -795,8 +794,12 @@ Hey there amazing builders! We're thrilled to have you join this exciting journe
 - [ ] We have read and are aligned with the [Hackathon Rules](https://lablab.ai/event/autogpt-arena-hacks).
 - [ ] We confirm that our project will be open-source and adhere to the MIT License.
 - [ ] Our lablab.ai registration email matches our OpenAI account to claim the bonus credits (if applicable).
-""",
-                head=f"{repo.owner.login}:{arena_submission_branch}",
+"""
+            head = f"{repo.owner.login}:{arena_submission_branch}"
+            pr = parent_repo.create_pull(
+                title=f"{agent_name} entering the arena",
+                body=pr_message,
+                head=head,
                 base=branch_to_use,
             )
             click.echo(
