@@ -67,7 +67,10 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
 
     file_path = relative_file_path or file_path
 
-    file = FileContextItem(file_path, agent.workspace.root)
+    file = FileContextItem(
+        file_path_in_workspace=file_path,
+        workspace_path=agent.workspace.root,
+    )
     if file in agent_context:
         raise DuplicateOperationError(f"The file {file_path} is already open")
 
@@ -114,7 +117,10 @@ def open_folder(path: Path, agent: Agent) -> tuple[str, FolderContextItem]:
 
     path = relative_path or path
 
-    folder = FolderContextItem(path, agent.workspace.root)
+    folder = FolderContextItem(
+        path_in_workspace=path,
+        workspace_path=agent.workspace.root,
+    )
     if folder in agent_context:
         raise DuplicateOperationError(f"The folder {path} is already open")
 

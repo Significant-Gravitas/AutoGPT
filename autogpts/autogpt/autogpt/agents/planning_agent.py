@@ -23,7 +23,7 @@ from autogpt.logs.log_cycle import (
 )
 from autogpt.models.agent_actions import (
     ActionErrorResult,
-    ActionHistory,
+    EpisodicActionHistory,
     ActionInterruptedByHuman,
     ActionResult,
     ActionSuccessResult,
@@ -69,7 +69,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
         self.log_cycle_handler = LogCycleHandler()
         """LogCycleHandler for structured debug logging."""
 
-        self.action_history = ActionHistory()
+        self.action_history = EpisodicActionHistory()
 
         self.plan: list[str] = []
         """List of steps that the Agent plans to take"""
@@ -229,7 +229,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
             self.ai_config.ai_name,
             self.created_at,
             self.cycle_count,
-            self.action_history.cycles,
+            self.action_history.episodes,
             "action_history.json",
         )
         self.log_cycle_handler.log_cycle(
@@ -250,7 +250,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
         result: ActionResult
 
         if command_name == "human_feedback":
-            result = ActionInterruptedByHuman(user_input)
+            result = ActionInterruptedByHuman(feedback=user_input)
             self.log_cycle_handler.log_cycle(
                 self.ai_config.ai_name,
                 self.created_at,
@@ -279,9 +279,9 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
                     self.context.add(return_value[1])
                     return_value = return_value[0]
 
-                result = ActionSuccessResult(return_value)
+                result = ActionSuccessResult(outputs=return_value)
             except AgentException as e:
-                result = ActionErrorResult(e.message, e)
+                result = ActionErrorResult(reason=e.message, error=e)
 
             result_tlength = count_string_tokens(str(result), self.llm.name)
             memory_tlength = count_string_tokens(
