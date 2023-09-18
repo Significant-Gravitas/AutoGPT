@@ -55,14 +55,14 @@ class Agent:
             allow_headers=["*"],
         )
 
-        app.include_router(router, prefix="/api/v1")
-        app.mount("/app", StaticFiles(directory="../../frontend/build/web"), name="app")
+        app.include_router(router, prefix="/ap/v1")
+        # app.mount("/app", StaticFiles(directory="../../frontend/build/web"), name="app")
         app.add_middleware(AgentMiddleware, agent=self)
 
         @app.get("/", include_in_schema=False)
         async def root():
             return RedirectResponse(url='/app/index.html', status_code=307)
-        
+
         config.loglevel = "ERROR"
         config.bind = [f"0.0.0.0:{port}"]
 
