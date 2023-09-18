@@ -61,7 +61,7 @@
     "commit_hash_to_benchmark": "ac36f7bfc7f23ad8800339fa55943c1405d80d5e",
     "branch_to_benchmark": "master"
    }
-    ```
+   ```
    - github_repo_url: the url to your fork
    - timestamp: timestamp of the last update of this file
    - commit_hash_to_benchmark: the commit hash of your entry. You update each time you have an something ready to be offically entered into the hackathon
