@@ -42,6 +42,8 @@ class Agent:
         origins = [
             "http://localhost:5000",
             "http://127.0.0.1:5000",
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
             # Add any other origins you want to whitelist
         ]
 
