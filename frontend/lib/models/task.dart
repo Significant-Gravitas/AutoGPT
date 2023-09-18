@@ -45,13 +45,19 @@ class Task {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'task_id': id,
+      'input': title,
+      'additional_input': additionalInput,
+      'artifacts': artifacts,
+    };
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is Task &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          title == other.title;
+      other is Task && runtimeType == other.runtimeType && id == other.id;
 
   @override
   int get hashCode => id.hashCode ^ title.hashCode;
