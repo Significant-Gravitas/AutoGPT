@@ -41,7 +41,7 @@ Want to build your own groundbreaking agent using AutoGPT? 🛠️ Fork this rep
 
 **Forge your future!** The `forge` is your innovation lab. All the boilerplate code is already handled, letting you channel all your creativity into building a revolutionary agent. It's more than a starting point, it's a launchpad 🚀 for your ideas.
 
-📘 [Learn More](https://github.com/Significant-Gravitas/Auto-GPT/tree/master/forge)
+📘 [Learn More](https://github.com/Significant-Gravitas/Auto-GPT/tree/master/autogpts/forge)
 
 ### 🎯 the Benchmark
 
