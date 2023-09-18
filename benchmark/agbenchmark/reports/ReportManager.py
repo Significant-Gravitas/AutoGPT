@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import sys
@@ -9,6 +10,48 @@ from agbenchmark.reports.processing.process_report import get_agent_category
 from agbenchmark.reports.processing.report_types import Report
 from agbenchmark.utils.data_types import AgentBenchmarkConfig
 from agbenchmark.utils.utils import get_highest_success_difficulty
+
+
+class SingletonReportManager:
+    instance = None
+
+    def __new__(cls):
+        from agbenchmark.reports.agent_benchmark_config import (
+            get_agent_benchmark_config,
+        )
+
+        if not cls.instance:
+            cls.instance = super(SingletonReportManager, cls).__new__(cls)
+
+            agent_benchmark_config = get_agent_benchmark_config()
+            benchmark_start_time_dt = (
+                datetime.now()
+            )  # or any logic to fetch the datetime
+
+            # Make the Managers class attributes
+            cls.REGRESSION_MANAGER = ReportManager(
+                agent_benchmark_config.get_regression_reports_path(),
+                benchmark_start_time_dt,
+            )
+            cls.INFO_MANAGER = ReportManager(
+                str(
+                    agent_benchmark_config.get_reports_path(benchmark_start_time_dt)
+                    / "report.json"
+                ),
+                benchmark_start_time_dt,
+            )
+            cls.INTERNAL_INFO_MANAGER = ReportManager(
+                agent_benchmark_config.get_success_rate_path(), benchmark_start_time_dt
+            )
+
+        return cls.instance
+
+    @classmethod
+    def clear_instance(cls):
+        cls.instance = None
+        cls.REGRESSION_MANAGER = None
+        cls.INFO_MANAGER = None
+        cls.INTERNAL_INFO_MANAGER = None
 
 
 class ReportManager:
@@ -81,7 +124,7 @@ class ReportManager:
                 "highest_difficulty": get_highest_success_difficulty(self.tests),
                 "total_cost": self.get_total_costs(),
             },
-            "tests": self.tests,
+            "tests": copy.copy(self.tests),
             "config": {
                 k: v for k, v in json.loads(config.json()).items() if v is not None
             },
@@ -105,6 +148,7 @@ class ReportManager:
             cost = test_data["metrics"].get(
                 "cost", 0
             )  # gets the cost or defaults to 0 if cost is missing
+
             if cost is not None:  # check if cost is not None
                 all_costs_none = False
                 total_cost += cost  # add cost to total

@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 import forge.sdk.forge_log
-
 forge.sdk.forge_log.setup_logger()
 
 

@@ -1,8 +1,9 @@
 import json
 import os
 import sys
-from typing import Any, List, Optional
+from typing import Any, Optional
 
+import psutil
 from fastapi import FastAPI
 from fastapi import (
     HTTPException as FastAPIHTTPException,  # Import HTTPException from FastAPI
@@ -10,11 +11,11 @@ from fastapi import (
 from fastapi import Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-# from agbenchmark.app import app
+from agbenchmark.execute_sub_process import execute_subprocess
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Extra
 
 # Change the current working directory to the benchmark path
 # home_path = find_absolute_benchmark_path()
@@ -22,11 +23,44 @@ from pydantic import BaseModel
 
 general_command = ["poetry", "run", "agbenchmark", "start", "--backend"]
 
+import psutil
+
+
+def find_agbenchmark_without_uvicorn():
+    pids = []
+    for process in psutil.process_iter(
+        attrs=[
+            "pid",
+            "cmdline",
+            "name",
+            "username",
+            "status",
+            "cpu_percent",
+            "memory_info",
+            "create_time",
+            "cwd",
+            "connections",
+        ]
+    ):
+        try:
+            # Convert the process.info dictionary values to strings and concatenate them
+            full_info = " ".join([str(v) for k, v in process.info.items()])
+
+            if "agbenchmark" in full_info and "uvicorn" not in full_info:
+                pids.append(process.info["pid"])
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+    return pids
+
 
 class CreateReportRequest(BaseModel):
-    tests: Optional[List[str]] = []
-    category: Optional[str] = []
+    test: str = None
+    test_run_id: str = None
+    # category: Optional[str] = []
     mock: Optional[bool] = False
+
+    class Config:
+        extra = Extra.forbid  # this will forbid any extra fields
 
 
 updates_list = []
@@ -50,25 +84,30 @@ app.add_middleware(
 )
 
 
+def stream_output(pipe):
+    for line in pipe:
+        print(line, end="")
+
+
 @app.post("/reports")
 def run_single_test(body: CreateReportRequest) -> Any:
-    from agbenchmark.__main__ import run_benchmark
-
+    pids = find_agbenchmark_without_uvicorn()
+    print(f"pids already running with agbenchmark: {pids}")
+    print(body.dict())
     # it's a hack because other parts of the code are using sys.argv
-    sys.argv = [sys.argv[0]]
-    sys.argv.append("start")
-    if body.category:
-        sys.argv.append(f"--category={body.category}")
-    for body_test in body.tests:
-        sys.argv.append(f"--test={body_test}")
-    categories = None
-    if body.category:
-        categories = tuple([body.category])
+    print(os.getcwd())
+    command_options = ["agbenchmark"]
+    # if body.category:
+    #     sys.argv.append(f"--category={body.category}")
+    command_options.append(f"--test={body.test}")
+    if body.mock:
+        command_options.append("--mock")
 
-    run_benchmark(category=categories, mock=body.mock, test=tuple(body.tests))
+    execute_subprocess(command_options, 200)
     import json
     from pathlib import Path
 
+    print("finished running")
     # List all folders in the current working directory
     path_reports = Path.cwd() / "agbenchmark_config" / "reports"
     folders = [folder for folder in path_reports.iterdir() if folder.is_dir()]
@@ -82,6 +121,7 @@ def run_single_test(body: CreateReportRequest) -> Any:
     # Read report.json from this folder
     if last_folder:
         report_path = last_folder / "report.json"
+        print(report_path)
         if report_path.exists():
             with report_path.open() as file:
                 data = json.load(file)
