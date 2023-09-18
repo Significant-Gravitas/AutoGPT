@@ -3,13 +3,9 @@ import os
 import sys
 from typing import Any, Dict
 
-from agbenchmark.__main__ import (
-    CHALLENGES_ALREADY_BEATEN,
-    INFO_MANAGER,
-    INTERNAL_INFO_MANAGER,
-    REGRESSION_MANAGER,
-    get_agent_benchmark_config,
-)
+from agbenchmark.__main__ import CHALLENGES_ALREADY_BEATEN
+from agbenchmark.reports.agent_benchmark_config import get_agent_benchmark_config
+from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.data_types import DifficultyLevel
 from agbenchmark.utils.get_data_from_helicone import get_data_from_helicone
 from agbenchmark.utils.utils import calculate_success_percentage
@@ -21,12 +17,16 @@ def get_previous_test_results(
     agent_tests: dict[str, list[bool]] = {}
     mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
 
-    prev_test_results = INTERNAL_INFO_MANAGER.tests.get(test_name, [])
+    prev_test_results = SingletonReportManager().INTERNAL_INFO_MANAGER.tests.get(
+        test_name, []
+    )
 
     if not mock:
         # only add if it's an actual test
         prev_test_results.append(info_details["metrics"]["success"])
-        INTERNAL_INFO_MANAGER.add_test(test_name, prev_test_results)
+        SingletonReportManager().INTERNAL_INFO_MANAGER.add_test(
+            test_name, prev_test_results
+        )
 
     # can calculate success rate regardless of mock
     info_details["metrics"]["success_%"] = calculate_success_percentage(
@@ -45,7 +45,7 @@ def update_regression_tests(
     if len(prev_test_results) >= 3 and prev_test_results[-3:] == [True, True, True]:
         # if the last 3 tests were successful, add to the regression tests
         info_details["is_regression"] = True
-        REGRESSION_MANAGER.add_test(test_name, test_details)
+        SingletonReportManager().REGRESSION_MANAGER.add_test(test_name, test_details)
 
 
 def generate_single_call_report(
@@ -95,7 +95,7 @@ def generate_single_call_report(
         info_details["metrics"]["success"] = True
     else:
         if not mock:  # don't remove if it's a mock test
-            REGRESSION_MANAGER.remove_test(test_name)
+            SingletonReportManager().REGRESSION_MANAGER.remove_test(test_name)
         info_details["metrics"]["fail_reason"] = str(call.excinfo.value)
         if call.excinfo.typename == "Skipped":
             info_details["metrics"]["attempted"] = False
@@ -146,7 +146,7 @@ def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:
                             nested_test_info, nested_test_name
                         )
 
-        INFO_MANAGER.add_test(test_name, info_details)
+        SingletonReportManager().INFO_MANAGER.add_test(test_name, info_details)
 
 
 def update_challenges_already_beaten(
@@ -171,6 +171,6 @@ def update_challenges_already_beaten(
 def session_finish(suite_reports: dict) -> None:
     agent_benchmark_config = get_agent_benchmark_config()
 
-    INTERNAL_INFO_MANAGER.save()
-    INFO_MANAGER.end_info_report(agent_benchmark_config)
-    REGRESSION_MANAGER.save()
+    SingletonReportManager().INTERNAL_INFO_MANAGER.save()
+    SingletonReportManager().INFO_MANAGER.end_info_report(agent_benchmark_config)
+    SingletonReportManager().REGRESSION_MANAGER.save()
