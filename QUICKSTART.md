@@ -66,3 +66,28 @@
    - timestamp: timestamp of the last update of this file
    - commit_hash_to_benchmark: the commit hash of your entry. You update each time you have an something ready to be offically entered into the hackathon
    - branch_to_benchmark: the branch you are using to develop your agent on, default is master.
+
+
+## Running your Agent
+
+Your agent can started using the `./run agent start YOUR_AGENT_NAME`
+
+This will build the frontend, install the dependencies and then start the agent on `http://localhost:8000/`
+
+![Start the Agent](docs/content/imgs/quickstart/009_start_agent.png)
+
+The frontend can be accessed from `http://localhost:8000/`, you will first need to login using either a google account or your github account.
+
+![Login](docs/content/imgs/quickstart/010_login.png)
+
+Upon logging in you will get a page that looks something like this. With your task history down the left hand side of the page and the 'chat' window to send tasks to your agent.
+
+![Login](docs/content/imgs/quickstart/011_home.png)
+
+When you have finished with your agent, or if you just need to restart it, use Ctl-C to end the session then you can re-run the start command.
+
+If you are having issues and want to ensure the agent has been stopped there is a `./run agent stop` command which will kill the process using port 8000, which should be the agent. 
+
+## Benchmarking your Agent
+
+> Todo
