@@ -459,11 +459,11 @@ def benchmark_tests_list():
                 test_name = (
                     " ".join(word for word in re.split("([A-Z][a-z]*)", test) if word)
                     .replace("_", "")
-                    .replace("C L I", "CLI")[5:]
+                    .replace("C L I", "CLI")
                     .replace("  ", " ")
                 )
                 test_name_padded = f"{test_name:<40}"
-                click.echo(click.style(f"\t\t🔬 {test_name_padded} - {test}", fg="cyan"))
+                click.echo(click.style(f"\t\t🔬 {test_name_padded} - Test{test}", fg="cyan"))
     else:
         click.echo(click.style("No tests found 😞", fg="red"))
 
