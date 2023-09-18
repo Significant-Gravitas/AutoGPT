@@ -127,5 +127,8 @@ jobs:
 
           echo "Running the following command: ${prefix}agbenchmark --test=WriteFile"
           ${prefix}agbenchmark --test=WriteFile
+          sh run_benchmark &
+          sleep 5
+          python ../../benchmark/tests/test_web_server.py
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

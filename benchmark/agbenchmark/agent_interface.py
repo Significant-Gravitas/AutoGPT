@@ -1,18 +1,11 @@
 import os
-import platform
-import queue
-import select
 import shutil
-import subprocess
 import sys
-import time
-from threading import Thread
-from typing import Any, List
+from typing import List
 
-import psutil
 from dotenv import load_dotenv
 
-from agbenchmark.utils.data_types import AgentBenchmarkConfig
+from agbenchmark.execute_sub_process import execute_subprocess
 
 load_dotenv()
 
@@ -22,82 +15,12 @@ HELICONE_GRAPHQL_LOGS = (
 )
 
 
-def run_linux_env(process: Any, start_time: float, timeout: float) -> None:
-    while True:
-        try:
-            # This checks if there's data to be read from stdout without blocking.
-            if process.stdout and select.select([process.stdout], [], [], 0)[0]:
-                output = process.stdout.readline()
-                print(output.strip())
-        except Exception as e:
-            continue
-
-        # Check if process has ended, has no more output, or exceeded timeout
-        if process.poll() is not None or (time.time() - start_time > timeout):
-            break
-
-    if time.time() - start_time > timeout:
-        print("The Python function has exceeded the time limit and was terminated.")
-        parent = psutil.Process(process.pid)
-        for child in parent.children(recursive=True):
-            child.kill()
-        parent.kill()
-
-    else:
-        print("The Python function has finished running.")
-
-
-def enqueue_output(out: Any, my_queue: Any) -> None:
-    for line in iter(out.readline, b""):
-        my_queue.put(line)
-    out.close()
-
-
-def run_windows_env(process: Any, start_time: float, timeout: float) -> None:
-    my_queue: Any = queue.Queue()
-    thread = Thread(target=enqueue_output, args=(process.stdout, my_queue))
-    thread.daemon = True
-    thread.start()
-
-    while True:
-        try:
-            output = my_queue.get_nowait().strip()
-            print(output)
-        except queue.Empty:
-            pass
-
-        if process.poll() is not None or (time.time() - start_time > timeout):
-            break
-
-    if time.time() - start_time > timeout:
-        print("The Python function has exceeded the time limit and was terminated.")
-        process.terminate()
-
-
-def run_agent(task: str, timeout: int, agent_config: AgentBenchmarkConfig) -> None:
+def run_agent(task: str, timeout: int) -> None:
     print(f"Running agbenchmark/benchmarks.py with timeout {timeout}")
 
     command = [sys.executable, "-m", "agbenchmark_config.benchmarks", str(task)]
 
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        bufsize=1,
-    )
-
-    start_time = time.time()
-
-    if platform.system() == "Windows":
-        run_windows_env(process, start_time, timeout)
-    else:
-        run_linux_env(process, start_time, timeout)
-
-    process.wait()
-
-    if process.returncode != 0:
-        print(f"The agent timed out")
+    execute_subprocess(command, timeout)
 
 
 def get_list_of_file_paths(
