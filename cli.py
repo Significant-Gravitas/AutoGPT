@@ -270,7 +270,9 @@ def start(agent_name):
     if os.path.exists(agent_dir) and os.path.isfile(run_command):
         subprocess.Popen([frontend_build], cwd=frontend_dir)
         os.chdir(agent_dir)
-
+        if os.name == 'nt':
+            click.echo(click.style("😞 The script cannot be run on Windows.", fg="red"))
+            return
         subprocess.Popen(["./run"], cwd=agent_dir)
         click.echo(f"Agent '{agent_name}' started")
     elif not os.path.exists(agent_dir):
@@ -350,7 +352,7 @@ def start(agent_name, subprocess_args):
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
     agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
-    benchmark_script = os.path.join(agent_dir, "run_benchmark.sh")
+    benchmark_script = os.path.join(agent_dir, "run_benchmark")
     if os.path.exists(agent_dir) and os.path.isfile(benchmark_script):
         os.chdir(agent_dir)
         subprocess.Popen([benchmark_script, *subprocess_args], cwd=agent_dir)
@@ -392,16 +394,17 @@ def benchmark_categories_list():
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
-        with open(data_file, "r") as f:
-            try:
-                data = json.load(f)
-                categories.update(data.get("category", []))
-            except json.JSONDecodeError:
-                print(f"Error: {data_file} is not a valid JSON file.")
-                continue
-            except IOError:
-                print(f"IOError: file could not be read: {data_file}")
-                continue
+        if 'deprecated' not in data_file:
+            with open(data_file, "r") as f:
+                try:
+                    data = json.load(f)
+                    categories.update(data.get("category", []))
+                except json.JSONDecodeError:
+                    print(f"Error: {data_file} is not a valid JSON file.")
+                    continue
+                except IOError:
+                    print(f"IOError: file could not be read: {data_file}")
+                    continue
 
     if categories:
         click.echo(click.style("Available categories: 📚", fg="green"))
@@ -435,21 +438,22 @@ def benchmark_tests_list():
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
-        with open(data_file, "r") as f:
-            try:
-                data = json.load(f)
-                category = data.get("category", [])
-                test_name = data.get("name", "")
-                if category and test_name:
-                    if category[0] not in tests:
-                        tests[category[0]] = []
-                    tests[category[0]].append(test_name)
-            except json.JSONDecodeError:
-                print(f"Error: {data_file} is not a valid JSON file.")
-                continue
-            except IOError:
-                print(f"IOError: file could not be read: {data_file}")
-                continue
+        if 'deprecated' not in data_file:
+            with open(data_file, "r") as f:
+                try:
+                    data = json.load(f)
+                    category = data.get("category", [])
+                    test_name = data.get("name", "")
+                    if category and test_name:
+                        if category[0] not in tests:
+                            tests[category[0]] = []
+                        tests[category[0]].append(test_name)
+                except json.JSONDecodeError:
+                    print(f"Error: {data_file} is not a valid JSON file.")
+                    continue
+                except IOError:
+                    print(f"IOError: file could not be read: {data_file}")
+                    continue
 
     if tests:
         click.echo(click.style("Available tests: 📚", fg="green"))
@@ -463,7 +467,7 @@ def benchmark_tests_list():
                     .replace("  ", " ")
                 )
                 test_name_padded = f"{test_name:<40}"
-                click.echo(click.style(f"\t\t🔬 {test_name_padded} - Test{test}", fg="cyan"))
+                click.echo(click.style(f"\t\t🔬 {test_name_padded} - {test}", fg="cyan"))
     else:
         click.echo(click.style("No tests found 😞", fg="red"))
 
