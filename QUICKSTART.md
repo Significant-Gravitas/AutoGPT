@@ -90,4 +90,59 @@ If you are having issues and want to ensure the agent has been stopped there is 
 
 ## Benchmarking your Agent
 
-> Todo
+The benchmarking system can also be accessed using the cli too:
+
+```bash
+agpt % ./run benchmark
+Usage: cli.py benchmark [OPTIONS] COMMAND [ARGS]...
+
+  Commands to start the benchmark and list tests and categories
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  categories  Benchmark categories group command
+  start       Starts the benchmark command
+  tests       Benchmark tests group command
+agpt % ./run benchmark categories     
+Usage: cli.py benchmark categories [OPTIONS] COMMAND [ARGS]...
+
+  Benchmark categories group command
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  list  List benchmark categories command
+agpt % ./run benchmark tests      
+Usage: cli.py benchmark tests [OPTIONS] COMMAND [ARGS]...
+
+  Benchmark tests group command
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  details  Benchmark test details command
+  list     List benchmark tests command
+```
+
+The benchmark has been split into different categories of skills you and test your agent on. You can see what categories are available with
+```bash
+./run benchmark categories list
+# And what tests are available with
+./run benchmark tests list
+```
+
+![Login](docs/content/imgs/quickstart/012_tests.png)
+
+
+Finally you can run the benchmark with
+
+```bash
+./run benchmark start YOUR_AGENT_NAME
+
+```
+
+>
