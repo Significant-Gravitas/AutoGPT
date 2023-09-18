@@ -36,7 +36,7 @@ CMD []
 
 # dev build -> include everything
 FROM autogpt-base as autogpt-dev
-RUN poetry install --no-root
+RUN poetry install --no-root --without benchmark
 ONBUILD COPY . ./
 
 # release build -> include bare minimum
