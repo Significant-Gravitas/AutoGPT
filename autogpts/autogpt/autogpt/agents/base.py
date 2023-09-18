@@ -16,7 +16,7 @@ from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.memory.message_history import MessageHistory
-from autogpt.models.agent_actions import ActionHistory, ActionResult
+from autogpt.models.agent_actions import EpisodicActionHistory, ActionResult
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
@@ -90,10 +90,10 @@ class BaseAgent(metaclass=ABCMeta):
         defaults to 75% of `llm.max_tokens`.
         """
 
-        self.event_history = ActionHistory()
+        self.event_history = EpisodicActionHistory()
 
         self.message_history = MessageHistory(
-            self.llm,
+            model=self.llm,
             max_summary_tlength=summary_max_tlength or self.send_token_limit // 6,
         )
 

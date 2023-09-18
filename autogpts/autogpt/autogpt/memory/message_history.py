@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import json
 import logging
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterator, Optional
 
 if TYPE_CHECKING:
@@ -23,7 +22,6 @@ from autogpt.logs import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME, LogCycleHa
 logger = logging.getLogger(__name__)
 
 
-@dataclass
 class MessageHistory(ChatSequence):
     max_summary_tlength: int = 500
     agent: Optional[BaseAgent | Agent] = None
