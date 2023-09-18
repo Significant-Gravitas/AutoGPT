@@ -110,6 +110,7 @@ class ReportManager:
         command = " ".join(sys.argv)
 
         self.tests = {
+            "test_run_id": os.getenv("TEST_RUN_ID"),
             "command": command.split(os.sep)[-1],
             "benchmark_git_commit_sha": "---",
             "agent_git_commit_sha": "---",

@@ -19,6 +19,7 @@ agbenchmark = { path = "../../benchmark" }
 hypercorn = "^0.14.4"
 python-multipart = "^0.0.6"
 toml = "^0.10.2"
+pydevd-pycharm = "^232.9921.36"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"

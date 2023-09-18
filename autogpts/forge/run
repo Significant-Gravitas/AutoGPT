@@ -10,6 +10,7 @@ else
 fi
 
 poetry install
+poetry add pydevd-pycharm
 if [ ! -f .env ]; then
   cp .env.example .env
   echo "Please add your api keys to the .env file."

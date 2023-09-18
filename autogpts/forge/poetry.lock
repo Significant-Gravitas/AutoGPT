@@ -2594,6 +2594,16 @@ dotenv = ["python-dotenv (>=0.10.4)"]
 email = ["email-validator (>=1.0.3)"]
 
 [[package]]
+name = "pydevd-pycharm"
+version = "232.9921.36"
+description = "PyCharm Debugger (used in PyCharm and PyDev)"
+optional = false
+python-versions = "*"
+files = [
+    {file = "pydevd-pycharm-232.9921.36.tar.gz", hash = "sha256:036601612081a9c60ab1c917d1c534740837102960a6b86153e791054040123f"},
+]
+
+[[package]]
 name = "pyflakes"
 version = "3.1.0"
 description = "passive checker of Python programs"
@@ -3716,4 +3726,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "781284905951614fe8c467e83fdba89501c02eb5b33b5d2f80e557b7f5d04e96"
+content-hash = "ad7c7caa61a9450ba43a0d7e76fc1c529c3fab259b4ab7a99adbf6a70d0bfe2f"

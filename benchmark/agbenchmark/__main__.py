@@ -72,11 +72,23 @@ def run_benchmark(
     skip_category: Optional[tuple[str]] = None,
     test: Optional[str] = None,
     cutoff: Optional[int] = None,
+    test_run_id: Optional[str] = None,
     server: bool = False,
 ) -> int:
     """Start the benchmark tests. If a category flag is provided, run the categories with that mark."""
     # Check if configuration file exists and is not empty
+<<<<<<< HEAD
 
+=======
+    # import pydevd_pycharm
+    #
+    # pydevd_pycharm.settrace(
+    #     "localhost", port=9739, stdoutToServer=True, stderrToServer=True
+    # )
+    # set environment variable
+    if test_run_id:
+        os.environ["TEST_RUN_ID"] = test_run_id
+>>>>>>> ddfb1bbd (Implement old polling mechanism (#5248))
     initialize_updates_file()
     SingletonReportManager()
     agent_benchmark_config_path = str(Path.cwd() / "agbenchmark_config" / "config.json")
@@ -185,6 +197,10 @@ def run_benchmark(
     help="Skips preventing the tests from this category from running",
 )
 @click.option("--test", multiple=True, help="Specific test to run")
+<<<<<<< HEAD
+=======
+@click.option("--test_run_id", help="Each challenge can be run multiple times. We call this a test run. This is the id of the test run.")
+>>>>>>> ddfb1bbd (Implement old polling mechanism (#5248))
 @click.option("--maintain", is_flag=True, help="Runs only regression tests")
 @click.option("--improve", is_flag=True, help="Run only non-regression tests")
 @click.option(
@@ -213,6 +229,7 @@ def cli(
     category: Optional[list[str]] = None,
     skip_category: Optional[list[str]] = None,
     test: Optional[str] = None,
+    test_run_id: Optional[str] = None,
     cutoff: Optional[int] = None,
     backend: Optional[bool] = False,
     value: Optional[str] = None,
@@ -239,6 +256,7 @@ def cli(
                 category=category,
                 skip_category=skip_category,
                 test=test,
+                test_run_id=test_run_id,
                 cutoff=cutoff,
             )
 
@@ -256,6 +274,7 @@ def cli(
             category=category,
             skip_category=skip_category,
             test=test,
+            test_run_id=test_run_id,
             cutoff=cutoff,
         )
 

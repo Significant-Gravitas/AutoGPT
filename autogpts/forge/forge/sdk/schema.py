@@ -81,7 +81,7 @@ class TaskRequestBody(BaseModel):
         description="Input prompt for the task.",
         example="Write the words you receive to the file 'output.txt'.",
     )
-    additional_input: Optional[TaskInput] = {}
+    additional_input: Optional[dict] = {}
 
 
 class Task(TaskRequestBody):
@@ -122,7 +122,7 @@ class StepRequestBody(BaseModel):
         description="Input prompt for the step.",
         example="Washington",
     )
-    additional_input: Optional[StepInput] = {}
+    additional_input: Optional[dict] = {}
 
 
 class Status(Enum):

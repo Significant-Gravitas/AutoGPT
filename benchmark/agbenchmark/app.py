@@ -54,8 +54,13 @@ def find_agbenchmark_without_uvicorn():
 
 
 class CreateReportRequest(BaseModel):
+<<<<<<< HEAD
     test: str = None
     test_run_id: str = None
+=======
+    test: str
+    test_run_id: str
+>>>>>>> ddfb1bbd (Implement old polling mechanism (#5248))
     # category: Optional[str] = []
     mock: Optional[bool] = False
 
@@ -100,6 +105,10 @@ def run_single_test(body: CreateReportRequest) -> Any:
     # if body.category:
     #     sys.argv.append(f"--category={body.category}")
     command_options.append(f"--test={body.test}")
+<<<<<<< HEAD
+=======
+    command_options.append(f"--test_run_id={body.test_run_id}")
+>>>>>>> ddfb1bbd (Implement old polling mechanism (#5248))
     if body.mock:
         command_options.append("--mock")
 

@@ -23,11 +23,17 @@ async def run_api_agent(
     configuration = Configuration(host=config["AgentBenchmarkConfig"].host + "/ap/v1")
     async with ApiClient(configuration) as api_client:
         api_instance = AgentApi(api_client)
-        task_request_body = TaskRequestBody(input=task.task)
+        additional_input = {}
+        if os.getenv("TEST_RUN_ID"):
+            additional_input = {
+                "test_run_id": os.getenv("TEST_RUN_ID"),
+            }
+        task_request_body = TaskRequestBody(input=task.task, additional_input=additional_input)
 
         start_time = time.time()
+
         response = await api_instance.create_agent_task(
-            task_request_body=task_request_body
+            task_request_body=task_request_body,
         )
         task_id = response.task_id
 
