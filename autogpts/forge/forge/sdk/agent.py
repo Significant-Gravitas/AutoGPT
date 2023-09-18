@@ -3,6 +3,8 @@ import os
 from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, UploadFile
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from hypercorn.asyncio import serve
@@ -51,8 +53,14 @@ class Agent:
             allow_headers=["*"],
         )
 
-        app.include_router(router)
+        app.include_router(router, prefix="/api/v1")
+        app.mount("/app", StaticFiles(directory="../../frontend/build/web"), name="app")
         app.add_middleware(AgentMiddleware, agent=self)
+
+        @app.get("/", include_in_schema=False)
+        async def root():
+            return RedirectResponse(url='/app/index.html', status_code=307)
+        
         config.loglevel = "ERROR"
         config.bind = [f"0.0.0.0:{port}"]
 
