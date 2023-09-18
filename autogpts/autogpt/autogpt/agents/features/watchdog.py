@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import ExitStack
 
-from autogpt.models.agent_actions import ActionHistory
+from autogpt.models.agent_actions import EpisodicActionHistory
 
 from ..base import BaseAgent
 
@@ -16,7 +16,7 @@ class WatchdogMixin:
     looping, the watchdog will switch from the FAST_LLM to the SMART_LLM and re-think.
     """
 
-    event_history: ActionHistory
+    event_history: EpisodicActionHistory
 
     def __init__(self, **kwargs) -> None:
         # Initialize other bases first, because we need the event_history from BaseAgent
@@ -38,7 +38,7 @@ class WatchdogMixin:
             and self.config.fast_llm != self.config.smart_llm
         ):
             # Detect repetitive commands
-            previous_cycle = self.event_history.cycles[self.event_history.cursor - 1]
+            previous_cycle = self.event_history.episodes[self.event_history.cursor - 1]
             if (
                 command_name == previous_cycle.action.name
                 and command_args == previous_cycle.action.args

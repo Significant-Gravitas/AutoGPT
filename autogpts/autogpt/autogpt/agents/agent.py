@@ -147,7 +147,7 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
         result: ActionResult
 
         if command_name == "human_feedback":
-            result = ActionInterruptedByHuman(user_input)
+            result = ActionInterruptedByHuman(feedback=user_input)
             self.message_history.add(
                 "user",
                 "I interrupted the execution of the command you proposed "
@@ -185,9 +185,9 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
                     )
                     self.context.add(context_item)
 
-                result = ActionSuccessResult(return_value)
+                result = ActionSuccessResult(outputs=return_value)
             except AgentException as e:
-                result = ActionErrorResult(e.message, e)
+                result = ActionErrorResult(reason=e.message, error=e)
 
             result_tlength = count_string_tokens(str(result), self.llm.name)
             history_tlength = count_string_tokens(

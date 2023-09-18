@@ -1,14 +1,13 @@
 """A module that contains the AIConfig class object that contains the configuration"""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
+from pydantic import BaseModel, Field
 
 import yaml
 
 
-@dataclass
-class AIConfig:
+class AIConfig(BaseModel):
     """
     A class object that contains the configuration information for the AI
 
@@ -21,7 +20,7 @@ class AIConfig:
 
     ai_name: str = ""
     ai_role: str = ""
-    ai_goals: list[str] = field(default_factory=list[str])
+    ai_goals: list[str] = Field(default_factory=list[str])
     api_budget: float = 0.0
 
     @staticmethod
@@ -53,7 +52,12 @@ class AIConfig:
         ]
         api_budget = config_params.get("api_budget", 0.0)
 
-        return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+        return AIConfig(
+            ai_name=ai_name,
+            ai_role=ai_role,
+            ai_goals=ai_goals,
+            api_budget=api_budget
+        )
 
     def save(self, ai_settings_file: str | Path) -> None:
         """
@@ -66,11 +70,5 @@ class AIConfig:
             None
         """
 
-        config = {
-            "ai_name": self.ai_name,
-            "ai_role": self.ai_role,
-            "ai_goals": self.ai_goals,
-            "api_budget": self.api_budget,
-        }
         with open(ai_settings_file, "w", encoding="utf-8") as file:
-            yaml.dump(config, file, allow_unicode=True)
+            yaml.dump(self.dict(), file, allow_unicode=True)

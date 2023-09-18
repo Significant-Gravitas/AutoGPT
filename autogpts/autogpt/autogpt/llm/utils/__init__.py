@@ -1,27 +1,30 @@
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+import logging
+from typing import Optional
 
 from colorama import Fore
 
 from autogpt.config import Config
 
-from ..api_manager import ApiManager
 from ..base import (
     ChatModelResponse,
     ChatSequence,
     FunctionCallDict,
+    LLMFunctionCall,
     Message,
     ResponseMessageDict,
 )
 from ..providers import openai as iopenai
 from ..providers.openai import (
     OPEN_AI_CHAT_MODELS,
-    OpenAIFunctionCall,
     OpenAIFunctionSpec,
     count_openai_functions_tokens,
 )
-from .token_counter import *
+
+from .token_counter import count_message_tokens, count_string_tokens
+
+logger = logging.getLogger(__name__)
 
 
 def call_ai_function(
@@ -96,7 +99,7 @@ def create_text_completion(
 def create_chat_completion(
     prompt: ChatSequence,
     config: Config,
-    functions: Optional[List[OpenAIFunctionSpec]] = None,
+    functions: Optional[list[OpenAIFunctionSpec]] = None,
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -182,9 +185,5 @@ def create_chat_completion(
     return ChatModelResponse(
         model_info=OPEN_AI_CHAT_MODELS[model],
         content=content,
-        function_call=OpenAIFunctionCall(
-            name=function_call["name"], arguments=function_call["arguments"]
-        )
-        if function_call
-        else None,
+        function_call=LLMFunctionCall.parse(function_call) if function_call else None,
     )

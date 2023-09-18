@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import dataclasses
 import json
 import logging
 from typing import Literal
 
 import ftfy
 import numpy as np
+from pydantic import BaseModel
 
 from autogpt.config import Config
 from autogpt.llm import Message
@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 MemoryDocType = Literal["webpage", "text_file", "code_file", "agent_history"]
 
 
-@dataclasses.dataclass
-class MemoryItem:
+# FIXME: implement validators instead of allowing arbitrary types
+class MemoryItem(BaseModel, arbitrary_types_allowed=True):
     """Memory object containing raw content as well as embeddings"""
 
     raw_content: str
@@ -94,12 +94,12 @@ class MemoryItem:
         metadata["source_type"] = source_type
 
         return MemoryItem(
-            text,
-            summary,
-            chunks,
-            chunk_summaries,
-            e_summary,
-            e_chunks,
+            raw_content=text,
+            summary=summary,
+            chunks=chunks,
+            chunk_summaries=chunk_summaries,
+            e_summary=e_summary,
+            e_chunks=e_chunks,
             metadata=metadata,
         )
 
@@ -198,8 +198,7 @@ Metadata: {json.dumps(self.metadata, indent=2)}
         )
 
 
-@dataclasses.dataclass
-class MemoryItemRelevance:
+class MemoryItemRelevance(BaseModel):
     """
     Class that encapsulates memory relevance search functionality and data.
     Instances contain a MemoryItem and its relevance scores for a given query.
