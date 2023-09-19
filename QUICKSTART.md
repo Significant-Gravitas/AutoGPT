@@ -72,11 +72,11 @@
 
 Your agent can started using the `./run agent start YOUR_AGENT_NAME`
 
-This will build the frontend, install the dependencies and then start the agent on `http://localhost:8000/`
+This start the agent on `http://localhost:8000/`
 
 ![Start the Agent](docs/content/imgs/quickstart/009_start_agent.png)
 
-The frontend can be accessed from `http://localhost:5000/`(follow the README.md in the frontend folder to spin up the UI), you will first need to login using either a google account or your github account.
+The frontend can be accessed from `http://localhost:8000/`, you will first need to login using either a google account or your github account.
 
 ![Login](docs/content/imgs/quickstart/010_login.png)
 
