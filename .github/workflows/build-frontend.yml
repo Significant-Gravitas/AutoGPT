@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - master
+    paths:
+      - 'frontend/**'
 jobs:
   build:
     runs-on: ubuntu-latest
