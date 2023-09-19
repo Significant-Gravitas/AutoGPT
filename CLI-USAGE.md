@@ -181,23 +181,3 @@ Displays the details of the 'TestWriteFile' benchmark test.
 ```
 
 Displays the results of the benchmark tests on 'my_agent'.
-
-### 5. Frontend Command
-
-```sh
-./run frontend
-```
-
-**Output**:
-
-```
-Agent is running.
-Launching frontend
-... (more details about the launch process)
-```
-
-Launches the frontend, with debugging and service details mentioned.
-
----
-
-Remember to start an agent before launching the frontend and that the `agents stop` command terminates any process on port 8000.
