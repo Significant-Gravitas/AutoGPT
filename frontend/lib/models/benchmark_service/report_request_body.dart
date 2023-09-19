@@ -3,7 +3,8 @@ class ReportRequestBody {
   final String testRunId;
   final bool mock;
 
-  ReportRequestBody(this.mock, {required this.test, required this.testRunId});
+  ReportRequestBody(
+      {required this.test, required this.testRunId, required this.mock});
 
   Map<String, dynamic> toJson() {
     return {
