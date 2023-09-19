@@ -56,15 +56,8 @@ class TaskQueueView extends StatelessWidget {
                 onPressed: viewModel.isBenchmarkRunning
                     ? null
                     : () {
-                        // Create a ReportRequestBody with hardcoded values
-                        ReportRequestBody reportRequestBody = ReportRequestBody(
-                          category: "",
-                          tests: testNames,
-                          mock: true,
-                        );
-
                         // Call runBenchmark method from SkillTreeViewModel
-                        viewModel.runBenchmark(reportRequestBody);
+                        viewModel.runBenchmark();
                       },
                 child: Row(
                   mainAxisAlignment:
