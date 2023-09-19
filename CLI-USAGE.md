@@ -1,6 +1,6 @@
 ## CLI Documentation
 
-This document describes how to interact with the project's CLI (Command Line Interface). It includes the types of outputs you can expect from each command. Before launching the frontend, ensure that an agent is already running. Note that the `agents stop` command will terminate any process running on port 8000.
+This document describes how to interact with the project's CLI (Command Line Interface). It includes the types of outputs you can expect from each command. Note that the `agents stop` command will terminate any process running on port 8000.
 
 ### 1. Entry Point for the CLI
 
@@ -21,7 +21,6 @@ Options:
 Commands:
   agents     Commands to create, start and stop agents
   benchmark  Commands to start the benchmark and list tests and categories
-  frontend   Starts the frontend
   setup      Installs dependencies needed for your system.
 ```
 
