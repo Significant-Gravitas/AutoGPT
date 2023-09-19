@@ -569,32 +569,6 @@ def benchmark_tests_details(test_name):
                 print(f"IOError: file could not be read: {data_file}")
                 continue
 
-
-@cli.command()
-def frontend():
-    """Starts the frontend"""
-    import os
-    import socket
-    import subprocess
-
-    try:
-        output = subprocess.check_output(["lsof", "-t", "-i", ":8000"])
-        if output:
-            click.echo("Agent is running.")
-        else:
-            click.echo("Error: Agent is not running. Please start an agent first.")
-    except subprocess.CalledProcessError as e:
-        click.echo("Error: Unexpected error occurred.")
-        return
-    frontend_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "frontend")
-    run_file = os.path.join(frontend_dir, "run")
-    if os.path.exists(frontend_dir) and os.path.isfile(run_file):
-        subprocess.Popen(["./run"], cwd=frontend_dir)
-        click.echo("Launching frontend")
-    else:
-        click.echo("Error: Frontend directory or run file does not exist.")
-
-
 @cli.group()
 def arena():
     """Commands to enter the arena"""
