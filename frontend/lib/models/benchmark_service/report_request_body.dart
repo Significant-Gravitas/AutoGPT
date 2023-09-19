@@ -1,15 +1,14 @@
 class ReportRequestBody {
-  final String category;
-  final List<String> tests;
+  final String test;
+  final String testRunId;
   final bool mock;
 
-  ReportRequestBody(
-      {required this.category, required this.tests, required this.mock});
+  ReportRequestBody(this.mock, {required this.test, required this.testRunId});
 
   Map<String, dynamic> toJson() {
     return {
-      'category': category,
-      'tests': tests,
+      'test': test,
+      'test_run_id': testRunId,
       'mock': mock,
     };
   }
