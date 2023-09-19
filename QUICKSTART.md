@@ -1,5 +1,12 @@
 # Quickstart Guide
 
+Welcome to the Quickstart Guide! This guide will walk you through the process of setting up and running your own AutoGPT agent. Whether you're a seasoned AI developer or just starting out, this guide will provide you with the necessary steps to jumpstart your journey in the world of AI development with AutoGPT.
+
+## System Requirements
+
+This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux (WSL). If you are using a Windows system, you will need to install WSL. You can find the installation instructions for WSL [here](https://learn.microsoft.com/en-us/windows/wsl/).
+
+
 ## Getting Setup
 1. **Fork the Repository**
    To fork the repository, follow these steps:
@@ -72,7 +79,7 @@
 
 Your agent can started using the `./run agent start YOUR_AGENT_NAME`
 
-This will build the frontend, install the dependencies and then start the agent on `http://localhost:8000/`
+This start the agent on `http://localhost:8000/`
 
 ![Start the Agent](docs/content/imgs/quickstart/009_start_agent.png)
 

@@ -17,7 +17,7 @@
   },
   "info": {
     "difficulty": "basic",
-    "description": "s ability to generate content based on the content of 2 files.",
+    "description": "ability to generate content based on the content of 2 files.",
     "side_effects": []
   }
 }

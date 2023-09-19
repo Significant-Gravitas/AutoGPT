@@ -36,7 +36,7 @@ void main() async {
     MultiProvider(
       providers: [
         Provider(
-          create: (context) => RestApiUtility("http://127.0.0.1:8000/api/v1"),
+          create: (context) => RestApiUtility("http://127.0.0.1:8000/ap/v1"),
         ),
         ProxyProvider<RestApiUtility, ChatService>(
           update: (context, restApiUtility, chatService) =>

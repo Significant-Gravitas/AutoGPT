@@ -1,5 +1,7 @@
 #!/bin/bash
 
-kill $(lsof -t -i :8080)
-
+# Kill processes using port 8080 if any.
+if lsof -t -i :8080; then
+    kill $(lsof -t -i :8080)
+fi
 poetry run agbenchmark serve
