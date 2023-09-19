@@ -131,7 +131,7 @@ class SkillTreeViewModel extends ChangeNotifier {
     }
   }
 
-  // TODO: Update to actual implementation
+  // TODO: Move to task queue view model
   Future<void> runBenchmark() async {
     // Set the benchmark running flag to true
     isBenchmarkRunning = true;
