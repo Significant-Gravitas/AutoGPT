@@ -8,28 +8,30 @@ class BenchmarkService {
 
   BenchmarkService(this.api);
 
-  /// Generates a report using POST REST API at the /reports URL.
+  /// Generates a single report using POST REST API at the /reports URL.
   ///
-  /// [reportRequestBody] is a Map representing the request body for generating a report.
-  Future<Map<String, dynamic>> generateReport(
+  /// [reportRequestBody] is a Map representing the request body for generating a single report.
+  Future<Map<String, dynamic>> generateSingleReport(
       ReportRequestBody reportRequestBody) async {
     try {
       return await api.post('reports', reportRequestBody.toJson(),
           apiType: ApiType.benchmark);
     } catch (e) {
-      throw Exception('Failed to generate report: $e');
+      throw Exception('Failed to generate single report: $e');
     }
   }
 
-  /// Polls for updates using the GET REST API at the /updates?last_update_time=TIMESTAMP URL.
+  /// Generates a combined report using POST REST API at the /reports/query URL.
   ///
-  /// [lastUpdateTime] is the UNIX UTC timestamp for last update time.
-  Future<Map<String, dynamic>> pollUpdates(int lastUpdateTime) async {
+  /// [testRunIds] is a list of strings representing the test run IDs to be combined into a single report.
+  Future<Map<String, dynamic>> generateCombinedReport(
+      List<String> testRunIds) async {
     try {
-      return await api.get('updates?last_update_time=$lastUpdateTime',
+      final Map<String, dynamic> requestBody = {'test_run_ids': testRunIds};
+      return await api.post('reports/query', requestBody,
           apiType: ApiType.benchmark);
     } catch (e) {
-      throw Exception('Failed to poll updates: $e');
+      throw Exception('Failed to generate combined report: $e');
     }
   }
 }
