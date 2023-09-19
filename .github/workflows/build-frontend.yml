@@ -34,11 +34,9 @@ jobs:
         echo "Commit hash: ${GITHUB_SHA}"
         git push origin ${{ steps.vars.outputs.branch }}
     - name: Create Pull Request
-      uses: repo-sync/pull-request@v2
+      uses: peter-evans/create-pull-request@v3
       with:
-        source_branch: ${{ steps.vars.outputs.branch }}
-        destination_branch: "master"
-        pr_title: "Update frontend build"
-        pr_body: "This PR updates the frontend build."
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-
+        title: "Update frontend build"
+        body: "This PR updates the frontend build."
+        branch: ${{ steps.vars.outputs.branch }}
+        base: "master"
