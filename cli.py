@@ -264,15 +264,9 @@ def start(agent_name):
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
     agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
-    frontend_dir = os.path.join(script_dir, "frontend")
-    frontend_build = os.path.join(frontend_dir, "build.sh")
     run_command = os.path.join(agent_dir, "run")
     if os.path.exists(agent_dir) and os.path.isfile(run_command):
-        subprocess.Popen([frontend_build], cwd=frontend_dir)
         os.chdir(agent_dir)
-        if os.name == 'nt':
-            click.echo(click.style("😞 The script cannot be run on Windows.", fg="red"))
-            return
         subprocess.Popen(["./run"], cwd=agent_dir)
         click.echo(f"Agent '{agent_name}' started")
     elif not os.path.exists(agent_dir):
