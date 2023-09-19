@@ -31,10 +31,11 @@ jobs:
         echo "Commit hash: ${GITHUB_SHA}"
         git push origin frontend_build_${GITHUB_SHA}
     - name: Create Pull Request
-      uses: peter-evans/create-pull-request@v3
+      uses: repo-sync/pull-request@v2
       with:
-        title: "Update frontend build"
-        body: "This PR updates the frontend build."
-        branch: "frontend_build_${GITHUB_SHA}"
-        base: "master"
+        source_branch: "frontend_build_${GITHUB_SHA}"
+        destination_branch: "master"
+        pr_title: "Update frontend build"
+        pr_body: "This PR updates the frontend build."
+        github_token: ${{ secrets.GITHUB_TOKEN }}
 
