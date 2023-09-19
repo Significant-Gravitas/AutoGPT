@@ -1,0 +1,26 @@
+name: Build and Commit Frontend
+on:
+  push:
+    branches:
+      - master
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v2
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v1
+      with:
+        flutter-version: '3.13.2'
+    - name: Build Flutter Web
+      run: |
+        cd frontend
+        flutter build web --base-href /app/
+    - name: Commit and Push
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add frontend/build/web
+        git commit -m "Update frontend build" -a
+        git push
