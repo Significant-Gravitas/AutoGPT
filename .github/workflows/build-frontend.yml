@@ -33,10 +33,10 @@ jobs:
         git checkout -b ${{ steps.vars.outputs.branch }}
         echo "Commit hash: ${GITHUB_SHA}"
         git push origin ${{ steps.vars.outputs.branch }}
-    - name: Create Pull Request
-      uses: peter-evans/create-pull-request@v3
-      with:
-        title: "Update frontend build"
-        body: "This PR updates the frontend build."
-        branch: ${{ steps.vars.outputs.branch }}
-        base: "master"
+    # - name: Create Pull Request
+    #   uses: peter-evans/create-pull-request@v3
+    #   with:
+    #     title: "Update frontend build"
+    #     body: "This PR updates the frontend build."
+    #     branch: ${{ steps.vars.outputs.branch }}
+    #     base: "master"
