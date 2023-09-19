@@ -60,4 +60,3 @@ The app features a responsive design that adapts to different screen sizes and o
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
