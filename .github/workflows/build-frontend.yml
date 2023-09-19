@@ -21,19 +21,22 @@ jobs:
       run: |
         cd frontend
         flutter build web --base-href /app/
+    - name: Set branch name
+      id: vars
+      run: echo "::set-output name=branch::frontend_build_${GITHUB_SHA}"
     - name: Commit and Push
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add frontend/build/web
         git commit -m "Update frontend build" -a
-        git checkout -b frontend_build_${GITHUB_SHA}
+        git checkout -b ${{ steps.vars.outputs.branch }}
         echo "Commit hash: ${GITHUB_SHA}"
-        git push origin frontend_build_${GITHUB_SHA}
+        git push origin ${{ steps.vars.outputs.branch }}
     - name: Create Pull Request
       uses: repo-sync/pull-request@v2
       with:
-        source_branch: "frontend_build_${GITHUB_SHA}"
+        source_branch: ${{ steps.vars.outputs.branch }}
         destination_branch: "master"
         pr_title: "Update frontend build"
         pr_body: "This PR updates the frontend build."
