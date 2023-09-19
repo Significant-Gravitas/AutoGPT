@@ -7,6 +7,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:graphview/GraphView.dart';
+import 'package:uuid/uuid.dart';
 
 class SkillTreeViewModel extends ChangeNotifier {
   // TODO: Potentially move to task queue view model when we create one
@@ -130,32 +131,58 @@ class SkillTreeViewModel extends ChangeNotifier {
     }
   }
 
-// TODO: Update to actual implementation
-  Future<void> runBenchmark(ReportRequestBody reportRequestBody) async {
+  // TODO: Update to actual implementation
+  Future<void> runBenchmark() async {
+    // Set the benchmark running flag to true
     isBenchmarkRunning = true;
     notifyListeners();
 
+    // Initialize an empty list to collect unique UUIDs for test runs
+    List<String> testRunIds = [];
+
     try {
-      final result = await benchmarkService.generateReport(reportRequestBody);
+      // Reverse the selected node hierarchy
+      final reversedSelectedNodeHierarchy =
+          List.from(_selectedNodeHierarchy!.reversed);
+
+      // Loop through the reversed node hierarchy to generate reports for each node
+      for (var node in reversedSelectedNodeHierarchy) {
+        // Generate a unique UUID for the test run
+        final uuid = const Uuid().v4();
+
+        // Create a ReportRequestBody object
+        final reportRequestBody = ReportRequestBody(
+            test: node.data.name, testRunId: uuid, mock: true);
+
+        // Call generateSingleReport with the created ReportRequestBody object
+        final singleReport =
+            await benchmarkService.generateSingleReport(reportRequestBody);
+        print("Single report generated: $singleReport");
+
+        // Add the unique UUID to the list
+        // TODO: We should check if the test passed. If not we short circuit.
+        // TODO: We should create a model to track our active tests
+        testRunIds.add(uuid);
+
+        // Notify the UI
+        notifyListeners();
+      }
+
+      // Generate a combined report using all the unique UUIDs
+      final combinedReport =
+          await benchmarkService.generateCombinedReport(testRunIds);
+
       // Pretty-print the JSON result
-      String prettyResult = JsonEncoder.withIndent('  ').convert(result);
-      print("Report generated: $prettyResult");
+      String prettyResult =
+          JsonEncoder.withIndent('  ').convert(combinedReport);
+      print("Combined report generated: $prettyResult");
     } catch (e) {
-      print("Failed to generate report: $e");
+      print("Failed to generate reports: $e");
     }
 
+    // Set the benchmark running flag to false
     isBenchmarkRunning = false;
     notifyListeners();
-  }
-
-// TODO: Update to actual implementation
-  Future<void> requestBenchmarkStatusUpdate(int lastUpdateTime) async {
-    try {
-      final result = await benchmarkService.pollUpdates(lastUpdateTime);
-      print("Updates polled: $result");
-    } catch (e) {
-      print("Failed to poll updates: $e");
-    }
   }
 
   // Getter to expose nodes for the View
