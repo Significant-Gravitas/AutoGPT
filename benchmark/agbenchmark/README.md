@@ -62,6 +62,8 @@ https://github.com/smol-ai/developer/pull/114/files
 
 https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/pull/48/files
 
+TODO: add more documentation
+
 ## How do I run agent in different environments?
 
 **To just use as the benchmark for your agent**. `pip install` the package and run `agbenchmark start`
