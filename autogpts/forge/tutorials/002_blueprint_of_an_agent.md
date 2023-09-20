@@ -10,7 +10,7 @@ The Forge stands as a beacon, aiding developers in navigating through the comple
 
 In the burgeoning field of AI agents, developers often find themselves forging unique paths, creating agents with distinctive characteristics. While this approach nurtures innovation, it also presents a significant challenge: establishing seamless communication between various agents, each equipped with a different interface. Furthermore, the absence of a standardized communication platform impedes the easy comparison of agents and the seamless development of universal devtools.
 
-To tackle this challenge head-on, we the AI Foundation has introduced the **Agent Protocol**, a unified communication interface designed to spur innovation and integration in agent development.
+To tackle this challenge head-on, the AI Foundation has introduced the **Agent Protocol**, a unified communication interface designed to spur innovation and integration in agent development.
 
 ### A Unifying Communication Interface
 
