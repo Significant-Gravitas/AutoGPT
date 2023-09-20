@@ -202,6 +202,13 @@ class SkillTreeViewModel extends ChangeNotifier {
           (element) => element.keys.first.id == node.id,
         );
         nodeStatus[node] = successStatus;
+
+        // If successStatus is false, break out of the loop
+        if (!successStatus) {
+          print(
+              "Benchmark for node ${node.id} failed. Stopping all benchmarks.");
+          break;
+        }
       }
     } catch (e) {
       print("Error while running benchmark: $e");
