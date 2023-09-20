@@ -18,12 +18,11 @@ from autogpt.llm.base import Message
 from autogpt.llm.utils import count_string_tokens
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
-    FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
-from autogpt.models.agent_actions import (
+from autogpt.models.action_history import (
     Action,
     ActionErrorResult,
     ActionInterruptedByHuman,
@@ -113,22 +112,12 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
                 kwargs["append_messages"] = []
             kwargs["append_messages"].append(budget_msg)
 
-        # # Include message history in base prompt
-        # kwargs["with_message_history"] = True
-
         return super().construct_base_prompt(*args, **kwargs)
 
     def on_before_think(self, *args, **kwargs) -> ChatSequence:
         prompt = super().on_before_think(*args, **kwargs)
 
         self.log_cycle_handler.log_count_within_cycle = 0
-        self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            self.message_history.raw(),
-            FULL_MESSAGE_HISTORY_FILE_NAME,
-        )
         self.log_cycle_handler.log_cycle(
             self.ai_config.ai_name,
             self.created_at,
@@ -148,11 +137,6 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
 
         if command_name == "human_feedback":
             result = ActionInterruptedByHuman(feedback=user_input)
-            self.message_history.add(
-                "user",
-                "I interrupted the execution of the command you proposed "
-                f"to give you some feedback: {user_input}",
-            )
             self.log_cycle_handler.log_cycle(
                 self.ai_config.ai_name,
                 self.created_at,
@@ -206,26 +190,6 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
                     result.outputs = plugin.post_command(command_name, result.outputs)
                 elif result.status == "error":
                     result.reason = plugin.post_command(command_name, result.reason)
-
-        # Check if there's a result from the command append it to the message
-        if result.status == "success":
-            self.message_history.add(
-                "system",
-                f"Command {command_name} returned: {result.outputs}",
-                "action_result",
-            )
-        elif result.status == "error":
-            message = f"Command {command_name} failed: {result.reason}"
-
-            # Append hint to the error message if the exception has a hint
-            if (
-                result.error
-                and isinstance(result.error, AgentException)
-                and result.error.hint
-            ):
-                message = message.rstrip(".") + f". {result.error.hint}"
-
-            self.message_history.add("system", message, "action_result")
 
         # Update action history
         self.event_history.register_result(result)

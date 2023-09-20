@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import ExitStack
 
-from autogpt.models.agent_actions import EpisodicActionHistory
+from autogpt.models.action_history import EpisodicActionHistory
 
 from ..base import BaseAgent
 
