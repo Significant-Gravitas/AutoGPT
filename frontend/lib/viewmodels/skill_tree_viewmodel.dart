@@ -167,6 +167,7 @@ class SkillTreeViewModel extends ChangeNotifier {
       // Loop through the nodes in the hierarchy
       for (var node in reversedSelectedNodeHierarchy) {
         benchmarkStatusMap[node] = BenchmarkTaskStatus.inProgress;
+        notifyListeners();
 
         // Create a BenchmarkTaskRequestBody
         final benchmarkTaskRequestBody = BenchmarkTaskRequestBody(
@@ -210,6 +211,7 @@ class SkillTreeViewModel extends ChangeNotifier {
         benchmarkStatusMap[node] = successStatus
             ? BenchmarkTaskStatus.success
             : BenchmarkTaskStatus.failure;
+        notifyListeners();
 
         // If successStatus is false, break out of the loop
         if (!successStatus) {
