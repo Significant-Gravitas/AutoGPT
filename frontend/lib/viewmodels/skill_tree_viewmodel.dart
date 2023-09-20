@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'package:auto_gpt_flutter_client/models/benchmark_service/benchmark_step_request_body.dart';
-import 'package:auto_gpt_flutter_client/models/benchmark_service/benchmark_task_request_body.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_step_request_body.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_request_body.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_edge.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
 import 'package:auto_gpt_flutter_client/models/step.dart';

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:auto_gpt_flutter_client/models/benchmark_service/api_type.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/api_type.dart';
 import 'package:http/http.dart' as http;
 
 class RestApiUtility {
