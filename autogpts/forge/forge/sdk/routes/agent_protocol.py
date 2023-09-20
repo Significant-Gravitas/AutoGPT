@@ -53,22 +53,6 @@ async def check_server_status():
     return Response(content="Server is running.", status_code=200)
 
 
-@base_router.get("/", tags=["root"])
-async def root():
-    """
-    Root endpoint that returns a welcome message.
-    """
-    return Response(content="Welcome to the Auto-GPT Forge")
-
-
-@base_router.get("/heartbeat", tags=["server"])
-async def check_server_status():
-    """
-    Check if the server is running.
-    """
-    return Response(content="Server is running.", status_code=200)
-
-
 @base_router.post("/agent/tasks", tags=["agent"], response_model=Task)
 async def create_agent_task(request: Request, task_request: TaskRequestBody) -> Task:
     """
