@@ -27,6 +27,10 @@ class Pagination(BaseModel):
     page_size: int = Field(..., description="Number of items per page.", example=25)
 
 
+class TaskInput(BaseModel):
+    pass
+
+
 class Artifact(BaseModel):
     created_at: datetime = Field(
         ...,
@@ -62,6 +66,10 @@ class Artifact(BaseModel):
     )
 
 
+class StepInput(BaseModel):
+    pass
+
+
 class StepOutput(BaseModel):
     pass
 
@@ -73,7 +81,11 @@ class TaskRequestBody(BaseModel):
         description="Input prompt for the task.",
         example="Write the words you receive to the file 'output.txt'.",
     )
-    additional_input: Optional[dict] = {}
+    additional_input: Optional[TaskInput] = {}
+
+
+class TaskEvalRequestBody(TaskRequestBody):
+    eval_id: str
 
 
 class Task(TaskRequestBody):
@@ -114,7 +126,7 @@ class StepRequestBody(BaseModel):
         description="Input prompt for the step.",
         example="Washington",
     )
-    additional_input: Optional[dict] = {}
+    additional_input: Optional[StepInput] = {}
 
 
 class Status(Enum):
