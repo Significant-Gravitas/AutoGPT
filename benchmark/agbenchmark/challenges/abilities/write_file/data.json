@@ -1,21 +1,30 @@
 {
-  "name": "WriteFile",
-  "category": ["interface"],
-  "task": "Write the word 'Washington' to a .txt file",
-  "dependencies": [],
-  "cutoff": 60,
-  "ground": {
-    "answer": "The word 'Washington', printed to a .txt file named anything",
-    "should_contain": ["Washington"],
-    "should_not_contain": [],
-    "files": [".txt"],
-    "eval": {
-      "type": "file"
+    "name": "WriteFile",
+    "eval_id": "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
+    "category": [
+        "interface"
+    ],
+    "task": "Write the word 'Washington' to a .txt file",
+    "dependencies": [],
+    "cutoff": 60,
+    "ground": {
+        "answer": "The word 'Washington', printed to a .txt file named anything",
+        "should_contain": [
+            "Washington"
+        ],
+        "should_not_contain": [],
+        "files": [
+            ".txt"
+        ],
+        "eval": {
+            "type": "file"
+        }
+    },
+    "info": {
+        "difficulty": "interface",
+        "description": "s the agents ability to write to a file",
+        "side_effects": [
+            ""
+        ]
     }
-  },
-  "info": {
-    "difficulty": "interface",
-    "description": "s the agents ability to write to a file",
-    "side_effects": [""]
-  }
 }

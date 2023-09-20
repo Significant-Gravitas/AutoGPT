@@ -1,21 +1,33 @@
 {
-  "name": "DebugSimpleTypoWithGuidance",
-  "category": ["code", "iterate"],
-  "task": "1- Run test.py.\n2- Read sample_code.py.\n3- Modify sample_code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
-  "dependencies": ["ReadFile"],
-  "cutoff": 75,
-  "ground": {
-    "answer": "[0, 1] [2, 5] [0, 3]",
-    "should_contain": ["[0, 1]", "[2, 5]", "[0, 3]"],
-    "should_not_contain": [],
-    "files": ["test.py"],
-    "eval": {
-      "type": "python"
-    }
-  },
-  "info": {
-    "difficulty": "novice",
-    "description": "s ability for the agent to debug python code with a simple typo in it.",
-    "side_effects": []
-  }
+    "name": "DebugSimpleTypoWithGuidance",
+    "category": [
+        "code",
+        "iterate"
+    ],
+    "task": "1- Run test.py.\n2- Read sample_code.py.\n3- Modify sample_code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
+    "dependencies": [
+        "ReadFile"
+    ],
+    "cutoff": 75,
+    "ground": {
+        "answer": "[0, 1] [2, 5] [0, 3]",
+        "should_contain": [
+            "[0, 1]",
+            "[2, 5]",
+            "[0, 3]"
+        ],
+        "should_not_contain": [],
+        "files": [
+            "test.py"
+        ],
+        "eval": {
+            "type": "python"
+        }
+    },
+    "info": {
+        "difficulty": "novice",
+        "description": "s ability for the agent to debug python code with a simple typo in it.",
+        "side_effects": []
+    },
+    "eval_id": "9984c549-b44d-40f7-8eff-1901ae35f050"
 }
