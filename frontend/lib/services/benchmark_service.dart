@@ -42,7 +42,7 @@ class BenchmarkService {
   /// [taskId] is the ID of the task.
   Future<Map<String, dynamic>> triggerEvaluation(String taskId) async {
     try {
-      return await api.post('agent/tasks/$taskId/evaluation', {},
+      return await api.post('agent/tasks/$taskId/evaluations', {},
           apiType: ApiType.benchmark);
     } catch (e) {
       throw Exception('Failed to trigger evaluation: $e');
