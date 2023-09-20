@@ -1,4 +1,5 @@
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:provider/provider.dart';
@@ -56,12 +57,14 @@ class TaskQueueView extends StatelessWidget {
                 onPressed: viewModel.isBenchmarkRunning
                     ? null
                     : () {
-                        // TODO: Handle this better
+                        // TODO: We should not be passing this dependency in like this
                         final chatViewModel =
                             Provider.of<ChatViewModel>(context, listen: false);
+                        final taskViewModel =
+                            Provider.of<TaskViewModel>(context, listen: false);
                         chatViewModel.clearCurrentTaskAndChats();
                         // Call runBenchmark method from SkillTreeViewModel
-                        viewModel.runBenchmark(chatViewModel);
+                        viewModel.runBenchmark(chatViewModel, taskViewModel);
                       },
                 child: Row(
                   mainAxisAlignment:
