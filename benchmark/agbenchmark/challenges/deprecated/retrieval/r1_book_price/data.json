@@ -1,21 +1,30 @@
 {
-  "name": "BasicRetrieval",
-  "category": ["retrieval"],
-  "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
-  "dependencies": ["Search"],
-  "cutoff": 60,
-  "ground": {
-    "answer": "£25.89",
-    "should_contain": ["25.89"],
-    "should_not_contain": [],
-    "files": [".txt"],
-    "eval": {
-      "type": "file"
-    }
-  },
-  "info": {
-    "difficulty": "basic",
-    "description": "Specifies specific website to retrieve website from.",
-    "side_effects": []
-  }
+    "name": "BasicRetrieval",
+    "category": [
+        "retrieval"
+    ],
+    "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
+    "dependencies": [
+        "Search"
+    ],
+    "cutoff": 60,
+    "ground": {
+        "answer": "\u00a325.89",
+        "should_contain": [
+            "25.89"
+        ],
+        "should_not_contain": [],
+        "files": [
+            ".txt"
+        ],
+        "eval": {
+            "type": "file"
+        }
+    },
+    "info": {
+        "difficulty": "basic",
+        "description": "Specifies specific website to retrieve website from.",
+        "side_effects": []
+    },
+    "eval_id": "2066032d-2228-41d6-b05d-420fff5b1ce0"
 }

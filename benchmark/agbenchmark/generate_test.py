@@ -6,7 +6,7 @@ import sys
 import types
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import pytest
 
@@ -116,6 +116,7 @@ def create_single_test(
     # Attach the new class to a module so it can be discovered by pytest
     module = importlib.import_module(__name__)
     setattr(module, f"Test{data['name']}", challenge_class)
+    return challenge_class
 
 
 def create_single_suite_challenge(challenge_data: ChallengeData, path: Path) -> None:
@@ -126,14 +127,14 @@ def create_challenge(
     data: Dict[str, Any],
     json_file: str,
     json_files: deque,
-) -> deque:
+) -> Union[deque, Any]:
     path = Path(json_file).resolve()
     print("Creating challenge for", path)
 
-    create_single_test(data, str(path))
+    challenge_class = create_single_test(data, str(path))
     print("Creation complete for", path)
 
-    return json_files
+    return json_files, challenge_class
 
 
 def generate_tests() -> None:  # sourcery skip: invert-any-all
@@ -208,7 +209,7 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
             continue
         elif "--improve" in commands and improve_flag:
             continue
-        json_files = create_challenge(data, json_file, json_files)
+        json_files, challenge_class = create_challenge(data, json_file, json_files)
 
         print(f"Generated test for {data['name']}.")
     print("Test generation complete.")

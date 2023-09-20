@@ -1,21 +1,30 @@
 {
-  "name": "AdaptTeslaRevenue",
-  "category": ["adaptability"],
-  "task": "I'm a financial planner, please help me write tesla's r in 2022 into a .txt file.",
-  "cutoff": 60,
-  "dependencies": ["RevenueRetrieval1.0"],
-  "ground": {
-    "answer": "It was $81.462 billion in 2022.",
-    "should_contain": ["81"],
-    "should_not_contain": [],
-    "files": [".txt"],
-    "eval": {
-      "type": "file"
-    }
-  },
-  "info": {
-    "difficulty": "intermediate",
-    "description": "Given context adapt to the missing of the word revenue",
-    "side_effects": []
-  }
+    "name": "AdaptTeslaRevenue",
+    "category": [
+        "adaptability"
+    ],
+    "task": "I'm a financial planner, please help me write tesla's r in 2022 into a .txt file.",
+    "cutoff": 60,
+    "dependencies": [
+        "RevenueRetrieval1.0"
+    ],
+    "ground": {
+        "answer": "It was $81.462 billion in 2022.",
+        "should_contain": [
+            "81"
+        ],
+        "should_not_contain": [],
+        "files": [
+            ".txt"
+        ],
+        "eval": {
+            "type": "file"
+        }
+    },
+    "info": {
+        "difficulty": "intermediate",
+        "description": "Given context adapt to the missing of the word revenue",
+        "side_effects": []
+    },
+    "eval_id": "09fed110-077a-4b99-8821-ed071977cebe"
 }
