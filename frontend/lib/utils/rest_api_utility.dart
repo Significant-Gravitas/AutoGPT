@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 class RestApiUtility {
   String _agentBaseUrl;
   final String _benchmarkBaseUrl = "http://127.0.0.1:8080/ap/v1";
+  final String _leaderboardBaseUrl = "https://leaderboard.vercel.app/";
 
   RestApiUtility(this._agentBaseUrl);
 
@@ -14,7 +15,16 @@ class RestApiUtility {
   }
 
   String _getEffectiveBaseUrl(ApiType apiType) {
-    return apiType == ApiType.agent ? _agentBaseUrl : _benchmarkBaseUrl;
+    switch (apiType) {
+      case ApiType.agent:
+        return _agentBaseUrl;
+      case ApiType.benchmark:
+        return _benchmarkBaseUrl;
+      case ApiType.leaderboard:
+        return _leaderboardBaseUrl;
+      default:
+        return _agentBaseUrl;
+    }
   }
 
   Future<Map<String, dynamic>> get(String endpoint,
