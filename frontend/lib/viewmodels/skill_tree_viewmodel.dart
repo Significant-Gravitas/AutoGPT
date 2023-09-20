@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_step_request_body.dart';
 import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_request_body.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_status.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_edge.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
 import 'package:auto_gpt_flutter_client/models/step.dart';
@@ -20,7 +21,7 @@ class SkillTreeViewModel extends ChangeNotifier {
   // TODO: Potentially move to task queue view model when we create one
   bool isBenchmarkRunning = false;
   // TODO: Potentially move to task queue view model when we create one
-  List<Map<SkillTreeNode, bool>> benchmarkStatusList = [];
+  Map<SkillTreeNode, BenchmarkTaskStatus> benchmarkStatusMap = {};
 
   List<SkillTreeNode> _skillTreeNodes = [];
   List<SkillTreeEdge> _skillTreeEdges = [];
@@ -144,7 +145,7 @@ class SkillTreeViewModel extends ChangeNotifier {
   Future<void> runBenchmark(
       ChatViewModel chatViewModel, TaskViewModel taskViewModel) async {
     // Clear the benchmarkStatusList
-    benchmarkStatusList.clear();
+    benchmarkStatusMap.clear();
 
     // Create a new TestSuite object with the current timestamp
     final testSuite =
@@ -159,12 +160,15 @@ class SkillTreeViewModel extends ChangeNotifier {
     final reversedSelectedNodeHierarchy =
         List.from(_selectedNodeHierarchy!.reversed);
     for (var node in reversedSelectedNodeHierarchy) {
-      benchmarkStatusList.add({node: false});
+      benchmarkStatusMap[node] = BenchmarkTaskStatus.notStarted;
     }
 
     try {
       // Loop through the nodes in the hierarchy
       for (var node in reversedSelectedNodeHierarchy) {
+        benchmarkStatusMap[node] = BenchmarkTaskStatus.inProgress;
+        notifyListeners();
+
         // Create a BenchmarkTaskRequestBody
         final benchmarkTaskRequestBody = BenchmarkTaskRequestBody(
             input: node.data.task, evalId: node.data.evalId);
@@ -204,10 +208,10 @@ class SkillTreeViewModel extends ChangeNotifier {
 
         // Update the benchmarkStatusList based on the evaluation response
         bool successStatus = evaluationResponse['metrics']['success'];
-        var nodeStatus = benchmarkStatusList.firstWhere(
-          (element) => element.keys.first.id == node.id,
-        );
-        nodeStatus[node] = successStatus;
+        benchmarkStatusMap[node] = successStatus
+            ? BenchmarkTaskStatus.success
+            : BenchmarkTaskStatus.failure;
+        notifyListeners();
 
         // If successStatus is false, break out of the loop
         if (!successStatus) {
