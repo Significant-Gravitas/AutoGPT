@@ -5,8 +5,10 @@ import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_edge.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
 import 'package:auto_gpt_flutter_client/models/step.dart';
 import 'package:auto_gpt_flutter_client/models/task.dart';
+import 'package:auto_gpt_flutter_client/models/test_suite.dart';
 import 'package:auto_gpt_flutter_client/services/benchmark_service.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -139,10 +141,14 @@ class SkillTreeViewModel extends ChangeNotifier {
   }
 
   // TODO: Move to task queue view model
-  // TODO: We should be creating TestSuite objects
-  Future<void> runBenchmark(ChatViewModel chatViewModel) async {
+  Future<void> runBenchmark(
+      ChatViewModel chatViewModel, TaskViewModel taskViewModel) async {
     // Clear the benchmarkStatusList
     benchmarkStatusList.clear();
+
+    // Create a new TestSuite object with the current timestamp
+    final testSuite =
+        TestSuite(timestamp: DateTime.now().toIso8601String(), tests: []);
 
     // Set the benchmark running flag to true
     isBenchmarkRunning = true;
@@ -209,7 +215,11 @@ class SkillTreeViewModel extends ChangeNotifier {
               "Benchmark for node ${node.id} failed. Stopping all benchmarks.");
           break;
         }
+        testSuite.tests.add(task);
       }
+
+      // Add the TestSuite to the TaskViewModel
+      taskViewModel.addTestSuite(testSuite);
     } catch (e) {
       print("Error while running benchmark: $e");
     }
