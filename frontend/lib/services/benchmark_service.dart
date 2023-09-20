@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'package:auto_gpt_flutter_client/models/benchmark_service/benchmark_step_request_body.dart';
-import 'package:auto_gpt_flutter_client/models/benchmark_service/benchmark_task_request_body.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_step_request_body.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_request_body.dart';
 import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
-import 'package:auto_gpt_flutter_client/models/benchmark_service/api_type.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/api_type.dart';
 
 class BenchmarkService {
   final RestApiUtility api;
