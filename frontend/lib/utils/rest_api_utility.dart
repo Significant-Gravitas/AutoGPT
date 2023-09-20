@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 
 class RestApiUtility {
   String _agentBaseUrl;
-  final String _benchmarkBaseUrl = "http://127.0.0.1:8080";
+  final String _benchmarkBaseUrl = "http://127.0.0.1:8080/ap/v1";
 
   RestApiUtility(this._agentBaseUrl);
 
