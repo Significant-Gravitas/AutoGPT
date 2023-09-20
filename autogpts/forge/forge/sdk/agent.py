@@ -77,7 +77,7 @@ class Agent:
         config.loglevel = "ERROR"
         config.bind = [f"0.0.0.0:{port}"]
 
-        LOG.info(f"Agent server starting on http://{config.bind[0]}")
+        LOG.info(f"Agent server starting on http://localhost:{port}")
         asyncio.run(serve(app, config))
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
