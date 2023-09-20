@@ -24,11 +24,22 @@ To begin, you need to fork the repository by navigating to the main page of the 
 ![Create Fork UI](../../../docs/content/imgs/quickstart/002_fork.png)
 
 ### Cloning the Repository
-Next, clone the repository to your local system. Ensure you have Git installed to proceed with this step. You can download Git from [here](https://git-scm.com/downloads). Follow the guide in the content section to clone the repository successfully.
+Next, clone the repository to your local system. Ensure you have Git installed to proceed with this step. You can download Git from [here](https://git-scm.com/downloads). Then clone the repo using the following command and the url for your repo. You can find the corect url by clicking on the green Code button on your repos main page.
+
+```bash
+# replace the url with the one for your forked repo
+git clone https://github.com/Significant-Gravitas/Auto-GPT.git
+```
 
 ![Clone the Repository](../../../docs/content/imgs/quickstart/003_clone.png)
 
 ### Setting up the Project using `./run setup`
+
+Once you have clone the project change your directory to the newly cloned project:
+```bash
+# The name of the directory will match the name you gave your fork. The defualt is Auto-GPT
+cd Auto-GPT
+```
 To set up the project, utilize the `./run setup` command in the terminal. Follow the instructions to install necessary dependencies and set up your GitHub access token.
 
 ![Setup the Project](../../../docs/content/imgs/quickstart/005_setup.png)
