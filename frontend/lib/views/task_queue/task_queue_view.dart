@@ -1,3 +1,4 @@
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_status.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:flutter/material.dart';
@@ -14,10 +15,6 @@ class TaskQueueView extends StatelessWidget {
     final reversedHierarchy =
         viewModel.selectedNodeHierarchy?.reversed.toList() ?? [];
 
-    // Convert reversedHierarchy to a list of test names
-    final List<String> testNames =
-        reversedHierarchy.map((node) => node.data.name).toList();
-
     return Material(
       color: Colors.white,
       child: Stack(
@@ -27,15 +24,61 @@ class TaskQueueView extends StatelessWidget {
             itemCount: reversedHierarchy.length,
             itemBuilder: (context, index) {
               final node = reversedHierarchy[index];
+
+              // Choose the appropriate leading widget based on the task status
+              Widget leadingWidget;
+              switch (viewModel.benchmarkStatusMap[node]) {
+                case null:
+                case BenchmarkTaskStatus.notStarted:
+                  leadingWidget = CircleAvatar(
+                    radius: 12,
+                    backgroundColor: Colors.grey,
+                    child: CircleAvatar(
+                      radius: 6,
+                      backgroundColor: Colors.white,
+                    ),
+                  );
+                  break;
+                case BenchmarkTaskStatus.inProgress:
+                  leadingWidget = SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  );
+                  break;
+                case BenchmarkTaskStatus.success:
+                  leadingWidget = CircleAvatar(
+                    radius: 12,
+                    backgroundColor: Colors.green,
+                    child: CircleAvatar(
+                      radius: 6,
+                      backgroundColor: Colors.white,
+                    ),
+                  );
+                  break;
+                case BenchmarkTaskStatus.failure:
+                  leadingWidget = CircleAvatar(
+                    radius: 12,
+                    backgroundColor: Colors.red,
+                    child: CircleAvatar(
+                      radius: 6,
+                      backgroundColor: Colors.white,
+                    ),
+                  );
+                  break;
+              }
+
               return Container(
                 margin: EdgeInsets.fromLTRB(20, 5, 20, 5),
                 decoration: BoxDecoration(
-                  color: Colors.white, // white background
-                  border: Border.all(
-                      color: Colors.black, width: 1), // thin black border
-                  borderRadius: BorderRadius.circular(4), // small corner radius
+                  color: Colors.white,
+                  border: Border.all(color: Colors.black, width: 1),
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child: ListTile(
+                  leading: leadingWidget,
                   title: Center(child: Text('${node.label}')),
                   subtitle:
                       Center(child: Text('${node.data.info.description}')),
