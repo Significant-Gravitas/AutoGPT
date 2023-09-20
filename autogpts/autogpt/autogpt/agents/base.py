@@ -15,8 +15,7 @@ from autogpt.config.ai_directives import AIDirectives
 from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
-from autogpt.memory.message_history import MessageHistory
-from autogpt.models.agent_actions import EpisodicActionHistory, ActionResult
+from autogpt.models.action_history import EpisodicActionHistory, ActionResult
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
@@ -92,11 +91,6 @@ class BaseAgent(metaclass=ABCMeta):
 
         self.event_history = EpisodicActionHistory()
 
-        self.message_history = MessageHistory(
-            model=self.llm,
-            max_summary_tlength=summary_max_tlength or self.send_token_limit // 6,
-        )
-
         # Support multi-inheritance and mixins for subclasses
         super(BaseAgent, self).__init__()
 
@@ -168,7 +162,6 @@ class BaseAgent(metaclass=ABCMeta):
         prepend_messages: list[Message] = [],
         append_messages: list[Message] = [],
         reserve_tokens: int = 0,
-        with_message_history: bool = False,
     ) -> ChatSequence:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
@@ -195,24 +188,6 @@ class BaseAgent(metaclass=ABCMeta):
             self.llm.name,
             [Message("system", self.system_prompt)] + prepend_messages,
         )
-
-        if with_message_history:
-            # Reserve tokens for messages to be appended later, if any
-            reserve_tokens += self.message_history.max_summary_tlength
-            if append_messages:
-                reserve_tokens += count_message_tokens(append_messages, self.llm.name)
-
-            # Fill message history, up to a margin of reserved_tokens.
-            # Trim remaining historical messages and add them to the running summary.
-            history_start_index = len(prompt)
-            trimmed_history = add_history_upto_token_limit(
-                prompt, self.message_history, self.send_token_limit - reserve_tokens
-            )
-            if trimmed_history:
-                new_summary_msg, _ = self.message_history.trim_messages(
-                    list(prompt), self.config
-                )
-                prompt.insert(history_start_index, new_summary_msg)
 
         if append_messages:
             prompt.extend(append_messages)
@@ -372,24 +347,9 @@ class BaseAgent(metaclass=ABCMeta):
             The parsed command name and command args, if any, and the agent thoughts.
         """
 
-        # Save assistant reply to message history
-        self.message_history.append(prompt[-1])
-        self.message_history.add(
-            "assistant", llm_response.content, "ai_response"
-        )  # FIXME: support function calls
-
-        try:
-            return self.parse_and_process_response(
-                llm_response, thought_process_id, prompt, instruction
-            )
-        except InvalidAgentResponseError as e:
-            # TODO: tune this message
-            self.message_history.add(
-                "system",
-                f"Your response could not be parsed: {e}"
-                "\n\nRemember to only respond using the specified format above!",
-            )
-            raise
+        return self.parse_and_process_response(
+            llm_response, thought_process_id, prompt, instruction
+        )
 
         # TODO: update memory/context
 
@@ -415,27 +375,3 @@ class BaseAgent(metaclass=ABCMeta):
             The parsed command name and command args, if any, and the agent thoughts.
         """
         pass
-
-
-def add_history_upto_token_limit(
-    prompt: ChatSequence, history: MessageHistory, t_limit: int
-) -> list[Message]:
-    current_prompt_length = prompt.token_length
-    insertion_index = len(prompt)
-    limit_reached = False
-    trimmed_messages: list[Message] = []
-    for cycle in reversed(list(history.per_cycle())):
-        messages_to_add = [msg for msg in cycle if msg is not None]
-        tokens_to_add = count_message_tokens(messages_to_add, prompt.model.name)
-        if current_prompt_length + tokens_to_add > t_limit:
-            limit_reached = True
-
-        if not limit_reached:
-            # Add the most recent message to the start of the chain,
-            #  after the system prompts.
-            prompt.insert(insertion_index, *messages_to_add)
-            current_prompt_length += tokens_to_add
-        else:
-            trimmed_messages = messages_to_add + trimmed_messages
-
-    return trimmed_messages
