@@ -1,4 +1,4 @@
-import 'package:auto_gpt_flutter_client/services/auth_service.dart';
+import 'package:auto_gpt_flutter_client/services/leaderboard_service.dart';
 import 'package:auto_gpt_flutter_client/views/auth/firebase_auth_view.dart';
 import 'package:flutter/material.dart';
 import 'views/main_layout.dart';
@@ -47,8 +47,12 @@ void main() async {
               TaskService(restApiUtility),
         ),
         ProxyProvider<RestApiUtility, BenchmarkService>(
-          update: (context, restApiUtility, taskService) =>
+          update: (context, restApiUtility, benchmarkService) =>
               BenchmarkService(restApiUtility),
+        ),
+        ProxyProvider<RestApiUtility, LeaderboardService>(
+          update: (context, restApiUtility, leaderboardService) =>
+              LeaderboardService(restApiUtility),
         ),
         ChangeNotifierProxyProvider<RestApiUtility, ApiSettingsViewModel>(
           create: (context) => ApiSettingsViewModel(
@@ -90,7 +94,8 @@ class MyApp extends StatelessWidget {
                         Provider.of<TaskService>(context, listen: false))),
                 ChangeNotifierProvider(
                   create: (context) => SkillTreeViewModel(
-                      Provider.of<BenchmarkService>(context, listen: false)),
+                      Provider.of<BenchmarkService>(context, listen: false),
+                      Provider.of<LeaderboardService>(context, listen: false)),
                 ),
               ],
               child: MainLayout(),
