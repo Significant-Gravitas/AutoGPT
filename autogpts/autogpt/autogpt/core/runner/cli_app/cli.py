@@ -35,7 +35,7 @@ autogpt.add_command(make_settings)
 async def run(settings_file: str, pdb: bool) -> None:
     """Run the Auto-GPT agent."""
     click.echo("Running Auto-GPT agent...")
-    settings_file = Path(settings_file)
+    settings_file: Path = Path(settings_file)
     settings = {}
     if settings_file.exists():
         settings = yaml.safe_load(settings_file.read_text())

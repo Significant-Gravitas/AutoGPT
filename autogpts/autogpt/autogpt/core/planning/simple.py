@@ -15,8 +15,9 @@ from autogpt.core.planning.schema import Task
 from autogpt.core.prompting import PromptStrategy
 from autogpt.core.prompting.schema import LanguageModelClassification
 from autogpt.core.resource.model_providers import (
-    LanguageModelProvider,
-    LanguageModelResponse,
+    ChatModelProvider,
+    ChatModelResponse,
+    CompletionModelFunction,
     ModelProviderName,
     OpenAIModelName,
 )
@@ -82,14 +83,14 @@ class SimplePlanner(Configurable):
         self,
         settings: PlannerSettings,
         logger: logging.Logger,
-        model_providers: dict[ModelProviderName, LanguageModelProvider],
+        model_providers: dict[ModelProviderName, ChatModelProvider],
         workspace: Workspace = None,  # Workspace is not available during bootstrapping.
     ) -> None:
         self._configuration = settings.configuration
         self._logger = logger
         self._workspace = workspace
 
-        self._providers: dict[LanguageModelClassification, LanguageModelProvider] = {}
+        self._providers: dict[LanguageModelClassification, ChatModelProvider] = {}
         for model, model_config in self._configuration.models.items():
             self._providers[model] = model_providers[model_config.provider_name]
 
@@ -105,7 +106,7 @@ class SimplePlanner(Configurable):
             ),
         }
 
-    async def decide_name_and_goals(self, user_objective: str) -> LanguageModelResponse:
+    async def decide_name_and_goals(self, user_objective: str) -> ChatModelResponse:
         return await self.chat_with_model(
             self._prompt_strategies["name_and_goals"],
             user_objective=user_objective,
@@ -117,7 +118,7 @@ class SimplePlanner(Configurable):
         agent_role: str,
         agent_goals: list[str],
         abilities: list[str],
-    ) -> LanguageModelResponse:
+    ) -> ChatModelResponse:
         return await self.chat_with_model(
             self._prompt_strategies["initial_plan"],
             agent_name=agent_name,
@@ -129,19 +130,19 @@ class SimplePlanner(Configurable):
     async def determine_next_ability(
         self,
         task: Task,
-        ability_schema: list[dict],
+        ability_specs: list[CompletionModelFunction],
     ):
         return await self.chat_with_model(
             self._prompt_strategies["next_ability"],
             task=task,
-            ability_schema=ability_schema,
+            ability_specs=ability_specs,
         )
 
     async def chat_with_model(
         self,
         prompt_strategy: PromptStrategy,
         **kwargs,
-    ) -> LanguageModelResponse:
+    ) -> ChatModelResponse:
         model_classification = prompt_strategy.model_classification
         model_configuration = self._configuration.models[model_classification].dict()
         self._logger.debug(f"Using model configuration: {model_configuration}")
@@ -153,13 +154,13 @@ class SimplePlanner(Configurable):
         prompt = prompt_strategy.build_prompt(**template_kwargs)
 
         self._logger.debug(f"Using prompt:\n{dump_prompt(prompt)}\n")
-        response = await provider.create_language_completion(
+        response = await provider.create_chat_completion(
             model_prompt=prompt.messages,
             functions=prompt.functions,
             **model_configuration,
             completion_parser=prompt_strategy.parse_response_content,
         )
-        return LanguageModelResponse.parse_obj(response.dict())
+        return response
 
     def _make_template_kwargs_for_strategy(self, strategy: PromptStrategy):
         provider = self._providers[strategy.model_classification]
