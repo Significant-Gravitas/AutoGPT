@@ -46,10 +46,8 @@ def clone_repository(url: str, clone_path: Path, agent: Agent) -> str:
         str: The result of the clone operation.
     """
     split_url = url.split("//")
-    auth_repo_url = (
-        f"//{agent.config.github_username}:{agent.config.github_api_key}@".join(
-            split_url
-        )
+    auth_repo_url = f"//{agent.legacy_config.github_username}:{agent.legacy_config.github_api_key}@".join(
+        split_url
     )
     try:
         Repo.clone_from(url=auth_repo_url, to_path=clone_path)

@@ -11,7 +11,8 @@ from typing import Optional
 from colorama import Fore, Style
 from pydantic import SecretStr
 
-from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
+from autogpt.agents import AgentThoughts, CommandArgs, CommandName
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.app.configurator import create_config
 from autogpt.app.setup import interactive_ai_config_setup
@@ -37,7 +38,6 @@ from autogpt.logs.helpers import print_attribute, speak
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
@@ -175,13 +175,25 @@ async def run_auto_gpt(
 
     print_attribute("Configured Browser", config.selenium_web_browser)
 
+    agent_settings = AgentSettings(
+        name=Agent.default_settings.name,
+        description=Agent.default_settings.description,
+        ai_config=ai_config,
+        config=AgentConfiguration(
+            fast_llm=config.fast_llm,
+            smart_llm=config.smart_llm,
+            use_functions_api=config.openai_functions,
+            plugins=config.plugins,
+        ),
+        history=Agent.default_settings.history.copy(deep=True),
+    )
+
     agent = Agent(
-        memory=memory,
+        settings=agent_settings,
         llm_provider=llm_provider,
         command_registry=command_registry,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        ai_config=ai_config,
-        config=config,
+        memory=memory,
+        legacy_config=config,
     )
 
     await run_interaction_loop(agent)
@@ -247,16 +259,16 @@ async def run_interaction_loop(
         None
     """
     # These contain both application config and agent config, so grab them here.
-    config = agent.config
+    legacy_config = agent.legacy_config
     ai_config = agent.ai_config
     logger = logging.getLogger(__name__)
 
     logger.debug(f"{ai_config.ai_name} System Prompt:\n{agent.system_prompt}")
 
     cycle_budget = cycles_remaining = _get_cycle_budget(
-        config.continuous_mode, config.continuous_limit
+        legacy_config.continuous_mode, legacy_config.continuous_limit
     )
-    spinner = Spinner("Thinking...", plain_output=config.plain_output)
+    spinner = Spinner("Thinking...", plain_output=legacy_config.plain_output)
 
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
         nonlocal cycle_budget, cycles_remaining, spinner
@@ -312,14 +324,16 @@ async def run_interaction_loop(
         # Update User #
         ###############
         # Print the assistant's thoughts and the next command to the user.
-        update_user(config, ai_config, command_name, command_args, assistant_reply_dict)
+        update_user(
+            legacy_config, ai_config, command_name, command_args, assistant_reply_dict
+        )
 
         ##################
         # Get user input #
         ##################
         if cycles_remaining == 1:  # Last cycle
             user_feedback, user_input, new_cycles_remaining = await get_user_feedback(
-                config,
+                legacy_config,
                 ai_config,
             )
 
