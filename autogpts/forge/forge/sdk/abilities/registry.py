@@ -135,7 +135,7 @@ class AbilityRegister:
 
     def list_abilities(self) -> List[Ability]:
         return self.abilities
-    
+
     def list_abilities_for_prompt(self) -> List[str]:
         return [str(ability) for ability in self.abilities.values()]
 
@@ -156,7 +156,9 @@ class AbilityRegister:
 
         return abilities_description
 
-    async def run_ability(self, task_id: str, ability_name: str, *args: Any, **kwds: Any) -> Any:
+    async def run_ability(
+        self, task_id: str, ability_name: str, *args: Any, **kwds: Any
+    ) -> Any:
         """
         This method runs a specified ability with the provided arguments and keyword arguments.
 

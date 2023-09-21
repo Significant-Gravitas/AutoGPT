@@ -150,9 +150,7 @@ class AgentDB:
                 new_task = TaskModel(
                     task_id=str(uuid.uuid4()),
                     input=input,
-                    additional_input=additional_input
-                    if additional_input
-                    else {},
+                    additional_input=additional_input if additional_input else {},
                 )
                 session.add(new_task)
                 session.commit()

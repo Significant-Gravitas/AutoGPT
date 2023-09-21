@@ -1,17 +1,17 @@
 import asyncio
 import os
 import pathlib
-from uuid import uuid4
-from fastapi.responses import StreamingResponse
 from io import BytesIO
+from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
 
+from .abilities.registry import AbilityRegister
 from .db import AgentDB
 from .errors import NotFoundError
 from .forge_log import ForgeLogger
@@ -19,7 +19,6 @@ from .middlewares import AgentMiddleware
 from .routes.agent_protocol import base_router
 from .schema import *
 from .workspace import Workspace
-from .abilities.registry import AbilityRegister
 
 LOG = ForgeLogger(__name__)
 
@@ -207,4 +206,10 @@ class Agent:
         except Exception as e:
             raise
 
-        return StreamingResponse(BytesIO(retrieved_artifact), media_type='application/octet-stream', headers={'Content-Disposition': f'attachment; filename={artifact.file_name}'})
+        return StreamingResponse(
+            BytesIO(retrieved_artifact),
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f"attachment; filename={artifact.file_name}"
+            },
+        )
