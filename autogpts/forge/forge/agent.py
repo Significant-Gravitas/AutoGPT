@@ -1,4 +1,18 @@
-from forge.sdk import Agent, AgentDB, Step, StepRequestBody, Workspace, ForgeLogger, Task, TaskRequestBody
+import json
+import pprint
+
+from forge.sdk import (
+    Agent,
+    AgentDB,
+    Step,
+    StepRequestBody,
+    Workspace,
+    ForgeLogger,
+    Task,
+    TaskRequestBody,
+    PromptEngine,
+    chat_completion_request,
+)
 
 LOG = ForgeLogger(__name__)
 
@@ -64,7 +78,7 @@ class ForgeAgent(Agent):
         Feel free to create subclasses of the database and workspace to implement your own storage
         """
         super().__init__(database, workspace)
-    
+
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """
         The agent protocol, which is the core of the Forge, works by creating a task and then
@@ -75,7 +89,9 @@ class ForgeAgent(Agent):
         want here.
         """
         task = await super().create_task(task_request)
-        LOG.info(f"📦 Task created: {task.task_id} input: {task.input[:40]}{'...' if len(task.input) > 40 else ''}")
+        LOG.info(
+            f"📦 Task created: {task.task_id} input: {task.input[:40]}{'...' if len(task.input) > 40 else ''}"
+        )
         return task
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
@@ -108,10 +124,12 @@ class ForgeAgent(Agent):
         step = await self.db.create_step(
             task_id=task_id, input=step_request, is_last=True
         )
-        message = f'\t🔄 Step executed: {step.step_id} input: {step.input[:19]}'
+        message = f"\t🔄 Step executed: {step.step_id} input: {step.input[:19]}"
         if step.is_last:
-            message = f'\t✅ Final Step completed: {step.step_id} input: {step.input[:19]}'
-            
+            message = (
+                f"\t✅ Final Step completed: {step.step_id} input: {step.input[:19]}"
+            )
+
         LOG.info(message)
 
         artifact = await self.db.create_artifact(
