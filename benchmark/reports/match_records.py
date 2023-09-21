@@ -154,7 +154,7 @@ def get_reports():
                                         ] = suite_data.metrics.difficulty
                                         test_json[
                                             "success_%"
-                                        ] = suite_data.metrics.success_percent
+                                        ] = suite_data.metrics.success_percentage
                                         test_json[
                                             "run_time"
                                         ] = suite_data.metrics.run_time
@@ -173,7 +173,7 @@ def get_reports():
                                 test_json["difficulty"] = test_data.metrics.difficulty
                                 test_json[
                                     "success_%"
-                                ] = test_data.metrics.success_percent
+                                ] = test_data.metrics.success_percentage
                                 test_json["run_time"] = test_data.metrics.run_time
                                 test_json["is_regression"] = test_data.is_regression
 

@@ -179,17 +179,17 @@ logging_config: dict = dict(
         "h": {
             "class": "logging.StreamHandler",
             "formatter": "console",
-            "level": logging.DEBUG,
+            "level": logging.INFO,
         },
     },
     root={
         "handlers": ["h"],
-        "level": logging.DEBUG,
+        "level": logging.INFO,
     },
     loggers={
         "autogpt": {
             "handlers": ["h"],
-            "level": logging.DEBUG,
+            "level": logging.INFO,
             "propagate": False,
         },
     },

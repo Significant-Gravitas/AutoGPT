@@ -23,7 +23,7 @@ from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmak
 
 from .errors import NotFoundError
 from .forge_log import ForgeLogger
-from .schema import Artifact, Pagination, Status, Step, StepRequestBody, Task, TaskInput
+from .schema import Artifact, Pagination, Status, Step, StepRequestBody, Task
 
 LOG = ForgeLogger(__name__)
 
@@ -140,7 +140,7 @@ class AgentDB:
         self.Session = sessionmaker(bind=self.engine)
 
     async def create_task(
-        self, input: Optional[str], additional_input: Optional[TaskInput] = {}
+        self, input: Optional[str], additional_input: Optional[dict] = {}
     ) -> Task:
         if self.debug_enabled:
             LOG.debug("Creating new task")
@@ -150,7 +150,7 @@ class AgentDB:
                 new_task = TaskModel(
                     task_id=str(uuid.uuid4()),
                     input=input,
-                    additional_input=additional_input.json()
+                    additional_input=additional_input
                     if additional_input
                     else {},
                 )

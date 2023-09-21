@@ -1,21 +1,30 @@
 {
-  "name": "AdaptLink",
-  "category": ["adaptability"],
-  "task": "Write the price of the book in this url 'books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
-  "dependencies": ["BasicRetrieval"],
-  "cutoff": 60,
-  "ground": {
-    "answer": "£25.89",
-    "should_contain": ["25.89"],
-    "should_not_contain": [],
-    "files": [".txt"],
-    "eval": {
-      "type": "file"
-    }
-  },
-  "info": {
-    "difficulty": "novice",
-    "description": "An advanced version of this -> remove.html as well. Same as TestBasicRetrieval but link is slightly broken, supposed to be http:// at the start.",
-    "side_effects": []
-  }
+    "name": "AdaptLink",
+    "category": [
+        "adaptability"
+    ],
+    "task": "Write the price of the book in this url 'books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file.",
+    "dependencies": [
+        "BasicRetrieval"
+    ],
+    "cutoff": 60,
+    "ground": {
+        "answer": "\u00a325.89",
+        "should_contain": [
+            "25.89"
+        ],
+        "should_not_contain": [],
+        "files": [
+            ".txt"
+        ],
+        "eval": {
+            "type": "file"
+        }
+    },
+    "info": {
+        "difficulty": "novice",
+        "description": "An advanced version of this -> remove.html as well. Same as TestBasicRetrieval but link is slightly broken, supposed to be http:// at the start.",
+        "side_effects": []
+    },
+    "eval_id": "7fc79ad5-fd08-451a-8782-5beeba6822f4"
 }

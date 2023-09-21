@@ -346,7 +346,7 @@ def start(agent_name, subprocess_args):
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
     agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
-    benchmark_script = os.path.join(agent_dir, "run_benchmark.sh")
+    benchmark_script = os.path.join(agent_dir, "run_benchmark")
     if os.path.exists(agent_dir) and os.path.isfile(benchmark_script):
         os.chdir(agent_dir)
         subprocess.Popen([benchmark_script, *subprocess_args], cwd=agent_dir)
@@ -388,16 +388,17 @@ def benchmark_categories_list():
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
-        with open(data_file, "r") as f:
-            try:
-                data = json.load(f)
-                categories.update(data.get("category", []))
-            except json.JSONDecodeError:
-                print(f"Error: {data_file} is not a valid JSON file.")
-                continue
-            except IOError:
-                print(f"IOError: file could not be read: {data_file}")
-                continue
+        if 'deprecated' not in data_file:
+            with open(data_file, "r") as f:
+                try:
+                    data = json.load(f)
+                    categories.update(data.get("category", []))
+                except json.JSONDecodeError:
+                    print(f"Error: {data_file} is not a valid JSON file.")
+                    continue
+                except IOError:
+                    print(f"IOError: file could not be read: {data_file}")
+                    continue
 
     if categories:
         click.echo(click.style("Available categories: 📚", fg="green"))
@@ -431,21 +432,22 @@ def benchmark_tests_list():
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
-        with open(data_file, "r") as f:
-            try:
-                data = json.load(f)
-                category = data.get("category", [])
-                test_name = data.get("name", "")
-                if category and test_name:
-                    if category[0] not in tests:
-                        tests[category[0]] = []
-                    tests[category[0]].append(test_name)
-            except json.JSONDecodeError:
-                print(f"Error: {data_file} is not a valid JSON file.")
-                continue
-            except IOError:
-                print(f"IOError: file could not be read: {data_file}")
-                continue
+        if 'deprecated' not in data_file:
+            with open(data_file, "r") as f:
+                try:
+                    data = json.load(f)
+                    category = data.get("category", [])
+                    test_name = data.get("name", "")
+                    if category and test_name:
+                        if category[0] not in tests:
+                            tests[category[0]] = []
+                        tests[category[0]].append(test_name)
+                except json.JSONDecodeError:
+                    print(f"Error: {data_file} is not a valid JSON file.")
+                    continue
+                except IOError:
+                    print(f"IOError: file could not be read: {data_file}")
+                    continue
 
     if tests:
         click.echo(click.style("Available tests: 📚", fg="green"))
@@ -455,7 +457,7 @@ def benchmark_tests_list():
                 test_name = (
                     " ".join(word for word in re.split("([A-Z][a-z]*)", test) if word)
                     .replace("_", "")
-                    .replace("C L I", "CLI")[5:]
+                    .replace("C L I", "CLI")
                     .replace("  ", " ")
                 )
                 test_name_padded = f"{test_name:<40}"
@@ -566,32 +568,6 @@ def benchmark_tests_details(test_name):
             except IOError:
                 print(f"IOError: file could not be read: {data_file}")
                 continue
-
-
-@cli.command()
-def frontend():
-    """Starts the frontend"""
-    import os
-    import socket
-    import subprocess
-
-    try:
-        output = subprocess.check_output(["lsof", "-t", "-i", ":8000"])
-        if output:
-            click.echo("Agent is running.")
-        else:
-            click.echo("Error: Agent is not running. Please start an agent first.")
-    except subprocess.CalledProcessError as e:
-        click.echo("Error: Unexpected error occurred.")
-        return
-    frontend_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "frontend")
-    run_file = os.path.join(frontend_dir, "run")
-    if os.path.exists(frontend_dir) and os.path.isfile(run_file):
-        subprocess.Popen(["./run"], cwd=frontend_dir)
-        click.echo("Launching frontend")
-    else:
-        click.echo("Error: Frontend directory or run file does not exist.")
-
 
 @cli.group()
 def arena():
@@ -705,9 +681,9 @@ def enter(agent_name, branch):
 
         if github_repo_url.startswith("git@"):
             github_repo_url = (
-                github_repo_url.replace("git@", "https://")
+                github_repo_url.replace(":", "/")
+                .replace("git@", "https://")
                 .replace(".git", "")
-                .replace(":", "/")
             )
 
         # If --branch is passed, use it instead of master
@@ -755,12 +731,11 @@ def enter(agent_name, branch):
 
         # Create a PR into the parent repository
         g = Github(github_access_token)
-        repo = g.get_repo(github_repo_url.split(":")[-1].split(".git")[0])
+        repo_name = github_repo_url.replace("https://github.com/", '')
+        repo = g.get_repo(repo_name)
         parent_repo = repo.parent
         if parent_repo:
-            pr = parent_repo.create_pull(
-                title=f"{agent_name} entering the arena",
-                body=f"""
+            pr_message = f"""
 ### 🌟 Welcome to the AutoGPT Arena Hacks Hackathon! 🌟
 
 Hey there amazing builders! We're thrilled to have you join this exciting journey. Before you dive deep into building, we'd love to know more about you and the awesome project you are envisioning. Fill out the template below to kickstart your hackathon journey. May the best agent win! 🏆
@@ -795,8 +770,12 @@ Hey there amazing builders! We're thrilled to have you join this exciting journe
 - [ ] We have read and are aligned with the [Hackathon Rules](https://lablab.ai/event/autogpt-arena-hacks).
 - [ ] We confirm that our project will be open-source and adhere to the MIT License.
 - [ ] Our lablab.ai registration email matches our OpenAI account to claim the bonus credits (if applicable).
-""",
-                head=f"{repo.owner.login}:{arena_submission_branch}",
+"""
+            head = f"{repo.owner.login}:{arena_submission_branch}"
+            pr = parent_repo.create_pull(
+                title=f"{agent_name} entering the arena",
+                body=pr_message,
+                head=head,
                 base=branch_to_use,
             )
             click.echo(
