@@ -469,7 +469,6 @@ async def list_agent_task_artifacts(
         artifacts: TaskArtifactsListResponse = await agent.list_artifacts(
             task_id, page, page_size
         )
-        LOG.info(f"Artifacts: {artifacts.json()}")
         return artifacts
     except NotFoundError:
         LOG.exception("Error whilst trying to list artifacts")

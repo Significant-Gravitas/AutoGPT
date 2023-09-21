@@ -48,7 +48,7 @@ if __name__ == "__main__":
     workspace = LocalWorkspace(os.getenv("AGENT_WORKSPACE"))
     port = os.getenv("PORT", 8000)
 
-    database = forge.sdk.db.AgentDB(database_name, debug_enabled=True)
+    database = forge.sdk.db.AgentDB(database_name, debug_enabled=False)
     agent = forge.agent.ForgeAgent(database=database, workspace=workspace)
 
     agent.start(port=port)
