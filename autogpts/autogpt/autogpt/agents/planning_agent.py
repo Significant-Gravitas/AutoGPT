@@ -227,7 +227,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
             self.created_at,
             self.cycle_count,
             self.event_history.episodes,
-            "action_history.json",
+            "event_history.json",
         )
         self.log_cycle_handler.log_cycle(
             self.ai_config.ai_name,

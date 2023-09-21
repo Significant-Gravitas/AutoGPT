@@ -4,13 +4,15 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autogpt.config import AIConfig, Config
+    from autogpt.config import Config
     from autogpt.memory.vector import VectorMemory
     from autogpt.models.command_registry import CommandRegistry
 
+from autogpt.config.ai_config import AIConfig
+from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
     ChatMessage,
@@ -36,7 +38,7 @@ from autogpt.models.action_history import (
 from autogpt.models.command import CommandOutput
 from autogpt.models.context_item import ContextItem
 
-from .base import BaseAgent
+from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from .features.context import ContextMixin
 from .features.watchdog import WatchdogMixin
 from .features.workspace import WorkspaceMixin
@@ -50,26 +52,44 @@ from .utils.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
-    """Agent class for interacting with Auto-GPT."""
+class AgentConfiguration(BaseAgentConfiguration):
+    pass
+
+
+class AgentSettings(BaseAgentSettings):
+    config: AgentConfiguration
+
+
+class Agent(
+    ContextMixin,
+    WorkspaceMixin,
+    WatchdogMixin,
+    BaseAgent,
+    Configurable[AgentSettings],
+):
+    """AutoGPT's primary Agent; uses one-shot prompting."""
+
+    default_settings = AgentSettings(
+        name="Agent",
+        description=__doc__,
+        ai_config=AIConfig(ai_name="AutoGPT"),
+        config=AgentConfiguration(),
+        history=BaseAgent.default_settings.history,
+    )
 
     def __init__(
         self,
-        ai_config: AIConfig,
+        settings: AgentSettings,
         llm_provider: ChatModelProvider,
         command_registry: CommandRegistry,
         memory: VectorMemory,
-        triggering_prompt: str,
-        config: Config,
-        cycle_budget: Optional[int] = None,
+        legacy_config: Config,
     ):
         super().__init__(
-            ai_config=ai_config,
+            settings=settings,
             llm_provider=llm_provider,
             command_registry=command_registry,
-            config=config,
-            default_cycle_instruction=triggering_prompt,
-            cycle_budget=cycle_budget,
+            legacy_config=legacy_config,
         )
 
         self.memory = memory
@@ -126,7 +146,7 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
         self.log_cycle_handler.log_cycle(
             self.ai_config.ai_name,
             self.created_at,
-            self.cycle_count,
+            self.config.cycle_count,
             prompt.raw(),
             CURRENT_CONTEXT_FILE_NAME,
         )
@@ -145,7 +165,7 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
             self.log_cycle_handler.log_cycle(
                 self.ai_config.ai_name,
                 self.created_at,
-                self.cycle_count,
+                self.config.cycle_count,
                 user_input,
                 USER_INPUT_FILE_NAME,
             )
@@ -225,14 +245,14 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
 
         # Get command name and arguments
         command_name, arguments = extract_command(
-            assistant_reply_dict, llm_response, self.config
+            assistant_reply_dict, llm_response, self.config.use_functions_api
         )
         response = command_name, arguments, assistant_reply_dict
 
         self.log_cycle_handler.log_cycle(
             self.ai_config.ai_name,
             self.created_at,
-            self.cycle_count,
+            self.config.cycle_count,
             assistant_reply_dict,
             NEXT_ACTION_FILE_NAME,
         )
@@ -300,7 +320,9 @@ RESPONSE_SCHEMA = JSONSchema(
 
 
 def extract_command(
-    assistant_reply_json: dict, assistant_reply: ChatModelResponse, config: Config
+    assistant_reply_json: dict,
+    assistant_reply: ChatModelResponse,
+    use_openai_functions_api: bool,
 ) -> tuple[str, dict[str, str]]:
     """Parse the response and return the command name and arguments
 
@@ -317,7 +339,7 @@ def extract_command(
 
         Exception: If any other error occurs
     """
-    if config.openai_functions:
+    if use_openai_functions_api:
         if "function_call" not in assistant_reply.response:
             raise InvalidAgentResponseError("No 'function_call' in assistant reply")
         assistant_reply_json["command"] = {

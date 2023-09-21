@@ -2,14 +2,13 @@ import asyncio
 import sys
 from pathlib import Path
 
-from autogpt.agents import Agent
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.main import _configure_openai_provider, run_interaction_loop
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, ConfigBuilder
 from autogpt.logs.config import configure_logging
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 
 PROJECT_DIR = Path().resolve()
@@ -42,13 +41,26 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
         ai_role="a multi-purpose AI assistant.",
         ai_goals=[task],
     )
+
+    agent_settings = AgentSettings(
+        name=Agent.default_settings.name,
+        description=Agent.default_settings.description,
+        ai_config=ai_config,
+        config=AgentConfiguration(
+            fast_llm=config.fast_llm,
+            smart_llm=config.smart_llm,
+            use_functions_api=config.openai_functions,
+            plugins=config.plugins,
+        ),
+        history=Agent.default_settings.history.copy(deep=True),
+    )
+
     return Agent(
-        memory=get_memory(config),
+        settings=agent_settings,
         llm_provider=_configure_openai_provider(config),
         command_registry=command_registry,
-        ai_config=ai_config,
-        config=config,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        memory=get_memory(config),
+        legacy_config=config,
     )
 
 

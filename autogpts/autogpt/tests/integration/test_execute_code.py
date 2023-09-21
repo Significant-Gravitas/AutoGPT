@@ -89,30 +89,30 @@ def test_execute_shell_local_commands_not_allowed(random_string: str, agent: Age
 
 
 def test_execute_shell_denylist_should_deny(agent: Agent, random_string: str):
-    agent.config.shell_denylist = ["echo"]
+    agent.legacy_config.shell_denylist = ["echo"]
 
     with pytest.raises(OperationNotAllowedError, match="not allowed"):
         sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
 
 
 def test_execute_shell_denylist_should_allow(agent: Agent, random_string: str):
-    agent.config.shell_denylist = ["cat"]
+    agent.legacy_config.shell_denylist = ["cat"]
 
     result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert "Hello" in result and random_string in result
 
 
 def test_execute_shell_allowlist_should_deny(agent: Agent, random_string: str):
-    agent.config.shell_command_control = sut.ALLOWLIST_CONTROL
-    agent.config.shell_allowlist = ["cat"]
+    agent.legacy_config.shell_command_control = sut.ALLOWLIST_CONTROL
+    agent.legacy_config.shell_allowlist = ["cat"]
 
     with pytest.raises(OperationNotAllowedError, match="not allowed"):
         sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
 
 
 def test_execute_shell_allowlist_should_allow(agent: Agent, random_string: str):
-    agent.config.shell_command_control = sut.ALLOWLIST_CONTROL
-    agent.config.shell_allowlist = ["echo"]
+    agent.legacy_config.shell_command_control = sut.ALLOWLIST_CONTROL
+    agent.legacy_config.shell_allowlist = ["echo"]
 
     result = sut.execute_shell(f"echo 'Hello {random_string}!'", agent)
     assert "Hello" in result and random_string in result

@@ -5,8 +5,11 @@ import re
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
+from pydantic import Field, validator
+
 if TYPE_CHECKING:
-    from autogpt.config import AIConfig, Config
+    from autogpt.config import Config
     from autogpt.core.resource.model_providers.schema import (
         ChatModelInfo,
         ChatModelProvider,
@@ -14,9 +17,19 @@ if TYPE_CHECKING:
     )
     from autogpt.models.command_registry import CommandRegistry
 
+from autogpt.config.ai_config import AIConfig
 from autogpt.config.ai_directives import AIDirectives
+from autogpt.core.configuration import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
+)
 from autogpt.core.prompting.schema import ChatMessage, ChatPrompt
-from autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.core.resource.model_providers.openai import (
+    OPEN_AI_CHAT_MODELS,
+    OpenAIModelName,
+)
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.action_history import ActionResult, EpisodicActionHistory
@@ -30,73 +43,129 @@ CommandArgs = dict[str, str]
 AgentThoughts = dict[str, Any]
 
 
-class BaseAgent(ABC):
-    """Base class for all Auto-GPT agents."""
+class BaseAgentConfiguration(SystemConfiguration):
+    fast_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
+    smart_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT4)
+    use_functions_api: bool = UserConfigurable(default=False)
+
+    default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT
+    """The default instruction passed to the AI for a thinking cycle."""
+
+    big_brain: bool = UserConfigurable(default=True)
+    """
+    Whether this agent uses the configured smart LLM (default) to think,
+    as opposed to the configured fast LLM. Enabling this disables hybrid mode.
+    """
+
+    cycle_budget: Optional[int] = 1
+    """
+    The number of cycles that the agent is allowed to run unsupervised.
+
+    `None` for unlimited continuous execution,
+    `1` to require user approval for every step,
+    `0` to stop the agent.
+    """
+
+    cycles_remaining = cycle_budget
+    """The number of cycles remaining within the `cycle_budget`."""
+
+    cycle_count = 0
+    """The number of cycles that the agent has run since its initialization."""
+
+    send_token_limit: Optional[int] = None
+    """
+    The token limit for prompt construction. Should leave room for the completion;
+    defaults to 75% of `llm.max_tokens`.
+    """
+
+    summary_max_tlength: Optional[
+        int
+    ] = None  # TODO: move to ActionHistoryConfiguration
+
+    plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
+
+    class Config:
+        arbitrary_types_allowed = True  # Necessary for plugins
+
+    @validator("plugins", each_item=True)
+    def validate_plugins(cls, p: AutoGPTPluginTemplate | Any):
+        assert issubclass(
+            p.__class__, AutoGPTPluginTemplate
+        ), f"{p} does not subclass AutoGPTPluginTemplate"
+        assert (
+            p.__class__.__name__ != "AutoGPTPluginTemplate"
+        ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
+        return p
+
+    @validator("use_functions_api")
+    def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
+        if v:
+            smart_llm = values["smart_llm"]
+            fast_llm = values["fast_llm"]
+            assert all(
+                [
+                    not any(s in name for s in {"-0301", "-0314"})
+                    for name in {smart_llm, fast_llm}
+                ]
+            ), (
+                f"Model {smart_llm} does not support OpenAI Functions. "
+                "Please disable OPENAI_FUNCTIONS or choose a suitable model."
+            )
+
+
+class BaseAgentSettings(SystemSettings):
+    ai_config: AIConfig
+    """The AIConfig or "personality" object associated with this agent."""
+
+    config: BaseAgentConfiguration
+    """The configuration for this BaseAgent subsystem instance."""
+
+    history: EpisodicActionHistory
+    """(STATE) The action history of the agent."""
+
+
+class BaseAgent(Configurable[BaseAgentSettings], ABC):
+    """Base class for all AutoGPT agent classes."""
 
     ThoughtProcessID = Literal["one-shot"]
     ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
 
+    default_settings = BaseAgentSettings(
+        name="BaseAgent",
+        description=__doc__,
+        ai_config=AIConfig(),
+        config=BaseAgentConfiguration(),
+        history=EpisodicActionHistory(),
+    )
+
     def __init__(
         self,
-        ai_config: AIConfig,
+        settings: BaseAgentSettings,
         llm_provider: ChatModelProvider,
         command_registry: CommandRegistry,
-        config: Config,
-        big_brain: bool = True,
-        default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT,
-        cycle_budget: Optional[int] = 1,
-        send_token_limit: Optional[int] = None,
-        summary_max_tlength: Optional[int] = None,
+        legacy_config: Config,
     ):
-        self.ai_config = ai_config
-        """The AIConfig or "personality" object associated with this agent."""
+        self.ai_config = settings.ai_config
 
         self.llm_provider = llm_provider
 
         self.command_registry = command_registry
         """The registry containing all commands available to the agent."""
 
+        self.llm_provider = llm_provider
+
         self.prompt_generator = PromptGenerator(
-            ai_config=ai_config,
-            ai_directives=AIDirectives.from_file(config.prompt_settings_file),
+            ai_config=settings.ai_config,
+            ai_directives=AIDirectives.from_file(legacy_config.prompt_settings_file),
             command_registry=command_registry,
         )
         """The prompt generator used for generating the system prompt."""
 
-        self.config = config
+        self.legacy_config = legacy_config
+        self.config = settings.config
         """The applicable application configuration."""
 
-        self.big_brain = big_brain
-        """
-        Whether this agent uses the configured smart LLM (default) to think,
-        as opposed to the configured fast LLM.
-        """
-
-        self.default_cycle_instruction = default_cycle_instruction
-        """The default instruction passed to the AI for a thinking cycle."""
-
-        self.cycle_budget = cycle_budget
-        """
-        The number of cycles that the agent is allowed to run unsupervised.
-
-        `None` for unlimited continuous execution,
-        `1` to require user approval for every step,
-        `0` to stop the agent.
-        """
-
-        self.cycles_remaining = cycle_budget
-        """The number of cycles remaining within the `cycle_budget`."""
-
-        self.cycle_count = 0
-        """The number of cycles that the agent has run since its initialization."""
-
-        self.send_token_limit = send_token_limit or self.llm.max_tokens * 3 // 4
-        """
-        The token limit for prompt construction. Should leave room for the completion;
-        defaults to 75% of `llm.max_tokens`.
-        """
-
-        self.event_history = EpisodicActionHistory()
+        self.event_history = settings.history
 
         # Support multi-inheritance and mixins for subclasses
         super(BaseAgent, self).__init__()
@@ -112,8 +181,14 @@ class BaseAgent(ABC):
     @property
     def llm(self) -> ChatModelInfo:
         """The LLM that the agent uses to think."""
-        llm_name = self.config.smart_llm if self.big_brain else self.config.fast_llm
+        llm_name = (
+            self.config.smart_llm if self.config.big_brain else self.config.fast_llm
+        )
         return OPEN_AI_CHAT_MODELS[llm_name]
+
+    @property
+    def send_token_limit(self) -> int:
+        return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     async def think(
         self,
@@ -129,7 +204,7 @@ class BaseAgent(ABC):
             The command name and arguments, if any, and the agent's thoughts.
         """
 
-        instruction = instruction or self.default_cycle_instruction
+        instruction = instruction or self.config.default_cycle_instruction
 
         prompt: ChatPrompt = self.construct_prompt(instruction, thought_process_id)
         prompt = self.on_before_think(prompt, thought_process_id, instruction)
@@ -138,11 +213,11 @@ class BaseAgent(ABC):
         raw_response = await self.llm_provider.create_chat_completion(
             prompt.messages,
             functions=get_openai_command_specs(self.command_registry)
-            if self.config.openai_functions
+            if self.config.use_functions_api
             else [],
             model_name=self.llm.name,
         )
-        self.cycle_count += 1
+        self.config.cycle_count += 1
 
         return self.on_response(raw_response, thought_process_id, prompt, instruction)
 
@@ -285,11 +360,11 @@ class BaseAgent(ABC):
             r"\n\s+",
             "\n",
             RESPONSE_FORMAT_WITHOUT_COMMAND
-            if self.config.openai_functions
+            if self.config.use_functions_api
             else RESPONSE_FORMAT_WITH_COMMAND,
         )
 
-        use_functions = self.config.openai_functions and self.command_registry.commands
+        use_functions = self.config.use_functions_api and self.command_registry.commands
         return (
             f"Respond strictly with JSON{', and also specify a command to use through a function_call' if use_functions else ''}. "
             "The JSON should be compatible with the TypeScript type `Response` from the following:\n"

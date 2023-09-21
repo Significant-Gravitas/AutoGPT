@@ -4,7 +4,7 @@ from autogpt.agents.agent import Agent, execute_command
 def test_agent_initialization(agent: Agent):
     assert agent.ai_config.ai_name == "Base"
     assert agent.event_history.episodes == []
-    assert agent.cycle_budget is None
+    assert agent.config.cycle_budget is 1
     assert "You are Base" in agent.system_prompt
 
 

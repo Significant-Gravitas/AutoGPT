@@ -6,7 +6,7 @@ import pytest
 import yaml
 from pytest_mock import MockerFixture
 
-from autogpt.agents import Agent
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.main import _configure_openai_provider
 from autogpt.config import AIConfig, Config, ConfigBuilder
 from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
@@ -14,7 +14,6 @@ from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 
 pytest_plugins = [
@@ -108,11 +107,23 @@ def agent(config: Config, llm_provider: ChatModelProvider) -> Agent:
     memory_json_file = get_memory(config)
     memory_json_file.clear()
 
+    agent_settings = AgentSettings(
+        name=Agent.default_settings.name,
+        description=Agent.default_settings.description,
+        ai_config=ai_config,
+        config=AgentConfiguration(
+            fast_llm=config.fast_llm,
+            smart_llm=config.smart_llm,
+            use_functions_api=config.openai_functions,
+            plugins=config.plugins,
+        ),
+        history=Agent.default_settings.history.copy(deep=True),
+    )
+
     return Agent(
-        memory=memory_json_file,
+        settings=agent_settings,
         llm_provider=llm_provider,
         command_registry=command_registry,
-        ai_config=ai_config,
-        config=config,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        memory=memory_json_file,
+        legacy_config=config,
     )

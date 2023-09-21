@@ -100,7 +100,7 @@ def execute_python_file(
         str: The output of the file
     """
     logger.info(
-        f"Executing python file '{filename}' in working directory '{agent.config.workspace_path}'"
+        f"Executing python file '{filename}' in working directory '{agent.legacy_config.workspace_path}'"
     )
 
     if isinstance(args, str):
@@ -238,7 +238,7 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     Returns:
         str: The output of the command
     """
-    if not validate_command(command_line, agent.config):
+    if not validate_command(command_line, agent.legacy_config):
         logger.info(f"Command '{command_line}' not allowed")
         raise OperationNotAllowedError("This shell command is not allowed.")
 
@@ -285,7 +285,7 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
-    if not validate_command(command_line, agent.config):
+    if not validate_command(command_line, agent.legacy_config):
         logger.info(f"Command '{command_line}' not allowed")
         raise OperationNotAllowedError("This shell command is not allowed.")
 
