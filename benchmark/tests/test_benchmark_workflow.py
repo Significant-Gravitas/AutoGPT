@@ -61,19 +61,6 @@ def test_entire_workflow(
     step_response = step_response.json()
     assert step_response["is_last"] == True  # Assuming is_last is always True
 
-    step_response = requests.post(
-        URL_BENCHMARK + "/agent/tasks/" + task_response_benchmark_id + "/evaluation",
-        json={},
-    )
-
-    step_response = requests.post(
-        URL_BENCHMARK + "/agent/tasks/" + task_response_benchmark_id + "/steps",
-        json=step_request,
-    )
-    assert step_response.status_code == 200
-    step_response = step_response.json()
-    assert step_response["is_last"] == True  # Assuming is_last is always True
-
     eval_response = requests.post(
         URL_BENCHMARK + "/agent/tasks/" + task_response_benchmark_id + "/evaluations",
         json={},
@@ -87,7 +74,5 @@ def test_entire_workflow(
     benchmark_start_time = datetime.datetime.fromisoformat(
         eval_response["run_details"]["benchmark_start_time"]
     )
-    print(benchmark_start_time, timestamp_after_task_eval_created)
-    test = timestamp_after_task_eval_created - benchmark_start_time
-    print(test)
+
     assert benchmark_start_time < timestamp_after_task_eval_created

@@ -1,4 +1,3 @@
-import json
 import math
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -10,7 +9,7 @@ import numpy as np
 from pyvis.network import Network
 
 from agbenchmark.generate_test import DATA_CATEGORY
-from agbenchmark.utils.utils import find_absolute_benchmark_path
+from agbenchmark.utils.utils import write_pretty_json
 
 
 def bezier_curve(
@@ -275,13 +274,16 @@ def graph_interactive_network(
     # Serialize the graph to JSON
     graph_data = {"nodes": nt.nodes, "edges": nt.edges}
 
-    json_graph = json.dumps(graph_data)
+    home_path = Path.cwd()
 
-    home_path = find_absolute_benchmark_path()
-
+    write_pretty_json(graph_data, home_path / "frontend" / "public" / "graph.json")
     # Optionally, save to a file
-    with open(home_path / "frontend" / "public" / "graph.json", "w") as f:
-        f.write(json_graph)
+    # Sync with the flutter UI
+    # this literally only works in the AutoGPT repo, but this part of the code is not reached if BUILD_SKILL_TREE is false
+    write_pretty_json(
+        graph_data,
+        str(home_path.parent / "frontend" / "assets" / "tree_structure.json"),
+    )
 
     if html_graph_path:
         file_path = str(Path(html_graph_path).resolve())

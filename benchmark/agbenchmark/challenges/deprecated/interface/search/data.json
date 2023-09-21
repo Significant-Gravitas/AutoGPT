@@ -1,15 +1,20 @@
 {
-    "name": "Search",
     "category": [
         "interface"
     ],
-    "task": "Open 'https://silennaihin.com/random/plain.html' and paste all of the text on the page in a .txt file",
-    "dependencies": [
-        "WriteFile"
-    ],
     "cutoff": 120,
+    "dependencies": [
+        "TestWriteFile"
+    ],
+    "eval_id": "3af8ea29-ae35-45dd-ab14-7a995ba4fc93",
     "ground": {
         "answer": "This is a Heading\nThis is a paragraph.",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            ".txt"
+        ],
         "should_contain": [
             "Heading",
             "paragraph"
@@ -17,20 +22,15 @@
         "should_not_contain": [
             "The",
             "the"
-        ],
-        "files": [
-            ".txt"
-        ],
-        "eval": {
-            "type": "file"
-        }
+        ]
     },
     "info": {
-        "difficulty": "interface",
         "description": "s if an llm can search",
+        "difficulty": "interface",
         "side_effects": [
             ""
         ]
     },
-    "eval_id": "3af8ea29-ae35-45dd-ab14-7a995ba4fc93"
+    "name": "Search",
+    "task": "Open 'https://silennaihin.com/random/plain.html' and paste all of the text on the page in a .txt file"
 }

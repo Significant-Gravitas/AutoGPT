@@ -1,33 +1,33 @@
 {
-    "name": "ReturnCodeTests",
     "category": [
         "code",
         "iterate"
     ],
-    "task": "First, modify testfile.py to fill in the test case to be able to test the code in sample_code.py. Next, modify the multiply_int function in sample_code.py to be able to pass in a 'multiplier' argument to multiply the 'num' by 'multiplier'. Both arguments are integers. You can make sure you have correctly done this by running testfile.py that you previously modified.",
-    "dependencies": [
-        "ReturnCodeModify"
-    ],
     "cutoff": 120,
+    "dependencies": [
+        "TestReturnCodeModify"
+    ],
+    "eval_id": "c1d35de4-3a0c-410f-95d2-745009de9ee8",
     "ground": {
         "answer": "Just a simple multiple by 2 function. Num is 4 so answer is 8",
+        "eval": {
+            "type": "python"
+        },
+        "files": [
+            "test.py"
+        ],
         "should_contain": [
             "8",
             "49",
             "-12"
         ],
-        "should_not_contain": [],
-        "files": [
-            "test.py"
-        ],
-        "eval": {
-            "type": "python"
-        }
+        "should_not_contain": []
     },
     "info": {
-        "difficulty": "advanced",
         "description": "Small step up, just writing the function with a name as well as the return statement.",
+        "difficulty": "advanced",
         "side_effects": []
     },
-    "eval_id": "c1d35de4-3a0c-410f-95d2-745009de9ee8"
+    "name": "ReturnCodeTests",
+    "task": "First, modify testfile.py to fill in the test case to be able to test the code in sample_code.py. Next, modify the multiply_int function in sample_code.py to be able to pass in a 'multiplier' argument to multiply the 'num' by 'multiplier'. Both arguments are integers. You can make sure you have correctly done this by running testfile.py that you previously modified."
 }
