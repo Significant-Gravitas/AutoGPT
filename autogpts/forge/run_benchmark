@@ -4,4 +4,6 @@
 if lsof -t -i :8080; then
     kill $(lsof -t -i :8080)
 fi
-poetry run agbenchmark serve
+# This is the cli entry point for the benchmarking tool.
+# To run this in server mode pass in serve as the first argument.
+poetry run agbenchmark "$@"
