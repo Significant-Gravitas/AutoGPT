@@ -81,7 +81,8 @@ async def read_webpage(url: str, agent: Agent, question: str = "") -> str:
     """
     driver = None
     try:
-        driver = open_page_in_browser(url, agent.config)
+        # FIXME: agent.config -> something else
+        driver = open_page_in_browser(url, agent.legacy_config)
 
         text = scrape_text_with_selenium(driver)
         links = scrape_links_with_selenium(driver, url)
@@ -273,15 +274,15 @@ async def summarize_memorize_webpage(
     text_length = len(text)
     logger.info(f"Text length: {text_length} characters")
 
-    # memory = get_memory(agent.config)
+    # memory = get_memory(agent.legacy_config)
 
-    # new_memory = MemoryItem.from_webpage(text, url, agent.config, question=question)
+    # new_memory = MemoryItem.from_webpage(text, url, agent.legacy_config, question=question)
     # memory.add(new_memory)
 
     summary, _ = await summarize_text(
         text,
         question=question,
         llm_provider=agent.llm_provider,
-        config=agent.config,  # FIXME
+        config=agent.legacy_config,  # FIXME
     )
     return summary

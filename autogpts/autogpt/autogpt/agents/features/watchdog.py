@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import logging
 from contextlib import ExitStack
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..base import BaseAgentConfiguration
 
 from autogpt.models.action_history import EpisodicActionHistory
 
@@ -16,6 +20,7 @@ class WatchdogMixin:
     looping, the watchdog will switch from the FAST_LLM to the SMART_LLM and re-think.
     """
 
+    config: BaseAgentConfiguration
     event_history: EpisodicActionHistory
 
     def __init__(self, **kwargs) -> None:
@@ -33,7 +38,7 @@ class WatchdogMixin:
         )
 
         if (
-            not self.big_brain
+            not self.config.big_brain
             and len(self.event_history) > 1
             and self.config.fast_llm != self.config.smart_llm
         ):
@@ -51,7 +56,7 @@ class WatchdogMixin:
                     @stack.callback
                     def restore_state() -> None:
                         # Executed after exiting the ExitStack context
-                        self.big_brain = False
+                        self.config.big_brain = False
 
                     # Remove partial record of current cycle
                     self.event_history.rewind()
