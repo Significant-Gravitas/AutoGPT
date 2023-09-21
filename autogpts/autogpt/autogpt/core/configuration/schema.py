@@ -1,10 +1,12 @@
 import abc
+import functools
 import typing
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
 
+@functools.wraps(Field)
 def UserConfigurable(*args, **kwargs):
     return Field(*args, **kwargs, user_configurable=True)
 
