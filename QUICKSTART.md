@@ -43,7 +43,7 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
     
     ![Setup the Project](docs/content/imgs/quickstart/005_setup.png)
     
-    You can keep running the commaand to get feedback on where you are up to with your setup. 
+    You can keep running the command to get feedback on where you are up to with your setup. 
     When setup has been completed, the command will return an output like this:
 
    ![Setup Complete](docs/content/imgs/quickstart/006_setup_complete.png)
