@@ -135,6 +135,9 @@ class AbilityRegister:
 
     def list_abilities(self) -> List[Ability]:
         return self.abilities
+    
+    def list_abilities_for_prompt(self) -> List[str]:
+        return [str(ability) for ability in self.abilities.values()]
 
     def abilities_description(self) -> str:
         abilities_by_category = {}
