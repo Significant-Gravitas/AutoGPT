@@ -1,15 +1,15 @@
 #!/bin/bash
 
 kill $(lsof -t -i :8000)
-# ENV_PATH=$(poetry env info --path)
-# if [ -d "$ENV_PATH" ]; then
-#     rm -rf $ENV_PATH
-#     echo "Removed the poetry environment at $ENV_PATH."
-# else
-#     echo "No poetry environment found."
-# fi
+ ENV_PATH=$(poetry env info --path)
+ if [ -d "$ENV_PATH" ]; then
+     rm -rf $ENV_PATH
+     echo "Removed the poetry environment at $ENV_PATH."
+ else
+     echo "No poetry environment found."
+ fi
 
-# poetry install
+ poetry install
 if [ ! -f .env ]; then
   cp .env.example .env
   echo "Please add your api keys to the .env file."
