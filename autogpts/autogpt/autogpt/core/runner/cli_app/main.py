@@ -2,7 +2,8 @@ import click
 
 from autogpt.core.agent import AgentSettings, SimpleAgent
 from autogpt.core.runner.client_lib.logging import (
-    configure_root_logger, get_client_logger
+    configure_root_logger,
+    get_client_logger,
 )
 from autogpt.core.runner.client_lib.parser import (
     parse_ability_result,

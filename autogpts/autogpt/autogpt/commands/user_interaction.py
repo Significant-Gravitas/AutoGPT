@@ -25,6 +25,8 @@ from autogpt.command_decorator import command
     },
     enabled=lambda config: not config.noninteractive_mode,
 )
-def ask_user(question: str, agent: Agent) -> str:
-    resp = clean_input(agent.config, f"{agent.ai_config.ai_name} asks: '{question}': ")
+async def ask_user(question: str, agent: Agent) -> str:
+    resp = await clean_input(
+        agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "
+    )
     return f"The user's answer: '{resp}'"

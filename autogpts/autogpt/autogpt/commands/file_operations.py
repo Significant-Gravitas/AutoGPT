@@ -100,7 +100,7 @@ def is_duplicate_operation(
     with contextlib.suppress(ValueError):
         file_path = file_path.relative_to(agent.workspace.root)
 
-    state = file_operations_state(agent.config.file_logger_path)
+    state = file_operations_state(agent.legacy_config.file_logger_path)
     if operation == "delete" and str(file_path) not in state:
         return True
     if operation == "write" and state.get(str(file_path)) == checksum:
@@ -128,7 +128,7 @@ def log_operation(
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
     append_to_file(
-        agent.config.file_logger_path, f"{log_entry}\n", agent, should_log=False
+        agent.legacy_config.file_logger_path, f"{log_entry}\n", agent, should_log=False
     )
 
 
@@ -279,7 +279,7 @@ def list_folder(folder: Path, agent: Agent) -> list[str]:
             if file.startswith("."):
                 continue
             relative_path = os.path.relpath(
-                os.path.join(root, file), agent.config.workspace_path
+                os.path.join(root, file), agent.legacy_config.workspace_path
             )
             found_files.append(relative_path)
 
