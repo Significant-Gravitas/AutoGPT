@@ -117,8 +117,9 @@ jobs:
         run: |
           set +e
           test_output=$(
-            docker run --env CI --env OPENAI_API_KEY ${{ env.IMAGE_NAME }} run \
-            pytest -v --cov=autogpt --cov-branch --cov-report term-missing \
+            docker run --env CI --env OPENAI_API_KEY \
+              --entrypoint poetry ${{ env.IMAGE_NAME }} run \
+              run pytest -v --cov=autogpt --cov-branch --cov-report term-missing \
               --numprocesses=4 --durations=10 \
               tests/unit tests/integration 2>&1
           )
