@@ -12,24 +12,57 @@ from ..registry import ability
             "description": "Path to the directory",
             "type": "string",
             "required": True,
-        },
-        {
-            "name": "recursive",
-            "description": "Recursively list files",
-            "type": "boolean",
-            "required": False,
-        },
+        }
     ],
     output_type="list[str]",
 )
-def list_files(agent, path: str, recursive: bool = False) -> List[str]:
+def list_files(agent, task_id:str, path: str) -> List[str]:
     """
-    List files in a directory
+    List files in a workspace directory
     """
-    import glob
-    import os
+    return agent.workspace.list(task_id=task_id, path=path)
 
-    if recursive:
-        return glob.glob(os.path.join(path, "**"), recursive=True)
-    else:
-        return os.listdir(path)
+@ability(
+    name="write_file",
+    description="Write data to a file",
+    parameters=[
+        {
+            "name": "file_path",
+            "description": "Path to the file",
+            "type": "string",
+            "required": True,
+        },
+        {
+            "name": "data",
+            "description": "Data to write to the file",
+            "type": "bytes",
+            "required": True,
+        },
+    ],
+    output_type="None",
+)
+def write_file(agent, task_id: str, file_path: str, data: bytes) -> None:
+    """
+    Write data to a file
+    """
+    agent.workspace.write(task_id=task_id, path=file_path, data=data)
+
+
+@ability(
+    name="read_file",
+    description="Read data from a file",
+    parameters=[
+        {
+            "name": "file_path",
+            "description": "Path to the file",
+            "type": "string",
+            "required": True,
+        },
+    ],
+    output_type="bytes",
+)
+def read_file(agent, task_id: str,  file_path: str) -> bytes:
+    """
+    Read data from a file
+    """
+    return agent.workspace.read(task_id=task_id, path=file_path)
