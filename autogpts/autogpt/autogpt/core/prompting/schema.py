@@ -3,8 +3,9 @@ import enum
 from pydantic import BaseModel, Field
 
 from autogpt.core.resource.model_providers.schema import (
-    LanguageModelFunction,
-    LanguageModelMessage,
+    ChatMessage,
+    ChatMessageDict,
+    CompletionModelFunction,
 )
 
 
@@ -20,12 +21,14 @@ class LanguageModelClassification(str, enum.Enum):
     SMART_MODEL = "smart_model"
 
 
-class LanguageModelPrompt(BaseModel):
-    messages: list[LanguageModelMessage]
-    functions: list[LanguageModelFunction] = Field(default_factory=list)
+class ChatPrompt(BaseModel):
+    messages: list[ChatMessage]
+    functions: list[CompletionModelFunction] = Field(default_factory=list)
+
+    def raw(self) -> list[ChatMessageDict]:
+        return [m.dict() for m in self.messages]
 
     def __str__(self):
         return "\n\n".join(
-            f"{m.role.value.upper()}: {m.content}"
-            for m in self.messages
+            f"{m.role.value.upper()}: {m.content}" for m in self.messages
         )

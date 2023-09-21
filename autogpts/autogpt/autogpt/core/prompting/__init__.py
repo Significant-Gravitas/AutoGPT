@@ -1,8 +1,8 @@
 from .base import PromptStrategy
-from .schema import LanguageModelClassification, LanguageModelPrompt
+from .schema import ChatPrompt, LanguageModelClassification
 
 __all__ = [
     "LanguageModelClassification",
-    "LanguageModelPrompt",
+    "ChatPrompt",
     "PromptStrategy",
 ]
