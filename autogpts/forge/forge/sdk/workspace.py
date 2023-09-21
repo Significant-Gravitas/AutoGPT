@@ -40,7 +40,7 @@ class LocalWorkspace(Workspace):
         abs_path = (self.base_path / task_id / path).resolve()
         if not str(abs_path).startswith(str(self.base_path)):
             print("Error")
-            raise ValueError("Directory traversal is not allowed!")
+            raise ValueError(f"Directory traversal is not allowed! - {abs_path}")
         abs_path.parent.mkdir(parents=True, exist_ok=True)
         return abs_path
 
