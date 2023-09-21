@@ -127,5 +127,9 @@ jobs:
 
           echo "Running the following command: ${prefix}agbenchmark --test=WriteFile"
           ${prefix}agbenchmark --test=WriteFile
+          sh run_benchmark &
+          cd ../../benchmark
+          poetry install
+          poetry run pytest tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

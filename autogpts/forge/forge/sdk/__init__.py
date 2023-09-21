@@ -12,14 +12,13 @@ from .schema import (
     Pagination,
     Status,
     Step,
-    StepInput,
     StepOutput,
     StepRequestBody,
     Task,
     TaskArtifactsListResponse,
-    TaskInput,
     TaskListResponse,
     TaskRequestBody,
     TaskStepsListResponse,
 )
 from .workspace import LocalWorkspace, Workspace
+from .llm import chat_completion_request, create_embedding_request, transcribe_audio

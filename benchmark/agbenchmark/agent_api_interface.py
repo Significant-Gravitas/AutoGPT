@@ -20,7 +20,7 @@ async def run_api_agent(
 ) -> None:
     host_value = None
 
-    configuration = Configuration(host=config["AgentBenchmarkConfig"].host)
+    configuration = Configuration(host=config["AgentBenchmarkConfig"].host + "/ap/v1")
     async with ApiClient(configuration) as api_client:
         api_instance = AgentApi(api_client)
         task_request_body = TaskRequestBody(input=task.task)
@@ -60,19 +60,23 @@ async def run_api_agent(
                 api_instance, artifacts_location, task_id, "artifacts_out"
             )
 
-        artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
-        for artifact in artifacts.artifacts:
-            # current absolute path of the directory of the file
-            directory_location = TEMP_FOLDER_ABS_PATH
-            if artifact.relative_path:
-                directory_location = directory_location / artifact.relative_path
+        await copy_agent_artifacts_into_temp_folder(api_instance, task_id)
 
-            with open(directory_location / artifact.file_name, "wb") as f:
-                content = await api_instance.download_agent_task_artifact(
-                    task_id=task_id, artifact_id=artifact.artifact_id
-                )
 
-                f.write(content)
+async def copy_agent_artifacts_into_temp_folder(api_instance, task_id):
+    artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
+    for artifact in artifacts.artifacts:
+        # current absolute path of the directory of the file
+        directory_location = TEMP_FOLDER_ABS_PATH
+        if artifact.relative_path:
+            directory_location = directory_location / artifact.relative_path
+
+        with open(directory_location / artifact.file_name, "wb") as f:
+            content = await api_instance.download_agent_task_artifact(
+                task_id=task_id, artifact_id=artifact.artifact_id
+            )
+
+            f.write(content)
 
 
 async def append_updates_file(step: Step):

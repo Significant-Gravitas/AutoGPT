@@ -1,23 +1,30 @@
 {
-  "name": "PlanCreation",
-  "category": ["content_gen"],
-  "task": "As an agent powered by a large language model, create a plan for yourself based on the task of booking a flight to Toronto. Output this plan into a .txt file.",
-  "dependencies": ["WriteFile"],
-  "cutoff": 120,
-  "ground": {
-    "answer": "1. Search for flights to Toronto.\n2. Select the cheapest flight.\n3. Book the flight.\n4. Pay for the flight.\n5. Confirm the flight.",
-    "should_contain": [],
-    "should_not_contain": [],
-    "files": [".txt"],
-    "eval": {
-      "type": "llm",
-      "scoring": "scale",
-      "template": "reference"
-    }
-  },
-  "info": {
-    "difficulty": "basic",
-    "description": "s ability to generate content based on the content of 2 files.",
-    "side_effects": []
-  }
+    "name": "PlanCreation",
+    "category": [
+        "content_gen"
+    ],
+    "task": "As an agent powered by a large language model, create a plan for yourself based on the task of booking a flight to Toronto. Output this plan into a .txt file.",
+    "dependencies": [
+        "WriteFile"
+    ],
+    "cutoff": 120,
+    "ground": {
+        "answer": "1. Search for flights to Toronto.\n2. Select the cheapest flight.\n3. Book the flight.\n4. Pay for the flight.\n5. Confirm the flight.",
+        "should_contain": [],
+        "should_not_contain": [],
+        "files": [
+            ".txt"
+        ],
+        "eval": {
+            "type": "llm",
+            "scoring": "scale",
+            "template": "reference"
+        }
+    },
+    "info": {
+        "difficulty": "basic",
+        "description": "ability to generate content based on the content of 2 files.",
+        "side_effects": []
+    },
+    "eval_id": "bd922943-ffc6-4471-b3f1-5bd8e875c1d8"
 }
