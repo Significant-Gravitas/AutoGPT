@@ -69,7 +69,7 @@ class NextAbility(PromptStrategy):
         system_info=DEFAULT_SYSTEM_INFO,
         user_prompt_template=DEFAULT_USER_PROMPT_TEMPLATE,
         additional_ability_arguments={
-            k: v.dump() for k, v in DEFAULT_ADDITIONAL_ABILITY_ARGUMENTS.items()
+            k: v.to_dict() for k, v in DEFAULT_ADDITIONAL_ABILITY_ARGUMENTS.items()
         },
     )
 

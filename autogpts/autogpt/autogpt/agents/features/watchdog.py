@@ -27,8 +27,8 @@ class WatchdogMixin:
                 f"{__class__.__name__} can only be applied to BaseAgent derivatives"
             )
 
-    def think(self, *args, **kwargs) -> BaseAgent.ThoughtProcessOutput:
-        command_name, command_args, thoughts = super(WatchdogMixin, self).think(
+    async def think(self, *args, **kwargs) -> BaseAgent.ThoughtProcessOutput:
+        command_name, command_args, thoughts = await super(WatchdogMixin, self).think(
             *args, **kwargs
         )
 
@@ -58,6 +58,6 @@ class WatchdogMixin:
 
                     # Switch to SMART_LLM and re-think
                     self.big_brain = True
-                    return self.think(*args, **kwargs)
+                    return await self.think(*args, **kwargs)
 
         return command_name, command_args, thoughts

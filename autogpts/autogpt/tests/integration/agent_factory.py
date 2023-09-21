@@ -19,7 +19,7 @@ def memory_json_file(config: Config):
 
 
 @pytest.fixture
-def dummy_agent(config: Config, memory_json_file):
+def dummy_agent(config: Config, llm_provider, memory_json_file):
     command_registry = CommandRegistry()
 
     ai_config = AIConfig(
@@ -32,6 +32,7 @@ def dummy_agent(config: Config, memory_json_file):
 
     agent = Agent(
         memory=memory_json_file,
+        llm_provider=llm_provider,
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,

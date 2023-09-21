@@ -8,14 +8,18 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from autogpt.config import AIConfig, Config
-    from autogpt.llm.base import ChatModelResponse, ChatSequence
     from autogpt.memory.vector import VectorMemory
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
+from autogpt.core.prompting import ChatPrompt
+from autogpt.core.resource.model_providers import (
+    ChatMessage,
+    ChatModelProvider,
+    ChatModelResponse,
+)
+from autogpt.core.utils.json_schema import JSONSchema
+from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import Message
-from autogpt.llm.utils import count_string_tokens
 from autogpt.logs.log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
@@ -52,6 +56,7 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
     def __init__(
         self,
         ai_config: AIConfig,
+        llm_provider: ChatModelProvider,
         command_registry: CommandRegistry,
         memory: VectorMemory,
         triggering_prompt: str,
@@ -60,6 +65,7 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
     ):
         super().__init__(
             ai_config=ai_config,
+            llm_provider=llm_provider,
             command_registry=command_registry,
             config=config,
             default_cycle_instruction=triggering_prompt,
@@ -75,13 +81,13 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
         self.log_cycle_handler = LogCycleHandler()
         """LogCycleHandler for structured debug logging."""
 
-    def construct_base_prompt(self, *args, **kwargs) -> ChatSequence:
+    def construct_base_prompt(self, *args, **kwargs) -> ChatPrompt:
         if kwargs.get("prepend_messages") is None:
             kwargs["prepend_messages"] = []
 
         # Clock
         kwargs["prepend_messages"].append(
-            Message("system", f"The current time and date is {time.strftime('%c')}"),
+            ChatMessage.system(f"The current time and date is {time.strftime('%c')}"),
         )
 
         # Add budget information (if any) to prompt
@@ -93,8 +99,7 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
             if remaining_budget < 0:
                 remaining_budget = 0
 
-            budget_msg = Message(
-                "system",
+            budget_msg = ChatMessage.system(
                 f"Your remaining API budget is ${remaining_budget:.3f}"
                 + (
                     " BUDGET EXCEEDED! SHUT DOWN!\n\n"
@@ -114,7 +119,7 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
 
         return super().construct_base_prompt(*args, **kwargs)
 
-    def on_before_think(self, *args, **kwargs) -> ChatSequence:
+    def on_before_think(self, *args, **kwargs) -> ChatPrompt:
         prompt = super().on_before_think(*args, **kwargs)
 
         self.log_cycle_handler.log_count_within_cycle = 0
@@ -127,7 +132,7 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
         )
         return prompt
 
-    def execute(
+    async def execute(
         self,
         command_name: str,
         command_args: dict[str, str] = {},
@@ -173,8 +178,8 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
             except AgentException as e:
                 result = ActionErrorResult(reason=e.message, error=e)
 
-            result_tlength = count_string_tokens(str(result), self.llm.name)
-            history_tlength = count_string_tokens(
+            result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
+            history_tlength = self.llm_provider.count_tokens(
                 self.event_history.fmt_paragraph(), self.llm.name
             )
             if result_tlength + history_tlength > self.send_token_limit:
@@ -199,10 +204,10 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
     def parse_and_process_response(
         self, llm_response: ChatModelResponse, *args, **kwargs
     ) -> Agent.ThoughtProcessOutput:
-        if not llm_response.content:
+        if "content" not in llm_response.response:
             raise InvalidAgentResponseError("Assistant response has no text content")
 
-        response_content = llm_response.content
+        response_content = llm_response.response["content"]
 
         for plugin in self.config.plugins:
             if not plugin.can_handle_post_planning():
@@ -211,7 +216,7 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
 
         assistant_reply_dict = extract_dict_from_response(response_content)
 
-        _, errors = validate_dict(assistant_reply_dict, self.config)
+        _, errors = RESPONSE_SCHEMA.validate_object(assistant_reply_dict, logger)
         if errors:
             raise InvalidAgentResponseError(
                 "Validation of response failed:\n  "
@@ -243,6 +248,57 @@ class Agent(ContextMixin, WorkspaceMixin, WatchdogMixin, BaseAgent):
         return response
 
 
+RESPONSE_SCHEMA = JSONSchema(
+    type=JSONSchema.Type.OBJECT,
+    properties={
+        "thoughts": JSONSchema(
+            type=JSONSchema.Type.OBJECT,
+            required=True,
+            properties={
+                "text": JSONSchema(
+                    description="thoughts",
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "reasoning": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "plan": JSONSchema(
+                    description="- short bulleted\n- list that conveys\n- long-term plan",
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "criticism": JSONSchema(
+                    description="constructive self-criticism",
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "speak": JSONSchema(
+                    description="thoughts summary to say to user",
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+            },
+        ),
+        "command": JSONSchema(
+            type=JSONSchema.Type.OBJECT,
+            required=True,
+            properties={
+                "name": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "args": JSONSchema(
+                    type=JSONSchema.Type.OBJECT,
+                    required=True,
+                ),
+            },
+        ),
+    },
+)
+
+
 def extract_command(
     assistant_reply_json: dict, assistant_reply: ChatModelResponse, config: Config
 ) -> tuple[str, dict[str, str]]:
@@ -262,11 +318,11 @@ def extract_command(
         Exception: If any other error occurs
     """
     if config.openai_functions:
-        if assistant_reply.function_call is None:
+        if "function_call" not in assistant_reply.response:
             raise InvalidAgentResponseError("No 'function_call' in assistant reply")
         assistant_reply_json["command"] = {
-            "name": assistant_reply.function_call.name,
-            "args": json.loads(assistant_reply.function_call.arguments),
+            "name": assistant_reply.response["function_call"]["name"],
+            "args": json.loads(assistant_reply.response["function_call"]["arguments"]),
         }
     try:
         if not isinstance(assistant_reply_json, dict):

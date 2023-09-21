@@ -9,8 +9,7 @@ import numpy as np
 from pydantic import BaseModel
 
 from autogpt.config import Config
-from autogpt.llm import Message
-from autogpt.llm.utils import count_string_tokens
+from autogpt.core.resource.model_providers import ChatMessage
 from autogpt.processing.text import chunk_content, split_text, summarize_text
 
 from .utils import Embedding, get_embedding
@@ -49,6 +48,7 @@ class MemoryItem(BaseModel, arbitrary_types_allowed=True):
         # Fix encoding, e.g. removing unicode surrogates (see issue #778)
         text = ftfy.fix_text(text)
 
+        # FIXME: needs ModelProvider
         chunks = [
             chunk
             for chunk, _ in (
@@ -113,7 +113,7 @@ class MemoryItem(BaseModel, arbitrary_types_allowed=True):
         return MemoryItem.from_text(content, "code_file", {"location": path})
 
     @staticmethod
-    def from_ai_action(ai_message: Message, result_message: Message):
+    def from_ai_action(ai_message: ChatMessage, result_message: ChatMessage):
         # The result_message contains either user feedback
         # or the result of the command specified in ai_message
 
@@ -158,7 +158,7 @@ class MemoryItem(BaseModel, arbitrary_types_allowed=True):
 
     def dump(self, calculate_length=False) -> str:
         if calculate_length:
-            token_length = count_string_tokens(
+            token_length = self.llm_provider.count_tokens(
                 self.raw_content, Config().embedding_model
             )
         return f"""
@@ -213,7 +213,7 @@ class MemoryItemRelevance(BaseModel):
     def of(
         memory_item: MemoryItem, for_query: str, e_query: Embedding | None = None
     ) -> MemoryItemRelevance:
-        e_query = e_query or get_embedding(for_query)
+        e_query = e_query if e_query is not None else get_embedding(for_query)
         _, srs, crs = MemoryItemRelevance.calculate_scores(memory_item, e_query)
         return MemoryItemRelevance(
             for_query=for_query,
@@ -235,7 +235,7 @@ class MemoryItemRelevance(BaseModel):
             list: the relevance scores of the memory chunks
         """
         summary_relevance_score = np.dot(memory.e_summary, compare_to)
-        chunk_relevance_scores = np.dot(memory.e_chunks, compare_to)
+        chunk_relevance_scores = np.dot(memory.e_chunks, compare_to).tolist()
         logger.debug(f"Relevance of summary: {summary_relevance_score}")
         logger.debug(f"Relevance of chunks: {chunk_relevance_scores}")
 

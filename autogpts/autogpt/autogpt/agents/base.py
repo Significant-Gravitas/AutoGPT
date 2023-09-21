@@ -2,20 +2,24 @@ from __future__ import annotations
 
 import logging
 import re
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
     from autogpt.config import AIConfig, Config
-    from autogpt.llm.base import ChatModelInfo, ChatModelResponse
+    from autogpt.core.resource.model_providers.schema import (
+        ChatModelInfo,
+        ChatModelProvider,
+        ChatModelResponse,
+    )
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.config.ai_directives import AIDirectives
-from autogpt.llm.base import ChatSequence, Message
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
-from autogpt.llm.utils import count_message_tokens, create_chat_completion
-from autogpt.models.action_history import EpisodicActionHistory, ActionResult
+from autogpt.core.prompting.schema import ChatMessage, ChatPrompt
+from autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
+from autogpt.llm.providers.openai import get_openai_command_specs
+from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
@@ -26,7 +30,7 @@ CommandArgs = dict[str, str]
 AgentThoughts = dict[str, Any]
 
 
-class BaseAgent(metaclass=ABCMeta):
+class BaseAgent(ABC):
     """Base class for all Auto-GPT agents."""
 
     ThoughtProcessID = Literal["one-shot"]
@@ -35,6 +39,7 @@ class BaseAgent(metaclass=ABCMeta):
     def __init__(
         self,
         ai_config: AIConfig,
+        llm_provider: ChatModelProvider,
         command_registry: CommandRegistry,
         config: Config,
         big_brain: bool = True,
@@ -45,6 +50,8 @@ class BaseAgent(metaclass=ABCMeta):
     ):
         self.ai_config = ai_config
         """The AIConfig or "personality" object associated with this agent."""
+
+        self.llm_provider = llm_provider
 
         self.command_registry = command_registry
         """The registry containing all commands available to the agent."""
@@ -108,7 +115,7 @@ class BaseAgent(metaclass=ABCMeta):
         llm_name = self.config.smart_llm if self.big_brain else self.config.fast_llm
         return OPEN_AI_CHAT_MODELS[llm_name]
 
-    def think(
+    async def think(
         self,
         instruction: Optional[str] = None,
         thought_process_id: ThoughtProcessID = "one-shot",
@@ -124,21 +131,23 @@ class BaseAgent(metaclass=ABCMeta):
 
         instruction = instruction or self.default_cycle_instruction
 
-        prompt: ChatSequence = self.construct_prompt(instruction, thought_process_id)
+        prompt: ChatPrompt = self.construct_prompt(instruction, thought_process_id)
         prompt = self.on_before_think(prompt, thought_process_id, instruction)
-        raw_response = create_chat_completion(
-            prompt,
-            self.config,
+
+        logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
+        raw_response = await self.llm_provider.create_chat_completion(
+            prompt.messages,
             functions=get_openai_command_specs(self.command_registry)
             if self.config.openai_functions
-            else None,
+            else [],
+            model_name=self.llm.name,
         )
         self.cycle_count += 1
 
         return self.on_response(raw_response, thought_process_id, prompt, instruction)
 
     @abstractmethod
-    def execute(
+    async def execute(
         self,
         command_name: str,
         command_args: dict[str, str] = {},
@@ -159,15 +168,14 @@ class BaseAgent(metaclass=ABCMeta):
     def construct_base_prompt(
         self,
         thought_process_id: ThoughtProcessID,
-        prepend_messages: list[Message] = [],
-        append_messages: list[Message] = [],
+        prepend_messages: list[ChatMessage] = [],
+        append_messages: list[ChatMessage] = [],
         reserve_tokens: int = 0,
-    ) -> ChatSequence:
+    ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
         2. `prepend_messages`
-        3. Message history of the agent, truncated & prepended with running summary as needed
-        4. `append_messages`
+        3. `append_messages`
 
         Params:
             prepend_messages: Messages to insert between the system prompt and message history
@@ -178,19 +186,18 @@ class BaseAgent(metaclass=ABCMeta):
         if self.event_history:
             prepend_messages.insert(
                 0,
-                Message(
-                    "system",
-                    "## Progress\n\n" f"{self.event_history.fmt_paragraph()}",
+                ChatMessage.system(
+                    "## Progress\n\n" f"{self.event_history.fmt_paragraph()}"
                 ),
             )
 
-        prompt = ChatSequence.for_model(
-            self.llm.name,
-            [Message("system", self.system_prompt)] + prepend_messages,
+        prompt = ChatPrompt(
+            messages=[
+                ChatMessage.system(self.system_prompt),
+            ]
+            + prepend_messages
+            + (append_messages or []),
         )
-
-        if append_messages:
-            prompt.extend(append_messages)
 
         return prompt
 
@@ -198,7 +205,7 @@ class BaseAgent(metaclass=ABCMeta):
         self,
         cycle_instruction: str,
         thought_process_id: ThoughtProcessID,
-    ) -> ChatSequence:
+    ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
         2. Message history of the agent, truncated & prepended with running summary as needed
@@ -211,16 +218,16 @@ class BaseAgent(metaclass=ABCMeta):
         if not cycle_instruction:
             raise ValueError("No instruction given")
 
-        cycle_instruction_msg = Message("user", cycle_instruction)
-        cycle_instruction_tlength = count_message_tokens(
+        cycle_instruction_msg = ChatMessage.user(cycle_instruction)
+        cycle_instruction_tlength = self.llm_provider.count_message_tokens(
             cycle_instruction_msg, self.llm.name
         )
 
-        append_messages: list[Message] = []
+        append_messages: list[ChatMessage] = []
 
         response_format_instr = self.response_format_instruction(thought_process_id)
         if response_format_instr:
-            append_messages.append(Message("system", response_format_instr))
+            append_messages.append(ChatMessage.system(response_format_instr))
 
         prompt = self.construct_base_prompt(
             thought_process_id,
@@ -229,7 +236,7 @@ class BaseAgent(metaclass=ABCMeta):
         )
 
         # ADD user input message ("triggering prompt")
-        prompt.append(cycle_instruction_msg)
+        prompt.messages.append(cycle_instruction_msg)
 
         return prompt
 
@@ -291,10 +298,10 @@ class BaseAgent(metaclass=ABCMeta):
 
     def on_before_think(
         self,
-        prompt: ChatSequence,
+        prompt: ChatPrompt,
         thought_process_id: ThoughtProcessID,
         instruction: str,
-    ) -> ChatSequence:
+    ) -> ChatPrompt:
         """Called after constructing the prompt but before executing it.
 
         Calls the `on_planning` hook of any enabled and capable plugins, adding their
@@ -306,7 +313,9 @@ class BaseAgent(metaclass=ABCMeta):
         Returns:
             The prompt to execute
         """
-        current_tokens_used = prompt.token_length
+        current_tokens_used = self.llm_provider.count_message_tokens(
+            prompt.messages, self.llm.name
+        )
         plugin_count = len(self.config.plugins)
         for i, plugin in enumerate(self.config.plugins):
             if not plugin.can_handle_on_planning():
@@ -314,13 +323,15 @@ class BaseAgent(metaclass=ABCMeta):
             plugin_response = plugin.on_planning(self.prompt_generator, prompt.raw())
             if not plugin_response or plugin_response == "":
                 continue
-            message_to_add = Message("system", plugin_response)
-            tokens_to_add = count_message_tokens(message_to_add, self.llm.name)
+            message_to_add = ChatMessage.system(plugin_response)
+            tokens_to_add = self.llm_provider.count_message_tokens(
+                message_to_add, self.llm.name
+            )
             if current_tokens_used + tokens_to_add > self.send_token_limit:
                 logger.debug(f"Plugin response too long, skipping: {plugin_response}")
                 logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
                 break
-            prompt.insert(
+            prompt.messages.insert(
                 -1, message_to_add
             )  # HACK: assumes cycle instruction to be at the end
             current_tokens_used += tokens_to_add
@@ -330,7 +341,7 @@ class BaseAgent(metaclass=ABCMeta):
         self,
         llm_response: ChatModelResponse,
         thought_process_id: ThoughtProcessID,
-        prompt: ChatSequence,
+        prompt: ChatPrompt,
         instruction: str,
     ) -> ThoughtProcessOutput:
         """Called upon receiving a response from the chat model.
@@ -358,7 +369,7 @@ class BaseAgent(metaclass=ABCMeta):
         self,
         llm_response: ChatModelResponse,
         thought_process_id: ThoughtProcessID,
-        prompt: ChatSequence,
+        prompt: ChatPrompt,
         instruction: str,
     ) -> ThoughtProcessOutput:
         """Validate, parse & process the LLM's response.
