@@ -19,6 +19,7 @@ from .middlewares import AgentMiddleware
 from .routes.agent_protocol import base_router
 from .schema import *
 from .workspace import Workspace
+from .abilities.registry import AbilityRegister
 
 LOG = ForgeLogger(__name__)
 
@@ -27,6 +28,7 @@ class Agent:
     def __init__(self, database: AgentDB, workspace: Workspace):
         self.db = database
         self.workspace = workspace
+        self.abilities = AbilityRegister(self)
 
     def start(self, port: int = 8000, router: APIRouter = base_router):
         """
