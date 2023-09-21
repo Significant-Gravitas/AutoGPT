@@ -35,13 +35,13 @@ class JSONSchema(BaseModel):
         }
         if self.type == "array":
             if self.items:
-                schema["items"] = self.items.dump()
+                schema["items"] = self.items.to_dict()
             schema["minItems"] = self.minItems
             schema["maxItems"] = self.maxItems
         elif self.type == "object":
             if self.properties:
                 schema["properties"] = {
-                    name: prop.dump() for name, prop in self.properties.items()
+                    name: prop.to_dict() for name, prop in self.properties.items()
                 }
                 schema["required"] = [
                     name for name, prop in self.properties.items() if prop.required
@@ -98,7 +98,7 @@ class JSONSchema(BaseModel):
             tuple: A tuple where the first element is a boolean indicating whether the object is valid or not,
                 and the second element is a list of errors found in the object, or None if the object is valid.
         """
-        validator = Draft7Validator(self.dump())
+        validator = Draft7Validator(self.to_dict())
 
         if errors := sorted(validator.iter_errors(object), key=lambda e: e.path):
             for error in errors:

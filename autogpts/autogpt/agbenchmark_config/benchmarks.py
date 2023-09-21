@@ -1,8 +1,9 @@
+import asyncio
 import sys
 from pathlib import Path
 
 from autogpt.agents import Agent
-from autogpt.app.main import run_interaction_loop
+from autogpt.app.main import _configure_openai_provider, run_interaction_loop
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, ConfigBuilder
 from autogpt.logs.config import configure_logging
@@ -17,7 +18,7 @@ LOG_DIR = Path(__file__).parent / "logs"
 
 def run_specific_agent(task: str, continuous_mode: bool = False) -> None:
     agent = bootstrap_agent(task, continuous_mode)
-    run_interaction_loop(agent)
+    asyncio.run(run_interaction_loop(agent))
 
 
 def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
@@ -43,6 +44,7 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
     )
     return Agent(
         memory=get_memory(config),
+        llm_provider=_configure_openai_provider(config),
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,

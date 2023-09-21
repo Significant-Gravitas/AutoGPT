@@ -9,8 +9,7 @@ from jinja2 import Template
 from autogpt.app import utils
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
-from autogpt.llm.base import ChatSequence, Message
-from autogpt.llm.utils import create_chat_completion
+from autogpt.core.resource.model_providers import ChatMessage, ChatModelProvider
 from autogpt.logs.helpers import user_friendly_output
 from autogpt.prompts.default_prompts import (
     DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
@@ -21,8 +20,10 @@ from autogpt.prompts.default_prompts import (
 logger = logging.getLogger(__name__)
 
 
-def interactive_ai_config_setup(
-    config: Config, ai_config_template: Optional[AIConfig] = None
+async def interactive_ai_config_setup(
+    config: Config,
+    llm_provider: ChatModelProvider,
+    ai_config_template: Optional[AIConfig] = None,
 ) -> AIConfig:
     """Prompt the user for input
 
@@ -58,7 +59,7 @@ def interactive_ai_config_setup(
             title_color=Fore.GREEN,
         )
 
-        user_desire = utils.clean_input(
+        user_desire = await utils.clean_input(
             config, f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: "
         )
 
@@ -72,11 +73,11 @@ def interactive_ai_config_setup(
             title="Manual Mode Selected",
             title_color=Fore.GREEN,
         )
-        return generate_aiconfig_manual(config, ai_config_template)
+        return await generate_aiconfig_manual(config, ai_config_template)
 
     else:
         try:
-            return generate_aiconfig_automatic(user_desire, config)
+            return await generate_aiconfig_automatic(user_desire, config, llm_provider)
         except Exception as e:
             user_friendly_output(
                 title="Unable to automatically generate AI Config based on user desire.",
@@ -85,10 +86,10 @@ def interactive_ai_config_setup(
             )
             logger.debug(f"Error during AIConfig generation: {e}")
 
-            return generate_aiconfig_manual(config)
+            return await generate_aiconfig_manual(config)
 
 
-def generate_aiconfig_manual(
+async def generate_aiconfig_manual(
     config: Config, ai_config_template: Optional[AIConfig] = None
 ) -> AIConfig:
     """
@@ -124,7 +125,7 @@ def generate_aiconfig_manual(
             message="For example, 'Entrepreneur-GPT'",
             title_color=Fore.GREEN,
         )
-        ai_name = utils.clean_input(config, "AI Name: ")
+        ai_name = await utils.clean_input(config, "AI Name: ")
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
@@ -144,7 +145,7 @@ def generate_aiconfig_manual(
             " the sole goal of increasing your net worth.'",
             title_color=Fore.GREEN,
         )
-        ai_role = utils.clean_input(config, f"{ai_name} is: ")
+        ai_role = await utils.clean_input(config, f"{ai_name} is: ")
     if ai_role == "":
         ai_role = "an AI designed to autonomously develop and run businesses with the"
         " sole goal of increasing your net worth."
@@ -162,7 +163,7 @@ def generate_aiconfig_manual(
         logger.info("Enter nothing to load defaults, enter nothing when finished.")
         ai_goals = []
         for i in range(5):
-            ai_goal = utils.clean_input(
+            ai_goal = await utils.clean_input(
                 config, f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: "
             )
             if ai_goal == "":
@@ -182,7 +183,7 @@ def generate_aiconfig_manual(
         title_color=Fore.GREEN,
     )
     logger.info("Enter nothing to let the AI run without monetary limit")
-    api_budget_input = utils.clean_input(
+    api_budget_input = await utils.clean_input(
         config, f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
     )
     if api_budget_input == "":
@@ -199,10 +200,16 @@ def generate_aiconfig_manual(
             )
             api_budget = 0.0
 
-    return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+    return AIConfig(
+        ai_name=ai_name, ai_role=ai_role, ai_goals=ai_goals, api_budget=api_budget
+    )
 
 
-def generate_aiconfig_automatic(user_prompt: str, config: Config) -> AIConfig:
+async def generate_aiconfig_automatic(
+    user_prompt: str,
+    config: Config,
+    llm_provider: ChatModelProvider,
+) -> AIConfig:
     """Generates an AIConfig object from the given string.
 
     Returns:
@@ -214,16 +221,15 @@ def generate_aiconfig_automatic(user_prompt: str, config: Config) -> AIConfig:
         DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC
     ).render(user_prompt=user_prompt)
     # Call LLM with the string as user input
-    output = create_chat_completion(
-        ChatSequence.for_model(
-            config.smart_llm,
+    output = (
+        await llm_provider.create_chat_completion(
             [
-                Message("system", system_prompt),
-                Message("user", prompt_ai_config_automatic),
+                ChatMessage.system(system_prompt),
+                ChatMessage.user(prompt_ai_config_automatic),
             ],
-        ),
-        config,
-    ).content
+            config.smart_llm,
+        )
+    ).response["content"]
 
     # Debug LLM Output
     logger.debug(f"AI Config Generator Raw Output: {output}")
@@ -242,4 +248,6 @@ def generate_aiconfig_automatic(user_prompt: str, config: Config) -> AIConfig:
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
     api_budget = 0.0  # TODO: parse api budget using a regular expression
 
-    return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+    return AIConfig(
+        ai_name=ai_name, ai_role=ai_role, ai_goals=ai_goals, api_budget=api_budget
+    )

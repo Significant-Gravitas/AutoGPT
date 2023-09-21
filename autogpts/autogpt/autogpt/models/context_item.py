@@ -29,7 +29,7 @@ class ContextItem(ABC):
         """The content represented by the context item"""
         ...
 
-    def __str__(self) -> str:
+    def fmt(self) -> str:
         return (
             f"{self.description} (source: {self.source})\n"
             "```\n"

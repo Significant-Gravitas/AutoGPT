@@ -79,7 +79,9 @@ class SimpleAbilityRegistry(AbilityRegistry, Configurable):
         self._abilities.append(ability)
 
     def list_abilities(self) -> list[str]:
-        return [f"{ability.name()}: {ability.description}" for ability in self._abilities]
+        return [
+            f"{ability.name()}: {ability.description}" for ability in self._abilities
+        ]
 
     def dump_abilities(self) -> list[CompletionModelFunction]:
         return [ability.spec for ability in self._abilities]

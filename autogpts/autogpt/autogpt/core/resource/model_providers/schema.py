@@ -106,7 +106,7 @@ class CompletionModelFunction(BaseModel):
             "parameters": {
                 "type": "object",
                 "properties": {
-                    name: param.dump() for name, param in self.parameters.items()
+                    name: param.to_dict() for name, param in self.parameters.items()
                 },
                 "required": [
                     name for name, param in self.parameters.items() if param.required

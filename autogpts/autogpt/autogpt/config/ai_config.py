@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from pydantic import BaseModel, Field
 
 import yaml
+from pydantic import BaseModel, Field
 
 
 class AIConfig(BaseModel):
@@ -53,10 +53,7 @@ class AIConfig(BaseModel):
         api_budget = config_params.get("api_budget", 0.0)
 
         return AIConfig(
-            ai_name=ai_name,
-            ai_role=ai_role,
-            ai_goals=ai_goals,
-            api_budget=api_budget
+            ai_name=ai_name, ai_role=ai_role, ai_goals=ai_goals, api_budget=api_budget
         )
 
     def save(self, ai_settings_file: str | Path) -> None:

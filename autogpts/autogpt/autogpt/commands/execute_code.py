@@ -163,7 +163,8 @@ def execute_python_file(
                 "python",
                 "-B",
                 file_path.relative_to(agent.workspace.root).as_posix(),
-            ] + args,
+            ]
+            + args,
             volumes={
                 str(agent.workspace.root): {
                     "bind": "/workspace",
