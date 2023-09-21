@@ -66,24 +66,24 @@ jobs:
           poetry install
 
       - name: Lint with flake8
-        run: flake8
+        run: poetry run flake8
 
       - name: Check black formatting
-        run: black . --check
+        run: poetry run black . --check
         if: success() || failure()
 
       - name: Check isort formatting
-        run: isort . --check
+        run: poetry run isort . --check
         if: success() || failure()
 
       - name: Check mypy formatting
-        run: mypy
+        run: poetry run mypy
         if: success() || failure()
 
       - name: Check for unused imports and pass statements
         run: |
           cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests"
-          $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
+          poetry run $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
 
   test:
     # eliminate duplicate runs
