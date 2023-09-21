@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from agbenchmark.agent_protocol_client import (
 )
 from agbenchmark.reports.processing.report_types_v2 import BenchmarkRun
 from agbenchmark.schema import TaskEvalRequestBody
+from agbenchmark.utils.utils import write_pretty_json
 
 configuration = Configuration(host="http://localhost:8000" + "/ap/v1")
 
@@ -63,6 +65,10 @@ while json_files:
 
     with open(json_file, "r") as file:
         data = json.load(file)
+        if "eval_id" not in data:
+            data["eval_id"] = str(uuid.uuid4())
+        # this will sort all the keys of the JSON systematically so that the order is always the same
+        write_pretty_json(data, json_file)
         # ok
         CHALLENGES[data["eval_id"]] = data
         CHALLENGES[data["eval_id"]]["path"] = json_file

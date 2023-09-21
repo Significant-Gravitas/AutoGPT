@@ -174,3 +174,4 @@ ig_*
 agent.db
 agbenchmark_config/updates.json
 agbenchmark_config/challenges_already_beaten.json
+agbenchmark_config/temp_folder/*
