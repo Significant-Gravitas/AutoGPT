@@ -95,8 +95,8 @@ def generate_and_validate(
     **kwargs,
 ):
     """Generate an image and validate the output."""
-    agent.config.image_provider = image_provider
-    agent.config.huggingface_image_model = hugging_face_image_model
+    agent.legacy_config.image_provider = image_provider
+    agent.legacy_config.huggingface_image_model = hugging_face_image_model
     prompt = "astronaut riding a horse"
 
     image_path = lst(generate_image(prompt, agent, image_size, **kwargs))
@@ -138,8 +138,8 @@ def test_huggingface_fail_request_with_delay(
             mock_post.return_value.ok = False
             mock_post.return_value.text = return_text
 
-        agent.config.image_provider = "huggingface"
-        agent.config.huggingface_image_model = image_model
+        agent.legacy_config.image_provider = "huggingface"
+        agent.legacy_config.huggingface_image_model = image_model
         prompt = "astronaut riding a horse"
 
         with patch("time.sleep") as mock_sleep:
@@ -155,7 +155,7 @@ def test_huggingface_fail_request_with_delay(
 
 
 def test_huggingface_fail_request_with_delay(mocker, agent: Agent):
-    agent.config.huggingface_api_token = "1"
+    agent.legacy_config.huggingface_api_token = "1"
 
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
@@ -166,8 +166,8 @@ def test_huggingface_fail_request_with_delay(mocker, agent: Agent):
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
 
-    agent.config.image_provider = "huggingface"
-    agent.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+    agent.legacy_config.image_provider = "huggingface"
+    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
     result = generate_image("astronaut riding a horse", agent, 512)
 
@@ -178,7 +178,7 @@ def test_huggingface_fail_request_with_delay(mocker, agent: Agent):
 
 
 def test_huggingface_fail_request_no_delay(mocker, agent: Agent):
-    agent.config.huggingface_api_token = "1"
+    agent.legacy_config.huggingface_api_token = "1"
 
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
@@ -191,8 +191,8 @@ def test_huggingface_fail_request_no_delay(mocker, agent: Agent):
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
 
-    agent.config.image_provider = "huggingface"
-    agent.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+    agent.legacy_config.image_provider = "huggingface"
+    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
     result = generate_image("astronaut riding a horse", agent, 512)
 
@@ -203,7 +203,7 @@ def test_huggingface_fail_request_no_delay(mocker, agent: Agent):
 
 
 def test_huggingface_fail_request_bad_json(mocker, agent: Agent):
-    agent.config.huggingface_api_token = "1"
+    agent.legacy_config.huggingface_api_token = "1"
 
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
@@ -214,8 +214,8 @@ def test_huggingface_fail_request_bad_json(mocker, agent: Agent):
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
 
-    agent.config.image_provider = "huggingface"
-    agent.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+    agent.legacy_config.image_provider = "huggingface"
+    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
     result = generate_image("astronaut riding a horse", agent, 512)
 
@@ -226,14 +226,14 @@ def test_huggingface_fail_request_bad_json(mocker, agent: Agent):
 
 
 def test_huggingface_fail_request_bad_image(mocker, agent: Agent):
-    agent.config.huggingface_api_token = "1"
+    agent.legacy_config.huggingface_api_token = "1"
 
     # Mock requests.post
     mock_post = mocker.patch("requests.post")
     mock_post.return_value.status_code = 200
 
-    agent.config.image_provider = "huggingface"
-    agent.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+    agent.legacy_config.image_provider = "huggingface"
+    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
     result = generate_image("astronaut riding a horse", agent, 512)
 
@@ -241,8 +241,8 @@ def test_huggingface_fail_request_bad_image(mocker, agent: Agent):
 
 
 def test_huggingface_fail_missing_api_token(mocker, agent: Agent):
-    agent.config.image_provider = "huggingface"
-    agent.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+    agent.legacy_config.image_provider = "huggingface"
+    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
     # Mock requests.post to raise ValueError
     mock_post = mocker.patch("requests.post", side_effect=ValueError)

@@ -1,17 +1,18 @@
 import logging
 from contextlib import suppress
-from typing import Any, overload
+from typing import Any, Sequence, overload
 
 import numpy as np
 
 from autogpt.config import Config
-from autogpt.llm.base import TText
-from autogpt.llm.providers import openai as iopenai
 
 logger = logging.getLogger(__name__)
 
-Embedding = list[np.float32] | np.ndarray[Any, np.dtype[np.float32]]
+Embedding = list[float] | list[np.float32] | np.ndarray[Any, np.dtype[np.float32]]
 """Embedding vector"""
+
+TText = Sequence[int]
+"""Tokenized text"""
 
 
 @overload
@@ -60,7 +61,7 @@ def get_embedding(
         + (f" via Azure deployment '{kwargs['engine']}'" if config.use_azure else "")
     )
 
-    embeddings = iopenai.create_embedding(
+    embeddings = embedding_provider.create_embedding(
         input,
         **kwargs,
     ).data

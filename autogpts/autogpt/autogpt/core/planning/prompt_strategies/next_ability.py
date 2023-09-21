@@ -1,18 +1,16 @@
 import logging
 
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.planning.base import PromptStrategy
-from autogpt.core.planning.schema import (
-    LanguageModelClassification,
-    LanguageModelPrompt,
-    Task,
-)
-from autogpt.core.planning.strategies.utils import json_loads, to_numbered_list
+from autogpt.core.planning.schema import Task
+from autogpt.core.prompting import PromptStrategy
+from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
+from autogpt.core.prompting.utils import json_loads, to_numbered_list
 from autogpt.core.resource.model_providers import (
-    LanguageModelFunction,
-    LanguageModelMessage,
-    MessageRole,
+    AssistantChatMessageDict,
+    ChatMessage,
+    CompletionModelFunction,
 )
+from autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 
@@ -51,18 +49,18 @@ class NextAbility(PromptStrategy):
     )
 
     DEFAULT_ADDITIONAL_ABILITY_ARGUMENTS = {
-        "motivation": {
-            "type": "string",
-            "description": "Your justification for choosing choosing this function instead of a different one.",
-        },
-        "self_criticism": {
-            "type": "string",
-            "description": "Thoughtful self-criticism that explains why this function may not be the best choice.",
-        },
-        "reasoning": {
-            "type": "string",
-            "description": "Your reasoning for choosing this function taking into account the `motivation` and weighing the `self_criticism`.",
-        },
+        "motivation": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="Your justification for choosing choosing this function instead of a different one.",
+        ),
+        "self_criticism": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="Thoughtful self-criticism that explains why this function may not be the best choice.",
+        ),
+        "reasoning": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="Your reasoning for choosing this function taking into account the `motivation` and weighing the `self_criticism`.",
+        ),
     }
 
     default_configuration: NextAbilityConfiguration = NextAbilityConfiguration(
@@ -70,7 +68,9 @@ class NextAbility(PromptStrategy):
         system_prompt_template=DEFAULT_SYSTEM_PROMPT_TEMPLATE,
         system_info=DEFAULT_SYSTEM_INFO,
         user_prompt_template=DEFAULT_USER_PROMPT_TEMPLATE,
-        additional_ability_arguments=DEFAULT_ADDITIONAL_ABILITY_ARGUMENTS,
+        additional_ability_arguments={
+            k: v.to_dict() for k, v in DEFAULT_ADDITIONAL_ABILITY_ARGUMENTS.items()
+        },
     )
 
     def __init__(
@@ -85,7 +85,11 @@ class NextAbility(PromptStrategy):
         self._system_prompt_template = system_prompt_template
         self._system_info = system_info
         self._user_prompt_template = user_prompt_template
-        self._additional_ability_arguments = additional_ability_arguments
+        self._additional_ability_arguments = JSONSchema.parse_properties(
+            additional_ability_arguments
+        )
+        for p in self._additional_ability_arguments.values():
+            p.required = True
 
     @property
     def model_classification(self) -> LanguageModelClassification:
@@ -94,12 +98,12 @@ class NextAbility(PromptStrategy):
     def build_prompt(
         self,
         task: Task,
-        ability_schema: list[dict],
+        ability_specs: list[CompletionModelFunction],
         os_info: str,
         api_budget: float,
         current_time: str,
         **kwargs,
-    ) -> LanguageModelPrompt:
+    ) -> ChatPrompt:
         template_kwargs = {
             "os_info": os_info,
             "api_budget": api_budget,
@@ -107,13 +111,8 @@ class NextAbility(PromptStrategy):
             **kwargs,
         }
 
-        for ability in ability_schema:
-            ability["parameters"]["properties"].update(
-                self._additional_ability_arguments
-            )
-            ability["parameters"]["required"] += list(
-                self._additional_ability_arguments.keys()
-            )
+        for ability in ability_specs:
+            ability.parameters.update(self._additional_ability_arguments)
 
         template_kwargs["task_objective"] = task.objective
         template_kwargs["cycle_count"] = task.context.cycle_count
@@ -143,28 +142,23 @@ class NextAbility(PromptStrategy):
             **template_kwargs,
         )
 
-        system_prompt = LanguageModelMessage(
-            role=MessageRole.SYSTEM,
-            content=self._system_prompt_template.format(**template_kwargs),
+        system_prompt = ChatMessage.system(
+            self._system_prompt_template.format(**template_kwargs)
         )
-        user_prompt = LanguageModelMessage(
-            role=MessageRole.USER,
-            content=self._user_prompt_template.format(**template_kwargs),
+        user_prompt = ChatMessage.user(
+            self._user_prompt_template.format(**template_kwargs)
         )
-        functions = [
-            LanguageModelFunction(json_schema=ability) for ability in ability_schema
-        ]
 
-        return LanguageModelPrompt(
+        return ChatPrompt(
             messages=[system_prompt, user_prompt],
-            functions=functions,
+            functions=ability_specs,
             # TODO:
             tokens_used=0,
         )
 
     def parse_response_content(
         self,
-        response_content: dict,
+        response_content: AssistantChatMessageDict,
     ) -> dict:
         """Parse the actual text response from the objective model.
 
@@ -177,7 +171,9 @@ class NextAbility(PromptStrategy):
         """
         try:
             function_name = response_content["function_call"]["name"]
-            function_arguments = json_loads(response_content["function_call"]["arguments"])
+            function_arguments = json_loads(
+                response_content["function_call"]["arguments"]
+            )
             parsed_response = {
                 "motivation": function_arguments.pop("motivation"),
                 "self_criticism": function_arguments.pop("self_criticism"),

@@ -8,8 +8,8 @@ try:
 except ModuleNotFoundError:
     os.system(f"{sys.executable} -m pip install 'poetry>=1.6.1,<2.0.0'")
 
-from poetry.factory import Factory
 from poetry.core.constraints.version.version import Version
+from poetry.factory import Factory
 
 
 def main():
@@ -22,7 +22,7 @@ def main():
     for dep in dependency_group.dependencies:
         # Try to verify that the installed version is suitable
         with contextlib.suppress(ModuleNotFoundError):
-            installed_version = version(dep.name)   # if this fails -> not installed
+            installed_version = version(dep.name)  # if this fails -> not installed
             if dep.constraint.allows(Version.parse(installed_version)):
                 continue
         # If the above verification fails, mark the package as missing

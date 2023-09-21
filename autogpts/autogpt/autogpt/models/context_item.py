@@ -1,8 +1,9 @@
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+from pydantic import BaseModel, Field
 
 from autogpt.commands.file_operations_utils import read_textual_file
 
@@ -28,7 +29,7 @@ class ContextItem(ABC):
         """The content represented by the context item"""
         ...
 
-    def __str__(self) -> str:
+    def fmt(self) -> str:
         return (
             f"{self.description} (source: {self.source})\n"
             "```\n"
@@ -37,8 +38,7 @@ class ContextItem(ABC):
         )
 
 
-@dataclass
-class FileContextItem(ContextItem):
+class FileContextItem(BaseModel, ContextItem):
     file_path_in_workspace: Path
     workspace_path: Path
 
@@ -59,8 +59,7 @@ class FileContextItem(ContextItem):
         return read_textual_file(self.file_path, logger)
 
 
-@dataclass
-class FolderContextItem(ContextItem):
+class FolderContextItem(BaseModel, ContextItem):
     path_in_workspace: Path
     workspace_path: Path
 
@@ -87,8 +86,7 @@ class FolderContextItem(ContextItem):
         return "\n".join(items)
 
 
-@dataclass
-class StaticContextItem(ContextItem):
-    description: str
-    source: Optional[str]
-    content: str
+class StaticContextItem(BaseModel, ContextItem):
+    item_description: str = Field(alias="description")
+    item_source: Optional[str] = Field(alias="source")
+    item_content: str = Field(alias="content")

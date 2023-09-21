@@ -19,13 +19,17 @@ class WorkspaceMixin:
         # Initialize other bases first, because we need the config from BaseAgent
         super(WorkspaceMixin, self).__init__(**kwargs)
 
-        config: Config = getattr(self, "config")
-        if not isinstance(config, Config):
+        legacy_config: Config = getattr(self, "legacy_config")
+        if not isinstance(legacy_config, Config):
             raise ValueError(f"Cannot initialize Workspace for Agent without Config")
-        if not config.workspace_path:
-            raise ValueError(f"Cannot set up Workspace: no WORKSPACE_PATH in config")
+        if not legacy_config.workspace_path:
+            raise ValueError(
+                f"Cannot set up Workspace: no WORKSPACE_PATH in legacy_config"
+            )
 
-        self.workspace = Workspace(config.workspace_path, config.restrict_to_workspace)
+        self.workspace = Workspace(
+            legacy_config.workspace_path, legacy_config.restrict_to_workspace
+        )
 
 
 def get_agent_workspace(agent: BaseAgent) -> Workspace | None:
