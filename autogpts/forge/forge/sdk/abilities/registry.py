@@ -98,9 +98,10 @@ def ability(
 
 
 class AbilityRegister:
-    def __init__(self) -> None:
+    def __init__(self, agent) -> None:
         self.abilities = {}
         self.register_abilities()
+        self.agent = agent
 
     def register_abilities(self) -> None:
         print(os.path.join(os.path.dirname(__file__), "*.py"))
@@ -152,7 +153,7 @@ class AbilityRegister:
 
         return abilities_description
 
-    def run_ability(self, agent, ability_name: str, *args: Any, **kwds: Any) -> Any:
+    def run_ability(self, task_id: str, ability_name: str, *args: Any, **kwds: Any) -> Any:
         """
         This method runs a specified ability with the provided arguments and keyword arguments.
 
@@ -160,7 +161,7 @@ class AbilityRegister:
         the agent's state as needed.
 
         Args:
-            agent: The agent instance.
+            task_id (str): The ID of the task that the ability is being run for.
             ability_name (str): The name of the ability to run.
             *args: Variable length argument list.
             **kwds: Arbitrary keyword arguments.
@@ -173,7 +174,7 @@ class AbilityRegister:
         """
         try:
             ability = self.abilities[ability_name]
-            return ability(agent, *args, **kwds)
+            return ability(self.agent, task_id, *args, **kwds)
         except Exception:
             raise
 
@@ -182,6 +183,6 @@ if __name__ == "__main__":
     import sys
 
     sys.path.append("/Users/swifty/dev/forge/forge")
-    register = AbilityRegister()
+    register = AbilityRegister(agent=None)
     print(register.abilities_description())
-    print(register.run_ability(None, "list_files", "/Users/swifty/dev/forge/forge"))
+    print(register.run_ability("abc", "list_files", "/Users/swifty/dev/forge/forge"))
