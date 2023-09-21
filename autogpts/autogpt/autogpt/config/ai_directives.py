@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 
 import yaml
+from pydantic import BaseModel
 
 from autogpt.logs.helpers import request_user_double_check
 from autogpt.utils import validate_yaml_file
@@ -11,8 +11,7 @@ from autogpt.utils import validate_yaml_file
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class AIDirectives:
+class AIDirectives(BaseModel):
     """An object that contains the basic directives for the AI prompt.
 
     Attributes:

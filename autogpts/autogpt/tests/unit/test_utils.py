@@ -9,8 +9,7 @@ from autogpt.app.utils import (
     get_current_git_branch,
     get_latest_bulletin,
 )
-from autogpt.config import Config
-from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
+from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.utils import validate_yaml_file
 from tests.utils import skip_in_ci
 
@@ -180,18 +179,6 @@ def test_get_current_git_branch_failure(mock_repo):
     branch_name = get_current_git_branch()
 
     assert branch_name == ""
-
-
-def test_validate_json_valid(valid_json_response, config: Config):
-    valid, errors = validate_dict(valid_json_response, config)
-    assert valid
-    assert errors is None
-
-
-def test_validate_json_invalid(invalid_json_response, config: Config):
-    valid, errors = validate_dict(valid_json_response, config)
-    assert not valid
-    assert errors is not None
 
 
 def test_extract_json_from_response(valid_json_response: dict):

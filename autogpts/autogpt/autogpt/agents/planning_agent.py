@@ -21,9 +21,8 @@ from autogpt.logs.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
-from autogpt.models.agent_actions import (
+from autogpt.models.action_history import (
     ActionErrorResult,
-    ActionHistory,
     ActionInterruptedByHuman,
     ActionResult,
     ActionSuccessResult,
@@ -69,8 +68,6 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
         self.log_cycle_handler = LogCycleHandler()
         """LogCycleHandler for structured debug logging."""
 
-        self.action_history = ActionHistory()
-
         self.plan: list[str] = []
         """List of steps that the Agent plans to take"""
 
@@ -90,12 +87,12 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
             plan_section += [f"{i}. {s}" for i, s in enumerate(self.plan, 1)]
 
             # Add the actions so far to the prompt
-            if self.action_history:
+            if self.event_history:
                 plan_section += [
                     "\n### Progress",
                     "So far, you have executed the following actions based on the plan:",
                 ]
-                for i, cycle in enumerate(self.action_history, 1):
+                for i, cycle in enumerate(self.event_history, 1):
                     if not (cycle.action and cycle.result):
                         logger.warn(f"Incomplete action in history: {cycle}")
                         continue
@@ -229,8 +226,8 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
             self.ai_config.ai_name,
             self.created_at,
             self.cycle_count,
-            self.action_history.cycles,
-            "action_history.json",
+            self.event_history.episodes,
+            "event_history.json",
         )
         self.log_cycle_handler.log_cycle(
             self.ai_config.ai_name,
@@ -250,7 +247,7 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
         result: ActionResult
 
         if command_name == "human_feedback":
-            result = ActionInterruptedByHuman(user_input)
+            result = ActionInterruptedByHuman(feedback=user_input)
             self.log_cycle_handler.log_cycle(
                 self.ai_config.ai_name,
                 self.created_at,
@@ -279,13 +276,13 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
                     self.context.add(return_value[1])
                     return_value = return_value[0]
 
-                result = ActionSuccessResult(return_value)
+                result = ActionSuccessResult(outputs=return_value)
             except AgentException as e:
-                result = ActionErrorResult(e.message, e)
+                result = ActionErrorResult(reason=e.message, error=e)
 
             result_tlength = count_string_tokens(str(result), self.llm.name)
             memory_tlength = count_string_tokens(
-                str(self.message_history.summary_message()), self.llm.name
+                str(self.event_history.fmt_paragraph()), self.llm.name
             )
             if result_tlength + memory_tlength > self.send_token_limit:
                 result = ActionErrorResult(
@@ -300,23 +297,6 @@ class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
                     result.outputs = plugin.post_command(command_name, result.outputs)
                 elif result.status == "error":
                     result.reason = plugin.post_command(command_name, result.reason)
-
-        # Check if there's a result from the command append it to the message
-        if result.status == "success":
-            self.message_history.add(
-                "system",
-                f"Command {command_name} returned: {result.outputs}",
-                "action_result",
-            )
-        elif result.status == "error":
-            message = f"Command {command_name} failed: {result.reason}"
-            if (
-                result.error
-                and isinstance(result.error, AgentException)
-                and result.error.hint
-            ):
-                message = message.rstrip(".") + f". {result.error.hint}"
-            self.message_history.add("system", message, "action_result")
 
         return result
 

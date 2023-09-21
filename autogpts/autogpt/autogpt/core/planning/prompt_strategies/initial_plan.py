@@ -1,19 +1,16 @@
 import logging
 
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.planning.base import PromptStrategy
-from autogpt.core.planning.schema import (
-    LanguageModelClassification,
-    LanguageModelPrompt,
-    Task,
-    TaskType,
-)
-from autogpt.core.planning.strategies.utils import json_loads, to_numbered_list
+from autogpt.core.planning.schema import Task, TaskType
+from autogpt.core.prompting import PromptStrategy
+from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
+from autogpt.core.prompting.utils import json_loads, to_numbered_list
 from autogpt.core.resource.model_providers import (
-    LanguageModelFunction,
-    LanguageModelMessage,
-    MessageRole,
+    AssistantChatMessageDict,
+    ChatMessage,
+    CompletionModelFunction,
 )
+from autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 
@@ -48,66 +45,56 @@ class InitialPlan(PromptStrategy):
         "You are {agent_name}, {agent_role}\n" "Your goals are:\n" "{agent_goals}"
     )
 
-    DEFAULT_CREATE_PLAN_FUNCTION = {
-        "name": "create_initial_agent_plan",
-        "description": "Creates a set of tasks that forms the initial plan for an autonomous agent.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "task_list": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "objective": {
-                                "type": "string",
-                                "description": "An imperative verb phrase that succinctly describes the task.",
-                            },
-                            "type": {
-                                "type": "string",
-                                "description": "A categorization for the task. ",
-                                "enum": [t.value for t in TaskType],
-                            },
-                            "acceptance_criteria": {
-                                "type": "array",
-                                "items": {
-                                    "type": "string",
-                                    "description": "A list of measurable and testable criteria that must be met for the task to be considered complete.",
-                                },
-                            },
-                            "priority": {
-                                "type": "integer",
-                                "description": "A number between 1 and 10 indicating the priority of the task relative to other generated tasks.",
-                                "minimum": 1,
-                                "maximum": 10,
-                            },
-                            "ready_criteria": {
-                                "type": "array",
-                                "items": {
-                                    "type": "string",
-                                    "description": "A list of measurable and testable criteria that must be met before the task can be started.",
-                                },
-                            },
-                        },
-                        "required": [
-                            "objective",
-                            "type",
-                            "acceptance_criteria",
-                            "priority",
-                            "ready_criteria",
-                        ],
+    DEFAULT_CREATE_PLAN_FUNCTION = CompletionModelFunction(
+        name="create_initial_agent_plan",
+        description="Creates a set of tasks that forms the initial plan for an autonomous agent.",
+        parameters={
+            "task_list": JSONSchema(
+                type=JSONSchema.Type.ARRAY,
+                items=JSONSchema(
+                    type=JSONSchema.Type.OBJECT,
+                    properties={
+                        "objective": JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description="An imperative verb phrase that succinctly describes the task.",
+                        ),
+                        "type": JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description="A categorization for the task.",
+                            enum=[t.value for t in TaskType],
+                        ),
+                        "acceptance_criteria": JSONSchema(
+                            type=JSONSchema.Type.ARRAY,
+                            items=JSONSchema(
+                                type=JSONSchema.Type.STRING,
+                                description="A list of measurable and testable criteria that must be met for the task to be considered complete.",
+                            ),
+                        ),
+                        "priority": JSONSchema(
+                            type=JSONSchema.Type.INTEGER,
+                            description="A number between 1 and 10 indicating the priority of the task relative to other generated tasks.",
+                            minimum=1,
+                            maximum=10,
+                        ),
+                        "ready_criteria": JSONSchema(
+                            type=JSONSchema.Type.ARRAY,
+                            items=JSONSchema(
+                                type=JSONSchema.Type.STRING,
+                                description="A list of measurable and testable criteria that must be met before the task can be started.",
+                            ),
+                        ),
                     },
-                },
-            },
+                ),
+            ),
         },
-    }
+    )
 
     default_configuration: InitialPlanConfiguration = InitialPlanConfiguration(
         model_classification=LanguageModelClassification.SMART_MODEL,
         system_prompt_template=DEFAULT_SYSTEM_PROMPT_TEMPLATE,
         system_info=DEFAULT_SYSTEM_INFO,
         user_prompt_template=DEFAULT_USER_PROMPT_TEMPLATE,
-        create_plan_function=DEFAULT_CREATE_PLAN_FUNCTION,
+        create_plan_function=DEFAULT_CREATE_PLAN_FUNCTION.schema,
     )
 
     def __init__(
@@ -122,7 +109,7 @@ class InitialPlan(PromptStrategy):
         self._system_prompt_template = system_prompt_template
         self._system_info = system_info
         self._user_prompt_template = user_prompt_template
-        self._create_plan_function = create_plan_function
+        self._create_plan_function = CompletionModelFunction.parse(create_plan_function)
 
     @property
     def model_classification(self) -> LanguageModelClassification:
@@ -138,7 +125,7 @@ class InitialPlan(PromptStrategy):
         api_budget: float,
         current_time: str,
         **kwargs,
-    ) -> LanguageModelPrompt:
+    ) -> ChatPrompt:
         template_kwargs = {
             "agent_name": agent_name,
             "agent_role": agent_role,
@@ -155,28 +142,23 @@ class InitialPlan(PromptStrategy):
             self._system_info, **template_kwargs
         )
 
-        system_prompt = LanguageModelMessage(
-            role=MessageRole.SYSTEM,
-            content=self._system_prompt_template.format(**template_kwargs),
+        system_prompt = ChatMessage.system(
+            self._system_prompt_template.format(**template_kwargs),
         )
-        user_prompt = LanguageModelMessage(
-            role=MessageRole.USER,
-            content=self._user_prompt_template.format(**template_kwargs),
-        )
-        create_plan_function = LanguageModelFunction(
-            json_schema=self._create_plan_function,
+        user_prompt = ChatMessage.user(
+            self._user_prompt_template.format(**template_kwargs),
         )
 
-        return LanguageModelPrompt(
+        return ChatPrompt(
             messages=[system_prompt, user_prompt],
-            functions=[create_plan_function],
+            functions=[self._create_plan_function],
             # TODO:
             tokens_used=0,
         )
 
     def parse_response_content(
         self,
-        response_content: dict,
+        response_content: AssistantChatMessageDict,
     ) -> dict:
         """Parse the actual text response from the objective model.
 
@@ -185,7 +167,6 @@ class InitialPlan(PromptStrategy):
 
         Returns:
             The parsed response.
-
         """
         try:
             parsed_response = json_loads(response_content["function_call"]["arguments"])

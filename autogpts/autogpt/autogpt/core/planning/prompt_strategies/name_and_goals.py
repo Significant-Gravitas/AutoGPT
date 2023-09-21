@@ -1,19 +1,18 @@
 import logging
 
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.planning.base import PromptStrategy
-from autogpt.core.planning.schema import (
-    LanguageModelClassification,
-    LanguageModelPrompt,
-)
-from autogpt.core.planning.strategies.utils import json_loads
+from autogpt.core.prompting import PromptStrategy
+from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
+from autogpt.core.prompting.utils import json_loads
 from autogpt.core.resource.model_providers import (
-    LanguageModelFunction,
-    LanguageModelMessage,
-    MessageRole,
+    AssistantChatMessageDict,
+    ChatMessage,
+    CompletionModelFunction,
 )
+from autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
+
 
 class NameAndGoalsConfiguration(SystemConfiguration):
     model_classification: LanguageModelClassification = UserConfigurable()
@@ -52,43 +51,39 @@ class NameAndGoals(PromptStrategy):
 
     DEFAULT_USER_PROMPT_TEMPLATE = '"""{user_objective}"""'
 
-    DEFAULT_CREATE_AGENT_FUNCTION = {
-        "name": "create_agent",
-        "description": ("Create a new autonomous AI agent to complete a given task."),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "agent_name": {
-                    "type": "string",
-                    "description": "A short role-based name for an autonomous agent.",
-                },
-                "agent_role": {
-                    "type": "string",
-                    "description": "An informative one sentence description of what the AI agent does",
-                },
-                "agent_goals": {
-                    "type": "array",
-                    "minItems": 1,
-                    "maxItems": 5,
-                    "items": {
-                        "type": "string",
-                    },
-                    "description": (
-                        "One to five highly effective goals that are optimally aligned with the completion of a "
-                        "specific task. The number and complexity of the goals should correspond to the "
-                        "complexity of the agent's primary objective."
-                    ),
-                },
-            },
-            "required": ["agent_name", "agent_role", "agent_goals"],
+    DEFAULT_CREATE_AGENT_FUNCTION = CompletionModelFunction(
+        name="create_agent",
+        description="Create a new autonomous AI agent to complete a given task.",
+        parameters={
+            "agent_name": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="A short role-based name for an autonomous agent.",
+            ),
+            "agent_role": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="An informative one sentence description of what the AI agent does",
+            ),
+            "agent_goals": JSONSchema(
+                type=JSONSchema.Type.ARRAY,
+                minItems=1,
+                maxItems=5,
+                items=JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                ),
+                description=(
+                    "One to five highly effective goals that are optimally aligned with the completion of a "
+                    "specific task. The number and complexity of the goals should correspond to the "
+                    "complexity of the agent's primary objective."
+                ),
+            ),
         },
-    }
+    )
 
     default_configuration: NameAndGoalsConfiguration = NameAndGoalsConfiguration(
         model_classification=LanguageModelClassification.SMART_MODEL,
         system_prompt=DEFAULT_SYSTEM_PROMPT,
         user_prompt_template=DEFAULT_USER_PROMPT_TEMPLATE,
-        create_agent_function=DEFAULT_CREATE_AGENT_FUNCTION,
+        create_agent_function=DEFAULT_CREATE_AGENT_FUNCTION.schema,
     )
 
     def __init__(
@@ -96,34 +91,29 @@ class NameAndGoals(PromptStrategy):
         model_classification: LanguageModelClassification,
         system_prompt: str,
         user_prompt_template: str,
-        create_agent_function: str,
+        create_agent_function: dict,
     ):
         self._model_classification = model_classification
         self._system_prompt_message = system_prompt
         self._user_prompt_template = user_prompt_template
-        self._create_agent_function = create_agent_function
+        self._create_agent_function = CompletionModelFunction.parse(
+            create_agent_function
+        )
 
     @property
     def model_classification(self) -> LanguageModelClassification:
         return self._model_classification
 
-    def build_prompt(self, user_objective: str = "", **kwargs) -> LanguageModelPrompt:
-        system_message = LanguageModelMessage(
-            role=MessageRole.SYSTEM,
-            content=self._system_prompt_message,
-        )
-        user_message = LanguageModelMessage(
-            role=MessageRole.USER,
-            content=self._user_prompt_template.format(
+    def build_prompt(self, user_objective: str = "", **kwargs) -> ChatPrompt:
+        system_message = ChatMessage.system(self._system_prompt_message)
+        user_message = ChatMessage.user(
+            self._user_prompt_template.format(
                 user_objective=user_objective,
-            ),
+            )
         )
-        create_agent_function = LanguageModelFunction(
-            json_schema=self._create_agent_function,
-        )
-        prompt = LanguageModelPrompt(
+        prompt = ChatPrompt(
             messages=[system_message, user_message],
-            functions=[create_agent_function],
+            functions=[self._create_agent_function],
             # TODO
             tokens_used=0,
         )
@@ -131,7 +121,7 @@ class NameAndGoals(PromptStrategy):
 
     def parse_response_content(
         self,
-        response_content: dict,
+        response_content: AssistantChatMessageDict,
     ) -> dict:
         """Parse the actual text response from the objective model.
 
