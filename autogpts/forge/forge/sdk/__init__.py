@@ -21,3 +21,4 @@ from .schema import (
     TaskStepsListResponse,
 )
 from .workspace import LocalWorkspace, Workspace
+from .llm import chat_completion_request, create_embedding_request, transcribe_audio
