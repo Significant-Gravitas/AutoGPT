@@ -9,7 +9,7 @@ LOG = ForgeLogger(__name__)
 
 
 @retry(wait=wait_random_exponential(min=1, max=40), stop=stop_after_attempt(3))
-def chat_completion_request(
+async def chat_completion_request(
     messages, functions=None, function_call=None, model=str, custom_labels=None
 ) -> typing.Union[typing.Dict[str, typing.Any], Exception]:
     """Generate a response to a list of messages using OpenAI's API"""
@@ -31,7 +31,7 @@ def chat_completion_request(
                 # This is an example showing adding in the labels as helicone properties
                 kwargs["headers"][f"Helicone-Property-{label}"] = custom_labels[label]
 
-        resp = openai.ChatCompletion.create(**kwargs)
+        resp = await openai.ChatCompletion.acreate(**kwargs)
 
         return resp
     except Exception as e:
