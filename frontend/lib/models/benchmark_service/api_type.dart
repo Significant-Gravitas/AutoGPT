@@ -1,4 +1,0 @@
-enum ApiType {
-  agent,
-  benchmark,
-}

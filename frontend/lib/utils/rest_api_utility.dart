@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:auto_gpt_flutter_client/models/benchmark_service/api_type.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/api_type.dart';
 import 'package:http/http.dart' as http;
 
 class RestApiUtility {
   String _agentBaseUrl;
-  final String _benchmarkBaseUrl = "http://127.0.0.1:8080";
+  final String _benchmarkBaseUrl = "http://127.0.0.1:8080/ap/v1";
+  final String _leaderboardBaseUrl = "https://leaderboard.agpt.co/";
 
   RestApiUtility(this._agentBaseUrl);
 
@@ -14,7 +15,16 @@ class RestApiUtility {
   }
 
   String _getEffectiveBaseUrl(ApiType apiType) {
-    return apiType == ApiType.agent ? _agentBaseUrl : _benchmarkBaseUrl;
+    switch (apiType) {
+      case ApiType.agent:
+        return _agentBaseUrl;
+      case ApiType.benchmark:
+        return _benchmarkBaseUrl;
+      case ApiType.leaderboard:
+        return _leaderboardBaseUrl;
+      default:
+        return _agentBaseUrl;
+    }
   }
 
   Future<Map<String, dynamic>> get(String endpoint,

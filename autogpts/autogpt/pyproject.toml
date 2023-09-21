@@ -21,7 +21,6 @@ autogpt = "autogpt.app.cli:main"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-agent-protocol = "^0.2.3"
 beautifulsoup4 = "^4.12.2"
 charset-normalizer = "^3.1.0"
 click = "*"
@@ -91,7 +90,7 @@ pytest-xdist = "*"
 vcrpy = {git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master"}
 
 [tool.poetry.group.benchmark.dependencies]
-agbenchmark = "0.0.9"
+agbenchmark = { path = "../../benchmark" }
 
 
 [build-system]
