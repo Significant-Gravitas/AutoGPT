@@ -84,7 +84,7 @@ class PromptEngine:
         try:
             matches = get_close_matches(target, model_dirs, n=1, cutoff=0.1)
             if matches:
-                matches_str = ', '.join(matches)
+                matches_str = ", ".join(matches)
                 LOG.debug(matches_str)
             for m in matches:
                 LOG.info(m)
