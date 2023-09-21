@@ -245,9 +245,7 @@ def test_write_file_succeeds_if_content_different(
     test_file_with_content_path: Path, agent: Agent
 ):
     new_content = "This is different content.\n"
-    file_ops.write_to_file(
-        str(test_file_with_content_path), new_content, agent=agent
-    )
+    file_ops.write_to_file(str(test_file_with_content_path), new_content, agent=agent)
 
 
 def test_append_to_file(test_nested_file: Path, agent: Agent):

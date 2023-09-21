@@ -79,7 +79,7 @@ def test_json_memory_load_index(config: Config, memory_item: MemoryItem):
 
     try:
         assert index.file_path.exists(), "index was not saved to file"
-        assert len(index) == 1, f"index constains {len(index)} items instead of 1"
+        assert len(index) == 1, f"index contains {len(index)} items instead of 1"
         assert index.memories[0] == memory_item, "item in index != added mock item"
     except AssertionError as e:
         raise ValueError(f"Setting up for load_index test failed: {e}")

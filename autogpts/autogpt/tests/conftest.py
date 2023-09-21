@@ -7,7 +7,9 @@ import yaml
 from pytest_mock import MockerFixture
 
 from autogpt.agents import Agent
+from autogpt.app.main import _configure_openai_provider
 from autogpt.config import AIConfig, Config, ConfigBuilder
+from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
 from autogpt.memory.vector import get_memory
@@ -89,7 +91,12 @@ def api_manager() -> ApiManager:
 
 
 @pytest.fixture
-def agent(config: Config) -> Agent:
+def llm_provider(config: Config) -> OpenAIProvider:
+    return _configure_openai_provider(config)
+
+
+@pytest.fixture
+def agent(config: Config, llm_provider: ChatModelProvider) -> Agent:
     ai_config = AIConfig(
         ai_name="Base",
         ai_role="A base AI",
@@ -103,6 +110,7 @@ def agent(config: Config) -> Agent:
 
     return Agent(
         memory=memory_json_file,
+        llm_provider=llm_provider,
         command_registry=command_registry,
         ai_config=ai_config,
         config=config,

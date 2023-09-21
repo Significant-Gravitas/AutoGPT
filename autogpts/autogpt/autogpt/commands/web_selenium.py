@@ -39,7 +39,6 @@ if TYPE_CHECKING:
 
 from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
-from autogpt.llm.utils import count_string_tokens
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import summarize_text
 from autogpt.url_utils.validators import validate_url
@@ -70,7 +69,7 @@ class BrowsingError(CommandExecutionError):
     },
 )
 @validate_url
-def read_webpage(url: str, agent: Agent, question: str = "") -> str:
+async def read_webpage(url: str, agent: Agent, question: str = "") -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -91,8 +90,11 @@ def read_webpage(url: str, agent: Agent, question: str = "") -> str:
         summarized = False
         if not text:
             return f"Website did not contain any text.\n\nLinks: {links}"
-        elif count_string_tokens(text, agent.llm.name) > TOKENS_TO_TRIGGER_SUMMARY:
-            text = summarize_memorize_webpage(
+        elif (
+            agent.llm_provider.count_tokens(text, agent.llm.name)
+            > TOKENS_TO_TRIGGER_SUMMARY
+        ):
+            text = await summarize_memorize_webpage(
                 url, text, question or None, agent, driver
             )
             return_literal_content = bool(question)
@@ -247,7 +249,7 @@ def close_browser(driver: WebDriver) -> None:
     driver.quit()
 
 
-def summarize_memorize_webpage(
+async def summarize_memorize_webpage(
     url: str,
     text: str,
     question: str | None,
@@ -276,5 +278,10 @@ def summarize_memorize_webpage(
     # new_memory = MemoryItem.from_webpage(text, url, agent.config, question=question)
     # memory.add(new_memory)
 
-    summary, _ = summarize_text(text, question=question, config=agent.config)
+    summary, _ = await summarize_text(
+        text,
+        question=question,
+        llm_provider=agent.llm_provider,
+        config=agent.config,  # FIXME
+    )
     return summary
