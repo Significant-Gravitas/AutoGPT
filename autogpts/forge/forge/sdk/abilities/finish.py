@@ -18,7 +18,7 @@ logger = ForgeLogger(__name__)
     ],
     output_type="None"
 )
-def finish(agent, task_id: str, reason: str,) -> str:
+async def finish(agent, task_id: str, reason: str,) -> str:
     """
     A function that takes in a string and exits the program
 
