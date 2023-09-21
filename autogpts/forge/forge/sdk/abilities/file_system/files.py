@@ -16,11 +16,12 @@ from ..registry import ability
     ],
     output_type="list[str]",
 )
-async def list_files(agent, task_id:str, path: str) -> List[str]:
+async def list_files(agent, task_id: str, path: str) -> List[str]:
     """
     List files in a workspace directory
     """
     return agent.workspace.list(task_id=task_id, path=path)
+
 
 @ability(
     name="write_file",
@@ -47,9 +48,14 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes) -> None:
     """
     if isinstance(data, str):
         data = data.encode()
-    
+
     agent.workspace.write(task_id=task_id, path=file_path, data=data)
-    await agent.db.create_artifact(task_id=task_id, file_name=file_path.split('/')[-1], relative_path=file_path, agent_created=True)
+    await agent.db.create_artifact(
+        task_id=task_id,
+        file_name=file_path.split("/")[-1],
+        relative_path=file_path,
+        agent_created=True,
+    )
 
 
 @ability(
@@ -65,7 +71,7 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes) -> None:
     ],
     output_type="bytes",
 )
-async def read_file(agent, task_id: str,  file_path: str) -> bytes:
+async def read_file(agent, task_id: str, file_path: str) -> bytes:
     """
     Read data from a file
     """

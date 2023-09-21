@@ -1,13 +1,14 @@
-from .registry import ability
 from ..forge_log import ForgeLogger
+from .registry import ability
 
 logger = ForgeLogger(__name__)
+
 
 @ability(
     name="finish",
     description="Use this to shut down once you have accomplished all of your goals,"
-                " or when there are insurmountable problems that make it impossible"
-                " for you to finish your task.",
+    " or when there are insurmountable problems that make it impossible"
+    " for you to finish your task.",
     parameters=[
         {
             "name": "reason",
@@ -16,9 +17,13 @@ logger = ForgeLogger(__name__)
             "required": True,
         }
     ],
-    output_type="None"
+    output_type="None",
 )
-async def finish(agent, task_id: str, reason: str,) -> str:
+async def finish(
+    agent,
+    task_id: str,
+    reason: str,
+) -> str:
     """
     A function that takes in a string and exits the program
 
