@@ -1,47 +1,17 @@
 Reply only in json with the following format:
 
 {
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "type": "object",
-    "properties": {
-        "thoughts": {
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "thoughts"
-                },
-                "reasoning": {
-                    "type": "string"
-                },
-                "plan": {
-                    "type": "string",
-                    "description": "- short bulleted\n- list that conveys\n- long-term plan"
-                },
-                "criticism": {
-                    "type": "string",
-                    "description": "constructive self-criticism"
-                },
-                "speak": {
-                    "type": "string",
-                    "description": "thoughts summary to say to user"
-                }
-            },
-            "required": ["text", "reasoning", "plan", "criticism", "speak"],
-            "additionalProperties": false
-        },
-        "command": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "args": {
-                    "type": "object"
-                }
-            },
-            "required": ["name", "args"],
-            "additionalProperties": false
-        }
+    \"thoughts\": {
+        \"text\":  \"thoughts\",
+        \"reasoning\": \"reasoning behind thoughts\",
+        \"plan\": \"- short bulleted\\n- list that conveys\\n- long-term plan\",
+        \"criticism\": \"constructive self-criticism\",
+        \"speak\": \"thoughts summary to say to user\",
     },
-    "required": ["thoughts", "command"],
-    "additionalProperties": false
+    \"ability\": {
+        \"name\": {\"type\": \"string\"},
+        \"args\": {
+            \"arg1\": \"value1", etc...
+        }
+    }
 }
