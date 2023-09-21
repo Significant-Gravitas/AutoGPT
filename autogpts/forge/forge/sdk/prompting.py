@@ -82,8 +82,10 @@ class PromptEngine:
             str: The closest match to the target.
         """
         try:
-            matches = get_close_matches(target, model_dirs, n=1, cutoff=0.6)
-            LOG.warning(matches)
+            matches = get_close_matches(target, model_dirs, n=1, cutoff=0.1)
+            if matches:
+                matches_str = ', '.join(matches)
+                LOG.debug(matches_str)
             for m in matches:
                 LOG.info(m)
             return matches[0]
