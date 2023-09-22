@@ -37,7 +37,7 @@ git clone https://github.com/Significant-Gravitas/AutoGPT.git
 
 Once you have clone the project change your directory to the newly cloned project:
 ```bash
-# The name of the directory will match the name you gave your fork. The defualt is AutoGPT
+# The name of the directory will match the name you gave your fork. The default is AutoGPT
 cd AutoGPT
 ```
 To set up the project, utilize the `./run setup` command in the terminal. Follow the instructions to install necessary dependencies and set up your GitHub access token.
