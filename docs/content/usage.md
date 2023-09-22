@@ -21,15 +21,15 @@ Running with `--help` lists all the possible command line arguments you can pass
 !!! note
     Replace anything in angled brackets (<>) to a value you want to specify
 
-Here are some common arguments you can use when running Auto-GPT:
+Here are some common arguments you can use when running AutoGPT:
 
-* Run Auto-GPT with a different AI Settings file
+* Run AutoGPT with a different AI Settings file
 
 ```shell
 ./run.sh --ai-settings <filename>
 ```
 
-* Run Auto-GPT with a different Prompt Settings file
+* Run AutoGPT with a different Prompt Settings file
 
 ```shell
 ./run.sh --prompt-settings <filename>
@@ -47,7 +47,7 @@ Here are some common arguments you can use when running Auto-GPT:
 
 ### Speak Mode
 
-Enter this command to use TTS _(Text-to-Speech)_ for Auto-GPT
+Enter this command to use TTS _(Text-to-Speech)_ for AutoGPT
 
 ```shell
 ./run.sh --speak
@@ -72,7 +72,7 @@ Running Self-Feedback will **INCREASE** token use and thus cost more. This featu
 
 ### GPT-3.5 ONLY Mode
 
-If you don't have access to GPT-4, this mode allows you to use Auto-GPT!
+If you don't have access to GPT-4, this mode allows you to use AutoGPT!
 
 ```shell
 ./run.sh --gpt3only
@@ -82,7 +82,7 @@ You can achieve the same by setting `SMART_LLM` in `.env` to `gpt-3.5-turbo`.
 
 ### GPT-4 ONLY Mode
 
-If you have access to GPT-4, this mode allows you to use Auto-GPT solely with GPT-4.
+If you have access to GPT-4, this mode allows you to use AutoGPT solely with GPT-4.
 This may give your bot increased intelligence.
 
 ```shell
@@ -90,7 +90,7 @@ This may give your bot increased intelligence.
 ```
 
 !!! warning
-    Since GPT-4 is more expensive to use, running Auto-GPT in GPT-4-only mode will
+    Since GPT-4 is more expensive to use, running AutoGPT in GPT-4-only mode will
     increase your API costs.
 
 ## Logs

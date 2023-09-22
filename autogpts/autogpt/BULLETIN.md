@@ -2,7 +2,7 @@
 # --------------
 🌎 *Official Website*: https://agpt.co.
 📖 *User Guide*: https://docs.agpt.co.
-👩 *Contributors Wiki*: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing.
+👩 *Contributors Wiki*: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.
 
 # v0.4.7 RELEASE HIGHLIGHTS! 🚀
 # -----------------------------
@@ -18,4 +18,4 @@ We've also moved our documentation to Material Theme, at https://docs.agpt.co.
 As usual, we've squashed a few bugs and made some under-the-hood improvements.
 
 Take a look at the Release Notes on Github for the full changelog:
-https://github.com/Significant-Gravitas/Auto-GPT/releases.
+https://github.com/Significant-Gravitas/AutoGPT/releases.

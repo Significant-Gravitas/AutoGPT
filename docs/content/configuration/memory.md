@@ -2,11 +2,11 @@
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
     by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
-    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+    feel free to pitch in: https://github.com/Significant-Gravitas/AutoGPT/discussions/4280
 
 ## Setting Your Cache Type
 
-By default, Auto-GPT set up with Docker Compose will use Redis as its memory backend.
+By default, AutoGPT set up with Docker Compose will use Redis as its memory backend.
 Otherwise, the default is LocalCache (which stores memory in a JSON file).
 
 To switch to a different backend, change the `MEMORY_BACKEND` in `.env`
@@ -22,7 +22,7 @@ to the value that you want:
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
     by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
-    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+    feel free to pitch in: https://github.com/Significant-Gravitas/AutoGPT/discussions/4280
 
 ## Memory Backend Setup
 
@@ -37,12 +37,12 @@ Links to memory backends
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
     by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
-    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+    feel free to pitch in: https://github.com/Significant-Gravitas/AutoGPT/discussions/4280
 
 ### Redis Setup
 
 !!! important
-    If you have set up Auto-GPT using Docker Compose, then Redis is included, no further
+    If you have set up AutoGPT using Docker Compose, then Redis is included, no further
     setup needed.
 
 !!! caution
@@ -80,7 +80,7 @@ Links to memory backends
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
     by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
-    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+    feel free to pitch in: https://github.com/Significant-Gravitas/AutoGPT/discussions/4280
 
 ### 🌲 Pinecone API Key Setup
 
@@ -100,7 +100,7 @@ In the `.env` file set:
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
     by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
-    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+    feel free to pitch in: https://github.com/Significant-Gravitas/AutoGPT/discussions/4280
 
 ### Milvus Setup
 
@@ -144,7 +144,7 @@ deployed with docker, or as a cloud service provided by [Zilliz Cloud](https://z
     The Pinecone, Milvus, Redis, and Weaviate memory backends were rendered incompatible
     by work on the memory system, and have been removed.
     Whether support will be added back in the future is subject to discussion,
-    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+    feel free to pitch in: https://github.com/Significant-Gravitas/AutoGPT/discussions/4280
 
 ### Weaviate Setup
 [Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store
@@ -152,7 +152,7 @@ data objects and vector embeddings from ML-models and scales seamlessly to billi
 data objects. To set up a Weaviate database, check out their [Quickstart Tutorial](https://weaviate.io/developers/weaviate/quickstart).
 
 Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded)
-is supported which allows the Auto-GPT process itself to start a Weaviate instance.
+is supported which allows the AutoGPT process itself to start a Weaviate instance.
 To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `poetry add weaviate-client@^3.15.4`.
 
 #### Install the Weaviate client
@@ -189,13 +189,13 @@ View memory usage by using the `--debug` flag :)
 
 !!! warning
     Data ingestion is broken in v0.4.7 and possibly earlier versions. This is a known issue that will be addressed in future releases. Follow these issues for updates.
-    [Issue 4435](https://github.com/Significant-Gravitas/Auto-GPT/issues/4435)
-    [Issue 4024](https://github.com/Significant-Gravitas/Auto-GPT/issues/4024)
-    [Issue 2076](https://github.com/Significant-Gravitas/Auto-GPT/issues/2076)
+    [Issue 4435](https://github.com/Significant-Gravitas/AutoGPT/issues/4435)
+    [Issue 4024](https://github.com/Significant-Gravitas/AutoGPT/issues/4024)
+    [Issue 2076](https://github.com/Significant-Gravitas/AutoGPT/issues/2076)
 
 
 
-Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.
+Memory pre-seeding allows you to ingest files into memory and pre-seed it before running AutoGPT.
 
 ```shell
 $ python data_ingestion.py -h 
@@ -214,7 +214,7 @@ options:
 # python data_ingestion.py --dir DataFolder --init --overlap 100 --max_length 2000
 ```
 
-In the example above, the script initializes the memory, ingests all files within the `Auto-Gpt/auto_gpt_workspace/DataFolder` directory into memory with an overlap between chunks of 100 and a maximum length of each chunk of 2000.
+In the example above, the script initializes the memory, ingests all files within the `AutoGPT/auto_gpt_workspace/DataFolder` directory into memory with an overlap between chunks of 100 and a maximum length of each chunk of 2000.
 
 Note that you can also use the `--file` argument to ingest a single file into memory and that data_ingestion.py will only ingest files within the `/auto_gpt_workspace` directory.
 
@@ -238,14 +238,14 @@ Memory pre-seeding is a technique for improving AI accuracy by ingesting relevan
 into its memory. Chunks of data are split and added to memory, allowing the AI to access
 them quickly and generate more accurate responses. It's useful for large datasets or when
 specific information needs to be accessed quickly. Examples include ingesting API or
-GitHub documentation before running Auto-GPT.
+GitHub documentation before running AutoGPT.
 
 !!! attention
-    If you use Redis for memory, make sure to run Auto-GPT with `WIPE_REDIS_ON_START=False`
+    If you use Redis for memory, make sure to run AutoGPT with `WIPE_REDIS_ON_START=False`
 
     For other memory backends, we currently forcefully wipe the memory when starting
-    Auto-GPT. To ingest data with those memory backends, you can call the
-    `data_ingestion.py` script anytime during an Auto-GPT run.
+    AutoGPT. To ingest data with those memory backends, you can call the
+    `data_ingestion.py` script anytime during an AutoGPT run.
 
 Memories will be available to the AI immediately as they are ingested, even if ingested
-while Auto-GPT is running.
+while AutoGPT is running.

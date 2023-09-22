@@ -26,4 +26,4 @@ DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC = (
     "Respond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n"
 )
 
-DEFAULT_USER_DESIRE_PROMPT = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt
+DEFAULT_USER_DESIRE_PROMPT = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/AutoGPT"  # Default prompt

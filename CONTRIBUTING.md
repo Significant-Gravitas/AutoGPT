@@ -1,4 +1,4 @@
-# Auto-GPT Contribution Guide
+# AutoGPT Contribution Guide
 If you are reading this, you are probably looking for our **[contribution guide]**,
 which is part of our [knowledge base].
 
@@ -33,5 +33,5 @@ In fact, why not just look through the whole wiki (it's only a few pages) and
 hop on our Discord. See you there! :-)
 
 ❤️ & 🔆
-The team @ Auto-GPT
+The team @ AutoGPT
 https://discord.gg/autogpt
