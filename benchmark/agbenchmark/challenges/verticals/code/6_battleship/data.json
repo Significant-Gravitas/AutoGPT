@@ -4,7 +4,8 @@
     ],
     "cutoff": 90,
     "dependencies": [
-        "TestUrlShortener"
+        "TestUrlShortener",
+        "TestReadFile"
     ],
     "eval_id": "5a32418d-1c3a-4af1-8dc4-8d4c29bed21a",
     "ground": {
@@ -17,7 +18,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "s ability for the agent to create a Battleship.",
+        "description": "Tests ability for the agent to create a Battleship.",
         "difficulty": "expert",
         "side_effects": []
     },

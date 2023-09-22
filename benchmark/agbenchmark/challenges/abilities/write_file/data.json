@@ -19,7 +19,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "s the agents ability to write to a file",
+        "description": "Tests the agents ability to write to a file",
         "difficulty": "interface",
         "side_effects": [
             ""

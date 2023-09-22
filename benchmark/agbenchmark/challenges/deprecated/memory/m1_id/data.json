@@ -21,7 +21,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "s ability for the agent to remember information between each action. An id is presented initially and the agent has to remember it after reading 4 other files",
+        "description": "Tests ability for the agent to remember information between each action. An id is presented initially and the agent has to remember it after reading 4 other files",
         "difficulty": "basic",
         "side_effects": []
     },

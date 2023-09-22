@@ -19,7 +19,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "s ability for the agent to create a random password generator.",
+        "description": "Tests ability for the agent to create a random password generator.",
         "difficulty": "basic",
         "side_effects": []
     },

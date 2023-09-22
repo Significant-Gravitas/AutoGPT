@@ -2,15 +2,9 @@
     "edges": [
         {
             "arrows": "to",
-            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
-            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]",
-            "to": "agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]"
-        },
-        {
-            "arrows": "to",
-            "from": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]",
-            "id": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestFileOrganizer::test_method[challenge_data0]",
-            "to": "agbenchmark/generate_test.py::TestFileOrganizer::test_method[challenge_data0]"
+            "from": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
@@ -20,15 +14,33 @@
         },
         {
             "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestFileOrganizer::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestFileOrganizer::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
             "from": "agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
-            "from": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]",
-            "id": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]",
-            "to": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]"
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
@@ -61,7 +73,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create Tic-Tac-Toe game",
+                    "description": "Tests ability for the agent to create Tic-Tac-Toe game",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -78,13 +90,13 @@
                 "category": [
                     "coding"
                 ],
-                "cutoff": 90,
+                "cutoff": 150,
                 "dependencies": [
-                    "TestThreeSum"
+                    "TestFileOrganizer"
                 ],
-                "eval_id": "0823b577-64f2-477b-856d-16726fe464b0",
+                "eval_id": "41ca1035-ceca-4e0c-91ab-66ed0b350273",
                 "ground": {
-                    "answer": "password_generator.py is created and satisfies the requirements.",
+                    "answer": "The correct python file for a basic url shortener CLI",
                     "eval": {
                         "type": "python"
                     },
@@ -95,15 +107,15 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create a random password generator.",
+                    "description": "Tests ability for the agent to create a URL shortener.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
-                "name": "TestPasswordGenerator",
-                "task": "Create a random password generator. The password should have between 8 and 16 characters and should contain letters, numbers and symbols. The password should be printed to the console. The entry point will be a python file that can be run this way: python password_generator.py [--len x] where x is the length of the password. If no length is specified, the password should be 8 characters long. The password_generator can also be imported as a module and called as password = password_generator.generate_password(len=x). Any invalid input should raise a ValueError."
+                "name": "TestUrlShortener",
+                "task": "Build a basic URL shortener using a python CLI. Here are the specifications.\n\nFunctionality: The program should have two primary functionalities.\n\nShorten a given URL.\nRetrieve the original URL from a shortened URL.\n\nCLI: The command-line interface should accept a URL as its first input. It should be able to determine if the url is a shortened url or not. If the url is not shortened, it will display ONLY the shortened url, otherwise, it will display ONLY the original unshortened URL. Afterwards, it should prompt the user for another URL to process.\n\nTechnical specifications:\nBuild a file called url_shortener.py. This file will be called through command lines.\n\nEdge cases:\nFor the sake of simplicity, there will be no edge cases, you can assume the input is always correct and the user immediately passes the shortened version of the url he just shortened.\n\nYou will be expected to create a python file called url_shortener.py that will run through command lines by using python url_shortener.py.\n\nThe url_shortener.py will be tested this way:\n```\nimport unittest\nfrom url_shortener import shorten_url, retrieve_url\n\nclass TestURLShortener(unittest.TestCase):\n    def test_url_retrieval(self):\n        # Shorten the URL to get its shortened form\n        shortened_url = shorten_url('https://www.example.com')\n\n        # Retrieve the original URL using the shortened URL directly\n        retrieved_url = retrieve_url(shortened_url)\n\n        self.assertEqual(retrieved_url, 'https://www.example.com', \"Retrieved URL does not match the original!\")\n\nif __name__ == \"__main__\":\n    unittest.main()\n```"
             },
-            "id": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]",
-            "label": "PasswordGenerator",
+            "id": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]",
+            "label": "UrlShortener",
             "shape": "dot"
         },
         {
@@ -129,7 +141,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create a random password generator.",
+                    "description": "Tests ability for the agent to create a random password generator.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -138,6 +150,40 @@
             },
             "id": "agbenchmark/generate_test.py::TestFileOrganizer::test_method[challenge_data0]",
             "label": "FileOrganizer",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "coding"
+                ],
+                "cutoff": 90,
+                "dependencies": [
+                    "TestThreeSum"
+                ],
+                "eval_id": "0823b577-64f2-477b-856d-16726fe464b0",
+                "ground": {
+                    "answer": "password_generator.py is created and satisfies the requirements.",
+                    "eval": {
+                        "type": "python"
+                    },
+                    "files": [
+                        "test.py"
+                    ],
+                    "should_contain": [],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests ability for the agent to create a random password generator.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestPasswordGenerator",
+                "task": "Create a random password generator. The password should have between 8 and 16 characters and should contain letters, numbers and symbols. The password should be printed to the console. The entry point will be a python file that can be run this way: python password_generator.py [--len x] where x is the length of the password. If no length is specified, the password should be 8 characters long. The password_generator can also be imported as a module and called as password = password_generator.generate_password(len=x). Any invalid input should raise a ValueError."
+            },
+            "id": "agbenchmark/generate_test.py::TestPasswordGenerator::test_method[challenge_data0]",
+            "label": "PasswordGenerator",
             "shape": "dot"
         },
         {
@@ -168,7 +214,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create the three_sum function.",
+                    "description": "Tests ability for the agent to create the three_sum function.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -183,11 +229,48 @@
             "color": "grey",
             "data": {
                 "category": [
+                    "interface"
+                ],
+                "cutoff": 60,
+                "dependencies": [],
+                "eval_id": "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
+                "ground": {
+                    "answer": "The word 'Washington', printed to a .txt file named anything",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "Washington"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests the agents ability to write to a file",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestWriteFile",
+                "task": "Write the word 'Washington' to a .txt file"
+            },
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "label": "WriteFile",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
                     "coding"
                 ],
                 "cutoff": 90,
                 "dependencies": [
-                    "TestUrlShortener"
+                    "TestUrlShortener",
+                    "TestReadFile"
                 ],
                 "eval_id": "5a32418d-1c3a-4af1-8dc4-8d4c29bed21a",
                 "ground": {
@@ -200,7 +283,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create a Battleship.",
+                    "description": "Tests ability for the agent to create a Battleship.",
                     "difficulty": "expert",
                     "side_effects": []
                 },
@@ -215,34 +298,37 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "coding"
+                    "interface"
                 ],
-                "cutoff": 150,
+                "cutoff": 60,
                 "dependencies": [
-                    "TestFileOrganizer"
+                    "TestWriteFile"
                 ],
-                "eval_id": "41ca1035-ceca-4e0c-91ab-66ed0b350273",
+                "eval_id": "261ccfaa-02a2-4c1a-8a56-c76c66f7dba1",
                 "ground": {
-                    "answer": "The correct python file for a basic url shortener CLI",
+                    "answer": "The content of output.txt should be 'Hello World!'",
                     "eval": {
-                        "type": "python"
+                        "type": "file"
                     },
                     "files": [
-                        "test.py"
+                        "output.txt"
                     ],
-                    "should_contain": [],
-                    "should_not_contain": []
+                    "should_contain": [
+                        "Hello World!"
+                    ]
                 },
                 "info": {
-                    "description": "s ability for the agent to create a URL shortener.",
-                    "difficulty": "basic",
-                    "side_effects": []
+                    "description": "tests the ability for an agent to read a file.",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
                 },
-                "name": "TestUrlShortener",
-                "task": "Build a basic URL shortener using a python CLI. Here are the specifications.\n\nFunctionality: The program should have two primary functionalities.\n\nShorten a given URL.\nRetrieve the original URL from a shortened URL.\n\nCLI: The command-line interface should accept a URL as its first input. It should be able to determine if the url is a shortened url or not. If the url is not shortened, it will display ONLY the shortened url, otherwise, it will display ONLY the original unshortened URL. Afterwards, it should prompt the user for another URL to process.\n\nTechnical specifications:\nBuild a file called url_shortener.py. This file will be called through command lines.\n\nEdge cases:\nFor the sake of simplicity, there will be no edge cases, you can assume the input is always correct and the user immediately passes the shortened version of the url he just shortened.\n\nYou will be expected to create a python file called url_shortener.py that will run through command lines by using python url_shortener.py.\n\nThe url_shortener.py will be tested this way:\n```\nimport unittest\nfrom url_shortener import shorten_url, retrieve_url\n\nclass TestURLShortener(unittest.TestCase):\n    def test_url_retrieval(self):\n        # Shorten the URL to get its shortened form\n        shortened_url = shorten_url('https://www.example.com')\n\n        # Retrieve the original URL using the shortened URL directly\n        retrieved_url = retrieve_url(shortened_url)\n\n        self.assertEqual(retrieved_url, 'https://www.example.com', \"Retrieved URL does not match the original!\")\n\nif __name__ == \"__main__\":\n    unittest.main()\n```"
+                "name": "TestReadFile",
+                "task": "Read the file called file_to_read.txt and write its content to a file called output.txt"
             },
-            "id": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]",
-            "label": "UrlShortener",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "label": "ReadFile",
             "shape": "dot"
         }
     ]
