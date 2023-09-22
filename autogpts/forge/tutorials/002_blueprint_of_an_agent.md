@@ -1,128 +1,111 @@
 # AutoGPT Forge: The Blueprint of an AI Agent
 
-Welcome back, fellow AI enthusiasts! In our first tutorial, we got our hands dirty setting up the project and learning how to stop and start our agents. Now, it's time to dive deeper. In this second tutorial of our series, we're going to dissect an agent, understanding its key components. We'll take a tour of the project structure and then roll up our sleeves to update the step function. By the end of this tutorial, you'll have an LLM Powered AI that can pass the write file test. So, let's get started!
+**Craig Swift**  
+Craig Swift  
+*8 min read*  
+·  
+*Just now*  
+
+---
+
+![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
+
+
+Hello there, fellow pioneers of the AI frontier!  
+
+If you’ve landed here, chances are you’ve been bitten by the AI bug, eager to harness the incredible power of Large Language Models (LLMs) to build your own intelligent agents, commonly known as AutoGPTs. Remember the thrill when we set up our first project in the initial tutorial? Well, buckle up, because things are about to get even more exciting!  
+
+In this tutorial — the sequel to our AI adventure — we’re going to embark on a journey into the very heart of an AI agent. Imagine peeling back the layers of an onion, but instead of tears, there’s a wealth of knowledge waiting at each layer. We’ll explore the intricate web of components that make these agents tick, take a guided tour of the revered AutoGPT Forge’s project structure, and yes, get our hands back into the coding trenches to enhance the step function.  
+
+By the time we wrap up, you won’t just have a working LLM-powered agent; you’ll have one that passes the essential “write file” test, a testament to your growing prowess in the world of AI development.  
+
+So, my fellow agent developers, are you ready to leap into this world where code meets cognition? Let the exploration begin!  
 
 ## What are LLM-Based AI Agents?
 
-Large Language Models (LLMs) are state-of-the-art machine learning models that harness vast amounts of web knowledge. But what happens when you blend these LLMs with autonomous agents? You get LLM-based AI agents - a new breed of artificial intelligence that promises more human-like decision-making.
+Large Language Models (LLMs) are state-of-the-art machine learning models that harness vast amounts of web knowledge. But what happens when you blend these LLMs with autonomous agents? You get LLM-based AI agents — a new breed of artificial intelligence that promises more human-like decision-making.  
 
-Traditional autonomous agents operated with limited knowledge, often confined to specific tasks or environments. They were like calculators - efficient but limited to predefined functions. LLM-based agents, on the other hand, are akin to having an encyclopedia combined with a calculator. They don't just compute; they understand, reason, and then act, drawing from a vast reservoir of information.
+Traditional autonomous agents operated with limited knowledge, often confined to specific tasks or environments. They were like calculators — efficient but limited to predefined functions. LLM-based agents, on the other hand, are akin to having an encyclopedia combined with a calculator. They don’t just compute; they understand, reason, and then act, drawing from a vast reservoir of information.  
 
-The [Agent Landscape Survey](https://arxiv.org/abs/2308.11432) underscores this evolution, detailing the remarkable potential LLMs have shown in achieving human-like intelligence. They're not just about more data; they represent a more holistic approach to AI, bridging gaps between isolated task knowledge and expansive web information.
-
-Further expanding on this, [The Rise and Potential of Large Language Model Based Agents: A Survey](https://arxiv.org/abs/2309.07864) portrays LLMs as the foundational blocks for the next generation of AI agents. These agents sense, decide, and act, all backed by the comprehensive knowledge and adaptability of LLMs. It is an incrediable source of knowledge on AI Agent Research with almost 700 papers referenced and organised by reseach area.
-
-## Bridging Communication Gaps with the Agent Protocol
-
-In the burgeoning field of AI agents, developers often find themselves forging unique paths, creating agents with distinctive characteristics. While this approach nurtures innovation, it also presents a significant challenge: establishing seamless communication between various agents, each equipped with a different interface. Furthermore, the absence of a standardized communication platform impedes the easy comparison of agents and the seamless development of universal devtools.
-
-To tackle this challenge head-on, the AI Foundation has introduced the **Agent Protocol**, a unified communication interface designed to spur innovation and integration in agent development.
-
-### A Unifying Communication Interface
-
-The Agent Protocol emerges as a harmonizing force in the fragmented world of agent development, offering a well-defined API specification that dictates the endpoints agents should expose, along with standardized input and response models. What sets this protocol apart is its versatility, welcoming agents developed with various frameworks to adopt it seamlessly.
-
-A glimpse into the protocol structure reveals:
-
-- **POST /agent/tasks**: A route designated for task creation.
-- **POST /agent/tasks/{id}/steps**: A route purposed for initiating the subsequent step of a task.
-- **POST /agent/tasks/{id}/artifacts**: A route for creating an artifact associated with a task.
-- **GET /agent/tasks/{id}/artifacts/{artifact_id}**: A route for downloading an artifact associated with a task.
+![AI visualising AI researchers hard at work](../../../docs/content/imgs/quickstart/001_repo.png)
 
 
-For an in-depth exploration, visit the [Agent Protocol](https://agentprotocol.ai).
+The Agent Landscape Survey underscores this evolution, detailing the remarkable potential LLMs have shown in achieving human-like intelligence. They’re not just about more data; they represent a more holistic approach to AI, bridging gaps between isolated task knowledge and expansive web information.  
 
-### Advantages of Adopting the Agent Protocol
+Further expanding on this, *The Rise and Potential of Large Language Model Based Agents: A Survey* portrays LLMs as the foundational blocks for the next generation of AI agents. These agents sense, decide, and act, all backed by the comprehensive knowledge and adaptability of LLMs. It is an incredible source of knowledge on AI Agent Research with almost 700 papers referenced and organized by research area.  
 
-Implementing the Agent Protocol offers a myriad of benefits, simplifying the development process substantially. Here are some noteworthy advantages:
+## The Anatomy of an LLM-Based AI Agent
 
-- **Effortless Benchmarking**: Seamlessly integrate with benchmarking tools such as Agent Evals, facilitating straightforward testing and benchmarking of your agent against others.
-- **Enhanced Integration and Collaboration**: Encourage seamless integration and collaboration, fostering a community of shared ideas and advancements.
-- **General Devtools Development**: Enable the creation of universal devtools, streamlining development, deployment, and monitoring processes.
-- **Focused Development**: Shift your focus from boilerplate API creation to core agent development, nurturing innovation and efficiency.
+Diving deep into the core of an LLM-based AI agent, we find it’s structured much like a human, with distinct components akin to personality, memory, thought process, and abilities. Let’s break these down:  
 
-### Fostering a Collaborative Ecosystem
+![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
+Anatomy of an Agent from the Agent Landscape Survey  
 
-The Agent Protocol stands at the forefront of fostering a collaborative and rapidly evolving ecosystem. With a minimal core as a starting point, the objective is to expand iteratively, incorporating valuable insights from agent developers to meet their evolving needs.
+1. **Profile**  
+When we humans focus on various tasks, we condition ourselves for those tasks. Whether we’re writing, chopping vegetables, driving, or playing sports, we concentrate and even adopt different mindsets. This adaptability is what the concept of profile alludes to when discussing agents. Research has shown that simply informing an agent that it is an expert in a specific task can enhance its performance.  
+The profiling module has potential applications beyond just prompt engineering. It could be used to adjust an agent’s memory functions, available actions, or even the underlying large language model (LLM) that drives the agent.  
+2. **Memory**  
+Memory, for an agent, is more than just storage — it’s the bedrock of its identity, capabilities and fundamental for it to learn. Just as our memories inform our decisions, reactions, and even our very personalities, an agent’s memory serves as its cumulative record of past interactions, learnings, and feedback. Two primary types of memories shape an agent’s cognition: long-term and short-term.  
+The Long-Term Memory is akin to the agent’s foundational knowledge, a vast reservoir that encompasses data and interactions spanning extended periods. It’s the agent’s historical archive, guiding its core behaviors and understanding.  
+On the other hand, the Short-Term (or Working) Memory focuses on the immediate, handling transient memories much like our recollection of recent events. While essential for real-time tasks, not all short-term memories make it to the agent’s long-term storage.  
+An emerging concept in this realm is Memory Reflection. Here, the agent doesn’t just store memories but actively revisits them. This introspection allows the agent to reassess, prioritize, or even discard information, akin to a human reminiscing and learning from past experiences.  
+3. **Planning**  
+Planning is the agent’s roadmap to problem-solving. When faced with a complex challenge, humans instinctively break it down into bite-sized, manageable tasks — a strategy mirrored in LLM-based agents. This methodical approach enables agents to navigate problems with a structured mindset, ensuring comprehensive and systematic solutions.  
+There are two dominant strategies in the agent’s planning toolkit. The first, Planning with Feedback, is an adaptive approach. Here, the agent refines its strategy based on outcomes, much like iterating through versions of a design based on user feedback.  
+The second, Planning without Feedback, sees the agent as a strategist, relying solely on its pre-existing knowledge and foresight. It’s a game of chess, with the agent anticipating challenges and preparing several moves in advance.  
+4. **Action**  
+After the introspection of memory and the strategizing of planning, comes the finale: Action. This is where the agent’s cognitive processes manifest into tangible outcomes using the agents Abilities. Every decision, every thought, culminates in the action phase, translating abstract concepts into definitive results.  
+Whether it’s penning a response, saving a file, or initiating a new process, the action component is the culmination of the agent’s decision-making journey. It’s the bridge between digital cognition and real-world impact, turning the agent’s electronic impulses into meaningful and purposeful outcomes.  
 
-Now, let's delve deeper into the core components that constitute an AI agent.
+## The Agent Protocol: The Linguistics of AI Communication
 
-## Delineating the Anatomy of an AI Agent
+After diving deep into the anatomy of an agent, understanding its core components, there emerges a pivotal question: How do we effectively communicate with these diverse, intricately-designed agents? The answer lies in the Agent Protocol.  
 
-To cultivate proficiency in the AI domain, a thorough understanding of the fundamental components forming an AI agent is indispensable. In this section, we elaborate on the cornerstone elements shaping an AI agent:
+### Understanding the Agent Protocol
 
-### Profile: Tailoring the Persona
+At its essence, the Agent Protocol is a standardized communication interface, a universal “language” that every AI agent, regardless of its underlying structure or design, can comprehend. Think of it as the diplomatic envoy that ensures smooth conversations between agents and their developers, tools, or even other agents.  
 
-An agent functions effectively by adopting specific roles, emulating personas such as a teacher, coder, or planner. The strategic utilization of the profile attribute in the language model (LLM) prompt significantly enhances output quality, a phenomenon substantiated by this [study](https://arxiv.org/abs/2305.14688). With the ability to dynamically switch profiles based on the task at hand, agents unlock a world of endless configuration possibilities with various LLMs.
+In an ecosystem where every developer might have their unique approach to crafting agents, the Agent Protocol acts as a unifying bridge. It’s akin to a standardized plug fitting into any socket or a universal translator decoding myriad languages.  
 
-### Memory: The Repository of Experiences
+## AutoGPT Forge: A Peek Inside the LLM Agent Template
 
-An adept memory system serves as a foundation for the agent to accumulate experiences, evolve, and respond in a consistent and efficient manner. Consider the following critical facets:
+Now we understand the architecture of an agent lets look inside the Forge. It’s a well-organized template, meticulously architected to cater to the needs of agent developers. Let
 
-- **Long-term and Short-term Memory**: Foster strategies catering to both long-term retention and working memory.
-- **Memory Reflection**: Encourage the agent's ability to scrutinize and reassess memories, facilitating the transition of short-term memories into long-term storage.
+![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
 
-### Planning: Navigating Complex Tasks
+#### Forge’s Project Structure: A Bird’s-Eye View
 
-The planning module bestows LLM-based agents with the ability to strategize and plan for intricate tasks, enhancing the agent's comprehensiveness and reliability. Consider integrating these methodologies:
+The Forge’s directory structure can be likened to a well-organized library, where every book (file or directory) has its designated place:  
+- **agent.py**: The heart of the Forge, where the agent's logic resides.  
+- **prompts**: A treasure trove of predefined templates, instrumental for guiding the LLM's responses.  
+- **sdk**: The boilerplate code and the foundational bedrock of the Forge.  
 
-- **Planning with Feedback**: Incorporate feedback mechanisms within the planning phase.
-- **Planning without Feedback**: Develop strategies independent of external inputs.
+Let’s examine these core sections.  
 
-### Abilities: Executing Decisions into Actions
+#### Unraveling the SDK
 
-The abilities component represents a pivotal section where the agent's decisions materialize into specific outcomes. Explore diverse approaches to implement actions, amplifying your agent's capabilities.
+The sdk directory is the Forge's control center. Think of it as the engine room of a ship, containing the gears and mechanisms that drive the entire vessel. Here's what it encapsulates:  
+- **Core Components**: The SDK hosts the integral parts of the Forge, like Memory, Abilities, and Planning. These components are fundamental to an agent’s cognition and actions.  
+- **Agent Protocol Routes**: Within the routes sub-directory, you'll find the implementation of our previously discussed Agent Protocol. It's here that the standard communication interface is brought to life.  
+- **Database (db.py)**: The agent's memory bank. It's where experiences, learnings, and other crucial data get stored.  
+- **Prompting Engine (prompting.py)**: This engine utilizes the templates from the prompts directory to formulate queries for the LLM, ensuring consistent and apt interactions.  
+- **Agent Class**: Acts as a bridge, connecting the agent’s logic with the Agent Protocol routes.  
 
-## Embarking on Your Forge Journey: Template and Layout
+#### Configurations and Environment
 
-To initiate your voyage in AI agent development, begin by modifying the template found in `forge/agent.py`. Here is a foundational structure to kickstart your journey:
+Configuration is key to ensuring our agent runs seamlessly. The .env.example file provides a template for setting up the necessary environment variables. Before diving into the Forge, developers need to copy this to a new .env file and adjust the settings:  
+- **API Key**: `OPENAI_API_KEY` is where you plug in your OpenAI API key.  
+- **Log Level**: With `LOG_LEVEL`, control the verbosity of the logs.  
+- **Database Connection**: `DATABASE_STRING` determines where and how the agent's data gets stored.  
+- **Port**: `PORT` specifies the listening port for the agent's server.  
+- **Workspace**: `AGENT_WORKSPACE` points to the agent's working directory.  
 
-```python
-from forge.sdk import Agent, AgentDB, Step, StepRequestBody, Workspace
+## Wrapping Up: From Blueprint to Reality
 
-class ForgeAgent(Agent):
- 
-    def __init__(self, database: AgentDB, workspace: Workspace):
-        """
-        The database is utilized to store tasks, steps, and artifact metadata, while the workspace is used for storing artifacts, represented as a directory on the filesystem. Feel free to create subclasses of the database and workspace to implement your own storage solutions.
-        """
-        super().__init__(database, workspace)
+And there we have it — a comprehensive dive into the world of AutoGPTs. We’ve traversed the intricate pathways of agent anatomy, understood how the Agent Protocol fits in, and peeked under the hood of the Forge, understanding its core components and structure.  
 
-    async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
-        # An example that passes the write file test
-        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
-        step = await self.db.create_step(
-            task_id=task_id, input=step_request, is_last=True
-        )
-        artifact = await self.db.create_artifact(
-            task_id=task_id,
-            step_id=step.step_id,
-            file_name="output.txt",
-            relative_path="",
-            agent_created=True,
-        )
-        step.output = "Washington D.C"
+If this tutorial was a journey, think of it as a hike up a mountain. We started at the base, with a broad view of LLM-based AI agents, understanding their significance and potential. As we climbed, the trail led us to the anatomy of these agents, dissecting their structure and functionality. Nearing the summit, we delved into the Agent Protocol, understanding its pivotal role in standardizing communication. And finally, standing at the peak, we had a bird’s-eye view of the Forge, observing its organized layout and appreciating its design intricacies.  
 
-        return step
-```
+But remember, every mountain peak is the bottom of another adventure. Having grasped the theoretical aspects, it’s time to transition from blueprint to reality.Now the foundations have laid, our next steps involve breathing life into these concepts, turning lines of code into intelligent, responsive agents.  
 
-### Exploring the Forge Layout
-
-Within the Forge layout, discover a plethora of folders and protocols essential for crafting a proficient agent:
-
-- **Abilities Folder**: Houses the abilities component, a critical aspect defining the agent's capabilities. Path: `forge/sdk/abilities/`
-- **Agent Protocol**: A central pillar of the Forge, overseeing task creation and execution processes. This can be found in `forge/sdk/routes/agent_protocol.py`
-- **Schema**: Outlines the structure and regulations governing data within the Forge. Path: `forge/sdk/schema.py`
-- **DB**: Core component entrusted with managing database operations. Path: `forge/sdk/db.py`
-- **Memstore**: Component responsible for managing the memory system of the agent. Path: `forge/sdk/memory/memstore.py`
-- **AI_(X)**: these files have examples of how the respective functionality can be implemented
-- **Prompt Templates**: The Forge uses Jinja2-based prompt templates, allowing for easy modification of prompts without changing the code. These templates are stored in the `forge/prompts/` directory. This approach provides flexibility and ease of use in customizing the agent's prompts based on specific tasks or roles.
-
-
-Moreover, the Forge initiates a FastAPI server, simplifying the process of serving the frontend on [http://localhost:8000](http://localhost:8000).
-
-## Conclusion
-
-Embarking on the AI agent development journey with the Forge promises not only an enriching learning experience but also a streamlined development journey. As you progress, immerse yourself in the vibrant landscape of AI agent development, leveraging the comprehensive tools and resources at your disposal.
-
-Happy Developing!
+To all the budding agent developers out there, gear up for the next phase of our expedition — the hands-on time! Until then, keep the AI flame burning bright and never stop exploring.  
