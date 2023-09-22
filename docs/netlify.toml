@@ -1,4 +1,4 @@
-# Netlify config for Auto-GPT docs
+# Netlify config for AutoGPT docs
 
 [build]
   publish = "public/"

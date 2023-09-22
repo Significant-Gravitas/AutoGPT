@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
-    """Agent class for interacting with Auto-GPT."""
+    """Agent class for interacting with AutoGPT."""
 
     ThoughtProcessID = Literal["plan", "action", "evaluate"]
 

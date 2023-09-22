@@ -273,7 +273,7 @@ tests-no-zope = ["cloudpickle", "hypothesis", "mypy (>=1.1.1)", "pympler", "pyte
 [[package]]
 name = "auto_gpt_plugin_template"
 version = "0.0.2"
-description = "The template plugin for Auto-GPT."
+description = "The template plugin for AutoGPT."
 optional = false
 python-versions = ">=3.8"
 files = []
@@ -284,7 +284,7 @@ abstract-singleton = "*"
 
 [package.source]
 type = "git"
-url = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template"
+url = "https://github.com/Significant-Gravitas/AutoGPT-Plugin-Template"
 reference = "0.1.0"
 resolved_reference = "7612a14c629dc64ad870eee4d05850d60e1dd9ce"
 

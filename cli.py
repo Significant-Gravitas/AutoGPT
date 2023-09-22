@@ -1,7 +1,7 @@
 """
 This is a minimal file intended to be run by users to help them manage the autogpt projects.
 
-If you want to contribute, please use only libraries that come as part of Python. 
+If you want to contribute, please use only libraries that come as part of Python.
 To ensure efficiency, add the imports to the functions so only what is needed is imported.
 """
 try:
@@ -197,7 +197,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
     if install_error:
         click.echo(
             click.style(
-                "\n\n🔴 If you need help, please raise a ticket on GitHub at https://github.com/Significant-Gravitas/Auto-GPT/issues\n\n",
+                "\n\n🔴 If you need help, please raise a ticket on GitHub at https://github.com/Significant-Gravitas/AutoGPT/issues\n\n",
                 fg="magenta",
                 bold=True,
             )

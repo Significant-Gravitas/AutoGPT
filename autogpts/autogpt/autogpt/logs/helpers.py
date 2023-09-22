@@ -54,7 +54,7 @@ def request_user_double_check(additionalText: Optional[str] = None) -> None:
     if not additionalText:
         additionalText = (
             "Please ensure you've setup and configured everything"
-            " correctly. Read https://github.com/Torantulino/Auto-GPT#readme to "
+            " correctly. Read https://github.com/Significant-Gravitas/AutoGPT/autogpts/autogpt#readme to "
             "double check. You can also create a github issue or join the discord"
             " and ask there!"
         )

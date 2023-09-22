@@ -67,7 +67,7 @@ def get_memory(config: Config) -> VectorMemory:
                 "The Pinecone memory backend has been rendered incompatible by work on "
                 "the memory system, and was removed. Whether support will be added back "
                 "in the future is subject to discussion, feel free to pitch in: "
-                "https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280"
+                "https://github.com/Significant-Gravitas/AutoGPT/discussions/4280"
             )
             # if not PineconeMemory:
             #     logger.warn(
@@ -97,7 +97,7 @@ def get_memory(config: Config) -> VectorMemory:
                 "The Weaviate memory backend has been rendered incompatible by work on "
                 "the memory system, and was removed. Whether support will be added back "
                 "in the future is subject to discussion, feel free to pitch in: "
-                "https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280"
+                "https://github.com/Significant-Gravitas/AutoGPT/discussions/4280"
             )
             # if not WeaviateMemory:
             #     logger.warn(
@@ -112,7 +112,7 @@ def get_memory(config: Config) -> VectorMemory:
                 "The Milvus memory backend has been rendered incompatible by work on "
                 "the memory system, and was removed. Whether support will be added back "
                 "in the future is subject to discussion, feel free to pitch in: "
-                "https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280"
+                "https://github.com/Significant-Gravitas/AutoGPT/discussions/4280"
             )
             # if not MilvusMemory:
             #     logger.warn(

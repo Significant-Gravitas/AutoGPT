@@ -37,7 +37,7 @@ async def interactive_ai_config_setup(
 
     # Construct the prompt
     user_friendly_output(
-        title="Welcome to Auto-GPT! ",
+        title="Welcome to AutoGPT! ",
         message="run with '--help' for more information.",
         title_color=Fore.GREEN,
     )
@@ -60,7 +60,7 @@ async def interactive_ai_config_setup(
         )
 
         user_desire = await utils.clean_input(
-            config, f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: "
+            config, f"{Fore.LIGHTBLUE_EX}I want AutoGPT to{Style.RESET_ALL}: "
         )
 
     if user_desire.strip() == "":

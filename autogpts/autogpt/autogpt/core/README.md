@@ -1,15 +1,15 @@
-# Auto-GPT Core
+# AutoGPT Core
 
 This subpackage contains the ongoing work for the 
-[Auto-GPT Re-arch](https://github.com/Significant-Gravitas/Auto-GPT/issues/4770). It is 
+[AutoGPT Re-arch](https://github.com/Significant-Gravitas/AutoGPT/issues/4770). It is 
 a work in progress and is not yet feature complete.  In particular, it does not yet
-have many of the Auto-GPT commands implemented and is pending ongoing work to 
-[re-incorporate vector-based memory and knowledge retrieval](https://github.com/Significant-Gravitas/Auto-GPT/issues/3536).
+have many of the AutoGPT commands implemented and is pending ongoing work to 
+[re-incorporate vector-based memory and knowledge retrieval](https://github.com/Significant-Gravitas/AutoGPT/issues/3536).
 
 ## [Overview](ARCHITECTURE_NOTES.md)
 
-The Auto-GPT Re-arch is a re-implementation of the Auto-GPT agent that is designed to be more modular,
-more extensible, and more maintainable than the original Auto-GPT agent.  It is also designed to be
+The AutoGPT Re-arch is a re-implementation of the AutoGPT agent that is designed to be more modular,
+more extensible, and more maintainable than the original AutoGPT agent.  It is also designed to be
 more accessible to new developers and to be easier to contribute to. The re-arch is a work in progress
 and is not yet feature complete.  It is also not yet ready for production use.
 
@@ -26,14 +26,14 @@ and is not yet feature complete.  It is also not yet ready for production use.
 
 ## CLI Application
 
-There are two client applications for Auto-GPT included.
+There are two client applications for AutoGPT included.
 
 :star2: **This is the reference application I'm working with for now** :star2: 
 
 The first app is a straight CLI application.  I have not done anything yet to port all the friendly display stuff from the ~~`logger.typewriter_log`~~`user_friendly_output` logic.  
 
-- [Entry Point](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_app/cli.py)
-- [Client Application](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_app/main.py)
+- [Entry Point](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt/core/runner/cli_app/cli.py)
+- [Client Application](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt/core/runner/cli_app/main.py)
 
 You'll then need a settings file.  Run
 
@@ -53,7 +53,7 @@ depending on your operating system:
 At a bare minimum, you'll need to set `openai.credentials.api_key` to your OpenAI API Key to run 
 the model.
 
-You can then run Auto-GPT with 
+You can then run AutoGPT with 
 
 ```
 poetry run cli run
@@ -71,9 +71,9 @@ The second app is still a CLI, but it sets up a local webserver that the client 
 rather than invoking calls to the Agent library code directly.  This application is essentially a sketch 
 at this point as the folks who were driving it have had less time (and likely not enough clarity) to proceed.
 
-- [Entry Point](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_web_app/cli.py)
-- [Client Application](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_web_app/client/client.py)
-- [Server API](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_web_app/server/api.py)
+- [Entry Point](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt/core/runner/cli_web_app/cli.py)
+- [Client Application](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt/core/runner/cli_web_app/client/client.py)
+- [Server API](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt/core/runner/cli_web_app/server/api.py)
 
 To run, you still need to generate a default configuration.  You can do 
 

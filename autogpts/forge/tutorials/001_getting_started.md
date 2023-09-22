@@ -18,7 +18,7 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
 
 ## Section 2: Setting up the Forge Environment
 
-To begin, you need to fork the [repository](https://github.com/Significant-Gravitas/Auto-GPT) by navigating to the main page of the repository and clicking "Fork" in the top-right corner. 
+To begin, you need to fork the [repository](https://github.com/Significant-Gravitas/AutoGPT) by navigating to the main page of the repository and clicking "Fork" in the top-right corner. 
 
 ![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
 
@@ -31,7 +31,7 @@ Next, clone the repository to your local system. Ensure you have Git installed t
 
 ```bash
 # replace the url with the one for your forked repo
-git clone https://github.com/Significant-Gravitas/Auto-GPT.git
+git clone https://github.com/Significant-Gravitas/AutoGPT.git
 ```
 
 ![Clone the Repository](../../../docs/content/imgs/quickstart/003_clone.png)
@@ -40,8 +40,8 @@ git clone https://github.com/Significant-Gravitas/Auto-GPT.git
 
 Once you have clone the project change your directory to the newly cloned project:
 ```bash
-# The name of the directory will match the name you gave your fork. The defualt is Auto-GPT
-cd Auto-GPT
+# The name of the directory will match the name you gave your fork. The default is AutoGPT
+cd AutoGPT
 ```
 To set up the project, utilize the `./run setup` command in the terminal. Follow the instructions to install necessary dependencies and set up your GitHub access token.
 
