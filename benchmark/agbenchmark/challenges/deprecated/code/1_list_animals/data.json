@@ -19,7 +19,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "s the agent's ability to build a basic html app.",
+        "description": "Tests the agent's ability to build a basic html app.",
         "difficulty": "basic",
         "side_effects": []
     },

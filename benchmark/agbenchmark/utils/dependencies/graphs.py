@@ -287,25 +287,27 @@ def graph_interactive_network(
 
     # Extract node IDs with category "coding"
 
-    coding_tree = filter_tree_by_category(graph_data, "coding")
+    coding_tree = extract_subgraph_based_on_category(graph_data.copy(), "coding")
     write_pretty_json(
         coding_tree,
         flutter_app_path / "coding_tree_structure.json",
     )
 
-    data_tree = filter_tree_by_category(graph_data, "data")
+    data_tree = extract_subgraph_based_on_category(graph_data.copy(), "data")
     write_pretty_json(
         data_tree,
         flutter_app_path / "data_tree_structure.json",
     )
 
-    general_tree = filter_tree_by_category(graph_data, "general")
+    general_tree = extract_subgraph_based_on_category(graph_data.copy(), "general")
     write_pretty_json(
-        coding_tree,
+        general_tree,
         flutter_app_path / "general_tree_structure.json",
     )
 
-    scrape_synthesize_tree = filter_tree_by_category(graph_data, "scrape_synthesize")
+    scrape_synthesize_tree = extract_subgraph_based_on_category(
+        graph_data.copy(), "scrape_synthesize"
+    )
     write_pretty_json(
         scrape_synthesize_tree,
         flutter_app_path / "scrape_synthesize_tree_structure.json",
@@ -320,19 +322,41 @@ def graph_interactive_network(
         nt.write_html(file_path)
 
 
-def filter_tree_by_category(graph_data, category):
-    category_node_ids = set()
-    for node in graph_data["nodes"]:
-        if category in node["data"]["category"]:
-            category_node_ids.add(node["id"])
-    # Filter nodes
-    graph_data["nodes"] = [
-        node for node in graph_data["nodes"] if node["id"] in category_node_ids
+def extract_subgraph_based_on_category(graph, category):
+    """
+    Extracts a subgraph that includes all nodes and edges required to reach all nodes with a specified category.
+
+    :param graph: The original graph.
+    :param category: The target category.
+    :return: Subgraph with nodes and edges required to reach the nodes with the given category.
+    """
+
+    subgraph = {"nodes": [], "edges": []}
+    visited = set()
+
+    def reverse_dfs(node_id):
+        if node_id in visited:
+            return
+        visited.add(node_id)
+
+        node_data = next(node for node in graph["nodes"] if node["id"] == node_id)
+
+        # Add the node to the subgraph if it's not already present.
+        if node_data not in subgraph["nodes"]:
+            subgraph["nodes"].append(node_data)
+
+        for edge in graph["edges"]:
+            if edge["to"] == node_id:
+                if edge not in subgraph["edges"]:
+                    subgraph["edges"].append(edge)
+                reverse_dfs(edge["from"])
+
+    # Identify nodes with the target category and initiate reverse DFS from them.
+    nodes_with_target_category = [
+        node["id"] for node in graph["nodes"] if category in node["data"]["category"]
     ]
-    # Filter edges
-    graph_data["edges"] = [
-        edge
-        for edge in graph_data["edges"]
-        if edge["from"] in category_node_ids or edge["to"] in category_node_ids
-    ]
-    return graph_data
+
+    for node_id in nodes_with_target_category:
+        reverse_dfs(node_id)
+
+    return subgraph
