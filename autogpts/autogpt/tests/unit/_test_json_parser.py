@@ -47,7 +47,7 @@ def test_invalid_json_leading_sentence_with_gpt():
     "command": {
         "name": "browse_website",
         "args":{
-            "url": "https://github.com/Torantulino/Auto-GPT"
+            "url": "https://github.com/Significant-Gravitas/AutoGPT"
         }
     },
     "thoughts":
@@ -62,7 +62,7 @@ def test_invalid_json_leading_sentence_with_gpt():
     good_obj = {
         "command": {
             "name": "browse_website",
-            "args": {"url": "https://github.com/Torantulino/Auto-GPT"},
+            "args": {"url": "https://github.com/Significant-Gravitas/AutoGPT"},
         },
         "thoughts": {
             "text": "I suggest we start browsing the repository to find any issues that we can fix.",
@@ -78,13 +78,13 @@ def test_invalid_json_leading_sentence_with_gpt():
 
 def test_invalid_json_leading_sentence_with_gpt(self):
     """Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False."""
-    json_str = """I will first need to browse the repository (https://github.com/Torantulino/Auto-GPT) and identify any potential bugs that need fixing. I will use the "browse_website" command for this.
+    json_str = """I will first need to browse the repository (https://github.com/Significant-Gravitas/AutoGPT) and identify any potential bugs that need fixing. I will use the "browse_website" command for this.
 
     {
     "command": {
         "name": "browse_website",
         "args":{
-            "url": "https://github.com/Torantulino/Auto-GPT"
+            "url": "https://github.com/Significant-Gravitas/AutoGPT"
         }
     },
     "thoughts":
@@ -99,7 +99,7 @@ def test_invalid_json_leading_sentence_with_gpt(self):
     good_obj = {
         "command": {
             "name": "browse_website",
-            "args": {"url": "https://github.com/Torantulino/Auto-GPT"},
+            "args": {"url": "https://github.com/Significant-Gravitas/AutoGPT"},
         },
         "thoughts": {
             "text": "Browsing the repository to identify potential bugs",

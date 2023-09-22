@@ -30,8 +30,8 @@ autogpt.add_command(make_settings)
     type=click.INT,
 )
 def server(port: int) -> None:
-    """Run the Auto-GPT runner httpserver."""
-    click.echo("Running Auto-GPT runner httpserver...")
+    """Run the AutoGPT runner httpserver."""
+    click.echo("Running AutoGPT runner httpserver...")
     AgentProtocol.handle_task(task_handler).start(port)
 
 
@@ -43,7 +43,7 @@ def server(port: int) -> None:
 )
 @coroutine
 async def client(settings_file) -> None:
-    """Run the Auto-GPT runner client."""
+    """Run the AutoGPT runner client."""
     settings_file = pathlib.Path(settings_file)
     settings = {}
     if settings_file.exists():
