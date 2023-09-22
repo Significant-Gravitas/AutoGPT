@@ -44,8 +44,8 @@
         },
         {
             "arrows": "to",
-            "from": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]",
-            "id": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]",
+            "from": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]"
         }
     ],
@@ -269,7 +269,7 @@
                 ],
                 "cutoff": 90,
                 "dependencies": [
-                    "TestUrlShortener",
+                    "TestTicTacToe",
                     "TestReadFile"
                 ],
                 "eval_id": "5a32418d-1c3a-4af1-8dc4-8d4c29bed21a",
