@@ -38,8 +38,8 @@ class SkillTreeViewModel extends ChangeNotifier {
   SkillTreeNode? get selectedNode => _selectedNode;
   List<SkillTreeNode>? get selectedNodeHierarchy => _selectedNodeHierarchy;
 
-  final Graph graph = Graph()..isTree = true;
-  BuchheimWalkerConfiguration builder = BuchheimWalkerConfiguration();
+  final Graph graph = Graph();
+  SugiyamaConfiguration builder = SugiyamaConfiguration();
 
   SkillTreeViewModel(this.benchmarkService, this.leaderboardService);
 
@@ -66,11 +66,7 @@ class SkillTreeViewModel extends ChangeNotifier {
         _skillTreeEdges.add(edge);
       }
 
-      builder
-        ..siblingSeparation = (50)
-        ..levelSeparation = (50)
-        ..subtreeSeparation = (50)
-        ..orientation = (BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT);
+      builder.orientation = (SugiyamaConfiguration.ORIENTATION_LEFT_RIGHT);
 
       notifyListeners();
 
