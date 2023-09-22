@@ -49,11 +49,11 @@ async def clean_input(config: Config, prompt: str = ""):
 
         # handle_sigint must be set to False, so the signal handler in the
         # autogpt/main.py could be employed properly. This referes to
-        # https://github.com/Significant-Gravitas/Auto-GPT/pull/4799/files/3966cdfd694c2a80c0333823c3bc3da090f85ed3#r1264278776
+        # https://github.com/Significant-Gravitas/AutoGPT/pull/4799/files/3966cdfd694c2a80c0333823c3bc3da090f85ed3#r1264278776
         answer = await session.prompt_async(ANSI(prompt), handle_sigint=False)
         return answer
     except KeyboardInterrupt:
-        logger.info("You interrupted Auto-GPT")
+        logger.info("You interrupted AutoGPT")
         logger.info("Quitting...")
         exit(0)
 
@@ -61,7 +61,7 @@ async def clean_input(config: Config, prompt: str = ""):
 def get_bulletin_from_web():
     try:
         response = requests.get(
-            "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/autogpts/autogpt/BULLETIN.md"
+            "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpts/autogpt/BULLETIN.md"
         )
         if response.status_code == 200:
             return response.text
@@ -90,12 +90,12 @@ def get_latest_bulletin() -> tuple[str, bool]:
     new_bulletin = get_bulletin_from_web()
     is_new_news = new_bulletin != "" and new_bulletin != current_bulletin
 
-    news_header = Fore.YELLOW + "Welcome to Auto-GPT!\n"
+    news_header = Fore.YELLOW + "Welcome to AutoGPT!\n"
     if new_bulletin or current_bulletin:
         news_header += (
-            "Below you'll find the latest Auto-GPT News and updates regarding features!\n"
+            "Below you'll find the latest AutoGPT News and updates regarding features!\n"
             "If you don't wish to see this message, you "
-            "can run Auto-GPT with the *--skip-news* flag.\n"
+            "can run AutoGPT with the *--skip-news* flag.\n"
         )
 
     if new_bulletin and is_new_news:

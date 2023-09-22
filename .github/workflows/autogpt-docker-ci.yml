@@ -1,4 +1,4 @@
-name: Auto-GPT Docker CI
+name: AutoGPT Docker CI
 
 on:
   push:

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 from autogpt.models.command import Command, CommandOutput, CommandParameter
 
-# Unique identifier for auto-gpt commands
+# Unique identifier for AutoGPT commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 
 

@@ -8,7 +8,7 @@
 
 ## The Motivation
 
-The `master` branch of Auto-GPT is an organically grown amalgamation of many thoughts 
+The `master` branch of AutoGPT is an organically grown amalgamation of many thoughts 
 and ideas about agent-driven autonomous systems.  It lacks clear abstraction boundaries, 
 has issues of global state and poorly encapsulated state, and is generally just hard to 
 make effective changes to.  Mainly it's just a system that's hard to make changes to.  
@@ -51,7 +51,7 @@ for the breaking version change. We justified this by saying:
 
 We want a lot of things from a configuration system. We lean heavily on it in the 
 `master` branch to allow several parts of the system to communicate with each other.  
-[Recent work](https://github.com/Significant-Gravitas/Auto-GPT/pull/4737) has made it 
+[Recent work](https://github.com/Significant-Gravitas/AutoGPT/pull/4737) has made it 
 so that the config is no longer a singleton object that is materialized from the import 
 state, but it's still treated as a 
 [god object](https://en.wikipedia.org/wiki/God_object) containing all information about
@@ -90,8 +90,8 @@ much agent state, that means a user can only work with one agent at a time.
 ## Memory
 
 The memory system has been under extremely active development. 
-See [#3536](https://github.com/Significant-Gravitas/Auto-GPT/issues/3536) and 
-[#4208](https://github.com/Significant-Gravitas/Auto-GPT/pull/4208) for discussion and 
+See [#3536](https://github.com/Significant-Gravitas/AutoGPT/issues/3536) and 
+[#4208](https://github.com/Significant-Gravitas/AutoGPT/pull/4208) for discussion and 
 work in the `master` branch.  The TL;DR is 
 that we noticed a couple of months ago that the `Agent` performed **worse** with 
 permanent memory than without it.  Since then the knowledge storage and retrieval 
@@ -231,7 +231,7 @@ different tools, we'd use a different paradigm.
 
 While many things are classes in the re-arch, they are not classes in the same way. 
 There are three kinds of things (roughly) that are written as classes in the re-arch:
-1.  **Configuration**:  Auto-GPT has *a lot* of configuration.  This configuration 
+1.  **Configuration**:  AutoGPT has *a lot* of configuration.  This configuration 
     is *data* and we use **[Pydantic](https://docs.pydantic.dev/latest/)** to manage it as 
     pydantic is basically industry standard for this stuff. It provides runtime validation 
     for all the configuration and allows us to easily serialize configuration to both basic 
@@ -241,7 +241,7 @@ There are three kinds of things (roughly) that are written as classes in the re-
     agent-to-agent communication. *These are essentially 
     [structs](https://en.wikipedia.org/wiki/Struct_(C_programming_language)) rather than 
     traditional classes.*
-2.  **Internal Data**: Very similar to configuration, Auto-GPT passes around boatloads 
+2.  **Internal Data**: Very similar to configuration, AutoGPT passes around boatloads 
     of internal data.  We are interacting with language models and language model APIs 
     which means we are handling lots of *structured* but *raw* text.  Here we also 
     leverage **pydantic** to both *parse* and *validate* the internal data and also to 
@@ -257,8 +257,8 @@ There are three kinds of things (roughly) that are written as classes in the re-
     subclass of the interface. This should not be controversial.
 
 The approach is consistent with 
-[prior](https://github.com/Significant-Gravitas/Auto-GPT/issues/2458)
-[work](https://github.com/Significant-Gravitas/Auto-GPT/pull/2442) done by other 
+[prior](https://github.com/Significant-Gravitas/AutoGPT/issues/2458)
+[work](https://github.com/Significant-Gravitas/AutoGPT/pull/2442) done by other 
 maintainers in this direction.
 
 From an organization standpoint, OO programming is by far the most popular programming 
@@ -269,4 +269,3 @@ contributing.
 Finally, and importantly, we scoped the plan and initial design of the re-arch as a 
 large group of maintainers and collaborators early on. This is consistent with the 
 design we chose and no-one offered alternatives.
- 

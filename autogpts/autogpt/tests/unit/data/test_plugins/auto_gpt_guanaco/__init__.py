@@ -1,4 +1,4 @@
-"""This is the Test plugin for Auto-GPT."""
+"""This is the Test plugin for AutoGPT."""
 from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
@@ -8,12 +8,12 @@ PromptGenerator = TypeVar("PromptGenerator")
 
 class AutoGPTGuanaco(AutoGPTPluginTemplate):
     """
-    This is plugin for Auto-GPT.
+    This is plugin for AutoGPT.
     """
 
     def __init__(self):
         super().__init__()
-        self._name = "Auto-GPT-Guanaco"
+        self._name = "AutoGPT-Guanaco"
         self._version = "0.1.0"
         self._description = "This is a Guanaco local model plugin."
 
