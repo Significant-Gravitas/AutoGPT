@@ -17,10 +17,11 @@ Ever dreamt of becoming the genius behind an AI agent? Dive into the *Forge*, wh
 The getting started tutorial series will guide you through the process of setting up your project all the way through to building a generalist agent. 
 
 1. [AutoGPT Forge: A Comprehensive Guide to Your First Steps](https://aiedge.medium.com/autogpt-forge-a-comprehensive-guide-to-your-first-steps-a1dfdf46e3b4)
+2. [AutoGPT Forge: The Blueprint of an AI Agent](https://aiedge.medium.com/autogpt-forge-the-blueprint-of-an-ai-agent-75cd72ffde6)
 
 Comming soon:
 
-2. Blueprint of an Agent
+
 3. Interacting with and Benchmarking your Agent
 4. Abilities
 5. The Planning Loop
