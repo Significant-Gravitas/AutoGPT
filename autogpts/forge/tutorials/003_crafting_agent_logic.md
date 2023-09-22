@@ -1,5 +1,7 @@
 ### AutoGPT Forge: Crafting Intelligent Agent Logic
 
+![Header](../../../docs/content/imgs/quickstart/t3_01.png)
+
 Greetings, AI enthusiasts! Today, we're about to embark on an enlightening journey of crafting intelligent agent logic. We'll transition from a 'shortcut' method in the `execute_step` to a more sophisticated approach, harnessing the full potential of Large Language Models (LLMs). By the end of this tutorial, we aim to get our agent to ace the 'write file' test with flying colors.
 
 So, without further ado, let's dive right in!
