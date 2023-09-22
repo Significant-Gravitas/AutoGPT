@@ -4,7 +4,7 @@
     ],
     "cutoff": 60,
     "dependencies": [
-        "TestRevenueRetrieval1.1"
+        "TestBasicRetrieval"
     ],
     "eval_id": "af95fa96-a5cb-42b0-98f3-715e6e7d0b5d",
     "ground": {
@@ -25,6 +25,6 @@
         "difficulty": "intermediate",
         "side_effects": []
     },
-    "name": "RevenueRetrieval1.2",
+    "name": "RevenueRetrieval",
     "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion)."
 }

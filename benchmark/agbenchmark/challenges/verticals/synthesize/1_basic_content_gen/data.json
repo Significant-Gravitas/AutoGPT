@@ -4,8 +4,7 @@
     ],
     "cutoff": 240,
     "dependencies": [
-        "TestReadFile",
-        "TestWriteFile"
+        "TestReadFile"
     ],
     "eval_id": "76e4c56c-8d57-423e-9cc1-1fff5f58dee6",
     "ground": {
