@@ -1,10 +1,16 @@
-# The Blueprint of an AI Agent: Understanding Its Structure and Functionality
+# AutoGPT Forge: The Blueprint of an AI Agent
 
-Welcome to the dynamic world of AI agents! As we stand on the threshold of a new era in technology, it is essential to understand the evolving landscape of AI agent development. Whether you are a seasoned developer or a novice stepping into this fascinating domain, this blog post aims to illuminate the key components and protocols necessary for creating sophisticated AI agents.
+Welcome back, fellow AI enthusiasts! In our first tutorial, we got our hands dirty setting up the project and learning how to stop and start our agents. Now, it's time to dive deeper. In this second tutorial of our series, we're going to dissect an agent, understanding its key components. We'll take a tour of the project structure and then roll up our sleeves to update the step function. By the end of this tutorial, you'll have an LLM Powered AI that can pass the write file test. So, let's get started!
 
-## The Forge: Your Launchpad for AI Agent Development
+## What are LLM-Based AI Agents?
 
-The Forge stands as a beacon, aiding developers in navigating through the complexities of boilerplate code, allowing you to focus intently on crafting groundbreaking agent designs. To deepen your understanding and explore the boundless opportunities in the agent landscape, we highly recommend perusing these insightful papers on the field [Agent Landscape Survey](https://arxiv.org/abs/2308.11432) and [The Rise and Potential of Large Language Model Based Agents: A Survey](https://arxiv.org/abs/2309.07864). They both reference a massive repository of research into agent development!
+Large Language Models (LLMs) are state-of-the-art machine learning models that harness vast amounts of web knowledge. But what happens when you blend these LLMs with autonomous agents? You get LLM-based AI agents - a new breed of artificial intelligence that promises more human-like decision-making.
+
+Traditional autonomous agents operated with limited knowledge, often confined to specific tasks or environments. They were like calculators - efficient but limited to predefined functions. LLM-based agents, on the other hand, are akin to having an encyclopedia combined with a calculator. They don't just compute; they understand, reason, and then act, drawing from a vast reservoir of information.
+
+The [Agent Landscape Survey](https://arxiv.org/abs/2308.11432) underscores this evolution, detailing the remarkable potential LLMs have shown in achieving human-like intelligence. They're not just about more data; they represent a more holistic approach to AI, bridging gaps between isolated task knowledge and expansive web information.
+
+Further expanding on this, [The Rise and Potential of Large Language Model Based Agents: A Survey](https://arxiv.org/abs/2309.07864) portrays LLMs as the foundational blocks for the next generation of AI agents. These agents sense, decide, and act, all backed by the comprehensive knowledge and adaptability of LLMs. It is an incrediable source of knowledge on AI Agent Research with almost 700 papers referenced and organised by reseach area.
 
 ## Bridging Communication Gaps with the Agent Protocol
 
