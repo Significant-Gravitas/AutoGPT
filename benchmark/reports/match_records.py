@@ -1,16 +1,14 @@
-import os
-import json
-import pandas as pd
 import glob
-from gql.transport.aiohttp import AIOHTTPTransport
-from gql import gql, Client
+import json
 import os
-
-# from agbenchmark.reports.processing.report_types import Report, SuiteTest
-
 from typing import Dict, List, Optional, Union
 
+import pandas as pd
+from gql import Client, gql
+from gql.transport.aiohttp import AIOHTTPTransport
 from pydantic import BaseModel, Field
+
+# from agbenchmark.reports.processing.report_types import Report, SuiteTest
 
 
 class Metrics(BaseModel):

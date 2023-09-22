@@ -41,7 +41,7 @@ Example:
   },
   "info": {
     "difficulty": "basic",
-    "description": "s the writing to file",
+    "description": "Tests the writing to file",
     "side_effects": ["tests if there is in fact an LLM attached"]
   }
 }

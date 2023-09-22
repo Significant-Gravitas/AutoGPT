@@ -35,7 +35,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "s ability to retrieve information.",
+        "description": "Tests ability to retrieve information.",
         "difficulty": "intermediate",
         "side_effects": [
             "tests if there is in fact an LLM attached"
