@@ -47,7 +47,7 @@ def create_config(
         gpt4only (bool): Whether to enable GPT4 only mode
         memory_type (str): The type of memory backend to use
         browser_name (str): The name of the browser to use when using selenium to scrape the web
-        allow_downloads (bool): Whether to allow Auto-GPT to download files natively
+        allow_downloads (bool): Whether to allow AutoGPT to download files natively
         skips_news (bool): Whether to suppress the output of latest news on startup
     """
     config.debug_mode = False
@@ -152,7 +152,7 @@ def create_config(
     if allow_downloads:
         print_attribute("Native Downloading", "ENABLED")
         logger.warn(
-            msg=f"{Back.LIGHTYELLOW_EX}Auto-GPT will now be able to download and save files to your machine.{Back.RESET}"
+            msg=f"{Back.LIGHTYELLOW_EX}AutoGPT will now be able to download and save files to your machine.{Back.RESET}"
             " It is recommended that you monitor any files it downloads carefully.",
         )
         logger.warn(

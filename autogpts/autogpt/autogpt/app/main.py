@@ -135,7 +135,7 @@ async def run_auto_gpt(
             logger.error(
                 "WARNING: You are running on an older version of Python. "
                 "Some people have observed problems with certain "
-                "parts of Auto-GPT with this version. "
+                "parts of AutoGPT with this version. "
                 "Please consider upgrading to Python 3.10 or higher.",
             )
 
@@ -273,7 +273,7 @@ async def run_interaction_loop(
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
         nonlocal cycle_budget, cycles_remaining, spinner
         if cycles_remaining in [0, 1]:
-            logger.error("Interrupt signal received. Stopping Auto-GPT immediately.")
+            logger.error("Interrupt signal received. Stopping AutoGPT immediately.")
             sys.exit()
         else:
             restart_spinner = spinner.running

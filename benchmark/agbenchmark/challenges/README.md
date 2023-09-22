@@ -1,4 +1,4 @@
-# This is the official challenge library for https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks
+# This is the official challenge library for https://github.com/Significant-Gravitas/AutoGPT-Benchmarks
 
 The goal of this repo is to provide easy challenge creation for test driven development with the Auto-GPT-Benchmarks package. This is essentially a library to craft challenges using a dsl (jsons in this case).
 

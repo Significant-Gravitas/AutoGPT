@@ -1,6 +1,6 @@
 # agbenchmark-frontend
 
-Frontend for https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks
+Frontend for https://github.com/Significant-Gravitas/AutoGPT-Benchmarks
 
 Objectively know how well your agent is performing in categories like code, retrieval, memory, and safety.
 
