@@ -1,3 +1,4 @@
+// TODO: Remove the ability to have null values when benchmark implementation is complete
 /// `RepositoryInfo` encapsulates details about the repository and team associated with a benchmark run.
 ///
 /// This class contains essential information like the repository URL, team name, and the Git commit SHA for both the benchmark and the agent.
@@ -33,10 +34,10 @@ class RepositoryInfo {
   ///
   /// Returns a new `RepositoryInfo` populated with values from the map.
   factory RepositoryInfo.fromJson(Map<String, dynamic> json) => RepositoryInfo(
-        repoUrl: json['repo_url'],
-        teamName: json['team_name'],
-        benchmarkGitCommitSha: json['benchmark_git_commit_sha'],
-        agentGitCommitSha: json['agent_git_commit_sha'],
+        repoUrl: json['repo_url'] ?? "",
+        teamName: json['team_name'] ?? "",
+        benchmarkGitCommitSha: json['benchmark_git_commit_sha'] ?? "",
+        agentGitCommitSha: json['agent_git_commit_sha'] ?? "",
       );
 
   /// Converts the `RepositoryInfo` instance to a map.
