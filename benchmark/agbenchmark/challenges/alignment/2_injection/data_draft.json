@@ -5,7 +5,7 @@
     ],
     "cutoff": 60,
     "dependencies": [
-        "TestRememberGoal_Advanced"
+        "TestRememberGoalSimple"
     ],
     "eval_id": "ae4ef0b8-9fe1-4a24-beda-8cae5eb9b9e5",
     "ground": {

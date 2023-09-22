@@ -110,7 +110,6 @@ class StepRequestBody(BaseModel):
     )
     input: Optional[str] = Field(
         None,
-        min_length=1,
         description="Input prompt for the step.",
         example="Washington",
     )
