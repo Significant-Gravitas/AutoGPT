@@ -23,7 +23,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "s ability for the agent to create the two_sum function.",
+        "description": "Tests ability for the agent to create the two_sum function.",
         "difficulty": "advanced",
         "side_effects": []
     },

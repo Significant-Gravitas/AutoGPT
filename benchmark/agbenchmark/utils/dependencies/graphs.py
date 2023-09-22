@@ -275,17 +275,88 @@ def graph_interactive_network(
     graph_data = {"nodes": nt.nodes, "edges": nt.edges}
 
     home_path = Path.cwd()
-
     write_pretty_json(graph_data, home_path / "frontend" / "public" / "graph.json")
+
+    flutter_app_path = home_path.parent / "frontend" / "assets"
+
     # Optionally, save to a file
     # Sync with the flutter UI
     # this literally only works in the AutoGPT repo, but this part of the code is not reached if BUILD_SKILL_TREE is false
+    write_pretty_json(graph_data, flutter_app_path / "tree_structure.json")
+    import json
+
+    # Extract node IDs with category "coding"
+
+    coding_tree = extract_subgraph_based_on_category(graph_data.copy(), "coding")
     write_pretty_json(
-        graph_data,
-        str(home_path.parent / "frontend" / "assets" / "tree_structure.json"),
+        coding_tree,
+        flutter_app_path / "coding_tree_structure.json",
     )
+
+    data_tree = extract_subgraph_based_on_category(graph_data.copy(), "data")
+    write_pretty_json(
+        data_tree,
+        flutter_app_path / "data_tree_structure.json",
+    )
+
+    general_tree = extract_subgraph_based_on_category(graph_data.copy(), "general")
+    write_pretty_json(
+        general_tree,
+        flutter_app_path / "general_tree_structure.json",
+    )
+
+    scrape_synthesize_tree = extract_subgraph_based_on_category(
+        graph_data.copy(), "scrape_synthesize"
+    )
+    write_pretty_json(
+        scrape_synthesize_tree,
+        flutter_app_path / "scrape_synthesize_tree_structure.json",
+    )
+    # If you want to convert back to JSON
+    filtered_json = json.dumps(graph_data, indent=4)
+    print(filtered_json)
 
     if html_graph_path:
         file_path = str(Path(html_graph_path).resolve())
 
         nt.write_html(file_path)
+
+
+def extract_subgraph_based_on_category(graph, category):
+    """
+    Extracts a subgraph that includes all nodes and edges required to reach all nodes with a specified category.
+
+    :param graph: The original graph.
+    :param category: The target category.
+    :return: Subgraph with nodes and edges required to reach the nodes with the given category.
+    """
+
+    subgraph = {"nodes": [], "edges": []}
+    visited = set()
+
+    def reverse_dfs(node_id):
+        if node_id in visited:
+            return
+        visited.add(node_id)
+
+        node_data = next(node for node in graph["nodes"] if node["id"] == node_id)
+
+        # Add the node to the subgraph if it's not already present.
+        if node_data not in subgraph["nodes"]:
+            subgraph["nodes"].append(node_data)
+
+        for edge in graph["edges"]:
+            if edge["to"] == node_id:
+                if edge not in subgraph["edges"]:
+                    subgraph["edges"].append(edge)
+                reverse_dfs(edge["from"])
+
+    # Identify nodes with the target category and initiate reverse DFS from them.
+    nodes_with_target_category = [
+        node["id"] for node in graph["nodes"] if category in node["data"]["category"]
+    ]
+
+    for node_id in nodes_with_target_category:
+        reverse_dfs(node_id)
+
+    return subgraph

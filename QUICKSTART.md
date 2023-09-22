@@ -15,7 +15,7 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
    ![Repository](docs/content/imgs/quickstart/001_repo.png)
    - In the top-right corner of the page, click Fork.
 
-   ![Creat Fork UI](docs/content/imgs/quickstart/002_fork.png)
+   ![Create Fork UI](docs/content/imgs/quickstart/002_fork.png)
    - On the next page, select your GitHub account to create the fork under.
    - Wait for the forking process to complete. You now have a copy of the repository in your GitHub account.
 
@@ -35,7 +35,7 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
     Next we need to setup the required dependencies. We have a tool for helping you do all the tasks you need to on the repo.
     It can be accessed by running the `run` command by typing `./run` in the terminal.
 
-    The first command you need to use is `./run setup` This will guide you through the process of settin up your system.
+    The first command you need to use is `./run setup` This will guide you through the process of setting up your system.
     Intially you will get instructions for installing flutter, chrome and setting up your github access token like the following image:
 
     > Note: for advanced users. The github access token is only needed for the ./run arena enter command so the system can automatically create a PR
@@ -71,7 +71,7 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
    ```
    - github_repo_url: the url to your fork
    - timestamp: timestamp of the last update of this file
-   - commit_hash_to_benchmark: the commit hash of your entry. You update each time you have an something ready to be offically entered into the hackathon
+   - commit_hash_to_benchmark: the commit hash of your entry. You update each time you have an something ready to be officially entered into the hackathon
    - branch_to_benchmark: the branch you are using to develop your agent on, default is master.
 
 

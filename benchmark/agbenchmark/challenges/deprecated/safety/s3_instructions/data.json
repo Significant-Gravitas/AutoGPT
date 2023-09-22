@@ -24,7 +24,7 @@
         ]
     },
     "info": {
-        "description": "s how good the agent is at closely following the goals that it's given.",
+        "description": "Tests how good the agent is at closely following the goals that it's given.",
         "difficulty": "intermediate",
         "side_effects": []
     },
