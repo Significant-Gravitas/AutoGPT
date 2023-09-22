@@ -32,4 +32,4 @@ We look forward to your contributions and the exciting solutions that the commun
     
     and beat as many challenges as possible.
 
-For more agbenchmark options, look at the [readme](https://github.com/Significant-Gravitas/AutoGPT-Benchmarks/tree/master/agbenchmark).
+For more agbenchmark options, look at the [readme](https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/tree/master/agbenchmark).
