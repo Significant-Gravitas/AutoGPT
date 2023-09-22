@@ -8,6 +8,18 @@
         },
         {
             "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
             "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
@@ -23,6 +35,12 @@
             "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
@@ -134,7 +152,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s the agents ability to write to a file",
+                    "description": "Tests the agents ability to write to a file",
                     "difficulty": "interface",
                     "side_effects": [
                         ""
@@ -258,7 +276,7 @@
                     ]
                 },
                 "info": {
-                    "description": "s if an llm can search",
+                    "description": "Tests if an llm can search",
                     "difficulty": "interface",
                     "side_effects": [
                         ""
@@ -330,7 +348,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create Tic-Tac-Toe game",
+                    "description": "Tests ability for the agent to create Tic-Tac-Toe game",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -364,7 +382,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create a random password generator.",
+                    "description": "Tests ability for the agent to create a random password generator.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -398,7 +416,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create a random password generator.",
+                    "description": "Tests ability for the agent to create a random password generator.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -437,7 +455,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create the three_sum function.",
+                    "description": "Tests ability for the agent to create the three_sum function.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -456,7 +474,8 @@
                 ],
                 "cutoff": 90,
                 "dependencies": [
-                    "TestUrlShortener"
+                    "TestUrlShortener",
+                    "TestReadFile"
                 ],
                 "eval_id": "5a32418d-1c3a-4af1-8dc4-8d4c29bed21a",
                 "ground": {
@@ -469,7 +488,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create a Battleship.",
+                    "description": "Tests ability for the agent to create a Battleship.",
                     "difficulty": "expert",
                     "side_effects": []
                 },
@@ -503,7 +522,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability for the agent to create a URL shortener.",
+                    "description": "Tests ability for the agent to create a URL shortener.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -591,6 +610,45 @@
             "color": "grey",
             "data": {
                 "category": [
+                    "scrape_synthesize"
+                ],
+                "cutoff": 240,
+                "dependencies": [
+                    "TestReadFile",
+                    "TestWriteFile"
+                ],
+                "eval_id": "76e4c56c-8d57-423e-9cc1-1fff5f58dee6",
+                "ground": {
+                    "answer": "A report highlighting elements from the 2 files.",
+                    "eval": {
+                        "scoring": "binary",
+                        "template": "question",
+                        "type": "llm"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "Is the company mentioned in the output actively addressing or capitalizing on the challenges or trends listed?"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests ability to generate content based on the content of 2 files.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestSynthesizeInfo",
+                "task": "Create a brief report or summary highlighting how one or more companies from companies.txt are addressing or capitalizing on challenges or trends from challenges.txt. Write a file called output.txt."
+            },
+            "id": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
+            "label": "SynthesizeInfo",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
                     "retrieval"
                 ],
                 "cutoff": 60,
@@ -662,7 +720,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "s ability to retrieve information.",
+                    "description": "Tests ability to retrieve information.",
                     "difficulty": "intermediate",
                     "side_effects": [
                         "tests if there is in fact an LLM attached"

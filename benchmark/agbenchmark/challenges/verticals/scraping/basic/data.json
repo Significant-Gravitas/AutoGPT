@@ -25,7 +25,7 @@
         ]
     },
     "info": {
-        "description": "s if an llm can search",
+        "description": "Tests if an llm can search",
         "difficulty": "interface",
         "side_effects": [
             ""
