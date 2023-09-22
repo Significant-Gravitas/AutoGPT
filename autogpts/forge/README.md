@@ -1,6 +1,4 @@
 # 🚀 **Auto-GPT-Forge**: Build Your Own Auto-GPT Agent! 🧠 
-## (Release date: very soon)
-
 
 ### 🌌 Dive into the Universe of Auto-GPT Creation! 🌌
 
@@ -16,6 +14,14 @@ Ever dreamt of becoming the genius behind an AI agent? Dive into the *Forge*, wh
 
 ### 🚀 **Get Started!**
 
-Please follow the quickstart guide:
+The getting started tutorial series will guide you through the process of setting up your project all the way through to building a generalist agent. 
 
-[**Quick Start Guide**](../../QUICKSTART.md)
+1. [AutoGPT Forge: A Comprehensive Guide to Your First Steps](https://aiedge.medium.com/autogpt-forge-a-comprehensive-guide-to-your-first-steps-a1dfdf46e3b4)
+
+Comming soon:
+
+2. Blueprint of an Agent
+3. Interacting with and Benchmarking your Agent
+4. Abilities
+5. The Planning Loop
+6. Memories
