@@ -3,7 +3,9 @@
         "coding"
     ],
     "cutoff": 150,
-    "dependencies": [],
+    "dependencies": [
+        "TestFileOrganizer"
+    ],
     "eval_id": "41ca1035-ceca-4e0c-91ab-66ed0b350273",
     "ground": {
         "answer": "The correct python file for a basic url shortener CLI",

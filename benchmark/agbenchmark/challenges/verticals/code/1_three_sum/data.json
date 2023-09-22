@@ -5,7 +5,7 @@
     ],
     "cutoff": 60,
     "dependencies": [
-        "TestFunctionCodeGeneration"
+        "TestWriteFile"
     ],
     "eval_id": "29a10990-2584-4602-8b9d-c217f6edbc4f",
     "ground": {
