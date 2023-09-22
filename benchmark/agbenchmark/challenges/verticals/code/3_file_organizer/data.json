@@ -4,7 +4,7 @@
     ],
     "cutoff": 90,
     "dependencies": [
-        "TestPasswordGenerator_Easy"
+        "TestPasswordGenerator"
     ],
     "eval_id": "6ace62be-6c18-431a-947f-72fb20984b58",
     "ground": {
@@ -23,6 +23,6 @@
         "difficulty": "basic",
         "side_effects": []
     },
-    "name": "WritingCLI_FileOrganizer",
+    "name": "FileOrganizer",
     "task": "Create a file organizer CLI tool in Python that sorts files in a directory based on their file types (e.g., images, documents, audio) and moves them into these corresponding folders: 'images', 'documents', 'audio'. The entry point will be a python file that can be run this way: python organize_files.py --directory_path=YOUR_DIRECTORY_PATH"
 }
