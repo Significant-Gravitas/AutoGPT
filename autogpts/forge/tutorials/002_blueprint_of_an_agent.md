@@ -8,7 +8,7 @@ Craig Swift
 
 ---
 
-![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
+![Header](../../../docs/content/imgs/quickstart/t2_01.png)
 
 
 Hello there, fellow pioneers of the AI frontier!  
@@ -27,7 +27,7 @@ Large Language Models (LLMs) are state-of-the-art machine learning models that h
 
 Traditional autonomous agents operated with limited knowledge, often confined to specific tasks or environments. They were like calculators — efficient but limited to predefined functions. LLM-based agents, on the other hand, are akin to having an encyclopedia combined with a calculator. They don’t just compute; they understand, reason, and then act, drawing from a vast reservoir of information.  
 
-![AI visualising AI researchers hard at work](../../../docs/content/imgs/quickstart/001_repo.png)
+![AI visualising AI researchers hard at work](../../../docs/content/imgs/quickstart/t2_02.png)
 
 
 The Agent Landscape Survey underscores this evolution, detailing the remarkable potential LLMs have shown in achieving human-like intelligence. They’re not just about more data; they represent a more holistic approach to AI, bridging gaps between isolated task knowledge and expansive web information.  
@@ -38,7 +38,7 @@ Further expanding on this, *The Rise and Potential of Large Language Model Based
 
 Diving deep into the core of an LLM-based AI agent, we find it’s structured much like a human, with distinct components akin to personality, memory, thought process, and abilities. Let’s break these down:  
 
-![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
+![The Github repository](../../../docs/content/imgs/quickstart/t2_03.png)
 Anatomy of an Agent from the Agent Landscape Survey  
 
 1. **Profile**  
@@ -71,7 +71,7 @@ In an ecosystem where every developer might have their unique approach to crafti
 
 Now we understand the architecture of an agent lets look inside the Forge. It’s a well-organized template, meticulously architected to cater to the needs of agent developers. Let
 
-![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
+![The Github repository](../../../docs/content/imgs/quickstart/t2_04.png)
 
 #### Forge’s Project Structure: A Bird’s-Eye View
 
