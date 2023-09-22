@@ -1,6 +1,6 @@
 site_name: AutoGPT Documentation
 site_url: https://docs.agpt.co/
-repo_url: https://github.com/Significant-Gravitas/Auto-GPT
+repo_url: https://github.com/Significant-Gravitas/AutoGPT
 docs_dir: content
 nav:
   - Home: index.md
@@ -14,7 +14,7 @@ nav:
       - Voice: configuration/voice.md
       - Image Generation: configuration/imagegen.md
 
-  - Help us improve Auto-GPT:
+  - Help us improve AutoGPT:
       - Share your debug logs with us: share-your-logs.md
       - Contribution guide: contributing.md
       - Running tests: testing.md
@@ -36,7 +36,7 @@ nav:
   - Submit a Challenge: challenges/submit.md
   - Beat a Challenge: challenges/beat.md
 
-  - License: https://github.com/Significant-Gravitas/Auto-GPT/blob/master/LICENSE
+  - License: https://github.com/Significant-Gravitas/AutoGPT/blob/master/LICENSE
 
 theme:
   name: material
