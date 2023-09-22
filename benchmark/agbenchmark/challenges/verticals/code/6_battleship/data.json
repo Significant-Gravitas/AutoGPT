@@ -4,7 +4,7 @@
     ],
     "cutoff": 90,
     "dependencies": [
-        "TestUrlShortener",
+        "TestTicTacToe",
         "TestReadFile"
     ],
     "eval_id": "5a32418d-1c3a-4af1-8dc4-8d4c29bed21a",

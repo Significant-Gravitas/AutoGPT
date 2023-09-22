@@ -1,3 +1,4 @@
+// TODO: Remove the ability to have null values when benchmark implementation is complete
 /// TaskInfo holds information related to a specific benchmark task.
 ///
 /// The class encapsulates various attributes of a task, such as the path to the data file,
@@ -47,7 +48,7 @@ class TaskInfo {
   /// Returns a new TaskInfo populated with values from the map.
   factory TaskInfo.fromJson(Map<String, dynamic> json) => TaskInfo(
         dataPath: json['data_path'],
-        isRegression: json['is_regression'],
+        isRegression: json['is_regression'] ?? false,
         category: List<String>.from(json['category']),
         task: json['task'],
         answer: json['answer'],

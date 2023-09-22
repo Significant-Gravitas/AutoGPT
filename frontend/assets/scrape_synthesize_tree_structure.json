@@ -11,12 +11,6 @@
             "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
-        },
-        {
-            "arrows": "to",
-            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
-            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
-            "to": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]"
         }
     ],
     "nodes": [
@@ -28,8 +22,7 @@
                 ],
                 "cutoff": 240,
                 "dependencies": [
-                    "TestReadFile",
-                    "TestWriteFile"
+                    "TestReadFile"
                 ],
                 "eval_id": "76e4c56c-8d57-423e-9cc1-1fff5f58dee6",
                 "ground": {

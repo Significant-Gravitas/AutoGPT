@@ -59,7 +59,7 @@ Want to build your own groundbreaking agent using AutoGPT? 🛠️ Fork this rep
 
 ### 🔄 Agent Protocol
 
-🔌 **Standardize to Maximize!** To maintain a uniform standard and ensure seamless compatibility, AutoGPT employs the [agent protocol](https://github.com/AI-Engineers-Foundation/agent-protocol) from the AI Engineer Foundation. This standardizes the communication pathways from your agent to the frontend and benchmark.
+🔌 **Standardize to Maximize!** To maintain a uniform standard and ensure seamless compatibility, AutoGPT employs the [agent protocol](https://agentprotocol.ai/) from the AI Engineer Foundation. This standardizes the communication pathways from your agent to the frontend and benchmark.
 
 ### 🤔 Questions? Problems? Suggestions?
 
