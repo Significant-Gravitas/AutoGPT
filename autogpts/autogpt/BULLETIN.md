@@ -2,7 +2,7 @@
 # --------------
 🌎 *Official Website*: https://agpt.co.
 📖 *User Guide*: https://docs.agpt.co.
-👩 *Contributors Wiki*: https://github.com/Significant-Gravitas/AutoGPT/wiki/Contributing.
+👩 *Contributors Wiki*: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.
 
 # v0.4.7 RELEASE HIGHLIGHTS! 🚀
 # -----------------------------
