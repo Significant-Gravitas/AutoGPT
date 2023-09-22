@@ -5,7 +5,7 @@ authors = ["Significant Gravitas <support@agpt.co>"]
 maintainers = ["Reinier van der Leer <reinier.vanderleer@agpt.co>"]
 description = "An open-source attempt at an autonomous generalist agent"
 readme = "README.md"
-repository = "https://github.com/Significant-Gravitas/Auto-GPT/tree/master/autogpts/agpt"
+repository = "https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/agpt"
 # documentation = "https://docs.agpt.co/autogpts/agpt"  # TODO
 classifiers = [
     "Programming Language :: Python :: 3",

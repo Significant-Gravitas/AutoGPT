@@ -37,7 +37,7 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
     command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
 
     ai_config = AIConfig(
-        ai_name="Auto-GPT",
+        ai_name="AutoGPT",
         ai_role="a multi-purpose AI assistant.",
         ai_goals=[task],
     )

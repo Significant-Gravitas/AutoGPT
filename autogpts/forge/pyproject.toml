@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "Auto-GPT-Forge"
+name = "AutoGPT-Forge"
 version = "0.1.0"
 description = ""
 authors = ["Craig Swift <craigswift13@gmail.com>"]

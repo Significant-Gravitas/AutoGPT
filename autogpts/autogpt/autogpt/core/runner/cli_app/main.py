@@ -14,7 +14,7 @@ from autogpt.core.runner.client_lib.parser import (
 
 
 async def run_auto_gpt(user_configuration: dict):
-    """Run the Auto-GPT CLI client."""
+    """Run the AutoGPT CLI client."""
 
     configure_root_logger()
 
@@ -38,7 +38,7 @@ async def run_auto_gpt(user_configuration: dict):
         # Step 2. Get a name and goals for the agent.
         # First we need to figure out what the user wants to do with the agent.
         # We'll do this by asking the user for a prompt.
-        user_objective = click.prompt("What do you want Auto-GPT to do?")
+        user_objective = click.prompt("What do you want AutoGPT to do?")
         # Ask a language model to determine a name and goals for a suitable agent.
         name_and_goals = await SimpleAgent.determine_agent_name_and_goals(
             user_objective,

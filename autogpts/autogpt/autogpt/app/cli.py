@@ -17,7 +17,7 @@ import click
     "--ai-settings",
     "-C",
     help=(
-        "Specifies which ai_settings.yaml file to use, relative to the Auto-GPT"
+        "Specifies which ai_settings.yaml file to use, relative to the AutoGPT"
         " root directory. Will also automatically skip the re-prompt."
     ),
 )
@@ -51,7 +51,7 @@ import click
 @click.option(
     "--allow-downloads",
     is_flag=True,
-    help="Dangerous: Allows Auto-GPT to download files natively.",
+    help="Dangerous: Allows AutoGPT to download files natively.",
 )
 @click.option(
     "--skip-news",
@@ -112,7 +112,7 @@ def main(
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
 
-    Start an Auto-GPT assistant.
+    Start an AutoGPT assistant.
     """
     # Put imports inside function to avoid importing everything when starting the CLI
     from autogpt.app.main import run_auto_gpt

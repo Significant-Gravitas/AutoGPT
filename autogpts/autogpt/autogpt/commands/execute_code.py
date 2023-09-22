@@ -118,7 +118,7 @@ def execute_python_file(
 
     if we_are_running_in_a_docker_container():
         logger.debug(
-            f"Auto-GPT is running in a Docker container; executing {file_path} directly..."
+            f"AutoGPT is running in a Docker container; executing {file_path} directly..."
         )
         result = subprocess.run(
             ["python", "-B", str(file_path)] + args,
@@ -131,7 +131,7 @@ def execute_python_file(
         else:
             raise CodeExecutionError(result.stderr)
 
-    logger.debug("Auto-GPT is not running in a Docker container")
+    logger.debug("AutoGPT is not running in a Docker container")
     try:
         client = docker.from_env()
         # You can replace this with the desired Python image/version
