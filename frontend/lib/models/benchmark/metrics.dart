@@ -1,3 +1,4 @@
+// TODO: Remove the ability to have null values when benchmark implementation is complete
 /// `Metrics` holds key performance metrics related to a benchmark test run.
 ///
 /// The class encapsulates various data points like difficulty, success rate,
@@ -45,12 +46,12 @@ class Metrics {
   ///
   /// Returns a new `Metrics` populated with values from the map.
   factory Metrics.fromJson(Map<String, dynamic> json) => Metrics(
-        difficulty: json['difficulty'],
+        difficulty: json['difficulty'] ?? "",
         success: json['success'],
         attempted: json['attempted'],
-        successPercentage: json['success_percentage'].toDouble(),
-        cost: json['cost'],
-        runTime: json['run_time'],
+        successPercentage: json['success_percentage'].toDouble() ?? 0.0,
+        cost: json['cost'] ?? "",
+        runTime: json['run_time'] ?? "",
       );
 
   /// Converts the `Metrics` instance to a map.
