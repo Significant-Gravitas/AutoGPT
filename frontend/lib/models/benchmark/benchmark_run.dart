@@ -4,6 +4,7 @@ import 'package:auto_gpt_flutter_client/models/benchmark/repository_info.dart';
 import 'package:auto_gpt_flutter_client/models/benchmark/run_details.dart';
 import 'package:auto_gpt_flutter_client/models/benchmark/task_info.dart';
 
+// TODO: Remove the ability to have null values when benchmark implementation is complete
 /// `BenchmarkRun` represents a complete benchmark run and encapsulates all associated data.
 ///
 /// This class is a comprehensive model that includes various sub-models, each corresponding to a different aspect of a benchmark run.
@@ -54,7 +55,7 @@ class BenchmarkRun {
         runDetails: RunDetails.fromJson(json['run_details']),
         taskInfo: TaskInfo.fromJson(json['task_info']),
         metrics: Metrics.fromJson(json['metrics']),
-        reachedCutoff: json['reached_cutoff'],
+        reachedCutoff: json['reached_cutoff'] ?? false,
         config: Config.fromJson(json['config']),
       );
 
