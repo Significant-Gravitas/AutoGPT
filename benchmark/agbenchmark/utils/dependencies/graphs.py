@@ -275,17 +275,64 @@ def graph_interactive_network(
     graph_data = {"nodes": nt.nodes, "edges": nt.edges}
 
     home_path = Path.cwd()
-
     write_pretty_json(graph_data, home_path / "frontend" / "public" / "graph.json")
+
+    flutter_app_path = home_path.parent / "frontend" / "assets"
+
     # Optionally, save to a file
     # Sync with the flutter UI
     # this literally only works in the AutoGPT repo, but this part of the code is not reached if BUILD_SKILL_TREE is false
+    write_pretty_json(graph_data, flutter_app_path / "tree_structure.json")
+    import json
+
+    # Extract node IDs with category "coding"
+
+    coding_tree = filter_tree_by_category(graph_data, "coding")
     write_pretty_json(
-        graph_data,
-        str(home_path.parent / "frontend" / "assets" / "tree_structure.json"),
+        coding_tree,
+        flutter_app_path / "coding_tree_structure.json",
     )
+
+    data_tree = filter_tree_by_category(graph_data, "data")
+    write_pretty_json(
+        data_tree,
+        flutter_app_path / "data_tree_structure.json",
+    )
+
+    general_tree = filter_tree_by_category(graph_data, "general")
+    write_pretty_json(
+        coding_tree,
+        flutter_app_path / "general_tree_structure.json",
+    )
+
+    scrape_synthesize_tree = filter_tree_by_category(graph_data, "scrape_synthesize")
+    write_pretty_json(
+        scrape_synthesize_tree,
+        flutter_app_path / "scrape_synthesize_tree_structure.json",
+    )
+    # If you want to convert back to JSON
+    filtered_json = json.dumps(graph_data, indent=4)
+    print(filtered_json)
 
     if html_graph_path:
         file_path = str(Path(html_graph_path).resolve())
 
         nt.write_html(file_path)
+
+
+def filter_tree_by_category(graph_data, category):
+    category_node_ids = set()
+    for node in graph_data["nodes"]:
+        if category in node["data"]["category"]:
+            category_node_ids.add(node["id"])
+    # Filter nodes
+    graph_data["nodes"] = [
+        node for node in graph_data["nodes"] if node["id"] in category_node_ids
+    ]
+    # Filter edges
+    graph_data["edges"] = [
+        edge
+        for edge in graph_data["edges"]
+        if edge["from"] in category_node_ids or edge["to"] in category_node_ids
+    ]
+    return graph_data
