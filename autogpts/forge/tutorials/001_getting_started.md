@@ -1,27 +1,27 @@
-# Setting the Stage: Navigating the Forge Environment
+## AutoGPT Forge: A Comprehensive Guide to Your First Steps
 
-## Introduction
-Welcome to the Quickstart Guide! This tutorial is designed to walk you through the process of setting up and running your own AutoGPT agent in the Forge environment. Whether you are a seasoned AI developer or just starting out, this guide will equip you with the necessary steps to jumpstart your journey in the world of AI development with AutoGPT. 
+Welcome to the Quickstart Guide! This tutorial is designed to walk you through the process of setting up and running your own AutoGPT agent in the Forge environment. Whether you are a seasoned AI developer or just starting out, this guide will equip you with the necessary steps to jumpstart your journey in the world of AI development with AutoGPT.
 
 ## Section 1: Understanding the Forge
 
-### Overview of the Forge 
 The Forge serves as a comprehensive template for building your own AutoGPT agent. It not only provides the setting for setting up, creating, and running your agent, but also includes the benchmarking system and the frontend. These integrated components facilitate the development and performance evaluation of your agent.
+It plays a pivotal role in the AutoGPT ecosystem, functioning as the stem from which an agent is created. It is designed to be integrated with the agent protocol, the benchmark system, and the AutoGPT frontend, thereby forming a cohesive and robust environment for agent development.
 
-### Importance of the Forge in AutoGPT
+This harmonization ensures that developers adhere to a standardized framework, which significantly streamlines the development process. Consequently, it eliminates the need to construct boilerplate code, allowing developers to channel their efforts and creativity directly into crafting the “brains” of the agent. By focusing on enhancing the agent’s intelligence and functionalities, developers can truly leverage the potential of AutoGPT, creating agents that are not only efficient but also innovative and advanced. The Forge, therefore, stands as a beacon of innovation and efficiency, propelling the development of AutoGPT agents to new heights.
 
-The Forge plays a pivotal role in the AutoGPT ecosystem, functioning as the very stem from which an agent burgeons. It is intricately designed to foster seamless integration with the agent protocol, the benchmark system, and the AutoGPT frontend, thereby forming a cohesive and robust environment for agent development. This harmonization ensures that developers adhere to a standardized framework, which significantly streamlines the development process. Consequently, it eliminates the need to construct boilerplate code, allowing developers to channel their efforts and creativity directly into crafting the "brains" of the agent. By focusing on enhancing the agent's intelligence and functionalities, developers can truly leverage the potential of AutoGPT, creating agents that are not only efficient but also innovative and advanced. The Forge, therefore, stands as a beacon of innovation and efficiency, propelling the development of AutoGPT agents to new heights.
+### System Requirements
 
-### System Requirements: Linux, Mac, Windows Subsystem for Linux (WSL)
 This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux (WSL). If you are using a Windows system, you will need to install WSL. You can find the installation instructions for WSL [here](https://learn.microsoft.com/en-us/windows/wsl/).
 
 ## Section 2: Setting up the Forge Environment
 
-### Forking the Repository
-To begin, you need to fork the repository by navigating to the main page of the repository and clicking "Fork" in the top-right corner. Follow the on-screen instructions to complete the process. 
+To begin, you need to fork the [repository](https://github.com/Significant-Gravitas/Auto-GPT) by navigating to the main page of the repository and clicking "Fork" in the top-right corner. 
 
-![Repository](../../../docs/content/imgs/quickstart/001_repo.png)
-![Create Fork UI](../../../docs/content/imgs/quickstart/002_fork.png)
+![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
+
+Follow the on-screen instructions to complete the process. 
+
+![Create Fork Page](../../../docs/content/imgs/quickstart/002_fork.png)
 
 ### Cloning the Repository
 Next, clone the repository to your local system. Ensure you have Git installed to proceed with this step. You can download Git from [here](https://git-scm.com/downloads). Then clone the repo using the following command and the url for your repo. You can find the corect url by clicking on the green Code button on your repos main page.
@@ -33,7 +33,7 @@ git clone https://github.com/Significant-Gravitas/Auto-GPT.git
 
 ![Clone the Repository](../../../docs/content/imgs/quickstart/003_clone.png)
 
-### Setting up the Project using `./run setup`
+### Setting up the Project
 
 Once you have clone the project change your directory to the newly cloned project:
 ```bash
@@ -47,23 +47,36 @@ To set up the project, utilize the `./run setup` command in the terminal. Follow
 
 ## Section 3: Creating Your Agent
 
-### Naming Your Agent
 Choose a suitable name for your agent. It should be unique and descriptive. Examples of valid names include swiftyosgpt, SwiftyosAgent, or swiftyos_agent.
 
-### Using `./run agent create YOUR_AGENT_NAME`
-Create your agent template using the command `./run agent create YOUR_AGENT_NAME`, replacing YOUR_AGENT_NAME with the name you chose in the previous step.
+Create your agent template using the command:
+
+```bash
+ ./run agent create YOUR_AGENT_NAME
+ ```
+ Replacing YOUR_AGENT_NAME with the name you chose in the previous step.
 
 ![Create an Agent](../../../docs/content/imgs/quickstart/007_create_agent.png)
 
-### Entering the Arena with `./run arena enter YOUR_AGENT_NAME`
-Officially enter the Arena by executing the command `./run arena enter YOUR_AGENT_NAME`.
+### Entering the Arena 
+The Arena is a collection of all AutoGPT agents. It serves as a competitive environment where all agents are assessed to find the best generalist agent. Entering the Arena is a required step for participating in AutoGPT hackathons. It allows your agent to be part of a diverse and dynamic ecosystem, where it is periodically assessed by the benchmark to bre scored on the offical leaderboard.
+
+Officially enter the Arena by executing the command:
+
+```bash
+./run arena enter YOUR_AGENT_NAME
+```
 
 ![Enter the Arena](../../../docs/content/imgs/quickstart/008_enter_arena.png)
 
 ## Section 4: Running Your Agent
 
-### Starting Your Agent with `./run agent start YOUR_AGENT_NAME`
-Begin by starting your agent using the command `./run agent start YOUR_AGENT_NAME`. This will initiate the agent on `http://localhost:8000/`.
+Begin by starting your agent using the command:
+
+```bash
+./run agent start YOUR_AGENT_NAME
+```
+This will initiate the agent on `http://localhost:8000/`.
 
 ![Start the Agent](../../../docs/content/imgs/quickstart/009_start_agent.png)
 
@@ -74,27 +87,18 @@ Access the frontend at `http://localhost:8000/` and log in using a Google or Git
 ![Home](../../../docs/content/imgs/quickstart/011_home.png)
 
 ### Stopping and Restarting Your Agent
-When needed, use Ctrl+C to end the session or the `./run agent stop` command to forcefully stop the agent. You can restart it using the start command.
-
-## Section 5: Benchmarking Your Agent
-
-### Understanding the Benchmarking System
-The benchmarking system in the Forge environment allows you to test your agent's skills in various categories. Use the commands detailed in the content section to navigate through the benchmarking system.
-
-### Using Benchmark Commands to Test Your Agent
-Learn the available benchmark categories and tests using the commands `./run benchmark categories list` and `./run benchmark tests list`.
-
-![Tests](../../../docs/content/imgs/quickstart/012_tests.png)
-
-### Starting the Benchmark with `./run benchmark start YOUR_AGENT_NAME`
-Initiate the benchmarking process using the command `./run benchmark start YOUR_AGENT_NAME`.
+When needed, use Ctrl+C to end the session or use the stop command:
+```bash
+./run agent stop
+``` 
+This command forcefully stops the agent. You can also restart it using the start command.
 
 ## Conclusion
 
-In this tutorial, you have learned how to set up the project, create, run, and benchmark your AutoGPT agent. 
+In our exploration today, we’ve covered the essentials of working with AutoGPT projects. We began by laying out the groundwork, ensuring you have all the right tools in place. From there, we delved into the specifics of building an effective AutoGPT agent. Trust me, with the right steps, it becomes a straightforward process.
 
 ### Next Steps: Building and Enhancing Your Agent
-With the foundation set, you are now ready to build and enhance your agent, exploring various functionalities and improving its performance.
+With the foundation set, you are now ready to build and enhance your agent, exploring various functionalities and improving its performance. The next tutorial will look into the anatomy of an agent and how to add some basic functionality.
 
 ## Additional Resources
 
