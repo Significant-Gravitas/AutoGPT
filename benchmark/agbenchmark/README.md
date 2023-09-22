@@ -57,7 +57,7 @@ https://github.com/smol-ai/developer/pull/114/files
 
 2- Create the submodule and the github workflow by following the same pattern as this example:
 
-https://github.com/Significant-Gravitas/AutoGPT-Benchmarks/pull/48/files
+https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks/pull/48/files
 
 ## How do I run agent in different environments?
 
