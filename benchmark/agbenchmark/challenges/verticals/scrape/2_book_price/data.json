@@ -1,6 +1,7 @@
 {
     "category": [
-        "retrieval"
+        "retrieval",
+        "general"
     ],
     "cutoff": 60,
     "dependencies": [
