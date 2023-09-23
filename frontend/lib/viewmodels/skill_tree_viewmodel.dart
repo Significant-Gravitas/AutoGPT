@@ -97,36 +97,40 @@ class SkillTreeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // TODO: Do we want to continue testing other branches of tree if one branch side fails benchmarking?
   void populateSelectedNodeHierarchy(String startNodeId) {
-    // Initialize an empty list to hold the nodes in the hierarchy.
-    _selectedNodeHierarchy = [];
+    // Initialize an empty list to hold the nodes in all hierarchies.
+    _selectedNodeHierarchy = <SkillTreeNode>[];
 
-    // Find the starting node (the selected node) in the skill tree nodes list.
-    SkillTreeNode? currentNode =
-        _skillTreeNodes.firstWhere((node) => node.id == startNodeId);
+    // Initialize a set to keep track of nodes that have been added.
+    final addedNodes = <String>{};
 
-    // Loop through the tree to populate the hierarchy list.
-    // The loop will continue as long as there's a valid current node.
-    while (currentNode != null) {
-      // Add the current node to the hierarchy list.
-      _selectedNodeHierarchy!.add(currentNode);
+    // Start the recursive population of the hierarchy from the startNodeId.
+    recursivePopulateHierarchy(startNodeId, addedNodes);
 
-      // Find the parent node by looking through the skill tree edges.
-      // We find the edge where the 'to' field matches the ID of the current node.
-      SkillTreeEdge? parentEdge = _skillTreeEdges
-          .firstWhereOrNull((edge) => edge.to == currentNode?.id);
+    // Notify listeners about the change in the selectedNodeHierarchy state.
+    notifyListeners();
+  }
 
-      // If a parent edge is found, find the corresponding parent node.
-      if (parentEdge != null) {
-        // The 'from' field of the edge gives us the ID of the parent node.
-        // We find that node in the skill tree nodes list.
-        currentNode = _skillTreeNodes
-            .firstWhereOrNull((node) => node.id == parentEdge.from);
-      } else {
-        // If no parent edge is found, it means we've reached the root node.
-        // We set currentNode to null to exit the loop.
-        currentNode = null;
+  void recursivePopulateHierarchy(String nodeId, Set<String> addedNodes) {
+    // Find the current node in the skill tree nodes list.
+    final currentNode =
+        _skillTreeNodes.firstWhereOrNull((node) => node.id == nodeId);
+
+    // If the node is found and it hasn't been added yet, proceed with the population.
+    if (currentNode != null && addedNodes.add(currentNode.id)) {
+      // Find all parent edges for the current node.
+      final parentEdges =
+          _skillTreeEdges.where((edge) => edge.to == currentNode.id);
+
+      // For each parent edge found, recurse to the parent node.
+      for (final parentEdge in parentEdges) {
+        // Recurse to the parent node identified by the 'from' field of the edge.
+        recursivePopulateHierarchy(parentEdge.from, addedNodes);
       }
+
+      // After processing all parent nodes, add the current node to the list.
+      _selectedNodeHierarchy!.add(currentNode);
     }
   }
 
@@ -156,16 +160,14 @@ class SkillTreeViewModel extends ChangeNotifier {
     // Notify listeners
     notifyListeners();
 
-    // Populate benchmarkStatusList with reversed node hierarchy
-    final reversedSelectedNodeHierarchy =
-        List.from(_selectedNodeHierarchy!.reversed);
-    for (var node in reversedSelectedNodeHierarchy) {
+    // Populate benchmarkStatusList with node hierarchy
+    for (var node in _selectedNodeHierarchy!) {
       benchmarkStatusMap[node] = BenchmarkTaskStatus.notStarted;
     }
 
     try {
       // Loop through the nodes in the hierarchy
-      for (var node in reversedSelectedNodeHierarchy) {
+      for (var node in _selectedNodeHierarchy!) {
         benchmarkStatusMap[node] = BenchmarkTaskStatus.inProgress;
         notifyListeners();
 

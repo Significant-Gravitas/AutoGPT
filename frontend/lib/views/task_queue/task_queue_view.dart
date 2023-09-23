@@ -11,9 +11,8 @@ class TaskQueueView extends StatelessWidget {
   Widget build(BuildContext context) {
     final viewModel = Provider.of<SkillTreeViewModel>(context);
 
-    // Reverse the node hierarchy
-    final reversedHierarchy =
-        viewModel.selectedNodeHierarchy?.reversed.toList() ?? [];
+    // Node hierarchy
+    final nodeHierarchy = viewModel.selectedNodeHierarchy ?? [];
 
     return Material(
       color: Colors.white,
@@ -21,9 +20,9 @@ class TaskQueueView extends StatelessWidget {
         children: [
           // The list of tasks (tiles)
           ListView.builder(
-            itemCount: reversedHierarchy.length,
+            itemCount: nodeHierarchy.length,
             itemBuilder: (context, index) {
-              final node = reversedHierarchy[index];
+              final node = nodeHierarchy[index];
 
               // Choose the appropriate leading widget based on the task status
               Widget leadingWidget;
