@@ -411,7 +411,8 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "retrieval"
+                    "retrieval",
+                    "general"
                 ],
                 "cutoff": 60,
                 "dependencies": [
