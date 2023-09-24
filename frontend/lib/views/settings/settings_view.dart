@@ -13,7 +13,10 @@ class SettingsView extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (context) => SettingsViewModel(),
       child: Scaffold(
-        appBar: AppBar(title: const Text('Settings')),
+        appBar: AppBar(
+            backgroundColor: Colors.grey,
+            foregroundColor: Colors.black,
+            title: const Text('Settings')),
         body: Consumer<SettingsViewModel>(
           builder: (context, viewModel, child) {
             // A list of settings is displayed using [ListView].
