@@ -62,6 +62,13 @@ class SettingsView extends StatelessWidget {
                     ],
                   ),
                 ),
+                ListTile(
+                  title: Text('Sign Out'),
+                  onTap: () {
+                    viewModel.signOut();
+                    // Optionally, navigate to a different view or show a message
+                  },
+                ),
               ],
             );
           },
