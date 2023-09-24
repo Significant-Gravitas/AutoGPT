@@ -1,4 +1,5 @@
 import 'package:auto_gpt_flutter_client/services/leaderboard_service.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/auth/firebase_auth_view.dart';
 import 'package:flutter/material.dart';
 import 'views/main_layout.dart';
@@ -86,6 +87,9 @@ class MyApp extends StatelessWidget {
           if (snapshot.hasData && snapshot.data != null) {
             return MultiProvider(
               providers: [
+                ChangeNotifierProvider(
+                  create: (context) => SettingsViewModel(),
+                ),
                 ChangeNotifierProvider(
                     create: (context) => ChatViewModel(
                         Provider.of<ChatService>(context, listen: false))),
