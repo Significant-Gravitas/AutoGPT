@@ -1,4 +1,6 @@
+import 'package:auto_gpt_flutter_client/services/auth_service.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// [SettingsViewModel] is responsible for managing the state and logic
 /// for the [SettingsView]. It extends [ChangeNotifier] to provide
@@ -15,32 +17,48 @@ class SettingsViewModel extends ChangeNotifier {
   String get baseURL => _baseURL;
   int get continuousModeSteps => _continuousModeSteps;
 
+  final AuthService _authService = AuthService();
+
+  SettingsViewModel() {
+    _loadPreferences(); // Load stored preferences when the view model is created
+  }
+
+  // Method to load stored preferences
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    _isDarkModeEnabled = prefs.getBool('isDarkModeEnabled') ?? false;
+    _isDeveloperModeEnabled = prefs.getBool('isDeveloperModeEnabled') ?? false;
+    _baseURL = prefs.getString('baseURL') ?? '';
+    _continuousModeSteps = prefs.getInt('continuousModeSteps') ?? 10;
+    notifyListeners();
+  }
+
   /// Toggles the state of Dark Mode and notifies listeners.
   void toggleDarkMode(bool value) {
     _isDarkModeEnabled = value;
     notifyListeners();
-    // TODO: Save to local storage or sync with the server
+    _saveBoolPreference('isDarkModeEnabled', value);
   }
 
   /// Toggles the state of Developer Mode and notifies listeners.
   void toggleDeveloperMode(bool value) {
     _isDeveloperModeEnabled = value;
     notifyListeners();
-    // TODO: Save to local storage or sync with the server
+    _saveBoolPreference('isDeveloperModeEnabled', value);
   }
 
   /// Updates the state of Base URL and notifies listeners.
   void updateBaseURL(String value) {
     _baseURL = value;
     notifyListeners();
-    // TODO: Save to local storage or sync with the server
+    _saveStringPreference('baseURL', value);
   }
 
   /// Increments the number of Continuous Mode Steps and notifies listeners.
   void incrementContinuousModeSteps() {
     _continuousModeSteps += 1;
     notifyListeners();
-    // TODO: Save to local storage or sync with the server
+    _saveIntPreference('continuousModeSteps', _continuousModeSteps);
   }
 
   /// Decrements the number of Continuous Mode Steps and notifies listeners.
@@ -49,7 +67,29 @@ class SettingsViewModel extends ChangeNotifier {
       // Ensure that the number of steps is at least 1
       _continuousModeSteps -= 1;
       notifyListeners();
-      // TODO: Save to local storage or sync with the server
+      _saveIntPreference('continuousModeSteps', _continuousModeSteps);
     }
+  }
+
+  // TODO: Create a service for interacting with shared preferences
+  // Helper methods to save preferences
+  Future<void> _saveBoolPreference(String key, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setBool(key, value);
+  }
+
+  Future<void> _saveStringPreference(String key, String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setString(key, value);
+  }
+
+  Future<void> _saveIntPreference(String key, int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setInt(key, value);
+  }
+
+  // Method to sign out
+  Future<void> signOut() async {
+    await _authService.signOut();
   }
 }
