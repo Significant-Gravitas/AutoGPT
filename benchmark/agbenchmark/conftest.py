@@ -255,7 +255,13 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
 
     if call.when == "call":
         answers = getattr(item, "answers", None)
-        generate_single_call_report(item, call, challenge_data, answers)
+        challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
+        test_name = item.nodeid.split("::")[1]
+        item.test_name = test_name
+
+        generate_single_call_report(
+            item, call, challenge_data, answers, challenge_location, test_name
+        )
 
     if call.when == "teardown":
         finalize_reports(item, challenge_data)
@@ -372,7 +378,7 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         #     or config.getoption("--no_dep")
         #     or config.getoption("--maintain")
         # ):
-        dependencies = []
+        dependencies = test_class_instance.dependencies
 
         # Add depends marker dynamically
         item.add_marker(pytest.mark.depends(on=dependencies, name=name))

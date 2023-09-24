@@ -35,10 +35,19 @@ class SideBarView extends StatelessWidget {
                     color: selectedView == 'SkillTreeView'
                         ? Colors.blue
                         : Colors.black,
-                    icon: const Icon(Icons.emoji_events), // trophy icon
+                    icon: const Icon(Icons.emoji_events),
                     onPressed: skillTreeViewModel.isBenchmarkRunning
                         ? null
                         : () => selectedViewNotifier.value = 'SkillTreeView',
+                  ),
+                  IconButton(
+                    splashRadius: 0.1,
+                    color: selectedView == 'SettingsView'
+                        ? Colors.blue
+                        : Colors.black,
+                    icon: const Icon(Icons.settings),
+                    onPressed: () =>
+                        selectedViewNotifier.value = 'SettingsView',
                   ),
                 ],
               ),

@@ -1,4 +1,20 @@
-from forge.sdk import Agent, AgentDB, Step, StepRequestBody, Workspace
+import json
+import pprint
+
+from forge.sdk import (
+    Agent,
+    AgentDB,
+    Step,
+    StepRequestBody,
+    Workspace,
+    ForgeLogger,
+    Task,
+    TaskRequestBody,
+    PromptEngine,
+    chat_completion_request,
+)
+
+LOG = ForgeLogger(__name__)
 
 
 class ForgeAgent(Agent):
@@ -63,6 +79,21 @@ class ForgeAgent(Agent):
         """
         super().__init__(database, workspace)
 
+    async def create_task(self, task_request: TaskRequestBody) -> Task:
+        """
+        The agent protocol, which is the core of the Forge, works by creating a task and then
+        executing steps for that task. This method is called when the agent is asked to create
+        a task.
+
+        We are hooking into function to add a custom log message. Though you can do anything you
+        want here.
+        """
+        task = await super().create_task(task_request)
+        LOG.info(
+            f"📦 Task created: {task.task_id} input: {task.input[:40]}{'...' if len(task.input) > 40 else ''}"
+        )
+        return task
+
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
         """
         The agent protocol, which is the core of the Forge, works by creating a task and then
@@ -88,12 +119,22 @@ class ForgeAgent(Agent):
         multiple steps. Returning a request to continue in the step output, the user can then decide
         if they want the agent to continue or not.
         """
-
         # An example that
         self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
         step = await self.db.create_step(
             task_id=task_id, input=step_request, is_last=True
         )
+        step_input = "None"
+        if step.input:
+            step_input = step.input[:19]
+        message = f"\t🔄 Step executed: {step.step_id} input: {step_input}"
+        if step.is_last:
+            message = (
+                f"\t✅ Final Step completed: {step.step_id} input: {step_input}"
+            )
+
+        LOG.info(message)
+
         artifact = await self.db.create_artifact(
             task_id=task_id,
             step_id=step.step_id,

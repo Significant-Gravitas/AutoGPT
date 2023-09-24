@@ -42,6 +42,7 @@ dependencies:
   graphview: ^1.2.0
   firebase_core: ^2.15.1
   firebase_auth: ^4.9.0
+  firebase_analytics: ^10.5.0
   google_sign_in: ^6.1.5
   uuid: ^4.0.0
 

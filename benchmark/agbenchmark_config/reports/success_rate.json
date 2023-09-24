@@ -1,10 +1,62 @@
 {
-    "TestWriteFile": [
-        false,
-        false,
-        false,
-        false,
-        false,
+    "BasicRetrieval": [
         false
+    ],
+    "Battleship": [
+        false
+    ],
+    "FileOrganizer": [
+        false
+    ],
+    "PasswordGenerator": [
+        false
+    ],
+    "ReadFile": [
+        false
+    ],
+    "RememberGoalHard": [
+        false
+    ],
+    "RememberGoalSimple": [
+        false
+    ],
+    "RememberGoal_Simple": [
+        false
+    ],
+    "Retrieval3": [
+        false
+    ],
+    "RevenueRetrieval": [
+        false
+    ],
+    "RevenueRetrieval1.0": [
+        false
+    ],
+    "RevenueRetrieval1.1": [
+        false
+    ],
+    "RevenueRetrieval1.2": [
+        false
+    ],
+    "RevenueRetrieval2": [
+        false
+    ],
+    "Search": [
+        false
+    ],
+    "SynthesizeInfo": [
+        false
+    ],
+    "ThreeSum": [
+        false
+    ],
+    "TicTacToe": [
+        false
+    ],
+    "UrlShortener": [
+        false
+    ],
+    "WriteFile": [
+        true
     ]
 }

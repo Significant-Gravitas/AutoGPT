@@ -144,7 +144,7 @@ class PromptGenerator:
         # Construct full prompt
         full_prompt_parts = (
             self._generate_intro_prompt()
-            + self._generate_os_info(agent.config)
+            + self._generate_os_info(agent.legacy_config)
             + self._generate_body(
                 agent=agent,
                 additional_constraints=self._generate_budget_info(),

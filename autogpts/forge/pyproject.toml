@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "Auto-GPT-Forge"
+name = "AutoGPT-Forge"
 version = "0.1.0"
 description = ""
 authors = ["Craig Swift <craigswift13@gmail.com>"]
@@ -19,6 +19,7 @@ agbenchmark = { path = "../../benchmark" }
 hypercorn = "^0.14.4"
 python-multipart = "^0.0.6"
 toml = "^0.10.2"
+jinja2 = "^3.1.2"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"

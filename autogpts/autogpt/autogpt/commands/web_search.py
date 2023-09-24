@@ -91,8 +91,8 @@ def google(query: str, agent: Agent, num_results: int = 8) -> str | list[str]:
 
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
-        api_key = agent.config.google_api_key
-        custom_search_engine_id = agent.config.google_custom_search_engine_id
+        api_key = agent.legacy_config.google_api_key
+        custom_search_engine_id = agent.legacy_config.google_custom_search_engine_id
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)

@@ -1,7 +1,10 @@
+import logging
+
 import pytest
 from openai.error import APIError, RateLimitError, ServiceUnavailableError
 
 from autogpt.llm.providers import openai
+from autogpt.logs.config import USER_FRIENDLY_OUTPUT_LOGGER
 
 
 @pytest.fixture(params=[RateLimitError, ServiceUnavailableError, APIError])
@@ -52,9 +55,17 @@ def test_retry_open_api_no_error(caplog: pytest.LogCaptureFixture):
     ids=["passing", "passing_edge", "failing", "failing_edge", "failing_no_retries"],
 )
 def test_retry_open_api_passing(
-    caplog: pytest.LogCaptureFixture, error, error_count, retry_count, failure
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
+    error_count: int,
+    retry_count: int,
+    failure: bool,
 ):
     """Tests the retry with simulated errors [RateLimitError, ServiceUnavailableError, APIError], but should ulimately pass"""
+
+    # Add capture handler to non-propagating logger
+    logging.getLogger(USER_FRIENDLY_OUTPUT_LOGGER).addHandler(caplog.handler)
+
     call_count = min(error_count, retry_count) + 1
 
     raises = error_factory(error, error_count, retry_count)

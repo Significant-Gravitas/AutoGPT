@@ -1,16 +1,17 @@
 import asyncio
 import os
-from uuid import uuid4
 import pathlib
+from io import BytesIO
+from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, UploadFile
-from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
 
+from .abilities.registry import AbilityRegister
 from .db import AgentDB
 from .errors import NotFoundError
 from .forge_log import ForgeLogger
@@ -26,6 +27,7 @@ class Agent:
     def __init__(self, database: AgentDB, workspace: Workspace):
         self.db = database
         self.workspace = workspace
+        self.abilities = AbilityRegister(self)
 
     def start(self, port: int = 8000, router: APIRouter = base_router):
         """
@@ -34,7 +36,7 @@ class Agent:
         config = Config()
         config.bind = [f"localhost:{port}"]
         app = FastAPI(
-            title="Auto-GPT Forge",
+            title="AutoGPT Forge",
             description="Modified version of The Agent Protocol.",
             version="v0.4",
         )
@@ -58,23 +60,27 @@ class Agent:
 
         app.include_router(router, prefix="/ap/v1")
         script_dir = os.path.dirname(os.path.realpath(__file__))
-        frontend_path = pathlib.Path(os.path.join(script_dir, "../../../../frontend/build/web")).resolve()
+        frontend_path = pathlib.Path(
+            os.path.join(script_dir, "../../../../frontend/build/web")
+        ).resolve()
 
         if os.path.exists(frontend_path):
-                app.mount("/app", StaticFiles(directory=frontend_path), name="app")
-                @app.get("/", include_in_schema=False)
-                async def root():
-                    return RedirectResponse(url='/app/index.html', status_code=307)
-        else:
-            LOG.warning(f"Frontend not found. {frontend_path} does not exist. The frontend will not be served")
-        app.add_middleware(AgentMiddleware, agent=self)
+            app.mount("/app", StaticFiles(directory=frontend_path), name="app")
 
-       
+            @app.get("/", include_in_schema=False)
+            async def root():
+                return RedirectResponse(url="/app/index.html", status_code=307)
+
+        else:
+            LOG.warning(
+                f"Frontend not found. {frontend_path} does not exist. The frontend will not be served"
+            )
+        app.add_middleware(AgentMiddleware, agent=self)
 
         config.loglevel = "ERROR"
         config.bind = [f"0.0.0.0:{port}"]
 
-        LOG.info(f"Agent server starting on http://{config.bind[0]}")
+        LOG.info(f"Agent server starting on http://localhost:{port}")
         asyncio.run(serve(app, config))
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
@@ -193,17 +199,17 @@ class Agent:
             artifact = await self.db.get_artifact(artifact_id)
             file_path = os.path.join(artifact.relative_path, artifact.file_name)
             retrieved_artifact = self.workspace.read(task_id=task_id, path=file_path)
-            path = artifact.file_name
-            with open(path, "wb") as f:
-                f.write(retrieved_artifact)
         except NotFoundError as e:
             raise
         except FileNotFoundError as e:
             raise
         except Exception as e:
             raise
-        return FileResponse(
-            # Note: mimetype is guessed in the FileResponse constructor
-            path=path,
-            filename=artifact.file_name,
+
+        return StreamingResponse(
+            BytesIO(retrieved_artifact),
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f"attachment; filename={artifact.file_name}"
+            },
         )

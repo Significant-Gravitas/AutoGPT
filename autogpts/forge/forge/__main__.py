@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 import forge.sdk.forge_log
+
 forge.sdk.forge_log.setup_logger()
 
 
@@ -41,12 +42,13 @@ if __name__ == "__main__":
     import forge.agent
     import forge.sdk.db
     from forge.sdk.workspace import LocalWorkspace
+
     print(logo)
     database_name = os.getenv("DATABASE_STRING")
     workspace = LocalWorkspace(os.getenv("AGENT_WORKSPACE"))
     port = os.getenv("PORT", 8000)
 
-    database = forge.sdk.db.AgentDB(database_name, debug_enabled=True)
+    database = forge.sdk.db.AgentDB(database_name, debug_enabled=False)
     agent = forge.agent.ForgeAgent(database=database, workspace=workspace)
 
     agent.start(port=port)

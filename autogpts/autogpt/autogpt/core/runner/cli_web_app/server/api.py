@@ -92,7 +92,7 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
     config.workspace_path = Workspace.init_workspace_directory(config)
     config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
     ai_config = AIConfig(
-        ai_name="Auto-GPT",
+        ai_name="AutoGPT",
         ai_role="a multi-purpose AI assistant.",
         ai_goals=[task],
     )

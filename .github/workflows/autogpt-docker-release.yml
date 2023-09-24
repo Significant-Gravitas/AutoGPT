@@ -1,4 +1,4 @@
-name: Auto-GPT Docker Release
+name: AutoGPT Docker Release
 
 on:
   release:

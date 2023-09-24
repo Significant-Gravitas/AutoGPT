@@ -13,7 +13,7 @@ class Message(TypedDict):
 
 class BaseOpenAIPlugin(AutoGPTPluginTemplate):
     """
-    This is a BaseOpenAIPlugin class for generating Auto-GPT plugins.
+    This is a BaseOpenAIPlugin class for generating AutoGPT plugins.
     """
 
     def __init__(self, manifests_specs_clients: dict):

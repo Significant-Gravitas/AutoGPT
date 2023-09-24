@@ -1,8 +1,8 @@
-# Setting up Auto-GPT
+# Setting up AutoGPT
 
 ## 📋 Requirements
 
-Choose an environment to run Auto-GPT in (pick one):
+Choose an environment to run AutoGPT in (pick one):
 
   - [Docker](https://docs.docker.com/get-docker/) (*recommended*)
   - Python 3.10 or later (instructions: [for Windows](https://www.tutorialspoint.com/how-to-install-python-in-windows))
@@ -14,7 +14,7 @@ Choose an environment to run Auto-GPT in (pick one):
 Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys).
 
 !!! attention
-    To use the OpenAI API with Auto-GPT, we strongly recommend **setting up billing**
+    To use the OpenAI API with AutoGPT, we strongly recommend **setting up billing**
     (AKA paid account). Free accounts are [limited][openai/api limits] to 3 API calls per
     minute, which can cause the application to crash.
 
@@ -29,16 +29,16 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 ![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./imgs/openai-api-key-billing-paid-account.png)
 
 
-## Setting up Auto-GPT
+## Setting up AutoGPT
 
 ### Set up with Docker
 
 1. Make sure you have Docker installed, see [requirements](#requirements)
-2. Create a project directory for Auto-GPT
+2. Create a project directory for AutoGPT
 
     ```shell
-    mkdir Auto-GPT
-    cd Auto-GPT
+    mkdir AutoGPT
+    cd AutoGPT
     ```
 
 3. In the project directory, create a file called `docker-compose.yml` with the following contents:
@@ -77,11 +77,11 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 6. Continue to [Run with Docker](#run-with-docker)
 
 !!! note "Docker only supports headless browsing"
-    Auto-GPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.
-    Please do not change this setting in combination with Docker, or Auto-GPT will crash.
+    AutoGPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.
+    Please do not change this setting in combination with Docker, or AutoGPT will crash.
 
 [Docker Hub]: https://hub.docker.com/r/significantgravitas/auto-gpt
-[repository]: https://github.com/Significant-Gravitas/Auto-GPT
+[repository]: https://github.com/Significant-Gravitas/AutoGPT
 
 
 ### Set up with Git
@@ -96,13 +96,13 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 1. Clone the repository
 
     ```shell
-    git clone -b stable https://github.com/Significant-Gravitas/Auto-GPT.git
+    git clone -b stable https://github.com/Significant-Gravitas/AutoGPT.git
     ```
 
 2. Navigate to the directory where you downloaded the repository
 
     ```shell
-    cd Auto-GPT/autogpts/autogpt
+    cd AutoGPT/autogpts/autogpt
     ```
 
 ### Set up without Git/Docker
@@ -110,7 +110,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 !!! warning
     We recommend to use Git or Docker, to make updating easier. Also note that some features such as Python execution will only work inside docker for security reasons.
 
-1. Download `Source code (zip)` from the [latest stable release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
+1. Download `Source code (zip)` from the [latest stable release](https://github.com/Significant-Gravitas/AutoGPT/releases/latest)
 2. Extract the zip-file into a folder
 
 
@@ -160,7 +160,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 [Azure OpenAI docs]: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line
 
 
-## Running Auto-GPT
+## Running AutoGPT
 
 ### Run with Docker
 
@@ -177,7 +177,7 @@ This will display the version of Docker Compose that is currently installed on y
 
 If you need to upgrade Docker Compose to a newer version, you can follow the installation instructions in the Docker documentation: https://docs.docker.com/compose/install/
 
-Once you have a recent version of Docker Compose, run the commands below in your Auto-GPT folder.
+Once you have a recent version of Docker Compose, run the commands below in your AutoGPT folder.
 
 1. Build the image. If you have pulled the image from Docker Hub, skip this step (NOTE: You *will* need to do this if you are modifying requirements.txt to add/remove dependencies like Python libs/frameworks) 
 
@@ -185,7 +185,7 @@ Once you have a recent version of Docker Compose, run the commands below in your
     docker compose build auto-gpt
     ```
         
-2. Run Auto-GPT
+2. Run AutoGPT
 
     ```shell
     docker compose run --rm auto-gpt
@@ -211,7 +211,7 @@ docker run -it --env-file=.env -v $PWD:/app auto-gpt
 docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuous
 ```
 
-[Docker Compose file]: https://github.com/Significant-Gravitas/Auto-GPT/blob/stable/docker-compose.yml
+[Docker Compose file]: https://github.com/Significant-Gravitas/AutoGPT/blob/stable/docker-compose.yml
 
 
 ### Run with Dev Container
@@ -239,7 +239,7 @@ pip3 install --upgrade pip
     Due to security reasons, certain features (like Python execution) will by default be disabled when running without docker. So, even if you want to run the program outside a docker container, you currently still need docker to actually run scripts.
 
 Simply run the startup script in your terminal. This will install any necessary Python
-packages and launch Auto-GPT.
+packages and launch AutoGPT.
 
 - On Linux/MacOS:
 

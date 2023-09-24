@@ -1,7 +1,6 @@
 from .helpers import user_friendly_output
 from .log_cycle import (
     CURRENT_CONTEXT_FILE_NAME,
-    FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     PROMPT_SUMMARY_FILE_NAME,
     PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,

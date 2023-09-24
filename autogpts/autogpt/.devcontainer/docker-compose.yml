@@ -9,4 +9,4 @@ services:
       context: ../
     tty: true
     volumes:
-      - ../:/workspace/Auto-GPT
+      - ../:/workspace/AutoGPT

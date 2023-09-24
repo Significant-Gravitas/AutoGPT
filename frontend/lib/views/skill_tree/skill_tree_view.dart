@@ -65,8 +65,7 @@ class _SkillTreeViewState extends State<SkillTreeView> {
                   maxScale: 5.6,
                   child: GraphView(
                     graph: widget.viewModel.graph,
-                    algorithm: BuchheimWalkerAlgorithm(widget.viewModel.builder,
-                        TreeEdgeRenderer(widget.viewModel.builder)),
+                    algorithm: SugiyamaAlgorithm(widget.viewModel.builder),
                     paint: Paint()
                       ..color = Colors.green
                       ..strokeWidth = 1

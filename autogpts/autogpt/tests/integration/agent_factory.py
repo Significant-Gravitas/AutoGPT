@@ -1,6 +1,6 @@
 import pytest
 
-from autogpt.agents import Agent
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.config import AIConfig, Config
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
@@ -19,7 +19,7 @@ def memory_json_file(config: Config):
 
 
 @pytest.fixture
-def dummy_agent(config: Config, memory_json_file):
+def dummy_agent(config: Config, llm_provider, memory_json_file):
     command_registry = CommandRegistry()
 
     ai_config = AIConfig(
@@ -30,12 +30,25 @@ def dummy_agent(config: Config, memory_json_file):
         ],
     )
 
-    agent = Agent(
-        memory=memory_json_file,
-        command_registry=command_registry,
+    agent_settings = AgentSettings(
+        name=Agent.default_settings.name,
+        description=Agent.default_settings.description,
         ai_config=ai_config,
-        config=config,
-        triggering_prompt="dummy triggering prompt",
+        config=AgentConfiguration(
+            fast_llm=config.fast_llm,
+            smart_llm=config.smart_llm,
+            use_functions_api=config.openai_functions,
+            plugins=config.plugins,
+        ),
+        history=Agent.default_settings.history.copy(deep=True),
+    )
+
+    agent = Agent(
+        settings=agent_settings,
+        llm_provider=llm_provider,
+        command_registry=command_registry,
+        memory=memory_json_file,
+        legacy_config=config,
     )
 
     return agent

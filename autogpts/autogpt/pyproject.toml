@@ -6,7 +6,7 @@ authors = [
 ]
 readme = "README.md"
 description = "An open-source attempt to make GPT-4 autonomous"
-homepage = "https://github.com/Significant-Gravitas/Auto-GPT/tree/master/autogpts/autogpt"
+homepage = "https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",

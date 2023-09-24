@@ -100,7 +100,7 @@ def execute_python_file(
         str: The output of the file
     """
     logger.info(
-        f"Executing python file '{filename}' in working directory '{agent.config.workspace_path}'"
+        f"Executing python file '{filename}' in working directory '{agent.legacy_config.workspace_path}'"
     )
 
     if isinstance(args, str):
@@ -118,7 +118,7 @@ def execute_python_file(
 
     if we_are_running_in_a_docker_container():
         logger.debug(
-            f"Auto-GPT is running in a Docker container; executing {file_path} directly..."
+            f"AutoGPT is running in a Docker container; executing {file_path} directly..."
         )
         result = subprocess.run(
             ["python", "-B", str(file_path)] + args,
@@ -131,7 +131,7 @@ def execute_python_file(
         else:
             raise CodeExecutionError(result.stderr)
 
-    logger.debug("Auto-GPT is not running in a Docker container")
+    logger.debug("AutoGPT is not running in a Docker container")
     try:
         client = docker.from_env()
         # You can replace this with the desired Python image/version
@@ -163,7 +163,8 @@ def execute_python_file(
                 "python",
                 "-B",
                 file_path.relative_to(agent.workspace.root).as_posix(),
-            ] + args,
+            ]
+            + args,
             volumes={
                 str(agent.workspace.root): {
                     "bind": "/workspace",
@@ -237,7 +238,7 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     Returns:
         str: The output of the command
     """
-    if not validate_command(command_line, agent.config):
+    if not validate_command(command_line, agent.legacy_config):
         logger.info(f"Command '{command_line}' not allowed")
         raise OperationNotAllowedError("This shell command is not allowed.")
 
@@ -284,7 +285,7 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
-    if not validate_command(command_line, agent.config):
+    if not validate_command(command_line, agent.legacy_config):
         logger.info(f"Command '{command_line}' not allowed")
         raise OperationNotAllowedError("This shell command is not allowed.")
 

@@ -10,15 +10,15 @@ if TYPE_CHECKING:
     from autogpt.core.ability import Ability, AbilityRegistry
     from autogpt.core.memory import Memory
     from autogpt.core.resource.model_providers import (
+        ChatModelProvider,
         EmbeddingModelProvider,
-        LanguageModelProvider,
     )
 
     # Expand to other types as needed
     PluginType = (
         Type[Ability]  # Swappable now
         | Type[AbilityRegistry]  # Swappable maybe never
-        | Type[LanguageModelProvider]  # Swappable soon
+        | Type[ChatModelProvider]  # Swappable soon
         | Type[EmbeddingModelProvider]  # Swappable soon
         | Type[Memory]  # Swappable now
         #    | Type[Planner]  # Swappable soon

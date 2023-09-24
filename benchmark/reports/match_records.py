@@ -1,16 +1,14 @@
-import os
-import json
-import pandas as pd
 import glob
-from gql.transport.aiohttp import AIOHTTPTransport
-from gql import gql, Client
+import json
 import os
-
-# from agbenchmark.reports.processing.report_types import Report, SuiteTest
-
 from typing import Dict, List, Optional, Union
 
+import pandas as pd
+from gql import Client, gql
+from gql.transport.aiohttp import AIOHTTPTransport
 from pydantic import BaseModel, Field
+
+# from agbenchmark.reports.processing.report_types import Report, SuiteTest
 
 
 class Metrics(BaseModel):
@@ -154,7 +152,7 @@ def get_reports():
                                         ] = suite_data.metrics.difficulty
                                         test_json[
                                             "success_%"
-                                        ] = suite_data.metrics.success_percent
+                                        ] = suite_data.metrics.success_percentage
                                         test_json[
                                             "run_time"
                                         ] = suite_data.metrics.run_time
@@ -173,7 +171,7 @@ def get_reports():
                                 test_json["difficulty"] = test_data.metrics.difficulty
                                 test_json[
                                     "success_%"
-                                ] = test_data.metrics.success_percent
+                                ] = test_data.metrics.success_percentage
                                 test_json["run_time"] = test_data.metrics.run_time
                                 test_json["is_regression"] = test_data.is_regression
 
