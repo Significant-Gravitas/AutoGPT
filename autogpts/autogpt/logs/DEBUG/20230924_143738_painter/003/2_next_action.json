@@ -1,0 +1,16 @@
+{
+    "command": {
+        "name": "request_assistance",
+        "args": {
+            "ticket_url": "https://api.github.com/repos/jmikedupont2/ai-ticket/issues/9",
+            "next_action": "poll_url"
+        }
+    },
+    "thoughts": {
+        "plan": "Initiated a request for assistance.",
+        "speak": "\"@type\": \"Answer\", ... } is optional.  Use it to provide additional information about the answer, such as a URL or further explanation.</p><br>\nFor example, if you want to add an image to your answer, you can use the base64 encoded string of the image data like this:</p>\n<pre class=\"json\"> Answer {\n\"text\": \"This is my answer.\",\n\"image\": \"<base64-encoded-string>\"\n} ",
+        "criticism": "todo",
+        "reasoning": "todo",
+        "text": "I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/9. My next action is to poll that URL for updates."
+    }
+}

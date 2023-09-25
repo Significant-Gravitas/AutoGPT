@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Determine exactly one command to use next based on the given goals and the progress you have made so far, and respond using the JSON schema specified previously:"
+    },
+    {
+        "role": "assistant",
+        "content": "```{\"command\": {\"name\": \"request_assistance\", \"args\": {\"ticket_url\": \"https://api.github.com/repos/jmikedupont2/ai-ticket/issues/3\", \"next_action\": \"poll_url\"}}, \"thoughts\": {\"plan\": \"Initiated a request for assistance.\", \"speak\": \"TODO\", \"criticism\": \"todo\", \"reasoning\": \"todo\", \"text\": \"I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: [Ticket URL]. My next action is to poll that URL for updates.\"}}```"
+    },
+    {
+        "role": "system",
+        "content": "Command request_assistance failed: Cannot execute command 'request_assistance': unknown command. Do not try to use this command again."
+    }
+]

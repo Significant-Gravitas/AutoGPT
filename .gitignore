@@ -12,8 +12,6 @@ last_run_ai_settings.yaml
 auto-gpt.json
 log.txt
 log-ingestion.txt
-/logs
-*.log
 *.mp3
 mem.sqlite3
 venvAutoGPT

@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Determine exactly one command to use next based on the given goals and the progress you have made so far, and respond using the JSON schema specified previously:"
+    },
+    {
+        "role": "assistant",
+        "content": "```{\"command\": {\"name\": \"request_assistance\", \"args\": {\"ticket_url\": \"https://api.github.com/repos/jmikedupont2/ai-ticket/issues/9\", \"next_action\": \"poll_url\"}}, \"thoughts\": {\"plan\": \"Initiated a request for assistance.\", \"speak\": \"\\\"@type\\\": \\\"Thing\\\", ... } is a valid response.\\n\\nExample of how to use this endpoint:\\n```json\\nGET /things/123 HTTP/1.1\\nHost: example.com\\nAccept: application/vnd+openactive+activity-response\\nContent-Type: application/json; charset=utf-8\\n\\nHTTP/1.1 200 OK\\nContent-Type: application/json; charset=UTF-8\\n{\\n   \\\"@context\\\": \\\"<http://schema.org/>\\u201d,\\n   \\\"@type\\\": \\u201cPerson\\u201d,\\n   \\u201cname\\u201d : \\u201cJohn Doe\\u201d,\\n   \\u201cemail\\u201d : \\u201cjohndoe@example.com\\u201d,\\n   \\u201csameAs\\u201d : [\\u201chttps://www.linkedin.com/in/john-doe-5964a7bb4b2cad3629fef5964a7bb4b2cad3629fef5964a7bb4b2caud\\u201d...]\\n}\\n\", \"criticism\": \"todo\", \"reasoning\": \"todo\", \"text\": \"I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/9. My next action is to poll that URL for updates.\"}}```"
+    },
+    {
+        "role": "system",
+        "content": "Command request_assistance failed: Cannot execute command 'request_assistance': unknown command. Do not try to use this command again."
+    }
+]

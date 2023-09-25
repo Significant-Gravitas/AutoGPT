@@ -1,0 +1,14 @@
+[
+    {
+        "role": "user",
+        "content": "Determine exactly one command to use next based on the given goals and the progress you have made so far, and respond using the JSON schema specified previously:"
+    },
+    {
+        "role": "assistant",
+        "content": null
+    },
+    {
+        "role": "system",
+        "content": "Your response could not be parsed: Assistant response has no text content\n\nRemember to only respond using the specified format above!"
+    }
+]

@@ -1,0 +1,16 @@
+{
+    "command": {
+        "name": "request_assistance",
+        "args": {
+            "ticket_url": "https://api.github.com/repos/jmikedupont2/ai-ticket/issues/11",
+            "next_action": "poll_url"
+        }
+    },
+    "thoughts": {
+        "plan": "Initiated a request for assistance.",
+        "speak": "\"message\": \"Hello, world!\" }\n```\nThis will output the following response:\n\n`{\"message\":\"Hello, ",
+        "criticism": "todo",
+        "reasoning": "todo",
+        "text": "I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/11. My next action is to poll that URL for updates."
+    }
+}
