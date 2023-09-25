@@ -1,7 +1,5 @@
 import 'package:auto_gpt_flutter_client/models/task.dart';
 import 'package:auto_gpt_flutter_client/models/test_suite.dart';
-import 'package:auto_gpt_flutter_client/viewmodels/api_settings_viewmodel.dart';
-import 'package:auto_gpt_flutter_client/views/task/api_base_url_field.dart';
 import 'package:auto_gpt_flutter_client/views/task/test_suite_detail_view.dart';
 import 'package:auto_gpt_flutter_client/views/task/test_suite_list_tile.dart';
 import 'package:flutter/material.dart';
@@ -21,8 +19,6 @@ class TaskView extends StatefulWidget {
 }
 
 class _TaskViewState extends State<TaskView> {
-  final TextEditingController _baseUrlController = TextEditingController();
-
   @override
   void initState() {
     super.initState();
@@ -30,8 +26,6 @@ class _TaskViewState extends State<TaskView> {
     // Schedule the fetchTasks call for after the initial build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.viewModel.fetchAndCombineData();
-      _baseUrlController.text =
-          Provider.of<ApiSettingsViewModel>(context, listen: false).baseURL;
     });
   }
 
@@ -116,9 +110,6 @@ class _TaskViewState extends State<TaskView> {
                   },
                 ),
               ),
-              const SizedBox(height: 16),
-              ApiBaseUrlField(controller: _baseUrlController),
-              const SizedBox(height: 16),
             ],
           ),
           if (widget.viewModel.selectedTestSuite != null)
