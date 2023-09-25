@@ -1,4 +1,5 @@
 import 'package:auto_gpt_flutter_client/services/auth_service.dart';
+import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,6 +12,8 @@ class SettingsViewModel extends ChangeNotifier {
   String _baseURL = ''; // State for Base URL
   int _continuousModeSteps = 1; // State for Continuous Mode Steps
 
+  final RestApiUtility _restApiUtility;
+
   // Getters to access the private state variables
   bool get isDarkModeEnabled => _isDarkModeEnabled;
   bool get isDeveloperModeEnabled => _isDeveloperModeEnabled;
@@ -19,8 +22,8 @@ class SettingsViewModel extends ChangeNotifier {
 
   final AuthService _authService = AuthService();
 
-  SettingsViewModel() {
-    _loadPreferences(); // Load stored preferences when the view model is created
+  SettingsViewModel(this._restApiUtility) {
+    _loadPreferences();
   }
 
   // Method to load stored preferences
@@ -28,7 +31,8 @@ class SettingsViewModel extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _isDarkModeEnabled = prefs.getBool('isDarkModeEnabled') ?? false;
     _isDeveloperModeEnabled = prefs.getBool('isDeveloperModeEnabled') ?? false;
-    _baseURL = prefs.getString('baseURL') ?? '';
+    _baseURL = prefs.getString('baseURL') ?? 'http://127.0.0.1:8000/ap/v1';
+    _restApiUtility.updateBaseURL(_baseURL);
     _continuousModeSteps = prefs.getInt('continuousModeSteps') ?? 10;
     notifyListeners();
   }
@@ -47,11 +51,12 @@ class SettingsViewModel extends ChangeNotifier {
     _saveBoolPreference('isDeveloperModeEnabled', value);
   }
 
-  /// Updates the state of Base URL and notifies listeners.
+  /// Updates the state of Base URL, notifies listeners, and updates the RestApiUtility baseURL.
   void updateBaseURL(String value) {
     _baseURL = value;
     notifyListeners();
     _saveStringPreference('baseURL', value);
+    _restApiUtility.updateBaseURL(value);
   }
 
   /// Increments the number of Continuous Mode Steps and notifies listeners.

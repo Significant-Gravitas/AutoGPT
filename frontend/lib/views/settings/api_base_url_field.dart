@@ -1,16 +1,16 @@
+import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:auto_gpt_flutter_client/viewmodels/api_settings_viewmodel.dart';
 
 class ApiBaseUrlField extends StatelessWidget {
-  final TextEditingController controller;
-
-  const ApiBaseUrlField({required this.controller});
+  final TextEditingController controller = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ApiSettingsViewModel>(
-      builder: (context, apiSettingsViewModel, child) {
+    return Consumer<SettingsViewModel>(
+      builder: (context, settingsViewModel, child) {
+        // TODO: This view shouldn't know about the settings view model. It should use a delegate
+        controller.text = settingsViewModel.baseURL;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
@@ -39,8 +39,8 @@ class ApiBaseUrlField extends StatelessWidget {
                 children: [
                   ElevatedButton(
                     onPressed: () {
-                      controller.text = 'http://127.0.0.1:8000/api/v1';
-                      apiSettingsViewModel.updateBaseURL(controller.text);
+                      controller.text = 'http://127.0.0.1:8000/ap/v1';
+                      settingsViewModel.updateBaseURL(controller.text);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
@@ -53,7 +53,7 @@ class ApiBaseUrlField extends StatelessWidget {
                   ),
                   ElevatedButton(
                     onPressed: () {
-                      apiSettingsViewModel.updateBaseURL(controller.text);
+                      settingsViewModel.updateBaseURL(controller.text);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
