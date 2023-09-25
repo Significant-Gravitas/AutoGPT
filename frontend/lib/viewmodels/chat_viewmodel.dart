@@ -103,7 +103,8 @@ class ChatViewModel with ChangeNotifier {
   }
 
   /// Sends a chat message for a specific task.
-  void sendChatMessage(String? message) async {
+  void sendChatMessage(String? message,
+      {required int continuousModeSteps, int currentStep = 1}) async {
     if (_currentTaskId == null) {
       print("Error: Task ID is not set.");
       return;
@@ -147,7 +148,14 @@ class ChatViewModel with ChangeNotifier {
       notifyListeners();
 
       if (_isContinuousMode) {
-        sendChatMessage(null);
+        print("Continuous Mode: Step $currentStep of $continuousModeSteps");
+        if (currentStep < continuousModeSteps) {
+          sendChatMessage(null,
+              continuousModeSteps: continuousModeSteps,
+              currentStep: currentStep + 1);
+        } else {
+          _isContinuousMode = false;
+        }
       }
 
       print("Chats added for task ID: $_currentTaskId");
