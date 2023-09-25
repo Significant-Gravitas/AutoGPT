@@ -30,7 +30,8 @@ class SettingsViewModel extends ChangeNotifier {
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     _isDarkModeEnabled = prefs.getBool('isDarkModeEnabled') ?? false;
-    _isDeveloperModeEnabled = prefs.getBool('isDeveloperModeEnabled') ?? false;
+    // TODO: We should make this disable test suites
+    _isDeveloperModeEnabled = prefs.getBool('isDeveloperModeEnabled') ?? true;
     _baseURL = prefs.getString('baseURL') ?? 'http://127.0.0.1:8000/ap/v1';
     _restApiUtility.updateBaseURL(_baseURL);
     _continuousModeSteps = prefs.getInt('continuousModeSteps') ?? 10;
