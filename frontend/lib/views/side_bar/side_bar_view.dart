@@ -1,3 +1,4 @@
+import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -30,16 +31,18 @@ class SideBarView extends StatelessWidget {
                         ? null
                         : () => selectedViewNotifier.value = 'TaskView',
                   ),
-                  IconButton(
-                    splashRadius: 0.1,
-                    color: selectedView == 'SkillTreeView'
-                        ? Colors.blue
-                        : Colors.black,
-                    icon: const Icon(Icons.emoji_events),
-                    onPressed: skillTreeViewModel.isBenchmarkRunning
-                        ? null
-                        : () => selectedViewNotifier.value = 'SkillTreeView',
-                  ),
+                  if (Provider.of<SettingsViewModel>(context, listen: true)
+                      .isDeveloperModeEnabled)
+                    IconButton(
+                      splashRadius: 0.1,
+                      color: selectedView == 'SkillTreeView'
+                          ? Colors.blue
+                          : Colors.black,
+                      icon: const Icon(Icons.emoji_events),
+                      onPressed: skillTreeViewModel.isBenchmarkRunning
+                          ? null
+                          : () => selectedViewNotifier.value = 'SkillTreeView',
+                    ),
                   IconButton(
                     splashRadius: 0.1,
                     color: selectedView == 'SettingsView'
