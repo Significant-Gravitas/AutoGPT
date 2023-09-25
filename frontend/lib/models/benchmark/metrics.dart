@@ -49,7 +49,9 @@ class Metrics {
         difficulty: json['difficulty'] ?? "",
         success: json['success'],
         attempted: json['attempted'],
-        successPercentage: json['success_percentage'].toDouble() ?? 0.0,
+        successPercentage: (json['success_percentage'] != null)
+            ? json['success_percentage'].toDouble()
+            : 0.0,
         cost: json['cost'] ?? "",
         runTime: json['run_time'] ?? "",
       );
