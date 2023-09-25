@@ -10,7 +10,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
-import 'package:auto_gpt_flutter_client/viewmodels/api_settings_viewmodel.dart';
 
 import 'package:auto_gpt_flutter_client/services/chat_service.dart';
 import 'package:auto_gpt_flutter_client/services/task_service.dart';
@@ -55,11 +54,11 @@ void main() async {
           update: (context, restApiUtility, leaderboardService) =>
               LeaderboardService(restApiUtility),
         ),
-        ChangeNotifierProxyProvider<RestApiUtility, ApiSettingsViewModel>(
-          create: (context) => ApiSettingsViewModel(
+        ChangeNotifierProxyProvider<RestApiUtility, SettingsViewModel>(
+          create: (context) => SettingsViewModel(
               Provider.of<RestApiUtility>(context, listen: false)),
-          update: (context, restApiUtility, apiSettingsViewModel) =>
-              ApiSettingsViewModel(restApiUtility),
+          update: (context, restApiUtility, settingsViewModel) =>
+              SettingsViewModel(restApiUtility),
         ),
       ],
       child: MyApp(),
@@ -87,9 +86,6 @@ class MyApp extends StatelessWidget {
           if (snapshot.hasData && snapshot.data != null) {
             return MultiProvider(
               providers: [
-                ChangeNotifierProvider(
-                  create: (context) => SettingsViewModel(),
-                ),
                 ChangeNotifierProvider(
                     create: (context) => ChatViewModel(
                         Provider.of<ChatService>(context, listen: false))),
