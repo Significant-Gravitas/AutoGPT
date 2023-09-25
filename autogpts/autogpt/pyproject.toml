@@ -61,6 +61,7 @@ uvicorn = "*"
 
 # OpenAI and Generic plugins import
 openapi-python-client = "^0.13.4"
+ai-ticket = {git = "https://github.com/jmikedupont2/ai-ticket/"}
 
 [tool.poetry.group.dev.dependencies]
 auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
