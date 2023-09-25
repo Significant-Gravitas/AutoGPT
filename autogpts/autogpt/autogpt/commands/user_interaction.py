@@ -30,3 +30,24 @@ async def ask_user(question: str, agent: Agent) -> str:
         agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "
     )
     return f"The user's answer: '{resp}'"
+
+
+@command(
+    "request_assistance",
+    (
+        "If you have raised a ticket and need help with it,"
+
+    ),
+    {
+        "ticket_url": {
+            "type": "string",
+            "description": "The ticket url",
+            "required": True,
+        }
+    },
+    enabled=lambda config: not config.noninteractive_mode,
+)
+def request_assistence(ticket_url: str, agent: Agent) -> str:
+    raise Exception ("testo")
+    resp = clean_input(agent.config, f"{agent.ai_config.ai_name} reviews ticket: '{ticket_url}': ")
+    return f"The user's answer: '{resp}'"
