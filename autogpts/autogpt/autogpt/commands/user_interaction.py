@@ -47,7 +47,7 @@ async def ask_user(question: str, agent: Agent) -> str:
     },
     enabled=lambda config: not config.noninteractive_mode,
 )
-def request_assistence(ticket_url: str, agent: Agent) -> str:
-    raise Exception ("testo")
+def request_assistence(ticket_url: str, next_action: str, agent: Agent) -> str:
+    #raise Exception ("testo")
     resp = clean_input(agent.config, f"{agent.ai_config.ai_name} reviews ticket: '{ticket_url}': ")
     return f"The user's answer: '{resp}'"
