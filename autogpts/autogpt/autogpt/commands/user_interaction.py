@@ -1,7 +1,8 @@
 """Commands to interact with the user"""
 
 from __future__ import annotations
-
+import urllib
+import requests
 COMMAND_CATEGORY = "user_interaction"
 COMMAND_CATEGORY_TITLE = "User Interaction"
 
@@ -53,30 +54,35 @@ def request_assistence(ticket_url: str, next_action: str, agent: Agent) -> str:
     #config.github_api_key
     issue_last_comment = ""
     # try:
-    #     response = requests.get(ticket_url)
+    response = requests.get(ticket_url)
+    data = response.text
+    issue_last_comment = data
     #     response.raise_for_status()
-    url_components = urllib.parse.urlparse(ticket_url)
-    if url_components.netloc != "github.com":
-        raise ValueError("Invalid ticket system")
-    # except requests.exceptions.RequestException as e:
-    #     return f"Sorry, I could not access the ticket url. Please check the url and try again. Error: {e}"
-    # except ValueError as e:
-    #     return f"Sorry, I only support tickets from GitHub. Please provide a valid GitHub ticket url. Error: {e}"
+#     url_components = urllib.parse.urlparse(ticket_url)
+#     #if url_components.netloc != "github.com":
+#     #    raise ValueError("Invalid ticket system")
+#     # except requests.exceptions.RequestException as e:
+#     #     return f"Sorry, I could not access the ticket url. Please check the url and try again. Error: {e}"
+#     # except ValueError as e:
+#     #     return f"Sorry, I only support tickets from GitHub. Please provide a valid GitHub ticket url. Error: {e}"
+#     reques
+#     # Use the github library to interact with the GitHub API
+#     try:
+#         git_hub_repo = url_components.path.split("/")[1]
+#         (github,repo) = ai_ticket.backends.pygithub.load_repo(git_hub_repo,agent.config.github_api_key)
 
-    # Use the github library to interact with the GitHub API
-    try:
-        git_hub_repo = url_components.path.split("/")[1]
-        (github,repo) = load_repo(git_hub_repo,agent.config.github_api_key)
-
-        issue = repo.get_issue(url_components.path.split("/")[3])
-        issue_title = issue.title
-        issue_body = issue.body
-        issue_comments = issue.get_comments()
-        issue_last_comment = issue_comments[-1].body if issue_comments else None
+#         iss = int(url_components.path.split("/")[-1])
+#         print("DEBUG_ISSUE",iss)
+# issue = repo.get_issue(iss)
+#         print(issue)
+#         issue_title = issue.title
+#         issue_body = issue.body
+#         issue_comments = issue.get_comments()
+#         issue_last_comment = issue_comments[-1].body if issue_comments else None
 
         
-    except github.GithubException as e:
-        return f"Sorry, I could not access the ticket data from GitHub. Please check the api token and try again. Error: {e}"
+#    except Exception as e:
+#        return f"Sorry, I could not access the ticket data from GitHub. Please check the api token and try again. Error: {e}"
 
     # # Use the next_action parameter to determine what kind of assistance the user needs
     # if next_action == "write_code":
@@ -102,5 +108,5 @@ def request_assistence(ticket_url: str, next_action: str, agent: Agent) -> str:
     #     return f"Sorry, I do not understand what kind of assistance you need. Please provide a valid value for the next_action parameter. The possible values are: write_code, understand_ticket." 
     
 
-    resp = clean_input(agent.config, f"{agent.ai_config.ai_name} reviews ticket: '{ticket_url}': {issue_last_comment}")
-    return f"The user's answer: '{resp}'"
+    resp = clean_input(agent.config, f"{agent.ai_config.ai_name} reviews ticket: '{ticket_url}': ")
+    return f"The user's answer: '{resp}' DEBUG {issue_last_comment}"

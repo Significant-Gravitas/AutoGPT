@@ -49,9 +49,9 @@ type = "directory"
 url = "../../benchmark"
 
 [[package]]
-name = "ai_ticket"
+name = "ai-ticket"
 version = "0.0.1"
-description = ""
+description = "AI ticket interface"
 optional = false
 python-versions = ">=3.8"
 files = []
@@ -68,7 +68,7 @@ dev = ["black (==22.3.0)", "isort (==5.10.1)", "psutil", "pytest (==6.2.5)", "py
 type = "git"
 url = "https://github.com/jmikedupont2/ai-ticket/"
 reference = "HEAD"
-resolved_reference = "58ff58c38d788a05e20205c07d98676a52da142f"
+resolved_reference = "8c82672d3f3e6025124272dbba7f2e6b1ebd36b8"
 
 [[package]]
 name = "aiofiles"
