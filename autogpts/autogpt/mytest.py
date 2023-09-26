@@ -19,7 +19,9 @@ from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
 config = ConfigBuilder.build_config_from_env(workdir=working_directory)
 config.workspace_path = "."
+
 config.file_logger_path="log.txt"
+
 command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
 ai_config = AIConfig.load("./ai_settings.yaml")
 agent = Agent(
