@@ -10,7 +10,7 @@ class LeaderboardSubmissionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    final button = SizedBox(
       height: 50,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
@@ -44,5 +44,13 @@ class LeaderboardSubmissionButton extends StatelessWidget {
         ),
       ),
     );
+
+    return isDisabled
+        ? Tooltip(
+            message:
+                "You must complete a test suite before submitting to the leaderboard.",
+            child: button,
+          )
+        : button;
   }
 }
