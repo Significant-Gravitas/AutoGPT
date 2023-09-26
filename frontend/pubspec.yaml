@@ -72,6 +72,10 @@ flutter:
   - assets/tree_structure.json
   - assets/google_logo.svg.png
   - assets/github_logo.svg.png
+  - assets/general_tree_structure.json
+  - assets/coding_tree_structure.json
+  - assets/data_tree_structure.json
+  - assets/scrape_synthesize_tree_structure.json
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

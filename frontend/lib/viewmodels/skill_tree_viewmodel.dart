@@ -3,6 +3,7 @@ import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_run.dart';
 import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_step_request_body.dart';
 import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_request_body.dart';
 import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_status.dart';
+import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_category.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_edge.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
 import 'package:auto_gpt_flutter_client/models/step.dart';
@@ -41,15 +42,18 @@ class SkillTreeViewModel extends ChangeNotifier {
   final Graph graph = Graph();
   SugiyamaConfiguration builder = SugiyamaConfiguration();
 
+  SkillTreeCategory currentSkillTreeType = SkillTreeCategory.general;
+
   SkillTreeViewModel(this.benchmarkService, this.leaderboardService);
 
   Future<void> initializeSkillTree() async {
     try {
       resetState();
 
+      String fileName = currentSkillTreeType.jsonFileName;
+
       // Read the JSON file from assets
-      String jsonContent =
-          await rootBundle.loadString('assets/tree_structure.json');
+      String jsonContent = await rootBundle.loadString('assets/$fileName');
 
       // Decode the JSON string
       Map<String, dynamic> decodedJson = jsonDecode(jsonContent);
@@ -67,6 +71,7 @@ class SkillTreeViewModel extends ChangeNotifier {
       }
 
       builder.orientation = (SugiyamaConfiguration.ORIENTATION_LEFT_RIGHT);
+      builder.bendPointShape = CurvedBendPointShape(curveLength: 20);
 
       notifyListeners();
 
@@ -206,7 +211,6 @@ class SkillTreeViewModel extends ChangeNotifier {
         // Trigger the evaluation
         final evaluationResponse =
             await benchmarkService.triggerEvaluation(task.id);
-        print("Evaluation response: $evaluationResponse");
 
         // Decode the evaluationResponse into a BenchmarkRun object
         BenchmarkRun benchmarkRun = BenchmarkRun.fromJson(evaluationResponse);
@@ -216,7 +220,7 @@ class SkillTreeViewModel extends ChangeNotifier {
         await leaderboardService.submitReport(benchmarkRun);
 
         // Update the benchmarkStatusList based on the evaluation response
-        bool successStatus = evaluationResponse['metrics']['success'];
+        bool successStatus = benchmarkRun.metrics.success;
         benchmarkStatusMap[node] = successStatus
             ? BenchmarkTaskStatus.success
             : BenchmarkTaskStatus.failure;
