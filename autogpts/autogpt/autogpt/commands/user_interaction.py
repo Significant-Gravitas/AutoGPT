@@ -3,6 +3,9 @@
 from __future__ import annotations
 import urllib
 import requests
+import pprint
+from autogpt.models.agent_actions import (    Action)
+import json
 COMMAND_CATEGORY = "user_interaction"
 COMMAND_CATEGORY_TITLE = "User Interaction"
 
@@ -50,63 +53,42 @@ async def ask_user(question: str, agent: Agent) -> str:
     enabled=lambda config: not config.noninteractive_mode,
 )
 def request_assistence(ticket_url: str, next_action: str, agent: Agent) -> str:
+    print("starti",ticket_url)
     #raise Exception ("testo")
     #config.github_api_key
     issue_last_comment = ""
     # try:
     response = requests.get(ticket_url)
-    data = response.text
+    data = response.json()
     issue_last_comment = data
-    #     response.raise_for_status()
-#     url_components = urllib.parse.urlparse(ticket_url)
-#     #if url_components.netloc != "github.com":
-#     #    raise ValueError("Invalid ticket system")
-#     # except requests.exceptions.RequestException as e:
-#     #     return f"Sorry, I could not access the ticket url. Please check the url and try again. Error: {e}"
-#     # except ValueError as e:
-#     #     return f"Sorry, I only support tickets from GitHub. Please provide a valid GitHub ticket url. Error: {e}"
-#     reques
-#     # Use the github library to interact with the GitHub API
-#     try:
-#         git_hub_repo = url_components.path.split("/")[1]
-#         (github,repo) = ai_ticket.backends.pygithub.load_repo(git_hub_repo,agent.config.github_api_key)
 
-#         iss = int(url_components.path.split("/")[-1])
-#         print("DEBUG_ISSUE",iss)
-# issue = repo.get_issue(iss)
-#         print(issue)
-#         issue_title = issue.title
-#         issue_body = issue.body
-#         issue_comments = issue.get_comments()
-#         issue_last_comment = issue_comments[-1].body if issue_comments else None
+    #body = data["body"][3:-3] #```AAA```
 
-        
-#    except Exception as e:
-#        return f"Sorry, I could not access the ticket data from GitHub. Please check the api token and try again. Error: {e}"
+    class Foo :
+        content = data["body"]
+    agent.event_history.rewind(1)
+    data1 = agent.parse_and_process_response(Foo())
 
-    # # Use the next_action parameter to determine what kind of assistance the user needs
-    # if next_action == "write_code":
-    #     # Use the evaluate_code or improve_code commands to provide code suggestions
-    #     code = clean_input(agent.config, f"{agent.ai_config.ai_name} writes code for ticket: '{issue_title}': ")
-    #     suggestions = agent.execute_command("evaluate_code", code)
-    #     if suggestions:
-    #         improved_code = agent.execute_command("improve_code", suggestions, code)
-    #         return f"Here is the improved code for your ticket:\n\n{improved_code}\n\nI made the following changes:\n\n{suggestions}"
-    #     else:
-    #         return f"Here is the code for your ticket:\n\n{code}\n\nI did not find any suggestions for improvement."
-    # elif next_action == "understand_ticket":
-    #     # Use the summarize_text or answer_question commands to provide a summary or an answer
-    #     question = clean_input(agent.config, f"{agent.ai_config.ai_name} asks a question about ticket: '{issue_title}': ")
-    #     if question:
-    #         answer = agent.execute_command("answer_question", question, issue_body + "\n\n" + issue_last_comment if issue_last_comment else issue_body)
-    #         return f"Here is the answer to your question:\n\n{answer}"
-    #     else:
-    #         summary = agent.execute_command("summarize_text", issue_body + "\n\n" + issue_last_comment if issue_last_comment else issue_body)
-    #         return f"Here is a summary of your ticket:\n\n{summary}"
-    # else:
-    #     # Handle any invalid or unsupported values for the next_action parameter
-    #     return f"Sorry, I do not understand what kind of assistance you need. Please provide a valid value for the next_action parameter. The possible values are: write_code, understand_ticket." 
+    next_command_name, next_command_args, assistant_reply_dict = data1
+    result = "no data"
+    try:
+        agent.event_history.rewind(1)
+
+        act = Action(
+            name=next_command_name,
+            args=next_command_args,
+            reasoning=assistant_reply_dict,
+            )
+
+        agent.event_history.register_action(act)
+        #agent.event_history.current_record.action = None
+        agent.event_history.cursor=0
+        agent.event_history.cycles.append(agent.event_history.cycles[-1])
+        result = agent.execute(next_command_name, next_command_args, assistant_reply_dict)
+    except Exception as e:
+        result = f"error {e}"
+        raise e
     
+    ret = f"RESULT:'{result}'"
 
-    resp = clean_input(agent.config, f"{agent.ai_config.ai_name} reviews ticket: '{ticket_url}': ")
-    return f"The user's answer: '{resp}' DEBUG {issue_last_comment}"
+    return ret
