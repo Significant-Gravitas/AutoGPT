@@ -215,10 +215,6 @@ class SkillTreeViewModel extends ChangeNotifier {
         // Decode the evaluationResponse into a BenchmarkRun object
         BenchmarkRun benchmarkRun = BenchmarkRun.fromJson(evaluationResponse);
 
-        // TODO: We should only trigger this if the user has designated they want to submit
-        // Submit the BenchmarkRun object to the leaderboard
-        await leaderboardService.submitReport(benchmarkRun);
-
         // Update the benchmarkStatusList based on the evaluation response
         bool successStatus = benchmarkRun.metrics.success;
         benchmarkStatusMap[node] = successStatus
@@ -245,4 +241,7 @@ class SkillTreeViewModel extends ChangeNotifier {
     isBenchmarkRunning = false;
     notifyListeners();
   }
+
+  // TODO: Move to task queue view model
+  Future<void> submitToLeaderboard() async {}
 }
