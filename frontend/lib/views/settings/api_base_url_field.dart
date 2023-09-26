@@ -28,7 +28,7 @@ class ApiBaseUrlField extends StatelessWidget {
                     controller: controller,
                     decoration: const InputDecoration(
                       border: InputBorder.none,
-                      hintText: 'API Base URL',
+                      hintText: 'Agent Base URL',
                     ),
                   ),
                 ),
