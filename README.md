@@ -5,6 +5,12 @@ For installing poetry I needed to do this
 export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
 ```
 
+And in the autogpts/autogpt/.env file you need to copy from the template
+```
+OPENAI_API_BASE_URL=http://localhost:5000/v1 #flask
+```
+
+
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/AutoGPT?style=social)](https://github.com/Significant-Gravitas/AutoGPT/stargazers) [![Twitter Follow](https://img.shields.io/twitter/follow/auto_gpt?style=social)](https://twitter.com/Auto_GPT) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **AutoGPT** is your go-to toolkit for supercharging agents. With its modular and extensible framework, you're empowered to focus on:
