@@ -72,6 +72,7 @@ class _LeaderboardSubmissionDialogState
     }
 
     if (isValid) {
+      print('Valid leaderboard submission parameters!');
       _saveToSharedPreferences();
       widget.onSubmit?.call(_teamNameController.text, _repoUrlController.text,
           _commitShaController.text);
