@@ -15,6 +15,12 @@
         {
             "arrows": "to",
             "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]"
         },
@@ -83,6 +89,18 @@
             "from": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestLabelData::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestLabelData::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestLabelData::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestLabelData::test_method[challenge_data0]"
         }
     ],
     "nodes": [
@@ -572,6 +590,117 @@
             },
             "id": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
             "label": "RevenueRetrieval2",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestSortCsv"
+                ],
+                "eval_id": "6c58e229-aa22-4c4f-a053-4a78931ad41e",
+                "ground": {
+                    "answer": "The csv labelled",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.csv"
+                    ],
+                    "should_contain": [
+                        "Item, Color\nBanana, Yellow\nLeaf, Green\nSky, Blue\nSunflower, Yellow\nGrass, Green\nJeans, Blue\nLemon, Yellow\nTree, Green\nOcean, Blue\nDaisy, Yellow\nFern, Green"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can sort a csv",
+                    "difficulty": "basic",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestLabelData",
+                "task": "The csv 'input.csv' has many items. create a 'Color' column for these items and classify them as either 'blue', 'green', or 'yellow' depending on what the most likely color is. Preserve the order of the rows. The color column should be the second column. Write the output in output.csv"
+            },
+            "id": "agbenchmark/generate_test.py::TestLabelData::test_method[challenge_data0]",
+            "label": "LabelData",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestReadFile"
+                ],
+                "eval_id": "db4654d7-fc97-4290-ab27-a710c2b5ce15",
+                "ground": {
+                    "answer": "The csv sorted by date",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.csv"
+                    ],
+                    "should_contain": [
+                        "id,name,timestamp\n1,Bob,2023-09-24 12:05:00\n2,Charlie,2023-09-24 12:10:00\n3,Alice,2023-09-25 14:10:00\n4,David,2023-09-26 16:20:00"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can sort a csv",
+                    "difficulty": "basic",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestSortCsv",
+                "task": "Sort the input.csv by the 'timestamp' column and write the new csv in the output.csv file. The order of the columns should be preserved."
+            },
+            "id": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]",
+            "label": "SortCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestLabelData"
+                ],
+                "eval_id": "d5f04342-983f-45a4-b84a-fe8d96863375",
+                "ground": {
+                    "answer": "The csv data is combined",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.csv"
+                    ],
+                    "should_contain": [
+                        "Age,ID,Name,Occupation,Salary\n28,101,John,Engineer,80000\n34,102,Alice,Doctor,120000\n45,103,Bob,Lawyer,95000"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can combine data from a csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestCombineCsv",
+                "task": "The csvs 'file1.csv' and 'file2.csv' both have a column 'ID'. Combine these 2 csvs using the 'ID' column. Sort the rows by ID and the columns alphabetically. Write the output in output.csv"
+            },
+            "id": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]",
+            "label": "CombineCsv",
             "shape": "dot"
         },
         {
