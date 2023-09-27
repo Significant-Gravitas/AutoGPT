@@ -1,10 +1,12 @@
 from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
+import json
 # https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1735879231
 
 command_name = "request_assistance"
-
+ts = 1736998762
+ticket_url = f'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/{ts}'
 command_args = {
-    'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1735879231',
+    'ticket_url': ticket_url,
     'next_action': 'poll_url'
 }
 
@@ -31,12 +33,14 @@ agent = Agent(
     ai_config=ai_config,
     config=config,
 )
+content = "```" + json.dumps(json.loads("""{"command": {"name": "request_assistance", "args": {"ticket_url": \"""" + ticket_url + """\", "next_action": "poll_url"}}, "thoughts": {"plan": "Initiated a request for assistance.", "speak": "TODO:cv.safe_generate(json.dumps(data))", "criticism": "todo", "reasoning": "todo", "text": "not needed."}}""")) +"```"
 
+print("content",content)
 class Foo :
-    content = """```{"command": {"name": "request_assistance", "args": {"ticket_url": "https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1735910623", "next_action": "poll_url"}}, "thoughts": {"plan": "Initiated a request for assistance.", "speak": "TODO:cv.safe_generate(json.dumps(data))", "criticism": "todo", "reasoning": "todo", "text": "I encountered an issue with our application, and I need assistance. I\'ve created a ticket for it. Here\'s the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1735910623. My next action is to poll that URL for updates."}}```"""
+    content = content 
     
 data = agent.parse_and_process_response(Foo())
-#print(data)
+print(data)
 result = agent.execute(command_name, command_args, user_input)
 
 print(result)
