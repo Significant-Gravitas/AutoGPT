@@ -1,0 +1,10 @@
+Third-Party Software Notices and Information
+===========================================
+
+This project uses code derived from AutoGPT, which is licensed under the MIT License. The original AutoGPT code and its license can be found at:
+https://github.com/Significant-Gravitas/Auto-GPT/blob/master/LICENSE
+
+AutoGPT
+-------
+Copyright (c) 2023, Toran Bruce Richards
+License: MIT License
