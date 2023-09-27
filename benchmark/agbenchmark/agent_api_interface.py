@@ -50,10 +50,6 @@ async def run_api_agent(
                 raise TimeoutError("Time limit exceeded")
             if not step or step.is_last:
                 steps_remaining = False
-            if os.getenv("IS_MOCK"):
-                time.sleep(
-                    1
-                )  # will help with the integration og the "polling updates" features since mock agent is too fast.
         # if we're calling a mock agent, we "cheat" and give the correct artifacts to pass the tests
         if os.getenv("IS_MOCK"):
             await upload_artifacts(
