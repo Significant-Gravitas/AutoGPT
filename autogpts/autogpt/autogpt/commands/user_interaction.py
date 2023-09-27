@@ -14,6 +14,7 @@ from autogpt.agents.agent import Agent
 from autogpt.app.utils import clean_input
 from autogpt.command_decorator import command
 from autogpt.models.action_history import     Action
+from autogpt.core.utils.json_schema import JSONSchema
 
 #import  ai_ticket.events.inference
 import ai_ticket.backends.pygithub
@@ -25,11 +26,11 @@ import ai_ticket.backends.pygithub
         " you can ask the user for input"
     ),
     {
-        "question": {
-            "type": "string",
-            "description": "The question or prompt to the user",
-            "required": True,
-        }
+        "question": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The question or prompt to the user",
+            required=True,
+        )
     },
     enabled=True,
 )
