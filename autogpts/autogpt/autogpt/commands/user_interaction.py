@@ -4,7 +4,7 @@ from __future__ import annotations
 import urllib
 import requests
 import pprint
-from autogpt.models.agent_actions import (    Action)
+#from autogpt.models.agent_actions import (    Action)
 import json
 COMMAND_CATEGORY = "user_interaction"
 COMMAND_CATEGORY_TITLE = "User Interaction"
