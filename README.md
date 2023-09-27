@@ -28,8 +28,7 @@ Welcome to the **afaas: Agent Framework as a Service** project! This project is 
 - [Contact](#contact)
 - [Framework User Guide](#framework-user-guide)
   - [General Description](#general-description)
-
-
+<!--
 ## afaas - GitHub Branches
 
 For historical reasons, the branches of this project have undergone general improvements towards the goals mentioned above. The future direction will be more streamlined.
@@ -44,27 +43,69 @@ Key branches with their respective focuses:
 
 ❗ **Warning**: Some branches may not be under the MIT License. I am actively working on license clarification and clean-up. If you have questions about a specific branch's license, please raise an issue with the branch name to inquire further.
 
+Status Indicators:
+✅ (U+2705) - OK, Completed, Success
+❌ (U+274C) - Not OK, Error, Failed
+⚠️ (U+26A0 U+FE0F) - Warning, Caution
+🔄 (U+1F504) - Pending, In Progress, Refreshing
+🔴 (U+1F534) - Stop, Critical Issue
+🔵 (U+1F535) - Information, Note
+⏳ (U+23F3) - Loading, Time Consuming Process
+🚧 (U+1F6A7) - Under Construction, Work in Progress
+Annotations:
+ℹ️ (U+2139 U+FE0F) - Information
+❗ (U+2757) - Important, Exclamation
+❓ (U+2753) - Question, Help
+📌 (U+1F4CC) - Pin, Important Note
+🔍 (U+1F50D) - Search, Observe, Detail
+💡 (U+1F4A1) - Idea, Tip, Suggestion
+Feedback & Interaction:
+👍 (U+1F44D) - Approve, Agree
+👎 (U+1F44E) - Disapprove, Disagree
+💬 (U+1F4AC) - Comment, Discussion
+🌟 (U+1F31F) - Star, Favorite, Highlight
+🔔 (U+1F514) - Notification, Alert
+Navigation & Layout:
+⬆️ (U+2B06 U+FE0F) - Up, Previous
+⬇️ (U+2B07 U+FE0F) - Down, Next
+➡️ (U+27A1 U+FE0F) - Right, Forward
+⬅️ (U+2B05 U+FE0F) - Left, Back
+🔝 (U+1F51D) - Top, Beginning
+Miscellaneous:
+📢 (U+1F4E2) - Announcement
+🆕 (U+1F195) - New Feature or Addition
+🛑 (U+1F6D1) - Stop, Halt
+📆 (U+1F4C6) - Date, Schedule
+📊 (U+1F4CA) - Statistics, Data
+-->
 ## Contributing
 
-Your contributions to this project are immensely valued. Here's how you can participate:
-
-- Test and provide feedback for the supported memory back-ends.
-- Experiment with or develop for prototyped backends (AWS, Azure, MongoDB).
-- Offer suggestions, report potential issues, or propose new enhancements through GitHub issues.
+Your contributions to this project are immensely valued. Here are currents needs : 
+- **Anyone** with skills in Kubernetes :smile:
+- **Developer :**
+ - Join us to migrate AutoGPT Commands to Abilities
+ - Join us to achieve the prototyped backends (AWS, Azure, MongoDB).
+- **Front-end Developper**
+ - Join us to develop a GUI
+ - Join us to build a Project Website 
+- **Anyone :** 
+ - Join us to manage PR & Discord Server
+ - ✅ ~~Build a User Guide to run our example.~~ => AutoGPT User Guide should
+ - Build a Developper guide to create agents (Exposing only methods required to build Agents)
+ - Build a Technical documentation to documents all the technical intricacies of the Framework
+ - Offer suggestions, report potential issues, or propose new enhancements through GitHub issues.
 
 For more detailed contribution guidelines, please refer to `CONTRIBUTING.md`.
+
+## Roadmap priorities : 
+1. 🔄 Achieve the SimpleAgent example
+2. 🔴 Migrate AutoGPT Commands to Abilities **Help needed**
+3. 🔴 Get a Developper Guilde for easier adoption
+4. 🔴 Build an API  
 
 ## Setup and Execution
 
 We recommend using AutoGPT guidelines.
-
-## License
-
-The majority of the code in this repository is governed by a temporary contributor license, as detailed in the [LICENSE](LICENSE) file. Always refer to this license for comprehensive usage details and restrictions. This project uses code derived from AutoGPT, which is licensed under the MIT License. You can find the terms and conditions of the MIT License in the [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) file.
-
-## Contact
-
-For any questions, feedback, or inquiries related to the **afaas** project, don't hesitate to contact the project owner, Pierre-Henri AUSSEIL, at [ph.ausseil@gmail.com](mailto:ph.ausseil@gmail.com).
 
 ## Framework User Guide
 
@@ -82,3 +123,7 @@ The `core/agent/` directory serves as a baseline and example for developers eage
 4. **strategies**: Holds `PromptStrategies`.
 
 🚧 **User Guide**: This guide is under development. Check back for updates. 🚧
+
+## Contact
+
+For any questions, feedback, or inquiries related to the **afaas** project, don't hesitate to contact the project owner, Pierre-Henri AUSSEIL, at [ph.ausseil@gmail.com](mailto:ph.ausseil@gmail.com).
