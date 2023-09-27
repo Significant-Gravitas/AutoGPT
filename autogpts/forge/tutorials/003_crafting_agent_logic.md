@@ -15,6 +15,8 @@ Alright, folks, let's dive right into the fun part: coding! We're about to set u
 Before diving in, ensure you've prepped your project and crafted an agent as detailed in our kick-off tutorial. Missed that step? No worries! Just hop over to the project setup by clicking here. Once you're all set, come back and we'll hit the ground running.
 In the following screenshot, you'll notice I've crafted an agent named "SmartAgent" and then accessed the agent.py file located in the 'forge' subfolder. This will be our workspace for integrating the LLM-driven logic. While our previous tutorial touched upon the project layout and agent operations, don't fret! I'll highlight the essentials as we delve into the logic implementation.
 
+![SmartAgent](../../../docs/content/imgs/quickstart/t3_02.png)
+
 ---
 
 ## The Task Lifecycle
@@ -115,6 +117,9 @@ With these foundational bricks laid down, let's plunge into something truly fasc
 ---
 
 **The Art of Prompting**  
+
+![Prompting 101](../../../docs/content/imgs/quickstart/t3_03.png)
+
 Prompting is akin to a craftsman meticulously shaping messages tailored for powerful language models like ChatGPT. With these models being highly attuned to input nuances, designing the perfect prompt to elicit awe-inspiring behavior can be a labyrinthine challenge. Enter: the **PromptEngine**.
 
 While "PromptEngine" might sound high-brow, its essence is elegantly simple. It lets you store your prompts in text files or, to be precise, in Jinja2 templates. The advantage? You can refine the prompts given to your agent without diving into the code. Plus, it offers the flexibility to customize prompts for specific LLMs. Let's break this down.
@@ -449,7 +454,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 
 A simple click on that link will unveil the AutoGPT Agent UI. But wait, there’s a tiny pit-stop first! Log in with your Gmail or Github credentials. Now, spot that trophy icon on the left? Click it to waltz into the benchmarking arena. Opt for the ‘WriteFile’ test and hit ‘Initiate test suite’ to set the wheels in motion.
 
-Benchmarking page of the AutoGPT UI
+![Benchmarking page of the AutoGPT UI](../../../docs/content/imgs/quickstart/t3_04.png)
 
 Your eyes will be glued to the right panel as it spews out real-time output. And, if you sneak a peek at your console, these celebratory messages hint that your task reached its grand finale:
 
