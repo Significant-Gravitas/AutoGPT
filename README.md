@@ -1,10 +1,11 @@
 # afaas: Agent Framework as a Service
 
-Welcome to the **afaas: Agent Framework as a Service** project! This project is a fork of the `autogpt/core/` library and aims to support a variety of enhancements and improvements. The **afaas** project has several primary goals:
+Welcome to the **afaas: Agent Framework as a Service** project! This project is a fork **AutoGPT** it aims to facilitate developments and provide additional functionalities, namely : 
 
-1. **Separate Agent Functionalities**: Facilitate teamwork by dividing agent functionalities into three parts:
+1. **Separate Agent Functionalities**: Facilitate teamwork by dividing agent functionalities into four parts:
    - **Agent Main**: Focuses on UI ↔ Agent ↔ Database interfaces, supporting CRUD & Execution.
    - **Agent Loop**: Concentrates on the Agent execution logic.
+   - **Agent Models**: Gather Settings and Configurations required to run an Agent. 
    - **Agent Strategies**: Emphasizes the creation of (dynamic) prompts for the Machine Learning Back-end.
 
 2. **Support Multiple Users**: Allows multi-user, so you can provide your agent via an API/Service to multiple persons/programs.
@@ -15,13 +16,13 @@ Welcome to the **afaas: Agent Framework as a Service** project! This project is 
 
 5. **Support Various Memory Back-ends**: Including AWS, Azure, and MongoDB.
 
-🚧 **Work in progress**: Please check the branch status for further information. 🚧
+<!--🚧 **Work in progress**: Please check the branch status for further information. 🚧-->
 
 ## Table of Contents
 
 - [afaas: Agent Framework as a Service](#afaas-agent-framework-as-a-service)
 - [Table of Contents](#table-of-contents)
-- [afaas - GitHub Branches](#afaas---github-branches)
+<!--- [afaas - GitHub Branches](#afaas---github-branches)-->
 - [Contributing](#contributing)
 - [Setup and Execution](#setup-and-execution)
 - [License](#license)
@@ -78,30 +79,35 @@ Miscellaneous:
 📆 (U+1F4C6) - Date, Schedule
 📊 (U+1F4CA) - Statistics, Data
 -->
+## Current status
+
+27th of September : 
+The Framework libraries are working, we are currently achieving an example of Agent implemented with the Framework and compatible with the [Agent Protocol](https://github.com/AI-Engineers-Foundation/agent-protocol) & AutoGPT Benchmarks. Other priorities are the support of more "Abilities" (tools 🔧 ), database-backends ( 📚 ).
+
 ## Contributing
 
 Your contributions to this project are immensely valued. Here are currents needs : 
 - **Anyone** with skills in Kubernetes :smile:
-- **Developer :**
- - Join us to migrate AutoGPT Commands to Abilities
- - Join us to achieve the prototyped backends (AWS, Azure, MongoDB).
+- **Back-End Developer :**
+  - Join us to migrate AutoGPT Commands to Abilities
+  - Join us to achieve the prototyped backends (AWS, Azure, MongoDB).
 - **Front-end Developper**
- - Join us to develop a GUI
- - Join us to build a Project Website 
-- **Anyone :** 
- - Join us to manage PR & Discord Server
- - ✅ ~~Build a User Guide to run our example.~~ => AutoGPT User Guide should
- - Build a Developper guide to create agents (Exposing only methods required to build Agents)
- - Build a Technical documentation to documents all the technical intricacies of the Framework
- - Offer suggestions, report potential issues, or propose new enhancements through GitHub issues.
+  - Join us to develop a GUI
+  - Join us to build a Project Website 
+- Also **Anyone :** 
+  - Join us to manage PR & Discord Server
+  - ✅ ~~Build a User Guide to run our example.~~ => AutoGPT User Guide should
+  - Build a Developper guide to create agents (Exposing only methods required to build Agents)
+  - Build a Technical documentation to documents all the technical intricacies of the Framework
+  - Offer suggestions, report potential issues, or propose new enhancements through GitHub issues.
 
 For more detailed contribution guidelines, please refer to `CONTRIBUTING.md`.
 
 ## Roadmap priorities : 
 1. 🔄 Achieve the SimpleAgent example
-2. 🔴 Migrate AutoGPT Commands to Abilities **Help needed**
-3. 🔴 Get a Developper Guilde for easier adoption
-4. 🔴 Build an API  
+2. 🔴 Compatibility with  [Agent Protocol](https://github.com/AI-Engineers-Foundation/agent-protocol) 
+3. 🔴 Migrate AutoGPT Commands to Abilities **Help needed**
+4. 🔴 Get a Developper Guide for easier adoption
 
 ## Setup and Execution
 
