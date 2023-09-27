@@ -111,3 +111,90 @@ async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Ste
 ```
 
 With these foundational bricks laid down, let's plunge into something truly fascinating: introducing, The PromptEngine.
+
+---
+
+**The Art of Prompting**  
+Prompting is akin to a craftsman meticulously shaping messages tailored for powerful language models like ChatGPT. With these models being highly attuned to input nuances, designing the perfect prompt to elicit awe-inspiring behavior can be a labyrinthine challenge. Enter: the **PromptEngine**.
+
+While "PromptEngine" might sound high-brow, its essence is elegantly simple. It lets you store your prompts in text files or, to be precise, in Jinja2 templates. The advantage? You can refine the prompts given to your agent without diving into the code. Plus, it offers the flexibility to customize prompts for specific LLMs. Let's break this down.
+
+Firstly, integrate the PromptEngine from the SDK:
+
+```python
+from .sdk import PromptEngine
+```
+
+Next, within your `execute_step` function, initialize the engine tailored for, say, the `gpt-3.5-turbo` LLM:
+
+```python
+prompt_engine = PromptEngine("gpt-3.5-turbo")
+```
+
+Loading a prompt is straightforward. For instance, loading the `system-format` prompt, which dictates the response format from the LLM, is as easy as:
+
+```python
+system_prompt = prompt_engine.load_prompt("system-format")
+```
+
+For intricate use cases, like the `task-step` prompt which requires parameters, employ the following method:
+
+```python
+# Specifying the task parameters
+task_kwargs = {
+    "task": task.input,
+    "abilities": self.abilities.list_abilities_for_prompt(),
+}
+
+# Then, load the task prompt with the designated parameters
+task_prompt = prompt_engine.load_prompt("task-step", **task_kwargs)
+```
+
+Delving deeper, let's peek at the `task-step` prompt template, housed at `prompts/gpt-3.5-turbo/task-step.j2`:
+
+```jinja
+{% extends "techniques/expert.j2" %}
+{% block expert %}Planner{% endblock %}
+{% block prompt %}
+Your task is:
+
+{{ task }}
+
+Ensure to respond in the given format. Always make autonomous decisions, devoid of user guidance. Harness the power of your LLM, opting for straightforward tactics sans any legal entanglements.
+
+{% if constraints %}
+## Constraints
+Operate under these confines:
+{% for constraint in constraints %}
+- {{ constraint }}
+{% endfor %}
+{% endif %}
+
+{% if resources %}
+## Resources
+Utilize these resources:
+{% for resource in resources %}
+- {{ resource }}
+{% endfor %}
+{% endif %}
+
+{% if abilities %}
+## Abilities
+Summon these abilities:
+{% for ability in abilities %}
+- {{ ability }}
+{% endfor %}
+{% endif %}
+
+{% if best_practices %}
+## Best Practices
+{% for best_practice in best_practices %}
+- {{ best_practice }}
+{% endfor %}
+{% endif %}
+{% endblock %}
+```
+
+This template is a marvel of modularity. By using the `extends` directive, it builds upon the base `expert.j2` template. The different blocks – constraints, resources, abilities, and best practices – allow for a dynamic prompt that adjusts based on the context. It's like a conversation blueprint, guiding the LLM to understand the task, abide by constraints, and deploy resources and abilities to achieve the desired outcome.
+
+The PromptEngine equips us with a potent tool to converse seamlessly with large language models. By externalizing prompts and using templates, we can ensure that our agent remains agile, adapting to new challenges without a code overhaul. As we march forward, keep this foundation in mind—it's the bedrock of our agent's intelligence.
