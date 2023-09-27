@@ -4,13 +4,9 @@ ARG BUILD_TYPE=dev
 # Use an official Python base image from the Docker Hub
 FROM python:3.10-slim AS autogpt-base
 
-# Install browsers
+# Install browsers & utilities
 RUN apt-get update && apt-get install -y \
     chromium-driver firefox-esr ca-certificates gcc \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install utilities
-RUN apt-get update && apt-get install -y \
     curl jq wget git \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -24,7 +20,7 @@ ENV PIP_NO_CACHE_DIR=yes \
 
 # Install and configure Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -
-ENV PATH="$POETRY_HOME/bin:$PATH"
+ENV PATH="$POTERY_HOME/bin:$PATH"
 RUN poetry config installer.max-workers 10
 
 WORKDIR /app
