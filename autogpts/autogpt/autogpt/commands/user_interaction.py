@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import urllib
+import asyncio
 import requests
 import pprint
 #from autogpt.models.agent_actions import (    Action)
@@ -12,6 +13,8 @@ COMMAND_CATEGORY_TITLE = "User Interaction"
 from autogpt.agents.agent import Agent
 from autogpt.app.utils import clean_input
 from autogpt.command_decorator import command
+from autogpt.models.action_history import     Action
+
 #import  ai_ticket.events.inference
 import ai_ticket.backends.pygithub
 
@@ -28,7 +31,7 @@ import ai_ticket.backends.pygithub
             "required": True,
         }
     },
-    enabled=lambda config: not config.noninteractive_mode,
+    enabled=True,
 )
 async def ask_user(question: str, agent: Agent) -> str:
     resp = await clean_input(
@@ -50,9 +53,9 @@ async def ask_user(question: str, agent: Agent) -> str:
             "required": True,
         }
     },
-    enabled=lambda config: not config.noninteractive_mode,
+    enabled=True,
 )
-def request_assistence(ticket_url: str, next_action: str, agent: Agent) -> str:
+async def request_assistence(ticket_url: str, next_action: str, agent: Agent) -> str:
     print("starti",ticket_url)
     #raise Exception ("testo")
     #config.github_api_key
@@ -64,8 +67,10 @@ def request_assistence(ticket_url: str, next_action: str, agent: Agent) -> str:
 
     #body = data["body"][3:-3] #```AAA```
 
-    class Foo :
-        content = data["body"]
+    class Foo :        
+        response = {
+            "content" :data["body"]    
+        }
     agent.event_history.rewind(1)
     data1 = agent.parse_and_process_response(Foo())
 
@@ -77,14 +82,15 @@ def request_assistence(ticket_url: str, next_action: str, agent: Agent) -> str:
         act = Action(
             name=next_command_name,
             args=next_command_args,
-            reasoning=assistant_reply_dict,
+            reasoning=str(assistant_reply_dict),
             )
 
         agent.event_history.register_action(act)
         #agent.event_history.current_record.action = None
-        agent.event_history.cursor=0
-        agent.event_history.cycles.append(agent.event_history.cycles[-1])
+        #agent.event_history.cursor=0
+        #agent.event_history.cycles.append(agent.event_history.cycles[-1])
         result = agent.execute(next_command_name, next_command_args, assistant_reply_dict)
+        
     except Exception as e:
         result = f"error {e}"
         raise e

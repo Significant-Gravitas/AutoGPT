@@ -12966,3 +12966,1182 @@ Increase net worth, Grow Twitter Account, Develop and manage multiple businesses
 2023-09-27 14:22:52,832 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
 2023-09-27 14:23:06,755 [34m[34mINFO[0m[0m  You interrupted AutoGPT
 2023-09-27 14:23:06,755 [34m[34mINFO[0m[0m  Quitting...
+2023-09-27 14:29:19,989 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 14:29:19,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:29:19,991 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 14:29:19,991 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:29:19,991 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 14:29:19,991 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 14:29:19,991 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:29:19,994 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 14:29:20,050 [34m[34mINFO[0m[0m  [34m[1m[34m[1m[32mWelcome back![39m[0m [0m Would you like me to return to being AutoGpt-Improvement-agent?
+2023-09-27 14:29:21,700 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 14:29:21,700 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 14:29:21,700 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:29:21,700 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:29:21,700 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 14:29:21,700 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 14:29:21,700 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 14:29:21,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 14:29:21,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 14:29:23,766 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:29:23,793 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737884833. My next action is to poll that URL for updates.
+2023-09-27 14:29:23,793 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:29:23,794 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:29:23,794 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:29:23,794 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:29:23,794 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:29:23,794 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737884833', 'next_action': 'poll_url'}[0m
+2023-09-27 14:29:23,794 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:29:26,190 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:29:26,191 [33m[33mWARNING[0m[0m  [33mCommand request_assistance returned an error: 'AgentConfiguration' object has no attribute 'noninteractive_mode'[0m
+2023-09-27 14:29:27,954 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:29:27,997 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737884941. My next action is to poll that URL for updates.
+2023-09-27 14:29:27,997 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:29:27,998 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:29:27,998 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:29:27,998 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:29:27,998 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:29:27,998 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737884941', 'next_action': 'poll_url'}[0m
+2023-09-27 14:29:27,998 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:35:05,796 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:35:05,797 [33m[33mWARNING[0m[0m  [33mCommand request_assistance returned an error: 'AgentConfiguration' object has no attribute 'noninteractive_mode'[0m
+2023-09-27 14:35:07,671 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:35:07,703 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737894934. My next action is to poll that URL for updates.
+2023-09-27 14:35:07,703 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:35:07,704 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:35:07,704 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:35:07,704 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:35:07,704 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:35:07,704 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737894934', 'next_action': 'poll_url'}[0m
+2023-09-27 14:35:07,704 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:35:11,491 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:35:11,491 [33m[33mWARNING[0m[0m  [33mCommand request_assistance returned an error: 'AgentConfiguration' object has no attribute 'noninteractive_mode'[0m
+2023-09-27 14:35:13,617 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:35:13,640 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737895158. My next action is to poll that URL for updates.
+2023-09-27 14:35:13,641 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:35:13,641 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:35:13,641 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:35:13,641 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:35:13,641 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:35:13,642 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737895158', 'next_action': 'poll_url'}[0m
+2023-09-27 14:35:13,642 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:44:09,731 [34m[34mINFO[0m[0m  You interrupted AutoGPT
+2023-09-27 14:44:09,731 [34m[34mINFO[0m[0m  Quitting...
+2023-09-27 14:44:15,816 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 14:44:15,816 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 14:44:15,851 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 14:44:15,851 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:44:15,852 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 14:44:15,852 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 14:44:15,852 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 14:44:15,852 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 14:44:15,852 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 14:44:15,852 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:44:15,852 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 14:44:15,852 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 14:44:15,853 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 14:44:15,853 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 14:44:15,853 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:44:15,853 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 14:44:15,853 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 14:44:15,853 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 14:44:15,853 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:44:15,853 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 14:44:15,853 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:44:15,854 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 14:44:15,854 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:44:15,854 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 14:44:15,854 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 14:44:15,854 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:44:15,859 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 14:44:15,922 [34m[34mINFO[0m[0m  [34m[1m[34m[1m[32mWelcome back![39m[0m [0m Would you like me to return to being AutoGpt-Improvement-agent?
+2023-09-27 14:44:17,359 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 14:44:17,359 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 14:44:17,359 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:44:17,359 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:44:17,359 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 14:44:17,359 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 14:44:17,359 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 14:44:17,383 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 14:44:17,384 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 14:44:19,980 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:44:20,054 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737907320. My next action is to poll that URL for updates.
+2023-09-27 14:44:20,055 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:44:20,055 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:44:20,055 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:44:20,055 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:44:20,055 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:44:20,055 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737907320', 'next_action': 'poll_url'}[0m
+2023-09-27 14:44:20,056 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:44:22,057 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:44:22,057 [33m[33mWARNING[0m[0m  [33mCommand request_assistance returned an error: 'AgentConfiguration' object has no attribute 'noninteractive_mode'[0m
+2023-09-27 14:44:24,272 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:44:24,365 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737907407. My next action is to poll that URL for updates.
+2023-09-27 14:44:24,366 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:44:24,366 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:44:24,366 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:44:24,366 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:44:24,366 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:44:24,367 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737907407', 'next_action': 'poll_url'}[0m
+2023-09-27 14:44:24,367 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:44:30,923 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:44:30,923 [33m[33mWARNING[0m[0m  [33mCommand request_assistance returned an error: 'AgentConfiguration' object has no attribute 'noninteractive_mode'[0m
+2023-09-27 14:44:32,817 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:44:32,830 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737907582. My next action is to poll that URL for updates.
+2023-09-27 14:44:32,831 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:44:32,831 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:44:32,831 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:44:32,831 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:44:32,832 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:44:32,832 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737907582', 'next_action': 'poll_url'}[0m
+2023-09-27 14:44:32,832 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:45:21,227 [34m[34mINFO[0m[0m  You interrupted AutoGPT
+2023-09-27 14:45:21,227 [34m[34mINFO[0m[0m  Quitting...
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:45:29,752 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 14:45:29,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:45:29,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 14:45:29,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:45:29,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 14:45:29,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 14:45:29,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:45:29,754 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 14:45:29,839 [34m[34mINFO[0m[0m  [34m[1m[34m[1m[32mWelcome back![39m[0m [0m Would you like me to return to being AutoGpt-Improvement-agent?
+2023-09-27 14:45:31,351 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 14:45:31,351 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 14:45:31,351 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:45:31,351 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:45:31,351 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 14:45:31,351 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 14:45:31,351 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 14:45:31,397 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 14:45:31,397 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 14:45:33,348 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:45:33,368 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737908788. My next action is to poll that URL for updates.
+2023-09-27 14:45:33,369 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:45:33,369 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:45:33,369 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:45:33,369 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:45:33,369 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:45:33,369 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737908788', 'next_action': 'poll_url'}[0m
+2023-09-27 14:45:33,370 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:45:56,449 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:47:27,435 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 14:47:27,435 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 14:47:27,435 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 14:47:27,435 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:47:27,435 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 14:47:27,435 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 14:47:27,435 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 14:47:27,435 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 14:47:27,435 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 14:47:27,436 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:47:27,437 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 14:47:27,490 [34m[34mINFO[0m[0m  [34m[1m[34m[1m[32mWelcome back![39m[0m [0m Would you like me to return to being AutoGpt-Improvement-agent?
+2023-09-27 14:47:28,831 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 14:47:28,831 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 14:47:28,831 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:47:28,831 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:47:28,831 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 14:47:28,831 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 14:47:28,831 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 14:47:28,858 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 14:47:28,858 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 14:47:31,474 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:47:31,529 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737911173. My next action is to poll that URL for updates.
+2023-09-27 14:47:31,529 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:47:31,529 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:47:31,529 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:47:31,529 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:47:31,529 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:47:31,529 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737911173', 'next_action': 'poll_url'}[0m
+2023-09-27 14:47:31,529 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:47:32,734 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:48:04,406 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 14:48:04,406 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 14:48:04,406 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 14:48:04,406 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:48:04,406 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:48:04,407 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 14:48:04,408 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 14:48:04,408 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:48:04,410 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 14:48:04,466 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 14:48:04,489 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 14:48:04,489 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 14:48:06,549 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:48:06,645 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737911866. My next action is to poll that URL for updates.
+2023-09-27 14:48:06,645 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:48:06,645 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:48:06,646 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:48:06,646 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:48:06,646 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:48:06,646 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737911866', 'next_action': 'poll_url'}[0m
+2023-09-27 14:48:06,646 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:48:09,372 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:50:23,689 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 14:50:23,690 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 14:50:23,690 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 14:50:23,690 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:50:23,690 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 14:50:23,690 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:50:23,690 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 14:50:23,690 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:50:23,690 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 14:50:23,690 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 14:50:23,690 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:50:23,691 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 14:50:23,753 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 14:50:23,774 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 14:50:23,774 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 14:50:26,020 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:50:26,030 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737914728. My next action is to poll that URL for updates.
+2023-09-27 14:50:26,031 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:50:26,031 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:50:26,031 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:50:26,031 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:50:26,031 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:50:26,031 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737914728', 'next_action': 'poll_url'}[0m
+2023-09-27 14:50:26,032 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:51:07,448 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:51:07,718 [33m[33mWARNING[0m[0m  [33mCommand request_assistance returned an error: 'Foo' object has no attribute 'response'[0m
+2023-09-27 14:51:10,786 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:51:10,829 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737915661. My next action is to poll that URL for updates.
+2023-09-27 14:51:10,830 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:51:10,830 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:51:10,830 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:51:10,830 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:51:10,830 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:51:10,831 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737915661', 'next_action': 'poll_url'}[0m
+2023-09-27 14:51:10,831 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:51:59,231 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:51:59,435 [33m[33mWARNING[0m[0m  [33mCommand request_assistance returned an error: 'Foo' object has no attribute 'response'[0m
+2023-09-27 14:52:01,260 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:52:01,261 [31m[31mERROR[0m[0m  [31mInterrupt signal received. Stopping AutoGPT immediately.[0m
+2023-09-27 14:52:01,262 [34m[34mINFO[0m[0m  Error parsing JSON response with literal_eval 
+2023-09-27 14:52:01,266 [31m[31mERROR[0m[0m  [31m{}[0m
+2023-09-27 14:52:01,266 [31m[31mERROR[0m[0m  [31mThe following issues were found:[0m
+2023-09-27 14:52:01,266 [31m[31mERROR[0m[0m  [31mError: 'thoughts' is a required property[0m
+2023-09-27 14:52:01,266 [31m[31mERROR[0m[0m  [31mError: 'command' is a required property[0m
+2023-09-27 14:52:01,267 [33m[33mWARNING[0m[0m  [33mThe agent's thoughts could not be parsed: Validation of response failed:
+  'thoughts' is a required property
+
+Failed validating 'required' in schema:
+    {'properties': {'command': {'properties': {'args': {'type': 'object'},
+                                               'name': {'type': 'string'}},
+                                'required': ['name', 'args'],
+                                'type': 'object'},
+                    'thoughts': {'properties': {'criticism': {'description': 'constructive '
+                                                                             'self-criticism',
+                                                              'type': 'string'},
+                                                'plan': {'description': '- '
+                                                                        'short '
+                                                                        'bulleted\n'
+                                                                        '- '
+                                                                        'list '
+                                                                        'that '
+                                                                        'conveys\n'
+                                                                        '- '
+                                                                        'long-term '
+                                                                        'plan',
+                                                         'type': 'string'},
+                                                'reasoning': {'type': 'string'},
+                                                'speak': {'description': 'thoughts '
+                                                                         'summary '
+                                                                         'to '
+                                                                         'say '
+                                                                         'to '
+                                                                         'user',
+                                                          'type': 'string'},
+                                                'text': {'description': 'thoughts',
+                                                         'type': 'string'}},
+                                 'required': ['text',
+                                              'reasoning',
+                                              'plan',
+                                              'criticism',
+                                              'speak'],
+                                 'type': 'object'}},
+     'required': ['thoughts', 'command'],
+     'type': 'object'}
+
+On instance:
+    {};
+  'command' is a required property
+
+Failed validating 'required' in schema:
+    {'properties': {'command': {'properties': {'args': {'type': 'object'},
+                                               'name': {'type': 'string'}},
+                                'required': ['name', 'args'],
+                                'type': 'object'},
+                    'thoughts': {'properties': {'criticism': {'description': 'constructive '
+                                                                             'self-criticism',
+                                                              'type': 'string'},
+                                                'plan': {'description': '- '
+                                                                        'short '
+                                                                        'bulleted\n'
+                                                                        '- '
+                                                                        'list '
+                                                                        'that '
+                                                                        'conveys\n'
+                                                                        '- '
+                                                                        'long-term '
+                                                                        'plan',
+                                                         'type': 'string'},
+                                                'reasoning': {'type': 'string'},
+                                                'speak': {'description': 'thoughts '
+                                                                         'summary '
+                                                                         'to '
+                                                                         'say '
+                                                                         'to '
+                                                                         'user',
+                                                          'type': 'string'},
+                                                'text': {'description': 'thoughts',
+                                                         'type': 'string'}},
+                                 'required': ['text',
+                                              'reasoning',
+                                              'plan',
+                                              'criticism',
+                                              'speak'],
+                                 'type': 'object'}},
+     'required': ['thoughts', 'command'],
+     'type': 'object'}
+
+On instance:
+    {}[0m
+2023-09-27 14:52:03,091 [31m[31mERROR[0m[0m  [31mInterrupt signal received. Stopping AutoGPT immediately.[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 14:52:09,498 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:52:09,500 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 14:52:09,601 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 14:52:11,677 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:52:11,758 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737916964. My next action is to poll that URL for updates.
+2023-09-27 14:52:11,758 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:52:11,758 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:52:11,758 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:52:11,759 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:52:11,759 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:52:11,759 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737916964', 'next_action': 'poll_url'}[0m
+2023-09-27 14:52:11,759 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:52:34,916 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:52:35,136 [33m[33mWARNING[0m[0m  [33mCommand request_assistance returned an error: Assistant response has no text content[0m
+2023-09-27 14:52:37,024 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:52:37,043 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737917479. My next action is to poll that URL for updates.
+2023-09-27 14:52:37,044 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:52:37,044 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:52:37,045 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:52:37,045 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:52:37,045 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:52:37,046 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737917479', 'next_action': 'poll_url'}[0m
+2023-09-27 14:52:37,046 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:53:26,601 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 14:53:26,815 [33m[33mWARNING[0m[0m  [33mCommand request_assistance returned an error: Assistant response has no text content[0m
+2023-09-27 14:53:28,689 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:53:28,724 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737918465. My next action is to poll that URL for updates.
+2023-09-27 14:53:28,724 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:53:28,724 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:53:28,724 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:53:28,725 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:53:28,725 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:53:28,725 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737918465', 'next_action': 'poll_url'}[0m
+2023-09-27 14:53:28,725 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 14:54:57,642 [34m[34mINFO[0m[0m  You interrupted AutoGPT
+2023-09-27 14:54:57,642 [34m[34mINFO[0m[0m  Quitting...
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:55:18,727 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 14:55:18,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 14:55:18,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 14:55:18,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:55:18,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 14:55:18,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:55:18,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 14:55:18,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:55:18,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 14:55:18,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 14:55:18,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 14:55:18,729 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 14:55:18,782 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 14:55:18,809 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 14:55:18,809 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 14:55:20,871 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 14:55:20,966 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737920802. My next action is to poll that URL for updates.
+2023-09-27 14:55:20,967 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 14:55:20,967 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 14:55:20,967 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 14:55:20,967 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 14:55:20,968 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 14:55:20,968 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737920802', 'next_action': 'poll_url'}[0m
+2023-09-27 14:55:20,968 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:11:14,499 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:12:30,933 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:12:30,934 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:12:30,935 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:12:30,989 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:12:30,989 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:12:30,989 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 15:12:30,989 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 15:12:30,989 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 15:12:30,989 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 15:12:30,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:12:30,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:12:30,990 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 15:12:30,990 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 15:12:30,990 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 15:12:31,017 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 15:12:31,017 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 15:12:33,015 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:12:33,074 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737940903. My next action is to poll that URL for updates.
+2023-09-27 15:12:33,074 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:12:33,074 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:12:33,074 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:12:33,075 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:12:33,075 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:12:33,075 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737940903', 'next_action': 'poll_url'}[0m
+2023-09-27 15:12:33,075 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:12:34,056 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:15:49,728 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:15:49,730 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 15:15:49,839 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 15:15:52,135 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:15:52,196 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737944966. My next action is to poll that URL for updates.
+2023-09-27 15:15:52,197 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:15:52,197 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:15:52,197 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:15:52,197 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:15:52,197 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:15:52,198 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737944966', 'next_action': 'poll_url'}[0m
+2023-09-27 15:15:52,198 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:15:52,890 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:16:45,456 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:16:45,458 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 15:16:45,575 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 15:16:45,576 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 15:16:45,576 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 15:16:47,480 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:16:47,531 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737945991. My next action is to poll that URL for updates.
+2023-09-27 15:16:47,531 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:16:47,531 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:16:47,531 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:16:47,531 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:16:47,532 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:16:47,532 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737945991', 'next_action': 'poll_url'}[0m
+2023-09-27 15:16:47,532 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:17:10,223 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:17:21,653 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:17:21,654 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:17:21,654 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:17:21,654 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:17:21,655 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 15:17:21,709 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 15:17:21,710 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 15:17:21,710 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 15:17:23,597 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:17:23,663 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737946592. My next action is to poll that URL for updates.
+2023-09-27 15:17:23,663 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:17:23,663 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:17:23,663 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:17:23,664 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:17:23,664 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:17:23,664 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737946592', 'next_action': 'poll_url'}[0m
+2023-09-27 15:17:23,664 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:17:44,803 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:21:46,022 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:21:46,022 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:21:46,022 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:21:46,022 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:21:46,023 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:21:46,023 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:21:46,023 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:21:46,023 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:21:46,023 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:21:46,023 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:21:46,023 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:21:46,023 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:21:46,024 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:21:46,024 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:21:46,024 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:21:46,024 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:21:46,024 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:21:46,024 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:21:46,024 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:21:46,024 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:21:46,024 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:21:46,025 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:21:46,025 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:21:46,025 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:21:46,025 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:21:46,025 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:21:46,030 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 15:21:46,091 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 15:21:48,133 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:21:48,143 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737951706. My next action is to poll that URL for updates.
+2023-09-27 15:21:48,144 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:21:48,144 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:21:48,144 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:21:48,144 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:21:48,144 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:21:48,144 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737951706', 'next_action': 'poll_url'}[0m
+2023-09-27 15:21:48,145 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:22:02,262 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:24:57,862 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:24:57,862 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:24:57,862 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:24:57,862 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:24:57,862 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:24:57,862 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:24:57,862 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:24:57,863 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:24:57,864 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:24:57,916 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:24:57,916 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:24:57,916 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 15:24:57,916 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 15:24:57,916 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 15:24:57,916 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 15:24:57,916 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:24:57,916 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:24:57,917 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 15:24:57,917 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 15:24:57,917 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 15:24:57,961 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 15:24:57,961 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 15:24:59,962 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:25:00,029 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737955550. My next action is to poll that URL for updates.
+2023-09-27 15:25:00,029 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:25:00,029 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:25:00,030 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:25:00,030 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:25:00,030 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:25:00,030 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737955550', 'next_action': 'poll_url'}[0m
+2023-09-27 15:25:00,030 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:26:01,291 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:27:25,225 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:27:25,225 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:27:25,225 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:27:25,225 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:27:25,225 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:27:25,226 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:27:25,227 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 15:27:25,314 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 15:27:27,288 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:27:27,370 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737958388. My next action is to poll that URL for updates.
+2023-09-27 15:27:27,370 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:27:27,370 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:27:27,370 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:27:27,370 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:27:27,371 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:27:27,371 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737958388', 'next_action': 'poll_url'}[0m
+2023-09-27 15:27:27,371 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:27:29,700 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:28:44,747 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:28:44,749 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 15:28:44,865 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 15:28:44,866 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 15:28:47,076 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:28:47,123 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737959934. My next action is to poll that URL for updates.
+2023-09-27 15:28:47,123 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:28:47,123 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:28:47,123 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:28:47,124 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:28:47,124 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:28:47,124 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737959934', 'next_action': 'poll_url'}[0m
+2023-09-27 15:28:47,124 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:28:48,444 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:28:48,685 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSYSTEM:[0m [0m RESULT:'<coroutine object Agent.execute at 0x7f364b2adc40>'
+2023-09-27 15:28:51,849 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:28:51,896 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737960011. My next action is to poll that URL for updates.
+2023-09-27 15:28:51,896 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:28:51,897 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:28:51,897 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:28:51,897 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:28:51,897 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:28:51,897 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737960011', 'next_action': 'poll_url'}[0m
+2023-09-27 15:28:51,897 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:29:50,888 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:29:51,117 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSYSTEM:[0m [0m RESULT:'<coroutine object Agent.execute at 0x7f364b2ad540>'
+2023-09-27 15:29:53,414 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:29:53,426 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737961196. My next action is to poll that URL for updates.
+2023-09-27 15:29:53,426 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:29:53,427 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:29:53,427 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:29:53,427 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:29:53,427 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:29:53,427 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737961196', 'next_action': 'poll_url'}[0m
+2023-09-27 15:29:53,427 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:32:42,405 [34m[34mINFO[0m[0m  You interrupted AutoGPT
+2023-09-27 15:32:42,406 [34m[34mINFO[0m[0m  Quitting...
+2023-09-27 15:32:50,525 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:32:50,525 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:32:50,525 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:32:50,526 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:32:50,529 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:33:40,386 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:33:40,387 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 15:33:40,470 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 15:33:42,729 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:33:42,827 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737965779. My next action is to poll that URL for updates.
+2023-09-27 15:33:42,828 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:33:42,828 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:33:42,828 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:33:42,828 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:33:42,828 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:33:42,828 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737965779', 'next_action': 'poll_url'}[0m
+2023-09-27 15:33:42,829 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:33:45,433 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:33:45,433 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSYSTEM:[0m [0m <coroutine object request_assistence at 0x7fa9c71a9a10>
+2023-09-27 15:33:47,139 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:33:47,242 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737965873. My next action is to poll that URL for updates.
+2023-09-27 15:33:47,242 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:33:47,243 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:33:47,243 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:33:47,243 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:33:47,243 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:33:47,243 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737965873', 'next_action': 'poll_url'}[0m
+2023-09-27 15:33:47,243 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:33:51,271 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:33:51,271 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSYSTEM:[0m [0m <coroutine object request_assistence at 0x7fa9c71a9070>
+2023-09-27 15:33:53,172 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:33:53,178 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737966000. My next action is to poll that URL for updates.
+2023-09-27 15:33:53,179 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:33:53,179 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:33:53,179 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:33:53,179 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:33:53,179 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:33:53,180 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737966000', 'next_action': 'poll_url'}[0m
+2023-09-27 15:33:53,180 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:34:12,076 [33m[33mWARNING[0m[0m  [33mInvalid input format.[0m
+2023-09-27 15:34:13,194 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:34:13,194 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSYSTEM:[0m [0m <coroutine object request_assistence at 0x7fa9c71a9540>
+2023-09-27 15:34:15,181 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:34:15,201 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737966480. My next action is to poll that URL for updates.
+2023-09-27 15:34:15,202 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:34:15,202 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:34:15,202 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:34:15,202 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:34:15,202 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:34:15,203 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737966480', 'next_action': 'poll_url'}[0m
+2023-09-27 15:34:15,203 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:35:06,474 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:35:06,474 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSYSTEM:[0m [0m <coroutine object request_assistence at 0x7fa9c71a9930>
+2023-09-27 15:35:08,255 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:35:08,280 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737967499. My next action is to poll that URL for updates.
+2023-09-27 15:35:08,280 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:35:08,280 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:35:08,281 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:35:08,281 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:35:08,281 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:35:08,281 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737967499', 'next_action': 'poll_url'}[0m
+2023-09-27 15:35:08,281 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:41:14,289 [34m[34mINFO[0m[0m  You interrupted AutoGPT
+2023-09-27 15:41:14,289 [34m[34mINFO[0m[0m  Quitting...
+2023-09-27 15:41:20,878 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [33mWelcome to AutoGPT![0m
+2023-09-27 15:41:20,878 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Below you'll find the latest AutoGPT News and updates regarding features![0m
+2023-09-27 15:41:20,878 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m If you don't wish to see this message, you can run AutoGPT with the [1m--skip-news[22m flag.[0m
+2023-09-27 15:41:20,878 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:41:20,878 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mQUICK LINKS 🔗[0m
+2023-09-27 15:41:20,878 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m--------------[0m
+2023-09-27 15:41:20,878 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 🌎 [1mOfficial Website[22m: https://agpt.co.[0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 📖 [1mUser Guide[22m: https://docs.agpt.co.[0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m 👩 [1mContributors Wiki[22m: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing.[0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36mv0.4.7 RELEASE HIGHLIGHTS! 🚀[0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [1m[36m-----------------------------[0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m This release introduces initial REST API support, powered by e2b's agent [0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m protocol SDK (https://github.com/e2b-dev/agent-protocol#sdk). [0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m It also includes improvements to prompt generation and support [0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m for our new benchmarking tool, Auto-GPT-Benchmarks[0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m (https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks).[0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m We've also moved our documentation to Material Theme, at https://docs.agpt.co.[0m
+2023-09-27 15:41:20,879 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:41:20,880 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m As usual, we've squashed a few bugs and made some under-the-hood improvements.[0m
+2023-09-27 15:41:20,880 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:41:20,880 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m Take a look at the Release Notes on Github for the full changelog:[0m
+2023-09-27 15:41:20,880 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m https://github.com/Significant-Gravitas/AutoGPT/releases.[0m
+2023-09-27 15:41:20,880 [34m[34mINFO[0m[0m  [32m[1m[32m[1mNEWS:[0m [0m [0m
+2023-09-27 15:41:20,883 [33m[33mWARNING[0m[0m  [33mYou are running on `rebase_master_autogpt` branch - this is not a supported branch.[0m
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m ['improve independence from external apis', 'make multi platform']
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [32m[1m[32m[1mAPI Budget:[0m [0m $10.0
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [33mNOTE: All files/directories created by this agent can be found inside its workspace at:[39m /mnt/data1/2023/09/24/ai-ticket/vendor/Auto-GPT/autogpts/autogpt/auto_gpt_workspace
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [94mAutoGpt-Improvement-agent[39m has been created with the following details:
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [32m[1m[32m[1mName :[0m [0m AutoGpt-Improvement-agent
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [32m[1m[32m[1mRole :[0m [0m improve autogpt
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [32m[1m[32m[1mGoals:[0m [0m 
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  - improve independence from external apis
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  - make multi platform
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Memory:[0m [0m JSONFileMemory
+2023-09-27 15:41:20,975 [34m[34mINFO[0m[0m  [32m[1m[32m[1mConfigured Browser:[0m [0m chrome
+2023-09-27 15:41:23,605 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:41:23,630 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737974416. My next action is to poll that URL for updates.
+2023-09-27 15:41:23,631 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:41:23,631 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:41:23,631 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:41:23,631 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:41:23,631 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:41:23,631 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737974416', 'next_action': 'poll_url'}[0m
+2023-09-27 15:41:23,632 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...
+2023-09-27 15:46:23,924 [34m[34mINFO[0m[0m  [35m-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=[0m
+2023-09-27 15:46:23,924 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSYSTEM:[0m [0m <coroutine object request_assistence at 0x7f5dae891a10>
+2023-09-27 15:46:25,909 [34m[34mINFO[0m[0m  message='OpenAI API response' path=http://localhost:5000/v1/chat/completions processing_ms=None request_id=None response_code=200
+2023-09-27 15:46:25,931 [34m[34mINFO[0m[0m  [33m[1m[33m[1mAUTOGPT-IMPROVEMENT-AGENT THOUGHTS:[0m [0m I encountered an issue with our application, and I need assistance. I've created a ticket for it. Here's the URL to the ticket: https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737980285. My next action is to poll that URL for updates.
+2023-09-27 15:46:25,932 [34m[34mINFO[0m[0m  [33m[1m[33m[1mREASONING:[0m [0m todo
+2023-09-27 15:46:25,932 [34m[34mINFO[0m[0m  [33m[1m[33m[1mPLAN:[0m [0m 
+2023-09-27 15:46:25,932 [34m[34mINFO[0m[0m  [32m[1m[32m[1m- [0m [0m Initiated a request for assistance.
+2023-09-27 15:46:25,932 [34m[34mINFO[0m[0m  [33m[1m[33m[1mCRITICISM:[0m [0m todo
+2023-09-27 15:46:25,933 [34m[34mINFO[0m[0m  [33m[1m[33m[1mSPEAK:[0m [0m TODO:cv.safe_generate(json.dumps(data))
+2023-09-27 15:46:25,933 [34m[34mINFO[0m[0m  [36m[1m[36m[1mNEXT ACTION:[0m [0m COMMAND = [36mrequest_assistance[0m  ARGUMENTS = [36m{'ticket_url': 'https://api.github.com/repos/jmikedupont2/ai-ticket/issues/comments/1737980285', 'next_action': 'poll_url'}[0m
+2023-09-27 15:46:25,933 [34m[34mINFO[0m[0m  Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for AutoGpt-Improvement-agent...

@@ -545,3 +545,9 @@
 2023-09-24 07:33:21,790.790 [31m[31m[31mERROR[0m[0m[0m main.py:262  [31mThe agent failed to output valid thoughts 3 times in a row. Terminating...[0m
 2023-09-24 12:54:18,686.686 [31m[31m[31mERROR[0m[0m[0m main.py:224  [31mInterrupt signal received. Stopping Auto-GPT immediately.[0m
 2023-09-25 19:27:06,942.942 [31m[31m[31mERROR[0m[0m[0m main.py:224  [31mInterrupt signal received. Stopping Auto-GPT immediately.[0m
+2023-09-27 14:52:01,261.261 [31m[31m[31mERROR[0m[0m[0m main.py:276  [31mInterrupt signal received. Stopping AutoGPT immediately.[0m
+2023-09-27 14:52:01,266.266 [31m[31m[31mERROR[0m[0m[0m json_schema.py:107  [31m{}[0m
+2023-09-27 14:52:01,266.266 [31m[31m[31mERROR[0m[0m[0m json_schema.py:108  [31mThe following issues were found:[0m
+2023-09-27 14:52:01,266.266 [31m[31m[31mERROR[0m[0m[0m json_schema.py:111  [31mError: 'thoughts' is a required property[0m
+2023-09-27 14:52:01,266.266 [31m[31m[31mERROR[0m[0m[0m json_schema.py:111  [31mError: 'command' is a required property[0m
+2023-09-27 14:52:03,091.091 [31m[31m[31mERROR[0m[0m[0m main.py:276  [31mInterrupt signal received. Stopping AutoGPT immediately.[0m

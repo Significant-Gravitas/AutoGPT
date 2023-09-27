@@ -96,7 +96,9 @@ class EpisodicActionHistory(BaseModel):
 
     def register_result(self, result: ActionResult) -> None:
         if not self.current_episode:
-            raise RuntimeError("Cannot register result for cycle without action")
+            #raise RuntimeError("Cannot register resulta for cycle without action")
+            act =Action(name="fake",args={},reasoning="")
+            self.register_action(act)
         elif self.current_episode.result:
             raise ValueError("Result for current cycle already set")
 

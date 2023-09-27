@@ -197,6 +197,7 @@ class Agent(
                 result = ActionSuccessResult(outputs=return_value)
             except AgentException as e:
                 result = ActionErrorResult(reason=e.message, error=e)
+                raise e
 
             result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
             history_tlength = self.llm_provider.count_tokens(
@@ -225,6 +226,7 @@ class Agent(
         self, llm_response: ChatModelResponse, *args, **kwargs
     ) -> Agent.ThoughtProcessOutput:
         if "content" not in llm_response.response:
+            print("DEBUG llm_response",llm_response)
             raise InvalidAgentResponseError("Assistant response has no text content")
 
         response_content = llm_response.response["content"]
@@ -369,8 +371,9 @@ def extract_command(
 
         return command_name, arguments
 
-    except json.decoder.JSONDecodeError:
+    except json.decoder.JSONDecodeError as e:
         raise InvalidAgentResponseError("Invalid JSON")
+       
 
     except Exception as e:
         raise InvalidAgentResponseError(str(e))
@@ -395,8 +398,8 @@ def execute_command(
     if command := agent.command_registry.get_command(command_name):
         try:
             return command(**arguments, agent=agent)
-        except AgentException:
-            raise
+        except AgentException as e:
+            raise e
         except Exception as e:
             raise CommandExecutionError(str(e))
 
@@ -405,8 +408,8 @@ def execute_command(
         if command_name == name or command_name.lower() == command.description.lower():
             try:
                 return command.function(**arguments)
-            except AgentException:
-                raise
+            except AgentException as e:
+                raise e
             except Exception as e:
                 raise CommandExecutionError(str(e))
 
