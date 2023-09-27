@@ -1,4 +1,5 @@
 import 'package:auto_gpt_flutter_client/constants/app_colors.dart';
+import 'package:auto_gpt_flutter_client/utils/uri_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -56,6 +57,9 @@ class _LeaderboardSubmissionDialogState
     if (_repoUrlController.text.isEmpty) {
       isValid = false;
       _repoUrlError = 'Repo URL is required';
+    } else if (!UriUtility.isURL(_repoUrlController.text)) {
+      isValid = false;
+      _repoUrlError = 'Invalid URL format';
     } else {
       _repoUrlError = null;
     }
