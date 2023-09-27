@@ -266,6 +266,7 @@ class SkillTreeViewModel extends ChangeNotifier {
       run.runDetails.runId = uuid;
 
       await leaderboardService.submitReport(run);
+      print('Completed submission to leaderboard!');
     }
 
     // Clear the currentBenchmarkRuns list after submitting to the leaderboard
