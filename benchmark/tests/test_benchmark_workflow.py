@@ -31,11 +31,16 @@ def test_entire_workflow(
     eval_id, input_text, expected_artifact_length, test_name, should_be_successful
 ):
     task_request = {"eval_id": eval_id, "input": input_text}
-
+    response = requests.get(f"{URL_AGENT}/agent/tasks")
+    task_count_before = response.json()["pagination"]["total_items"]
     # First POST request
     task_response_benchmark = requests.post(
         URL_BENCHMARK + "/agent/tasks", json=task_request
     )
+    response = requests.get(f"{URL_AGENT}/agent/tasks")
+    task_count_after = response.json()["pagination"]["total_items"]
+    assert task_count_after == task_count_before + 1
+
     timestamp_after_task_eval_created = datetime.datetime.now(datetime.timezone.utc)
     time.sleep(1.1)  # To make sure the 2 timestamps to compare are different
     assert task_response_benchmark.status_code == 200
