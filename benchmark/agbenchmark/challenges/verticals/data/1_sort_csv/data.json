@@ -1,0 +1,31 @@
+{
+    "category": [
+        "data"
+    ],
+    "cutoff": 60,
+    "dependencies": [
+        "TestReadFile"
+    ],
+    "eval_id": "db4654d7-fc97-4290-ab27-a710c2b5ce15",
+    "ground": {
+        "answer": "The csv sorted by date",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.csv"
+        ],
+        "should_contain": [
+            "id,name,timestamp\n1,Bob,2023-09-24 12:05:00\n2,Charlie,2023-09-24 12:10:00\n3,Alice,2023-09-25 14:10:00\n4,David,2023-09-26 16:20:00"
+        ]
+    },
+    "info": {
+        "description": "Tests if the agent can sort a csv",
+        "difficulty": "basic",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "SortCsv",
+    "task": "Sort the input.csv by the 'timestamp' column and write the new csv in the output.csv file. The order of the columns should be preserved."
+}
