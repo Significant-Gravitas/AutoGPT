@@ -1,4 +1,6 @@
 // TODO: Remove the ability to have null values when benchmark implementation is complete
+import 'dart:convert';
+
 /// TaskInfo holds information related to a specific benchmark task.
 ///
 /// The class encapsulates various attributes of a task, such as the path to the data file,
@@ -47,12 +49,12 @@ class TaskInfo {
   ///
   /// Returns a new TaskInfo populated with values from the map.
   factory TaskInfo.fromJson(Map<String, dynamic> json) => TaskInfo(
-        dataPath: json['data_path'],
+        dataPath: json['data_path'] ?? 'placeholder',
         isRegression: json['is_regression'] ?? false,
         category: List<String>.from(json['category']),
-        task: json['task'],
-        answer: json['answer'],
-        description: json['description'],
+        task: json['task'] ?? 'placeholder',
+        answer: json['answer'] ?? 'placeholder',
+        description: json['description'] ?? 'placeholder',
       );
 
   /// Converts the TaskInfo instance to a map.
@@ -61,7 +63,8 @@ class TaskInfo {
   Map<String, dynamic> toJson() => {
         'data_path': dataPath,
         'is_regression': isRegression,
-        'category': category,
+        // 'category': jsonEncode(category),
+        'category': "[\"coding\"]",
         'task': task,
         'answer': answer,
         'description': description,
