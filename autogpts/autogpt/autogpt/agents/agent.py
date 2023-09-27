@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import inspect
 import logging
 import time
 from datetime import datetime
@@ -174,10 +174,12 @@ class Agent(
             for plugin in self.config.plugins:
                 if not plugin.can_handle_pre_command():
                     continue
-                command_name, arguments = plugin.pre_command(command_name, command_args)
+                command_name, command_args = plugin.pre_command(
+                    command_name, command_args
+                )
 
             try:
-                return_value = execute_command(
+                return_value = await execute_command(
                     command_name=command_name,
                     arguments=command_args,
                     agent=self,
@@ -376,7 +378,7 @@ def extract_command(
         raise InvalidAgentResponseError(str(e))
 
 
-def execute_command(
+async def execute_command(
     command_name: str,
     arguments: dict[str, str],
     agent: Agent,
@@ -394,7 +396,10 @@ def execute_command(
     # Execute a native command with the same name or alias, if it exists
     if command := agent.command_registry.get_command(command_name):
         try:
-            return command(**arguments, agent=agent)
+            result = command(**arguments, agent=agent)
+            if inspect.isawaitable(result):
+                return await result
+            return result
         except AgentException:
             raise
         except Exception as e:
