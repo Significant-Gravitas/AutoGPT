@@ -17,6 +17,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:graphview/GraphView.dart';
+import 'package:uuid/uuid.dart';
 
 class SkillTreeViewModel extends ChangeNotifier {
   // TODO: Potentially move to task queue view model when we create one
@@ -26,7 +27,10 @@ class SkillTreeViewModel extends ChangeNotifier {
   // TODO: Potentially move to task queue view model when we create one
   bool isBenchmarkRunning = false;
   // TODO: Potentially move to task queue view model when we create one
+  // TODO: clear when clicking a new node
   Map<SkillTreeNode, BenchmarkTaskStatus> benchmarkStatusMap = {};
+
+  List<BenchmarkRun> currentBenchmarkRuns = [];
 
   List<SkillTreeNode> _skillTreeNodes = [];
   List<SkillTreeEdge> _skillTreeEdges = [];
@@ -156,6 +160,9 @@ class SkillTreeViewModel extends ChangeNotifier {
     // Clear the benchmarkStatusList
     benchmarkStatusMap.clear();
 
+    // Reset the current benchmark runs list to be empty at the start of a new benchmark
+    currentBenchmarkRuns = [];
+
     // Create a new TestSuite object with the current timestamp
     final testSuite =
         TestSuite(timestamp: DateTime.now().toIso8601String(), tests: []);
@@ -215,11 +222,15 @@ class SkillTreeViewModel extends ChangeNotifier {
         // Decode the evaluationResponse into a BenchmarkRun object
         BenchmarkRun benchmarkRun = BenchmarkRun.fromJson(evaluationResponse);
 
+        // Add the benchmark run object to the list of current benchmark runs
+        currentBenchmarkRuns.add(benchmarkRun);
+
         // Update the benchmarkStatusList based on the evaluation response
         bool successStatus = benchmarkRun.metrics.success;
         benchmarkStatusMap[node] = successStatus
             ? BenchmarkTaskStatus.success
             : BenchmarkTaskStatus.failure;
+        // await Future.delayed(Duration(seconds: 2));
         notifyListeners();
 
         // If successStatus is false, break out of the loop
@@ -243,5 +254,21 @@ class SkillTreeViewModel extends ChangeNotifier {
   }
 
   // TODO: Move to task queue view model
-  Future<void> submitToLeaderboard() async {}
+  Future<void> submitToLeaderboard(
+      String teamName, String repoUrl, String agentGitCommitSha) async {
+    // Create a UUID.v4 for our unique run ID
+    String uuid = const Uuid().v4();
+
+    for (var run in currentBenchmarkRuns) {
+      run.repositoryInfo.teamName = teamName;
+      run.repositoryInfo.repoUrl = repoUrl;
+      run.repositoryInfo.agentGitCommitSha = agentGitCommitSha;
+      run.runDetails.runId = uuid;
+
+      await leaderboardService.submitReport(run);
+    }
+
+    // Clear the currentBenchmarkRuns list after submitting to the leaderboard
+    currentBenchmarkRuns.clear();
+  }
 }
