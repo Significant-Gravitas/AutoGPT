@@ -76,6 +76,7 @@ class _LeaderboardSubmissionDialogState
       _saveToSharedPreferences();
       widget.onSubmit?.call(_teamNameController.text, _repoUrlController.text,
           _commitShaController.text);
+      Navigator.of(context).pop();
     } else {
       setState(() {});
     }
