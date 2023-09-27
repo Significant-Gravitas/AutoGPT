@@ -36,7 +36,7 @@ class Agent:
         config = Config()
         config.bind = [f"localhost:{port}"]
         app = FastAPI(
-            title="Auto-GPT Forge",
+            title="AutoGPT Forge",
             description="Modified version of The Agent Protocol.",
             version="v0.4",
         )

@@ -27,7 +27,7 @@ Example:
 {
   "category": ["basic"],
   "task": "Print the the capital of America to a .txt file",
-  "dependencies": ["WriteFile"], // the class name of the test
+  "dependencies": ["TestWriteFile"], // the class name of the test
   "ground": {
     "answer": "Washington",
     "should_contain": ["Washington"],
@@ -41,7 +41,7 @@ Example:
   },
   "info": {
     "difficulty": "basic",
-    "description": "s the writing to file",
+    "description": "Tests the writing to file",
     "side_effects": ["tests if there is in fact an LLM attached"]
   }
 }

@@ -31,7 +31,7 @@ class FirebaseAuthView extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Image.asset('assets/google_logo.svg.png', width: 24),
+                  Image.asset('assets/images/google_logo.svg.png', width: 24),
                   const SizedBox(width: 8),
                   const Text('Sign in with Google',
                       style: TextStyle(fontWeight: FontWeight.w300)),
@@ -56,7 +56,7 @@ class FirebaseAuthView extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Image.asset('assets/github_logo.svg.png', width: 24),
+                  Image.asset('assets/images/github_logo.svg.png', width: 24),
                   const SizedBox(width: 8),
                   const Text('Sign in with GitHub',
                       style: TextStyle(fontWeight: FontWeight.w300)),

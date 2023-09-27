@@ -1,4 +1,3 @@
-import json
 import math
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -10,7 +9,7 @@ import numpy as np
 from pyvis.network import Network
 
 from agbenchmark.generate_test import DATA_CATEGORY
-from agbenchmark.utils.utils import find_absolute_benchmark_path
+from agbenchmark.utils.utils import write_pretty_json
 
 
 def bezier_curve(
@@ -275,15 +274,169 @@ def graph_interactive_network(
     # Serialize the graph to JSON
     graph_data = {"nodes": nt.nodes, "edges": nt.edges}
 
-    json_graph = json.dumps(graph_data)
+    home_path = Path.cwd()
+    write_pretty_json(graph_data, home_path / "frontend" / "public" / "graph.json")
 
-    home_path = find_absolute_benchmark_path()
+    flutter_app_path = home_path.parent / "frontend" / "assets"
 
     # Optionally, save to a file
-    with open(home_path / "frontend" / "public" / "graph.json", "w") as f:
-        f.write(json_graph)
+    # Sync with the flutter UI
+    # this literally only works in the AutoGPT repo, but this part of the code is not reached if BUILD_SKILL_TREE is false
+    write_pretty_json(graph_data, flutter_app_path / "tree_structure.json")
+    validate_skill_tree(graph_data, "")
+    import json
+
+    # Extract node IDs with category "coding"
+
+    coding_tree = extract_subgraph_based_on_category(graph_data.copy(), "coding")
+    validate_skill_tree(coding_tree, "coding")
+    write_pretty_json(
+        coding_tree,
+        flutter_app_path / "coding_tree_structure.json",
+    )
+
+    data_tree = extract_subgraph_based_on_category(graph_data.copy(), "data")
+    # validate_skill_tree(data_tree, "data")
+    write_pretty_json(
+        data_tree,
+        flutter_app_path / "data_tree_structure.json",
+    )
+
+    general_tree = extract_subgraph_based_on_category(graph_data.copy(), "general")
+    validate_skill_tree(general_tree, "general")
+    write_pretty_json(
+        general_tree,
+        flutter_app_path / "general_tree_structure.json",
+    )
+
+    scrape_synthesize_tree = extract_subgraph_based_on_category(
+        graph_data.copy(), "scrape_synthesize"
+    )
+    validate_skill_tree(scrape_synthesize_tree, "scrape_synthesize")
+    write_pretty_json(
+        scrape_synthesize_tree,
+        flutter_app_path / "scrape_synthesize_tree_structure.json",
+    )
+    # If you want to convert back to JSON
+    filtered_json = json.dumps(graph_data, indent=4)
+    print(filtered_json)
 
     if html_graph_path:
         file_path = str(Path(html_graph_path).resolve())
 
         nt.write_html(file_path)
+
+
+def extract_subgraph_based_on_category(graph, category):
+    """
+    Extracts a subgraph that includes all nodes and edges required to reach all nodes with a specified category.
+
+    :param graph: The original graph.
+    :param category: The target category.
+    :return: Subgraph with nodes and edges required to reach the nodes with the given category.
+    """
+
+    subgraph = {"nodes": [], "edges": []}
+    visited = set()
+
+    def reverse_dfs(node_id):
+        if node_id in visited:
+            return
+        visited.add(node_id)
+
+        node_data = next(node for node in graph["nodes"] if node["id"] == node_id)
+
+        # Add the node to the subgraph if it's not already present.
+        if node_data not in subgraph["nodes"]:
+            subgraph["nodes"].append(node_data)
+
+        for edge in graph["edges"]:
+            if edge["to"] == node_id:
+                if edge not in subgraph["edges"]:
+                    subgraph["edges"].append(edge)
+                reverse_dfs(edge["from"])
+
+    # Identify nodes with the target category and initiate reverse DFS from them.
+    nodes_with_target_category = [
+        node["id"] for node in graph["nodes"] if category in node["data"]["category"]
+    ]
+
+    for node_id in nodes_with_target_category:
+        reverse_dfs(node_id)
+
+    return subgraph
+
+
+def is_circular(graph):
+    def dfs(node, visited, stack, parent_map):
+        visited.add(node)
+        stack.add(node)
+        for edge in graph["edges"]:
+            if edge["from"] == node:
+                if edge["to"] in stack:
+                    # Detected a cycle
+                    cycle_path = []
+                    current = node
+                    while current != edge["to"]:
+                        cycle_path.append(current)
+                        current = parent_map.get(current)
+                    cycle_path.append(edge["to"])
+                    cycle_path.append(node)
+                    return cycle_path[::-1]
+                elif edge["to"] not in visited:
+                    parent_map[edge["to"]] = node
+                    cycle_path = dfs(edge["to"], visited, stack, parent_map)
+                    if cycle_path:
+                        return cycle_path
+        stack.remove(node)
+        return None
+
+    visited = set()
+    stack = set()
+    parent_map = {}
+    for node in graph["nodes"]:
+        node_id = node["id"]
+        if node_id not in visited:
+            cycle_path = dfs(node_id, visited, stack, parent_map)
+            if cycle_path:
+                return cycle_path
+    return None
+
+
+def get_roots(graph):
+    """
+    Return the roots of a graph. Roots are nodes with no incoming edges.
+    """
+    # Create a set of all node IDs
+    all_nodes = {node["id"] for node in graph["nodes"]}
+
+    # Create a set of nodes with incoming edges
+    nodes_with_incoming_edges = {edge["to"] for edge in graph["edges"]}
+
+    # Roots are nodes that have no incoming edges
+    roots = all_nodes - nodes_with_incoming_edges
+
+    return list(roots)
+
+
+def validate_skill_tree(graph, skill_tree_name):
+    """
+    Validate if a given graph represents a valid skill tree and raise appropriate exceptions if not.
+
+    :param graph: A dictionary representing the graph with 'nodes' and 'edges'.
+    :raises: ValueError with a description of the invalidity.
+    """
+    # Check for circularity
+    cycle_path = is_circular(graph)
+    if cycle_path:
+        cycle_str = " -> ".join(cycle_path)
+        raise ValueError(
+            f"{skill_tree_name} skill tree is circular! Circular path detected: {cycle_str}."
+        )
+
+    # Check for multiple roots
+    roots = get_roots(graph)
+    if len(roots) > 1:
+        raise ValueError(f"{skill_tree_name} skill tree has multiple roots: {roots}.")
+    elif not roots:
+        raise ValueError(f"{skill_tree_name} skill tree has no roots.")

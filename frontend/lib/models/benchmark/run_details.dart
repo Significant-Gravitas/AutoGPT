@@ -1,3 +1,4 @@
+// TODO: Remove the ability to have null values when benchmark implementation is complete
 /// `RunDetails` encapsulates specific details about a benchmark run.
 ///
 /// This class holds attributes such as the unique run identifier, the command used to initiate the run,
@@ -39,9 +40,11 @@ class RunDetails {
   ///
   /// Returns a new `RunDetails` populated with values from the map.
   factory RunDetails.fromJson(Map<String, dynamic> json) => RunDetails(
-        runId: json['run_id'],
+        runId: json['run_id'] ?? "",
         command: json['command'],
-        completionTime: DateTime.parse(json['completion_time']),
+        completionTime: json['completion_time'] == null
+            ? DateTime.now()
+            : DateTime.parse(json['completion_time']),
         benchmarkStartTime: DateTime.parse(json['benchmark_start_time']),
         testName: json['test_name'],
       );

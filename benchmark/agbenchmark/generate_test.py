@@ -177,6 +177,7 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
         )  # Take and remove the first element from json_files
         if challenge_should_be_ignored(json_file):
             continue
+
         data = ChallengeData.get_json_from_path(json_file)
 
         commands = sys.argv

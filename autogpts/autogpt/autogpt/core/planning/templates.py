@@ -9,7 +9,7 @@
 
 USER_OBJECTIVE = (
     "Write a wikipedia style article about the project: "
-    "https://github.com/significant-gravitas/Auto-GPT"
+    "https://github.com/significant-gravitas/AutoGPT"
 )
 
 

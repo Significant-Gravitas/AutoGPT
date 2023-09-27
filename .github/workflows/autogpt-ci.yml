@@ -1,4 +1,4 @@
-name: Auto-GPT Python CI
+name: AutoGPT Python CI
 
 on:
   push:

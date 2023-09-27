@@ -1,4 +1,5 @@
 import 'package:auto_gpt_flutter_client/models/message_type.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/chat/agent_message_tile.dart';
 import 'package:auto_gpt_flutter_client/views/chat/chat_input_field.dart';
@@ -94,13 +95,19 @@ class _ChatViewState extends State<ChatView> {
             child: ChatInputField(
               onSendPressed: (message) async {
                 if (widget.viewModel.currentTaskId != null) {
-                  widget.viewModel
-                      .sendChatMessage((message == "") ? null : message);
+                  widget.viewModel.sendChatMessage(
+                      (message == "") ? null : message,
+                      continuousModeSteps:
+                          Provider.of<SettingsViewModel>(context, listen: false)
+                              .continuousModeSteps);
                 } else {
                   String newTaskId = await taskViewModel.createTask(message);
                   widget.viewModel.setCurrentTaskId(newTaskId);
-                  widget.viewModel
-                      .sendChatMessage((message == "") ? null : message);
+                  widget.viewModel.sendChatMessage(
+                      (message == "") ? null : message,
+                      continuousModeSteps:
+                          Provider.of<SettingsViewModel>(context, listen: false)
+                              .continuousModeSteps);
                 }
               },
               onContinuousModePressed: () {
