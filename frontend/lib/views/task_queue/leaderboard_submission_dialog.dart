@@ -1,0 +1,224 @@
+import 'package:auto_gpt_flutter_client/constants/app_colors.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class LeaderboardSubmissionDialog extends StatefulWidget {
+  final VoidCallback? onSubmit;
+
+  const LeaderboardSubmissionDialog({
+    Key? key,
+    this.onSubmit,
+  }) : super(key: key);
+
+  @override
+  _LeaderboardSubmissionDialogState createState() =>
+      _LeaderboardSubmissionDialogState();
+}
+
+class _LeaderboardSubmissionDialogState
+    extends State<LeaderboardSubmissionDialog> {
+  final TextEditingController _teamNameController = TextEditingController();
+  final TextEditingController _repoUrlController = TextEditingController();
+  final TextEditingController _commitShaController = TextEditingController();
+
+  String? _teamNameError;
+  String? _repoUrlError;
+  String? _commitShaError;
+
+// TODO: Do we want this dialog to have the responsibiltiy of managing shared preferences?
+  SharedPreferences? _prefs;
+
+  @override
+  void initState() {
+    super.initState();
+    _initSharedPreferences();
+  }
+
+  Future<void> _initSharedPreferences() async {
+    _prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _teamNameController.text = _prefs!.getString('teamName') ?? '';
+      _repoUrlController.text = _prefs!.getString('repoUrl') ?? '';
+      _commitShaController.text = _prefs!.getString('commitSha') ?? '';
+    });
+  }
+
+  void _validateAndSubmit() {
+    bool isValid = true;
+
+    if (_teamNameController.text.isEmpty) {
+      isValid = false;
+      _teamNameError = 'Team Name is required';
+    } else {
+      _teamNameError = null;
+    }
+
+    if (_repoUrlController.text.isEmpty) {
+      isValid = false;
+      _repoUrlError = 'Repo URL is required';
+    } else {
+      _repoUrlError = null;
+    }
+
+    if (_commitShaController.text.isEmpty) {
+      isValid = false;
+      _commitShaError = 'Commit SHA is required';
+    } else {
+      _commitShaError = null;
+    }
+
+    if (isValid) {
+      _saveToSharedPreferences();
+      widget.onSubmit?.call();
+    } else {
+      setState(() {});
+    }
+  }
+
+  Future<void> _saveToSharedPreferences() async {
+    await _prefs!.setString('teamName', _teamNameController.text);
+    await _prefs!.setString('repoUrl', _repoUrlController.text);
+    await _prefs!.setString('commitSha', _commitShaController.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final containerHeight = 324.0 +
+        (_teamNameError == null ? 0 : 22) +
+        (_repoUrlError == null ? 0 : 22) +
+        (_commitShaError == null ? 0 : 22);
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8.0),
+      ),
+      child: Container(
+        width: 260,
+        height: containerHeight,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title
+            const Text(
+              'Leaderboard Submission',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 16,
+                fontFamily: 'Archivo',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 14),
+            // Team Name Field
+            const Text('Team Name'),
+            TextField(
+              controller: _teamNameController,
+              decoration: InputDecoration(
+                hintText: 'Keyboard Warriors',
+                errorText: _teamNameError,
+                border: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: _teamNameError != null ? Colors.red : Colors.grey,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Github Repo URL Field
+            const Text('Github Repo URL'),
+            TextField(
+              controller: _repoUrlController,
+              decoration: InputDecoration(
+                hintText: 'https://github.com/KeyboardWarriors/BestAgentEver',
+                errorText: _repoUrlError,
+                border: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: _repoUrlError != null ? Colors.red : Colors.grey,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Commit SHA Field
+            const Text('Commit SHA'),
+            TextField(
+              controller: _commitShaController,
+              decoration: InputDecoration(
+                hintText: '389131f2ab78c2cc5bdd2ec257be2d18b3a63da3',
+                errorText: _commitShaError,
+                border: OutlineInputBorder(
+                  borderSide: BorderSide(
+                    color: _commitShaError != null ? Colors.red : Colors.grey,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            // Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Cancel Button
+                SizedBox(
+                  width: 106,
+                  height: 28,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                      ),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.50,
+                        fontFamily: 'Archivo',
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 8),
+                // Submit Button
+                SizedBox(
+                  width: 106,
+                  height: 28,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryLight,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                      ),
+                    ),
+                    onPressed: _validateAndSubmit,
+                    child: const Text(
+                      'Submit',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.50,
+                        fontFamily: 'Archivo',
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _teamNameController.dispose();
+    _repoUrlController.dispose();
+    _commitShaController.dispose();
+    super.dispose();
+  }
+}

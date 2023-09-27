@@ -54,6 +54,24 @@ class RestApiUtility {
     }
   }
 
+  Future<Map<String, dynamic>> put(
+      String endpoint, Map<String, dynamic> payload,
+      {ApiType apiType = ApiType.agent}) async {
+    final effectiveBaseUrl = _getEffectiveBaseUrl(apiType);
+    final response = await http.put(
+      Uri.parse('$effectiveBaseUrl/$endpoint'),
+      body: json.encode(payload),
+      headers: {"Content-Type": "application/json"},
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return json.decode(response.body);
+    } else {
+      print(response.statusCode);
+      print(response.body);
+      throw Exception('Failed to update data with PUT request');
+    }
+  }
+
   Future<Uint8List> getBinary(String endpoint,
       {ApiType apiType = ApiType.agent}) async {
     final effectiveBaseUrl = _getEffectiveBaseUrl(apiType);
