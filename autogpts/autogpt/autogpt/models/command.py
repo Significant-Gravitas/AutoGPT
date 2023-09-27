@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
@@ -42,8 +43,12 @@ class Command:
         self.aliases = aliases
         self.available = available
 
+    @property
+    def is_async(self) -> bool:
+        return inspect.iscoroutinefunction(self.method)
+
     def __call__(self, *args, agent: BaseAgent, **kwargs) -> Any:
-        if callable(self.enabled) and not self.enabled(agent.config):
+        if callable(self.enabled) and not self.enabled(agent.legacy_config):
             if self.disabled_reason:
                 raise RuntimeError(
                     f"Command '{self.name}' is disabled: {self.disabled_reason}"
@@ -57,7 +62,7 @@ class Command:
 
     def __str__(self) -> str:
         params = [
-            f"{param.name}: {param.type if param.required else f'Optional[{param.type}]'}"
+            f"{param.name}: {param.spec.type if param.spec.required else f'Optional[{param.spec.type}]'}"
             for param in self.parameters
         ]
         return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"

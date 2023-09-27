@@ -175,6 +175,9 @@ async def run_auto_gpt(
 
     print_attribute("Configured Browser", config.selenium_web_browser)
 
+    agent_prompt_config = Agent.default_settings.prompt_config.copy(deep=True)
+    agent_prompt_config.use_functions_api = config.openai_functions
+
     agent_settings = AgentSettings(
         name=Agent.default_settings.name,
         description=Agent.default_settings.description,
@@ -185,6 +188,7 @@ async def run_auto_gpt(
             use_functions_api=config.openai_functions,
             plugins=config.plugins,
         ),
+        prompt_config=agent_prompt_config,
         history=Agent.default_settings.history.copy(deep=True),
     )
 
@@ -263,8 +267,6 @@ async def run_interaction_loop(
     ai_config = agent.ai_config
     logger = logging.getLogger(__name__)
 
-    logger.debug(f"{ai_config.ai_name} System Prompt:\n{agent.system_prompt}")
-
     cycle_budget = cycles_remaining = _get_cycle_budget(
         legacy_config.continuous_mode, legacy_config.continuous_limit
     )
@@ -306,7 +308,11 @@ async def run_interaction_loop(
         # Have the agent determine the next action to take.
         with spinner:
             try:
-                command_name, command_args, assistant_reply_dict = await agent.think()
+                (
+                    command_name,
+                    command_args,
+                    assistant_reply_dict,
+                ) = await agent.propose_action()
             except InvalidAgentResponseError as e:
                 logger.warn(f"The agent's thoughts could not be parsed: {e}")
                 consecutive_failures += 1

@@ -1,12 +1,12 @@
 import abc
-from typing import Generic, TypeVar
+from typing import Generic, TypedDict, TypeVar, Unpack
 
 from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.resource.model_providers import AssistantChatMessageDict
 
 from .schema import ChatPrompt, LanguageModelClassification
 
-IN = TypeVar("IN", bound=dict)
+IN = TypeVar("IN", bound=TypedDict)
 OUT = TypeVar("OUT")
 
 
@@ -19,7 +19,7 @@ class PromptStrategy(abc.ABC, Generic[IN, OUT]):
         ...
 
     @abc.abstractmethod
-    def build_prompt(self, *_, **kwargs: IN) -> ChatPrompt:
+    def build_prompt(self, *_, **kwargs: Unpack[IN]) -> ChatPrompt:
         ...
 
     @abc.abstractmethod

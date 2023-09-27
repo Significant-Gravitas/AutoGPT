@@ -3,12 +3,12 @@ from __future__ import annotations
 import functools
 import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
-from autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
     from autogpt.config import Config
 
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command, CommandOutput, CommandParameter
 
 # Unique identifier for auto-gpt commands
@@ -46,10 +46,13 @@ def command(
         )
 
         if inspect.iscoroutinefunction(func):
+
             @functools.wraps(func)
             async def wrapper(*args, **kwargs) -> Any:
                 return await func(*args, **kwargs)
+
         else:
+
             @functools.wraps(func)
             def wrapper(*args, **kwargs) -> Any:
                 return func(*args, **kwargs)
