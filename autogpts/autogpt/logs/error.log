@@ -551,3 +551,5 @@
 2023-09-27 14:52:01,266.266 [31m[31m[31mERROR[0m[0m[0m json_schema.py:111  [31mError: 'thoughts' is a required property[0m
 2023-09-27 14:52:01,266.266 [31m[31m[31mERROR[0m[0m[0m json_schema.py:111  [31mError: 'command' is a required property[0m
 2023-09-27 14:52:03,091.091 [31m[31m[31mERROR[0m[0m[0m main.py:276  [31mInterrupt signal received. Stopping AutoGPT immediately.[0m
+2023-09-27 18:30:29,975.975 [31m[31m[31mERROR[0m[0m[0m main.py:278  [31mInterrupt signal received. Stopping AutoGPT immediately.[0m
+2023-09-27 18:30:33,149.149 [31m[31m[31mERROR[0m[0m[0m main.py:278  [31mInterrupt signal received. Stopping AutoGPT immediately.[0m

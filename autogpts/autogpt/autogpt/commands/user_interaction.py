@@ -91,9 +91,11 @@ async def request_assistence(ticket_url: str, next_action: str, agent: Agent) ->
         #agent.event_history.cursor=0
         #agent.event_history.cycles.append(agent.event_history.cycles[-1])
         result = await agent.execute(next_command_name, next_command_args, assistant_reply_dict)
-        result2 = await result
-        print("result",result2)
-        result = result2
+        #import pdb
+        #pdb.set_trace()
+        #result2 = await result
+        print("result",result)
+
         
     except Exception as e:
         result = f"error {e}"

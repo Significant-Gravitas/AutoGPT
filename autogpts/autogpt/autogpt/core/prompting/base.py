@@ -1,5 +1,5 @@
 import abc
-from typing import Generic, TypedDict, TypeVar, Unpack
+from typing import Generic, TypedDict, TypeVar#, Unpack
 
 from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.resource.model_providers import AssistantChatMessageDict
@@ -19,7 +19,7 @@ class PromptStrategy(abc.ABC, Generic[IN, OUT]):
         ...
 
     @abc.abstractmethod
-    def build_prompt(self, *_, **kwargs: Unpack[IN]) -> ChatPrompt:
+    def build_prompt(self, *_, **kwargs: [IN]) -> ChatPrompt:
         ...
 
     @abc.abstractmethod
