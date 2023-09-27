@@ -1,5 +1,19 @@
+from __future__ import annotations
 import abc
 import enum
+
+
+from typing import (
+    TypedDict,
+    Union,
+    List,
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Optional,
+    TYPE_CHECKING,
+)
 from typing import (
     Callable,
     ClassVar,
@@ -28,43 +42,70 @@ from autogpt.core.utils.json_schema import JSONSchema
 class ModelProviderService(str, enum.Enum):
     """A ModelService describes what kind of service the model provides."""
 
-    EMBEDDING = "embedding"
-    CHAT = "chat_completion"
-    TEXT = "text_completion"
+    EMBEDDING: str = "embedding"
+    CHAT: str = "language"
+    TEXT: str = "text"
 
 
 class ModelProviderName(str, enum.Enum):
-    OPENAI = "openai"
+    OPENAI: str = "openai"
+
+
+class Role(str, enum.Enum):
+    USER = "user"
+    SYSTEM = "system"
+    ASSISTANT = "assistant"
+
+    FUNCTION = "function"
+    """May be used for the return value of function calls"""
 
 
 class ChatMessage(BaseModel):
-    class Role(str, enum.Enum):
-        USER = "user"
-        SYSTEM = "system"
-        ASSISTANT = "assistant"
-
-        FUNCTION = "function"
-        """May be used for the return value of function calls"""
-
     role: Role
     content: str
 
     @staticmethod
     def assistant(content: str) -> "ChatMessage":
-        return ChatMessage(role=ChatMessage.Role.ASSISTANT, content=content)
+        return ChatMessage(role=Role.ASSISTANT, content=content)
 
     @staticmethod
     def user(content: str) -> "ChatMessage":
-        return ChatMessage(role=ChatMessage.Role.USER, content=content)
+        return ChatMessage(role=Role.USER, content=content)
 
     @staticmethod
     def system(content: str) -> "ChatMessage":
-        return ChatMessage(role=ChatMessage.Role.SYSTEM, content=content)
+        return ChatMessage(role=Role.SYSTEM, content=content)
+
+    def dict(self, **kwargs):
+        d = super().dict(**kwargs)
+        d["role"] = self.role.value
+        return d
 
 
 class ChatMessageDict(TypedDict):
     role: str
     content: str
+
+
+# Basic structure for a single property
+class Property(BaseModel):
+    type: str
+    description: str
+    items: Optional[Union["Property", Dict]]
+    properties: Optional[dict]  # Allows nested properties
+
+
+# Defines a function's parameters
+class FunctionParameters(BaseModel):
+    type: str
+    properties: Dict[str, Property]
+    required: List[str]
+
+
+class CompletionModelFunction(BaseModel):
+    name: str
+    description: str
+    parameters: FunctionParameters
 
 
 class AssistantFunctionCall(BaseModel):
@@ -78,7 +119,7 @@ class AssistantFunctionCallDict(TypedDict):
 
 
 class AssistantChatMessage(ChatMessage):
-    role: Literal["assistant"]
+    role: Role.ASSISTANT
     content: Optional[str]
     function_call: Optional[AssistantFunctionCall]
 
@@ -122,6 +163,25 @@ class CompletionModelFunction(BaseModel):
             parameters=JSONSchema.parse_properties(schema["parameters"]),
         )
 
+    def _remove_none_entries(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        cleaned_data = {}
+        for key, value in data.items():
+            if value is not None:
+                if isinstance(value, dict):
+                    cleaned_data[key] = self._remove_none_entries(value)
+                else:
+                    cleaned_data[key] = value
+        return cleaned_data
+
+    def dict(self, *args, **kwargs):
+        # Call the parent class's dict() method to get the original dictionary
+        data = super().dict(*args, **kwargs)
+
+        # Remove entries with None values recursively
+        cleaned_data = self._remove_none_entries(data)
+
+        return cleaned_data
+
 
 class ModelInfo(BaseModel):
     """Struct for model information.
@@ -148,11 +208,11 @@ class ModelResponse(BaseModel):
 class ModelProviderCredentials(ProviderCredentials):
     """Credentials for a model provider."""
 
-    api_key: SecretStr | None = UserConfigurable(default=None)
-    api_type: SecretStr | None = UserConfigurable(default=None)
-    api_base: SecretStr | None = UserConfigurable(default=None)
-    api_version: SecretStr | None = UserConfigurable(default=None)
-    deployment_id: SecretStr | None = UserConfigurable(default=None)
+    api_key: str | None = UserConfigurable(default=None)
+    api_type: str | None = UserConfigurable(default=None)
+    api_base: str | None = UserConfigurable(default=None)
+    api_version: str | None = UserConfigurable(default=None)
+    deployment_id: str | None = UserConfigurable(default=None)
 
     def unmasked(self) -> dict:
         return unmask(self)
@@ -212,7 +272,7 @@ class ModelProviderBudget(ProviderBudget):
 
 
 class ModelProviderSettings(ProviderSettings):
-    resource_type: ResourceType = ResourceType.MODEL
+    resource_type = ResourceType.MODEL
     credentials: ModelProviderCredentials
     budget: ModelProviderBudget
 
@@ -260,7 +320,6 @@ class EmbeddingModelInfo(ModelInfo):
     """Struct for embedding model information."""
 
     llm_service = ModelProviderService.EMBEDDING
-    max_tokens: int
     embedding_dimensions: int
 
 
@@ -310,6 +369,16 @@ class ChatModelResponse(ModelResponse, Generic[_T]):
 
     response: AssistantChatMessageDict
     parsed_result: _T = None
+    """Standard response struct for a response from a language model."""
+
+    content: dict = None
+
+
+# class ChatModelResponse(ModelResponse, Generic[_T]):
+# """Standard response struct for a response from a language model."""
+
+# response: AssistantChatMessageDict
+# parsed_result: _T = None
 
 
 class ChatModelProvider(ModelProvider):
@@ -319,6 +388,17 @@ class ChatModelProvider(ModelProvider):
         messages: ChatMessage | list[ChatMessage],
         model_name: str,
     ) -> int:
+        ...
+
+    async def create_language_completion(
+        self,
+        model_prompt: list[ChatMessage],
+        model_name: str,
+        completion_parser: Callable[[dict], dict],
+        functions: list[CompletionModelFunction],
+        function_call: str,
+        **kwargs,
+    ) -> ChatModelResponse:
         ...
 
     @abc.abstractmethod

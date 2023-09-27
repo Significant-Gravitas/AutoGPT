@@ -25,6 +25,11 @@ from autogpt.core.resource.model_providers.schema import (
     EmbeddingModelInfo,
     EmbeddingModelProvider,
     EmbeddingModelResponse,
+    CompletionModelFunction,
+    ChatMessage,
+    ChatModelProvider,
+    ChatModelInfo,
+    ChatModelResponse,
     ModelProviderBudget,
     ModelProviderCredentials,
     ModelProviderName,
@@ -42,24 +47,19 @@ OpenAIChatParser = Callable[[str], dict]
 
 
 class OpenAIModelName(str, enum.Enum):
+    """
+    Enumeration of OpenAI model names.
+
+    Attributes:
+        Each enumeration represents a distinct OpenAI model name.
+    """
     ADA = "text-embedding-ada-002"
-
-    GPT3_v1 = "gpt-3.5-turbo-0301"
-    GPT3_v2 = "gpt-3.5-turbo-0613"
-    GPT3_v2_16k = "gpt-3.5-turbo-16k-0613"
-    GPT3_ROLLING = "gpt-3.5-turbo"
-    GPT3_ROLLING_16k = "gpt-3.5-turbo-16k"
-    GPT3 = GPT3_ROLLING
-    GPT3_16k = GPT3_ROLLING_16k
-
-    GPT4_v1 = "gpt-4-0314"
-    GPT4_v1_32k = "gpt-4-32k-0314"
-    GPT4_v2 = "gpt-4-0613"
-    GPT4_v2_32k = "gpt-4-32k-0613"
-    GPT4_ROLLING = "gpt-4"
-    GPT4_ROLLING_32k = "gpt-4-32k"
-    GPT4 = GPT4_ROLLING
-    GPT4_32k = GPT4_ROLLING_32k
+    GPT3 = "gpt-3.5-turbo-0613"
+    GPT3_16k = "gpt-3.5-turbo-16k-0613"
+    GPT3_FINE_TUNED = "gpt-3.5-turbo" + ""
+    # GPT4 = "gpt-4-0613" # TODO for tests
+    GPT4 = "gpt-3.5-turbo-0613"
+    GPT4_32k = "gpt-4-32k-0613"
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -96,6 +96,15 @@ OPEN_AI_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
+            name=OpenAIModelName.GPT3_FINE_TUNED,
+            service=ModelProviderService.CHAT,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.0120 / 1000,
+            completion_token_cost=0.0160 / 1000,
+            max_tokens=4096,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
             name=OpenAIModelName.GPT4,
             service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
@@ -115,23 +124,6 @@ OPEN_AI_CHAT_MODELS = {
         ),
     ]
 }
-# Copy entries for models with equivalent specs
-chat_model_mapping = {
-    OpenAIModelName.GPT3: [OpenAIModelName.GPT3_v1, OpenAIModelName.GPT3_v2],
-    OpenAIModelName.GPT3_16k: [OpenAIModelName.GPT3_v2_16k],
-    OpenAIModelName.GPT4: [OpenAIModelName.GPT4_v1, OpenAIModelName.GPT4_v2],
-    OpenAIModelName.GPT4_32k: [
-        OpenAIModelName.GPT4_v1_32k,
-        OpenAIModelName.GPT4_v2_32k,
-    ],
-}
-for base, copies in chat_model_mapping.items():
-    for copy in copies:
-        copy_info = ChatModelInfo(**OPEN_AI_CHAT_MODELS[base].__dict__)
-        copy_info.name = copy
-        OPEN_AI_CHAT_MODELS[copy] = copy_info
-        if copy.endswith(("-0301", "-0314")):
-            copy_info.has_function_call_api = False
 
 
 OPEN_AI_MODELS = {
@@ -141,15 +133,37 @@ OPEN_AI_MODELS = {
 
 
 class OpenAIConfiguration(SystemConfiguration):
+    """Configuration for OpenAI.
+
+    Attributes:
+        retries_per_request: The number of retries per request.
+        maximum_retry: The maximum number of retries allowed.
+        maximum_retry_before_default_function: The maximum number of retries before a default function is used.
+    """
     retries_per_request: int = UserConfigurable()
+    maximum_retry = 1
+    maximum_retry_before_default_function = 1
 
 
 class OpenAIModelProviderBudget(ModelProviderBudget):
+    """Budget configuration for the OpenAI Model Provider.
+
+    Attributes:
+        graceful_shutdown_threshold: The threshold for graceful shutdown.
+        warning_threshold: The warning threshold for budget.
+    """
     graceful_shutdown_threshold: float = UserConfigurable()
     warning_threshold: float = UserConfigurable()
 
 
 class OpenAISettings(ModelProviderSettings):
+    """Settings for the OpenAI provider.
+
+    Attributes:
+        configuration: Configuration settings for OpenAI.
+        credentials: The credentials for the model provider.
+        budget: Budget settings for the model provider.
+    """
     configuration: OpenAIConfiguration
     credentials: ModelProviderCredentials
     budget: OpenAIModelProviderBudget
@@ -158,6 +172,14 @@ class OpenAISettings(ModelProviderSettings):
 class OpenAIProvider(
     Configurable[OpenAISettings], ChatModelProvider, EmbeddingModelProvider
 ):
+    """A provider for OpenAI's API.
+
+    Provides methods to communicate with OpenAI's API and generate responses.
+
+    Attributes:
+        default_settings: The default settings for the OpenAI provider.
+    """
+
     default_settings = OpenAISettings(
         name="openai_provider",
         description="Provides access to OpenAI's API.",
@@ -184,11 +206,15 @@ class OpenAIProvider(
         settings: OpenAISettings,
         logger: logging.Logger,
     ):
-        self._configuration = settings.configuration
+        """
+        Initialize the OpenAIProvider.
+
+        Args:
+            settings (OpenAISettings, optional): Specific settings for the OpenAI provider. Uses default settings if none provided.
+        """
+        super().__init__(settings, logger)
         self._credentials = settings.credentials
         self._budget = settings.budget
-
-        self._logger = logger
 
         retry_handler = _OpenAIRetryHandler(
             logger=self._logger,
@@ -198,20 +224,76 @@ class OpenAIProvider(
         self._create_chat_completion = retry_handler(_create_chat_completion)
         self._create_embedding = retry_handler(_create_embedding)
 
+        self._func_call_fails_count = 0
+
     def get_token_limit(self, model_name: str) -> int:
-        """Get the token limit for a given model."""
+        """
+        Get the token limit for a given model.
+
+        Args:
+            model_name (str): The name of the model.
+
+        Returns:
+            int: The maximum number of tokens allowed for the given model.
+
+        Example:
+            >>> provider = OpenAIProvider()
+            >>> provider.get_token_limit("gpt-3.5-turbo")
+            4096
+        """
         return OPEN_AI_MODELS[model_name].max_tokens
 
     def get_remaining_budget(self) -> float:
+        """
+        Get the remaining budget.
+
+        Returns:
+            float: Remaining budget value.
+
+        Example:
+            >>> provider = OpenAIProvider(...)
+            >>> remaining_budget = provider.get_remaining_budget()
+            >>> print(remaining_budget)
+            inf
+        """
         """Get the remaining budget."""
         return self._budget.remaining_budget
 
     @classmethod
     def get_tokenizer(cls, model_name: OpenAIModelName) -> ModelTokenizer:
+        """
+        Get the tokenizer for a given model.
+
+        Args:
+            model_name (OpenAIModelName): Enum value representing the model.
+
+        Returns:
+            ModelTokenizer: Tokenizer for the specified model.
+
+        Example:
+            >>> tokenizer = OpenAIProvider.get_tokenizer(OpenAIModelName.GPT3)
+            >>> type(tokenizer)
+            <class 'ModelTokenizer'>
+        """
         return tiktoken.encoding_for_model(model_name)
 
     @classmethod
     def count_tokens(cls, text: str, model_name: OpenAIModelName) -> int:
+        """
+        Count the number of tokens in a given text for a specific model.
+
+        Args:
+            text (str): Input text.
+            model_name (OpenAIModelName): Enum value representing the model.
+
+        Returns:
+            int: Number of tokens in the text.
+
+        Example:
+            >>> token_count = OpenAIProvider.count_tokens("Hello, world!", OpenAIModelName.GPT3)
+            >>> print(token_count)
+            3
+        """
         encoding = cls.get_tokenizer(model_name)
         return len(encoding.encode(text))
 
@@ -221,6 +303,22 @@ class OpenAIProvider(
         messages: ChatMessage | list[ChatMessage],
         model_name: OpenAIModelName,
     ) -> int:
+        """
+        Count the number of tokens in a given set of messages for a specific model.
+
+        Args:
+            messages (Union[ChatMessage, List[ChatMessage]]): Input messages.
+            model_name (OpenAIModelName): Enum value representing the model.
+
+        Returns:
+            int: Number of tokens in the messages.
+
+        Example:
+            >>> messages = [ChatMessage(role="user", content="Hello?")]
+            >>> token_count = OpenAIProvider.count_message_tokens(messages, OpenAIModelName.GPT3)
+            >>> print(token_count)
+            5
+        """
         if isinstance(messages, ChatMessage):
             messages = [messages]
 
@@ -261,31 +359,120 @@ class OpenAIProvider(
     async def create_chat_completion(
         self,
         model_prompt: list[ChatMessage],
+        functions: list[CompletionModelFunction],
         model_name: OpenAIModelName,
+        function_call: str,
+        default_function_call: str,  # This one would be called after 3 failed attemps(cf : try/catch block)
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
-        functions: list[CompletionModelFunction] = [],
         **kwargs,
     ) -> ChatModelResponse[_T]:
-        """Create a completion using the OpenAI API."""
-        completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
-        response = await self._create_chat_completion(
-            messages=model_prompt,
-            **completion_kwargs,
-        )
-        response_args = {
-            "model_info": OPEN_AI_CHAT_MODELS[model_name],
-            "prompt_tokens_used": response.usage.prompt_tokens,
-            "completion_tokens_used": response.usage.completion_tokens,
-        }
+        """Create a completion using the OpenAI API.
 
-        response_message = response.choices[0].message.to_dict_recursive()
+        Args:
+            model_prompt (list): A list of chat messages.
+            functions (list): A list of completion model functions.
+            model_name (str): The name of the model.
+            function_call (str): The function call string.
+            default_function_call (str): The default function call to use after 3 failed attempts.
+            completion_parser (Callable): A parser to process the chat response.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            ChatModelResponse: Response from the chat completion.
+
+        Example:
+            >>> provider = OpenAIProvider(...)
+            >>> messages = [ChatMessage(role="user", content="Tell me a joke.")]
+            >>> response = await provider.create_chat_completion(messages, ...)
+            >>> print(response.content)
+            "Why did the chicken cross the road? To get to the other side!"
+        """
+        
+        completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
+
+        completion_kwargs["function_call"] = function_call
+
+        try:
+            response = await self._create_chat_completion(
+                messages=model_prompt,
+                **completion_kwargs,
+            )
+
+            response_args = {
+                "model_info": OPEN_AI_CHAT_MODELS[model_name],
+                "prompt_tokens_used": response.usage.prompt_tokens,
+                "completion_tokens_used": response.usage.completion_tokens,
+            }
+
+            response_message = response.choices[0].message.to_dict_recursive()
+
+            if functions is not None and not "function_call" in response_message:
+                self._logger.error(
+                    f"Attempt number {self._func_call_fails_count + 1} : Function Call was expected  "
+                )
+                raise Exception("function_call was expected")
+        except:
+            if self._func_call_fails_count <= self._configuration.maximum_retry:
+                if (
+                    self._func_call_fails_count
+                    >= self._configuration.maximum_retry_before_default_function
+                ):
+                    completion_kwargs["function_call"] = default_function_call
+                else:
+                    if "function_call" not in completion_kwargs:
+                        completion_kwargs["function_call"] = "auto"
+
+                if "default_function_call" not in completion_kwargs:
+                    completion_kwargs["default_function_call"] = default_function_call
+
+                self._func_call_fails_count += 1
+
+                # completion_kwarg is a dict but function is a list[CompletionModelFunction] which has to be restored
+                # alternative is to pass the **kwarg not the completion kwarg
+                completion_kwargs["functions"] = functions
+
+                return await self.create_language_completion(
+                    model_prompt=model_prompt,
+                    # functions = functions,
+                    model_name=model_name,
+                    completion_parser=completion_parser,
+                    **completion_kwargs,
+                )
+
+            else:
+                # FIXME : Provide self improvement mechanism
+                # TODO : Provide self improvement mechanism
+                # NOTE : Provide self improvement mechanism
+
+                # NOTE : In any case leave these notes as this block may also serve to automaticaly generate bug report on a bug tracking platform (if a users allows to share this kind of data)
+                pass
+
+            response_message["function_call"] = None
+            response.choices[0].message["function_call"] = None
+
+        self._func_call_fails_count = 0
+
+        # New
         response = ChatModelResponse(
             response=response_message,
             parsed_result=completion_parser(response_message),
             **response_args,
         )
+
+        # Old
+        # parsed_response = completion_parser(
+        #          response_message
+        #      )
+        # response = ChatModelResponse(
+        #     content=parsed_response,
+        #     **response_args,
+        # )
         self._budget.update_usage_and_cost(response)
         return response
+
+    async def create_language_completion(self):
+        self._logger.warning('create_language_completion is deprecated, use create_chat_completion')
+        return await self.create_chat_completion()
 
     async def create_embedding(
         self,
@@ -294,7 +481,23 @@ class OpenAIProvider(
         embedding_parser: Callable[[Embedding], Embedding],
         **kwargs,
     ) -> EmbeddingModelResponse:
-        """Create an embedding using the OpenAI API."""
+        """Create an embedding using the OpenAI API.
+
+        Args:
+            text (str): The text to embed.
+            model_name (str): The name of the embedding model.
+            embedding_parser (Callable): A parser to process the embedding.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            EmbeddingModelResponse: Response containing the embedding.
+
+        Example:
+            >>> provider = OpenAIProvider(...)
+            >>> embedding_response = await provider.create_embedding("Hello, world!", ...)
+            >>> print(embedding_response.embedding)
+            [0.123, -0.456, ...]
+        """
         embedding_kwargs = self._get_embedding_kwargs(model_name, **kwargs)
         response = await self._create_embedding(text=text, **embedding_kwargs)
 
@@ -323,7 +526,13 @@ class OpenAIProvider(
             kwargs: Keyword arguments to override the default values.
 
         Returns:
-            The kwargs for the chat API call.
+            dict: Dictionary containing the kwargs.
+
+        Example:
+            >>> provider = OpenAIProvider(...)
+            >>> completion_kwargs = provider._get_completion_kwargs(OpenAIModelName.GPT3, ...)
+            >>> print(completion_kwargs)
+            {'model': 'gpt-3.5-turbo-0613', ...}
 
         """
         completion_kwargs = {
@@ -348,8 +557,13 @@ class OpenAIProvider(
             kwargs: Keyword arguments to override the default values.
 
         Returns:
-            The kwargs for the embedding API call.
+            dict: Dictionary containing the kwargs.
 
+        Example:
+            >>> provider = OpenAIProvider(...)
+            >>> embedding_kwargs = provider._get_embedding_kwargs(OpenAIModelName.ADA, ...)
+            >>> print(embedding_kwargs)
+            {'model': 'text-embedding-ada-002', ...}
         """
         embedding_kwargs = {
             "model": model_name,
@@ -360,15 +574,29 @@ class OpenAIProvider(
         return embedding_kwargs
 
     def __repr__(self):
+        """
+        String representation of the class.
+
+        Returns:
+            str: String representation.
+
+        Example:
+            >>> provider = OpenAIProvider(...)
+            >>> print(provider)
+            <OpenAIProvider: api_key=XXXXXXX, budget=inf>
+        """
         return "OpenAIProvider()"
 
+    def has_function_call_api(self, model_name :str) -> bool :
+        #print(self._providers[model_name])
+        return OPEN_AI_CHAT_MODELS[model_name].has_function_call_api
 
 async def _create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
     """Embed text using the OpenAI API.
 
     Args:
         text str: The text to embed.
-        model str: The name of the model to use.
+        model_name str: The name of the model to use.
 
     Returns:
         str: The embedding.
@@ -389,16 +617,24 @@ async def _create_chat_completion(
 
     Returns:
         The completion.
+
     """
     raw_messages = [
         message.dict(include={"role", "content", "function_call", "name"})
         for message in messages
     ]
-    return await openai.ChatCompletion.acreate(
+    if "functions" in kwargs:
+        # wargs["functions"] = [function.dict() for function in kwargs["functions"]]
+        kwargs["functions"] = [function for function in kwargs["functions"]]
+
+    if kwargs["function_call"] != "auto":
+        kwargs["function_call"] = {"name": kwargs["function_call"]}
+
+    return_value = await openai.ChatCompletion.acreate(
         messages=raw_messages,
         **kwargs,
     )
-
+    return return_value
 
 class _OpenAIRetryHandler:
     """Retry Handler for OpenAI API call.
@@ -455,7 +691,8 @@ class _OpenAIRetryHandler:
                 except APIError as e:
                     if (e.http_status != 502) or (attempt == num_attempts):
                         raise
-
+                except Exception as e:
+                    self._logger.warning(e)
                 self._backoff(attempt)
 
         return _wrapped

@@ -1,9 +1,8 @@
 import json
 import logging
 import typing
+import uuid
 from pathlib import Path
-
-from pydantic import SecretField
 
 from autogpt.core.configuration import (
     Configurable,
@@ -15,7 +14,7 @@ from autogpt.core.workspace.base import Workspace
 
 if typing.TYPE_CHECKING:
     # Cyclic import
-    from autogpt.core.agent.simple import AgentSettings
+    from autogpt.core.agent.simple.models import BaseAgentSettings
 
 
 class WorkspaceConfiguration(SystemConfiguration):
@@ -46,8 +45,10 @@ class SimpleWorkspace(Configurable, Workspace):
         settings: WorkspaceSettings,
         logger: logging.Logger,
     ):
-        self._configuration = settings.configuration
-        self._logger = logger.getChild("workspace")
+        super().__init__(settings, logger.getChild("workspace"))
+        # self._configuration = settings.configuration
+        # self._logger = logger
+        # self._logger = logger.getChild("workspace")
 
     @property
     def root(self) -> Path:
@@ -153,28 +154,25 @@ class SimpleWorkspace(Configurable, Workspace):
     # Factory methods for agent setup #
     ###################################
 
-    @staticmethod
-    def setup_workspace(settings: "AgentSettings", logger: logging.Logger) -> Path:
+    @classmethod
+    def create_workspace(
+        cls,
+        user_id: uuid.UUID,
+        agent_id: uuid.UUID,
+        settings: "BaseAgentSettings",
+        logger: logging.Logger,
+    ) -> Path:
         workspace_parent = settings.workspace.configuration.parent
         workspace_parent = Path(workspace_parent).expanduser().resolve()
         workspace_parent.mkdir(parents=True, exist_ok=True)
 
-        agent_name = settings.agent.name
-
-        workspace_root = workspace_parent / agent_name
+        # user_id = settings.user_id
+        # agent_id = settings.agent_id
+        workspace_root = workspace_parent / str(user_id) / str(agent_id)
         workspace_root.mkdir(parents=True, exist_ok=True)
 
-        settings.workspace.configuration.root = str(workspace_root)
+        cls.default_settings.configuration.root = str(workspace_root)
 
-        with (workspace_root / "agent_settings.json").open("w") as f:
-            settings_json = settings.json(
-                encoder=lambda x: x.get_secret_value()
-                if isinstance(x, SecretField)
-                else x,
-            )
-            f.write(settings_json)
-
-        # TODO: What are all the kinds of logs we want here?
         log_path = workspace_root / "logs"
         log_path.mkdir(parents=True, exist_ok=True)
         (log_path / "debug.log").touch()
@@ -183,7 +181,7 @@ class SimpleWorkspace(Configurable, Workspace):
         return workspace_root
 
     @staticmethod
-    def load_agent_settings(workspace_root: Path) -> "AgentSettings":
+    def load_agent_settings(workspace_root: Path) -> "BaseAgentSettings":
         # Cyclic import
         from autogpt.core.agent.simple import AgentSettings
 

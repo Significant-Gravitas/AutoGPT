@@ -1,18 +1,18 @@
-import logging
-
+from logging import Logger
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.planning.schema import Task
-from autogpt.core.prompting import PromptStrategy
-from autogpt.core.prompting.schema import ChatPrompt, LanguageModelClassification
+from autogpt.core.prompting.base import BasePromptStrategy, PromptStrategy
+from autogpt.core.planning.schema import (
+    Task,
+)
+from autogpt.core.prompting.schema import (
+    LanguageModelClassification,
+    ChatPrompt,
+)
 from autogpt.core.prompting.utils import json_loads, to_numbered_list
 from autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict,
-    ChatMessage,
     CompletionModelFunction,
+    ChatMessage,
 )
-from autogpt.core.utils.json_schema import JSONSchema
-
-logger = logging.getLogger(__name__)
 
 
 class NextAbilityConfiguration(SystemConfiguration):
@@ -23,7 +23,8 @@ class NextAbilityConfiguration(SystemConfiguration):
     additional_ability_arguments: dict = UserConfigurable()
 
 
-class NextAbility(PromptStrategy):
+class NextAbility(BasePromptStrategy):
+    STRATEGY_NAME = "next_ability"
     DEFAULT_SYSTEM_PROMPT_TEMPLATE = "System Info:\n{system_info}"
 
     DEFAULT_SYSTEM_INFO = [
@@ -49,56 +50,48 @@ class NextAbility(PromptStrategy):
     )
 
     DEFAULT_ADDITIONAL_ABILITY_ARGUMENTS = {
-        "motivation": JSONSchema(
-            type=JSONSchema.Type.STRING,
-            description="Your justification for choosing choosing this function instead of a different one.",
-        ),
-        "self_criticism": JSONSchema(
-            type=JSONSchema.Type.STRING,
-            description="Thoughtful self-criticism that explains why this function may not be the best choice.",
-        ),
-        "reasoning": JSONSchema(
-            type=JSONSchema.Type.STRING,
-            description="Your reasoning for choosing this function taking into account the `motivation` and weighing the `self_criticism`.",
-        ),
+        "motivation": {
+            "type": "string",
+            "description": "Your justification for choosing choosing this function instead of a different one.",
+        },
+        "self_criticism": {
+            "type": "string",
+            "description": "Thoughtful self-criticism that explains why this function may not be the best choice.",
+        },
+        "reasoning": {
+            "type": "string",
+            "description": "Your reasoning for choosing this function taking into account the `motivation` and weighing the `self_criticism`.",
+        },
     }
 
-    default_configuration: NextAbilityConfiguration = NextAbilityConfiguration(
-        model_classification=LanguageModelClassification.SMART_MODEL,
+    default_configuration = NextAbilityConfiguration(
+        model_classification=LanguageModelClassification.SMART_MODEL_8K,
         system_prompt_template=DEFAULT_SYSTEM_PROMPT_TEMPLATE,
         system_info=DEFAULT_SYSTEM_INFO,
         user_prompt_template=DEFAULT_USER_PROMPT_TEMPLATE,
-        additional_ability_arguments={
-            k: v.to_dict() for k, v in DEFAULT_ADDITIONAL_ABILITY_ARGUMENTS.items()
-        },
+        additional_ability_arguments=DEFAULT_ADDITIONAL_ABILITY_ARGUMENTS,
     )
 
     def __init__(
         self,
+        logger: Logger,
         model_classification: LanguageModelClassification,
         system_prompt_template: str,
         system_info: list[str],
         user_prompt_template: str,
         additional_ability_arguments: dict,
     ):
+        self._logger = logger
         self._model_classification = model_classification
         self._system_prompt_template = system_prompt_template
         self._system_info = system_info
         self._user_prompt_template = user_prompt_template
-        self._additional_ability_arguments = JSONSchema.parse_properties(
-            additional_ability_arguments
-        )
-        for p in self._additional_ability_arguments.values():
-            p.required = True
-
-    @property
-    def model_classification(self) -> LanguageModelClassification:
-        return self._model_classification
+        self._additional_ability_arguments = additional_ability_arguments
 
     def build_prompt(
         self,
         task: Task,
-        ability_specs: list[CompletionModelFunction],
+        ability_schema: list[dict],
         os_info: str,
         api_budget: float,
         current_time: str,
@@ -111,8 +104,13 @@ class NextAbility(PromptStrategy):
             **kwargs,
         }
 
-        for ability in ability_specs:
-            ability.parameters.update(self._additional_ability_arguments)
+        for ability in ability_schema:
+            ability["parameters"]["properties"].update(
+                self._additional_ability_arguments
+            )
+            ability["parameters"]["required"] += list(
+                self._additional_ability_arguments.keys()
+            )
 
         template_kwargs["task_objective"] = task.objective
         template_kwargs["cycle_count"] = task.context.cycle_count
@@ -143,22 +141,23 @@ class NextAbility(PromptStrategy):
         )
 
         system_prompt = ChatMessage.system(
-            self._system_prompt_template.format(**template_kwargs)
+            content=self._system_prompt_template.format(**template_kwargs),
         )
         user_prompt = ChatMessage.user(
-            self._user_prompt_template.format(**template_kwargs)
+            content=self._user_prompt_template.format(**template_kwargs),
         )
+        functions = [CompletionModelFunction(ability) for ability in ability_schema]
 
         return ChatPrompt(
             messages=[system_prompt, user_prompt],
-            functions=ability_specs,
+            functions=functions,
             # TODO:
             tokens_used=0,
         )
 
     def parse_response_content(
         self,
-        response_content: AssistantChatMessageDict,
+        response_content: dict,
     ) -> dict:
         """Parse the actual text response from the objective model.
 
@@ -169,7 +168,8 @@ class NextAbility(PromptStrategy):
             The parsed response.
 
         """
-        try:
+
+        if response_content["function_call"]:
             function_name = response_content["function_call"]["name"]
             function_arguments = json_loads(
                 response_content["function_call"]["arguments"]
@@ -181,7 +181,7 @@ class NextAbility(PromptStrategy):
                 "next_ability": function_name,
                 "ability_arguments": function_arguments,
             }
-        except KeyError:
-            logger.debug(f"Failed to parse this response content: {response_content}")
-            raise
+        else:
+            parsed_response = None
+            print("Warning : no function_call !")
         return parsed_response

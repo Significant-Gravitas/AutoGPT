@@ -1,106 +1,221 @@
-import logging
+"""
+/agents (GET): Returns a list of all agents.
+AP alias /agent/tasks (GET): Returns a list of all agents.
+    => Need Agent (Parent) to define this properties : agent_id, client_facing, status
+
+    
+/agent (POST): Create a new agent.
+AP alias /agent/tasks (POST): Create a new agent.
+    => TODO : Save an Agent (or SimpleAgent) in the workspace (can't find the method still reading the code)
+
+    
+/agent/{agent_id} (GET): Get an agent from its ID & return an agent.
+AP alias /agent/tasks/{agent_id} (GET): Get an agent from its ID & return an agent.
+
+
+/agent/{agent_id}/start (POST): Send a message to an agent.
+/agent/{agent_id}/message (POST): Sends a message to the agent.
+/agent/{agent_id}/messagehistory (GET): Get message history for an agent.
+    => need SimpleAgent to provide a method 
+/agent/{agent_id}/lastmessage (GET): Get the last message for an agent.
+    => need SimpleAgent to provide a method 
+"""
+import uuid
 from pathlib import Path
+import yaml
+from fastapi import APIRouter, FastAPI, Request
+from autogpt.core.runner.client_lib.shared_click_commands import (
+    DEFAULT_SETTINGS_FILE,
+    make_settings,
+)
 
-from agent_protocol import StepHandler, StepResult
+from autogpt.core.runner.cli_web_app.server.schema import SimpleAgentMessageRequestBody
+from autogpt.core.runner.client_lib.workspacebuilder import (
+    workspace_loader,
+    get_settings_from_file,
+    get_logger_and_workspace,
+)
+from autogpt.core.agent import AgentSettings, SimpleAgent
+from autogpt.core.runner.client_lib.parser import (
+    parse_agent_name_and_goals,
+    parse_ability_result,
+    parse_agent_plan,
+    parse_next_ability,
+)
 
-from autogpt.agents import Agent
-from autogpt.app.main import UserFeedback
-from autogpt.commands import COMMAND_CATEGORIES
-from autogpt.config import AIConfig, ConfigBuilder
-from autogpt.logs.helpers import user_friendly_output
-from autogpt.memory.vector import get_memory
-from autogpt.models.command_registry import CommandRegistry
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
-from autogpt.workspace import Workspace
 
-PROJECT_DIR = Path().resolve()
+router = APIRouter()
+
+# def get_settings_logger_workspace():
+#     settings = get_settings_from_file()
+#     client_logger, agent_workspace = get_logger_and_workspace(settings)
+#     return settings, client_logger, agent_workspace
 
 
-async def task_handler(task_input) -> StepHandler:
-    task = task_input.__root__ if task_input else {}
-    agent = bootstrap_agent(task.get("user_input"), False)
-
-    next_command_name: str | None = None
-    next_command_args: dict[str, str] | None = None
-
-    async def step_handler(step_input) -> StepResult:
-        step = step_input.__root__ if step_input else {}
-
-        nonlocal next_command_name, next_command_args
-
-        result = await interaction_step(
-            agent,
-            step.get("user_input"),
-            step.get("user_feedback"),
-            next_command_name,
-            next_command_args,
+@router.get("/agents")
+@router.get("/agent/tasks")
+async def get_agents(request: Request):
+    """
+    Description: Returns a list of all agents.
+    Purpose: Having a list of agents/chat is crucial for a web UI.
+    Prerequisites:
+    Agents need a UUID.
+    Agents need a name.
+    Ideally, agents should have a "status" property (Active, Inactive, Deleted) to avoid concurrent access.
+    Ideally, agents should have a boolean property ("retrievable", "front", or "clientfacing") to exclude sub-agents. Default to False, but SimpleAgents should have it set to "True."
+    Comment: Ideally returns all client_facing, active and inactive agents.
+    """
+    settings = get_settings_from_file()
+    client_logger, agent_workspace = get_logger_and_workspace(settings)
+    # workspace =  workspace_loader(settings, client_logger, agent_workspace)
+    agent = {}
+    if agent_workspace:
+        agent = SimpleAgent.from_workspace(
+            agent_workspace,
+            client_logger,
         )
+        agent = agent.__dict__
+        # TODO place holder for elements
+        # TODO filter on client_facing
+        # TODO filter on inactive
+        agent["agent_id"] = uuid.uuid4().hex
+        agent["client_facing"] = True
+        agent["status"] = 0
 
-        next_command_name = result["next_step_command_name"] if result else None
-        next_command_args = result["next_step_command_args"] if result else None
-
-        if not result:
-            return StepResult(output=None, is_last=True)
-        return StepResult(output=result)
-
-    return step_handler
+    # Mock a list of agent with a lenght of 1 instead of returning an agent
+    return {"agents": [agent]}
 
 
-async def interaction_step(
-    agent: Agent,
-    user_input,
-    user_feedback: UserFeedback | None,
-    command_name: str | None,
-    command_args: dict[str, str] | None,
-):
-    """Run one step of the interaction loop."""
-    if user_feedback == UserFeedback.EXIT:
-        return
-    if user_feedback == UserFeedback.TEXT:
-        command_name = "human_feedback"
+@router.post("/agent")
+@router.post("/agent/tasks")
+async def create_agent(request: Request):
+    """
+    Create a new agent.
+    Minimal requirements : None
+    """
+    agent_id = uuid.uuid4().hex
 
-    result: str | None = None
+    # TODO : Save the Agent, idealy managed in Agent() not Simple Agent.
+    return {"agent_id": agent_id}
 
-    if command_name is not None:
-        result = agent.execute(command_name, command_args, user_input)
-        if result is None:
-            user_friendly_output(
-                title="SYSTEM:", message="Unable to execute command", level=logging.WARN
-            )
-            return
 
-    next_command_name, next_command_args, assistant_reply_dict = agent.think()
+@router.get("/agent/{agent_id}")
+@router.get("/agent/tasks/{agent_id}")
+async def get_agent_by_id(request: Request, agent_id: str):
+    """
+    Get an agent from it's ID & return an agent
+    """
+    settings = get_settings_from_file()
+    client_logger, agent_workspace = get_logger_and_workspace(settings)
+
+    # workspace =  workspace_loader(settings, client_logger, agent_workspace)
+    agent = {}
+    if agent_workspace:
+        agent = SimpleAgent.from_workspace(
+            agent_workspace,
+            client_logger,
+        )
+        agent = agent.__dict__
+        # TODO place holder for elements
+        # TODO filter on client_facing
+        # TODO filter on inactive
+        agent["agent_id"] = uuid.uuid4().hex
+        agent["client_facing"] = True
+        agent["status"] = 0
+
+    return {"agent": agent}
+
+
+@router.post("/agent/{agent_id}/start")
+async def start_simple_agent_main_loop(request: Request, agent_id: str):
+    """
+    Senf a message to an agent
+    """
+
+    # Get the logger and the workspace movec to a function
+    # Because almost every API end-point will excecute this piece of code
+    user_configuration = get_settings_from_file()
+    client_logger, agent_workspace = get_logger_and_workspace(user_configuration)
+
+    # Get the logger and the workspace moved to a function
+    # Because API end-point will treat this as an error & break
+    if not agent_workspace:
+        raise BaseException
+
+    # launch agent interaction loop
+    agent = SimpleAgent.from_workspace(
+        agent_workspace,
+        client_logger,
+    )
+
+    plan = await agent.build_initial_plan()
+
+    current_task, next_ability = await agent.determine_next_ability(plan)
 
     return {
-        "config": agent.config,
-        "ai_config": agent.ai_config,
-        "result": result,
-        "assistant_reply_dict": assistant_reply_dict,
-        "next_step_command_name": next_command_name,
-        "next_step_command_args": next_command_args,
+        "plan": plan.__dict__,
+        "current_task": current_task.__dict__,
+        "next_ability": next_ability.__dict__,
     }
 
 
-def bootstrap_agent(task, continuous_mode) -> Agent:
-    config = ConfigBuilder.build_config_from_env(workdir=PROJECT_DIR)
-    config.debug_mode = True
-    config.continuous_mode = continuous_mode
-    config.temperature = 0
-    config.plain_output = True
-    command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
-    config.memory_backend = "no_memory"
-    config.workspace_path = Workspace.init_workspace_directory(config)
-    config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
-    ai_config = AIConfig(
-        ai_name="AutoGPT",
-        ai_role="a multi-purpose AI assistant.",
-        ai_goals=[task],
+@router.post("/agent/{agent_id}/message")
+async def message_simple_agent(
+    request: Request, agent_id: str, body: SimpleAgentMessageRequestBody
+):
+    """
+    Description: Sends a message to the agent.
+    Arg :
+    - Required body.message  (str): The message sent from the client
+    - Optional body.start (bool): Start a new loop
+    Comment: Only works if the agent is inactive. Works for both client-facing = true and false, enabling sub-agents.
+    """
+    user_configuration = get_settings_from_file()
+    # Get the logger and the workspace movec to a function
+    # Because almost every API end-point will excecute this piece of code
+    client_logger, agent_workspace = get_logger_and_workspace(user_configuration)
+
+    # Get the logger and the workspace moved to a function
+    # Because API end-point will treat this as an error & break
+    if not agent_workspace:
+        print(f"request.body: {request.body}")
+        print(f"agent_id: {agent_id}")
+        print(f"body: {body}")
+        raise BaseException
+
+    # launch agent interaction loop
+    agent = SimpleAgent.from_workspace(
+        agent_workspace,
+        client_logger,
     )
-    ai_config.command_registry = command_registry
-    return Agent(
-        memory=get_memory(config),
-        command_registry=command_registry,
-        ai_config=ai_config,
-        config=config,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-    )
+
+    plan = await agent.build_initial_plan()
+
+    current_task, next_ability = await agent.determine_next_ability(plan)
+
+    result = {}
+    ability_result = await agent.execute_next_ability(body.message)
+    result["ability_result"] = ability_result.__dict__
+
+    if body.start == True:
+        (
+            result["current_task"],
+            result["next_ability"],
+        ) = await agent.determine_next_ability(plan)
+
+    return result
+
+
+@router.get("/agent/{agent_id}/messagehistory")
+def get_message_history(request: Request, agent_id: str):
+    # TODO : Define structure of the list
+    return {"messages": ["message 1", "message 2", "message 3", "message 4"]}
+
+
+@router.get("/agent/{agent_id}/lastmessage")
+def get_last_message(request: Request, agent_id: str):
+    return {"message": "my last message"}
+
+
+app = FastAPI()
+app.include_router(router, prefix="/api/v1")

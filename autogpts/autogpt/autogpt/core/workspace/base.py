@@ -32,7 +32,7 @@ class Workspace(abc.ABC):
 
     @staticmethod
     @abc.abstractmethod
-    def setup_workspace(
+    def create_workspace(
         configuration: AgentConfiguration, logger: logging.Logger
     ) -> Path:
         """Create the workspace root directory and set up all initial content.

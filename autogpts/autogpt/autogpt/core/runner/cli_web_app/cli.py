@@ -1,6 +1,12 @@
+import contextlib
 import pathlib
+import shlex
+import subprocess
+import sys
+import time
 
 import click
+from fastapi import requests
 import yaml
 from agent_protocol import Agent as AgentProtocol
 
@@ -9,6 +15,7 @@ from autogpt.core.runner.client_lib.shared_click_commands import (
     DEFAULT_SETTINGS_FILE,
     make_settings,
 )
+
 from autogpt.core.runner.client_lib.utils import coroutine
 
 
@@ -18,7 +25,8 @@ def autogpt():
     pass
 
 
-autogpt.add_command(make_settings)
+# autogpt.add_command(make_settings)
+# autogpt.add_command(status)
 
 
 @autogpt.command()
@@ -29,9 +37,9 @@ autogpt.add_command(make_settings)
     help="The port of the webserver.",
     type=click.INT,
 )
-def server(port: int) -> None:
-    """Run the AutoGPT runner httpserver."""
-    click.echo("Running AutoGPT runner httpserver...")
+def server(host: str, port: int) -> None:
+    """Run the Auto-GPT runner httpserver."""
+    click.echo("Running Auto-GPT runner httpserver...")
     AgentProtocol.handle_task(task_handler).start(port)
 
 
@@ -43,13 +51,38 @@ def server(port: int) -> None:
 )
 @coroutine
 async def client(settings_file) -> None:
-    """Run the AutoGPT runner client."""
+    """Run the Auto-GPT runner client."""
     settings_file = pathlib.Path(settings_file)
     settings = {}
     if settings_file.exists():
         settings = yaml.safe_load(settings_file.read_text())
 
-    # TODO: Call the API server with the settings and task, using the Python API client for agent protocol.
+    from autogpt.core.runner.cli_web_app.client.client import run
+
+    # with autogpt_server():
+    run()
+
+
+@contextlib.contextmanager
+def autogpt_server():
+    host = "localhost"
+    port = 8080
+    cmd = shlex.split(
+        f"{sys.executable} autogpt/core/runner/cli_web_app/cli.py server --host {host} --port {port}"
+    )
+    server_process = subprocess.Popen(
+        args=cmd,
+    )
+    started = False
+
+    while not started:
+        try:
+            requests.get(f"http://{host}:{port}")
+            started = True
+        except requests.exceptions.ConnectionError:
+            time.sleep(0.2)
+    yield server_process
+    server_process.terminate()
 
 
 if __name__ == "__main__":

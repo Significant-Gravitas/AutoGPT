@@ -10,8 +10,8 @@ if TYPE_CHECKING:
     from autogpt.core.ability import Ability, AbilityRegistry
     from autogpt.core.memory import Memory
     from autogpt.core.resource.model_providers import (
-        ChatModelProvider,
         EmbeddingModelProvider,
+        ChatModelProvider,
     )
 
     # Expand to other types as needed
@@ -144,7 +144,7 @@ class PluginService(abc.ABC):
 
     @staticmethod
     @abc.abstractmethod
-    def load_from_workspace(plugin_route: PluginStorageRoute) -> "PluginType":
+    def load_get_agent_from_settings(plugin_route: PluginStorageRoute) -> "PluginType":
         """Load a plugin from the workspace."""
         ...
 

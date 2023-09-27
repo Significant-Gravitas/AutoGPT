@@ -1,4 +1,4 @@
-from .openai import (
+from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OPEN_AI_EMBEDDING_MODELS,
     OPEN_AI_MODELS,
@@ -6,7 +6,7 @@ from .openai import (
     OpenAIProvider,
     OpenAISettings,
 )
-from .schema import (
+from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessage,
     AssistantChatMessageDict,
     AssistantFunctionCall,
@@ -48,18 +48,17 @@ __all__ = [
     "EmbeddingModelResponse",
     "ModelInfo",
     "ModelProvider",
-    "ModelProviderBudget",
-    "ModelProviderCredentials",
     "ModelProviderName",
-    "ModelProviderService",
     "ModelProviderSettings",
-    "ModelProviderUsage",
-    "ModelResponse",
-    "ModelTokenizer",
-    "OPEN_AI_MODELS",
-    "OPEN_AI_CHAT_MODELS",
-    "OPEN_AI_EMBEDDING_MODELS",
+    "EmbeddingModelProvider",
+    "EmbeddingModelResponse",
+    "ChatModelProvider",
+    "ChatModelResponse",
+    "CompletionModelFunction",
+    "ChatMessage",
+    "ChatMessage.Role",
     "OpenAIModelName",
+    "OPEN_AI_MODELS",
     "OpenAIProvider",
     "OpenAISettings",
 ]

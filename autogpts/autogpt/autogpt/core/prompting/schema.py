@@ -2,9 +2,11 @@ import enum
 
 from pydantic import BaseModel, Field
 
+from autogpt.core.ability.schema import AbilityResult
 from autogpt.core.resource.model_providers.schema import (
     ChatMessage,
     ChatMessageDict,
+    ChatModelResponse,
     CompletionModelFunction,
 )
 
@@ -17,13 +19,18 @@ class LanguageModelClassification(str, enum.Enum):
     possible.
     """
 
-    FAST_MODEL = "fast_model"
-    SMART_MODEL = "smart_model"
+    FAST_MODEL_4K: str = "FAST_MODEL_4K"
+    FAST_MODEL_16K: str = "FAST_MODEL_16K"
+    FAST_MODEL_FINE_TUNED_4K: str = "FAST_MODEL_FINE_TUNED_4K"
+    SMART_MODEL_8K: str = "SMART_MODEL_8K"
+    SMART_MODEL_32K: str = "SMART_MODEL_32K"
 
 
 class ChatPrompt(BaseModel):
     messages: list[ChatMessage]
     functions: list[CompletionModelFunction] = Field(default_factory=list)
+    function_call: str
+    default_function_call: str
 
     def raw(self) -> list[ChatMessageDict]:
         return [m.dict() for m in self.messages]

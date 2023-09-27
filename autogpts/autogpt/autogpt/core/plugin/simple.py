@@ -18,18 +18,21 @@ class SimplePluginService(PluginService):
         """Get a plugin from a plugin location."""
         if isinstance(plugin_location, dict):
             plugin_location = PluginLocation.parse_obj(plugin_location)
-        if plugin_location.storage_format == PluginStorageFormat.WORKSPACE:
-            return SimplePluginService.load_from_workspace(
-                plugin_location.storage_route
-            )
-        elif plugin_location.storage_format == PluginStorageFormat.INSTALLED_PACKAGE:
-            return SimplePluginService.load_from_installed_package(
-                plugin_location.storage_route
-            )
-        else:
-            raise NotImplementedError(
-                f"Plugin storage format {plugin_location.storage_format} is not implemented."
-            )
+        if hasattr(plugin_location, "storage_format"):
+            if plugin_location.storage_format == PluginStorageFormat.WORKSPACE:
+                return SimplePluginService.load_get_agent_from_settings(
+                    plugin_location.storage_route
+                )
+            elif (
+                plugin_location.storage_format == PluginStorageFormat.INSTALLED_PACKAGE
+            ):
+                return SimplePluginService.load_from_installed_package(
+                    plugin_location.storage_route
+                )
+            else:
+                raise NotImplementedError(
+                    f"Plugin storage format {plugin_location.storage_format} is not implemented."
+                )
 
     ####################################
     # Low-level storage format loaders #
@@ -63,7 +66,7 @@ class SimplePluginService(PluginService):
     #####################################
 
     @staticmethod
-    def load_from_workspace(plugin_route: PluginStorageRoute) -> "PluginType":
+    def load_get_agent_from_settings(plugin_route: PluginStorageRoute) -> "PluginType":
         """Load a plugin from the workspace."""
         plugin = SimplePluginService.load_from_file_path(plugin_route)
         return plugin
