@@ -68,7 +68,7 @@ dev = ["black (==22.3.0)", "isort (==5.10.1)", "psutil", "pytest (==6.2.5)", "py
 type = "git"
 url = "https://github.com/jmikedupont2/ai-ticket/"
 reference = "HEAD"
-resolved_reference = "8c82672d3f3e6025124272dbba7f2e6b1ebd36b8"
+resolved_reference = "fc05086cca562698d7afc37a47682c2cf9547bef"
 
 [[package]]
 name = "aiofiles"
@@ -308,7 +308,7 @@ abstract-singleton = "*"
 type = "git"
 url = "https://github.com/Significant-Gravitas/AutoGPT-Plugin-Template"
 reference = "0.1.0"
-resolved_reference = "7612a14c629dc64ad870eee4d05850d60e1dd9ce"
+resolved_reference = "e24588b39c22ae4539ce081f4c5df08e48ee3bc1"
 
 [[package]]
 name = "autoflake"
