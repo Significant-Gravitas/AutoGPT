@@ -121,7 +121,10 @@ class TaskQueueView extends StatelessWidget {
                           showDialog(
                             context: context,
                             builder: (context) => LeaderboardSubmissionDialog(
-                              onSubmit: viewModel.submitToLeaderboard,
+                              onSubmit: (teamName, repoUrl, commitSha) {
+                                viewModel.submitToLeaderboard(
+                                    teamName, repoUrl, commitSha);
+                              },
                             ),
                           );
                         },

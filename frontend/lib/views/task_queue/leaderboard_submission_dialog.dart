@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LeaderboardSubmissionDialog extends StatefulWidget {
-  final VoidCallback? onSubmit;
+  final Function(String, String, String)? onSubmit;
 
   const LeaderboardSubmissionDialog({
     Key? key,
@@ -73,7 +73,8 @@ class _LeaderboardSubmissionDialogState
 
     if (isValid) {
       _saveToSharedPreferences();
-      widget.onSubmit?.call();
+      widget.onSubmit?.call(_teamNameController.text, _repoUrlController.text,
+          _commitShaController.text);
     } else {
       setState(() {});
     }
