@@ -31,7 +31,6 @@ class SideBarView extends StatelessWidget {
             return SizedBox(
               width: 60,
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Column(
                     children: [
@@ -69,10 +68,12 @@ class SideBarView extends StatelessWidget {
                       ),
                     ],
                   ),
+                  const Spacer(),
                   Column(
                     children: [
                       IconButton(
                         splashRadius: 0.1,
+                        iconSize: 33,
                         icon: Image.asset('assets/images/autogpt_logo.png'),
                         onPressed: () =>
                             _launchURL('https://leaderboard.agpt.co'),
@@ -80,18 +81,22 @@ class SideBarView extends StatelessWidget {
                       ),
                       IconButton(
                         splashRadius: 0.1,
+                        iconSize: 25,
                         icon: Image.asset('assets/images/discord_logo.png'),
                         onPressed: () =>
                             _launchURL('https://discord.gg/autogpt'),
                         tooltip: 'Join our Discord',
                       ),
+                      const SizedBox(height: 6),
                       IconButton(
                         splashRadius: 0.1,
+                        iconSize: 15,
                         icon: Image.asset('assets/images/twitter_logo.png'),
                         onPressed: () =>
                             _launchURL('https://twitter.com/Auto_GPT'),
                         tooltip: 'Follow us on Twitter',
                       ),
+                      const SizedBox(height: 8),
                     ],
                   ),
                 ],
