@@ -198,3 +198,269 @@ Summon these abilities:
 This template is a marvel of modularity. By using the `extends` directive, it builds upon the base `expert.j2` template. The different blocks – constraints, resources, abilities, and best practices – allow for a dynamic prompt that adjusts based on the context. It's like a conversation blueprint, guiding the LLM to understand the task, abide by constraints, and deploy resources and abilities to achieve the desired outcome.
 
 The PromptEngine equips us with a potent tool to converse seamlessly with large language models. By externalizing prompts and using templates, we can ensure that our agent remains agile, adapting to new challenges without a code overhaul. As we march forward, keep this foundation in mind—it's the bedrock of our agent's intelligence.
+
+---
+
+## Engaging with your LLM
+
+To fully exploit the capabilities of LLMd, it goes beyond simply sending a solitary prompt. It’s about tasking the model with a series of structured directives. To do this we need to structure our prompts into the format our LLM is primed to process a list of messages. Using the system_prompt and task_prompt we previously prepared create the 
+
+```python
+messages list:
+ messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": task_prompt}
+        ]
+```
+
+With our prompt shaped and ready, it’s time to task our LLM! While this phase entails some foundational code, the spotlight is on the chat_completion_request. This crucial function tasks the LLM and retrieves its output. The adjacent code merely packages our request and deciphers the model's feedback:
+
+```python
+  try:
+      # Define the parameters for the chat completion request
+      chat_completion_kwargs = {
+          "messages": messages,
+          "model": "gpt-3.5-turbo",
+      }
+      # Make the chat completion request and parse the response
+      chat_response = await chat_completion_request(**chat_completion_kwargs)
+      answer = json.loads(chat_response["choices"][0]["message"]["content"])
+
+      # Log the answer for debugging purposes
+      LOG.info(pprint.pformat(answer))
+
+  except json.JSONDecodeError as e:
+      # Handle JSON decoding errors
+      LOG.error(f"Unable to decode chat response: {chat_response}")
+  except Exception as e:
+      # Handle other exceptions
+      LOG.error(f"Unable to generate chat response: {e}")
+```      
+
+Navigating through the quirks of LLM outputs to extract a clear processable message can be a nuanced endeavor. Our current approach is simple and will usually work with GPT-3.5 and GPT-4. However, future tutorials will broaden your horizons with more intricate ways to process LLM outputs. The aim? To ensure that you’re not just limited to JSON, especially when some LLMs excel with alternative response patterns. Stay tuned!
+
+---
+
+## Using and Creating Abilities
+
+For those of you with an acute attention to detail, you might’ve picked up on the reference to agent abilities when we discussed creating the task-step prompt. Abilities are the gears and levers that enable the agent to interact with tasks at hand. Let's unpack the mechanisms behind these abilities and how you can harness, and even extend, them.
+Within the SDK, there’s a designated folder titled abilities. As of this writing, it houses registry.py, finish.py, and a subfolder named file_system. And there's space for expansion – perhaps your own innovative ability will find its home here soon!
+
+The file registry.py plays a pivotal role. It provides the foundational blueprint for abilities, integrating the essential @ability decorator and the AbilityRegister class. This class isn't just a passive list; it's an active catalog that keeps tabs on available abilities and delineates the function necessary for their execution. What's more, a default ability register is seamlessly integrated into the base Agent class, making it effortlessly accessible via the self.abilities handle. This is added to the Agent class in it’s init function like so:
+
+```python
+self.abilities = AbilityRegister(self)
+While AbilityRegister is studded with utility methods, two stand out. The list_abilities_for_prompt method curates and structures abilities for prompt integration. Conversely, run_ability operationalizes the designated ability, translating it from code to action.
+An ability’s DNA comprises a function embellished with the @ability decorator and mandatorily paired with parameters, notably the agent and task_id.
+@ability(
+    name="write_file",
+    description="Write data to a file",
+    parameters=[
+        {
+            "name": "file_path",
+            "description": "Path to the file",
+            "type": "string",
+            "required": True,
+        },
+        {
+            "name": "data",
+            "description": "Data to write to the file",
+            "type": "bytes",
+            "required": True,
+        },
+    ],
+    output_type="None",
+)
+async def write_file(agent, task_id: str, file_path: str, data: bytes) -> None:
+    pass
+```
+
+Here, the @ability decorator is not just an adornment but a functional specifier. It encompasses the ability's metadata: its identity (name), functionality (description), and operational parameters. Each parameter is delineated with precision, encapsulating its identity, datatype, and operational necessity.
+
+## Example of a Custom Ability: Webpage Fetcher
+
+```python
+import requests
+
+@ability(
+  name="fetch_webpage",
+  description="Retrieve the content of a webpage",
+  parameters=[
+      {
+          "name": "url",
+          "description": "Webpage URL",
+          "type": "string",
+          "required": True,
+      }
+  ],
+  output_type="string",
+)
+async def fetch_webpage(agent, task_id: str, url: str) -> str:
+  response = requests.get(url)
+  return response.text
+```
+
+This ability, “fetch_webpage”, accepts a URL as input and returns the HTML content of the webpage as a string. As you can see, custom abilities allow you to extend the core functions of your agent seamlessly, integrating external tools and libraries to augment its capabilities.
+Crafting a custom ability demands a synthesis of architectural comprehension and technical prowess. It’s about articulating a function, enlisting its operational parameters, and intricately weaving them with the @ability decorator's specifications. With custom abilities like the "fetch_webpage", the agent’s potential is only limited by your imagination, readying it to tackle complex tasks with refined competence.
+
+## Running an Ability
+
+Now that you’re well-acquainted with the essence of abilities and have the prowess to craft them, it’s time to put these skills into action. The final piece of our puzzle is the execute_step function. Our goal? To interpret the agent's response, isolate the desired ability, and bring it to life.
+First and foremost, we derive the ability details from the agent’s response. This gives us a clear picture of the task at hand:
+
+```python
+# Extract the ability from the answer
+ability = answer["ability"]
+With the ability details at our fingertips, the next step is to mobilize it. This involves calling our previously discussed run_ability function
+# Run the ability and get the output
+# We don't actually use the output in this example
+output = await self.abilities.run_ability(
+    task_id, ability["name"], **ability["args"]
+)
+```
+
+
+Here, we’re invoking the specified ability. The task_id ensures continuity, ability['name'] pinpoints the exact function, and the arguments (ability["args"]) provide necessary context.
+
+Finishing up, we’ll craft the step’s output to echo the agent’s thoughts. This not only provides transparency but also offers a glimpse into the agent’s decision-making process:
+
+```python
+# Set the step output to the "speak" part of the answer
+step.output = answer["thoughts"]["speak"]
+
+# Return the completed step
+return step
+```
+
+
+And there you have it! Your first Smart Agent, sculpted with precision and purpose, stands ready to take on challenges. The stage is set. It’s showtime!
+
+Here is what your function should look like:
+
+```python
+async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
+    # Firstly we get the task this step is for so we can access the task input
+    task = await self.db.get_task(task_id)
+
+    # Create a new step in the database
+    step = await self.db.create_step(
+        task_id=task_id, input=step_request, is_last=True
+    )
+
+    # Log the message
+    LOG.info(f"\t✅ Final Step completed: {step.step_id} input: {step.input[:19]}")
+
+    # Initialize the PromptEngine with the "gpt-3.5-turbo" model
+    prompt_engine = PromptEngine("gpt-3.5-turbo")
+
+    # Load the system and task prompts
+    system_prompt = prompt_engine.load_prompt("system-format")
+
+    # Initialize the messages list with the system prompt
+    messages = [
+        {"role": "system", "content": system_prompt},
+    ]
+    # Define the task parameters
+    task_kwargs = {
+        "task": task.input,
+        "abilities": self.abilities.list_abilities_for_prompt(),
+    }
+
+    # Load the task prompt with the defined task parameters
+    task_prompt = prompt_engine.load_prompt("task-step", **task_kwargs)
+
+    # Append the task prompt to the messages list
+    messages.append({"role": "user", "content": task_prompt})
+
+    try:
+        # Define the parameters for the chat completion request
+        chat_completion_kwargs = {
+            "messages": messages,
+            "model": "gpt-3.5-turbo",
+        }
+        # Make the chat completion request and parse the response
+        chat_response = await chat_completion_request(**chat_completion_kwargs)
+        answer = json.loads(chat_response["choices"][0]["message"]["content"])
+
+        # Log the answer for debugging purposes
+        LOG.info(pprint.pformat(answer))
+
+    except json.JSONDecodeError as e:
+        # Handle JSON decoding errors
+        LOG.error(f"Unable to decode chat response: {chat_response}")
+    except Exception as e:
+        # Handle other exceptions
+        LOG.error(f"Unable to generate chat response: {e}")
+
+    # Extract the ability from the answer
+    ability = answer["ability"]
+
+    # Run the ability and get the output
+    # We don't actually use the output in this example
+    output = await self.abilities.run_ability(
+        task_id, ability["name"], **ability["args"]
+    )
+
+    # Set the step output to the "speak" part of the answer
+    step.output = answer["thoughts"]["speak"]
+
+    # Return the completed step
+    return step
+```
+
+## Interacting with your Agent
+> ⚠️ Heads up: The UI and benchmark are still in the oven, so they might be a tad glitchy.
+
+With the heavy lifting of crafting our Smart Agent behind us, it’s high time to see it in action. Kick things off by firing up the agent with this command:
+```bash
+./run agent start SmartAgent.
+```
+
+Once your digital playground is all set, your terminal should light up with:
+```bash
+
+
+       d8888          888             .d8888b.  8888888b. 88888888888 
+      d88888          888            d88P  Y88b 888   Y88b    888     
+     d88P888          888            888    888 888    888    888     
+    d88P 888 888  888 888888 .d88b.  888        888   d88P    888     
+   d88P  888 888  888 888   d88""88b 888  88888 8888888P"     888     
+  d88P   888 888  888 888   888  888 888    888 888           888     
+ d8888888888 Y88b 888 Y88b. Y88..88P Y88b  d88P 888           888     
+d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888     
+                                                                      
+                                                                      
+                                                                      
+                8888888888                                            
+                888                                                   
+                888                                                   
+                8888888  .d88b.  888d888 .d88b.   .d88b.              
+                888     d88""88b 888P"  d88P"88b d8P  Y8b             
+                888     888  888 888    888  888 88888888             
+                888     Y88..88P 888    Y88b 888 Y8b.                 
+                888      "Y88P"  888     "Y88888  "Y8888              
+                                             888                      
+                                        Y8b d88P                      
+                                         "Y88P"                v0.1.0
+
+
+[2023-09-27 15:39:07,832] [forge.sdk.agent] [INFO]      📝  Agent server starting on http://localhost:8000
+```
+
+A simple click on that link will unveil the AutoGPT Agent UI. But wait, there’s a tiny pit-stop first! Log in with your Gmail or Github credentials. Now, spot that trophy icon on the left? Click it to waltz into the benchmarking arena. Opt for the ‘WriteFile’ test and hit ‘Initiate test suite’ to set the wheels in motion.
+
+Benchmarking page of the AutoGPT UI
+
+Your eyes will be glued to the right panel as it spews out real-time output. And, if you sneak a peek at your console, these celebratory messages hint that your task reached its grand finale:
+
+```bash
+📝  📦 Task created: 70518b75-0104-49b0-923e-f607719d042b input: Write the word 'Washington' to a .txt fi...
+📝      ✅ Final Step completed: a736c45f-65a5-4c44-a697-f1d6dcd94d5c input: y
+```
+
+Oops! Hit a snag or saw some cryptic error messages? No sweat. Hit retry. Remember, while LLMs pack a punch as an agent’s intellect, they’re a bit like wizards — incredibly potent, but occasionally need a gentle nudge to stay on track!
+
+## Wrap Up
+In our next tutorial, we’ll further refine this process, enhancing the agent’s capabilities, through the addition of memory!
+
+Until then, keep experimenting and pushing the boundaries of AI. Happy coding! 🚀
