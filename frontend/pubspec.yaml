@@ -45,6 +45,7 @@ dependencies:
   firebase_analytics: ^10.5.0
   google_sign_in: ^6.1.5
   uuid: ^4.0.0
+  url_launcher: ^6.1.14
 
 dev_dependencies:
   flutter_test:
