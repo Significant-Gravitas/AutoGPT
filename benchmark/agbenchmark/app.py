@@ -289,7 +289,6 @@ async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
             task_informations[task_response.task_id][
                 "eval_id"
             ] = task_eval_request.eval_id
-            await api_instance.create_agent_task(task_request_body=task_request_body)
             await upload_artifacts(
                 api_instance,
                 str(Path(CHALLENGES[task_eval_request.eval_id]["path"]).parent),
