@@ -52,8 +52,7 @@ class TaskViewModel with ChangeNotifier {
   /// Fetches tasks from the data source.
   Future<void> fetchTasks() async {
     try {
-      final TaskResponse tasksResponse = await _taskService.listAllTasks();
-      final tasksFromApi = tasksResponse.tasks;
+      final tasksFromApi = await _taskService.fetchAllTasks();
       _tasks = tasksFromApi
           .where((task) => !_taskService.isTaskDeleted(task.id))
           .toList();
