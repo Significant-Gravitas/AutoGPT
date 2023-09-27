@@ -71,8 +71,11 @@ flutter:
 
   assets:
   - assets/tree_structure.json
-  - assets/google_logo.svg.png
-  - assets/github_logo.svg.png
+  - assets/images/google_logo.svg.png
+  - assets/images/github_logo.svg.png
+  - assets/images/autogpt_logo.png
+  - assets/images/discord_logo.png
+  - assets/images/twitter_logo.png
   - assets/general_tree_structure.json
   - assets/coding_tree_structure.json
   - assets/data_tree_structure.json
