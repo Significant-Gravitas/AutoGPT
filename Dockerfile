@@ -28,31 +28,12 @@ ENV PATH="$POETRY_HOME/bin:$PATH"
 RUN poetry config installer.max-workers 10
 
 ADD autogpts/autogpt /app/
+
+ADD ./benchmark /benchmark/
+
 WORKDIR /app
+#RUN poetry install --verbose
 
-COPY pyproject.toml poetry.lock ./
-COPY README.md poetry.lock ./
-ADD ./benchmark /
-
-
-# dev build -> include everything
-#FROM autogpt-base as autogpt-dev
-##RUN poetry install --no-root --without benchmark
-#ONBUILD COPY . ./
-
-# release build -> include bare minimum
-#FROM autogpt-base as autogpt-release
-#RUN poetry install --no-root --without dev,benchmark
-#ONBUILD COPY autogpt/ ./autogpt
-#ONBUILD COPY scripts/ ./scripts
-#ONBUILD COPY plugins/ ./plugins
-#ONBUILD COPY prompt_settings.yaml ./prompt_settings.yaml
-#ONBUILD COPY README.md ./README.md
-#ONBUILD RUN mkdir ./data
-
-#FROM autogpt-${BUILD_TYPE} AS autogpt
-RUN poetry install 
-# Set the entrypoint
-ENTRYPOINT ["poetry", "run", "autogpt", "--install-plugin-deps"]
+#ENTRYPOINT ["poetry", "run", "autogpt", "--install-plugin-deps"]
 #ENTRYPOINT ["poetry", "install" ]
 CMD []
