@@ -199,7 +199,10 @@ class Agent:
         """
         try:
             artifact = await self.db.get_artifact(artifact_id)
-            file_path = os.path.join(artifact.relative_path, artifact.file_name)
+            if artifact.file_name not in artifact.relative_path:
+                file_path = os.path.join(artifact.relative_path, artifact.file_name)
+            else:
+                file_path = artifact.relative_path
             retrieved_artifact = self.workspace.read(task_id=task_id, path=file_path)
         except NotFoundError as e:
             raise
