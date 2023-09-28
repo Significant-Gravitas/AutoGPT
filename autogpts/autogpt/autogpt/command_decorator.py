@@ -1,28 +1,24 @@
 from __future__ import annotations
 
 import functools
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypedDict
+import inspect
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
     from autogpt.config import Config
 
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command, CommandOutput, CommandParameter
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 
 
-class CommandParameterSpec(TypedDict):
-    type: str
-    description: str
-    required: bool
-
-
 def command(
     name: str,
     description: str,
-    parameters: dict[str, CommandParameterSpec],
+    parameters: dict[str, JSONSchema],
     enabled: Literal[True] | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
@@ -34,11 +30,9 @@ def command(
         typed_parameters = [
             CommandParameter(
                 name=param_name,
-                description=parameter.get("description"),
-                type=parameter.get("type", "string"),
-                required=parameter.get("required", False),
+                spec=spec,
             )
-            for param_name, parameter in parameters.items()
+            for param_name, spec in parameters.items()
         ]
         cmd = Command(
             name=name,
@@ -51,9 +45,17 @@ def command(
             available=available,
         )
 
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
-            return func(*args, **kwargs)
+        if inspect.iscoroutinefunction(func):
+
+            @functools.wraps(func)
+            async def wrapper(*args, **kwargs) -> Any:
+                return await func(*args, **kwargs)
+
+        else:
+
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs) -> Any:
+                return func(*args, **kwargs)
 
         setattr(wrapper, "command", cmd)
         setattr(wrapper, AUTO_GPT_COMMAND_IDENTIFIER, True)

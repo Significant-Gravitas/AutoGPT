@@ -55,7 +55,6 @@ testpaths = [
 ]
 asyncio_mode = "auto"
 markers = [
-    "retrieval",
     "interface",
     "code",
     "memory",
