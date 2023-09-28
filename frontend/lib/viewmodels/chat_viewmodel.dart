@@ -68,24 +68,23 @@ class ChatViewModel with ChangeNotifier {
         // Create a Chat object for 'input' if it exists and is not empty
         if (step.input.isNotEmpty) {
           chats.add(Chat(
-            id: step.stepId,
-            taskId: step.taskId,
-            message: step.input,
-            timestamp: currentTimestamp,
-            messageType: MessageType.user,
-          ));
+              id: step.stepId,
+              taskId: step.taskId,
+              message: step.input,
+              timestamp: currentTimestamp,
+              messageType: MessageType.user,
+              artifacts: step.artifacts));
         }
 
         // Create a Chat object for 'output'
         chats.add(Chat(
-          id: step.stepId,
-          taskId: step.taskId,
-          message: step.output,
-          timestamp: currentTimestamp,
-          messageType: MessageType.agent,
-          jsonResponse:
-              stepsJsonList[i], // Include the specific step's JSON here
-        ));
+            id: step.stepId,
+            taskId: step.taskId,
+            message: step.output,
+            timestamp: currentTimestamp,
+            messageType: MessageType.agent,
+            jsonResponse: stepsJsonList[i],
+            artifacts: step.artifacts));
       }
 
       // Assign the chats list
@@ -123,12 +122,12 @@ class ChatViewModel with ChangeNotifier {
       // Create a Chat object for the user message
       if (executedStep.input.isNotEmpty) {
         final userChat = Chat(
-          id: executedStep.stepId,
-          taskId: executedStep.taskId,
-          message: executedStep.input,
-          timestamp: DateTime.now(),
-          messageType: MessageType.user,
-        );
+            id: executedStep.stepId,
+            taskId: executedStep.taskId,
+            message: executedStep.input,
+            timestamp: DateTime.now(),
+            messageType: MessageType.user,
+            artifacts: executedStep.artifacts);
 
         _chats.add(userChat);
       }
@@ -140,7 +139,8 @@ class ChatViewModel with ChangeNotifier {
           message: executedStep.output,
           timestamp: DateTime.now(),
           messageType: MessageType.agent,
-          jsonResponse: executedStepResponse);
+          jsonResponse: executedStepResponse,
+          artifacts: executedStep.artifacts);
 
       _chats.add(agentChat);
 
@@ -163,6 +163,22 @@ class ChatViewModel with ChangeNotifier {
       // TODO: Bubble up errors to UI
       print("Error sending chat: $error");
       // TODO: Handle additional error scenarios or log them as required
+    }
+  }
+
+  /// Downloads an artifact associated with a specific chat.
+  ///
+  /// [taskId] is the ID of the task.
+  /// [artifactId] is the ID of the artifact to be downloaded.
+  Future<void> downloadArtifact(String taskId, String artifactId) async {
+    try {
+      // Call the downloadArtifact method from the ChatService class
+      await _chatService.downloadArtifact(taskId, artifactId);
+
+      print("Artifact $artifactId downloaded successfully for task $taskId!");
+    } catch (error) {
+      print("Error downloading artifact: $error");
+      // TODO: Handle the error appropriately, perhaps notify the user
     }
   }
 }
