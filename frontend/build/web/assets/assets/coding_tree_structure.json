@@ -2,6 +2,12 @@
     "edges": [
         {
             "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
             "from": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestUrlShortener::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]"
@@ -38,18 +44,91 @@
         },
         {
             "arrows": "to",
-            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
-            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
-            "to": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
-        },
-        {
-            "arrows": "to",
             "from": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestTicTacToe::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]"
         }
     ],
     "nodes": [
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "coding",
+                    "scrape_synthesize",
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestWriteFile"
+                ],
+                "eval_id": "261ccfaa-02a2-4c1a-8a56-c76c66f7dba1",
+                "ground": {
+                    "answer": "The content of output.txt should be 'Hello World!'",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "Hello World!"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can read a file.",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestReadFile",
+                "task": "Read the file called file_to_read.txt and write its content to a file called output.txt"
+            },
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "label": "ReadFile",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "coding",
+                    "scrape_synthesize",
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [],
+                "eval_id": "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
+                "ground": {
+                    "answer": "The word 'Washington', printed to a .txt file named anything",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "Washington"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can write a file",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestWriteFile",
+                "task": "Write the word 'Washington' to a .txt file"
+            },
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "label": "WriteFile",
+            "shape": "dot"
+        },
         {
             "color": "grey",
             "data": {
@@ -73,7 +152,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "Tests ability for the agent to create Tic-Tac-Toe game",
+                    "description": "Tests if the agent can create Tic-Tac-Toe game",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -107,7 +186,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "Tests ability for the agent to create a URL shortener.",
+                    "description": "Tests if the agent can create a URL shortener.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -141,7 +220,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "Tests ability for the agent to create a random password generator.",
+                    "description": "Tests if the agent can create a file organizer.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -175,7 +254,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "Tests ability for the agent to create a random password generator.",
+                    "description": "Tests if the agent can create a random password generator.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -190,8 +269,7 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "coding",
-                    "iterate"
+                    "coding"
                 ],
                 "cutoff": 60,
                 "dependencies": [
@@ -214,7 +292,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "Tests ability for the agent to create the three_sum function.",
+                    "description": "Tests if the agent can create the three_sum function.",
                     "difficulty": "basic",
                     "side_effects": []
                 },
@@ -223,42 +301,6 @@
             },
             "id": "agbenchmark/generate_test.py::TestThreeSum::test_method[challenge_data0]",
             "label": "ThreeSum",
-            "shape": "dot"
-        },
-        {
-            "color": "grey",
-            "data": {
-                "category": [
-                    "interface"
-                ],
-                "cutoff": 60,
-                "dependencies": [],
-                "eval_id": "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
-                "ground": {
-                    "answer": "The word 'Washington', printed to a .txt file named anything",
-                    "eval": {
-                        "type": "file"
-                    },
-                    "files": [
-                        ".txt"
-                    ],
-                    "should_contain": [
-                        "Washington"
-                    ],
-                    "should_not_contain": []
-                },
-                "info": {
-                    "description": "Tests the agents ability to write to a file",
-                    "difficulty": "interface",
-                    "side_effects": [
-                        ""
-                    ]
-                },
-                "name": "TestWriteFile",
-                "task": "Write the word 'Washington' to a .txt file"
-            },
-            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
-            "label": "WriteFile",
             "shape": "dot"
         },
         {
@@ -283,7 +325,7 @@
                     "should_not_contain": []
                 },
                 "info": {
-                    "description": "Tests ability for the agent to create a Battleship.",
+                    "description": "Tests if the agent can create a Battleship.",
                     "difficulty": "expert",
                     "side_effects": []
                 },
@@ -292,43 +334,6 @@
             },
             "id": "agbenchmark/generate_test.py::TestBattleship::test_method[challenge_data0]",
             "label": "Battleship",
-            "shape": "dot"
-        },
-        {
-            "color": "grey",
-            "data": {
-                "category": [
-                    "interface"
-                ],
-                "cutoff": 60,
-                "dependencies": [
-                    "TestWriteFile"
-                ],
-                "eval_id": "261ccfaa-02a2-4c1a-8a56-c76c66f7dba1",
-                "ground": {
-                    "answer": "The content of output.txt should be 'Hello World!'",
-                    "eval": {
-                        "type": "file"
-                    },
-                    "files": [
-                        "output.txt"
-                    ],
-                    "should_contain": [
-                        "Hello World!"
-                    ]
-                },
-                "info": {
-                    "description": "tests the ability for an agent to read a file.",
-                    "difficulty": "interface",
-                    "side_effects": [
-                        ""
-                    ]
-                },
-                "name": "TestReadFile",
-                "task": "Read the file called file_to_read.txt and write its content to a file called output.txt"
-            },
-            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
-            "label": "ReadFile",
             "shape": "dot"
         }
     ]
