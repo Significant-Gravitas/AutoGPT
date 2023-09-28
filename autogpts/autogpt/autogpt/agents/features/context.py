@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from autogpt.llm.base import ChatSequence
+    from autogpt.core.prompting import ChatPrompt
     from autogpt.models.context_item import ContextItem
 
     from ..base import BaseAgent
 
-from autogpt.llm.base import Message
+from autogpt.core.resource.model_providers import ChatMessage
 
 
 class AgentContext:
@@ -33,7 +33,7 @@ class AgentContext:
         self.items.clear()
 
     def format_numbered(self) -> str:
-        return "\n\n".join([f"{i}. {c}" for i, c in enumerate(self.items, 1)])
+        return "\n\n".join([f"{i}. {c.fmt()}" for i, c in enumerate(self.items, 1)])
 
 
 class ContextMixin:
@@ -46,16 +46,17 @@ class ContextMixin:
 
         super(ContextMixin, self).__init__(**kwargs)
 
-    def construct_base_prompt(self, *args: Any, **kwargs: Any) -> ChatSequence:
-        if kwargs.get("append_messages") is None:
-            kwargs["append_messages"] = []
-
+    def build_prompt(
+        self,
+        *args: Any,
+        extra_messages: list[ChatMessage] = [],
+        **kwargs: Any,
+    ) -> ChatPrompt:
         # Add context section to prompt
         if self.context:
-            kwargs["append_messages"].insert(
+            extra_messages.insert(
                 0,
-                Message(
-                    "system",
+                ChatMessage.system(
                     "## Context\n"
                     + self.context.format_numbered()
                     + "\n\nWhen a context item is no longer needed and you are not done yet,"
@@ -64,7 +65,11 @@ class ContextMixin:
                 ),
             )
 
-        return super(ContextMixin, self).construct_base_prompt(*args, **kwargs)  # type: ignore
+        return super(ContextMixin, self).build_prompt(
+            *args,
+            extra_messages=extra_messages,
+            **kwargs,
+        )  # type: ignore
 
 
 def get_agent_context(agent: BaseAgent) -> AgentContext | None:

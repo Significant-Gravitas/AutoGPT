@@ -15,22 +15,27 @@ from autogpt.core.configuration import (
     UserConfigurable,
 )
 from autogpt.core.resource.model_providers.schema import (
+    AssistantChatMessageDict,
+    ChatMessage,
+    ChatModelInfo,
+    ChatModelProvider,
+    ChatModelResponse,
+    CompletionModelFunction,
     Embedding,
-    EmbeddingModelProvider,
     EmbeddingModelInfo,
+    EmbeddingModelProvider,
     EmbeddingModelResponse,
-    LanguageModelFunction,
-    LanguageModelMessage,
-    LanguageModelProvider,
-    LanguageModelInfo,
-    LanguageModelResponse,
     ModelProviderBudget,
     ModelProviderCredentials,
     ModelProviderName,
     ModelProviderService,
     ModelProviderSettings,
     ModelProviderUsage,
+    ModelTokenizer,
 )
+
+_T = TypeVar("_T")
+_P = ParamSpec("_P")
 
 OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
 OpenAIChatParser = Callable[[str], dict]
@@ -62,47 +67,51 @@ OPEN_AI_EMBEDDING_MODELS = {
         name=OpenAIModelName.ADA,
         service=ModelProviderService.EMBEDDING,
         provider_name=ModelProviderName.OPENAI,
-        prompt_token_cost=0.0001/1000,
+        prompt_token_cost=0.0001 / 1000,
         max_tokens=8191,
         embedding_dimensions=1536,
     ),
 }
 
 
-OPEN_AI_LANGUAGE_MODELS = {
+OPEN_AI_CHAT_MODELS = {
     info.name: info
     for info in [
-        LanguageModelInfo(
+        ChatModelInfo(
             name=OpenAIModelName.GPT3,
-            service=ModelProviderService.LANGUAGE,
+            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
-            prompt_token_cost=0.0015/1000,
-            completion_token_cost=0.002/1000,
+            prompt_token_cost=0.0015 / 1000,
+            completion_token_cost=0.002 / 1000,
             max_tokens=4096,
+            has_function_call_api=True,
         ),
-        LanguageModelInfo(
+        ChatModelInfo(
             name=OpenAIModelName.GPT3_16k,
-            service=ModelProviderService.LANGUAGE,
+            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
-            prompt_token_cost=0.003/1000,
-            completion_token_cost=0.004/1000,
+            prompt_token_cost=0.003 / 1000,
+            completion_token_cost=0.004 / 1000,
             max_tokens=16384,
+            has_function_call_api=True,
         ),
-        LanguageModelInfo(
+        ChatModelInfo(
             name=OpenAIModelName.GPT4,
-            service=ModelProviderService.LANGUAGE,
+            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
-            prompt_token_cost=0.03/1000,
-            completion_token_cost=0.06/1000,
-            max_tokens=8192,
+            prompt_token_cost=0.03 / 1000,
+            completion_token_cost=0.06 / 1000,
+            max_tokens=8191,
+            has_function_call_api=True,
         ),
-        LanguageModelInfo(
+        ChatModelInfo(
             name=OpenAIModelName.GPT4_32k,
-            service=ModelProviderService.LANGUAGE,
+            service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
-            prompt_token_cost=0.06/1000,
-            completion_token_cost=0.12/1000,
+            prompt_token_cost=0.06 / 1000,
+            completion_token_cost=0.12 / 1000,
             max_tokens=32768,
+            has_function_call_api=True,
         ),
     ]
 }
@@ -111,17 +120,22 @@ chat_model_mapping = {
     OpenAIModelName.GPT3: [OpenAIModelName.GPT3_v1, OpenAIModelName.GPT3_v2],
     OpenAIModelName.GPT3_16k: [OpenAIModelName.GPT3_v2_16k],
     OpenAIModelName.GPT4: [OpenAIModelName.GPT4_v1, OpenAIModelName.GPT4_v2],
-    OpenAIModelName.GPT4_32k: [OpenAIModelName.GPT4_v1_32k, OpenAIModelName.GPT4_v2_32k],
+    OpenAIModelName.GPT4_32k: [
+        OpenAIModelName.GPT4_v1_32k,
+        OpenAIModelName.GPT4_v2_32k,
+    ],
 }
 for base, copies in chat_model_mapping.items():
     for copy in copies:
-        copy_info = LanguageModelInfo(**OPEN_AI_LANGUAGE_MODELS[base].__dict__)
+        copy_info = ChatModelInfo(**OPEN_AI_CHAT_MODELS[base].__dict__)
         copy_info.name = copy
-        OPEN_AI_LANGUAGE_MODELS[copy] = copy_info
+        OPEN_AI_CHAT_MODELS[copy] = copy_info
+        if copy.endswith(("-0301", "-0314")):
+            copy_info.has_function_call_api = False
 
 
 OPEN_AI_MODELS = {
-    **OPEN_AI_LANGUAGE_MODELS,
+    **OPEN_AI_CHAT_MODELS,
     **OPEN_AI_EMBEDDING_MODELS,
 }
 
@@ -141,7 +155,9 @@ class OpenAISettings(ModelProviderSettings):
     budget: OpenAIModelProviderBudget
 
 
-class OpenAIProvider(Configurable, LanguageModelProvider, EmbeddingModelProvider):
+class OpenAIProvider(
+    Configurable[OpenAISettings], ChatModelProvider, EmbeddingModelProvider
+):
     default_settings = OpenAISettings(
         name="openai_provider",
         description="Provides access to OpenAI's API.",
@@ -163,8 +179,6 @@ class OpenAIProvider(Configurable, LanguageModelProvider, EmbeddingModelProvider
         ),
     )
 
-    logger = logging.getLogger("model_providers.OpenAIProvider")
-
     def __init__(
         self,
         settings: OpenAISettings,
@@ -181,7 +195,7 @@ class OpenAIProvider(Configurable, LanguageModelProvider, EmbeddingModelProvider
             num_retries=self._configuration.retries_per_request,
         )
 
-        self._create_completion = retry_handler(_create_completion)
+        self._create_chat_completion = retry_handler(_create_chat_completion)
         self._create_embedding = retry_handler(_create_embedding)
 
     def get_token_limit(self, model_name: str) -> int:
@@ -192,16 +206,22 @@ class OpenAIProvider(Configurable, LanguageModelProvider, EmbeddingModelProvider
         """Get the remaining budget."""
         return self._budget.remaining_budget
 
-    def count_tokens(self, text: str, model_name: OpenAIModelName) -> int:
-        encoding = tiktoken.encoding_for_model(model_name)
+    @classmethod
+    def get_tokenizer(cls, model_name: OpenAIModelName) -> ModelTokenizer:
+        return tiktoken.encoding_for_model(model_name)
+
+    @classmethod
+    def count_tokens(cls, text: str, model_name: OpenAIModelName) -> int:
+        encoding = cls.get_tokenizer(model_name)
         return len(encoding.encode(text))
 
+    @classmethod
     def count_message_tokens(
-        self,
-        messages: LanguageModelMessage | list[LanguageModelMessage],
+        cls,
+        messages: ChatMessage | list[ChatMessage],
         model_name: OpenAIModelName,
     ) -> int:
-        if isinstance(messages, LanguageModelMessage):
+        if isinstance(messages, ChatMessage):
             messages = [messages]
 
         if model_name.startswith("gpt-3.5-turbo"):
@@ -223,7 +243,7 @@ class OpenAIProvider(Configurable, LanguageModelProvider, EmbeddingModelProvider
         try:
             encoding = tiktoken.encoding_for_model(encoding_model)
         except KeyError:
-            self.logger.warn(
+            cls._logger.warn(
                 f"Model {model_name} not found. Defaulting to cl100k_base encoding."
             )
             encoding = tiktoken.get_encoding("cl100k_base")
@@ -238,31 +258,31 @@ class OpenAIProvider(Configurable, LanguageModelProvider, EmbeddingModelProvider
         num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
         return num_tokens
 
-    async def create_language_completion(
+    async def create_chat_completion(
         self,
-        model_prompt: list[LanguageModelMessage],
+        model_prompt: list[ChatMessage],
         model_name: OpenAIModelName,
-        completion_parser: Callable[[dict], dict],
-        functions: list[LanguageModelFunction] = [],
+        completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
+        functions: list[CompletionModelFunction] = [],
         **kwargs,
-    ) -> LanguageModelResponse:
+    ) -> ChatModelResponse[_T]:
         """Create a completion using the OpenAI API."""
         completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
-        response = await self._create_completion(
+        response = await self._create_chat_completion(
             messages=model_prompt,
             **completion_kwargs,
         )
         response_args = {
-            "model_info": OPEN_AI_LANGUAGE_MODELS[model_name],
+            "model_info": OPEN_AI_CHAT_MODELS[model_name],
             "prompt_tokens_used": response.usage.prompt_tokens,
             "completion_tokens_used": response.usage.completion_tokens,
         }
 
-        parsed_response = completion_parser(
-            response.choices[0].message.to_dict_recursive()
-        )
-        response = LanguageModelResponse(
-            content=parsed_response, **response_args
+        response_message = response.choices[0].message.to_dict_recursive()
+        response = ChatModelResponse(
+            response=response_message,
+            parsed_result=completion_parser(response_message),
+            **response_args,
         )
         self._budget.update_usage_and_cost(response)
         return response
@@ -293,7 +313,7 @@ class OpenAIProvider(Configurable, LanguageModelProvider, EmbeddingModelProvider
     def _get_completion_kwargs(
         self,
         model_name: OpenAIModelName,
-        functions: list[LanguageModelFunction],
+        functions: list[CompletionModelFunction],
         **kwargs,
     ) -> dict:
         """Get kwargs for completion API call.
@@ -312,7 +332,7 @@ class OpenAIProvider(Configurable, LanguageModelProvider, EmbeddingModelProvider
             **self._credentials.unmasked(),
         }
         if functions:
-            completion_kwargs["functions"] = functions
+            completion_kwargs["functions"] = [f.schema for f in functions]
 
         return completion_kwargs
 
@@ -359,8 +379,8 @@ async def _create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
     )
 
 
-async def _create_completion(
-    messages: list[LanguageModelMessage], *_, **kwargs
+async def _create_chat_completion(
+    messages: list[ChatMessage], *_, **kwargs
 ) -> openai.Completion:
     """Create a chat completion using the OpenAI API.
 
@@ -369,19 +389,15 @@ async def _create_completion(
 
     Returns:
         The completion.
-
     """
-    messages = [message.dict() for message in messages]
-    if "functions" in kwargs:
-        kwargs["functions"] = [function.json_schema for function in kwargs["functions"]]
+    raw_messages = [
+        message.dict(include={"role", "content", "function_call", "name"})
+        for message in messages
+    ]
     return await openai.ChatCompletion.acreate(
-        messages=messages,
+        messages=raw_messages,
         **kwargs,
     )
-
-
-_T = TypeVar("_T")
-_P = ParamSpec("_P")
 
 
 class _OpenAIRetryHandler:

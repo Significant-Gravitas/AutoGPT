@@ -80,6 +80,7 @@ def ability(
             [AbilityParameter.parse_obj(param).name for param in parameters]
         )
         param_names.add("agent")
+        param_names.add("task_id")
         func_param_names = set(func_params.keys())
         if param_names != func_param_names:
             raise ValueError(
@@ -98,12 +99,12 @@ def ability(
 
 
 class AbilityRegister:
-    def __init__(self) -> None:
+    def __init__(self, agent) -> None:
         self.abilities = {}
         self.register_abilities()
+        self.agent = agent
 
     def register_abilities(self) -> None:
-        print(os.path.join(os.path.dirname(__file__), "*.py"))
         for ability_path in glob.glob(
             os.path.join(os.path.dirname(__file__), "**/*.py"), recursive=True
         ):
@@ -116,7 +117,7 @@ class AbilityRegister:
                 ).replace("/", ".")
                 try:
                     module = importlib.import_module(
-                        f".{ability[:-3]}", package="autogpt.sdk.abilities"
+                        f".{ability[:-3]}", package="forge.sdk.abilities"
                     )
                     for attr in dir(module):
                         func = getattr(module, attr)
@@ -135,6 +136,9 @@ class AbilityRegister:
     def list_abilities(self) -> List[Ability]:
         return self.abilities
 
+    def list_abilities_for_prompt(self) -> List[str]:
+        return [str(ability) for ability in self.abilities.values()]
+
     def abilities_description(self) -> str:
         abilities_by_category = {}
         for ability in self.abilities.values():
@@ -152,7 +156,9 @@ class AbilityRegister:
 
         return abilities_description
 
-    def run_ability(self, agent, ability_name: str, *args: Any, **kwds: Any) -> Any:
+    async def run_ability(
+        self, task_id: str, ability_name: str, *args: Any, **kwds: Any
+    ) -> Any:
         """
         This method runs a specified ability with the provided arguments and keyword arguments.
 
@@ -160,7 +166,7 @@ class AbilityRegister:
         the agent's state as needed.
 
         Args:
-            agent: The agent instance.
+            task_id (str): The ID of the task that the ability is being run for.
             ability_name (str): The name of the ability to run.
             *args: Variable length argument list.
             **kwds: Arbitrary keyword arguments.
@@ -173,7 +179,7 @@ class AbilityRegister:
         """
         try:
             ability = self.abilities[ability_name]
-            return ability(agent, *args, **kwds)
+            return await ability(self.agent, task_id, *args, **kwds)
         except Exception:
             raise
 
@@ -182,6 +188,6 @@ if __name__ == "__main__":
     import sys
 
     sys.path.append("/Users/swifty/dev/forge/forge")
-    register = AbilityRegister()
+    register = AbilityRegister(agent=None)
     print(register.abilities_description())
-    print(register.run_ability(None, "list_files", "/Users/swifty/dev/forge/forge"))
+    print(register.run_ability("abc", "list_files", "/Users/swifty/dev/forge/forge"))

@@ -1,23 +1,43 @@
 from __future__ import annotations
 
 import logging
-import re
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
+from pydantic import Field, validator
+
 if TYPE_CHECKING:
-    from autogpt.config import AIConfig, Config
-    from autogpt.llm.base import ChatModelInfo, ChatModelResponse
+    from autogpt.config import Config
+    from autogpt.core.prompting.base import PromptStrategy
+    from autogpt.core.resource.model_providers.schema import (
+        ChatModelInfo,
+        ChatModelProvider,
+        ChatModelResponse,
+    )
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.agents.utils.exceptions import InvalidAgentResponseError
+from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
+from autogpt.config.ai_config import AIConfig
 from autogpt.config.ai_directives import AIDirectives
-from autogpt.llm.base import ChatSequence, Message
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, get_openai_command_specs
-from autogpt.llm.utils import count_message_tokens, create_chat_completion
-from autogpt.memory.message_history import MessageHistory
-from autogpt.models.agent_actions import ActionHistory, ActionResult
-from autogpt.prompts.generator import PromptGenerator
+from autogpt.core.configuration import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
+)
+from autogpt.core.prompting.schema import (
+    ChatMessage,
+    ChatPrompt,
+    CompletionModelFunction,
+)
+from autogpt.core.resource.model_providers.openai import (
+    OPEN_AI_CHAT_MODELS,
+    OpenAIModelName,
+)
+from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
+from autogpt.llm.providers.openai import get_openai_command_specs
+from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -27,98 +47,147 @@ CommandArgs = dict[str, str]
 AgentThoughts = dict[str, Any]
 
 
-class BaseAgent(metaclass=ABCMeta):
-    """Base class for all Auto-GPT agents."""
+class BaseAgentConfiguration(SystemConfiguration):
+    fast_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
+    smart_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT4)
+    use_functions_api: bool = UserConfigurable(default=False)
+
+    default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT
+    """The default instruction passed to the AI for a thinking cycle."""
+
+    big_brain: bool = UserConfigurable(default=True)
+    """
+    Whether this agent uses the configured smart LLM (default) to think,
+    as opposed to the configured fast LLM. Enabling this disables hybrid mode.
+    """
+
+    cycle_budget: Optional[int] = 1
+    """
+    The number of cycles that the agent is allowed to run unsupervised.
+
+    `None` for unlimited continuous execution,
+    `1` to require user approval for every step,
+    `0` to stop the agent.
+    """
+
+    cycles_remaining = cycle_budget
+    """The number of cycles remaining within the `cycle_budget`."""
+
+    cycle_count = 0
+    """The number of cycles that the agent has run since its initialization."""
+
+    send_token_limit: Optional[int] = None
+    """
+    The token limit for prompt construction. Should leave room for the completion;
+    defaults to 75% of `llm.max_tokens`.
+    """
+
+    summary_max_tlength: Optional[
+        int
+    ] = None  # TODO: move to ActionHistoryConfiguration
+
+    plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
+
+    class Config:
+        arbitrary_types_allowed = True  # Necessary for plugins
+
+    @validator("plugins", each_item=True)
+    def validate_plugins(cls, p: AutoGPTPluginTemplate | Any):
+        assert issubclass(
+            p.__class__, AutoGPTPluginTemplate
+        ), f"{p} does not subclass AutoGPTPluginTemplate"
+        assert (
+            p.__class__.__name__ != "AutoGPTPluginTemplate"
+        ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
+        return p
+
+    @validator("use_functions_api")
+    def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
+        if v:
+            smart_llm = values["smart_llm"]
+            fast_llm = values["fast_llm"]
+            assert all(
+                [
+                    not any(s in name for s in {"-0301", "-0314"})
+                    for name in {smart_llm, fast_llm}
+                ]
+            ), (
+                f"Model {smart_llm} does not support OpenAI Functions. "
+                "Please disable OPENAI_FUNCTIONS or choose a suitable model."
+            )
+
+
+class BaseAgentSettings(SystemSettings):
+    ai_config: AIConfig
+    """The AIConfig or "personality" object associated with this agent."""
+
+    config: BaseAgentConfiguration
+    """The configuration for this BaseAgent subsystem instance."""
+
+    history: EpisodicActionHistory
+    """(STATE) The action history of the agent."""
+
+
+class BaseAgent(Configurable[BaseAgentSettings], ABC):
+    """Base class for all AutoGPT agent classes."""
 
     ThoughtProcessID = Literal["one-shot"]
     ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
 
+    default_settings = BaseAgentSettings(
+        name="BaseAgent",
+        description=__doc__,
+        ai_config=AIConfig(),
+        config=BaseAgentConfiguration(),
+        history=EpisodicActionHistory(),
+    )
+
     def __init__(
         self,
-        ai_config: AIConfig,
+        settings: BaseAgentSettings,
+        llm_provider: ChatModelProvider,
+        prompt_strategy: PromptStrategy,
         command_registry: CommandRegistry,
-        config: Config,
-        big_brain: bool = True,
-        default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT,
-        cycle_budget: Optional[int] = 1,
-        send_token_limit: Optional[int] = None,
-        summary_max_tlength: Optional[int] = None,
+        legacy_config: Config,
     ):
-        self.ai_config = ai_config
-        """The AIConfig or "personality" object associated with this agent."""
+        self.ai_config = settings.ai_config
+        self.ai_directives = AIDirectives.from_file(legacy_config.prompt_settings_file)
+
+        self.llm_provider = llm_provider
+
+        self.prompt_strategy = prompt_strategy
 
         self.command_registry = command_registry
         """The registry containing all commands available to the agent."""
 
-        self.prompt_generator = PromptGenerator(
-            ai_config=ai_config,
-            ai_directives=AIDirectives.from_file(config.prompt_settings_file),
-            command_registry=command_registry,
-        )
-        """The prompt generator used for generating the system prompt."""
+        self.llm_provider = llm_provider
 
-        self.config = config
+        self.legacy_config = legacy_config
+        self.config = settings.config
         """The applicable application configuration."""
 
-        self.big_brain = big_brain
-        """
-        Whether this agent uses the configured smart LLM (default) to think,
-        as opposed to the configured fast LLM.
-        """
+        self.event_history = settings.history
 
-        self.default_cycle_instruction = default_cycle_instruction
-        """The default instruction passed to the AI for a thinking cycle."""
-
-        self.cycle_budget = cycle_budget
-        """
-        The number of cycles that the agent is allowed to run unsupervised.
-
-        `None` for unlimited continuous execution,
-        `1` to require user approval for every step,
-        `0` to stop the agent.
-        """
-
-        self.cycles_remaining = cycle_budget
-        """The number of cycles remaining within the `cycle_budget`."""
-
-        self.cycle_count = 0
-        """The number of cycles that the agent has run since its initialization."""
-
-        self.send_token_limit = send_token_limit or self.llm.max_tokens * 3 // 4
-        """
-        The token limit for prompt construction. Should leave room for the completion;
-        defaults to 75% of `llm.max_tokens`.
-        """
-
-        self.event_history = ActionHistory()
-
-        self.message_history = MessageHistory(
-            self.llm,
-            max_summary_tlength=summary_max_tlength or self.send_token_limit // 6,
-        )
+        self._prompt_scratchpad: PromptScratchpad | None = None
 
         # Support multi-inheritance and mixins for subclasses
         super(BaseAgent, self).__init__()
 
-    @property
-    def system_prompt(self) -> str:
-        """
-        The system prompt sets up the AI's personality and explains its goals,
-        available resources, and restrictions.
-        """
-        return self.prompt_generator.construct_system_prompt(self)
+        logger.debug(f"Created {__class__} '{self.ai_config.ai_name}'")
 
     @property
     def llm(self) -> ChatModelInfo:
         """The LLM that the agent uses to think."""
-        llm_name = self.config.smart_llm if self.big_brain else self.config.fast_llm
+        llm_name = (
+            self.config.smart_llm if self.config.big_brain else self.config.fast_llm
+        )
         return OPEN_AI_CHAT_MODELS[llm_name]
 
-    def think(
-        self,
-        instruction: Optional[str] = None,
-        thought_process_id: ThoughtProcessID = "one-shot",
-    ) -> ThoughtProcessOutput:
+    @property
+    def send_token_limit(self) -> int:
+        return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
+
+    async def propose_action(self) -> ThoughtProcessOutput:
         """Runs the agent for one cycle.
 
         Params:
@@ -128,23 +197,33 @@ class BaseAgent(metaclass=ABCMeta):
             The command name and arguments, if any, and the agent's thoughts.
         """
 
-        instruction = instruction or self.default_cycle_instruction
+        # Scratchpad as surrogate PromptGenerator for plugin hooks
+        self._prompt_scratchpad = PromptScratchpad()
 
-        prompt: ChatSequence = self.construct_prompt(instruction, thought_process_id)
-        prompt = self.on_before_think(prompt, thought_process_id, instruction)
-        raw_response = create_chat_completion(
-            prompt,
-            self.config,
-            functions=get_openai_command_specs(self.command_registry)
-            if self.config.openai_functions
-            else None,
+        prompt: ChatPrompt = self.build_prompt(scratchpad=self._prompt_scratchpad)
+        prompt = self.on_before_think(prompt, scratchpad=self._prompt_scratchpad)
+
+        logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
+        raw_response = await self.llm_provider.create_chat_completion(
+            prompt.messages,
+            functions=get_openai_command_specs(
+                self.command_registry.list_available_commands(self)
+            )
+            + list(self._prompt_scratchpad.commands.values())
+            if self.config.use_functions_api
+            else [],
+            model_name=self.llm.name,
         )
-        self.cycle_count += 1
+        self.config.cycle_count += 1
 
-        return self.on_response(raw_response, thought_process_id, prompt, instruction)
+        return self.on_response(
+            llm_response=raw_response,
+            prompt=prompt,
+            scratchpad=self._prompt_scratchpad,
+        )
 
     @abstractmethod
-    def execute(
+    async def execute(
         self,
         command_name: str,
         command_args: dict[str, str] = {},
@@ -162,68 +241,13 @@ class BaseAgent(metaclass=ABCMeta):
         """
         ...
 
-    def construct_base_prompt(
+    def build_prompt(
         self,
-        thought_process_id: ThoughtProcessID,
-        prepend_messages: list[Message] = [],
-        append_messages: list[Message] = [],
-        reserve_tokens: int = 0,
-        with_message_history: bool = False,
-    ) -> ChatSequence:
-        """Constructs and returns a prompt with the following structure:
-        1. System prompt
-        2. `prepend_messages`
-        3. Message history of the agent, truncated & prepended with running summary as needed
-        4. `append_messages`
-
-        Params:
-            prepend_messages: Messages to insert between the system prompt and message history
-            append_messages: Messages to insert after the message history
-            reserve_tokens: Number of tokens to reserve for content that is added later
-        """
-
-        if self.event_history:
-            prepend_messages.insert(
-                0,
-                Message(
-                    "system",
-                    "## Progress\n\n" f"{self.event_history.fmt_paragraph()}",
-                ),
-            )
-
-        prompt = ChatSequence.for_model(
-            self.llm.name,
-            [Message("system", self.system_prompt)] + prepend_messages,
-        )
-
-        if with_message_history:
-            # Reserve tokens for messages to be appended later, if any
-            reserve_tokens += self.message_history.max_summary_tlength
-            if append_messages:
-                reserve_tokens += count_message_tokens(append_messages, self.llm.name)
-
-            # Fill message history, up to a margin of reserved_tokens.
-            # Trim remaining historical messages and add them to the running summary.
-            history_start_index = len(prompt)
-            trimmed_history = add_history_upto_token_limit(
-                prompt, self.message_history, self.send_token_limit - reserve_tokens
-            )
-            if trimmed_history:
-                new_summary_msg, _ = self.message_history.trim_messages(
-                    list(prompt), self.config
-                )
-                prompt.insert(history_start_index, new_summary_msg)
-
-        if append_messages:
-            prompt.extend(append_messages)
-
-        return prompt
-
-    def construct_prompt(
-        self,
-        cycle_instruction: str,
-        thought_process_id: ThoughtProcessID,
-    ) -> ChatSequence:
+        scratchpad: PromptScratchpad,
+        extra_commands: list[CompletionModelFunction] = [],
+        extra_messages: list[ChatMessage] = [],
+        **extras,
+    ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
         2. Message history of the agent, truncated & prepended with running summary as needed
@@ -233,93 +257,41 @@ class BaseAgent(metaclass=ABCMeta):
             cycle_instruction: The final instruction for a thinking cycle
         """
 
-        if not cycle_instruction:
-            raise ValueError("No instruction given")
+        # Apply additions from plugins
+        for plugin in self.config.plugins:
+            if not plugin.can_handle_post_prompt():
+                continue
+            plugin.post_prompt(scratchpad)
+        ai_directives = self.ai_directives.copy(deep=True)
+        ai_directives.resources += scratchpad.resources
+        ai_directives.constraints += scratchpad.constraints
+        ai_directives.best_practices += scratchpad.best_practices
+        extra_commands += list(scratchpad.commands.values())
 
-        cycle_instruction_msg = Message("user", cycle_instruction)
-        cycle_instruction_tlength = count_message_tokens(
-            cycle_instruction_msg, self.llm.name
+        prompt = self.prompt_strategy.build_prompt(
+            ai_config=self.ai_config,
+            ai_directives=ai_directives,
+            commands=get_openai_command_specs(
+                self.command_registry.list_available_commands(self)
+            )
+            + extra_commands,
+            event_history=self.event_history,
+            max_prompt_tokens=self.send_token_limit,
+            count_tokens=lambda x: self.llm_provider.count_tokens(x, self.llm.name),
+            count_message_tokens=lambda x: self.llm_provider.count_message_tokens(
+                x, self.llm.name
+            ),
+            extra_messages=extra_messages,
+            **extras,
         )
-
-        append_messages: list[Message] = []
-
-        response_format_instr = self.response_format_instruction(thought_process_id)
-        if response_format_instr:
-            append_messages.append(Message("system", response_format_instr))
-
-        prompt = self.construct_base_prompt(
-            thought_process_id,
-            append_messages=append_messages,
-            reserve_tokens=cycle_instruction_tlength,
-        )
-
-        # ADD user input message ("triggering prompt")
-        prompt.append(cycle_instruction_msg)
 
         return prompt
 
-    # This can be expanded to support multiple types of (inter)actions within an agent
-    def response_format_instruction(self, thought_process_id: ThoughtProcessID) -> str:
-        if thought_process_id != "one-shot":
-            raise NotImplementedError(f"Unknown thought process '{thought_process_id}'")
-
-        RESPONSE_FORMAT_WITH_COMMAND = """```ts
-        interface Response {
-            thoughts: {
-                // Thoughts
-                text: string;
-                reasoning: string;
-                // Short markdown-style bullet list that conveys the long-term plan
-                plan: string;
-                // Constructive self-criticism
-                criticism: string;
-                // Summary of thoughts to say to the user
-                speak: string;
-            };
-            command: {
-                name: string;
-                args: Record<string, any>;
-            };
-        }
-        ```"""
-
-        RESPONSE_FORMAT_WITHOUT_COMMAND = """```ts
-        interface Response {
-            thoughts: {
-                // Thoughts
-                text: string;
-                reasoning: string;
-                // Short markdown-style bullet list that conveys the long-term plan
-                plan: string;
-                // Constructive self-criticism
-                criticism: string;
-                // Summary of thoughts to say to the user
-                speak: string;
-            };
-        }
-        ```"""
-
-        response_format = re.sub(
-            r"\n\s+",
-            "\n",
-            RESPONSE_FORMAT_WITHOUT_COMMAND
-            if self.config.openai_functions
-            else RESPONSE_FORMAT_WITH_COMMAND,
-        )
-
-        use_functions = self.config.openai_functions and self.command_registry.commands
-        return (
-            f"Respond strictly with JSON{', and also specify a command to use through a function_call' if use_functions else ''}. "
-            "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
-            f"{response_format}"
-        )
-
     def on_before_think(
         self,
-        prompt: ChatSequence,
-        thought_process_id: ThoughtProcessID,
-        instruction: str,
-    ) -> ChatSequence:
+        prompt: ChatPrompt,
+        scratchpad: PromptScratchpad,
+    ) -> ChatPrompt:
         """Called after constructing the prompt but before executing it.
 
         Calls the `on_planning` hook of any enabled and capable plugins, adding their
@@ -331,21 +303,25 @@ class BaseAgent(metaclass=ABCMeta):
         Returns:
             The prompt to execute
         """
-        current_tokens_used = prompt.token_length
+        current_tokens_used = self.llm_provider.count_message_tokens(
+            prompt.messages, self.llm.name
+        )
         plugin_count = len(self.config.plugins)
         for i, plugin in enumerate(self.config.plugins):
             if not plugin.can_handle_on_planning():
                 continue
-            plugin_response = plugin.on_planning(self.prompt_generator, prompt.raw())
+            plugin_response = plugin.on_planning(scratchpad, prompt.raw())
             if not plugin_response or plugin_response == "":
                 continue
-            message_to_add = Message("system", plugin_response)
-            tokens_to_add = count_message_tokens(message_to_add, self.llm.name)
+            message_to_add = ChatMessage.system(plugin_response)
+            tokens_to_add = self.llm_provider.count_message_tokens(
+                message_to_add, self.llm.name
+            )
             if current_tokens_used + tokens_to_add > self.send_token_limit:
                 logger.debug(f"Plugin response too long, skipping: {plugin_response}")
                 logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
                 break
-            prompt.insert(
+            prompt.messages.insert(
                 -1, message_to_add
             )  # HACK: assumes cycle instruction to be at the end
             current_tokens_used += tokens_to_add
@@ -354,9 +330,8 @@ class BaseAgent(metaclass=ABCMeta):
     def on_response(
         self,
         llm_response: ChatModelResponse,
-        thought_process_id: ThoughtProcessID,
-        prompt: ChatSequence,
-        instruction: str,
+        prompt: ChatPrompt,
+        scratchpad: PromptScratchpad,
     ) -> ThoughtProcessOutput:
         """Called upon receiving a response from the chat model.
 
@@ -372,24 +347,11 @@ class BaseAgent(metaclass=ABCMeta):
             The parsed command name and command args, if any, and the agent thoughts.
         """
 
-        # Save assistant reply to message history
-        self.message_history.append(prompt[-1])
-        self.message_history.add(
-            "assistant", llm_response.content, "ai_response"
-        )  # FIXME: support function calls
-
-        try:
-            return self.parse_and_process_response(
-                llm_response, thought_process_id, prompt, instruction
-            )
-        except InvalidAgentResponseError as e:
-            # TODO: tune this message
-            self.message_history.add(
-                "system",
-                f"Your response could not be parsed: {e}"
-                "\n\nRemember to only respond using the specified format above!",
-            )
-            raise
+        return self.parse_and_process_response(
+            llm_response,
+            prompt,
+            scratchpad=scratchpad,
+        )
 
         # TODO: update memory/context
 
@@ -397,9 +359,8 @@ class BaseAgent(metaclass=ABCMeta):
     def parse_and_process_response(
         self,
         llm_response: ChatModelResponse,
-        thought_process_id: ThoughtProcessID,
-        prompt: ChatSequence,
-        instruction: str,
+        prompt: ChatPrompt,
+        scratchpad: PromptScratchpad,
     ) -> ThoughtProcessOutput:
         """Validate, parse & process the LLM's response.
 
@@ -415,27 +376,3 @@ class BaseAgent(metaclass=ABCMeta):
             The parsed command name and command args, if any, and the agent thoughts.
         """
         pass
-
-
-def add_history_upto_token_limit(
-    prompt: ChatSequence, history: MessageHistory, t_limit: int
-) -> list[Message]:
-    current_prompt_length = prompt.token_length
-    insertion_index = len(prompt)
-    limit_reached = False
-    trimmed_messages: list[Message] = []
-    for cycle in reversed(list(history.per_cycle())):
-        messages_to_add = [msg for msg in cycle if msg is not None]
-        tokens_to_add = count_message_tokens(messages_to_add, prompt.model.name)
-        if current_prompt_length + tokens_to_add > t_limit:
-            limit_reached = True
-
-        if not limit_reached:
-            # Add the most recent message to the start of the chain,
-            #  after the system prompts.
-            prompt.insert(insertion_index, *messages_to_add)
-            current_prompt_length += tokens_to_add
-        else:
-            trimmed_messages = messages_to_add + trimmed_messages
-
-    return trimmed_messages

@@ -1,8 +1,18 @@
 import 'dart:convert';
-import 'package:auto_gpt_flutter_client/models/benchmark_service/report_request_body.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_run.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_step_request_body.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_request_body.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_status.dart';
+import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_category.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_edge.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
+import 'package:auto_gpt_flutter_client/models/step.dart';
+import 'package:auto_gpt_flutter_client/models/task.dart';
+import 'package:auto_gpt_flutter_client/models/test_suite.dart';
 import 'package:auto_gpt_flutter_client/services/benchmark_service.dart';
+import 'package:auto_gpt_flutter_client/services/leaderboard_service.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -13,7 +23,14 @@ class SkillTreeViewModel extends ChangeNotifier {
   // TODO: Potentially move to task queue view model when we create one
   final BenchmarkService benchmarkService;
   // TODO: Potentially move to task queue view model when we create one
+  final LeaderboardService leaderboardService;
+  // TODO: Potentially move to task queue view model when we create one
   bool isBenchmarkRunning = false;
+  // TODO: Potentially move to task queue view model when we create one
+  // TODO: clear when clicking a new node
+  Map<SkillTreeNode, BenchmarkTaskStatus> benchmarkStatusMap = {};
+
+  List<BenchmarkRun> currentBenchmarkRuns = [];
 
   List<SkillTreeNode> _skillTreeNodes = [];
   List<SkillTreeEdge> _skillTreeEdges = [];
@@ -21,21 +38,26 @@ class SkillTreeViewModel extends ChangeNotifier {
   // TODO: Potentially move to task queue view model when we create one
   List<SkillTreeNode>? _selectedNodeHierarchy;
 
+  List<SkillTreeNode> get skillTreeNodes => _skillTreeNodes;
+  List<SkillTreeEdge> get skillTreeEdges => _skillTreeEdges;
   SkillTreeNode? get selectedNode => _selectedNode;
   List<SkillTreeNode>? get selectedNodeHierarchy => _selectedNodeHierarchy;
 
-  final Graph graph = Graph()..isTree = true;
-  BuchheimWalkerConfiguration builder = BuchheimWalkerConfiguration();
+  final Graph graph = Graph();
+  SugiyamaConfiguration builder = SugiyamaConfiguration();
 
-  SkillTreeViewModel(this.benchmarkService);
+  SkillTreeCategory currentSkillTreeType = SkillTreeCategory.general;
+
+  SkillTreeViewModel(this.benchmarkService, this.leaderboardService);
 
   Future<void> initializeSkillTree() async {
     try {
       resetState();
 
+      String fileName = currentSkillTreeType.jsonFileName;
+
       // Read the JSON file from assets
-      String jsonContent =
-          await rootBundle.loadString('assets/tree_structure.json');
+      String jsonContent = await rootBundle.loadString('assets/$fileName');
 
       // Decode the JSON string
       Map<String, dynamic> decodedJson = jsonDecode(jsonContent);
@@ -52,11 +74,8 @@ class SkillTreeViewModel extends ChangeNotifier {
         _skillTreeEdges.add(edge);
       }
 
-      builder
-        ..siblingSeparation = (50)
-        ..levelSeparation = (50)
-        ..subtreeSeparation = (50)
-        ..orientation = (BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT);
+      builder.orientation = (SugiyamaConfiguration.ORIENTATION_LEFT_RIGHT);
+      builder.bendPointShape = CurvedBendPointShape(curveLength: 20);
 
       notifyListeners();
 
@@ -87,36 +106,40 @@ class SkillTreeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // TODO: Do we want to continue testing other branches of tree if one branch side fails benchmarking?
   void populateSelectedNodeHierarchy(String startNodeId) {
-    // Initialize an empty list to hold the nodes in the hierarchy.
-    _selectedNodeHierarchy = [];
+    // Initialize an empty list to hold the nodes in all hierarchies.
+    _selectedNodeHierarchy = <SkillTreeNode>[];
 
-    // Find the starting node (the selected node) in the skill tree nodes list.
-    SkillTreeNode? currentNode =
-        _skillTreeNodes.firstWhere((node) => node.id == startNodeId);
+    // Initialize a set to keep track of nodes that have been added.
+    final addedNodes = <String>{};
 
-    // Loop through the tree to populate the hierarchy list.
-    // The loop will continue as long as there's a valid current node.
-    while (currentNode != null) {
-      // Add the current node to the hierarchy list.
-      _selectedNodeHierarchy!.add(currentNode);
+    // Start the recursive population of the hierarchy from the startNodeId.
+    recursivePopulateHierarchy(startNodeId, addedNodes);
 
-      // Find the parent node by looking through the skill tree edges.
-      // We find the edge where the 'to' field matches the ID of the current node.
-      SkillTreeEdge? parentEdge = _skillTreeEdges
-          .firstWhereOrNull((edge) => edge.to == currentNode?.id);
+    // Notify listeners about the change in the selectedNodeHierarchy state.
+    notifyListeners();
+  }
 
-      // If a parent edge is found, find the corresponding parent node.
-      if (parentEdge != null) {
-        // The 'from' field of the edge gives us the ID of the parent node.
-        // We find that node in the skill tree nodes list.
-        currentNode = _skillTreeNodes
-            .firstWhereOrNull((node) => node.id == parentEdge.from);
-      } else {
-        // If no parent edge is found, it means we've reached the root node.
-        // We set currentNode to null to exit the loop.
-        currentNode = null;
+  void recursivePopulateHierarchy(String nodeId, Set<String> addedNodes) {
+    // Find the current node in the skill tree nodes list.
+    final currentNode =
+        _skillTreeNodes.firstWhereOrNull((node) => node.id == nodeId);
+
+    // If the node is found and it hasn't been added yet, proceed with the population.
+    if (currentNode != null && addedNodes.add(currentNode.id)) {
+      // Find all parent edges for the current node.
+      final parentEdges =
+          _skillTreeEdges.where((edge) => edge.to == currentNode.id);
+
+      // For each parent edge found, recurse to the parent node.
+      for (final parentEdge in parentEdges) {
+        // Recurse to the parent node identified by the 'from' field of the edge.
+        recursivePopulateHierarchy(parentEdge.from, addedNodes);
       }
+
+      // After processing all parent nodes, add the current node to the list.
+      _selectedNodeHierarchy!.add(currentNode);
     }
   }
 
@@ -131,63 +154,122 @@ class SkillTreeViewModel extends ChangeNotifier {
     }
   }
 
-  // TODO: Update to actual implementation
-  Future<void> runBenchmark() async {
+  // TODO: Move to task queue view model
+  Future<void> runBenchmark(
+      ChatViewModel chatViewModel, TaskViewModel taskViewModel) async {
+    // Clear the benchmarkStatusList
+    benchmarkStatusMap.clear();
+
+    // Reset the current benchmark runs list to be empty at the start of a new benchmark
+    currentBenchmarkRuns = [];
+
+    // Create a new TestSuite object with the current timestamp
+    final testSuite =
+        TestSuite(timestamp: DateTime.now().toIso8601String(), tests: []);
+
     // Set the benchmark running flag to true
     isBenchmarkRunning = true;
+    // Notify listeners
     notifyListeners();
 
-    // Initialize an empty list to collect unique UUIDs for test runs
-    List<String> testRunIds = [];
-
-    try {
-      // Reverse the selected node hierarchy
-      final reversedSelectedNodeHierarchy =
-          List.from(_selectedNodeHierarchy!.reversed);
-
-      // Loop through the reversed node hierarchy to generate reports for each node
-      for (var node in reversedSelectedNodeHierarchy) {
-        // Generate a unique UUID for the test run
-        final uuid = const Uuid().v4();
-
-        // Create a ReportRequestBody object
-        final reportRequestBody = ReportRequestBody(
-            test: node.data.name, testRunId: uuid, mock: true);
-
-        // Call generateSingleReport with the created ReportRequestBody object
-        final singleReport =
-            await benchmarkService.generateSingleReport(reportRequestBody);
-        print("Single report generated: $singleReport");
-
-        // Add the unique UUID to the list
-        // TODO: We should check if the test passed. If not we short circuit.
-        // TODO: We should create a model to track our active tests
-        testRunIds.add(uuid);
-
-        // Notify the UI
-        notifyListeners();
-      }
-
-      // Generate a combined report using all the unique UUIDs
-      final combinedReport =
-          await benchmarkService.generateCombinedReport(testRunIds);
-
-      // Pretty-print the JSON result
-      String prettyResult =
-          JsonEncoder.withIndent('  ').convert(combinedReport);
-      print("Combined report generated: $prettyResult");
-    } catch (e) {
-      print("Failed to generate reports: $e");
+    // Populate benchmarkStatusList with node hierarchy
+    for (var node in _selectedNodeHierarchy!) {
+      benchmarkStatusMap[node] = BenchmarkTaskStatus.notStarted;
     }
 
-    // Set the benchmark running flag to false
+    try {
+      // Loop through the nodes in the hierarchy
+      for (var node in _selectedNodeHierarchy!) {
+        benchmarkStatusMap[node] = BenchmarkTaskStatus.inProgress;
+        notifyListeners();
+
+        // Create a BenchmarkTaskRequestBody
+        final benchmarkTaskRequestBody = BenchmarkTaskRequestBody(
+            input: node.data.task, evalId: node.data.evalId);
+
+        // Create a new benchmark task
+        final createdTask = await benchmarkService
+            .createBenchmarkTask(benchmarkTaskRequestBody);
+
+        // Create a new Task object
+        final task =
+            Task(id: createdTask['task_id'], title: createdTask['input']);
+
+        // Update the current task ID in ChatViewModel
+        chatViewModel.setCurrentTaskId(task.id);
+
+        // Execute the first step and initialize the Step object
+        Map<String, dynamic> stepResponse =
+            await benchmarkService.executeBenchmarkStep(
+                task.id, BenchmarkStepRequestBody(input: node.data.task));
+        Step step = Step.fromMap(stepResponse);
+
+        // Check if it's the last step
+        while (!step.isLast) {
+          // Fetch chats for the task
+          chatViewModel.fetchChatsForTask();
+
+          // Execute next step and update the Step object
+          stepResponse = await benchmarkService.executeBenchmarkStep(
+              task.id, BenchmarkStepRequestBody(input: null));
+          step = Step.fromMap(stepResponse);
+        }
+
+        // Trigger the evaluation
+        final evaluationResponse =
+            await benchmarkService.triggerEvaluation(task.id);
+
+        // Decode the evaluationResponse into a BenchmarkRun object
+        BenchmarkRun benchmarkRun = BenchmarkRun.fromJson(evaluationResponse);
+
+        // Add the benchmark run object to the list of current benchmark runs
+        currentBenchmarkRuns.add(benchmarkRun);
+
+        // Update the benchmarkStatusList based on the evaluation response
+        bool successStatus = benchmarkRun.metrics.success;
+        benchmarkStatusMap[node] = successStatus
+            ? BenchmarkTaskStatus.success
+            : BenchmarkTaskStatus.failure;
+        await Future.delayed(Duration(seconds: 1));
+        notifyListeners();
+
+        testSuite.tests.add(task);
+        // If successStatus is false, break out of the loop
+        if (!successStatus) {
+          print(
+              "Benchmark for node ${node.id} failed. Stopping all benchmarks.");
+          break;
+        }
+      }
+
+      // Add the TestSuite to the TaskViewModel
+      taskViewModel.addTestSuite(testSuite);
+    } catch (e) {
+      print("Error while running benchmark: $e");
+    }
+
+    // Reset the benchmark running flag
     isBenchmarkRunning = false;
     notifyListeners();
   }
 
-  // Getter to expose nodes for the View
-  List<SkillTreeNode> get skillTreeNodes => _skillTreeNodes;
+  // TODO: Move to task queue view model
+  Future<void> submitToLeaderboard(
+      String teamName, String repoUrl, String agentGitCommitSha) async {
+    // Create a UUID.v4 for our unique run ID
+    String uuid = const Uuid().v4();
 
-  // Getter to expose edges for the View
-  List<SkillTreeEdge> get skillTreeEdges => _skillTreeEdges;
+    for (var run in currentBenchmarkRuns) {
+      run.repositoryInfo.teamName = teamName;
+      run.repositoryInfo.repoUrl = repoUrl;
+      run.repositoryInfo.agentGitCommitSha = agentGitCommitSha;
+      run.runDetails.runId = uuid;
+
+      await leaderboardService.submitReport(run);
+      print('Completed submission to leaderboard!');
+    }
+
+    // Clear the currentBenchmarkRuns list after submitting to the leaderboard
+    currentBenchmarkRuns.clear();
+  }
 }

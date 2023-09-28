@@ -16,6 +16,7 @@ from PIL import Image
 
 from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +25,11 @@ logger = logging.getLogger(__name__)
     "generate_image",
     "Generates an Image",
     {
-        "prompt": {
-            "type": "string",
-            "description": "The prompt used to generate the image",
-            "required": True,
-        },
+        "prompt": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The prompt used to generate the image",
+            required=True,
+        ),
     },
     lambda config: bool(config.image_provider),
     "Requires a image provider to be set.",
@@ -43,16 +44,16 @@ def generate_image(prompt: str, agent: Agent, size: int = 256) -> str:
     Returns:
         str: The filename of the image
     """
-    filename = agent.config.workspace_path / f"{str(uuid.uuid4())}.jpg"
+    filename = agent.legacy_config.workspace_path / f"{str(uuid.uuid4())}.jpg"
 
     # DALL-E
-    if agent.config.image_provider == "dalle":
+    if agent.legacy_config.image_provider == "dalle":
         return generate_image_with_dalle(prompt, filename, size, agent)
     # HuggingFace
-    elif agent.config.image_provider == "huggingface":
+    elif agent.legacy_config.image_provider == "huggingface":
         return generate_image_with_hf(prompt, filename, agent)
     # SD WebUI
-    elif agent.config.image_provider == "sdwebui":
+    elif agent.legacy_config.image_provider == "sdwebui":
         return generate_image_with_sd_webui(prompt, filename, agent, size)
     return "No Image Provider Set"
 
@@ -67,13 +68,13 @@ def generate_image_with_hf(prompt: str, filename: str, agent: Agent) -> str:
     Returns:
         str: The filename of the image
     """
-    API_URL = f"https://api-inference.huggingface.co/models/{agent.config.huggingface_image_model}"
-    if agent.config.huggingface_api_token is None:
+    API_URL = f"https://api-inference.huggingface.co/models/{agent.legacy_config.huggingface_image_model}"
+    if agent.legacy_config.huggingface_api_token is None:
         raise ValueError(
             "You need to set your Hugging Face API token in the config file."
         )
     headers = {
-        "Authorization": f"Bearer {agent.config.huggingface_api_token}",
+        "Authorization": f"Bearer {agent.legacy_config.huggingface_api_token}",
         "X-Use-Cache": "false",
     }
 
@@ -142,7 +143,7 @@ def generate_image_with_dalle(
         n=1,
         size=f"{size}x{size}",
         response_format="b64_json",
-        api_key=agent.config.openai_api_key,
+        api_key=agent.legacy_config.openai_api_key,
     )
 
     logger.info(f"Image Generated for prompt:{prompt}")
@@ -175,13 +176,13 @@ def generate_image_with_sd_webui(
     """
     # Create a session and set the basic auth if needed
     s = requests.Session()
-    if agent.config.sd_webui_auth:
-        username, password = agent.config.sd_webui_auth.split(":")
+    if agent.legacy_config.sd_webui_auth:
+        username, password = agent.legacy_config.sd_webui_auth.split(":")
         s.auth = (username, password or "")
 
     # Generate the images
     response = requests.post(
-        f"{agent.config.sd_webui_url}/sdapi/v1/txt2img",
+        f"{agent.legacy_config.sd_webui_url}/sdapi/v1/txt2img",
         json={
             "prompt": prompt,
             "negative_prompt": negative_prompt,

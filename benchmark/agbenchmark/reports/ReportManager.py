@@ -24,8 +24,8 @@ class SingletonReportManager:
             cls.instance = super(SingletonReportManager, cls).__new__(cls)
 
             agent_benchmark_config = get_agent_benchmark_config()
-            benchmark_start_time_dt = (
-                datetime.now()
+            benchmark_start_time_dt = datetime.now(
+                timezone.utc
             )  # or any logic to fetch the datetime
 
             # Make the Managers class attributes
@@ -129,6 +129,7 @@ class ReportManager:
                 k: v for k, v in json.loads(config.json()).items() if v is not None
             },
         }
+        Report.parse_obj(self.tests)
 
         converted_data = Report.parse_obj(self.tests)
 

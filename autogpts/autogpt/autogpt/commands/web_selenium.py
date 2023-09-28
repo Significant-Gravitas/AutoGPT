@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
-from autogpt.llm.utils import count_string_tokens
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import summarize_text
 from autogpt.url_utils.validators import validate_url
@@ -61,16 +61,20 @@ class BrowsingError(CommandExecutionError):
     " If you are looking to extract specific information from the webpage, you should"
     " specify a question.",
     {
-        "url": {"type": "string", "description": "The URL to visit", "required": True},
-        "question": {
-            "type": "string",
-            "description": "A question that you want to answer using the content of the webpage.",
-            "required": False,
-        },
+        "url": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The URL to visit",
+            required=True,
+        ),
+        "question": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="A question that you want to answer using the content of the webpage.",
+            required=False,
+        ),
     },
 )
 @validate_url
-def read_webpage(url: str, agent: Agent, question: str = "") -> str:
+async def read_webpage(url: str, agent: Agent, question: str = "") -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -82,7 +86,8 @@ def read_webpage(url: str, agent: Agent, question: str = "") -> str:
     """
     driver = None
     try:
-        driver = open_page_in_browser(url, agent.config)
+        # FIXME: agent.config -> something else
+        driver = open_page_in_browser(url, agent.legacy_config)
 
         text = scrape_text_with_selenium(driver)
         links = scrape_links_with_selenium(driver, url)
@@ -91,8 +96,11 @@ def read_webpage(url: str, agent: Agent, question: str = "") -> str:
         summarized = False
         if not text:
             return f"Website did not contain any text.\n\nLinks: {links}"
-        elif count_string_tokens(text, agent.llm.name) > TOKENS_TO_TRIGGER_SUMMARY:
-            text = summarize_memorize_webpage(
+        elif (
+            agent.llm_provider.count_tokens(text, agent.llm.name)
+            > TOKENS_TO_TRIGGER_SUMMARY
+        ):
+            text = await summarize_memorize_webpage(
                 url, text, question or None, agent, driver
             )
             return_literal_content = bool(question)
@@ -247,7 +255,7 @@ def close_browser(driver: WebDriver) -> None:
     driver.quit()
 
 
-def summarize_memorize_webpage(
+async def summarize_memorize_webpage(
     url: str,
     text: str,
     question: str | None,
@@ -271,10 +279,15 @@ def summarize_memorize_webpage(
     text_length = len(text)
     logger.info(f"Text length: {text_length} characters")
 
-    # memory = get_memory(agent.config)
+    # memory = get_memory(agent.legacy_config)
 
-    # new_memory = MemoryItem.from_webpage(text, url, agent.config, question=question)
+    # new_memory = MemoryItem.from_webpage(text, url, agent.legacy_config, question=question)
     # memory.add(new_memory)
 
-    summary, _ = summarize_text(text, question=question, config=agent.config)
+    summary, _ = await summarize_text(
+        text,
+        question=question,
+        llm_provider=agent.llm_provider,
+        config=agent.legacy_config,  # FIXME
+    )
     return summary

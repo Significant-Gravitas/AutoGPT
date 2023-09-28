@@ -1,4 +1,9 @@
-import 'package:auto_gpt_flutter_client/models/benchmark_service/report_request_body.dart';
+import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_status.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/views/task_queue/leaderboard_submission_button.dart';
+import 'package:auto_gpt_flutter_client/views/task_queue/leaderboard_submission_dialog.dart';
+import 'package:auto_gpt_flutter_client/views/task_queue/test_suite_button.dart';
 import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:provider/provider.dart';
@@ -9,13 +14,8 @@ class TaskQueueView extends StatelessWidget {
   Widget build(BuildContext context) {
     final viewModel = Provider.of<SkillTreeViewModel>(context);
 
-    // Reverse the node hierarchy
-    final reversedHierarchy =
-        viewModel.selectedNodeHierarchy?.reversed.toList() ?? [];
-
-    // Convert reversedHierarchy to a list of test names
-    final List<String> testNames =
-        reversedHierarchy.map((node) => node.data.name).toList();
+    // Node hierarchy
+    final nodeHierarchy = viewModel.selectedNodeHierarchy ?? [];
 
     return Material(
       color: Colors.white,
@@ -23,18 +23,64 @@ class TaskQueueView extends StatelessWidget {
         children: [
           // The list of tasks (tiles)
           ListView.builder(
-            itemCount: reversedHierarchy.length,
+            itemCount: nodeHierarchy.length,
             itemBuilder: (context, index) {
-              final node = reversedHierarchy[index];
+              final node = nodeHierarchy[index];
+
+              // Choose the appropriate leading widget based on the task status
+              Widget leadingWidget;
+              switch (viewModel.benchmarkStatusMap[node]) {
+                case null:
+                case BenchmarkTaskStatus.notStarted:
+                  leadingWidget = CircleAvatar(
+                    radius: 12,
+                    backgroundColor: Colors.grey,
+                    child: CircleAvatar(
+                      radius: 6,
+                      backgroundColor: Colors.white,
+                    ),
+                  );
+                  break;
+                case BenchmarkTaskStatus.inProgress:
+                  leadingWidget = SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  );
+                  break;
+                case BenchmarkTaskStatus.success:
+                  leadingWidget = CircleAvatar(
+                    radius: 12,
+                    backgroundColor: Colors.green,
+                    child: CircleAvatar(
+                      radius: 6,
+                      backgroundColor: Colors.white,
+                    ),
+                  );
+                  break;
+                case BenchmarkTaskStatus.failure:
+                  leadingWidget = CircleAvatar(
+                    radius: 12,
+                    backgroundColor: Colors.red,
+                    child: CircleAvatar(
+                      radius: 6,
+                      backgroundColor: Colors.white,
+                    ),
+                  );
+                  break;
+              }
+
               return Container(
                 margin: EdgeInsets.fromLTRB(20, 5, 20, 5),
                 decoration: BoxDecoration(
-                  color: Colors.white, // white background
-                  border: Border.all(
-                      color: Colors.black, width: 1), // thin black border
-                  borderRadius: BorderRadius.circular(4), // small corner radius
+                  color: Colors.white,
+                  border: Border.all(color: Colors.black, width: 1),
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child: ListTile(
+                  leading: leadingWidget,
                   title: Center(child: Text('${node.label}')),
                   subtitle:
                       Center(child: Text('${node.data.info.description}')),
@@ -47,50 +93,45 @@ class TaskQueueView extends StatelessWidget {
             bottom: 20,
             left: 20,
             right: 20,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8.0),
-                border: Border.all(color: Colors.green, width: 3),
-              ),
-              child: ElevatedButton(
-                onPressed: viewModel.isBenchmarkRunning
-                    ? null
-                    : () {
-                        // Call runBenchmark method from SkillTreeViewModel
-                        viewModel.runBenchmark();
-                      },
-                child: Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.center, // Center the children
-                  children: [
-                    Text(
-                      'Initiate test suite',
-                      style: TextStyle(
-                        color: Colors.green, // Text color is set to green
-                        fontWeight: FontWeight.bold, // Make text bold
-                        fontSize: 16, // Increase font size
-                      ),
-                    ),
-                    SizedBox(width: 10), // Gap of 10 between text and icon
-                    Icon(
-                      Icons.play_arrow,
-                      color: Colors.green, // Icon color is set to green
-                      size: 24, // Increase icon size
-                    ),
-                  ],
+            child: Column(
+              children: [
+                // TestSuiteButton
+                TestSuiteButton(
+                  onPressed: viewModel.isBenchmarkRunning
+                      ? null
+                      : () {
+                          final chatViewModel = Provider.of<ChatViewModel>(
+                              context,
+                              listen: false);
+                          final taskViewModel = Provider.of<TaskViewModel>(
+                              context,
+                              listen: false);
+                          chatViewModel.clearCurrentTaskAndChats();
+                          viewModel.runBenchmark(chatViewModel, taskViewModel);
+                        },
+                  isDisabled: viewModel.isBenchmarkRunning,
                 ),
-                style: ButtonStyle(
-                  backgroundColor: MaterialStateProperty.all(Colors.white),
-                  shape: MaterialStateProperty.all<RoundedRectangleBorder>(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
-                  ),
-                  minimumSize: MaterialStateProperty.all(
-                      Size(double.infinity, 50)), // Full width
-                  padding: MaterialStateProperty.all(EdgeInsets.all(0)),
+                SizedBox(height: 8), // Gap of 8 points between buttons
+                // LeaderboardSubmissionButton
+                LeaderboardSubmissionButton(
+                  onPressed: viewModel.benchmarkStatusMap.isEmpty ||
+                          viewModel.isBenchmarkRunning
+                      ? null
+                      : () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => LeaderboardSubmissionDialog(
+                              onSubmit: (teamName, repoUrl, commitSha) {
+                                viewModel.submitToLeaderboard(
+                                    teamName, repoUrl, commitSha);
+                              },
+                            ),
+                          );
+                        },
+                  isDisabled: viewModel.isBenchmarkRunning ||
+                      viewModel.benchmarkStatusMap.isEmpty,
                 ),
-              ),
+              ],
             ),
           ),
         ],

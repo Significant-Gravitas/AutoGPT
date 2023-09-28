@@ -9,8 +9,10 @@ from types import FrameType
 from typing import Optional
 
 from colorama import Fore, Style
+from pydantic import SecretStr
 
-from autogpt.agents import Agent, AgentThoughts, CommandArgs, CommandName
+from autogpt.agents import AgentThoughts, CommandArgs, CommandName
+from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.app.configurator import create_config
 from autogpt.app.setup import interactive_ai_config_setup
@@ -24,18 +26,24 @@ from autogpt.app.utils import (
 )
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
+from autogpt.core.resource.model_providers import (
+    ChatModelProvider,
+    ModelProviderCredentials,
+)
+from autogpt.core.resource.model_providers.openai import OpenAIProvider
+from autogpt.core.runner.client_lib.utils import coroutine
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
 
-def run_auto_gpt(
+@coroutine
+async def run_auto_gpt(
     continuous: bool,
     continuous_limit: int,
     ai_settings: str,
@@ -81,6 +89,8 @@ def run_auto_gpt(
     # Set up logging module
     configure_logging(config)
 
+    llm_provider = _configure_openai_provider(config)
+
     logger = logging.getLogger(__name__)
 
     if config.continuous_mode:
@@ -125,7 +135,7 @@ def run_auto_gpt(
             logger.error(
                 "WARNING: You are running on an older version of Python. "
                 "Some people have observed problems with certain "
-                "parts of Auto-GPT with this version. "
+                "parts of AutoGPT with this version. "
                 "Please consider upgrading to Python 3.10 or higher.",
             )
 
@@ -148,8 +158,9 @@ def run_auto_gpt(
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
 
-    ai_config = construct_main_ai_config(
+    ai_config = await construct_main_ai_config(
         config,
+        llm_provider=llm_provider,
         name=ai_name,
         role=ai_role,
         goals=ai_goals,
@@ -164,15 +175,60 @@ def run_auto_gpt(
 
     print_attribute("Configured Browser", config.selenium_web_browser)
 
-    agent = Agent(
-        memory=memory,
-        command_registry=command_registry,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+    agent_prompt_config = Agent.default_settings.prompt_config.copy(deep=True)
+    agent_prompt_config.use_functions_api = config.openai_functions
+
+    agent_settings = AgentSettings(
+        name=Agent.default_settings.name,
+        description=Agent.default_settings.description,
         ai_config=ai_config,
-        config=config,
+        config=AgentConfiguration(
+            fast_llm=config.fast_llm,
+            smart_llm=config.smart_llm,
+            use_functions_api=config.openai_functions,
+            plugins=config.plugins,
+        ),
+        prompt_config=agent_prompt_config,
+        history=Agent.default_settings.history.copy(deep=True),
     )
 
-    run_interaction_loop(agent)
+    agent = Agent(
+        settings=agent_settings,
+        llm_provider=llm_provider,
+        command_registry=command_registry,
+        memory=memory,
+        legacy_config=config,
+    )
+
+    await run_interaction_loop(agent)
+
+
+def _configure_openai_provider(config: Config) -> OpenAIProvider:
+    """Create a configured OpenAIProvider object.
+
+    Args:
+        config: The program's configuration.
+
+    Returns:
+        A configured OpenAIProvider object.
+    """
+    if config.openai_api_key is None:
+        raise RuntimeError("OpenAI key is not configured")
+
+    openai_settings = OpenAIProvider.default_settings.copy(deep=True)
+    openai_settings.credentials = ModelProviderCredentials(
+        api_key=SecretStr(config.openai_api_key),
+        # TODO: support OpenAI Azure credentials
+        api_base=SecretStr(config.openai_api_base) if config.openai_api_base else None,
+        api_type=SecretStr(config.openai_api_type) if config.openai_api_type else None,
+        api_version=SecretStr(config.openai_api_version)
+        if config.openai_api_version
+        else None,
+    )
+    return OpenAIProvider(
+        settings=openai_settings,
+        logger=logging.getLogger("OpenAIProvider"),
+    )
 
 
 def _get_cycle_budget(continuous_mode: bool, continuous_limit: int) -> int | float:
@@ -195,7 +251,7 @@ class UserFeedback(str, enum.Enum):
     TEXT = "TEXT"
 
 
-def run_interaction_loop(
+async def run_interaction_loop(
     agent: Agent,
 ) -> None:
     """Run the main interaction loop for the agent.
@@ -207,21 +263,19 @@ def run_interaction_loop(
         None
     """
     # These contain both application config and agent config, so grab them here.
-    config = agent.config
+    legacy_config = agent.legacy_config
     ai_config = agent.ai_config
     logger = logging.getLogger(__name__)
 
-    logger.debug(f"{ai_config.ai_name} System Prompt:\n{agent.system_prompt}")
-
     cycle_budget = cycles_remaining = _get_cycle_budget(
-        config.continuous_mode, config.continuous_limit
+        legacy_config.continuous_mode, legacy_config.continuous_limit
     )
-    spinner = Spinner("Thinking...", plain_output=config.plain_output)
+    spinner = Spinner("Thinking...", plain_output=legacy_config.plain_output)
 
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
         nonlocal cycle_budget, cycles_remaining, spinner
         if cycles_remaining in [0, 1]:
-            logger.error("Interrupt signal received. Stopping Auto-GPT immediately.")
+            logger.error("Interrupt signal received. Stopping AutoGPT immediately.")
             sys.exit()
         else:
             restart_spinner = spinner.running
@@ -254,7 +308,11 @@ def run_interaction_loop(
         # Have the agent determine the next action to take.
         with spinner:
             try:
-                command_name, command_args, assistant_reply_dict = agent.think()
+                (
+                    command_name,
+                    command_args,
+                    assistant_reply_dict,
+                ) = await agent.propose_action()
             except InvalidAgentResponseError as e:
                 logger.warn(f"The agent's thoughts could not be parsed: {e}")
                 consecutive_failures += 1
@@ -272,14 +330,16 @@ def run_interaction_loop(
         # Update User #
         ###############
         # Print the assistant's thoughts and the next command to the user.
-        update_user(config, ai_config, command_name, command_args, assistant_reply_dict)
+        update_user(
+            legacy_config, ai_config, command_name, command_args, assistant_reply_dict
+        )
 
         ##################
         # Get user input #
         ##################
         if cycles_remaining == 1:  # Last cycle
-            user_feedback, user_input, new_cycles_remaining = get_user_feedback(
-                config,
+            user_feedback, user_input, new_cycles_remaining = await get_user_feedback(
+                legacy_config,
                 ai_config,
             )
 
@@ -334,7 +394,7 @@ def run_interaction_loop(
         if not command_name:
             continue
 
-        result = agent.execute(command_name, command_args, user_input)
+        result = await agent.execute(command_name, command_args, user_input)
 
         if result.status == "success":
             logger.info(result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW})
@@ -380,7 +440,7 @@ def update_user(
     )
 
 
-def get_user_feedback(
+async def get_user_feedback(
     config: Config,
     ai_config: AIConfig,
 ) -> tuple[UserFeedback, str, int | None]:
@@ -413,9 +473,9 @@ def get_user_feedback(
     while user_feedback is None:
         # Get input from user
         if config.chat_messages_enabled:
-            console_input = clean_input(config, "Waiting for your response...")
+            console_input = await clean_input(config, "Waiting for your response...")
         else:
-            console_input = clean_input(
+            console_input = await clean_input(
                 config, Fore.MAGENTA + "Input: " + Style.RESET_ALL
             )
 
@@ -443,8 +503,9 @@ def get_user_feedback(
     return user_feedback, user_input, new_cycles_remaining
 
 
-def construct_main_ai_config(
+async def construct_main_ai_config(
     config: Config,
+    llm_provider: ChatModelProvider,
     name: Optional[str] = None,
     role: Optional[str] = None,
     goals: tuple[str] = tuple(),
@@ -483,7 +544,7 @@ def construct_main_ai_config(
             extra={"title": f"{Fore.GREEN}Welcome back!{Fore.RESET}"},
             msg=f"Would you like me to return to being {ai_config.ai_name}?",
         )
-        should_continue = clean_input(
+        should_continue = await clean_input(
             config,
             f"""Continue with the last settings?
 Name:  {ai_config.ai_name}
@@ -496,7 +557,7 @@ Continue ({config.authorise_key}/{config.exit_key}): """,
             ai_config = AIConfig()
 
     if any([not ai_config.ai_name, not ai_config.ai_role, not ai_config.ai_goals]):
-        ai_config = interactive_ai_config_setup(config)
+        ai_config = await interactive_ai_config_setup(config, llm_provider)
         ai_config.save(config.workdir / config.ai_settings_file)
 
     if config.restrict_to_workspace:

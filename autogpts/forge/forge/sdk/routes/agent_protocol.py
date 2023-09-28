@@ -12,7 +12,7 @@ the ones that require special attention due to their complexity are:
 2. `upload_agent_task_artifacts`:
    This route allows for the upload of artifacts, supporting various URI types (e.g., s3, gcs, ftp, http).
    The support for different URI types makes it a bit more complex, and it's important to ensure that all
-   supported URI types are correctly managed. NOTE: The Auto-GPT team will eventually handle the most common
+   supported URI types are correctly managed. NOTE: The AutoGPT team will eventually handle the most common
    uri types for you.
 
 3. `create_agent_task`:
@@ -42,23 +42,7 @@ async def root():
     """
     Root endpoint that returns a welcome message.
     """
-    return Response(content="Welcome to the Auto-GPT Forge")
-
-
-@base_router.get("/heartbeat", tags=["server"])
-async def check_server_status():
-    """
-    Check if the server is running.
-    """
-    return Response(content="Server is running.", status_code=200)
-
-
-@base_router.get("/", tags=["root"])
-async def root():
-    """
-    Root endpoint that returns a welcome message.
-    """
-    return Response(content="Welcome to the Auto-GPT Forge")
+    return Response(content="Welcome to the AutoGPT Forge")
 
 
 @base_router.get("/heartbeat", tags=["server"])
@@ -485,7 +469,6 @@ async def list_agent_task_artifacts(
         artifacts: TaskArtifactsListResponse = await agent.list_artifacts(
             task_id, page, page_size
         )
-        LOG.info(f"Artifacts: {artifacts.json()}")
         return artifacts
     except NotFoundError:
         LOG.exception("Error whilst trying to list artifacts")

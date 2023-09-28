@@ -1,4 +1,5 @@
-import 'package:auto_gpt_flutter_client/services/auth_service.dart';
+import 'package:auto_gpt_flutter_client/services/leaderboard_service.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/auth/firebase_auth_view.dart';
 import 'package:flutter/material.dart';
 import 'views/main_layout.dart';
@@ -9,7 +10,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
-import 'package:auto_gpt_flutter_client/viewmodels/api_settings_viewmodel.dart';
 
 import 'package:auto_gpt_flutter_client/services/chat_service.dart';
 import 'package:auto_gpt_flutter_client/services/task_service.dart';
@@ -47,14 +47,18 @@ void main() async {
               TaskService(restApiUtility),
         ),
         ProxyProvider<RestApiUtility, BenchmarkService>(
-          update: (context, restApiUtility, taskService) =>
+          update: (context, restApiUtility, benchmarkService) =>
               BenchmarkService(restApiUtility),
         ),
-        ChangeNotifierProxyProvider<RestApiUtility, ApiSettingsViewModel>(
-          create: (context) => ApiSettingsViewModel(
+        ProxyProvider<RestApiUtility, LeaderboardService>(
+          update: (context, restApiUtility, leaderboardService) =>
+              LeaderboardService(restApiUtility),
+        ),
+        ChangeNotifierProxyProvider<RestApiUtility, SettingsViewModel>(
+          create: (context) => SettingsViewModel(
               Provider.of<RestApiUtility>(context, listen: false)),
-          update: (context, restApiUtility, apiSettingsViewModel) =>
-              ApiSettingsViewModel(restApiUtility),
+          update: (context, restApiUtility, settingsViewModel) =>
+              SettingsViewModel(restApiUtility),
         ),
       ],
       child: MyApp(),
@@ -69,6 +73,7 @@ class MyApp extends StatelessWidget {
     taskService.loadDeletedTasks();
 
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'AutoGPT Flutter Client',
       theme: ThemeData(
         primarySwatch: Colors.blue,
@@ -90,7 +95,8 @@ class MyApp extends StatelessWidget {
                         Provider.of<TaskService>(context, listen: false))),
                 ChangeNotifierProvider(
                   create: (context) => SkillTreeViewModel(
-                      Provider.of<BenchmarkService>(context, listen: false)),
+                      Provider.of<BenchmarkService>(context, listen: false),
+                      Provider.of<LeaderboardService>(context, listen: false)),
                 ),
               ],
               child: MainLayout(),

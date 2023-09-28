@@ -49,7 +49,12 @@ def update_regression_tests(
 
 
 def generate_single_call_report(
-    item: Any, call: Any, challenge_data: dict[str, Any], answers: dict[str, Any]
+    item: Any,
+    call: Any,
+    challenge_data: dict[str, Any],
+    answers: dict[str, Any],
+    challenge_location,
+    test_name,
 ) -> None:
     try:
         difficulty = challenge_data["info"]["difficulty"]
@@ -60,9 +65,9 @@ def generate_single_call_report(
         difficulty = difficulty.value
 
     # Extract the challenge_location from the class
-    challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
-    test_name = item.nodeid.split("::")[1]
-    item.test_name = test_name
+    # challenge_location: str = getattr(item.cls, "CHALLENGE_LOCATION", "")
+    # test_name = item.nodeid.split("::")[1]
+    # item.test_name = test_name
 
     test_details = {
         "difficulty": difficulty,
@@ -90,22 +95,25 @@ def generate_single_call_report(
         info_details["metadata"] = challenge_data["metadata"]
 
     mock = os.getenv("IS_MOCK")  # Check if --mock is in sys.argv
-
-    if call.excinfo is None:
-        info_details["metrics"]["success"] = True
-    else:
-        if not mock:  # don't remove if it's a mock test
-            SingletonReportManager().REGRESSION_MANAGER.remove_test(test_name)
-        info_details["metrics"]["fail_reason"] = str(call.excinfo.value)
-        if call.excinfo.typename == "Skipped":
-            info_details["metrics"]["attempted"] = False
+    if call:
+        if call.excinfo is None:
+            info_details["metrics"]["success"] = True
+        else:
+            if not mock:  # don't remove if it's a mock test
+                SingletonReportManager().REGRESSION_MANAGER.remove_test(test_name)
+            info_details["metrics"]["fail_reason"] = str(call.excinfo.value)
+            if call.excinfo.typename == "Skipped":
+                info_details["metrics"]["attempted"] = False
 
     prev_test_results: list[bool] = get_previous_test_results(test_name, info_details)
 
     update_regression_tests(prev_test_results, info_details, test_name, test_details)
 
     # user facing reporting
-    item.info_details = info_details
+    if item:
+        item.info_details = info_details
+
+    return info_details
 
 
 def finalize_reports(item: Any, challenge_data: dict[str, Any]) -> None:

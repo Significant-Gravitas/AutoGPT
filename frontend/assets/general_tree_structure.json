@@ -1,0 +1,183 @@
+{
+    "edges": [
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]"
+        }
+    ],
+    "nodes": [
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "coding",
+                    "scrape_synthesize",
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestWriteFile"
+                ],
+                "eval_id": "261ccfaa-02a2-4c1a-8a56-c76c66f7dba1",
+                "ground": {
+                    "answer": "The content of output.txt should be 'Hello World!'",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "Hello World!"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can read a file.",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestReadFile",
+                "task": "Read the file called file_to_read.txt and write its content to a file called output.txt"
+            },
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "label": "ReadFile",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "coding",
+                    "scrape_synthesize",
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [],
+                "eval_id": "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
+                "ground": {
+                    "answer": "The word 'Washington', printed to a .txt file named anything",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "Washington"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can write a file",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestWriteFile",
+                "task": "Write the word 'Washington' to a .txt file"
+            },
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "label": "WriteFile",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "scrape_synthesize",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestSearch"
+                ],
+                "eval_id": "525001ed-8b45-4405-9e56-ce4423314294",
+                "ground": {
+                    "answer": "\u00a325.89",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "25.89"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can retrieve a specific information from a website.",
+                    "difficulty": "basic",
+                    "side_effects": []
+                },
+                "name": "TestBasicRetrieval",
+                "task": "Write the price of the book in this url 'http://books.toscrape.com/catalogue/meditations_33/index.html' to a .txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "label": "BasicRetrieval",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "scrape_synthesize"
+                ],
+                "cutoff": 120,
+                "dependencies": [
+                    "TestWriteFile"
+                ],
+                "eval_id": "6390114a-531d-4743-a51b-50ba6ff8da43",
+                "ground": {
+                    "answer": "This is a Heading\nThis is a paragraph.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "Heading",
+                        "paragraph"
+                    ],
+                    "should_not_contain": [
+                        "The",
+                        "the"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can search.",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestSearch",
+                "task": "Open 'https://silennaihin.com/random/plain.html' and paste all of the text on the page in a .txt file"
+            },
+            "id": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "label": "Search",
+            "shape": "dot"
+        }
+    ]
+}

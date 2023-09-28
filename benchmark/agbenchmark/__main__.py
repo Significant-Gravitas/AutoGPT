@@ -272,9 +272,6 @@ def version():
     print(f"Benchmark Tool Version {version}")
 
 
-from pathlib import Path
-
-
 def serve():
     import uvicorn
 
