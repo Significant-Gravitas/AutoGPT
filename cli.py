@@ -266,10 +266,15 @@ def start(agent_name):
     script_dir = os.path.dirname(os.path.realpath(__file__))
     agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
     run_command = os.path.join(agent_dir, "run")
-    if os.path.exists(agent_dir) and os.path.isfile(run_command):
+    run_bench_command = os.path.join(agent_dir, "run_benchmark")
+    if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
         os.chdir(agent_dir)
+        setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
+        setup_process.wait()
+        subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
+        click.echo(f"Benchmark Server starting please wait...")
         subprocess.Popen(["./run"], cwd=agent_dir)
-        click.echo(f"Agent '{agent_name}' started")
+        click.echo(f"Agent '{agent_name}' starting please wait...")
     elif not os.path.exists(agent_dir):
         click.echo(
             click.style(
