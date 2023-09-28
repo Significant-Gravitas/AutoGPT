@@ -63,7 +63,7 @@ def config(temp_plugins_config_file: str, mocker: MockerFixture, workspace: Work
     from autogpt.plugins.plugins_config import PluginsConfig
 
     config.plugins_config = PluginsConfig.load_config(
-        plugins_config_file=config.plugins_config_file,
+        plugins_config_file=config.workdir / config.plugins_config_file,
         plugins_denylist=config.plugins_denylist,
         plugins_allowlist=config.plugins_allowlist,
     )
