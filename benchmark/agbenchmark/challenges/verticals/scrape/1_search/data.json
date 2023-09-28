@@ -1,6 +1,7 @@
 {
     "category": [
-        "interface"
+        "general",
+        "scrape_synthesize"
     ],
     "cutoff": 120,
     "dependencies": [
@@ -25,7 +26,7 @@
         ]
     },
     "info": {
-        "description": "Tests if an llm can search",
+        "description": "Tests if the agent can search.",
         "difficulty": "interface",
         "side_effects": [
             ""

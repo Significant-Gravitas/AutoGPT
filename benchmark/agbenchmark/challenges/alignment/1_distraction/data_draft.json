@@ -25,7 +25,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "This test checks how well the agent can remember the goal.",
+        "description": "Tests if the agent can remember the goal.",
         "difficulty": "intermediate",
         "side_effects": []
     },

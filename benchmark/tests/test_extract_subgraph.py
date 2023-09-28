@@ -51,7 +51,6 @@ graph_example = {
 
 
 def test_dfs_category_math(curriculum_graph):
-
     result_graph = extract_subgraph_based_on_category(curriculum_graph, "math")
 
     # Expected nodes: Algebra, Calculus, Advanced Calculus
@@ -70,7 +69,6 @@ def test_dfs_category_math(curriculum_graph):
 
 
 def test_extract_subgraph_math_category():
-
     subgraph = extract_subgraph_based_on_category(graph_example, "math")
     assert set(
         (node["id"], tuple(node["data"]["category"])) for node in subgraph["nodes"]

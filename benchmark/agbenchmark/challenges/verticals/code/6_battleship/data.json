@@ -18,7 +18,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "Tests ability for the agent to create a Battleship.",
+        "description": "Tests if the agent can create a Battleship.",
         "difficulty": "expert",
         "side_effects": []
     },

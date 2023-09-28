@@ -4,7 +4,7 @@
     ],
     "cutoff": 60,
     "dependencies": [
-        "TestLabelData"
+        "TestLabelCsv"
     ],
     "eval_id": "d5f04342-983f-45a4-b84a-fe8d96863375",
     "ground": {
