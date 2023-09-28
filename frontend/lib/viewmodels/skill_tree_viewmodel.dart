@@ -201,7 +201,7 @@ class SkillTreeViewModel extends ChangeNotifier {
         // Execute the first step and initialize the Step object
         Map<String, dynamic> stepResponse =
             await benchmarkService.executeBenchmarkStep(
-                task.id, BenchmarkStepRequestBody(input: null));
+                task.id, BenchmarkStepRequestBody(input: node.data.task));
         Step step = Step.fromMap(stepResponse);
 
         // Check if it's the last step
