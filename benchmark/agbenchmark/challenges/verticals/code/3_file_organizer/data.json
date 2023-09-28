@@ -19,7 +19,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "Tests ability for the agent to create a random password generator.",
+        "description": "Tests if the agent can create a file organizer.",
         "difficulty": "basic",
         "side_effects": []
     },
