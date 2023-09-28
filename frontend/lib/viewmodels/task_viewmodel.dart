@@ -57,6 +57,8 @@ class TaskViewModel with ChangeNotifier {
           .where((task) => !_taskService.isTaskDeleted(task.id))
           .toList();
 
+      _tasks = _tasks.reversed.toList();
+
       notifyListeners();
       print("Tasks fetched successfully!");
     } catch (error) {
