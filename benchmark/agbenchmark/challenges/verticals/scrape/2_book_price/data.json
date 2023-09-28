@@ -1,6 +1,6 @@
 {
     "category": [
-        "retrieval",
+        "scrape_synthesize",
         "general"
     ],
     "cutoff": 60,
@@ -22,7 +22,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "Specifies specific website to retrieve website from.",
+        "description": "Tests if the agent can retrieve a specific information from a website.",
         "difficulty": "basic",
         "side_effects": []
     },
