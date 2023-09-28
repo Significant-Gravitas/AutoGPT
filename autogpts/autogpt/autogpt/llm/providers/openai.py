@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import enum
 import functools
 import logging
 import time
-from typing import Callable, TypeVar
+from typing import Callable, Iterable, TypeVar
 from unittest.mock import patch
 
 import openai
@@ -16,7 +15,7 @@ from openai.openai_object import OpenAIObject
 from autogpt.core.resource.model_providers import CompletionModelFunction
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.logs.helpers import request_user_double_check
-from autogpt.models.command_registry import CommandRegistry
+from autogpt.models.command import Command
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +159,7 @@ def format_openai_function_for_prompt(func: CompletionModelFunction) -> str:
 
 
 def get_openai_command_specs(
-    command_registry: CommandRegistry,
+    commands: Iterable[Command],
 ) -> list[CompletionModelFunction]:
     """Get OpenAI-consumable function specs for the agent's available commands.
     see https://platform.openai.com/docs/guides/gpt/function-calling
@@ -169,19 +168,9 @@ def get_openai_command_specs(
         CompletionModelFunction(
             name=command.name,
             description=command.description,
-            parameters={
-                param.name: JSONSchema(
-                    type=param.type if type(param.type) == JSONSchema.Type else None,
-                    enum=[v.value for v in type(param.type)]
-                    if type(param.type) == enum.Enum
-                    else None,
-                    required=param.required,
-                    description=param.description,
-                )
-                for param in command.parameters
-            },
+            parameters={param.name: param.spec for param in command.parameters},
         )
-        for command in command_registry.commands.values()
+        for command in commands
     ]
 
 
