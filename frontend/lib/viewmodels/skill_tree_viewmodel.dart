@@ -233,13 +233,13 @@ class SkillTreeViewModel extends ChangeNotifier {
         // await Future.delayed(Duration(seconds: 2));
         notifyListeners();
 
+        testSuite.tests.add(task);
         // If successStatus is false, break out of the loop
         if (!successStatus) {
           print(
               "Benchmark for node ${node.id} failed. Stopping all benchmarks.");
           break;
         }
-        testSuite.tests.add(task);
       }
 
       // Add the TestSuite to the TaskViewModel

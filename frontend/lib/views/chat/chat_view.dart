@@ -38,7 +38,7 @@ class _ChatViewState extends State<ChatView> {
       }
     });
 
-    // Schedule the fetchTasks call for after the initial build
+    // Schedule the fetchChatsForTask call for after the initial build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.viewModel.fetchChatsForTask();
     });

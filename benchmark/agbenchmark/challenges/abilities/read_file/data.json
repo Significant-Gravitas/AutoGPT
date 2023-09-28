@@ -1,6 +1,9 @@
 {
     "category": [
-        "interface"
+        "general",
+        "coding",
+        "scrape_synthesize",
+        "data"
     ],
     "cutoff": 60,
     "dependencies": [
@@ -20,7 +23,7 @@
         ]
     },
     "info": {
-        "description": "tests the ability for an agent to read a file.",
+        "description": "Tests if the agent can read a file.",
         "difficulty": "interface",
         "side_effects": [
             ""
