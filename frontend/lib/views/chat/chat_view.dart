@@ -1,8 +1,10 @@
 import 'package:auto_gpt_flutter_client/models/message_type.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/chat/agent_message_tile.dart';
 import 'package:auto_gpt_flutter_client/views/chat/chat_input_field.dart';
+import 'package:auto_gpt_flutter_client/views/chat/loading_indicator.dart';
 import 'package:auto_gpt_flutter_client/views/chat/user_message_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
@@ -105,6 +107,12 @@ class _ChatViewState extends State<ChatView> {
               },
             ),
           ),
+          const SizedBox(height: 10),
+          LoadingIndicator(
+              isLoading: Provider.of<SkillTreeViewModel>(context, listen: true)
+                      .isBenchmarkRunning ||
+                  widget.viewModel.isWaitingForAgentResponse),
+          const SizedBox(height: 10),
           // Input area
           Padding(
             padding: const EdgeInsets.all(8.0),
