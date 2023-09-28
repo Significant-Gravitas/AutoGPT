@@ -46,14 +46,14 @@ class Metrics {
   ///
   /// Returns a new `Metrics` populated with values from the map.
   factory Metrics.fromJson(Map<String, dynamic> json) => Metrics(
-        difficulty: json['difficulty'] ?? "",
+        difficulty: json['difficulty'] ?? 'placeholder',
         success: json['success'],
-        attempted: json['attempted'],
+        attempted: json['attempted'] ?? false,
         successPercentage: (json['success_percentage'] != null)
             ? json['success_percentage'].toDouble()
             : 0.0,
-        cost: json['cost'] ?? "",
-        runTime: json['run_time'] ?? "",
+        cost: json['cost'] ?? 'placeholder',
+        runTime: json['run_time'] ?? 'placeholder',
       );
 
   /// Converts the `Metrics` instance to a map.

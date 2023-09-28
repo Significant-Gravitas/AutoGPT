@@ -8,6 +8,10 @@ from .utils import remove_color_codes
 
 
 class AutoGptFormatter(FancyConsoleFormatter):
+    def __init__(self, *args, no_color: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.no_color = no_color
+
     def format(self, record: logging.LogRecord) -> str:
         # Make sure `msg` is a string
         if not hasattr(record, "msg"):
@@ -29,4 +33,7 @@ class AutoGptFormatter(FancyConsoleFormatter):
         # Make sure record.title is set, and padded with a space if not empty
         record.title = f"{title} " if title else ""
 
-        return super().format(record)
+        if self.no_color:
+            return remove_color_codes(super().format(record))
+        else:
+            return super().format(record)

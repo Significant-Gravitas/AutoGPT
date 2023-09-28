@@ -2,7 +2,7 @@ from __future__ import annotations
 import abc
 
 from pydantic import validator
-from typing import Generic, TypeVar, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING : 
     from autogpt.core.agent.simple.agent import SimpleAgent
@@ -52,11 +52,9 @@ class PromptStrategiesConfiguration(SystemConfiguration):
 #         ...
 
 
-IN = TypeVar("IN", bound=dict)
-OUT = TypeVar("OUT")
 
 
-class PromptStrategy(abc.ABC, Generic[IN, OUT]):
+class PromptStrategy(abc.ABC):
     STRATEGY_NAME: str
     default_configuration: SystemConfiguration
 
@@ -66,11 +64,11 @@ class PromptStrategy(abc.ABC, Generic[IN, OUT]):
         ...
 
     @abc.abstractmethod
-    def build_prompt(self, *_, **kwargs: IN) -> ChatPrompt:
+    def build_prompt(self, *_, **kwargs) -> ChatPrompt:
         ...
 
     @abc.abstractmethod
-    def parse_response_content(self, response_content: AssistantChatMessageDict) -> OUT:
+    def parse_response_content(self, response_content: AssistantChatMessageDict):
         ...
 
 

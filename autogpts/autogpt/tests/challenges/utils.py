@@ -2,7 +2,7 @@ import contextlib
 import random
 import shutil
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any, AsyncIterator
 
 import pytest
 
@@ -31,15 +31,16 @@ def setup_mock_input(monkeypatch: pytest.MonkeyPatch, cycle_count: int) -> None:
     """
     input_sequence = ["y"] * (cycle_count) + ["EXIT"]
 
-    def input_generator() -> Generator[str, None, None]:
+    async def input_generator() -> AsyncIterator[str]:
         """
         Creates a generator that yields input strings from the given sequence.
         """
-        yield from input_sequence
+        for input in input_sequence:
+            yield input
 
     gen = input_generator()
     monkeypatch.setattr(
-        "autogpt.app.utils.session.prompt", lambda _, **kwargs: next(gen)
+        "autogpt.app.utils.session.prompt_async", lambda _, **kwargs: anext(gen)
     )
 
 

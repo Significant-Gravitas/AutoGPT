@@ -8,8 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:provider/provider.dart';
 
-// TODO: Implement artifacts
-
 class ChatView extends StatefulWidget {
   final ChatViewModel viewModel;
 
@@ -38,7 +36,7 @@ class _ChatViewState extends State<ChatView> {
       }
     });
 
-    // Schedule the fetchTasks call for after the initial build
+    // Schedule the fetchChatsForTask call for after the initial build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.viewModel.fetchChatsForTask();
     });
@@ -84,7 +82,25 @@ class _ChatViewState extends State<ChatView> {
                 if (chat.messageType == MessageType.user) {
                   return UserMessageTile(message: chat.message);
                 } else {
-                  return AgentMessageTile(chat: chat);
+                  return AgentMessageTile(
+                    key: ValueKey(chat.id),
+                    chat: chat,
+                    onArtifactsButtonPressed: () {
+                      // TODO: Create an actual artifact object
+                      // Loop through each artifact and download it using the artifact_id
+                      for (var artifact in chat.artifacts) {
+                        if (artifact is Map) {
+                          final artifactMap = artifact.cast<String,
+                              dynamic>(); // Cast each item to Map<String, dynamic>
+
+                          final artifactId = artifactMap['artifact_id']
+                              .toString(); // Get the artifact_id
+                          widget.viewModel.downloadArtifact(
+                              chat.taskId, artifactId); // Download the artifact
+                        }
+                      }
+                    },
+                  );
                 }
               },
             ),

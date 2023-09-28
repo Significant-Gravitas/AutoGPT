@@ -120,28 +120,23 @@ class ForgeAgent(Agent):
         if they want the agent to continue or not.
         """
         # An example that
-        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
         step = await self.db.create_step(
             task_id=task_id, input=step_request, is_last=True
         )
-        step_input = "None"
-        if step.input:
-            step_input = step.input[:19]
-        message = f"\t🔄 Step executed: {step.step_id} input: {step_input}"
-        if step.is_last:
-            message = (
-                f"\t✅ Final Step completed: {step.step_id} input: {step_input}"
-            )
 
-        LOG.info(message)
+        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
 
-        artifact = await self.db.create_artifact(
+
+        await self.db.create_artifact(
             task_id=task_id,
             step_id=step.step_id,
             file_name="output.txt",
             relative_path="",
             agent_created=True,
         )
+        
         step.output = "Washington D.C"
+
+        LOG.info(f"\t✅ Final Step completed: {step.step_id}")
 
         return step

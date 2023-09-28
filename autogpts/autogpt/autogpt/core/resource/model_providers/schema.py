@@ -181,6 +181,11 @@ class CompletionModelFunction(BaseModel):
         cleaned_data = self._remove_none_entries(data)
 
         return cleaned_data
+    def fmt_line(self) -> str:
+        params = ", ".join(
+            f"{name}: {p.type.value}" for name, p in self.parameters.items()
+        )
+        return f"{self.name}: {self.description}. Params: ({params})"
 
 
 class ModelInfo(BaseModel):
