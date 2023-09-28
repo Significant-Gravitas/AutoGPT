@@ -83,6 +83,7 @@ class _ChatViewState extends State<ChatView> {
                   return UserMessageTile(message: chat.message);
                 } else {
                   return AgentMessageTile(
+                    key: ValueKey(chat.id),
                     chat: chat,
                     onArtifactsButtonPressed: () {
                       // TODO: Create an actual artifact object
