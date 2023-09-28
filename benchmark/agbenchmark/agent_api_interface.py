@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import pathlib
 import time
 from typing import Any, Dict, Optional
 
@@ -13,6 +15,8 @@ from agbenchmark.agent_protocol_client import (
 )
 from agbenchmark.agent_protocol_client.models.step import Step
 from agbenchmark.utils.data_types import ChallengeData
+
+LOG = logging.getLogger(__name__)
 
 
 async def run_api_agent(
@@ -63,13 +67,22 @@ async def copy_agent_artifacts_into_temp_folder(api_instance, task_id):
     artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
     for artifact in artifacts.artifacts:
         # current absolute path of the directory of the file
-        directory_location = TEMP_FOLDER_ABS_PATH
+        directory_location = pathlib.Path(TEMP_FOLDER_ABS_PATH)
         if artifact.relative_path:
-            directory_location = os.path.dirname(directory_location / artifact.relative_path)
-        
-        os.mkdir(directory_location, recursive=True, exist_ok=True)
+            path = (
+                artifact.relative_path
+                if not artifact.relative_path.startswith("/")
+                else artifact.relative_path[1:]
+            )
+            directory_location = pathlib.Path(
+                os.path.dirname(directory_location / path)
+            )
+            LOG.info(f"Creating directory {directory_location}")
+
+        directory_location.mkdir(parents=True, exist_ok=True)
 
         file_path = directory_location / artifact.file_name
+        LOG.info(f"Writing file {file_path}")
         with open(file_path, "wb") as f:
             content = await api_instance.download_agent_task_artifact(
                 task_id=task_id, artifact_id=artifact.artifact_id
