@@ -230,7 +230,7 @@ class SkillTreeViewModel extends ChangeNotifier {
         benchmarkStatusMap[node] = successStatus
             ? BenchmarkTaskStatus.success
             : BenchmarkTaskStatus.failure;
-        // await Future.delayed(Duration(seconds: 2));
+        await Future.delayed(Duration(seconds: 1));
         notifyListeners();
 
         testSuite.tests.add(task);
