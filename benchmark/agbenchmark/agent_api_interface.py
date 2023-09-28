@@ -65,9 +65,12 @@ async def copy_agent_artifacts_into_temp_folder(api_instance, task_id):
         # current absolute path of the directory of the file
         directory_location = TEMP_FOLDER_ABS_PATH
         if artifact.relative_path:
-            directory_location = directory_location / artifact.relative_path
+            directory_location = os.path.dirname(directory_location / artifact.relative_path)
+        
+        os.mkdir(directory_location, recursive=True, exist_ok=True)
 
-        with open(directory_location / artifact.file_name, "wb") as f:
+        file_path = directory_location / artifact.file_name
+        with open(file_path, "wb") as f:
             content = await api_instance.download_agent_task_artifact(
                 task_id=task_id, artifact_id=artifact.artifact_id
             )
