@@ -22,15 +22,20 @@ Welcome to the **afaas: Agent Framework as a Service** project! This project is 
 
 - [afaas: Agent Framework as a Service](#afaas-agent-framework-as-a-service)
 - [Table of Contents](#table-of-contents)
-<!--- [afaas - GitHub Branches](#afaas---github-branches)-->
+- [afaas - GitHub Branches](#afaas---github-branches)
 - [Contributing](#contributing)
 - [Setup and Execution](#setup-and-execution)
 - [License](#license)
 - [Contact](#contact)
 - [Framework User Guide](#framework-user-guide)
   - [General Description](#general-description)
-<!--
+
 ## afaas - GitHub Branches
+
+[master](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration) : Is the framework and `core/agent/simple` directory contains a sample of agent implemented with the framework (🚧 **Work in progress**)
+[5as-autogpt-integration](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration) : Is the framework in Autogpt Tree, we will do our best to maintain it so it is easily meargeable
+
+<!--
 
 For historical reasons, the branches of this project have undergone general improvements towards the goals mentioned above. The future direction will be more streamlined.
 
@@ -113,13 +118,29 @@ For more detailed contribution guidelines, please refer to `CONTRIBUTING.md`.
 
 We recommend using AutoGPT guidelines.
 
-## Framework User Guide
+## Framework Developper Guide
 
 Welcome to the **Framework User Guide**. This guide helps developers understand and utilize the framework efficiently, allowing you to focus on creating agents with ease.
 
 The primary goal of this framework is to provide a robust set of libraries, reducing complexities, so you can concentrate on building agents. We're actively seeking contributors to further enrich this framework.
 
-### General Description
+🚧 **User Guide**: This guide is under development. Check back for updates. 🚧
+
+### Tools (🌟 Contribution needed 🌟) - branch afaas - tools
+
+Tools (currently named Abilities) are the interface between an agent and another system (OS, Application via API or other protocol, ect...) it is the arms and legs of an agent and it's capacity to act on it's environments. 
+
+Our intent is to support at least : 
+- Llm queries ✅ 
+- Web search ⏳
+- Filesystem interaction ⏳
+- Code excecution ⏳
+- Popular document formats : World,  PDF ⏳
+- Image generation ⏳
+- Git interation ⏳ 
+- And various API : OneDrive ⏳, Google Drive ⏳, Google Maps ⏳, GitHub ⏳, Service Now ⏳, Jira ⏳, SalesForce ⏳... 
+
+### Agents
 
 The `core/agent/` directory serves as a baseline and example for developers eager to implement agents. An agent's architecture consists of three files and one directory:
 
@@ -128,7 +149,7 @@ The `core/agent/` directory serves as a baseline and example for developers eage
 3. **models.py**: Contains models required by your agent.
 4. **strategies**: Holds `PromptStrategies`.
 
-🚧 **User Guide**: This guide is under development. Check back for updates. 🚧
+
 
 ## Contact
 
