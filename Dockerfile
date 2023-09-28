@@ -32,8 +32,8 @@ ADD autogpts/autogpt /app/
 ADD ./benchmark /benchmark/
 
 WORKDIR /app
-#RUN poetry install --verbose
+RUN poetry install --verbose ||echo some failed lets inspect
 
-#ENTRYPOINT ["poetry", "run", "autogpt", "--install-plugin-deps"]
+ENTRYPOINT ["poetry", "run", "autogpt", "--install-plugin-deps"]
 #ENTRYPOINT ["poetry", "install" ]
 CMD []
