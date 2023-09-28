@@ -19,7 +19,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "Tests ability for the agent to create Tic-Tac-Toe game",
+        "description": "Tests if the agent can create Tic-Tac-Toe game",
         "difficulty": "basic",
         "side_effects": []
     },
