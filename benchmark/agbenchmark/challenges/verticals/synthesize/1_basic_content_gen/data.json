@@ -23,7 +23,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "Tests ability to generate content based on the content of 2 files.",
+        "description": "Tests if the agent can generate content based on the content of 2 files.",
         "difficulty": "basic",
         "side_effects": []
     },

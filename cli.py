@@ -178,21 +178,22 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         click.echo(
             click.style("\t2. Navigate to https://github.com/settings/tokens", fg="red")
         )
-        click.echo(click.style("\t6. Click on 'Generate new token'.", fg="red"))
+        click.echo(click.style("\t3. Click on 'Generate new token'.", fg="red"))
+        click.echo(click.style("\t4. Click on 'Generate new token (classic)'.", fg="red"))
         click.echo(
             click.style(
-                "\t7. Fill out the form to generate a new token. Ensure you select the 'repo' scope.",
+                "\t5. Fill out the form to generate a new token. Ensure you select the 'repo' scope.",
                 fg="red",
             )
         )
         click.echo(
             click.style(
-                "\t8. Open the '.github_access_token' file in the same directory as this script and paste the token into this file.",
+                "\t6. Open the '.github_access_token' file in the same directory as this script and paste the token into this file.",
                 fg="red",
             )
         )
         click.echo(
-            click.style("\t9. Save the file and run the setup command again.", fg="red")
+            click.style("\t7. Save the file and run the setup command again.", fg="red")
         )
     if install_error:
         click.echo(

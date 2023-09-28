@@ -1,6 +1,6 @@
 {
     "category": [
-        "retrieval"
+        "scrape_synthesize"
     ],
     "cutoff": 60,
     "dependencies": [
@@ -35,7 +35,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "Tests ability to retrieve information.",
+        "description": "Tests if the agent can retrieve all the revenues of Tesla since its creation.",
         "difficulty": "intermediate",
         "side_effects": [
             "tests if there is in fact an LLM attached"

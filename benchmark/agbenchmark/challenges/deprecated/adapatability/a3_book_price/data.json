@@ -1,6 +1,7 @@
 {
     "category": [
-        "adaptability"
+        "adaptability",
+        "scrape_synthesize"
     ],
     "cutoff": 60,
     "dependencies": [
