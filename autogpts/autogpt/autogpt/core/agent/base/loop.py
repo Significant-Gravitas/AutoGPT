@@ -61,7 +61,7 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
         self._task_queue = []
         self._completed_tasks = []
         self._current_task = None
-        self._next_ability = None
+        self._next_tool = None
 
         # Setting default handlers
         self._user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None

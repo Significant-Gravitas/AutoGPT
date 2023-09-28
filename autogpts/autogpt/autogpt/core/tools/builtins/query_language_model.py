@@ -1,7 +1,7 @@
 import logging
 
-from autogpt.core.ability.base import Ability, AbilityConfiguration
-from autogpt.core.ability.schema import AbilityResult
+from autogpt.core.tools.base import Tool, ToolConfiguration
+from autogpt.core.tools.schema import ToolResult
 from autogpt.core.planning.simple import LanguageModelConfiguration
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 from autogpt.core.resource.model_providers import (
@@ -12,11 +12,11 @@ from autogpt.core.resource.model_providers import (
 )
 
 
-class QueryLanguageModel(Ability):
-    default_configuration = AbilityConfiguration(
+class QueryLanguageModel(Tool):
+    default_configuration = ToolConfiguration(
         location=PluginLocation(
             storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-            storage_route="autogpt.core.ability.builtins.QueryLanguageModel",
+            storage_route="autogpt.core.tools.builtins.QueryLanguageModel",
         ),
         language_model_required=LanguageModelConfiguration(
             model_name=OpenAIModelName.GPT3,
@@ -28,7 +28,7 @@ class QueryLanguageModel(Ability):
     def __init__(
         self,
         logger: logging.Logger,
-        configuration: AbilityConfiguration,
+        configuration: ToolConfiguration,
         language_model_provider: ChatModelProvider,
     ):
         self._logger = logger
@@ -52,7 +52,7 @@ class QueryLanguageModel(Ability):
     def required_arguments(cls) -> list[str]:
         return ["query"]
 
-    async def __call__(self, query: str) -> AbilityResult:
+    async def __call__(self, query: str) -> ToolResult:
         messages = [
             ChatMessage.user(
                 content=query,
@@ -64,7 +64,7 @@ class QueryLanguageModel(Ability):
             model_name=self._configuration.language_model_required.model_name,
             completion_parser=self._parse_response,
         )
-        return AbilityResult(
+        return ToolResult(
             ability_name=self.name(),
             ability_args={"query": query},
             success=True,

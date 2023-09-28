@@ -54,7 +54,7 @@ class BaseAgentSettings(BaseModel):
             "planning",
             "openai_provider",
             "memory",
-            "ability_registry",
+            "tool_registry",
         }
 
     def dict(self, remove_technical_values=True, *args, **kwargs):

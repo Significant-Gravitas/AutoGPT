@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import Field
 
-from autogpt.core.ability import AbilityRegistrySettings
+from autogpt.core.tools import ToolsRegistrySettings
 from autogpt.core.agent.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 class SimpleAgentSystems(BaseAgentSystems):
-    ability_registry: PluginLocation
+    tool_registry: PluginLocation
     openai_provider: PluginLocation
     planning: PluginLocation
 
@@ -52,7 +52,7 @@ class SimpleAgentSystemSettings(BaseAgentSystemSettings):
 class SimpleAgentSettings(BaseAgentSettings):
     agent: SimpleAgentSystemSettings
     openai_provider: OpenAISettings
-    ability_registry: AbilityRegistrySettings
+    tool_registry: ToolsRegistrySettings
     planning: PlannerSettings
     user_id: Optional[uuid.UUID] = Field(default=None)
     agent_id: Optional[uuid.UUID] = Field(default=None)

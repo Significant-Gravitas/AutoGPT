@@ -8,7 +8,7 @@ import docx
 import yaml
 from bs4 import BeautifulSoup
 
-from autogpt.commands.file_operations_utils import is_file_binary_fn, read_textual_file
+from autogpt.core.tools.builtins.file_operations_utils import is_file_binary_fn, read_textual_file
 
 logger = logging.getLogger(__name__)
 

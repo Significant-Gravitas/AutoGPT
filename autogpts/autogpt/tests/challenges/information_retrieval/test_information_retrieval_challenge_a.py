@@ -2,7 +2,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from autogpt.workspace import Workspace
-from tests.challenges.basic_abilities.test_browse_website import USER_INPUTS
+from tests.challenges.basic_tools.test_browse_website import USER_INPUTS
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_challenge
 

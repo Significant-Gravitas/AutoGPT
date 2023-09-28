@@ -257,7 +257,7 @@ class PlanningPromptStrategy(BasePromptStrategy) :
         Returns:
             str: A string containing a numbered list of commands.
         """
-        if agent._ability_registry:
-            return to_numbered_list(agent._ability_registry.list_abilities_descriptions())
+        if agent._tool_registry:
+            return to_numbered_list(agent._tool_registry.list_tools_descriptions())
 
         return []

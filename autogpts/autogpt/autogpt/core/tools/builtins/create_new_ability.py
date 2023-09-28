@@ -1,22 +1,25 @@
+from __future__ import annotations
 import logging
 
-from autogpt.core.ability.base import Ability, AbilityConfiguration
-from autogpt.core.ability.schema import AbilityResult
+# from typing import TYPE_CHECKING 
+# if TYPE_CHECKING:
+from autogpt.core.tools.base import Tool, ToolConfiguration
+from autogpt.core.tools.schema import ToolResult
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 
 
-class CreateNewAbility(Ability):
-    default_configuration = AbilityConfiguration(
+class CreateNewAbility(Tool):
+    default_configuration = ToolConfiguration(
         location=PluginLocation(
             storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-            storage_route="autogpt.core.ability.builtins.CreateNewAbility",
+            storage_route="autogpt.core.tools.builtins.CreateNewAbility",
         ),
     )
 
     def __init__(
         self,
         logger: logging.Logger,
-        configuration: AbilityConfiguration,
+        configuration: ToolConfiguration,
     ):
         self._logger = logger
         self._configuration = configuration
@@ -98,5 +101,5 @@ class CreateNewAbility(Ability):
         required_arguments: list[str],
         package_requirements: list[str],
         code: str,
-    ) -> AbilityResult:
+    ) -> ToolResult:
         raise NotImplementedError

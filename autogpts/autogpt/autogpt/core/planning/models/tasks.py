@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from autogpt.core.ability.schema import AbilityResult
+from autogpt.core.tools.schema import ToolResult
 
 
 class TaskType(str, enum.Enum):
@@ -44,7 +44,7 @@ class TaskContext(BaseModel):
     cycle_count: int = 0
     status: TaskStatusList = TaskStatusList.BACKLOG
     parent: "Task" = None
-    prior_actions: list[AbilityResult] = Field(default_factory=list)
+    prior_actions: list[ToolResult] = Field(default_factory=list)
     memories: list = Field(default_factory=list)
     user_input: list[str] = Field(default_factory=list)
     supplementary_info: list[str] = Field(default_factory=list)

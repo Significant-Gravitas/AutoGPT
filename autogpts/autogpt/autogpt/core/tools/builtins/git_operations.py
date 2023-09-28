@@ -12,7 +12,7 @@ from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
 from autogpt.url_utils.validators import validate_url
 
-from .decorators import sanitize_path_arg
+from ..decorators import sanitize_path_arg
 
 
 @command(

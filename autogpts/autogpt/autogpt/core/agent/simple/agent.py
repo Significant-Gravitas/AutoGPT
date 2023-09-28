@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple
 
-from autogpt.core.ability import AbilityResult, SimpleAbilityRegistry
+from autogpt.core.tools import ToolResult, SimpleAbilityRegistry
 from autogpt.core.agent.base.agent import Agent
 from autogpt.core.agent.simple.loop import SimpleLoop
 from autogpt.core.agent.simple.models import (
@@ -59,9 +59,9 @@ class SimpleAgent(Agent):
             max_task_cycle_count=3,
             creation_time="",
             systems=SimpleAgentSystems(
-                ability_registry=PluginLocation(
+                tool_registry=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.ability.SimpleAbilityRegistry",
+                    storage_route="autogpt.core.tools.SimpleAbilityRegistry",
                 ),
                 memory=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
@@ -87,7 +87,7 @@ class SimpleAgent(Agent):
         self,
         settings: SimpleAgentSystemSettings,
         logger: logging.Logger,
-        ability_registry: SimpleAbilityRegistry,
+        tool_registry: SimpleAbilityRegistry,
         memory: Memory,
         openai_provider: OpenAIProvider,
         workspace: SimpleWorkspace,
@@ -107,7 +107,7 @@ class SimpleAgent(Agent):
         # These are specific
         self._openai_provider = openai_provider
         self._planning = planning
-        self._ability_registry = ability_registry
+        self._tool_registry = tool_registry
 
         self.plan : Plan = None
         self._loop = SimpleLoop(agent=self)
@@ -248,8 +248,8 @@ class SimpleAgent(Agent):
         )
 
         # NOTE : Can't be moved to super() because require agent_args["openai_provider"]
-        agent_args["ability_registry"] = cls._get_system_instance(
-            "ability_registry",
+        agent_args["tool_registry"] = cls._get_system_instance(
+            "tool_registry",
             agent_settings,
             logger,
             workspace=agent_args["workspace"],

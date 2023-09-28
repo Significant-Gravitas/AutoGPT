@@ -7,7 +7,7 @@ from autogpt.core.planning.models.action import ActionHistory, ActionResult, Act
 from autogpt.core.planning.models.context_items import ContextItem
 from autogpt.core.planning.models.command import AbilityOutput
 
-from autogpt.core.ability import AbilityResult
+from autogpt.core.tools import ToolResult
 from autogpt.core.agent.base import BaseLoop, BaseLoopHook, UserFeedback
 from autogpt.core.planning import Task, TaskStatusList
 from autogpt.core.runner.client_lib.parser import (
@@ -42,13 +42,13 @@ except ImportError:
 usercontext = False
 
 
-from autogpt.logs.log_cycle import (
-    CURRENT_CONTEXT_FILE_NAME,
-    FULL_MESSAGE_HISTORY_FILE_NAME,
-    NEXT_ACTION_FILE_NAME,
-    USER_INPUT_FILE_NAME,
-    LogCycleHandler,
-)
+# from autogpt.logs.log_cycle import (
+#     CURRENT_CONTEXT_FILE_NAME,
+#     FULL_MESSAGE_HISTORY_FILE_NAME,
+#     NEXT_ACTION_FILE_NAME,
+#     USER_INPUT_FILE_NAME,
+#     LogCycleHandler,
+# )
 
 class SimpleLoop(BaseLoop):
     class LoophooksDict(BaseLoop.LoophooksDict):
@@ -203,7 +203,7 @@ class SimpleLoop(BaseLoop):
                 user_input = ""
                 # Get user input if there is no more automated cycles
                 if self.remaining_cycles == 1 :
-                    user_input = self._user_input_handler(
+                    user_input = await self._user_input_handler(
                         f"Enter y to authorise command, "
                         f"y -N' to run N continuous commands, "
                         f"q to exit program, or enter feedback for "
@@ -243,7 +243,7 @@ class SimpleLoop(BaseLoop):
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> None:
         
-        super().start(
+        await super().start(
                     agent = agent,
                     user_input_handler = user_input_handler,
                     user_message_handler = user_message_handler
@@ -258,7 +258,7 @@ class SimpleLoop(BaseLoop):
             agent_role=self._agent._configuration.agent_role,
             agent_goals=self._agent._configuration.agent_goals,
             agent_goal_sentence=self._agent._configuration.agent_goal_sentence,
-            abilities=self._agent._ability_registry.list_abilities_descriptions(),
+            tools=self._agent._tool_registry.list_tools_descriptions(),
         )
         tasks = [Task.parse_obj(task) for task in plan.content["task_list"]]
 
@@ -281,7 +281,7 @@ class SimpleLoop(BaseLoop):
         task = await self._evaluate_task_and_add_context(task)
         next_ability = await self._choose_next_ability(
             task,
-            self._agent._ability_registry.dump_abilities(),
+            self._agent._tool_registry.dump_tools(),
         )
         self._current_task = task
         self._next_ability = next_ability.content
@@ -289,7 +289,7 @@ class SimpleLoop(BaseLoop):
 
     async def execute_next_ability(self, user_input: str, *args, **kwargs):
         if user_input == "y":
-            ability = self._agent._ability_registry.get_ability(
+            ability = self._agent._tool_registry.get_ability(
                 self._next_ability["next_ability"]
             )
             ability_response = await ability(**self._next_ability["ability_arguments"])
@@ -335,7 +335,7 @@ class SimpleLoop(BaseLoop):
             )
             return next_ability
 
-    async def _update_tasks_and_memory(self, ability_result: AbilityResult):
+    async def _update_tasks_and_memory(self, ability_result: ToolResult):
         self._current_task.context.cycle_count += 1
         self._current_task.context.prior_actions.append(ability_result)
         # TODO: Summarize new knowledge
@@ -376,7 +376,7 @@ class SimpleLoop(BaseLoop):
         raw_response : ChatModelResponse = await self._agent._planning.execute_strategy(
                     strategy_name="think",
                     agent = self._agent,
-                    abilities = self._agent._ability_registry.get_abilities(),
+                    tools = self._agent._tool_registry.get_tools(),
                     instruction=instruction, # TODO : Move to strategy
                     thought_process_id=thought_process_id, #TODO : Remove
                 )
@@ -399,13 +399,13 @@ class SimpleLoop(BaseLoop):
                 "I interrupted the execution of the command you proposed "
                 f"to give you some feedback: {user_input}",
             )
-            self.log_cycle_handler.log_cycle(
-                self._agent.agent_name,
-                self._agent.created_at,
-                self.cycle_count,
-                user_input,
-                USER_INPUT_FILE_NAME,
-            )
+            # self.log_cycle_handler.log_cycle(
+            #     self._agent.agent_name,
+            #     self._agent.created_at,
+            #     self.cycle_count,
+            #     user_input,
+            #     USER_INPUT_FILE_NAME,
+            # )
 
         else:
             for plugin in self.config.plugins:

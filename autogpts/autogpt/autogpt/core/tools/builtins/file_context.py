@@ -20,7 +20,7 @@ from autogpt.agents.utils.exceptions import (
 from autogpt.command_decorator import command
 from autogpt.models.context_item import FileContextItem, FolderContextItem
 
-from .decorators import sanitize_path_arg
+from ..decorators import sanitize_path_arg
 
 
 def agent_implements_context(agent: BaseAgent) -> bool:

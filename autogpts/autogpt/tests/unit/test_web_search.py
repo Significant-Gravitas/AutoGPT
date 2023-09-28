@@ -5,7 +5,7 @@ from googleapiclient.errors import HttpError
 
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import ConfigurationError
-from autogpt.commands.web_search import google, safe_google_results, web_search
+from autogpt.core.tools.builtins.web_search import google, safe_google_results, web_search
 
 
 @pytest.mark.parametrize(
@@ -42,7 +42,7 @@ def test_google_search(
     mock_ddg = mocker.Mock()
     mock_ddg.return_value = return_value
 
-    mocker.patch("autogpt.commands.web_search.DDGS.text", mock_ddg)
+    mocker.patch("autogpt.core.tools.builtins.web_search.DDGS.text", mock_ddg)
     actual_output = web_search(query, agent=agent, num_results=num_results)
     expected_output = safe_google_results(expected_output)
     assert actual_output == expected_output

@@ -8,7 +8,7 @@ AUTO_GPT_ABILITY_IDENTIFIER = "auto_gpt_command"
 
 if TYPE_CHECKING : 
     from autogpt.core.planning.models.command import AbilityOutput, AbilityParameter
-    from autogpt.core.ability.base import Ability, AbilityResult,AbilityConfiguration
+    from autogpt.core.tools.base import Tool, ToolResult,ToolConfiguration
     from autogpt.core.agent.base  import Agent
 
 class AbilityParameterSpec(TypedDict):
@@ -21,7 +21,7 @@ def ability(
     name: str,
     description: str,
     parameters: dict[str, AbilityParameterSpec],
-    enabled: Literal[True] | Callable[[AbilityConfiguration], bool] = True,
+    enabled: Literal[True] | Callable[[ToolConfiguration], bool] = True,
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
     available: Literal[True] | Callable[[Agent], bool] = True,
@@ -39,7 +39,7 @@ def ability(
             for param_name, parameter in parameters.items()
         ]
         
-        ablt = Ability(
+        ablt = Tool(
             name=name,
             description=description,
             method=func,

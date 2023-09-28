@@ -2,7 +2,7 @@ import enum
 
 from pydantic import BaseModel, Field
 
-from autogpt.core.ability.schema import AbilityResult
+from autogpt.core.tools.schema import ToolResult
 from autogpt.core.resource.model_providers.schema import (
     ChatMessage,
     ChatMessageDict,

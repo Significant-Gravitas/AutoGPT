@@ -1,7 +1,7 @@
 import argparse
 import logging
 
-from autogpt.commands.file_operations import ingest_file, list_files
+from autogpt.core.tools.builtins.file_operations import ingest_file, list_files
 from autogpt.config import ConfigBuilder
 from autogpt.memory.vector import VectorMemory, get_memory
 

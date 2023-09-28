@@ -4,7 +4,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from autogpt.agents import Agent
-from autogpt.commands.execute_code import execute_python_file
+from autogpt.core.tools.builtins.execute_code import execute_python_file
 from autogpt.workspace import Workspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import (

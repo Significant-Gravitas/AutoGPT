@@ -142,7 +142,7 @@ class InitialPlan(BasePromptStrategy):
         agent_role: str,
         agent_goals: list[str],
         agent_goal_sentence: str,
-        abilities: list[str],
+        tools: list[str],
         os_info: str,
         api_budget: float,
         current_time: str,
@@ -160,7 +160,7 @@ class InitialPlan(BasePromptStrategy):
             to_numbered_list(agent_goals, **template_kwargs),
         )
         template_kwargs["agent_goal_sentence"] = (agent_goal_sentence,)
-        template_kwargs["abilities"] = to_numbered_list(abilities, **template_kwargs)
+        template_kwargs["tools"] = to_numbered_list(tools, **template_kwargs)
         template_kwargs["system_info"] = to_numbered_list(
             self._system_info, **template_kwargs
         )

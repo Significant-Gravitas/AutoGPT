@@ -23,7 +23,7 @@ from autogpt.agents.utils.exceptions import (
 from autogpt.command_decorator import command
 from autogpt.config import Config
 
-from .decorators import sanitize_path_arg
+from ..decorators import sanitize_path_arg
 
 logger = logging.getLogger(__name__)
 

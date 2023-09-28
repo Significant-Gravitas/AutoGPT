@@ -16,7 +16,7 @@ from autogpt.core.agent.base.loop import (
     BaseLoopHook,
 )
 
-from autogpt.core.ability import AbilityRegistry
+from autogpt.core.tools.base import ToolsRegistry
 from autogpt.core.agent.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
@@ -83,7 +83,7 @@ class Agent(Configurable, BaseAgent):
         self.agent_class = f"{self.__class__.__name__}"
 
         # return super().__init__(
-        #     self, settings, logger, ability_registry, memory, workspace
+        #     self, settings, logger, tool_registry, memory, workspace
         # )
 
     def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):

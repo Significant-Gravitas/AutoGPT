@@ -136,7 +136,7 @@ class ThinkStrategy(PlanningPromptStrategy):
 
         return  ChatPrompt(
             messages= messages ,
-            functions= self.get_functions(), #self._agent._ability_registry.dump_abilities()
+            functions= self.get_functions(), #self._agent._tool_registry.dump_tools()
             function_call= ThinkStrategyFunctionNames.THINK,
             default_function_call='human_feedback'
             )

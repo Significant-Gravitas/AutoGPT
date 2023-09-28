@@ -155,7 +155,7 @@ currently
 
 ## Abilities
 
-Along with planning and memory usage, abilities are one of the major augmentations of 
+Along with planning and memory usage, tools are one of the major augmentations of 
 augmented language models.  They allow us to expand the scope of what language models
 can do by hooking them up to code they can execute to obtain new knowledge or influence
 the world.  
@@ -168,8 +168,8 @@ the world.
 - Abilities should be declarative about their dependencies so the system can inject them
 - Abilities should be executable (where sensible) in an async run loop.
 - Abilities should be not have side effects unless those side effects are clear in 
-  their representation to an agent (e.g. the BrowseWeb ability shouldn't write a file,
-  but the WriteFile ability can).
+  their representation to an agent (e.g. the BrowseWeb tool shouldn't write a file,
+  but the WriteFile tool can).
 
 ## Plugins
 

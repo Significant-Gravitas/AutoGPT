@@ -129,8 +129,8 @@ class SimplePlanner(Configurable):
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
         """
         await simple_planner.execute_strategy('name_and_goals', user_objective='Learn Python')
-        await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goals=['Learn Python'], abilities=['coding'])
-        await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goal_sentence=['Learn Python'], abilities=['coding'])
+        await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goals=['Learn Python'], tools=['coding'])
+        await simple_planner.execute_strategy('initial_plan', agent_name='Alice', agent_role='Student', agent_goal_sentence=['Learn Python'], tools=['coding'])
         """
         if strategy_name not in self._prompt_strategies:
             raise ValueError(f"Invalid strategy name {strategy_name}")
@@ -152,14 +152,14 @@ class SimplePlanner(Configurable):
         agent_name: str,
         agent_role: str,
         agent_goals: list[str],
-        abilities: list[str],
+        tools: list[str],
     ) -> ChatModelResponse:
         return await self.chat_with_model(
             self._prompt_strategies["initial_plan"],
             agent_name=agent_name,
             agent_role=agent_role,
             agent_goals=agent_goals,
-            abilities=abilities,
+            tools=tools,
         )
 
     async def determine_next_ability(
