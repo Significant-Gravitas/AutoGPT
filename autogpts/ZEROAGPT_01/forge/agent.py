@@ -59,32 +59,82 @@ class ForgeAgent(Agent):
         return task
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
+        task = await self.db.get_task(task_id)
+
+        # Create a new step in the database
+        # have AI determine last step
+        step = await self.db.create_step(
+            task_id=task_id, input=step_request, is_last=False
+        )
+
+        # setup chatcompletion to achieve this task
+        # with custom prompt that will generate steps
+        prompt_engine = PromptEngine("gpt-3.5-turbo")
+
+        # set up reply json with alternative created
+        system_prompt = prompt_engine.load_prompt("alt-system-prompt")
+
+        # add to messages
+        self.messages.append(
+            {"role": "system", "content": system_prompt}
+        )
+        
+        # chat initialize if no steps else load past
+        # steps into prompt
+
+        list_steps = await self.db.list_steps(task_id)
+        past_steps = []
+
+        if len(list_steps[0]) > 0:
+            for past_steps in list_steps:
+                past_steps.append(
+                    (past_steps.input, past_steps.output))
+        
+        ontology_prompt_params = {
+            "task": task.input,
+            "request": step.input,
+            "abilities": self.abilities.list_abilities_for_prompt(),
+            "past_steps": str(past_steps)
+        }
+
+        task_prompt = prompt_engine.load_prompt(
+            "ontology-format",
+            **ontology_prompt_params
+        )
+        
+        self.messages.append({"role": "user", "content": task_prompt})
+
         try:
-            task = await self.db.get_task(task_id)
-
-            # would like to change this so steps are AI driven
-            # use task to create steps
-
-            # setup chatcompletion to achieve this task
-            # with custom prompt that will generate steps
-            prompt_engine = PromptEngine("gpt-3.5-turbo")
-
-            # set up reply json with alternative created
-            system_prompt = prompt_engine.load_prompt("alt-system-prompt")
-            
-            # chat initialize if no steps else load past
-            # steps into prompt
-            ontology_prompt_params = {
-                "task": task.input,
-                "abilities": self.abilities.list_abilities_for_prompt(),
-                "past_steps": "None"
+            chat_completion_parms = {
+                "messages": self.messages,
+                "model": "gpt-3.5-turbo"
             }
 
-            initial_task_prompt = prompt_engine.load_prompt(
-                "ontology-format",
-                **ontology_prompt_params
-            )
+            chat_response = await chat_completion_request(
+                **chat_completion_parms)
+            answer = json.loads(
+                chat_response["choices"][0]["messages"]["content"])
             
-        except Exception as err:
-            LOG.error(f"📢 execute_step failed: {err}")
-            raise err
+            LOG.info(pprint.pformat(answer))
+
+        except json.JSONDecodeError as e:
+            # Handle JSON decoding errors
+            LOG.error(f"📢 Unable to decode chat response: {chat_response}")
+        except Exception as e:
+            # Handle other exceptions
+            LOG.error(f"📢 Unable to generate chat response: {e}")
+
+        # Extract the ability from the answer
+        ability = answer["step"]["ability"]
+
+        # Run the ability and get the output
+        output = await self.abilities.run_ability(
+            task_id, ability["name"], **ability["args"]
+        )
+
+        # Set the step output and is_last from AI
+        step.output = answer["step"]["reason"]
+        step.is_last = answer["step"]["is_last_step"]
+
+        # Return the completed step
+        return step
