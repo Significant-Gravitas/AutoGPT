@@ -47,9 +47,11 @@ class Agent:
             "http://127.0.0.1:5000",
             "http://localhost:8000",
             "http://127.0.0.1:8000",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
             # Add any other origins you want to whitelist
         ]
-
+        
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
