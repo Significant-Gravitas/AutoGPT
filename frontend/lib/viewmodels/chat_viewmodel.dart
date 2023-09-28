@@ -10,6 +10,10 @@ class ChatViewModel with ChangeNotifier {
   List<Chat> _chats = [];
   String? _currentTaskId;
 
+  bool _isWaitingForAgentResponse = false;
+
+  bool get isWaitingForAgentResponse => _isWaitingForAgentResponse;
+
   bool _isContinuousMode = false;
 
   bool get isContinuousMode => _isContinuousMode;
@@ -108,6 +112,9 @@ class ChatViewModel with ChangeNotifier {
       print("Error: Task ID is not set.");
       return;
     }
+    _isWaitingForAgentResponse = true;
+    notifyListeners();
+
     try {
       // Create the request body for executing the step
       StepRequestBody requestBody = StepRequestBody(input: message);
@@ -163,6 +170,9 @@ class ChatViewModel with ChangeNotifier {
       // TODO: Bubble up errors to UI
       print("Error sending chat: $error");
       // TODO: Handle additional error scenarios or log them as required
+    } finally {
+      _isWaitingForAgentResponse = false;
+      notifyListeners();
     }
   }
 
