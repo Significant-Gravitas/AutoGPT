@@ -16,6 +16,7 @@ from typing import Iterator, Literal
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.memory.vector import MemoryItem, VectorMemory
 
 from .decorators import sanitize_path_arg
@@ -136,11 +137,11 @@ def log_operation(
     "read_file",
     "Read an existing file",
     {
-        "filename": {
-            "type": "string",
-            "description": "The path of the file to read",
-            "required": True,
-        }
+        "filename": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The path of the file to read",
+            required=True,
+        )
     },
 )
 @sanitize_path_arg("filename")
@@ -193,18 +194,18 @@ def ingest_file(
     "write_file",
     "Write a file, creating it if necessary. If the file exists, it is overwritten.",
     {
-        "filename": {
-            "type": "string",
-            "description": "The name of the file to write to",
-            "required": True,
-        },
-        "contents": {
-            "type": "string",
-            "description": "The contents to write to the file",
-            "required": True,
-        },
+        "filename": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The name of the file to write to",
+            required=True,
+        ),
+        "contents": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The contents to write to the file",
+            required=True,
+        ),
     },
-    aliases=["write_file", "create_file"],
+    aliases=["create_file"],
 )
 @sanitize_path_arg("filename")
 def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
@@ -255,11 +256,11 @@ def append_to_file(
     "list_folder",
     "List the items in a folder",
     {
-        "folder": {
-            "type": "string",
-            "description": "The folder to list files in",
-            "required": True,
-        }
+        "folder": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The folder to list files in",
+            required=True,
+        )
     },
 )
 @sanitize_path_arg("folder")

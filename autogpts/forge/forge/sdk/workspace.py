@@ -37,11 +37,15 @@ class LocalWorkspace(Workspace):
         self.base_path = Path(base_path).resolve()
 
     def _resolve_path(self, task_id: str, path: str) -> Path:
+        path = path if not path.startswith("/") else path[1:]
         abs_path = (self.base_path / task_id / path).resolve()
         if not str(abs_path).startswith(str(self.base_path)):
             print("Error")
             raise ValueError(f"Directory traversal is not allowed! - {abs_path}")
-        abs_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            abs_path.parent.mkdir(parents=True, exist_ok=True)
+        except FileExistsError:
+            pass
         return abs_path
 
     def read(self, task_id: str, path: str) -> bytes:
