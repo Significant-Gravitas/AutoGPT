@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 from pydantic import Field
 
 from autogpt.core.tools import ToolsRegistrySettings
-from autogpt.core.agent.base.models import (
+from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     BaseAgentSystems,
@@ -60,7 +60,7 @@ class SimpleAgentSettings(BaseAgentSettings):
     agent_role: Optional[str] = Field(default=None)
     agent_goals: Optional[list] = Field(default=None)
     agent_goal_sentence: Optional[list] = Field(default=None)
-    agent_class: str = Field(default="autogpt.core.agent.simple.agent.SimpleAgent")
+    agent_class: str = Field(default="autogpt.core.agents.simple.main.SimpleAgent")
 
     class Config(BaseAgentSettings.Config):
         pass

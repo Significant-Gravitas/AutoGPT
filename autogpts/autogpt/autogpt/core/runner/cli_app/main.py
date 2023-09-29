@@ -134,7 +134,7 @@ async def run_auto_gpt(user_configuration: dict):
         agent_settings.agent_goal_sentence = user_objective
 
         agent_settings.agent_class = "SimpleAgent"
-        agent_settings._type_ = "autogpt.core.agent.simple.agent.SimpleAgent"
+        agent_settings._type_ = "autogpt.core.agents.simple.main.SimpleAgent"
         # agent_settings.load_root_values()
 
         # Step 3. Create the agent.

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Optional, Dict
 from typing_extensions import NamedTuple, TypedDict
 
 if TYPE_CHECKING:
-    from autogpt.core.agent.base.agent import Agent
+    from autogpt.core.agents.base.main import Agent
 
 
 class BaseLoopMeta(abc.ABCMeta):

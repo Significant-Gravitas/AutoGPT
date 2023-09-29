@@ -5,9 +5,9 @@ import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple
 
 from autogpt.core.tools import ToolResult, SimpleAbilityRegistry
-from autogpt.core.agent.base.agent import Agent
-from autogpt.core.agent.simple.loop import SimpleLoop
-from autogpt.core.agent.simple.models import (
+from autogpt.core.agents.base.main import Agent
+from autogpt.core.agents.simple.loop import SimpleLoop
+from autogpt.core.agents.simple.models import (
     SimpleAgentConfiguration,
     SimpleAgentSettings,
     SimpleAgentSystems,
@@ -23,9 +23,9 @@ from autogpt.core.resource.model_providers import OpenAIProvider
 from autogpt.core.workspace.simple import SimpleWorkspace
 
 if TYPE_CHECKING:
-    from autogpt.core.agent.base.loop import BaseLoopHook
+    from autogpt.core.agents.base.loop import BaseLoopHook
 
-from autogpt.core.agent.base.loop import BaseLoopHook
+from autogpt.core.agents.base.loop import BaseLoopHook
 
 
 class SimpleAgent(Agent):
@@ -205,8 +205,8 @@ class SimpleAgent(Agent):
         )
 
         # TODO : Continue refactorization => move to loop ?
-        from autogpt.core.agent.simple import strategies
-        from autogpt.core.agent.simple.strategies import (
+        from autogpt.core.agents.simple import strategies
+        from autogpt.core.agents.simple.strategies import (
             Strategies,
             StrategiesConfiguration,
         )

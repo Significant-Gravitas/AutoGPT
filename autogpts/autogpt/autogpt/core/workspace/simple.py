@@ -14,7 +14,7 @@ from autogpt.core.workspace.base import Workspace
 
 if typing.TYPE_CHECKING:
     # Cyclic import
-    from autogpt.core.agent.simple.models import BaseAgentSettings
+    from autogpt.core.agents.simple.models import BaseAgentSettings
 
 
 class WorkspaceConfiguration(SystemConfiguration):
@@ -183,7 +183,7 @@ class SimpleWorkspace(Configurable, Workspace):
     @staticmethod
     def load_agent_settings(workspace_root: Path) -> "BaseAgentSettings":
         # Cyclic import
-        from autogpt.core.agent.simple import AgentSettings
+        from autogpt.core.agents.simple import AgentSettings
 
         with (workspace_root / "agent_settings.json").open("r") as f:
             agent_settings = json.load(f)

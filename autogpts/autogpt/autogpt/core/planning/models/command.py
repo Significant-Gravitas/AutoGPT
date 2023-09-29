@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
-    from autogpt.core.agent.base import agent
+    from autogpt.core.agents.base import agent
 
 from .context_items import ContextItem
 

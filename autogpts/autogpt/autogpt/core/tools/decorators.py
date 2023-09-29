@@ -9,7 +9,7 @@ AUTO_GPT_ABILITY_IDENTIFIER = "auto_gpt_command"
 if TYPE_CHECKING : 
     from autogpt.core.planning.models.command import AbilityOutput, AbilityParameter
     from autogpt.core.tools.base import Tool, ToolResult,ToolConfiguration
-    from autogpt.core.agent.base  import Agent
+    from autogpt.core.agents.base  import Agent
 
 class AbilityParameterSpec(TypedDict):
     type: str
