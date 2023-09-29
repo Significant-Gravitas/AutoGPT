@@ -4,7 +4,7 @@ import sys
 from importlib.metadata import version
 
 try:
-    import poetry.factory
+    import poetry.factory  # noqa
 except ModuleNotFoundError:
     os.system(f"{sys.executable} -m pip install 'poetry>=1.6.1,<2.0.0'")
 

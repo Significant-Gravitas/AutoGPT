@@ -28,8 +28,9 @@ class Config {
   ///
   /// Returns a new `Config` populated with values from the map.
   factory Config.fromJson(Map<String, dynamic> json) => Config(
-        agentBenchmarkConfigPath: json['agent_benchmark_config_path'] ?? "",
-        host: json['host'] ?? "",
+        agentBenchmarkConfigPath:
+            json['agent_benchmark_config_path'] ?? 'placeholder',
+        host: json['host'] ?? 'https://github.com/Significant-Gravitas/AutoGPT',
       );
 
   /// Converts the `Config` instance to a map.
