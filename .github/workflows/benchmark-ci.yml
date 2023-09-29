@@ -115,11 +115,8 @@ jobs:
           echo "Running the following command: poetry run agbenchmark --mock"
           poetry run agbenchmark --mock
 
-          echo "Running the following command: poetry run agbenchmark --mock --category=retrieval"
-          poetry run agbenchmark --mock --category=retrieval
-
-          echo "Running the following command: poetry run agbenchmark --mock --category=interface"
-          poetry run agbenchmark --mock --category=interface
+          echo "Running the following command: poetry run agbenchmark --mock --category=data"
+          poetry run agbenchmark --mock --category=data
 
           echo "Running the following command: poetry run agbenchmark --mock --category=coding"
           poetry run agbenchmark --mock --category=coding

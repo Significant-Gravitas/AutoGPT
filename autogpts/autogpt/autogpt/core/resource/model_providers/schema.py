@@ -122,6 +122,12 @@ class CompletionModelFunction(BaseModel):
             parameters=JSONSchema.parse_properties(schema["parameters"]),
         )
 
+    def fmt_line(self) -> str:
+        params = ", ".join(
+            f"{name}: {p.type.value}" for name, p in self.parameters.items()
+        )
+        return f"{self.name}: {self.description}. Params: ({params})"
+
 
 class ModelInfo(BaseModel):
     """Struct for model information.
