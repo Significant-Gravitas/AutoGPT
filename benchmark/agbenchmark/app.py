@@ -65,6 +65,7 @@ while json_files:
 
     with open(json_file, "r") as file:
         data = json.load(file)
+
         if "eval_id" not in data:
             data["eval_id"] = str(uuid.uuid4())
         # this will sort all the keys of the JSON systematically so that the order is always the same
@@ -118,6 +119,7 @@ updates_list = []
 import json
 
 origins = [
+    "http://localhost:8000",
     "http://localhost:8080",
     "http://127.0.0.1:5000",
     "http://localhost:5000",
@@ -289,7 +291,6 @@ async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
             task_informations[task_response.task_id][
                 "eval_id"
             ] = task_eval_request.eval_id
-            await api_instance.create_agent_task(task_request_body=task_request_body)
             await upload_artifacts(
                 api_instance,
                 str(Path(CHALLENGES[task_eval_request.eval_id]["path"]).parent),
@@ -312,7 +313,8 @@ async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
 
 @router.post("/agent/tasks/{task_id}/steps")
 async def proxy(request: Request, task_id: str):
-    async with httpx.AsyncClient() as client:
+    timeout = httpx.Timeout(300.0, read=300.0)  # 5 minutes
+    async with httpx.AsyncClient(timeout=timeout) as client:
         # Construct the new URL
         new_url = f"http://localhost:8000/ap/v1/agent/tasks/{task_id}/steps"
 

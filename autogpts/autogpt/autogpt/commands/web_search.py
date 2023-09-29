@@ -14,6 +14,7 @@ from duckduckgo_search import DDGS
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import ConfigurationError
 from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
@@ -22,11 +23,11 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
     "web_search",
     "Searches the web",
     {
-        "query": {
-            "type": "string",
-            "description": "The search query",
-            "required": True,
-        }
+        "query": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The search query",
+            required=True,
+        )
     },
     aliases=["search"],
 )
@@ -64,11 +65,11 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
     "google",
     "Google Search",
     {
-        "query": {
-            "type": "string",
-            "description": "The search query",
-            "required": True,
-        }
+        "query": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The search query",
+            required=True,
+        )
     },
     lambda config: bool(config.google_api_key)
     and bool(config.google_custom_search_engine_id),

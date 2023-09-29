@@ -1,14 +1,16 @@
 import 'package:auto_gpt_flutter_client/models/message_type.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/chat/agent_message_tile.dart';
 import 'package:auto_gpt_flutter_client/views/chat/chat_input_field.dart';
+import 'package:auto_gpt_flutter_client/views/chat/loading_indicator.dart';
 import 'package:auto_gpt_flutter_client/views/chat/user_message_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
-
-// TODO: Implement artifacts
+import 'package:http/http.dart' as http;
 
 class ChatView extends StatefulWidget {
   final ChatViewModel viewModel;
@@ -38,7 +40,7 @@ class _ChatViewState extends State<ChatView> {
       }
     });
 
-    // Schedule the fetchTasks call for after the initial build
+    // Schedule the fetchChatsForTask call for after the initial build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.viewModel.fetchChatsForTask();
     });
@@ -84,30 +86,73 @@ class _ChatViewState extends State<ChatView> {
                 if (chat.messageType == MessageType.user) {
                   return UserMessageTile(message: chat.message);
                 } else {
-                  return AgentMessageTile(chat: chat);
+                  return AgentMessageTile(
+                    key: ValueKey(chat.id),
+                    chat: chat,
+                    onArtifactsButtonPressed: () {
+                      // TODO: Create an actual artifact object
+                      // Loop through each artifact and download it using the artifact_id
+                      for (var artifact in chat.artifacts) {
+                        if (artifact is Map) {
+                          final artifactMap = artifact.cast<String,
+                              dynamic>(); // Cast each item to Map<String, dynamic>
+
+                          final artifactId = artifactMap['artifact_id']
+                              .toString(); // Get the artifact_id
+                          widget.viewModel.downloadArtifact(
+                              chat.taskId, artifactId); // Download the artifact
+                        }
+                      }
+                    },
+                  );
                 }
               },
             ),
           ),
+          const SizedBox(height: 10),
+          LoadingIndicator(
+              isLoading: Provider.of<SkillTreeViewModel>(context, listen: true)
+                      .isBenchmarkRunning ||
+                  widget.viewModel.isWaitingForAgentResponse),
+          const SizedBox(height: 10),
           // Input area
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: ChatInputField(
               onSendPressed: (message) async {
-                if (widget.viewModel.currentTaskId != null) {
-                  widget.viewModel.sendChatMessage(
-                      (message == "") ? null : message,
-                      continuousModeSteps:
-                          Provider.of<SettingsViewModel>(context, listen: false)
-                              .continuousModeSteps);
-                } else {
-                  String newTaskId = await taskViewModel.createTask(message);
-                  widget.viewModel.setCurrentTaskId(newTaskId);
-                  widget.viewModel.sendChatMessage(
-                      (message == "") ? null : message,
-                      continuousModeSteps:
-                          Provider.of<SettingsViewModel>(context, listen: false)
-                              .continuousModeSteps);
+                try {
+                  if (widget.viewModel.currentTaskId != null) {
+                    widget.viewModel.sendChatMessage(
+                        (message == "") ? null : message,
+                        continuousModeSteps: Provider.of<SettingsViewModel>(
+                                context,
+                                listen: false)
+                            .continuousModeSteps);
+                  } else {
+                    String newTaskId = await taskViewModel.createTask(message);
+                    widget.viewModel.setCurrentTaskId(newTaskId);
+                    widget.viewModel.sendChatMessage(
+                        (message == "") ? null : message,
+                        continuousModeSteps: Provider.of<SettingsViewModel>(
+                                context,
+                                listen: false)
+                            .continuousModeSteps);
+                  }
+                } catch (response) {
+                  if (response is http.Response && response.statusCode == 404) {
+                    Fluttertoast.showToast(
+                        msg:
+                            "404 error: Please ensure the correct baseURL for your agent in \nthe settings and that your agent adheres to the agent protocol.",
+                        toastLength: Toast.LENGTH_LONG,
+                        gravity: ToastGravity.TOP,
+                        timeInSecForIosWeb: 5,
+                        backgroundColor: Colors.red,
+                        webPosition: "center",
+                        webBgColor:
+                            "linear-gradient(to right, #dc1c13, #dc1c13)",
+                        textColor: Colors.white,
+                        fontSize: 16.0);
+                  }
                 }
               },
               onContinuousModePressed: () {
