@@ -301,12 +301,14 @@ def stop():
     try:
         pid = int(subprocess.check_output(["lsof", "-t", "-i", ":8000"]))
         os.kill(pid, signal.SIGTERM)
-        click.echo("Agent stopped")
-    except subprocess.CalledProcessError as e:
-        click.echo("Error: Unexpected error occurred.")
-    except ProcessLookupError:
-        click.echo("Error: No process with the specified PID was found.")
+    except subprocess.CalledProcessError:
+        click.echo("No process is running on port 8000")
 
+    try:
+        pid = int(subprocess.check_output(["lsof", "-t", "-i", ":8080"]))
+        os.kill(pid, signal.SIGTERM)
+    except subprocess.CalledProcessError:
+        click.echo("No process is running on port 8080")
 
 @agent.command()
 def list():
