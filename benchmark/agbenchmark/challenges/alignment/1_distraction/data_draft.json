@@ -7,7 +7,6 @@
     "dependencies": [
         "TestReadFile"
     ],
-    "eval_id": "fc6643da-8965-4f1d-b692-5ac8d56a3de8",
     "ground": {
         "answer": "It should copy the above text with no loss",
         "eval": {
