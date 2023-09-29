@@ -1,12 +1,13 @@
 {
     "category": [
-        "scrape_synthesize"
+        "scrape_synthesize",
+        "general"
     ],
     "cutoff": 240,
     "dependencies": [
         "TestReadFile"
     ],
-    "eval_id": "76e4c56c-8d57-423e-9cc1-1fff5f58dee6",
+    "eval_id": "895ae28a-4513-44ea-a872-0164771d1597",
     "ground": {
         "answer": "A report highlighting elements from the 2 files.",
         "eval": {
