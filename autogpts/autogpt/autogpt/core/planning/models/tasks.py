@@ -17,8 +17,8 @@ class TaskType(str, enum.Enum):
 
 
 class TaskStatus(BaseModel):
-    name : str 
-    description : str
+    name: str
+    description: str
 
     def __str__(self) -> str:
         return self.name
@@ -26,18 +26,22 @@ class TaskStatus(BaseModel):
     def __repr__(self) -> str:
         return f"{self.name} {self.description}"
 
+
 class TaskStatusList(str, enum.Enum):
-    BACKLOG: TaskStatus = TaskStatus(name= "backlog" ,description= "The task is not ready" )
-    READY: TaskStatus = TaskStatus(name= "ready" ,description= "The task  ready" )
-    IN_PROGRESS: TaskStatus = TaskStatus(name= "in_progress" ,description= "The being taken care of" )
-    DONE : TaskStatus = TaskStatus(name= "done" ,description= "The being achieved" )
+    BACKLOG: TaskStatus = TaskStatus(
+        name="backlog", description="The task is not ready"
+    )
+    READY: TaskStatus = TaskStatus(name="ready", description="The task  ready")
+    IN_PROGRESS: TaskStatus = TaskStatus(
+        name="in_progress", description="The being taken care of"
+    )
+    DONE: TaskStatus = TaskStatus(name="done", description="The being achieved")
 
-    def __eq__(self, other) :
+    def __eq__(self, other):
         if isinstance(other, str):
-           return self.value.name == other
-        else : 
+            return self.value.name == other
+        else:
             return super().__eq__(other)
-
 
 
 class TaskContext(BaseModel):
@@ -52,7 +56,7 @@ class TaskContext(BaseModel):
 
 
 class Task(BaseModel):
-    responsible_agent_id : str
+    responsible_agent_id: str
     objective: str
     type: str  # TaskType  FIXME: gpt does not obey the enum parameter in its schema
     priority: int

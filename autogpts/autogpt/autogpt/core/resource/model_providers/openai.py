@@ -53,6 +53,7 @@ class OpenAIModelName(str, enum.Enum):
     Attributes:
         Each enumeration represents a distinct OpenAI model name.
     """
+
     ADA = "text-embedding-ada-002"
     GPT3 = "gpt-3.5-turbo-0613"
     GPT3_16k = "gpt-3.5-turbo-16k-0613"
@@ -140,6 +141,7 @@ class OpenAIConfiguration(SystemConfiguration):
         maximum_retry: The maximum number of retries allowed.
         maximum_retry_before_default_function: The maximum number of retries before a default function is used.
     """
+
     retries_per_request: int = UserConfigurable()
     maximum_retry = 1
     maximum_retry_before_default_function = 1
@@ -152,6 +154,7 @@ class OpenAIModelProviderBudget(ModelProviderBudget):
         graceful_shutdown_threshold: The threshold for graceful shutdown.
         warning_threshold: The warning threshold for budget.
     """
+
     graceful_shutdown_threshold: float = UserConfigurable()
     warning_threshold: float = UserConfigurable()
 
@@ -164,6 +167,7 @@ class OpenAISettings(ModelProviderSettings):
         credentials: The credentials for the model provider.
         budget: Budget settings for the model provider.
     """
+
     configuration: OpenAIConfiguration
     credentials: ModelProviderCredentials
     budget: OpenAIModelProviderBudget
@@ -387,7 +391,7 @@ class OpenAIProvider(
             >>> print(response.content)
             "Why did the chicken cross the road? To get to the other side!"
         """
-        
+
         completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
 
         completion_kwargs["function_call"] = function_call
@@ -471,7 +475,9 @@ class OpenAIProvider(
         return response
 
     async def create_language_completion(self):
-        self._logger.warning('create_language_completion is deprecated, use create_chat_completion')
+        self._logger.warning(
+            "create_language_completion is deprecated, use create_chat_completion"
+        )
         return await self.create_chat_completion()
 
     async def create_embedding(
@@ -587,9 +593,10 @@ class OpenAIProvider(
         """
         return "OpenAIProvider()"
 
-    def has_function_call_api(self, model_name :str) -> bool :
-        #print(self._providers[model_name])
+    def has_function_call_api(self, model_name: str) -> bool:
+        # print(self._providers[model_name])
         return OPEN_AI_CHAT_MODELS[model_name].has_function_call_api
+
 
 async def _create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
     """Embed text using the OpenAI API.
@@ -635,6 +642,7 @@ async def _create_chat_completion(
         **kwargs,
     )
     return return_value
+
 
 class _OpenAIRetryHandler:
     """Retry Handler for OpenAI API call.

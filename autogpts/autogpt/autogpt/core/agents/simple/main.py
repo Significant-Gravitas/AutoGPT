@@ -109,7 +109,7 @@ class SimpleAgent(Agent):
         self._planning = planning
         self._tool_registry = tool_registry
 
-        self.plan : Plan = None
+        self.plan: Plan = None
         self._loop = SimpleLoop(agent=self)
 
         # NOTE : MOVE ADD HOOK TO BaseLoop

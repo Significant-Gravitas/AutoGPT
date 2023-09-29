@@ -13,14 +13,17 @@ from autogpt.core.agents.simple.strategies.next_ability import (
     NextAbility,
     NextAbilityConfiguration,
 )
-from autogpt.core.agents.simple.strategies.think import (ThinkStrategy, ThinkStrategyConfiguration)
+from autogpt.core.agents.simple.strategies.think import (
+    ThinkStrategy,
+    ThinkStrategyConfiguration,
+)
+
 
 class StrategiesConfiguration(PromptStrategiesConfiguration):
     name_and_goals: NameAndGoalsConfiguration
     initial_plan: InitialPlanConfiguration
     next_ability: NextAbilityConfiguration
-    think : ThinkStrategyConfiguration
-
+    think: ThinkStrategyConfiguration
 
 
 class Strategies:
@@ -32,5 +35,5 @@ class Strategies:
             InitialPlan(logger=logger, **InitialPlan.default_configuration.dict()),
             NameAndGoals(logger=logger, **NameAndGoals.default_configuration.dict()),
             NextAbility(logger=logger, **NextAbility.default_configuration.dict()),
-            ThinkStrategy(logger=logger, **ThinkStrategy.default_configuration.dict())
+            ThinkStrategy(logger=logger, **ThinkStrategy.default_configuration.dict()),
         ]

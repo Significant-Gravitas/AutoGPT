@@ -41,7 +41,6 @@ class UserFeedback(str, enum.Enum):
 
 
 class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
-
     class LoophooksDict(TypedDict):
         begin_run: Dict[BaseLoopHook]
         end_run: Dict[BaseLoopHook]

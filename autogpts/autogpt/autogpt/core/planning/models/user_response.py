@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from typing import Optional
 
 
-
 class AgentUserResponse(BaseModel):
     pass
 
@@ -19,7 +18,7 @@ class QuestionTypes(str, enum.Enum):
     NUMBER = "number"
     DATE = "date"
     DATE_TIME = "datetime"
-    #ENUM = "enum"
+    # ENUM = "enum"
     BOOLEAN = "boolean"
     STRING = "string"
     SELECT_LIST = "select_list"
@@ -48,6 +47,7 @@ class Questions(AgentUserResponse):
 
     def generate_new_id() -> str:
         return "Q" + str(uuid.uuid4())
+
 
 class QuestionItems(dict):
     value: str
