@@ -1,12 +1,13 @@
 {
     "category": [
-        "scrape_synthesize"
+        "scrape_synthesize",
+        "general"
     ],
     "cutoff": 60,
     "dependencies": [
         "TestBasicRetrieval"
     ],
-    "eval_id": "af95fa96-a5cb-42b0-98f3-715e6e7d0b5d",
+    "eval_id": "dc2114d7-1597-4c9b-bed0-a97937ad977f",
     "ground": {
         "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
         "eval": {

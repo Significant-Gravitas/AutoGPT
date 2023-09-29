@@ -63,7 +63,7 @@
                 "dependencies": [
                     "TestWriteFile"
                 ],
-                "eval_id": "261ccfaa-02a2-4c1a-8a56-c76c66f7dba1",
+                "eval_id": "f219f3d3-a41b-45a9-a3d0-389832086ee8",
                 "ground": {
                     "answer": "The content of output.txt should be 'Hello World!'",
                     "eval": {
@@ -101,7 +101,7 @@
                 ],
                 "cutoff": 60,
                 "dependencies": [],
-                "eval_id": "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
+                "eval_id": "021c695a-6cc4-46c2-b93a-f3a9b0f4d123",
                 "ground": {
                     "answer": "The word 'Washington', printed to a .txt file named anything",
                     "eval": {
@@ -133,13 +133,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "coding"
+                    "coding",
+                    "general"
                 ],
                 "cutoff": 150,
                 "dependencies": [
                     "TestUrlShortener"
                 ],
-                "eval_id": "54c3d7e9-71d6-476b-b045-cf0aaf118f95",
+                "eval_id": "504b1648-e14a-4982-8b27-074598eb4fd0",
                 "ground": {
                     "answer": "The correct python file for a TicTacToe game is written",
                     "eval": {
@@ -173,7 +174,7 @@
                 "dependencies": [
                     "TestFileOrganizer"
                 ],
-                "eval_id": "41ca1035-ceca-4e0c-91ab-66ed0b350273",
+                "eval_id": "8106fd7f-83fd-496e-9513-280f4a3f012c",
                 "ground": {
                     "answer": "The correct python file for a basic url shortener CLI",
                     "eval": {
@@ -201,13 +202,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "coding"
+                    "coding",
+                    "general"
                 ],
                 "cutoff": 90,
                 "dependencies": [
                     "TestPasswordGenerator"
                 ],
-                "eval_id": "6ace62be-6c18-431a-947f-72fb20984b58",
+                "eval_id": "029c1e6f-2b36-451e-bca6-60063b827d2e",
                 "ground": {
                     "answer": "The correct python file is written and organizes the files accordingly",
                     "eval": {
@@ -241,7 +243,7 @@
                 "dependencies": [
                     "TestThreeSum"
                 ],
-                "eval_id": "0823b577-64f2-477b-856d-16726fe464b0",
+                "eval_id": "ac75c471-e0ce-400c-ba9a-fb72aaab444f",
                 "ground": {
                     "answer": "password_generator.py is created and satisfies the requirements.",
                     "eval": {
@@ -269,13 +271,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "coding"
+                    "coding",
+                    "general"
                 ],
                 "cutoff": 60,
                 "dependencies": [
                     "TestWriteFile"
                 ],
-                "eval_id": "29a10990-2584-4602-8b9d-c217f6edbc4f",
+                "eval_id": "a1ff38a4-1032-4bf2-960a-3b927f9936f4",
                 "ground": {
                     "answer": "The three_sum function coded properly.",
                     "eval": {
@@ -307,14 +310,15 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "coding"
+                    "coding",
+                    "general"
                 ],
                 "cutoff": 90,
                 "dependencies": [
                     "TestTicTacToe",
                     "TestReadFile"
                 ],
-                "eval_id": "5a32418d-1c3a-4af1-8dc4-8d4c29bed21a",
+                "eval_id": "4d613d05-475f-4f72-bf12-f6d3714340c1",
                 "ground": {
                     "answer": "The implementation of battleship that passes all the tests.",
                     "eval": {

@@ -1,12 +1,13 @@
 {
     "category": [
-        "data"
+        "data",
+        "general"
     ],
     "cutoff": 60,
     "dependencies": [
         "TestLabelCsv"
     ],
-    "eval_id": "d5f04342-983f-45a4-b84a-fe8d96863375",
+    "eval_id": "52467beb-b951-4356-9776-9a0ae46bb33b",
     "ground": {
         "answer": "The csv data is combined",
         "eval": {
