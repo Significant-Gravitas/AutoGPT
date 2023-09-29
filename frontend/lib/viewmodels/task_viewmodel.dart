@@ -26,19 +26,24 @@ class TaskViewModel with ChangeNotifier {
 
   /// Adds a task and returns its ID.
   Future<String> createTask(String title) async {
-    final newTask = TaskRequestBody(input: title);
-    // Add to data source
-    final createdTask = await _taskService.createTask(newTask);
-    // Create a Task object from the created task response
-    final newTaskObject =
-        Task(id: createdTask['task_id'], title: createdTask['input']);
+    try {
+      final newTask = TaskRequestBody(input: title);
+      // Add to data source
+      final createdTask = await _taskService.createTask(newTask);
+      // Create a Task object from the created task response
+      final newTaskObject =
+          Task(id: createdTask['task_id'], title: createdTask['input']);
 
-    fetchAndCombineData();
+      fetchAndCombineData();
 
-    final taskId = newTaskObject.id;
-    print("Task $taskId created successfully!");
+      final taskId = newTaskObject.id;
+      print("Task $taskId created successfully!");
 
-    return newTaskObject.id; // Return the ID of the new task
+      return newTaskObject.id;
+    } catch (e) {
+      // TODO: We are bubbling up the full response. Revisit this.
+      rethrow;
+    }
   }
 
   /// Deletes a task.
