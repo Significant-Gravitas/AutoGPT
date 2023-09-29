@@ -35,6 +35,9 @@ async def run_auto_gpt(user_configuration: dict):
 
     import uuid
 
+    #
+    # We support multiple users however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b
+    #
     user_id = uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b")
     agent_settings.user_id = user_id
 
