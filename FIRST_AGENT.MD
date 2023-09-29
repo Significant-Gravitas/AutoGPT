@@ -1,10 +1,11 @@
 # Building an agent : Part 2 `loop.py`
 
 ## Introduction:
-The `loop.py` module within the afaas framework is responsible for the execution logic of agents. In this tutorial, we'll go through how to construct and use the `loop.py` module, we will use as example  on the `UserContextLoop` class located in `autogpts/autogpt/autogpt/core/agents/usercontext/`. The agent `UsercontextAgent` is in `autogpts/autogpt/autogpt/core/agents/usercontext/main.py` file. 
+The `loop.py` module within the afaas framework is responsible for the execution logic of agents. In this tutorial, we'll go through how to construct and use the `loop.py` module, we will use as example  on the `UserContextLoop` class located in `autogpts/autogpt/autogpt/core/agents/usercontext/loop.py`. The agent `UsercontextAgent` is in `autogpts/autogpt/autogpt/core/agents/usercontext/main.py` file. 
 
-`UsercontextAgent` has a `_loop` that is an instance of `UserContextLoop`
-**ALL Agent** that inherit from `BaseAgent` come with a `_loop` property that inherit from `BaseLoop`.
+❗ Reminder ❗ :
+**ALL Agent** should inherit from `BaseAgent`, they willwith a `_loop` property that inherit from `BaseLoop`.
+`UsercontextAgent` has a `_loop` property that is an instance of `UserContextLoop`
 
 ## Pre-requisites:
 - Familiarity with Python's async/await syntax.
@@ -39,6 +40,7 @@ async def run(
 ) -> dict:
     ...
 \```
+
 # Objects, Classes, Methods, and Properties Breakdown:
 
 ## 1. **BaseAgent**
@@ -77,7 +79,24 @@ elif model_response.parsed_result["name"] == RefineUserContextFunctionNames.REQU
     ...
 ```
 
-## 3. **LoophooksDict**
+## 3. **user_input_handler**
+- **Usage:**
+    ```python
+    user_objectives = await user_input_handler(input_dict)
+    ```
+    An async function passed to the `run` method, it appears to handle user input and return a response.
+
+## 4. **_is_running & _is_active**
+Flags that control the loop's flow. `_is_running` keeps the loop iterating, and `_is_active` dictates if the loop is active or paused.
+
+## 5. **save_agent()**
+- **Usage:**
+    ```python
+    await self.save_agent()
+    ```
+    Potentially a method that saves the current agent state. It's flagged as TODO, indicating future implementation plans.
+
+## 6. **LoophooksDict**
 - **Usage:**
     ```python
     hooks: LoophooksDict in the run method signature.
@@ -86,29 +105,6 @@ elif model_response.parsed_result["name"] == RefineUserContextFunctionNames.REQU
   
 **Disclaimer:** LoophooksDict is for advanced users and allows the creation of plugins. We will not detail its usage in this tutorial.
 
-## 6. **user_input_handler**
-- **Usage:**
-    ```python
-    user_objectives = await user_input_handler(input_dict)
-    ```
-    An async function passed to the `run` method, it appears to handle user input and return a response.
 
-## 7. **_is_running & _is_active**
-Flags that control the loop's flow. `_is_running` keeps the loop iterating, and `_is_active` dictates if the loop is active or paused.
-
-## 8. **save_agent()**
-- **Usage:**
-    ```python
-    await self.save_agent()
-    ```
-    Potentially a method that saves the current agent state. It's flagged as TODO, indicating future implementation plans.
-
-
-**Using the UserContextLoop:**
-- Create an instance of the desired agent.
-- Instantiate the `UserContextLoop` class with the agent as a parameter.
-- Define handlers for user inputs and messages.
-- Call the run method on the `UserContextLoop` instance, passing the agent, hooks, and the user handlers.
-
-## Conclusion:
+# Conclusion:
 The `loop.py` module plays a crucial role in refining user contexts within agents in the afaas framework. By understanding and effectively using this module, developers can optimize agent-user interactions, making them more intuitive and accurate.
