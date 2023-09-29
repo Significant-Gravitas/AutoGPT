@@ -12,14 +12,14 @@ import time
     "eval_id, input_text, expected_artifact_length, test_name, should_be_successful",
     [
         (
-            "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
+            "f219f3d3-a41b-45a9-a3d0-389832086ee8",
             "Write the word 'Washington' to a .txt file",
             0,
             "WriteFile",
             True,
         ),
         (
-            "261ccfaa-02a2-4c1a-8a56-c76c66f7dba1",
+            "021c695a-6cc4-46c2-b93a-f3a9b0f4d123",
             "Read the file called file_to_read.txt and write its content to a file called output.txt",
             1,
             "ReadFile",

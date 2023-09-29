@@ -201,18 +201,19 @@ class SkillTreeViewModel extends ChangeNotifier {
         // Execute the first step and initialize the Step object
         Map<String, dynamic> stepResponse =
             await benchmarkService.executeBenchmarkStep(
-                task.id, BenchmarkStepRequestBody(input: null));
+                task.id, BenchmarkStepRequestBody(input: node.data.task));
         Step step = Step.fromMap(stepResponse);
+        chatViewModel.fetchChatsForTask();
 
         // Check if it's the last step
         while (!step.isLast) {
-          // Fetch chats for the task
-          chatViewModel.fetchChatsForTask();
-
           // Execute next step and update the Step object
           stepResponse = await benchmarkService.executeBenchmarkStep(
               task.id, BenchmarkStepRequestBody(input: null));
           step = Step.fromMap(stepResponse);
+
+          // Fetch chats for the task
+          chatViewModel.fetchChatsForTask();
         }
 
         // Trigger the evaluation
@@ -230,7 +231,7 @@ class SkillTreeViewModel extends ChangeNotifier {
         benchmarkStatusMap[node] = successStatus
             ? BenchmarkTaskStatus.success
             : BenchmarkTaskStatus.failure;
-        // await Future.delayed(Duration(seconds: 2));
+        await Future.delayed(Duration(seconds: 1));
         notifyListeners();
 
         testSuite.tests.add(task);
