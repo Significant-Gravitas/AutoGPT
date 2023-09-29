@@ -29,7 +29,8 @@ def __init__(self, agent: BaseAgent) -> None:
 \```
 
 ### 3. Running the Loop:
-The core logic of refining user context is defined in the run method. This method receives an agent, hooks for processing, and handlers for user input and messages.
+The core logic of refining user context is defined in the run method. ❗Argument passed to the `run()` method are  passed for convenience. The agent that runs the loop is always accessible via `self._agent` and should hold any information it is able to pass in any case.❗
+
 \```python
 async def run(
     self,
@@ -46,16 +47,17 @@ async def run(
 ## 1. **BaseAgent**
 - **Usage:** 
     ```python
-    async def run(self, agent: BaseAgent, ...)
+    async def run(self, **kwargs ...)
     ```
-    It indicates that the `agent` argument should be an instance derived from or of type `BaseAgent`, in our case `UserContextAgent`
 
 - **Main Methods/Properties :**
     - `_logger`: This is a logger associated with the agent. Logging is essential for debugging and tracking the execution of the code.
         ```python
         self._agent._logger.info(...)
         ```
-    - `execute_strategy()` interact with a LLM
+    - `execute_strategy()`: This method allows interaction with a LLM
+    - `_agent`: This property refer to the `Agent` that created the `Loo`p (circular relation) : 
+
 
 ## 2. **ChatModelResponse**
 The `ChatModelResponse` class is critical because it encapsulates the response from a call to a Large Language Model (LLM) through the method `execute_strategy`. Understanding how to interact with the model and interpret its responses is essential when developing an agent loop.
