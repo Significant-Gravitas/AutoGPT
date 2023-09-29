@@ -6,7 +6,7 @@
     "dependencies": [
         "TestFileOrganizer"
     ],
-    "eval_id": "41ca1035-ceca-4e0c-91ab-66ed0b350273",
+    "eval_id": "8106fd7f-83fd-496e-9513-280f4a3f012c",
     "ground": {
         "answer": "The correct python file for a basic url shortener CLI",
         "eval": {
@@ -19,7 +19,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "Tests ability for the agent to create a URL shortener.",
+        "description": "Tests if the agent can create a URL shortener.",
         "difficulty": "basic",
         "side_effects": []
     },
