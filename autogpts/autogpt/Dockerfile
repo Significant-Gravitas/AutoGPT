@@ -20,6 +20,8 @@ WORKDIR /app
 COPY pyproject.toml poetry.lock ./
 COPY README.md poetry.lock ./
 ADD ./benchmark /
-RUN poetry install 
+RUN poetry add /opt/ai-ticket
+RUN poetry install
+
 ENTRYPOINT ["poetry", "run", "autogpt", "--install-plugin-deps"]
 CMD []
