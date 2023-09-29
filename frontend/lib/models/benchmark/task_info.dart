@@ -63,8 +63,7 @@ class TaskInfo {
   Map<String, dynamic> toJson() => {
         'data_path': dataPath,
         'is_regression': isRegression,
-        // 'category': jsonEncode(category),
-        'category': "[\"coding\"]",
+        'category': jsonEncode(category),
         'task': task,
         'answer': answer,
         'description': description,
