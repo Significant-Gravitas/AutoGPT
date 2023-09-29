@@ -166,9 +166,9 @@ class ChatViewModel with ChangeNotifier {
       }
 
       print("Chats added for task ID: $_currentTaskId");
-    } catch (error) {
-      // TODO: Bubble up errors to UI
-      print("Error sending chat: $error");
+    } catch (e) {
+      // TODO: We are bubbling up the full response. Revisit this.
+      rethrow;
       // TODO: Handle additional error scenarios or log them as required
     } finally {
       _isWaitingForAgentResponse = false;
