@@ -119,6 +119,7 @@ updates_list = []
 import json
 
 origins = [
+    "http://localhost:8000",
     "http://localhost:8080",
     "http://127.0.0.1:5000",
     "http://localhost:5000",
@@ -312,7 +313,8 @@ async def create_agent_task(task_eval_request: TaskEvalRequestBody) -> Task:
 
 @router.post("/agent/tasks/{task_id}/steps")
 async def proxy(request: Request, task_id: str):
-    async with httpx.AsyncClient() as client:
+    timeout = httpx.Timeout(300.0, read=300.0)  # 5 minutes
+    async with httpx.AsyncClient(timeout=timeout) as client:
         # Construct the new URL
         new_url = f"http://localhost:8000/ap/v1/agent/tasks/{task_id}/steps"
 

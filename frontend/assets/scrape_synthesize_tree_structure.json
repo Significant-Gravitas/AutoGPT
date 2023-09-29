@@ -57,7 +57,7 @@
                 "dependencies": [
                     "TestWriteFile"
                 ],
-                "eval_id": "261ccfaa-02a2-4c1a-8a56-c76c66f7dba1",
+                "eval_id": "f219f3d3-a41b-45a9-a3d0-389832086ee8",
                 "ground": {
                     "answer": "The content of output.txt should be 'Hello World!'",
                     "eval": {
@@ -95,7 +95,7 @@
                 ],
                 "cutoff": 60,
                 "dependencies": [],
-                "eval_id": "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
+                "eval_id": "021c695a-6cc4-46c2-b93a-f3a9b0f4d123",
                 "ground": {
                     "answer": "The word 'Washington', printed to a .txt file named anything",
                     "eval": {
@@ -134,7 +134,7 @@
                 "dependencies": [
                     "TestSearch"
                 ],
-                "eval_id": "525001ed-8b45-4405-9e56-ce4423314294",
+                "eval_id": "cd96e6b2-779d-4a4a-8367-d520023e27ae",
                 "ground": {
                     "answer": "\u00a325.89",
                     "eval": {
@@ -171,7 +171,7 @@
                 "dependencies": [
                     "TestWriteFile"
                 ],
-                "eval_id": "6390114a-531d-4743-a51b-50ba6ff8da43",
+                "eval_id": "0bb23182-b434-402b-a73e-9c226469b959",
                 "ground": {
                     "answer": "This is a Heading\nThis is a paragraph.",
                     "eval": {
@@ -207,13 +207,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "scrape_synthesize"
+                    "scrape_synthesize",
+                    "general"
                 ],
                 "cutoff": 60,
                 "dependencies": [
                     "TestRevenueRetrieval2"
                 ],
-                "eval_id": "18b14805-ff33-4076-9fb8-1e4218136f05",
+                "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
                 "ground": {
                     "answer": "The twitter handles of the two hosts of Latent Space.",
                     "eval": {
@@ -252,7 +253,7 @@
                 "dependencies": [
                     "TestRevenueRetrieval"
                 ],
-                "eval_id": "a0a27778-aec1-4b37-8fc2-92feedffd3fb",
+                "eval_id": "552bdf23-db40-4bd1-b123-4ed820886cc1",
                 "ground": {
                     "answer": "15 Millions\n112 Millions\n117 Millions\n204 Millions\n413 Millions\n2,014 Millions\n3,198 Millions\n4,046 Millions\n7,000 Millions\n11,759 Millions\n21,461 Millions\n24,578 Millions\n31,536 Millions\n53,823 Millions\n81,462 Millions",
                     "eval": {
@@ -298,13 +299,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "scrape_synthesize"
+                    "scrape_synthesize",
+                    "general"
                 ],
                 "cutoff": 60,
                 "dependencies": [
                     "TestBasicRetrieval"
                 ],
-                "eval_id": "af95fa96-a5cb-42b0-98f3-715e6e7d0b5d",
+                "eval_id": "dc2114d7-1597-4c9b-bed0-a97937ad977f",
                 "ground": {
                     "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
                     "eval": {
@@ -334,13 +336,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "scrape_synthesize"
+                    "scrape_synthesize",
+                    "general"
                 ],
                 "cutoff": 240,
                 "dependencies": [
                     "TestReadFile"
                 ],
-                "eval_id": "76e4c56c-8d57-423e-9cc1-1fff5f58dee6",
+                "eval_id": "895ae28a-4513-44ea-a872-0164771d1597",
                 "ground": {
                     "answer": "A report highlighting elements from the 2 files.",
                     "eval": {
