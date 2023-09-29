@@ -245,6 +245,8 @@ class SimpleLoop(BaseLoop):
         ### Step 4 : Start with an plan !
         ##############################################################
         plan = await self.build_initial_plan()
+        
+        print(plan)
 
         consecutive_failures = 0
         try:
@@ -355,8 +357,8 @@ class SimpleLoop(BaseLoop):
         # TODO: Should probably do a step to evaluate the quality of the generated tasks,
         #  and ensure that they have actionable ready and acceptance criteria
 
-        self.plan = Plan([Task.parse_obj(task) for task in plan.parsed_result["task_list"]]) 
-        self.plan.sort(key=lambda t: t.priority, reverse=True)
+        self.plan = Plan(tasks= [Task.parse_obj(task) for task in plan.parsed_result["task_list"]]) 
+        self.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
         self.plan[-1].context.status = TaskStatusList.READY
         return plan.parsed_result
 
