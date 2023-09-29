@@ -127,10 +127,14 @@ class ForgeAgent(Agent):
         # Extract the ability from the answer
         ability = answer["step"]["ability"]
 
+        LOG.info(f"🔨 Running Ability {ability}")
+
         # Run the ability and get the output
         output = await self.abilities.run_ability(
             task_id, ability["name"], **ability["args"]
         )
+
+        LOG.info(f"🔨 Output: {output}")
 
         # Set the step output and is_last from AI
         step.output = answer["step"]["reason"]
