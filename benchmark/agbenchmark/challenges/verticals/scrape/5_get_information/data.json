@@ -1,12 +1,13 @@
 {
     "category": [
-        "scrape_synthesize"
+        "scrape_synthesize",
+        "general"
     ],
     "cutoff": 60,
     "dependencies": [
         "TestRevenueRetrieval2"
     ],
-    "eval_id": "18b14805-ff33-4076-9fb8-1e4218136f05",
+    "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
     "ground": {
         "answer": "The twitter handles of the two hosts of Latent Space.",
         "eval": {
