@@ -13,10 +13,11 @@ from autogpt.core.planning.models.action import (
 )
 from autogpt.core.planning.models.context_items import ContextItem
 from autogpt.core.planning.models.command import AbilityOutput
+from autogpt.core.planning.models.plan import Plan
+from autogpt.core.planning.models.tasks import Task, TaskStatusList
 
 from autogpt.core.tools import ToolResult
 from autogpt.core.agents.base import BaseLoop, BaseLoopHook, UserFeedback
-from autogpt.core.planning import Task, TaskStatusList
 from autogpt.core.runner.client_lib.parser import (
     parse_ability_result,
     parse_agent_plan,
@@ -58,7 +59,7 @@ except ImportError:
 
 class SimpleLoop(BaseLoop):
     class LoophooksDict(BaseLoop.LoophooksDict):
-        after_build_initial_plan: Dict[BaseLoopHook]
+        after_plan: Dict[BaseLoopHook]
         after_determine_next_ability: Dict[BaseLoopHook]
 
     def __init__(self, agent: Agent) -> None:
@@ -249,6 +250,8 @@ class SimpleLoop(BaseLoop):
         ##############################################################
         ### Step 4 : Start with an plan !
         ##############################################################
+        plan = await self.build_initial_plan()
+
         consecutive_failures = 0
         try:
             ###
@@ -344,21 +347,21 @@ class SimpleLoop(BaseLoop):
             self.remaining_cycles = 1
 
     async def build_initial_plan(self) -> dict:
-        plan = await self._agent._planning.make_initial_plan(
-            agent_name=self._agent._configuration.agent_name,
-            agent_role=self._agent._configuration.agent_role,
-            agent_goals=self._agent._configuration.agent_goals,
-            agent_goal_sentence=self._agent._configuration.agent_goal_sentence,
-            tools=self._agent._tool_registry.list_tools_descriptions(),
+        plan = await self.execute_strategy( 
+            strategy_name = 'make_initial_plan',
+            agent_name=self._agent.agent_name,
+            agent_role=self._agent.agent_role,
+            agent_goals=self._agent.agent_goals,
+            agent_goal_sentence=self._agent.agent_goal_sentence,
+            tools=self.get_tools().list_tools_descriptions(),
         )
-        tasks = [Task.parse_obj(task) for task in plan.content["task_list"]]
 
         # TODO: Should probably do a step to evaluate the quality of the generated tasks,
         #  and ensure that they have actionable ready and acceptance criteria
 
-        self._task_queue.extend(tasks)
-        self._task_queue.sort(key=lambda t: t.priority, reverse=True)
-        self._task_queue[-1].context.status = TaskStatusList.READY
+        self.plan = Plan([Task.parse_obj(task) for task in plan.content["task_list"]]) 
+        self.plan.sort(key=lambda t: t.priority, reverse=True)
+        self.plan[-1].context.status = TaskStatusList.READY
         return plan.content
 
     async def determine_next_ability(self, *args, **kwargs):
@@ -372,7 +375,7 @@ class SimpleLoop(BaseLoop):
         task = await self._evaluate_task_and_add_context(task)
         next_ability = await self._choose_next_ability(
             task,
-            self._agent._tool_registry.dump_tools(),
+            self.get_tools().dump_tools(),
         )
         self._current_task = task
         self._next_ability = next_ability.content
@@ -380,7 +383,7 @@ class SimpleLoop(BaseLoop):
 
     async def execute_next_ability(self, user_input: str, *args, **kwargs):
         if user_input == "y":
-            ability = self._agent._tool_registry.get_ability(
+            ability = self.get_tools().get_ability(
                 self._next_ability["next_ability"]
             )
             ability_response = await ability(**self._next_ability["ability_arguments"])
@@ -444,7 +447,6 @@ class SimpleLoop(BaseLoop):
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
     from autogpt.core.prompting.schema import ChatMessage, ChatPrompt
-
     async def think(
         self,
         instruction: Optional[str] = None,
@@ -465,10 +467,10 @@ class SimpleLoop(BaseLoop):
 
         instruction: str = instruction or DEFAULT_TRIGGERING_PROMPT
 
-        raw_response: ChatModelResponse = await self._agent._planning.execute_strategy(
+        raw_response: ChatModelResponse = await self.execute_strategy(
             strategy_name="think",
             agent=self._agent,
-            tools=self._agent._tool_registry.get_tools(),
+            tools=self.get_tools().self.get_tools(),
             instruction=instruction,  # TODO : Move to strategy
             thought_process_id=thought_process_id,  # TODO : Remove
         )

@@ -7,6 +7,8 @@ from typing_extensions import NamedTuple, TypedDict
 
 if TYPE_CHECKING:
     from autogpt.core.agents.base.main import Agent
+    from autogpt.core.prompting.schema import ChatModelResponse
+    from autogpt.core.tools import ToolsRegistry
 
 
 class BaseLoopMeta(abc.ABCMeta):
@@ -187,3 +189,13 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
 
     def __repr__(self):
         return "BaseLoop()"
+    
+    #
+    # SHORTCUTS ! 
+    #
+
+    async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
+        return self._agent._planning.execute_strategy( strategy_name = strategy_name, **kwargs)
+
+    async def get_tools(self) -> ToolsRegistry :
+        return self._agent._tool_registry

@@ -16,7 +16,7 @@ from autogpt.core.resource.model_providers import (
 )
 
 
-class InitialPlanConfiguration(SystemConfiguration):
+class InitialPlanStrategyConfiguration(SystemConfiguration):
     model_classification: LanguageModelClassification = UserConfigurable()
     system_prompt_template: str = UserConfigurable()
     system_info: list[str] = UserConfigurable()
@@ -24,7 +24,7 @@ class InitialPlanConfiguration(SystemConfiguration):
     strategy_functions: list[dict] = UserConfigurable()
 
 
-class InitialPlan(BasePromptStrategy):
+class InitialPlanStrategy(BasePromptStrategy):
     STRATEGY_NAME = "initial_plan"
     DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
         "You are an expert project planner. You're responsibility is to create work plans for autonomous agents. "
@@ -47,9 +47,6 @@ class InitialPlan(BasePromptStrategy):
         "You are {agent_name}, {agent_role}\n"
         "Your goals are:\n"
         "{agent_goals}"
-        "You are {agent_name}, {agent_role}\n"
-        "Your goals are:\n"
-        "{agent_goal_sentence}"
     )
 
     DEFAULT_CREATE_PLAN_FUNCTION = [
@@ -108,7 +105,7 @@ class InitialPlan(BasePromptStrategy):
         }
     ]
 
-    default_configuration = InitialPlanConfiguration(
+    default_configuration = InitialPlanStrategyConfiguration(
         model_classification=LanguageModelClassification.SMART_MODEL_8K,
         system_prompt_template=DEFAULT_SYSTEM_PROMPT_TEMPLATE,
         system_info=DEFAULT_SYSTEM_INFO,

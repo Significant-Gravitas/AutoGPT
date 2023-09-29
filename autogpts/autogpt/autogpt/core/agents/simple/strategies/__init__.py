@@ -2,15 +2,15 @@ from logging import Logger
 from autogpt.core.prompting.base import PromptStrategiesConfiguration
 
 from autogpt.core.agents.simple.strategies.initial_plan import (
-    InitialPlan,
-    InitialPlanConfiguration,
+    InitialPlanStrategy,
+    InitialPlanStrategyConfiguration,
 )
 from autogpt.core.agents.simple.strategies.name_and_goals import (
-    NameAndGoals,
+    NameAndGoalsStrategy,
     NameAndGoalsConfiguration,
 )
 from autogpt.core.agents.simple.strategies.next_ability import (
-    NextAbility,
+    NextAbilityStrategy,
     NextAbilityConfiguration,
 )
 from autogpt.core.agents.simple.strategies.think import (
@@ -21,7 +21,7 @@ from autogpt.core.agents.simple.strategies.think import (
 
 class StrategiesConfiguration(PromptStrategiesConfiguration):
     name_and_goals: NameAndGoalsConfiguration
-    initial_plan: InitialPlanConfiguration
+    initial_plan: InitialPlanStrategyConfiguration
     next_ability: NextAbilityConfiguration
     think: ThinkStrategyConfiguration
 
@@ -32,8 +32,8 @@ class Strategies:
     @staticmethod
     def get_strategies(logger: Logger) -> list[PromptStrategy]:
         return [
-            InitialPlan(logger=logger, **InitialPlan.default_configuration.dict()),
-            NameAndGoals(logger=logger, **NameAndGoals.default_configuration.dict()),
-            NextAbility(logger=logger, **NextAbility.default_configuration.dict()),
+            InitialPlanStrategy(logger=logger, **InitialPlanStrategy.default_configuration.dict()),
+            NameAndGoalsStrategy(logger=logger, **NameAndGoalsStrategy.default_configuration.dict()),
+            NextAbilityStrategy(logger=logger, **NextAbilityStrategy.default_configuration.dict()),
             ThinkStrategy(logger=logger, **ThinkStrategy.default_configuration.dict()),
         ]

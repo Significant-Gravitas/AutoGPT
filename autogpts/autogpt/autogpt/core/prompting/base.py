@@ -268,3 +268,69 @@ class PlanningPromptStrategy(BasePromptStrategy):
             return to_numbered_list(agent._tool_registry.list_tools_descriptions())
 
         return []
+    
+
+    # NOTE : based on autogpt agent.py
+    # This can be expanded to support multiple types of (inter)actions within an agent
+    def response_format_instruction(
+        self, agent: SimpleAgent, thought_process_id: str, model_name: str
+    ) -> str:
+        # FIXME : Remove ?
+        if thought_process_id != "one-shot":
+            raise NotImplementedError(f"Unknown thought process '{thought_process_id}'")
+
+        RESPONSE_FORMAT_WITH_COMMAND = """```ts
+        interface Response {
+            thoughts: {
+                // Thoughts
+                text: string;
+                reasoning: string;
+                // Short markdown-style bullet list that conveys the long-term plan
+                plan: string;
+                // Constructive self-criticism
+                criticism: string;
+                // Summary of thoughts to say to the user
+                speak: string;
+            };
+            command: {
+                name: string;
+                args: Record<string, any>;
+            };
+        }
+        ```"""
+
+        RESPONSE_FORMAT_WITHOUT_COMMAND = """```ts
+        interface Response {
+            thoughts: {
+                // Thoughts
+                text: string;
+                reasoning: string;
+                // Short markdown-style bullet list that conveys the long-term plan
+                plan: string;
+                // Constructive self-criticism
+                criticism: string;
+                // Summary of thoughts to say to the user
+                speak: string;
+            };
+        }
+        ```"""
+
+        import re
+
+        # use_functions : bool  = agent._openai_provider.has_function_call_api(model_name = self._model_classification)
+        use_functions: bool = agent._openai_provider.has_function_call_api(
+            model_name=model_name
+        )
+        response_format: str = re.sub(
+            r"\n\s+",
+            "\n",
+            RESPONSE_FORMAT_WITHOUT_COMMAND
+            if use_functions
+            else RESPONSE_FORMAT_WITH_COMMAND,
+        )
+
+        return (
+            f"Respond strictly with JSON{', and also specify a command to use through a function_call' if use_functions else ''}. "
+            "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
+            f"{response_format}"
+        )
