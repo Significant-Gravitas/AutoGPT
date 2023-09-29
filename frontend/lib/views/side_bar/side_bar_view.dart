@@ -73,6 +73,14 @@ class SideBarView extends StatelessWidget {
                     children: [
                       IconButton(
                         splashRadius: 0.1,
+                        iconSize: 25,
+                        icon: Icon(Icons.book, color: Color.fromRGBO(50, 120, 123, 1)),
+                        onPressed: () =>
+                            _launchURL('https://medium.com/@aiedge/autogpt-forge-a-comprehensive-guide-to-your-first-steps-a1dfdf46e3b4'),
+                        tooltip: 'Learn how to build your own Agent',
+                      ),
+                      IconButton(
+                        splashRadius: 0.1,
                         iconSize: 33,
                         icon: Image.asset('assets/images/autogpt_logo.png'),
                         onPressed: () =>
