@@ -1,7 +1,10 @@
-# Building and Using loop.py in the afaas framework
+# Building an agent : Part 2 `loop.py`
 
 ## Introduction:
-The `loop.py` module within the afaas framework is responsible for the execution logic of agents. In this tutorial, we'll go through how to construct and use the `loop.py` module, focusing on the `UserContextLoop` class. This class manages the user context within an agent, refining user requirements based on the provided strategies.
+The `loop.py` module within the afaas framework is responsible for the execution logic of agents. In this tutorial, we'll go through how to construct and use the `loop.py` module, we will use as example  on the `UserContextLoop` class located in `autogpts/autogpt/autogpt/core/agents/usercontext/`. The agent `UsercontextAgent` is in `autogpts/autogpt/autogpt/core/agents/usercontext/main.py` file. 
+
+`UsercontextAgent` has a `_loop` that is an instance of `UserContextLoop`
+**ALL Agent** that inherit from `BaseAgent` come with a `_loop` property that inherit from `BaseLoop`.
 
 ## Pre-requisites:
 - Familiarity with Python's async/await syntax.
@@ -43,17 +46,14 @@ async def run(
     ```python
     async def run(self, agent: BaseAgent, ...)
     ```
-    It indicates that the `agent` argument should be an instance derived from or of type `BaseAgent`.
+    It indicates that the `agent` argument should be an instance derived from or of type `BaseAgent`, in our case `UserContextAgent`
 
-- **Methods/Properties referenced:**
-    - `_logger`: This appears to be a logger associated with the agent. Logging is essential for debugging and tracking the execution of the code.
+- **Main Methods/Properties :**
+    - `_logger`: This is a logger associated with the agent. Logging is essential for debugging and tracking the execution of the code.
         ```python
         self._agent._logger.info(...)
         ```
-    - `agent_goal_sentence`: Property of the agent holding the goals in a sentence format.
-        ```python
-        user_objectives: str = self._agent.agent_goal_sentence
-        ```
+    - `execute_strategy()` interact with a LLM
 
 ## 2. **ChatModelResponse**
 The `ChatModelResponse` class is critical because it encapsulates the response from a call to a Large Language Model (LLM) through the method `execute_strategy`. Understanding how to interact with the model and interpret its responses is essential when developing an agent loop.
