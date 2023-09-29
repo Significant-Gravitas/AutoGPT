@@ -31,7 +31,7 @@ from autogpt.core.agents.base.exceptions import (
 )
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base.main import Agent
+    from autogpt.core.agents.base.main import BaseAgent
     from autogpt.core.agents.simple import SimpleAgentSettings
     from autogpt.core.prompting.schema import ChatModelResponse
     from autogpt.core.resource.model_providers import ChatMessage
@@ -48,6 +48,8 @@ except ImportError:
     usercontext = False
 
 
+usercontext = False
+
 # from autogpt.logs.log_cycle import (
 #     CURRENT_CONTEXT_FILE_NAME,
 #     FULL_MESSAGE_HISTORY_FILE_NAME,
@@ -62,7 +64,7 @@ class SimpleLoop(BaseLoop):
         after_plan: Dict[BaseLoopHook]
         after_determine_next_ability: Dict[BaseLoopHook]
 
-    def __init__(self, agent: Agent) -> None:
+    def __init__(self, agent: BaseAgent) -> None:
         super().__init__(agent)
         self._active = False
         self.remaining_cycles = 1
@@ -155,7 +157,7 @@ class SimpleLoop(BaseLoop):
 
     async def run(
         self,
-        agent: Agent,
+        agent: BaseAgent,
         hooks: LoophooksDict,
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
@@ -237,15 +239,7 @@ class SimpleLoop(BaseLoop):
         ##############################################################
         ### Step 3 : Saving agent with its new goals
         ##############################################################
-        self._agent.save_agent_in_memory()
-
-        """Run the main interaction loop for the agent.
-        Args:
-            agent: The agent to run the interaction loop for.
-
-        Returns:
-            None
-        """
+        self.save_agent()
 
         ##############################################################
         ### Step 4 : Start with an plan !
@@ -333,7 +327,7 @@ class SimpleLoop(BaseLoop):
 
     async def start(
         self,
-        agent: Agent = None,
+        agent: BaseAgent = None,
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> None:
@@ -347,6 +341,8 @@ class SimpleLoop(BaseLoop):
             self.remaining_cycles = 1
 
     async def build_initial_plan(self) -> dict:
+        # plan =  self.execute_strategy( 
+        
         plan = await self.execute_strategy( 
             strategy_name = 'make_initial_plan',
             agent_name=self._agent.agent_name,
@@ -359,10 +355,10 @@ class SimpleLoop(BaseLoop):
         # TODO: Should probably do a step to evaluate the quality of the generated tasks,
         #  and ensure that they have actionable ready and acceptance criteria
 
-        self.plan = Plan([Task.parse_obj(task) for task in plan.content["task_list"]]) 
+        self.plan = Plan([Task.parse_obj(task) for task in plan.parsed_result["task_list"]]) 
         self.plan.sort(key=lambda t: t.priority, reverse=True)
         self.plan[-1].context.status = TaskStatusList.READY
-        return plan.content
+        return plan.parsed_result
 
     async def determine_next_ability(self, *args, **kwargs):
         if not self._task_queue:
@@ -565,7 +561,7 @@ class SimpleLoop(BaseLoop):
 def execute_command(
     command_name: str,
     arguments: dict[str, str],
-    agent: Agent,
+    agent: BaseAgent,
 ) -> AbilityOutput:
     """Execute the command and return the result
 

@@ -1,5 +1,5 @@
 """The Agent is an autonomouos entity guided by a LLM provider."""
-from autogpt.core.agents.base import Agent, BaseAgent
+from autogpt.core.agents.base import BaseAgent, AbstractAgent
 from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,

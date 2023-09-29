@@ -474,11 +474,11 @@ class OpenAIProvider(
         self._budget.update_usage_and_cost(response)
         return response
 
-    async def create_language_completion(self):
+    async def create_language_completion(self, **kwargs):
         self._logger.warning(
             "create_language_completion is deprecated, use create_chat_completion"
         )
-        return await self.create_chat_completion()
+        return await self.create_chat_completion(**kwargs)
 
     async def create_embedding(
         self,

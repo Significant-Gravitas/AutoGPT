@@ -29,18 +29,34 @@ from autogpt.core.workspace import Workspace
 from autogpt.core.configuration import Configurable
 
 
-class BaseAgent(abc.ABC):
+class AbstractAgent(abc.ABC):
     CLASS_SYSTEM_SETINGS = BaseAgentSystemSettings
     CLASS_CONFIGURATION = BaseAgentConfiguration
     CLASS_SETTINGS = BaseAgentSettings
     CLASS_SYSTEMS = BaseAgentSystems
 
     @classmethod
-    def get_agent_class(cls) -> Agent:
+    def get_agent_class(cls) -> BaseAgent:
+        """
+        Returns the agent class.
+        
+        Returns:
+            Agent: The class of the agent.
+        
+        Example:
+            >>> agent_class = BaseAgent.get_agent_class()
+            >>> print(agent_class)
+            <class '__main__.BaseAgent'>
+        """
         return cls
 
     @abc.abstractmethod
     def __init__(self, *args, **kwargs):
+        """
+        Abstract method for the initialization of the agent.
+        
+        Note: Implementation required in subclass.
+        """
         ...
 
     @classmethod
@@ -49,18 +65,38 @@ class BaseAgent(abc.ABC):
         cls,
         agent_settings: BaseAgentSettings,
         logger: logging.Logger,
-    ) -> "BaseAgent":
+    ) -> "AbstractAgent":
+        """
+        Abstract method to retrieve an agent instance using provided settings.
+        
+        Args:
+            agent_settings (BaseAgentSettings): The settings for the agent.
+            logger (logging.Logger): Logger instance for logging purposes.
+            
+        Returns:
+            BaseAgent: An instance of BaseAgent.
+        
+        Note: Implementation required in subclass.
+        """
         ...
 
     @abc.abstractmethod
     def __repr__(self):
+        """
+        Abstract method for the string representation of the agent.
+        
+        Returns:
+            str: A string representation of the agent.
+        
+        Note: Implementation required in subclass.
+        """
         ...
 
     _loop: BaseLoop = None
     # _loophooks: Dict[str, BaseLoop.LoophooksDict] = {}
 
 
-class Agent(Configurable, BaseAgent):
+class BaseAgent(Configurable, AbstractAgent):
     def __init__(
         self,
         settings: BaseAgentSystemSettings,
@@ -82,14 +118,39 @@ class Agent(Configurable, BaseAgent):
         # NOTE : Move to Configurable class ?
         self.agent_class = f"{self.__class__.__name__}"
 
-        # return super().__init__(
-        #     self, settings, logger, tool_registry, memory, workspace
-        # )
 
     def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):
+        """
+        Adds a hook to the loop.
+
+        Args:
+            hook (BaseLoopHook): The hook to be added.
+            hook_id (uuid.UUID, optional): Unique ID for the hook. Defaults to a new UUID.
+
+        Example:
+            >>> my_hook = BaseLoopHook(...)
+            >>> agent = Agent(...)
+            >>> agent.add_hook(my_hook)
+        """
         self._loop._loophooks[hook["name"]][str(hook_id)] = hook
 
     def remove_hook(self, name: str, hook_id: uuid.UUID) -> bool:
+        """
+        Removes a hook from the loop based on its name and ID.
+
+        Args:
+            name (str): Name of the hook.
+            hook_id (uuid.UUID): Unique ID of the hook.
+
+        Returns:
+            bool: True if removal was successful, otherwise False.
+
+        Example:
+            >>> agent = Agent(...)
+            >>> removed = agent.remove_hook("my_hook_name", some_uuid)
+            >>> print(removed)
+            True
+        """
         if name in self._loop._loophooks and hook_id in self._loop._loophooks[name]:
             del self._loop._loophooks[name][hook_id]
             return True
@@ -126,6 +187,30 @@ class Agent(Configurable, BaseAgent):
         user_message_handler: Callable[[str], Awaitable[str]],
         **kwargs,
     ) -> None | dict:
+        """
+        Asynchronously run the agent's loop.
+
+        Args:
+            user_input_handler (Callable[[str], Awaitable[str]]): Callback for handling user input.
+            user_message_handler (Callable[[str], Awaitable[str]]): Callback for handling user messages.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            None | dict: Returns either None or a dictionary based on the loop's run method.
+
+        Raises:
+            BaseException: If the agent is already running.
+
+        Example:
+            async def input_handler(prompt: str) -> str:
+                return input(prompt)
+
+            async def message_handler(message: str) -> str:
+                print(message)
+
+            agent = YourClass()
+            await agent.run(input_handler, message_handler)
+        """
         self._logger.debug(str(self.__class__) + ".run() *kwarg : " + str(kwargs))
 
         if not self._loop._is_running:
@@ -148,6 +233,16 @@ class Agent(Configurable, BaseAgent):
             raise BaseException("Agent Already Running")
 
     def exit(self, *kwargs) -> None:
+        """
+        Exit the agent's loop if it's running.
+
+        Args:
+            *kwargs: Additional arguments.
+
+        Example:
+            agent = YourClass()
+            agent.exit()
+        """
         if self._loop._is_running:
             self._loop._is_running = False
 
@@ -156,7 +251,22 @@ class Agent(Configurable, BaseAgent):
         cls,
         agent_settings: BaseAgentSettings,
         logger: logging.Logger,
-    ) -> Agent:
+    ) -> BaseAgent:
+        """
+        Retrieve an agent instance based on the provided settings and logger.
+
+        Args:
+            agent_settings (BaseAgentSettings): Configuration settings for the agent.
+            logger (logging.Logger): Logger to use for the agent.
+
+        Returns:
+            Agent: An agent instance configured according to the provided settings.
+
+        Example:
+            logger = logging.getLogger()
+            settings = BaseAgentSettings(user_id="123", ...other_settings...)
+            agent = YourClass.get_agent_from_settings(settings, logger)
+        """
         # if not isinstance(agent_settings, BaseAgentSettings):
         #     agent_settings: BaseAgentSettings = agent_settings
         if not isinstance(agent_settings, cls.CLASS_SETTINGS):
@@ -209,7 +319,16 @@ class Agent(Configurable, BaseAgent):
 
     @classmethod
     def build_user_configuration(cls) -> dict[str, Any]:
-        """Build the user's configuration."""
+        """
+        Build and return the user's agent configuration.
+
+        Returns:
+            dict[str, Any]: A dictionary containing the user's agent configuration.
+
+        Example:
+            agent_configuration = YourClass.build_user_configuration()
+            print(agent_configuration)
+        """
         configuration_dict = {
             "agent": cls.get_user_config(),
         }
@@ -225,7 +344,21 @@ class Agent(Configurable, BaseAgent):
     def compile_settings(
         cls, logger: logging.Logger, user_configuration: dict
     ) -> BaseAgentSettings:
-        """Compile the user's configuration with the defaults."""
+        """
+        Compile the user's configuration settings with the default agent settings.
+
+        Args:
+            logger (logging.Logger): Logger to use for the agent.
+            user_configuration (dict): The user's custom agent configuration.
+
+        Returns:
+            BaseAgentSettings: Combined agent settings.
+
+        Example:
+            logger = logging.getLogger()
+            user_config = {"agent": ...}
+            agent_settings = YourClass.compile_settings(logger, user_config)
+        """
         logger.debug("Processing agent system configuration.")
         logger.debug("compile_settings" + str(cls))
         configuration_dict = user_configuration
@@ -268,8 +401,22 @@ class Agent(Configurable, BaseAgent):
         cls,
         agent_settings: BaseAgentSettings,
         logger: logging.Logger,
-    ) -> BaseAgent:
-        """Create a new agent."""
+    ) -> AbstractAgent:
+        """
+        Create and return a new agent based on the provided settings and logger.
+
+        Args:
+            agent_settings (BaseAgentSettings): Configuration settings for the agent.
+            logger (logging.Logger): Logger to use for the agent.
+
+        Returns:
+            BaseAgent: An agent instance configured according to the provided settings.
+
+        Example:
+            logger = logging.getLogger()
+            settings = BaseAgentSettings(user_id="123", ...other_settings...)
+            agent = YourClass.create_agent(settings, logger)
+        """
         logger.info(f"Starting creation of {cls.__name__}")
         logger.debug(f"{cls.__module__}.{cls.__name__}")
 
@@ -378,6 +525,22 @@ class Agent(Configurable, BaseAgent):
     def get_agentsetting_list_from_memory(
         self, user_id: uuid.UUID, logger: logging.Logger
     ) -> list[BaseAgentSettings]:
+        """
+        Fetch a list of agent settings from memory based on the user ID.
+
+        Args:
+            user_id (uuid.UUID): The unique identifier for the user.
+            logger (logging.Logger): Logger to use.
+
+        Returns:
+            list[BaseAgentSettings]: List of agent settings from memory.
+
+        Example:
+            logger = logging.getLogger()
+            user_id = uuid.uuid4()
+            agent_settings_list = YourClass.get_agentsetting_list_from_memory(user_id, logger)
+            print(agent_settings_list)
+        """
         from autogpt.core.memory.base import (
             Memory,
             MemoryConfig,
@@ -421,7 +584,7 @@ class Agent(Configurable, BaseAgent):
         agent_id: uuid.UUID,
         user_id: uuid.UUID,
         logger: logging.Logger,
-    ) -> Agent:
+    ) -> BaseAgent:
         from autogpt.core.memory.base import (
             Memory,
         )
@@ -448,10 +611,15 @@ def _prune_empty_dicts(d: dict) -> dict:
     Prune branches from a nested dictionary if the branch only contains empty dictionaries at the leaves.
 
     Args:
-        d: The dictionary to prune.
+        d (dict): The dictionary to prune.
 
     Returns:
-        The pruned dictionary.
+        dict: The pruned dictionary.
+
+    Example:
+        input_dict = {"a": {}, "b": {"c": {}, "d": "value"}}
+        pruned_dict = _prune_empty_dicts(input_dict)
+        print(pruned_dict)  # Expected: {"b": {"d": "value"}}
     """
     pruned = {}
     for key, value in d.items():

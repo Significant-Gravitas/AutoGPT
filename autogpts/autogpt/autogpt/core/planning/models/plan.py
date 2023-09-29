@@ -6,15 +6,9 @@ class Plan(BaseModel):
     """
     Represents a plan consisting of a list of tasks.
     """
+    tasks : list[Task]
 
-    def __init__(self, tasks: list[Task]):
-        """
-        Initializes a Plan with a list of Task objects.
 
-        Args:
-            tasks (list[Task]): The list of tasks in the plan.
-        """
-        self.tasks = tasks
 
     def dump(self, depth=0) -> dict:
         """

@@ -25,7 +25,7 @@ class NextAbilityConfiguration(SystemConfiguration):
 
 class NextAbilityStrategy(BasePromptStrategy):
     STRATEGY_NAME = "next_ability"
-    DEFAULT_SYSTEM_PROMPT_TEMPLATE = "System Info:\n{system_info}"
+    FIRST_SYSTEM_PROMPT_TEMPLATE = "System Info:\n{system_info}"
 
     DEFAULT_SYSTEM_INFO = [
         "The OS you are running on is: {os_info}",
@@ -66,7 +66,7 @@ class NextAbilityStrategy(BasePromptStrategy):
 
     default_configuration = NextAbilityConfiguration(
         model_classification=LanguageModelClassification.SMART_MODEL_8K,
-        system_prompt_template=DEFAULT_SYSTEM_PROMPT_TEMPLATE,
+        system_prompt_template=FIRST_SYSTEM_PROMPT_TEMPLATE,
         system_info=DEFAULT_SYSTEM_INFO,
         user_prompt_template=DEFAULT_USER_PROMPT_TEMPLATE,
         additional_ability_arguments=DEFAULT_ADDITIONAL_ABILITY_ARGUMENTS,

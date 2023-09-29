@@ -15,11 +15,16 @@ if TYPE_CHECKING:
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.config import AIConfig, AIDirectives
 from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
-from autogpt.core.prompting import (
+
+# prompting
+from autogpt.core.prompting.base import (
+    PlanningPromptStrategiesConfiguration,
+    PlanningPromptStrategy,
+    PromptStrategiesConfiguration,
     ChatPrompt,
     LanguageModelClassification,
-    PromptStrategy,
 )
+
 from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessageDict,
     ChatMessage,
@@ -29,58 +34,8 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.prompts.utils import format_numbered_list, indent
 
-RESPONSE_SCHEMA = JSONSchema(
-    type=JSONSchema.Type.OBJECT,
-    properties={
-        "thoughts": JSONSchema(
-            type=JSONSchema.Type.OBJECT,
-            required=True,
-            properties={
-                "text": JSONSchema(
-                    description="Thoughts",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "reasoning": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "plan": JSONSchema(
-                    description="Short markdown-style bullet list that conveys the long-term plan",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "criticism": JSONSchema(
-                    description="Constructive self-criticism",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "speak": JSONSchema(
-                    description="Summary of thoughts, to say to user",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-            },
-        ),
-        "command": JSONSchema(
-            type=JSONSchema.Type.OBJECT,
-            required=True,
-            properties={
-                "name": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "args": JSONSchema(
-                    type=JSONSchema.Type.OBJECT,
-                    required=True,
-                ),
-            },
-        ),
-    },
-)
 
-
-class OneShotAgentPromptConfiguration(SystemConfiguration):
+class OneShotAgentPromptConfiguration(PlanningPromptStrategiesConfiguration):
     DEFAULT_BODY_TEMPLATE: str = (
         "## Constraints\n"
         "You operate within the following constraints:\n"
@@ -104,59 +59,10 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
         "and respond using the JSON schema specified previously:"
     )
 
-    DEFAULT_RESPONSE_SCHEMA = JSONSchema(
-        type=JSONSchema.Type.OBJECT,
-        properties={
-            "thoughts": JSONSchema(
-                type=JSONSchema.Type.OBJECT,
-                required=True,
-                properties={
-                    "text": JSONSchema(
-                        description="Thoughts",
-                        type=JSONSchema.Type.STRING,
-                        required=True,
-                    ),
-                    "reasoning": JSONSchema(
-                        type=JSONSchema.Type.STRING,
-                        required=True,
-                    ),
-                    "plan": JSONSchema(
-                        description="Short markdown-style bullet list that conveys the long-term plan",
-                        type=JSONSchema.Type.STRING,
-                        required=True,
-                    ),
-                    "criticism": JSONSchema(
-                        description="Constructive self-criticism",
-                        type=JSONSchema.Type.STRING,
-                        required=True,
-                    ),
-                    "speak": JSONSchema(
-                        description="Summary of thoughts, to say to user",
-                        type=JSONSchema.Type.STRING,
-                        required=True,
-                    ),
-                },
-            ),
-            "command": JSONSchema(
-                type=JSONSchema.Type.OBJECT,
-                required=True,
-                properties={
-                    "name": JSONSchema(
-                        type=JSONSchema.Type.STRING,
-                        required=True,
-                    ),
-                    "args": JSONSchema(
-                        type=JSONSchema.Type.OBJECT,
-                        required=True,
-                    ),
-                },
-            ),
-        },
-    )
 
     body_template: str = UserConfigurable(default=DEFAULT_BODY_TEMPLATE)
     response_schema: dict = UserConfigurable(
-        default_factory=DEFAULT_RESPONSE_SCHEMA.to_dict
+        default_factory= PlanningPromptStrategiesConfiguration.RESPONSE_SCHEMA.to_dict
     )
     choose_action_instruction: str = UserConfigurable(
         default=DEFAULT_CHOOSE_ACTION_INSTRUCTION
@@ -169,7 +75,7 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
     progress_summaries: dict[tuple[int, int], str] = {(0, 0): ""}
 
 
-class OneShotAgentPromptStrategy(PromptStrategy):
+class OneShotAgentPromptStrategy(PlanningPromptStrategy):
     default_configuration: OneShotAgentPromptConfiguration = (
         OneShotAgentPromptConfiguration()
     )
@@ -326,7 +232,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         return "\n\n".join(steps)
 
     def response_format_instruction(self, use_functions_api: bool) -> str:
-        response_schema = RESPONSE_SCHEMA.copy(deep=True)
+        response_schema = OneShotAgentPromptConfiguration.RESPONSE_SCHEMA.copy(deep=True)
         if (
             use_functions_api
             and response_schema.properties
@@ -432,7 +338,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
         assistant_reply_dict = extract_dict_from_response(response["content"])
 
-        _, errors = RESPONSE_SCHEMA.validate_object(assistant_reply_dict, self.logger)
+        _, errors = OneShotAgentPromptConfiguration.RESPONSE_SCHEMA.validate_object(assistant_reply_dict, self.logger)
         if errors:
             raise InvalidAgentResponseError(
                 "Validation of response failed:\n  "

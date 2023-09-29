@@ -1,45 +1,44 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING
-from pydantic import BaseModel
-from logging import Logger
+
 import uuid
 import enum
+import json
+import platform
+import re
+from logging import Logger
+from typing import Optional, TYPE_CHECKING
+
+import distro
+
+if TYPE_CHECKING:
+    from autogpt.core.agents.simple import SimpleAgent
+
+from pydantic import BaseModel
 
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 
 # prompting
 from autogpt.core.prompting.base import (
+    PlanningPromptStrategiesConfiguration,
     PlanningPromptStrategy,
     PromptStrategiesConfiguration,
 )
 from autogpt.core.prompting.schema import (
-    LanguageModelClassification,
     ChatPrompt,
-    ChatMessage,
+    LanguageModelClassification,
 )
-from autogpt.core.prompting.utils import json_loads, to_numbered_list, to_string_list
 
-
-from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.resource.model_providers import (
-    CompletionModelFunction,
-    ChatMessage,
     AssistantChatMessageDict,
+    ChatMessage,
+    CompletionModelFunction,
     OpenAIProvider,
 )
 
-if TYPE_CHECKING:
-    from autogpt.core.agents.simple import SimpleAgent
+from autogpt.core.utils.json_schema import JSONSchema
 
+from autogpt.core.prompting.utils import json_loads, to_numbered_list, to_string_list
 
-class ThinkStrategyFunctionNames(str, enum.Enum):
-    THINK: str = "think"
-
-
-class ThinkStrategyConfiguration(PromptStrategiesConfiguration):
-    model_classification: LanguageModelClassification = (
-        LanguageModelClassification.FAST_MODEL_16K
-    )
 
 
 DEFAULT_TRIGGERING_PROMPT = (
@@ -48,12 +47,20 @@ DEFAULT_TRIGGERING_PROMPT = (
     "and respond using the JSON schema specified previously:"
 )
 
+class ThinkStrategyFunctionNames(str, enum.Enum):
+    THINK: str = "think"
+
+
+class ThinkStrategyConfiguration(PlanningPromptStrategiesConfiguration):
+    model_classification: LanguageModelClassification = (
+        LanguageModelClassification.FAST_MODEL_16K
+    )
 
 class ThinkStrategy(PlanningPromptStrategy):
     default_configuration = ThinkStrategyConfiguration()
     STRATEGY_NAME = "think"
 
-    SYSTEM_PROMPT_INIT = DEFAULT_TRIGGERING_PROMPT
+    FIRST_SYSTEM_PROMPT_TEMPLATE = DEFAULT_TRIGGERING_PROMPT
 
     FUNCTION_THINK = CompletionModelFunction(
         name=ThinkStrategyFunctionNames.THINK,

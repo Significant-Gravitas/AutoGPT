@@ -5,7 +5,7 @@ import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple
 
 from autogpt.core.tools import ToolResult, SimpleAbilityRegistry
-from autogpt.core.agents.base.main import Agent
+from autogpt.core.agents.base.main import BaseAgent
 from autogpt.core.agents.simple.loop import SimpleLoop
 from autogpt.core.agents.simple.models import (
     SimpleAgentConfiguration,
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 from autogpt.core.agents.base.loop import BaseLoopHook
 
 
-class SimpleAgent(Agent):
+class SimpleAgent(BaseAgent):
     ################################################################################
     ##################### REFERENCE SETTINGS FOR FACTORY ###########################
     ################################################################################

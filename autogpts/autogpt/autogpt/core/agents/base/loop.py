@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Optional, Dict
 from typing_extensions import NamedTuple, TypedDict
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base.main import Agent
+    from autogpt.core.agents.base.main import BaseAgent
     from autogpt.core.prompting.schema import ChatModelResponse
     from autogpt.core.tools import ToolsRegistry
 
@@ -19,7 +19,7 @@ class BaseLoopMeta(abc.ABCMeta):
 
 
 class BaseLoopHookKwargs(TypedDict):
-    agent: Agent
+    agent: BaseAgent
     loop: BaseLoop
     user_input_handler: Callable[[str], Awaitable[str]]
     user_message_handler: Callable[[str], Awaitable[str]]
@@ -50,7 +50,7 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
     _loophooks: LoophooksDict
 
     @abc.abstractmethod
-    def __init__(self, agent: Agent):
+    def __init__(self, agent: BaseAgent):
         # Step 1 : Setting loop variables
         self._is_running: bool = False
         self._agent = agent
@@ -71,7 +71,7 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
     @abc.abstractmethod
     async def run(
         self,
-        agent: Agent,
+        agent: BaseAgent,
         hooks: LoophooksDict,
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
@@ -82,7 +82,7 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
         self,
         hook_key: str,
         hooks: LoophooksDict,
-        agent: Agent,
+        agent: BaseAgent,
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ):
@@ -112,7 +112,7 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
                 # else :
                 #     raise TypeError(f"Hook {key} is not a BaseLoopHook but is a {hook.__class__}")
 
-    async def execute_hook(self, hook: BaseLoopHook, agent: Agent):
+    async def execute_hook(self, hook: BaseLoopHook, agent: BaseAgent):
         user_input_handler = self._user_input_handler
         user_message_handler = self._user_message_handler
         kwargs: BaseLoopHookKwargs = {
@@ -137,7 +137,7 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
 
     async def start(
         self,
-        agent: Agent = None,
+        agent: BaseAgent = None,
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> None:
@@ -163,7 +163,7 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
 
     async def stop(
         self,
-        agent: Agent = None,
+        agent: BaseAgent = None,
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> None:
@@ -195,7 +195,10 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
     #
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
-        return self._agent._planning.execute_strategy( strategy_name = strategy_name, **kwargs)
+        return await self._agent._planning.execute_strategy( strategy_name = strategy_name, **kwargs)
 
-    async def get_tools(self) -> ToolsRegistry :
+    def get_tools(self) -> ToolsRegistry :
         return self._agent._tool_registry
+    
+    async def save_agent(self) : 
+        return self._agent.save_agent_in_memory() 

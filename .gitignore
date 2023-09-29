@@ -1,3 +1,5 @@
+autogpts/autogpt/autogpt/core/agents/usercontext/*
+
 ## Original ignores
 autogpt/keys.py
 autogpt/*.json

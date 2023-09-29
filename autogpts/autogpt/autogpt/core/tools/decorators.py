@@ -9,7 +9,7 @@ AUTO_GPT_ABILITY_IDENTIFIER = "auto_gpt_command"
 if TYPE_CHECKING:
     from autogpt.core.planning.models.command import AbilityOutput, AbilityParameter
     from autogpt.core.tools.base import Tool, ToolResult, ToolConfiguration
-    from autogpt.core.agents.base import Agent
+    from autogpt.core.agents.base import BaseAgent
 
 
 class AbilityParameterSpec(TypedDict):
@@ -25,7 +25,7 @@ def ability(
     enabled: Literal[True] | Callable[[ToolConfiguration], bool] = True,
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
-    available: Literal[True] | Callable[[Agent], bool] = True,
+    available: Literal[True] | Callable[[BaseAgent], bool] = True,
 ) -> Callable[
     ..., AbilityOutput
 ]:  # Assuming there's AbilityOutput analogous to AbilityOutput

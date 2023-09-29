@@ -3,10 +3,11 @@ import abc
 
 from pydantic import validator
 from typing import TYPE_CHECKING, Union
+from autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
     from autogpt.core.agents.simple.main import SimpleAgent
-    from autogpt.core.agents.base.main import Agent
+    from autogpt.core.agents.base.main import BaseAgent
 
 from autogpt.core.prompting.utils import json_loads, to_numbered_list
 from autogpt.core.configuration import SystemConfiguration
@@ -35,22 +36,57 @@ from autogpt.core.resource.model_providers import (
 class PromptStrategiesConfiguration(SystemConfiguration):
     pass
 
+class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
 
-# class PromptStrategy(abc.ABC):
-#     default_configuration: PromptStrategiesConfiguration
-
-#     @property
-#     @abc.abstractmethod
-#     def model_classification(self) -> LanguageModelClassification:
-#         ...
-
-#     @abc.abstractmethod
-#     def build_prompt(self, *_, **kwargs) -> ChatPrompt:
-#         ...
-
-#     @abc.abstractmethod
-#     def parse_response_content(self, response_content: dict) -> dict:
-#         ...
+    RESPONSE_SCHEMA = JSONSchema(
+        type=JSONSchema.Type.OBJECT,
+        properties={
+            "thoughts": JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                required=True,
+                properties={
+                    "text": JSONSchema(
+                        description="Thoughts",
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "reasoning": JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "plan": JSONSchema(
+                        description="Short markdown-style bullet list that conveys the long-term plan",
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "criticism": JSONSchema(
+                        description="Constructive self-criticism",
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "speak": JSONSchema(
+                        description="Summary of thoughts, to say to user",
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                },
+            ),
+            "command": JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                required=True,
+                properties={
+                    "name": JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                        required=True,
+                    ),
+                    "args": JSONSchema(
+                        type=JSONSchema.Type.OBJECT,
+                        required=True,
+                    ),
+                },
+            ),
+        },
+    )
 
 
 class PromptStrategy(abc.ABC):
@@ -78,16 +114,40 @@ class BasePromptStrategy(PromptStrategy):
 
     # TODO : This implementation is shit :)
     def get_functions(self) -> list[CompletionModelFunction]:
+        """
+        Returns a list of functions related to refining user context.
+
+        Returns:
+            list: A list of CompletionModelFunction objects detailing each function's purpose and parameters.
+
+        Example:
+            >>> strategy = RefineUserContextStrategy(...)
+            >>> functions = strategy.get_functions()
+            >>> print(functions[0].name)
+            'refine_requirements'
+        """
         return self._functions
 
     # TODO : This implementation is shit :)
     def get_functions_names(self) -> list[str]:
+        """
+        Returns a list of names of functions related to refining user context.
+
+        Returns:
+            list: A list of strings, each representing the name of a function.
+
+        Example:
+            >>> strategy = RefineUserContextStrategy(...)
+            >>> function_names = strategy.get_functions_names()
+            >>> print(function_names)
+            ['refine_requirements']
+        """
         return [item.name for item in self._functions]
 
-
 class PlanningPromptStrategy(BasePromptStrategy):
+
+
     def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
         self._prepend_messages: list[ChatMessage] = []
         self._append_messages: list[ChatMessage] = []
 
@@ -163,7 +223,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         # Join non-empty parts together into paragraph format
         return "\n\n".join(filter(None, full_prompt_parts)).strip("\n")
 
-    def _generate_intro_prompt(self, agent: Union[SimpleAgent, Agent]) -> list[str]:
+    def _generate_intro_prompt(self, agent: Union[SimpleAgent, BaseAgent]) -> list[str]:
         """Generates the introduction part of the prompt.
 
         Returns:
@@ -177,7 +237,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         ]
 
     # FIXME :)
-    def _generate_budget_info(self, agent: Union[SimpleAgent, Agent]) -> list[str]:
+    def _generate_budget_info(self, agent: Union[SimpleAgent, BaseAgent]) -> list[str]:
         """Generates the budget information part of the prompt.
 
         Returns:
@@ -210,7 +270,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
 
     def _generate_body(
         self,
-        agent: Union[SimpleAgent, Agent],
+        agent: Union[SimpleAgent, BaseAgent],
         *,
         additional_constraints: list[str] = [],
         additional_resources: list[str] = [],
@@ -255,7 +315,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
 
         return body
 
-    def _list_commands(self, agent: Union[SimpleAgent, Agent]) -> str:
+    def _list_commands(self, agent: Union[SimpleAgent, BaseAgent]) -> str:
         """Lists the commands available to the agent.
 
         Params:

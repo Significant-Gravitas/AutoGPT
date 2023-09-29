@@ -1,32 +1,57 @@
-import logging
+
+from logging import Logger
+import uuid
+import enum
+from typing import Optional
+from pydantic import BaseModel
+
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.prompting.base import BasePromptStrategy, PromptStrategy
+
+from autogpt.core.utils.json_schema import JSONSchema
+
+from autogpt.core.prompting.utils import json_loads, to_numbered_list, to_string_list
+from autogpt.core.prompting.base import (
+    BasePromptStrategy,
+    PromptStrategiesConfiguration,
+)
 from autogpt.core.prompting.schema import (
     LanguageModelClassification,
     ChatPrompt,
 )
+
+from autogpt.core.resource.model_providers import (
+    CompletionModelFunction,
+    ChatMessage,
+    AssistantChatMessageDict,
+)
+
 from autogpt.core.planning.schema import (
     Task,
     TaskType,
 )
-from autogpt.core.prompting.utils import json_loads, to_numbered_list
-from autogpt.core.resource.model_providers import (
-    CompletionModelFunction,
-    ChatMessage,
-)
+
+class InitialPlanFunctionNames(str, enum.Enum):
+    INITIAL_PLAN: str = "make_initial_plan"
 
 
-class InitialPlanStrategyConfiguration(SystemConfiguration):
-    model_classification: LanguageModelClassification = UserConfigurable()
-    system_prompt_template: str = UserConfigurable()
-    system_info: list[str] = UserConfigurable()
-    user_prompt_template: str = UserConfigurable()
-    strategy_functions: list[dict] = UserConfigurable()
-
+class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
+    model_classification: LanguageModelClassification = (
+        LanguageModelClassification.SMART_MODEL_8K
+    )
+    default_function_call: InitialPlanFunctionNames = (
+        InitialPlanFunctionNames.INITIAL_PLAN
+    )
+    strategy_name: str = "make_initial_plan"
 
 class InitialPlanStrategy(BasePromptStrategy):
-    STRATEGY_NAME = "initial_plan"
-    DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
+    default_configuration = InitialPlanStrategyConfiguration()
+    STRATEGY_NAME = "make_initial_plan"
+
+    ###
+    ### PROMPTS
+    ###
+
+    FIRST_SYSTEM_PROMPT_TEMPLATE = (
         "You are an expert project planner. You're responsibility is to create work plans for autonomous agents. "
         "You will be given a name, a role, set of goals for the agent to accomplish. Your job is to "
         "break down those goals into a set of tasks that the agent can accomplish to achieve those goals. "
@@ -49,85 +74,71 @@ class InitialPlanStrategy(BasePromptStrategy):
         "{agent_goals}"
     )
 
-    DEFAULT_CREATE_PLAN_FUNCTION = [
-        {
-            "name": "create_initial_agent_plan",
-            "description": "Creates a set of tasks that forms the initial plan for an autonomous agent.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "task_list": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "objective": {
-                                    "type": "string",
-                                    "description": "An imperative verb phrase that succinctly describes the task.",
-                                },
-                                "type": {
-                                    "type": "string",
-                                    "description": "A categorization for the task. ",
-                                    "enum": [t.value for t in TaskType],
-                                },
-                                "acceptance_criteria": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string",
-                                        "description": "A list of measurable and testable criteria that must be met for the task to be considered complete.",
-                                    },
-                                },
-                                "priority": {
-                                    "type": "integer",
-                                    "description": "A number between 1 and 10 indicating the priority of the task relative to other generated tasks.",
-                                    "minimum": 1,
-                                    "maximum": 10,
-                                },
-                                "ready_criteria": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string",
-                                        "description": "A list of measurable and testable criteria that must be met before the task can be started.",
-                                    },
-                                },
-                            },
-                            "required": [
-                                "objective",
-                                "type",
-                                "acceptance_criteria",
-                                "priority",
-                                "ready_criteria",
-                            ],
-                        },
-                    },
-                },
-            },
-        }
-    ]
 
-    default_configuration = InitialPlanStrategyConfiguration(
-        model_classification=LanguageModelClassification.SMART_MODEL_8K,
-        system_prompt_template=DEFAULT_SYSTEM_PROMPT_TEMPLATE,
-        system_info=DEFAULT_SYSTEM_INFO,
-        user_prompt_template=DEFAULT_USER_PROMPT_TEMPLATE,
-        strategy_functions=DEFAULT_CREATE_PLAN_FUNCTION,
+    ###
+    ### FUNCTIONS
+    ###
+
+    DEFAULT_CREATE_PLAN_FUNCTION = CompletionModelFunction(
+        name=InitialPlanFunctionNames.INITIAL_PLAN.value,
+        description="Creates a set of tasks that forms the initial plan for an autonomous agent.",
+        parameters={
+            "task_list": JSONSchema(
+                type=JSONSchema.Type.ARRAY,
+                items=JSONSchema(
+                    type=JSONSchema.Type.OBJECT,
+                    properties={
+                        "objective": JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description="An imperative verb phrase that succinctly describes the task.",
+                        ),
+                        "type": JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description="A categorization for the task.",
+                            enum=[t.value for t in TaskType],
+                        ),
+                        "acceptance_criteria": JSONSchema(
+                            type=JSONSchema.Type.ARRAY,
+                            items=JSONSchema(
+                                type=JSONSchema.Type.STRING,
+                                description="A list of measurable and testable criteria that must be met for the task to be considered complete.",
+                            ),
+                        ),
+                        "priority": JSONSchema(
+                            type=JSONSchema.Type.INTEGER,
+                            description="A number between 1 and 10 indicating the priority of the task relative to other generated tasks.",
+                            minimum=1,
+                            maximum=10,
+                        ),
+                        "ready_criteria": JSONSchema(
+                            type=JSONSchema.Type.ARRAY,
+                            items=JSONSchema(
+                                type=JSONSchema.Type.STRING,
+                                description="A list of measurable and testable criteria that must be met before the task can be started.",
+                            ),
+                        ),
+                    },
+                ),
+            ),
+        },
     )
+
+
 
     def __init__(
         self,
-        logger: logging.Logger,
+        logger: Logger,
         model_classification: LanguageModelClassification,
-        system_prompt_template: str,
-        system_info: list[str],
-        user_prompt_template: str,
-        strategy_functions: list[dict],
+        default_function_call: InitialPlanFunctionNames,
+        strategy_name: str,
     ):
         self._logger = logger
         self._model_classification = model_classification
-        self._system_prompt_template = system_prompt_template
-        self._system_info = system_info
-        self._user_prompt_template = user_prompt_template
-        self._strategy_functions = strategy_functions
+
+        self._system_prompt_template = self.FIRST_SYSTEM_PROMPT_TEMPLATE
+        self._system_info = self.DEFAULT_SYSTEM_INFO
+        self._user_prompt_template = self.DEFAULT_USER_PROMPT_TEMPLATE
+        self._strategy_functions = [self.DEFAULT_CREATE_PLAN_FUNCTION]
 
     @property
     def model_classification(self) -> LanguageModelClassification:
@@ -168,20 +179,20 @@ class InitialPlanStrategy(BasePromptStrategy):
         user_prompt = ChatMessage.user(
             content=self._user_prompt_template.format(**template_kwargs),
         )
-        strategy_functions = CompletionModelFunction(
-            self._strategy_functions,
-        )
+        strategy_functions =  self._strategy_functions
 
         return ChatPrompt(
             messages=[system_prompt, user_prompt],
             functions=strategy_functions,
+            function_call= InitialPlanFunctionNames.INITIAL_PLAN.value,
+            default_function_call= InitialPlanFunctionNames.INITIAL_PLAN.value,
             # TODO:
             tokens_used=0,
         )
 
     def parse_response_content(
         self,
-        response_content: dict,
+        response_content: AssistantChatMessageDict,
     ) -> dict:
         """Parse the actual text response from the objective model.
 
