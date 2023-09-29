@@ -32,12 +32,8 @@ Welcome to the **afaas: Agent Framework as a Service** project! This project is 
 
 ## afaas - GitHub Branches
 
-[5as-autogpt-integration](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration) : Is our main Branch, it is the branch with the latest developments and may be broken. We hope to have change in this branch on a daily basis.
-
-[stable-afaas-autogpt-integration](https://github.com/ph-ausseil/afaas/tree/stable-afaas-autogpt-integration): Is a branch, that combine both AFAAS evolutions & latest AutoGPT development, this allow us to integrate latest AutoGPT development if they come of uses.
-
-[master](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration) : After successfull integration in `stable-afaas-autogpt-integration` changes reach the master branch.
-
+[master](https://github.com/ph-ausseil/Auto-GPT/tree/master) : **Will be** the framework is located in  `autogpts/autogpt/autogpt/core/`  , sample agents are under implementation `autogpts/autogpt/autogpt/core/agent/simple`  (🚧 **Work in progress**) .
+[5as-autogpt-integration](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration) : Is a working branch that integrate latest changes from autogpt ensuring we are up to date (🚧 **Work in progress**)
 
 <!--
 
