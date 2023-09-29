@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:auto_gpt_flutter_client/models/task.dart';
-import 'package:auto_gpt_flutter_client/models/task_response.dart';
 import 'package:auto_gpt_flutter_client/models/test_suite.dart';
 import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart';
@@ -27,18 +26,24 @@ class TaskViewModel with ChangeNotifier {
 
   /// Adds a task and returns its ID.
   Future<String> createTask(String title) async {
-    final newTask = TaskRequestBody(input: title);
-    // Add to data source
-    final createdTask = await _taskService.createTask(newTask);
-    // Create a Task object from the created task response
-    final newTaskObject =
-        Task(id: createdTask['task_id'], title: createdTask['input']);
+    try {
+      final newTask = TaskRequestBody(input: title);
+      // Add to data source
+      final createdTask = await _taskService.createTask(newTask);
+      // Create a Task object from the created task response
+      final newTaskObject =
+          Task(id: createdTask['task_id'], title: createdTask['input']);
 
-    // Update local tasks list and notify listeners
-    _tasks.add(newTaskObject);
-    notifyListeners();
+      fetchAndCombineData();
 
-    return newTaskObject.id; // Return the ID of the new task
+      final taskId = newTaskObject.id;
+      print("Task $taskId created successfully!");
+
+      return newTaskObject.id;
+    } catch (e) {
+      // TODO: We are bubbling up the full response. Revisit this.
+      rethrow;
+    }
   }
 
   /// Deletes a task.
@@ -56,6 +61,8 @@ class TaskViewModel with ChangeNotifier {
       _tasks = tasksFromApi
           .where((task) => !_taskService.isTaskDeleted(task.id))
           .toList();
+
+      _tasks = _tasks.reversed.toList();
 
       notifyListeners();
       print("Tasks fetched successfully!");
