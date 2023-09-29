@@ -1,52 +1,57 @@
 import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/views/settings/api_base_url_field.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 /// [SettingsView] displays a list of settings that the user can configure.
 /// It uses [SettingsViewModel] for state management and logic.
 class SettingsView extends StatelessWidget {
-  const SettingsView({super.key});
+  final SettingsViewModel viewModel;
+
+  /// Constructor for [SettingsView], requiring an instance of [SettingsViewModel].
+  const SettingsView({Key? key, required this.viewModel}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // [ChangeNotifierProvider] provides an instance of [SettingsViewModel] to the widget tree.
-    return ChangeNotifierProvider(
-      create: (context) => SettingsViewModel(),
-      child: Scaffold(
-        appBar: AppBar(title: const Text('Settings')),
-        body: Consumer<SettingsViewModel>(
-          builder: (context, viewModel, child) {
-            // A list of settings is displayed using [ListView].
-            return ListView(
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.grey,
+        foregroundColor: Colors.black,
+        title: const Text('Settings'),
+      ),
+      body: Column(
+        children: [
+          // All settings in a scrollable list
+          Expanded(
+            child: ListView(
               children: [
+                // TODO: Add back dark mode toggle
                 // Dark Mode Toggle
-                SwitchListTile(
-                  title: const Text('Dark Mode'),
-                  value: viewModel.isDarkModeEnabled,
-                  onChanged: viewModel.toggleDarkMode,
-                ),
+                // SwitchListTile(
+                //   title: const Text('Dark Mode'),
+                //   value: viewModel.isDarkModeEnabled,
+                //   onChanged: viewModel.toggleDarkMode,
+                // ),
+                // const Divider(),
                 // Developer Mode Toggle
                 SwitchListTile(
                   title: const Text('Developer Mode'),
                   value: viewModel.isDeveloperModeEnabled,
                   onChanged: viewModel.toggleDeveloperMode,
                 ),
+                const Divider(),
                 // Base URL Configuration
-                ListTile(
-                  title: const Text('Base URL'),
-                  subtitle: TextFormField(
-                    initialValue: viewModel.baseURL,
-                    onChanged: viewModel.updateBaseURL,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter Base URL',
-                    ),
-                  ),
+                const ListTile(
+                  title: Center(child: Text('Agent Base URL')),
                 ),
+                ApiBaseUrlField(),
+                const Divider(),
                 // Continuous Mode Steps Configuration
                 ListTile(
-                  title: const Text('Continuous Mode Steps'),
+                  title: const Center(child: Text('Continuous Mode Steps')),
                   // User can increment or decrement the number of steps using '+' and '-' buttons.
                   subtitle: Row(
+                    mainAxisAlignment:
+                        MainAxisAlignment.center, // Centers the Row's content
                     children: [
                       IconButton(
                         icon: const Icon(Icons.remove),
@@ -62,17 +67,25 @@ class SettingsView extends StatelessWidget {
                     ],
                   ),
                 ),
-                ListTile(
-                  title: Text('Sign Out'),
-                  onTap: () {
-                    viewModel.signOut();
-                    // Optionally, navigate to a different view or show a message
-                  },
-                ),
+                const Divider(),
               ],
-            );
-          },
-        ),
+            ),
+          ),
+          // Sign out button fixed at the bottom
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.logout, color: Colors.black),
+              label:
+                  const Text('Sign Out', style: TextStyle(color: Colors.black)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+              ),
+              onPressed: viewModel.signOut,
+            ),
+          ),
+        ],
       ),
     );
   }

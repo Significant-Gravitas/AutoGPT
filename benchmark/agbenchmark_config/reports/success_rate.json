@@ -5,7 +5,13 @@
     "Battleship": [
         false
     ],
+    "CombineCsv": [
+        false
+    ],
     "FileOrganizer": [
+        false
+    ],
+    "LabelData": [
         false
     ],
     "PasswordGenerator": [
@@ -42,6 +48,9 @@
         false
     ],
     "Search": [
+        false
+    ],
+    "SortCsv": [
         false
     ],
     "SynthesizeInfo": [

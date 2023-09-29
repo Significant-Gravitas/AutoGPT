@@ -8,6 +8,7 @@ class Chat {
   final DateTime timestamp;
   final MessageType messageType;
   final Map<String, dynamic>? jsonResponse;
+  final List<dynamic> artifacts;
 
   Chat({
     required this.id,
@@ -16,6 +17,7 @@ class Chat {
     required this.timestamp,
     required this.messageType,
     this.jsonResponse,
+    required this.artifacts,
   });
 
   // Convert a Map (usually from JSON) to a Chat object
@@ -27,6 +29,7 @@ class Chat {
       timestamp: DateTime.parse(map['timestamp']),
       messageType: MessageType.values.firstWhere(
           (e) => e.toString() == 'MessageType.${map['messageType']}'),
+      artifacts: List<dynamic>.from(map['artifacts'] ?? []),
     );
   }
 
@@ -39,7 +42,8 @@ class Chat {
           taskId == other.taskId &&
           message == other.message &&
           timestamp == other.timestamp &&
-          messageType == other.messageType;
+          messageType == other.messageType &&
+          artifacts == other.artifacts;
 
   @override
   int get hashCode =>
@@ -47,9 +51,10 @@ class Chat {
       taskId.hashCode ^
       message.hashCode ^
       timestamp.hashCode ^
-      messageType.hashCode;
+      messageType.hashCode ^
+      artifacts.hashCode;
 
   @override
   String toString() =>
-      'Chat(id: $id, taskId: $taskId, message: $message, timestamp: $timestamp, messageType: $messageType)';
+      'Chat(id: $id, taskId: $taskId, message: $message, timestamp: $timestamp, messageType: $messageType, artifacts: $artifacts)'; // Added artifacts in toString method
 }

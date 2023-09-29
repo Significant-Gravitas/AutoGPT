@@ -16,6 +16,7 @@ from PIL import Image
 
 from autogpt.agents.agent import Agent
 from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +25,11 @@ logger = logging.getLogger(__name__)
     "generate_image",
     "Generates an Image",
     {
-        "prompt": {
-            "type": "string",
-            "description": "The prompt used to generate the image",
-            "required": True,
-        },
+        "prompt": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The prompt used to generate the image",
+            required=True,
+        ),
     },
     lambda config: bool(config.image_provider),
     "Requires a image provider to be set.",
