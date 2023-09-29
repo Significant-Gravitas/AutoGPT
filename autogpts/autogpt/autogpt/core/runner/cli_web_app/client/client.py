@@ -6,7 +6,7 @@ import requests
 from pathlib import Path
 import click
 
-from autogpt.core.agent import AgentSettings, SimpleAgent
+from autogpt.core.agents import AgentSettings, SimpleAgent
 from autogpt.core.runner.client_lib.logging import get_client_logger
 
 import requests

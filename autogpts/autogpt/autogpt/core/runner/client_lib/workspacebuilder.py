@@ -4,7 +4,7 @@ import yaml
 import click
 from pathlib import Path
 from logging import Logger
-from autogpt.core.agent import (
+from autogpt.core.agents import (
     AgentSettings,
     SimpleAgent,
 )  ### TODO should work for every Agent

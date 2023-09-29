@@ -1,7 +1,7 @@
 import click
 import logging
 
-from autogpt.core.agent import BaseAgentSettings, SimpleAgent
+from autogpt.core.agents import BaseAgentSettings, SimpleAgent
 from autogpt.core.runner.client_lib.logging import get_client_logger
 
 

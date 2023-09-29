@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-from autogpt.core.agent import SimpleAgent
+from autogpt.core.agents import SimpleAgent
 
 
 def make_user_configuration(settings_file_path: Path):
