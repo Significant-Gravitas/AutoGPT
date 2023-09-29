@@ -8,14 +8,14 @@ from autogpt.core.planning.models.context_items import ContextItem
 from autogpt.core.planning.models.command import AbilityOutput
 
 from autogpt.core.tools import ToolResult
-from autogpt.core.agent.base import BaseLoop, BaseLoopHook, UserFeedback
+from autogpt.core.agents.base import BaseLoop, BaseLoopHook, UserFeedback
 from autogpt.core.planning import Task, TaskStatusList
 from autogpt.core.runner.client_lib.parser import (
     parse_ability_result,
     parse_agent_plan,
     parse_next_ability,
 )
-from autogpt.core.agent.base.exceptions import (
+from autogpt.core.agents.base.exceptions import (
     AgentException,
     CommandExecutionError,
     InvalidAgentResponseError,
@@ -23,14 +23,14 @@ from autogpt.core.agent.base.exceptions import (
 )
 
 if TYPE_CHECKING:
-    from autogpt.core.agent.base.agent import Agent
-    from autogpt.core.agent.simple import SimpleAgentSettings
+    from autogpt.core.agents.base.main import Agent
+    from autogpt.core.agents.simple import SimpleAgentSettings
     from autogpt.core.prompting.schema import ChatModelResponse
     from autogpt.core.resource.model_providers import ChatMessage
 
 # NOTE : This is an example of customization that allow to share part of a project in Github while keeping part not released
 try:
-    from autogpt.core.agent.usercontext import (
+    from autogpt.core.agents.usercontext import (
         UserContextAgent,
         UserContextAgentSettings,
     )
@@ -108,7 +108,7 @@ class SimpleLoop(BaseLoop):
                 "memory": self._agent._memory._settings.dict(),
                 "workspace": self._agent._workspace._settings.dict(),
                 "openai_provider": self._agent._openai_provider._settings.dict()
-                # _type_ = 'autogpt.core.agent.usercontext.agent.UserContextAgent',
+                # _type_ = 'autogpt.core.agents.usercontext.agent.UserContextAgent',
                 # agent_class = 'UserContextAgent'
             }
 
@@ -368,7 +368,7 @@ class SimpleLoop(BaseLoop):
             The command name and arguments, if any, and the agent's thoughts.
         """
 
-        from autogpt.core.agent.simple.strategies.think import DEFAULT_TRIGGERING_PROMPT
+        from autogpt.core.agents.simple.strategies.think import DEFAULT_TRIGGERING_PROMPT
         instruction : str = instruction or DEFAULT_TRIGGERING_PROMPT
 
 

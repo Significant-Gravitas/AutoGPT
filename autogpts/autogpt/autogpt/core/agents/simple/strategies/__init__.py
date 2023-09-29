@@ -1,19 +1,19 @@
 from logging import Logger
 from autogpt.core.prompting.base import PromptStrategiesConfiguration
 
-from autogpt.core.agent.simple.strategies.initial_plan import (
+from autogpt.core.agents.simple.strategies.initial_plan import (
     InitialPlan,
     InitialPlanConfiguration,
 )
-from autogpt.core.agent.simple.strategies.name_and_goals import (
+from autogpt.core.agents.simple.strategies.name_and_goals import (
     NameAndGoals,
     NameAndGoalsConfiguration,
 )
-from autogpt.core.agent.simple.strategies.next_ability import (
+from autogpt.core.agents.simple.strategies.next_ability import (
     NextAbility,
     NextAbilityConfiguration,
 )
-from autogpt.core.agent.simple.strategies.think import (ThinkStrategy, ThinkStrategyConfiguration)
+from autogpt.core.agents.simple.strategies.think import (ThinkStrategy, ThinkStrategyConfiguration)
 
 class StrategiesConfiguration(PromptStrategiesConfiguration):
     name_and_goals: NameAndGoalsConfiguration

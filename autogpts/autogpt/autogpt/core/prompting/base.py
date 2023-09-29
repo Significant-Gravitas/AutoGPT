@@ -5,8 +5,8 @@ from pydantic import validator
 from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING : 
-    from autogpt.core.agent.simple.agent import SimpleAgent
-    from autogpt.core.agent.base.agent import Agent
+    from autogpt.core.agents.simple.main import SimpleAgent
+    from autogpt.core.agents.base.main import Agent
 
 from autogpt.core.prompting.utils import json_loads, to_numbered_list
 from autogpt.core.configuration import SystemConfiguration

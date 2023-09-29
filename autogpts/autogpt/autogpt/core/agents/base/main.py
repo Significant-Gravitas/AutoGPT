@@ -7,17 +7,17 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Dict, Tuple
 
 if TYPE_CHECKING:
-    from autogpt.core.agent.base.loop import (  # Import only where it's needed
+    from autogpt.core.agents.base.loop import (  # Import only where it's needed
         BaseLoop,
         BaseLoopHook,
     )
 
-from autogpt.core.agent.base.loop import (
+from autogpt.core.agents.base.loop import (
     BaseLoopHook,
 )
 
 from autogpt.core.tools.base import ToolsRegistry
-from autogpt.core.agent.base.models import (
+from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     BaseAgentSystems,

@@ -29,7 +29,7 @@ from autogpt.core.resource.model_providers import (
 )
 
 if TYPE_CHECKING:
-    from autogpt.core.agent.simple import SimpleAgent
+    from autogpt.core.agents.simple import SimpleAgent
 
 
 class ThinkStrategyFunctionNames(str, enum.Enum):
