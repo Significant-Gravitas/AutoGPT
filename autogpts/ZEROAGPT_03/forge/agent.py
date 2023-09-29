@@ -96,8 +96,11 @@ class ForgeAgent(Agent):
         # suggestions = [
         #     f"Use a filename with filepath for writing"
         # ]
+
+        print(self.abilities.list_abilities_for_prompt())
         
         ontology_prompt_params = {
+            "expert": "Project Manager",
             "task": task.input,
             "abilities": self.abilities.list_abilities_for_prompt()
         }
