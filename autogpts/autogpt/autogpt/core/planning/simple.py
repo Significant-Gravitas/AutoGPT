@@ -24,12 +24,13 @@ from autogpt.core.resource.model_providers import (
     CompletionModelFunction,
     ModelProviderName,
     OpenAIModelName,
-    OpenAIProvider
+    OpenAIProvider,
 )
 from autogpt.core.workspace import Workspace
 
+
 # FIXME : Find somewhere more appropriate
-class SystemInfo(dict) : 
+class SystemInfo(dict):
     os_info: str
     # provider : OpenAIProvider
     api_budget: float
@@ -215,6 +216,8 @@ class SimplePlanner(Configurable):
 
 # FIXME : Only import distro when required
 import distro
+
+
 def get_os_info() -> str:
     os_name = platform.system()
     os_info = (

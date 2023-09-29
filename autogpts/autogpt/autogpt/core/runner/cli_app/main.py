@@ -1,7 +1,7 @@
 import click
 import logging
 
-from autogpt.core.agent import BaseAgentSettings, SimpleAgent
+from autogpt.core.agents import BaseAgentSettings, SimpleAgent
 from autogpt.core.runner.client_lib.logging import get_client_logger
 
 
@@ -35,6 +35,9 @@ async def run_auto_gpt(user_configuration: dict):
 
     import uuid
 
+    #
+    # We support multiple users however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b
+    #
     user_id = uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b")
     agent_settings.user_id = user_id
 
@@ -134,7 +137,7 @@ async def run_auto_gpt(user_configuration: dict):
         agent_settings.agent_goal_sentence = user_objective
 
         agent_settings.agent_class = "SimpleAgent"
-        agent_settings._type_ = "autogpt.core.agent.simple.agent.SimpleAgent"
+        agent_settings._type_ = "autogpt.core.agents.simple.main.SimpleAgent"
         # agent_settings.load_root_values()
 
         # Step 3. Create the agent.

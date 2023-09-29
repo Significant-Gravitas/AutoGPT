@@ -1,7 +1,8 @@
 from __future__ import annotations
 import logging
 
-from typing import TYPE_CHECKING 
+from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from autogpt.core.tools.builtins.file_operations_utils import read_textual_file
 from abc import ABC, abstractmethod

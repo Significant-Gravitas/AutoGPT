@@ -12,10 +12,12 @@ def to_numbered_list(
     else:
         return no_items_response
 
+
 def indent(content: str, indentation: int | str = 4) -> str:
     if type(indentation) == int:
         indentation = " " * indentation
-    return indentation + content.replace("\n", f"\n{indentation}") 
+    return indentation + content.replace("\n", f"\n{indentation}")
+
 
 def to_dotted_list(
     items: list[str], no_items_response: str = "", **template_args

@@ -1,21 +1,29 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Dict, Optional
 from typing_extensions import TypedDict
 
-from autogpt.core.planning.models.action import ActionHistory, ActionResult, ActionInterruptedByHuman, ActionSuccessResult, ActionErrorResult
+from autogpt.core.planning.models.action import (
+    ActionHistory,
+    ActionResult,
+    ActionInterruptedByHuman,
+    ActionSuccessResult,
+    ActionErrorResult,
+)
 from autogpt.core.planning.models.context_items import ContextItem
 from autogpt.core.planning.models.command import AbilityOutput
+from autogpt.core.planning.models.plan import Plan
+from autogpt.core.planning.models.tasks import Task, TaskStatusList
 
 from autogpt.core.tools import ToolResult
-from autogpt.core.agent.base import BaseLoop, BaseLoopHook, UserFeedback
-from autogpt.core.planning import Task, TaskStatusList
+from autogpt.core.agents.base import BaseLoop, BaseLoopHook, UserFeedback
 from autogpt.core.runner.client_lib.parser import (
     parse_ability_result,
     parse_agent_plan,
     parse_next_ability,
 )
-from autogpt.core.agent.base.exceptions import (
+from autogpt.core.agents.base.exceptions import (
     AgentException,
     CommandExecutionError,
     InvalidAgentResponseError,
@@ -23,14 +31,14 @@ from autogpt.core.agent.base.exceptions import (
 )
 
 if TYPE_CHECKING:
-    from autogpt.core.agent.base.agent import Agent
-    from autogpt.core.agent.simple import SimpleAgentSettings
+    from autogpt.core.agents.base.main import BaseAgent
+    from autogpt.core.agents.simple import SimpleAgentSettings
     from autogpt.core.prompting.schema import ChatModelResponse
     from autogpt.core.resource.model_providers import ChatMessage
 
 # NOTE : This is an example of customization that allow to share part of a project in Github while keeping part not released
 try:
-    from autogpt.core.agent.usercontext import (
+    from autogpt.core.agents.usercontext import (
         UserContextAgent,
         UserContextAgentSettings,
     )
@@ -39,8 +47,8 @@ try:
 except ImportError:
     usercontext = False
 
-usercontext = False
 
+usercontext = False
 
 # from autogpt.logs.log_cycle import (
 #     CURRENT_CONTEXT_FILE_NAME,
@@ -50,19 +58,106 @@ usercontext = False
 #     LogCycleHandler,
 # )
 
+
 class SimpleLoop(BaseLoop):
     class LoophooksDict(BaseLoop.LoophooksDict):
-        after_build_initial_plan: Dict[BaseLoopHook]
+        after_plan: Dict[BaseLoopHook]
         after_determine_next_ability: Dict[BaseLoopHook]
 
-    def __init__(self, agent: Agent) -> None:
+    def __init__(self, agent: BaseAgent) -> None:
         super().__init__(agent)
         self._active = False
         self.remaining_cycles = 1
 
+        self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+        """Timestamp the agent was created; only used for structured debug logging."""
+
+    # def construct_prompt(
+    #     self,
+    #     cycle_instruction: str,
+    #     thought_process_id: ThoughtProcessID,
+    # ) -> ChatPrompt:
+    #     """Constructs and returns a prompt with the following structure:
+    #     1. System prompt
+    #     2. Message history of the agent, truncated & prepended with running summary as needed
+    #     3. `cycle_instruction`
+
+    #     Params:
+    #         cycle_instruction: The final instruction for a thinking cycle
+    #     """
+
+    #     if not cycle_instruction:
+    #         raise ValueError("No instruction given")
+
+    #     cycle_instruction_msg = ChatMessage.user(cycle_instruction)
+    #     cycle_instruction_tlength = self.llm_provider.count_message_tokens(
+    #         cycle_instruction_msg, self.llm.name
+    #     )
+
+    #     append_messages: list[ChatMessage] = []
+
+    #     response_format_instr = self.response_format_instruction(agent = agent , thought_process_id = thought_process_id)
+    #     if response_format_instr:
+    #         append_messages.append(ChatMessage.system(response_format_instr))
+
+    #     prompt = self.construct_base_prompt(
+    #         thought_process_id,
+    #         append_messages=append_messages,
+    #         reserve_tokens=cycle_instruction_tlength,
+    #     )
+
+    #     # ADD user input message ("triggering prompt")
+    #     prompt.messages.append(cycle_instruction_msg)
+
+    #     return prompt
+
+    # FIXME : create before_think hook & move to this hook ! :)
+    def on_before_think(
+        self,
+        messages: list[ChatMessage],
+        thought_process_id: Literal["one-shot"],
+        instruction: str,
+        **kwargs,
+    ) -> list[ChatMessage]:
+        # current_tokens_used = prompt.token_length
+        # plugin_count = len(self.config.plugins)
+        # for i, plugin in enumerate(self.config.plugins):
+        #     if not plugin.can_handle_on_planning():
+        #         continue
+        #     plugin_response = plugin.on_planning(self.prompt_generator, prompt.raw())
+        #     if not plugin_response or plugin_response == "":
+        #         continue
+        #     message_to_add = ChatMessage.system( plugin_response)
+        #     tokens_to_add = count_message_tokens(message_to_add, self.llm.name)
+        #     if current_tokens_used + tokens_to_add > self.send_token_limit:
+        #         self._agent._logger.debug(f"Plugin response too long, skipping: {plugin_response}")
+        #         self._agent._logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
+        #         break
+        #     prompt.insert(
+        #         -1, message_to_add
+        #     )  # HACK: assumes cycle instruction to be at the end
+        #     current_tokens_used += tokens_to_add
+
+        # self.log_cycle_handler.log_count_within_cycle = 0
+        # self.log_cycle_handler.log_cycle(
+        #     self.ai_config.ai_name,
+        #     self.created_at,
+        #     self.cycle_count,
+        #     self.action_history.cycles,
+        #     FULL_MESSAGE_HISTORY_FILE_NAME,
+        # )
+        # self.log_cycle_handler.log_cycle(
+        #     self.ai_config.ai_name,
+        #     self.created_at,
+        #     self.cycle_count,
+        #     messages.raw(),
+        #     CURRENT_CONTEXT_FILE_NAME,
+        # )
+        return messages
+
     async def run(
         self,
-        agent: Agent,
+        agent: BaseAgent,
         hooks: LoophooksDict,
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
@@ -84,9 +179,9 @@ class SimpleLoop(BaseLoop):
                 "`user_message_handler` must be a callable or set previously."
             )
 
-        ############################################################## 
+        ##############################################################
         ### Step 1 : BEGIN WITH A HOOK
-        ############################################################## 
+        ##############################################################
         await self.handle_hooks(
             hook_key="begin_run",
             hooks=hooks,
@@ -94,9 +189,9 @@ class SimpleLoop(BaseLoop):
             user_input_handler=self._user_input_handler,
             user_message_handler=self._user_message_handler,
         )
-        ############################################################## 
+        ##############################################################
         ### Step 2 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
-        ############################################################## 
+        ##############################################################
         if usercontext:
             # USER CONTEXT AGENT : Configure the agent to our context
             usercontextagent_configuration = {
@@ -108,7 +203,7 @@ class SimpleLoop(BaseLoop):
                 "memory": self._agent._memory._settings.dict(),
                 "workspace": self._agent._workspace._settings.dict(),
                 "openai_provider": self._agent._openai_provider._settings.dict()
-                # _type_ = 'autogpt.core.agent.usercontext.agent.UserContextAgent',
+                # _type_ = 'autogpt.core.agents.usercontext.agent.UserContextAgent',
                 # agent_class = 'UserContextAgent'
             }
 
@@ -141,28 +236,24 @@ class SimpleLoop(BaseLoop):
             self._agent.agent_goal_sentence = user_context_return["agent_goal_sentence"]
             self._agent.agent_goals = user_context_return["agent_goals"]
 
-        ############################################################## 
+        ##############################################################
         ### Step 3 : Saving agent with its new goals
         ##############################################################
-        self._agent.save_agent_in_memory()
-
-        """Run the main interaction loop for the agent.
-        Args:
-            agent: The agent to run the interaction loop for.
-
-        Returns:
-            None
-        """
+        self.save_agent()
 
         ##############################################################
         ### Step 4 : Start with an plan !
         ##############################################################
+        plan = await self.build_initial_plan()
+        
+        print(plan)
+
         consecutive_failures = 0
         try:
             ###
             ### Step 4 a : think()
             ###
-            response : ChatModelResponse = await self.think()
+            response: ChatModelResponse = await self.think()
 
             command_name = response.parsed_result["name"]
             command_args = response.parsed_result
@@ -171,7 +262,7 @@ class SimpleLoop(BaseLoop):
             self._agent._logger.warn(f"The agent's thoughts could not be parsed: {e}")
             consecutive_failures += 1
             if consecutive_failures >= 3:
-                    self._agent._logger.error(
+                self._agent._logger.error(
                     f"The agent failed to output valid thoughts {consecutive_failures} "
                     "times in a row. Terminating..."
                 )
@@ -184,35 +275,35 @@ class SimpleLoop(BaseLoop):
 
         # _is_running is important because it avoid having two concurent loop in the same agent (cf : Agent.run())
         while self._is_running:
-
             # if _active is false, then the loop is paused
             # FIXME replace _active by self.remaining_cycles > 0:
             if self._active:
-
-                #logger.debug(f"Cycle budget: {cycle_budget}; remaining: {self.remaining_cycles}")
+                # logger.debug(f"Cycle budget: {cycle_budget}; remaining: {self.remaining_cycles}")
                 self._loop_count += 1
 
                 # Print the assistant's thoughts and the next command to the user.
                 self._agent._logger.info(
-                    (f"command_name : {command_name} \n\n" + 
-                    f"command_args : {str(command_args)}\n\n" + 
-                    f"assistant_reply_dict : {str(assistant_reply_dict)}\n\n")
+                    (
+                        f"command_name : {command_name} \n\n"
+                        + f"command_args : {str(command_args)}\n\n"
+                        + f"assistant_reply_dict : {str(assistant_reply_dict)}\n\n"
+                    )
                 )
-
 
                 user_input = ""
                 # Get user input if there is no more automated cycles
-                if self.remaining_cycles == 1 :
+                if self.remaining_cycles == 1:
                     user_input = await self._user_input_handler(
                         f"Enter y to authorise command, "
                         f"y -N' to run N continuous commands, "
                         f"q to exit program, or enter feedback for "
-                        + self._agent.agent_name + "..."
+                        + self._agent.agent_name
+                        + "..."
                     )
-                    
-                    if user_input.lower().strip() == 'y':
+
+                    if user_input.lower().strip() == "y":
                         pass
-                    else : 
+                    else:
                         command_name = "human_feedback"
 
                 ###################
@@ -238,37 +329,38 @@ class SimpleLoop(BaseLoop):
 
     async def start(
         self,
-        agent: Agent = None,
+        agent: BaseAgent = None,
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> None:
-        
         await super().start(
-                    agent = agent,
-                    user_input_handler = user_input_handler,
-                    user_message_handler = user_message_handler
-                    )
-        
-        if not self.remaining_cycles : 
+            agent=agent,
+            user_input_handler=user_input_handler,
+            user_message_handler=user_message_handler,
+        )
+
+        if not self.remaining_cycles:
             self.remaining_cycles = 1
 
     async def build_initial_plan(self) -> dict:
-        plan = await self._agent._planning.make_initial_plan(
-            agent_name=self._agent._configuration.agent_name,
-            agent_role=self._agent._configuration.agent_role,
-            agent_goals=self._agent._configuration.agent_goals,
-            agent_goal_sentence=self._agent._configuration.agent_goal_sentence,
-            tools=self._agent._tool_registry.list_tools_descriptions(),
+        # plan =  self.execute_strategy( 
+        
+        plan = await self.execute_strategy( 
+            strategy_name = 'make_initial_plan',
+            agent_name=self._agent.agent_name,
+            agent_role=self._agent.agent_role,
+            agent_goals=self._agent.agent_goals,
+            agent_goal_sentence=self._agent.agent_goal_sentence,
+            tools=self.get_tools().list_tools_descriptions(),
         )
-        tasks = [Task.parse_obj(task) for task in plan.content["task_list"]]
 
         # TODO: Should probably do a step to evaluate the quality of the generated tasks,
         #  and ensure that they have actionable ready and acceptance criteria
 
-        self._task_queue.extend(tasks)
-        self._task_queue.sort(key=lambda t: t.priority, reverse=True)
-        self._task_queue[-1].context.status = TaskStatusList.READY
-        return plan.content
+        self.plan = Plan(tasks= [Task.parse_obj(task) for task in plan.parsed_result["task_list"]]) 
+        self.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
+        self.plan[-1].context.status = TaskStatusList.READY
+        return plan.parsed_result
 
     async def determine_next_ability(self, *args, **kwargs):
         if not self._task_queue:
@@ -281,7 +373,7 @@ class SimpleLoop(BaseLoop):
         task = await self._evaluate_task_and_add_context(task)
         next_ability = await self._choose_next_ability(
             task,
-            self._agent._tool_registry.dump_tools(),
+            self.get_tools().dump_tools(),
         )
         self._current_task = task
         self._next_ability = next_ability.content
@@ -289,7 +381,7 @@ class SimpleLoop(BaseLoop):
 
     async def execute_next_ability(self, user_input: str, *args, **kwargs):
         if user_input == "y":
-            ability = self._agent._tool_registry.get_ability(
+            ability = self.get_tools().get_ability(
                 self._next_ability["next_ability"]
             )
             ability_response = await ability(**self._next_ability["ability_arguments"])
@@ -344,10 +436,9 @@ class SimpleLoop(BaseLoop):
 
     def __repr__(self):
         return "SimpleLoop()"
-    
 
-    
     from typing import Literal, Any
+
     ThoughtProcessID = Literal["one-shot"]
     CommandName = str
     CommandArgs = dict[str, str]
@@ -368,23 +459,23 @@ class SimpleLoop(BaseLoop):
             The command name and arguments, if any, and the agent's thoughts.
         """
 
-        from autogpt.core.agent.simple.strategies.think import DEFAULT_TRIGGERING_PROMPT
-        instruction : str = instruction or DEFAULT_TRIGGERING_PROMPT
+        from autogpt.core.agents.simple.strategies.think import (
+            DEFAULT_TRIGGERING_PROMPT,
+        )
 
+        instruction: str = instruction or DEFAULT_TRIGGERING_PROMPT
 
-
-        raw_response : ChatModelResponse = await self._agent._planning.execute_strategy(
-                    strategy_name="think",
-                    agent = self._agent,
-                    tools = self._agent._tool_registry.get_tools(),
-                    instruction=instruction, # TODO : Move to strategy
-                    thought_process_id=thought_process_id, #TODO : Remove
-                )
+        raw_response: ChatModelResponse = await self.execute_strategy(
+            strategy_name="think",
+            agent=self._agent,
+            tools=self.get_tools().self.get_tools(),
+            instruction=instruction,  # TODO : Move to strategy
+            thought_process_id=thought_process_id,  # TODO : Remove
+        )
 
         return raw_response
 
-
-    def execute(
+    async def execute(
         self,
         command_name: str,
         command_args: dict[str, str] = {},
@@ -408,13 +499,13 @@ class SimpleLoop(BaseLoop):
             # )
 
         else:
-            for plugin in self.config.plugins:
-                if not plugin.can_handle_pre_command():
-                    continue
-                command_name, arguments = plugin.pre_command(command_name, command_args)
+            # for plugin in self.config.plugins:
+            #     if not plugin.can_handle_pre_command():
+            #         continue
+            #     command_name, arguments = plugin.pre_command(command_name, command_args)
 
             try:
-                return_value = execute_command(
+                return_value = await execute_command(
                     command_name=command_name,
                     arguments=command_args,
                     agent=self,
@@ -431,19 +522,9 @@ class SimpleLoop(BaseLoop):
                     )
                     self.context.add(context_item)
 
-                result = ActionSuccessResult(return_value)
+                result = ActionSuccessResult(outputs=return_value)
             except AgentException as e:
-                result = ActionErrorResult(e.message, e)
-
-            result_tlength = self._agent._openai_provider.count_message_tokens(str(result), self.llm.name)
-            history_tlength = self._agent._openai_provider.count_message_tokens(
-                self.event_history.fmt_paragraph(), self.llm.name
-            )
-            if result_tlength + history_tlength > self.send_token_limit:
-                result = ActionErrorResult(
-                    reason=f"Command {command_name} returned too much output. "
-                    "Do not execute this command again with the same arguments."
-                )
+                result = ActionErrorResult(reason=e.message, error=e)
 
             # for plugin in self.config.plugins:
             #     if not plugin.can_handle_post_command():
@@ -479,93 +560,10 @@ class SimpleLoop(BaseLoop):
         return result
 
 
-    # def construct_prompt(
-    #     self,
-    #     cycle_instruction: str,
-    #     thought_process_id: ThoughtProcessID,
-    # ) -> ChatPrompt:
-    #     """Constructs and returns a prompt with the following structure:
-    #     1. System prompt
-    #     2. Message history of the agent, truncated & prepended with running summary as needed
-    #     3. `cycle_instruction`
-
-    #     Params:
-    #         cycle_instruction: The final instruction for a thinking cycle
-    #     """
-
-    #     if not cycle_instruction:
-    #         raise ValueError("No instruction given")
-
-    #     cycle_instruction_msg = ChatMessage.user(cycle_instruction)
-    #     cycle_instruction_tlength = self.llm_provider.count_message_tokens(
-    #         cycle_instruction_msg, self.llm.name
-    #     )
-
-    #     append_messages: list[ChatMessage] = []
-
-    #     response_format_instr = self.response_format_instruction(agent = agent , thought_process_id = thought_process_id)
-    #     if response_format_instr:
-    #         append_messages.append(ChatMessage.system(response_format_instr))
-
-    #     prompt = self.construct_base_prompt(
-    #         thought_process_id,
-    #         append_messages=append_messages,
-    #         reserve_tokens=cycle_instruction_tlength,
-    #     )
-
-    #     # ADD user input message ("triggering prompt")
-    #     prompt.messages.append(cycle_instruction_msg)
-
-    #     return prompt
-    
-    # FIXME : create before_think hook & move to this hook ! :)
-    def on_before_think(self, 
-                        messages : list[ChatMessage],
-                        thought_process_id : Literal["one-shot"], 
-                        instruction : str , 
-                        **kwargs) -> list[ChatMessage]:
-
-        # current_tokens_used = prompt.token_length
-        # plugin_count = len(self.config.plugins)
-        # for i, plugin in enumerate(self.config.plugins):
-        #     if not plugin.can_handle_on_planning():
-        #         continue
-        #     plugin_response = plugin.on_planning(self.prompt_generator, prompt.raw())
-        #     if not plugin_response or plugin_response == "":
-        #         continue
-        #     message_to_add = ChatMessage.system( plugin_response)
-        #     tokens_to_add = count_message_tokens(message_to_add, self.llm.name)
-        #     if current_tokens_used + tokens_to_add > self.send_token_limit:
-        #         self._agent._logger.debug(f"Plugin response too long, skipping: {plugin_response}")
-        #         self._agent._logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
-        #         break
-        #     prompt.insert(
-        #         -1, message_to_add
-        #     )  # HACK: assumes cycle instruction to be at the end
-        #     current_tokens_used += tokens_to_add    
-
-        # self.log_cycle_handler.log_count_within_cycle = 0
-        # self.log_cycle_handler.log_cycle(
-        #     self.ai_config.ai_name,
-        #     self.created_at,
-        #     self.cycle_count,
-        #     self.action_history.cycles,
-        #     FULL_MESSAGE_HISTORY_FILE_NAME,
-        # )
-        # self.log_cycle_handler.log_cycle(
-        #     self.ai_config.ai_name,
-        #     self.created_at,
-        #     self.cycle_count,
-        #     messages.raw(),
-        #     CURRENT_CONTEXT_FILE_NAME,
-        # )
-        return messages
-    
-
 def execute_command(
     command_name: str,
     arguments: dict[str, str],
-    agent: Agent,
+    agent: BaseAgent,
 ) -> AbilityOutput:
     """Execute the command and return the result
 

@@ -35,7 +35,7 @@ from autogpt.core.runner.client_lib.workspacebuilder import (
     get_settings_from_file,
     get_logger_and_workspace,
 )
-from autogpt.core.agent import AgentSettings, SimpleAgent
+from autogpt.core.agents import AgentSettings, SimpleAgent
 from autogpt.core.runner.client_lib.parser import (
     parse_agent_name_and_goals,
     parse_ability_result,

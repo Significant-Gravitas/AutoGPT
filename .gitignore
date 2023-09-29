@@ -1,5 +1,4 @@
-autogpts/autogpt/autogpt/core/agent/usercontext/*
-autogpts/autogpt/autogpt/core/agents/usercontext/
+autogpts/autogpt/autogpt/core/agents/usercontext/*
 
 ## Original ignores
 autogpt/keys.py
@@ -10,7 +9,8 @@ auto_gpt_workspace/*
 azure.yaml
 ai_settings.yaml
 last_run_ai_settings.yaml
-.vscode
+
+#.vscode
 .idea/*
 auto-gpt.json
 log.txt

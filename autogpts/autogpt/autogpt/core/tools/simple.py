@@ -2,7 +2,7 @@ import logging
 from logging import Logger
 import importlib
 import inspect
-from typing import Any, Iterator 
+from typing import Any, Iterator
 from types import ModuleType
 from pydantic import BaseModel
 from autogpt.core.tools.base import Tool, ToolConfiguration, ToolsRegistry
@@ -28,6 +28,7 @@ class ToolsRegistryConfiguration(SystemConfiguration):
     Attributes:
         tools: A dictionary mapping ability names to their configurations.
     """
+
     tools: dict[str, ToolConfiguration]
 
 
@@ -38,7 +39,9 @@ class ToolsRegistrySettings(SystemSettings):
     Attributes:
         configuration: Configuration settings for AbilityRegistry.
     """
+
     configuration: ToolsRegistryConfiguration
+
 
 class SimpleAbilityRegistry(ToolsRegistry, Configurable):
     """
@@ -71,6 +74,7 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
             tools: List of Ability objects associated with the category.
             modules: List of ModuleType objects related to the category.
         """
+
         name: str
         title: str
         description: str
@@ -105,7 +109,7 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         self._memory = memory
         self._workspace = workspace
         self._model_providers = model_providers
-        self._tools : list[Tool]= []
+        self._tools: list[Tool] = []
         for (
             ability_name,
             ability_configuration,
@@ -126,7 +130,11 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         return importlib.reload(module)
 
     def register_ability(
-        self, ability_name: str, ability_configuration: ToolConfiguration, aliases: list[str] = [], category: str = None
+        self,
+        ability_name: str,
+        ability_configuration: ToolConfiguration,
+        aliases: list[str] = [],
+        category: str = None,
     ) -> None:
         """
         Register a new ability with the registry.
@@ -172,10 +180,11 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         # Handle categorization
         if category:
             if category not in self.categories:
-                self.categories[category] = self.AbilityCategory(name=category, title=category.capitalize(), description="")
+                self.categories[category] = self.AbilityCategory(
+                    name=category, title=category.capitalize(), description=""
+                )
             self.categories[category].tools.append(ability_name)
 
-   
     def unregister(self, ability: Tool) -> None:
         """
         Unregister an ability from the registry.
@@ -218,9 +227,10 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
             reloaded_module = self._reload_module(module)
             if hasattr(reloaded_module, "register_ability"):
                 reloaded_ability = getattr(reloaded_module, "register_ability")
-                self.register_ability(reloaded_ability.name, reloaded_ability.configuration)
+                self.register_ability(
+                    reloaded_ability.name, reloaded_ability.configuration
+                )
 
- 
     def get_ability(self, ability_name: str) -> Tool:
         """
         Retrieve a specific ability by its name.
@@ -268,19 +278,19 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         """
         ability = self.get_ability(ability_name)
         if ability:
-            if ability.is_async == True : 
+            if ability.is_async == True:
                 return await ability(**kwargs)
-            else :
-                return  ability(**kwargs)
-        
+            else:
+                return ability(**kwargs)
+
         raise KeyError(f"Ability '{ability_name}' not found in registry")
-    
+
     async def call(self, ability_name: str, **kwargs) -> ToolResult:
         logger = logging.getLogger(__name__)
         logger.warning("AbilityRegistry.call() is deprecated")
 
-        return await self.perform(ability_name=ability_name , **kwargs)
-    
+        return await self.perform(ability_name=ability_name, **kwargs)
+
     def list_available_tools(self, agent=None) -> Iterator[Tool]:
         """
         Return a generator over all available tools.
@@ -321,14 +331,10 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
             print(desc)
         ```
         """
-        return [
-            f"{ability.name()}: {ability.description()}" for ability in self._tools
-        ]
+        return [f"{ability.name()}: {ability.description()}" for ability in self._tools]
 
     def get_tools_names(self) -> list[str]:
-        return [
-            ability.name() for ability in self._tools
-        ]
+        return [ability.name() for ability in self._tools]
 
     def get_tools(self) -> list[Tool]:
         return self._tools
@@ -336,9 +342,10 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
     def dump_tools(self) -> list[dict]:
         return [ability.dump() for ability in self._tools]
 
-
     @staticmethod
-    def with_ability_modules(modules: list[str], config: ToolsRegistryConfiguration) -> "SimpleAbilityRegistry":
+    def with_ability_modules(
+        modules: list[str], config: ToolsRegistryConfiguration
+    ) -> "SimpleAbilityRegistry":
         """
         Creates and returns a new SimpleAbilityRegistry with tools from given modules.
         """
@@ -346,17 +353,21 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         new_registry = SimpleAbilityRegistry(
             settings=SimpleAbilityRegistry.default_settings,
             logger=logging.getLogger(__name__),
-            memory=None, 
-            workspace=None, 
-            model_providers={} 
+            memory=None,
+            workspace=None,
+            model_providers={},
         )
 
-        logger.debug(f"The following ability categories are disabled: {config.disabled_ability_categories}")
+        logger.debug(
+            f"The following ability categories are disabled: {config.disabled_ability_categories}"
+        )
         enabled_ability_modules = [
             x for x in modules if x not in config.disabled_ability_categories
         ]
 
-        logger.debug(f"The following ability categories are enabled: {enabled_ability_modules}")
+        logger.debug(
+            f"The following ability categories are enabled: {enabled_ability_modules}"
+        )
 
         for ability_module in enabled_ability_modules:
             new_registry.import_ability_module(ability_module)
@@ -364,10 +375,12 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         for ability in [c for c in new_registry._tools]:
             if callable(ability.enabled) and not ability.enabled(config):
                 new_registry.unregister(ability)
-                logger.debug(f"Unregistering incompatible ability '{ability.name()}': \"{ability.disabled_reason or 'Disabled by current config.'}\"")
+                logger.debug(
+                    f"Unregistering incompatible ability '{ability.name()}': \"{ability.disabled_reason or 'Disabled by current config.'}\""
+                )
 
         return new_registry
-    
+
     def import_ability_module(self, module_name: str):
         """
         Imports the specified Python module containing ability plugins.
@@ -379,8 +392,8 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
 
         Args:
             module_name (str): The name of the module to import for ability plugins.
-        
-        
+
+
         Example:
         ```python
         registry = SimpleAbilityRegistry(...)
@@ -430,10 +443,12 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         if category_name not in self.categories:
             self.categories[category_name] = self.AbilityCategory(
                 name=category_name,
-                title=getattr(module, "COMMAND_CATEGORY_TITLE", category_name.capitalize()),
+                title=getattr(
+                    module, "COMMAND_CATEGORY_TITLE", category_name.capitalize()
+                ),
                 description=getattr(module, "__doc__", ""),
                 tools=[],
-                modules=[]
+                modules=[],
             )
 
         category = self.categories[category_name]

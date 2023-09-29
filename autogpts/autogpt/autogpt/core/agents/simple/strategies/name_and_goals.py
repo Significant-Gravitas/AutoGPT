@@ -19,7 +19,7 @@ class NameAndGoalsConfiguration(SystemConfiguration):
     strategy_functions: list[dict] = UserConfigurable()
 
 
-class NameAndGoals(BasePromptStrategy):
+class NameAndGoalsStrategy(BasePromptStrategy):
     STRATEGY_NAME = "name_and_goals"
     DEFAULT_SYSTEM_PROMPT = (
         "Your job is to respond to a user-defined task by invoking the `create_agent` function "

@@ -179,7 +179,9 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
             click.style("\t2. Navigate to https://github.com/settings/tokens", fg="red")
         )
         click.echo(click.style("\t3. Click on 'Generate new token'.", fg="red"))
-        click.echo(click.style("\t4. Click on 'Generate new token (classic)'.", fg="red"))
+        click.echo(
+            click.style("\t4. Click on 'Generate new token (classic)'.", fg="red")
+        )
         click.echo(
             click.style(
                 "\t5. Fill out the form to generate a new token. Ensure you select the 'repo' scope.",
@@ -267,7 +269,11 @@ def start(agent_name):
     agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
     run_command = os.path.join(agent_dir, "run")
     run_bench_command = os.path.join(agent_dir, "run_benchmark")
-    if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
+    if (
+        os.path.exists(agent_dir)
+        and os.path.isfile(run_command)
+        and os.path.isfile(run_bench_command)
+    ):
         os.chdir(agent_dir)
         setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
         setup_process.wait()
@@ -394,7 +400,7 @@ def benchmark_categories_list():
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
-        if 'deprecated' not in data_file:
+        if "deprecated" not in data_file:
             with open(data_file, "r") as f:
                 try:
                     data = json.load(f)
@@ -438,7 +444,7 @@ def benchmark_tests_list():
     )
     # Use it as the base for the glob pattern, excluding 'deprecated' directory
     for data_file in glob.glob(glob_path, recursive=True):
-        if 'deprecated' not in data_file:
+        if "deprecated" not in data_file:
             with open(data_file, "r") as f:
                 try:
                     data = json.load(f)
@@ -574,6 +580,7 @@ def benchmark_tests_details(test_name):
             except IOError:
                 print(f"IOError: file could not be read: {data_file}")
                 continue
+
 
 @cli.group()
 def arena():
@@ -737,7 +744,7 @@ def enter(agent_name, branch):
 
         # Create a PR into the parent repository
         g = Github(github_access_token)
-        repo_name = github_repo_url.replace("https://github.com/", '')
+        repo_name = github_repo_url.replace("https://github.com/", "")
         repo = g.get_repo(repo_name)
         parent_repo = repo.parent
         if parent_repo:
