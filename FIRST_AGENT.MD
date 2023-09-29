@@ -44,20 +44,14 @@ async def run(
 
 # Objects, Classes, Methods, and Properties Breakdown:
 
-## 1. **BaseAgent**
-- **Usage:** 
-    ```python
-    async def run(self, **kwargs ...)
-    ```
+## 1. **Main properties & methods **
 
-- **Main Methods/Properties :**
+    - `execute_strategy()`: This method allows interaction with a LLM
+    - `_agent`: This property refer to the `Agent` that created the `Loo`p (circular relation) : 
     - `_logger`: This is a logger associated with the agent. Logging is essential for debugging and tracking the execution of the code.
         ```python
         self._agent._logger.info(...)
         ```
-    - `execute_strategy()`: This method allows interaction with a LLM
-    - `_agent`: This property refer to the `Agent` that created the `Loo`p (circular relation) : 
-
 
 ## 2. **ChatModelResponse**
 The `ChatModelResponse` class is critical because it encapsulates the response from a call to a Large Language Model (LLM) through the method `execute_strategy`. Understanding how to interact with the model and interpret its responses is essential when developing an agent loop.
