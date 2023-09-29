@@ -15,6 +15,12 @@
         {
             "arrows": "to",
             "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestSynthesizeInfo::test_method[challenge_data0]"
         },
@@ -80,21 +86,39 @@
         },
         {
             "arrows": "to",
-            "from": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
-            "id": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
-            "to": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]"
-        },
-        {
-            "arrows": "to",
             "from": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestRevenueRetrieval2::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestSearch::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestBasicRetrieval::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
             "from": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]"
         },
         {
             "arrows": "to",
@@ -117,7 +141,7 @@
                 "dependencies": [
                     "TestWriteFile"
                 ],
-                "eval_id": "261ccfaa-02a2-4c1a-8a56-c76c66f7dba1",
+                "eval_id": "f219f3d3-a41b-45a9-a3d0-389832086ee8",
                 "ground": {
                     "answer": "The content of output.txt should be 'Hello World!'",
                     "eval": {
@@ -155,7 +179,7 @@
                 ],
                 "cutoff": 60,
                 "dependencies": [],
-                "eval_id": "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
+                "eval_id": "021c695a-6cc4-46c2-b93a-f3a9b0f4d123",
                 "ground": {
                     "answer": "The word 'Washington', printed to a .txt file named anything",
                     "eval": {
@@ -187,13 +211,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "coding"
+                    "coding",
+                    "general"
                 ],
                 "cutoff": 150,
                 "dependencies": [
                     "TestUrlShortener"
                 ],
-                "eval_id": "54c3d7e9-71d6-476b-b045-cf0aaf118f95",
+                "eval_id": "504b1648-e14a-4982-8b27-074598eb4fd0",
                 "ground": {
                     "answer": "The correct python file for a TicTacToe game is written",
                     "eval": {
@@ -227,7 +252,7 @@
                 "dependencies": [
                     "TestThreeSum"
                 ],
-                "eval_id": "0823b577-64f2-477b-856d-16726fe464b0",
+                "eval_id": "ac75c471-e0ce-400c-ba9a-fb72aaab444f",
                 "ground": {
                     "answer": "password_generator.py is created and satisfies the requirements.",
                     "eval": {
@@ -255,13 +280,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "coding"
+                    "coding",
+                    "general"
                 ],
                 "cutoff": 90,
                 "dependencies": [
                     "TestPasswordGenerator"
                 ],
-                "eval_id": "6ace62be-6c18-431a-947f-72fb20984b58",
+                "eval_id": "029c1e6f-2b36-451e-bca6-60063b827d2e",
                 "ground": {
                     "answer": "The correct python file is written and organizes the files accordingly",
                     "eval": {
@@ -289,13 +315,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "coding"
+                    "coding",
+                    "general"
                 ],
                 "cutoff": 60,
                 "dependencies": [
                     "TestWriteFile"
                 ],
-                "eval_id": "29a10990-2584-4602-8b9d-c217f6edbc4f",
+                "eval_id": "a1ff38a4-1032-4bf2-960a-3b927f9936f4",
                 "ground": {
                     "answer": "The three_sum function coded properly.",
                     "eval": {
@@ -327,14 +354,15 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "coding"
+                    "coding",
+                    "general"
                 ],
                 "cutoff": 90,
                 "dependencies": [
                     "TestTicTacToe",
                     "TestReadFile"
                 ],
-                "eval_id": "5a32418d-1c3a-4af1-8dc4-8d4c29bed21a",
+                "eval_id": "4d613d05-475f-4f72-bf12-f6d3714340c1",
                 "ground": {
                     "answer": "The implementation of battleship that passes all the tests.",
                     "eval": {
@@ -366,7 +394,7 @@
                 "dependencies": [
                     "TestFileOrganizer"
                 ],
-                "eval_id": "41ca1035-ceca-4e0c-91ab-66ed0b350273",
+                "eval_id": "8106fd7f-83fd-496e-9513-280f4a3f012c",
                 "ground": {
                     "answer": "The correct python file for a basic url shortener CLI",
                     "eval": {
@@ -401,7 +429,7 @@
                 "dependencies": [
                     "TestSearch"
                 ],
-                "eval_id": "525001ed-8b45-4405-9e56-ce4423314294",
+                "eval_id": "cd96e6b2-779d-4a4a-8367-d520023e27ae",
                 "ground": {
                     "answer": "\u00a325.89",
                     "eval": {
@@ -431,13 +459,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "scrape_synthesize"
+                    "scrape_synthesize",
+                    "general"
                 ],
                 "cutoff": 60,
                 "dependencies": [
                     "TestRevenueRetrieval2"
                 ],
-                "eval_id": "18b14805-ff33-4076-9fb8-1e4218136f05",
+                "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
                 "ground": {
                     "answer": "The twitter handles of the two hosts of Latent Space.",
                     "eval": {
@@ -476,7 +505,7 @@
                 "dependencies": [
                     "TestRevenueRetrieval"
                 ],
-                "eval_id": "a0a27778-aec1-4b37-8fc2-92feedffd3fb",
+                "eval_id": "552bdf23-db40-4bd1-b123-4ed820886cc1",
                 "ground": {
                     "answer": "15 Millions\n112 Millions\n117 Millions\n204 Millions\n413 Millions\n2,014 Millions\n3,198 Millions\n4,046 Millions\n7,000 Millions\n11,759 Millions\n21,461 Millions\n24,578 Millions\n31,536 Millions\n53,823 Millions\n81,462 Millions",
                     "eval": {
@@ -522,6 +551,43 @@
             "color": "grey",
             "data": {
                 "category": [
+                    "scrape_synthesize",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestBasicRetrieval"
+                ],
+                "eval_id": "dc2114d7-1597-4c9b-bed0-a97937ad977f",
+                "ground": {
+                    "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "81,462"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can retrieve Tesla's revenue in 2022.",
+                    "difficulty": "intermediate",
+                    "side_effects": []
+                },
+                "name": "TestRevenueRetrieval",
+                "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion)."
+            },
+            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
+            "label": "RevenueRetrieval",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
                     "general",
                     "scrape_synthesize"
                 ],
@@ -529,7 +595,7 @@
                 "dependencies": [
                     "TestWriteFile"
                 ],
-                "eval_id": "6390114a-531d-4743-a51b-50ba6ff8da43",
+                "eval_id": "0bb23182-b434-402b-a73e-9c226469b959",
                 "ground": {
                     "answer": "This is a Heading\nThis is a paragraph.",
                     "eval": {
@@ -565,49 +631,90 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "scrape_synthesize"
+                    "data"
                 ],
-                "cutoff": 60,
+                "cutoff": 90,
                 "dependencies": [
-                    "TestBasicRetrieval"
+                    "TestAnswerQuestionSmallCsv"
                 ],
-                "eval_id": "af95fa96-a5cb-42b0-98f3-715e6e7d0b5d",
+                "eval_id": "bb6e0a4b-7faf-4aa6-a524-548cddbc2732",
                 "ground": {
-                    "answer": "It was $81.462 billion in 2022. In millions the answer is 81,462.",
+                    "answer": "The correct amount spent on utilities.",
                     "eval": {
                         "type": "file"
                     },
                     "files": [
-                        ".txt"
+                        "output.txt"
                     ],
                     "should_contain": [
-                        "81,462"
-                    ],
-                    "should_not_contain": []
+                        "1861"
+                    ]
                 },
                 "info": {
-                    "description": "Tests if the agent can retrieve Tesla's revenue in 2022.",
+                    "description": "Tests if the agent can answer a question from a csv",
                     "difficulty": "intermediate",
-                    "side_effects": []
+                    "side_effects": [
+                        ""
+                    ]
                 },
-                "name": "TestRevenueRetrieval",
-                "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion)."
+                "name": "TestAnswerQuestionCsv",
+                "task": "How much was spent on utilities in total ? Write the answer in an output.txt file."
             },
-            "id": "agbenchmark/generate_test.py::TestRevenueRetrieval::test_method[challenge_data0]",
-            "label": "RevenueRetrieval",
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]",
+            "label": "AnswerQuestionCsv",
             "shape": "dot"
         },
         {
             "color": "grey",
             "data": {
                 "category": [
-                    "data"
+                    "data",
+                    "general"
+                ],
+                "cutoff": 120,
+                "dependencies": [
+                    "TestAnswerQuestionCsv",
+                    "TestCombineCsv"
+                ],
+                "eval_id": "b1bb61cd-3d09-4a69-bb2a-9dbb3c477589",
+                "ground": {
+                    "answer": "The correct amount spent on utilities.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "1861"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can answer a question from a csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestAnswerQuestionCombineCsv",
+                "task": "How much was spent on utilities in total ? Write the answer in an output.txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]",
+            "label": "AnswerQuestionCombineCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data",
+                    "general"
                 ],
                 "cutoff": 60,
                 "dependencies": [
                     "TestReadFile"
                 ],
-                "eval_id": "db4654d7-fc97-4290-ab27-a710c2b5ce15",
+                "eval_id": "d59ec964-6f67-4b3d-a4de-c4436fc76f95",
                 "ground": {
                     "answer": "The csv sorted by date",
                     "eval": {
@@ -638,13 +745,52 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "data"
+                    "data",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestReadFile"
+                ],
+                "eval_id": "9df3f07a-5047-488f-b788-1e1f57eba970",
+                "ground": {
+                    "answer": "The correct amount spent on utilities.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "84"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can answer a question from a small csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestAnswerQuestionSmallCsv",
+                "task": "How much was spent on utilities in total ? Write the answer in an output.txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]",
+            "label": "AnswerQuestionSmallCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data",
+                    "general"
                 ],
                 "cutoff": 60,
                 "dependencies": [
                     "TestLabelCsv"
                 ],
-                "eval_id": "d5f04342-983f-45a4-b84a-fe8d96863375",
+                "eval_id": "52467beb-b951-4356-9776-9a0ae46bb33b",
                 "ground": {
                     "answer": "The csv data is combined",
                     "eval": {
@@ -681,7 +827,7 @@
                 "dependencies": [
                     "TestSortCsv"
                 ],
-                "eval_id": "6c58e229-aa22-4c4f-a053-4a78931ad41e",
+                "eval_id": "6e2bf1f0-6842-4704-8ed1-b17c2065bbac",
                 "ground": {
                     "answer": "The csv labelled",
                     "eval": {
@@ -712,13 +858,14 @@
             "color": "grey",
             "data": {
                 "category": [
-                    "scrape_synthesize"
+                    "scrape_synthesize",
+                    "general"
                 ],
                 "cutoff": 240,
                 "dependencies": [
                     "TestReadFile"
                 ],
-                "eval_id": "76e4c56c-8d57-423e-9cc1-1fff5f58dee6",
+                "eval_id": "895ae28a-4513-44ea-a872-0164771d1597",
                 "ground": {
                     "answer": "A report highlighting elements from the 2 files.",
                     "eval": {
