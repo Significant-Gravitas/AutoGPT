@@ -1,4 +1,3 @@
-
 from logging import Logger
 import uuid
 import enum
@@ -30,6 +29,7 @@ from autogpt.core.planning.schema import (
     TaskType,
 )
 
+
 class InitialPlanFunctionNames(str, enum.Enum):
     INITIAL_PLAN: str = "make_initial_plan"
 
@@ -42,6 +42,7 @@ class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
         InitialPlanFunctionNames.INITIAL_PLAN
     )
     strategy_name: str = "make_initial_plan"
+
 
 class InitialPlanStrategy(BasePromptStrategy):
     default_configuration = InitialPlanStrategyConfiguration()
@@ -69,11 +70,8 @@ class InitialPlanStrategy(BasePromptStrategy):
     ]
 
     DEFAULT_USER_PROMPT_TEMPLATE = (
-        "You are {agent_name}, {agent_role}\n"
-        "Your goals are:\n"
-        "{agent_goals}"
+        "You are {agent_name}, {agent_role}\n" "Your goals are:\n" "{agent_goals}"
     )
-
 
     ###
     ### FUNCTIONS
@@ -122,8 +120,6 @@ class InitialPlanStrategy(BasePromptStrategy):
             ),
         },
     )
-
-
 
     def __init__(
         self,
@@ -179,13 +175,13 @@ class InitialPlanStrategy(BasePromptStrategy):
         user_prompt = ChatMessage.user(
             content=self._user_prompt_template.format(**template_kwargs),
         )
-        strategy_functions =  self._strategy_functions
+        strategy_functions = self._strategy_functions
 
         return ChatPrompt(
             messages=[system_prompt, user_prompt],
             functions=strategy_functions,
-            function_call= InitialPlanFunctionNames.INITIAL_PLAN.value,
-            default_function_call= InitialPlanFunctionNames.INITIAL_PLAN.value,
+            function_call=InitialPlanFunctionNames.INITIAL_PLAN.value,
+            default_function_call=InitialPlanFunctionNames.INITIAL_PLAN.value,
             # TODO:
             tokens_used=0,
         )

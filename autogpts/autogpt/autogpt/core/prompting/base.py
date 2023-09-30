@@ -36,8 +36,8 @@ from autogpt.core.resource.model_providers import (
 class PromptStrategiesConfiguration(SystemConfiguration):
     pass
 
-class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
 
+class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
     RESPONSE_SCHEMA = JSONSchema(
         type=JSONSchema.Type.OBJECT,
         properties={
@@ -144,9 +144,8 @@ class BasePromptStrategy(PromptStrategy):
         """
         return [item.name for item in self._functions]
 
+
 class PlanningPromptStrategy(BasePromptStrategy):
-
-
     def __init__(self, **kwargs) -> None:
         self._prepend_messages: list[ChatMessage] = []
         self._append_messages: list[ChatMessage] = []
@@ -328,7 +327,6 @@ class PlanningPromptStrategy(BasePromptStrategy):
             return to_numbered_list(agent._tool_registry.list_tools_descriptions())
 
         return []
-    
 
     # NOTE : based on autogpt agent.py
     # This can be expanded to support multiple types of (inter)actions within an agent

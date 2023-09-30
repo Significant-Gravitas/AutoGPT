@@ -2,13 +2,13 @@ from pydantic import BaseModel
 from autogpt.core.planning.models.tasks import Task
 from typing import Union
 
+
 class Plan(BaseModel):
     """
     Represents a plan consisting of a list of tasks.
     """
-    tasks : list[Task]
 
-
+    tasks: list[Task]
 
     def dump(self, depth=0) -> dict:
         """
@@ -17,7 +17,7 @@ class Plan(BaseModel):
         Args:
             depth (int): The depth up to which tasks should be included in the dictionary.
                          If depth is 0, only the plan itself is included.
-            
+
         Examples:
             >>> plan = Plan([Task("Task 1"), Task("Task 2")])
             >>> plan.dump()

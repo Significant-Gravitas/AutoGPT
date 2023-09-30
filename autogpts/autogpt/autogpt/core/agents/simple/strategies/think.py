@@ -40,12 +40,12 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.prompting.utils import json_loads, to_numbered_list, to_string_list
 
 
-
 DEFAULT_TRIGGERING_PROMPT = (
     "Determine exactly one command to use next based on the given goals "
     "and the progress you have made so far, "
     "and respond using the JSON schema specified previously:"
 )
+
 
 class ThinkStrategyFunctionNames(str, enum.Enum):
     THINK: str = "think"
@@ -55,6 +55,7 @@ class ThinkStrategyConfiguration(PlanningPromptStrategiesConfiguration):
     model_classification: LanguageModelClassification = (
         LanguageModelClassification.FAST_MODEL_16K
     )
+
 
 class ThinkStrategy(PlanningPromptStrategy):
     default_configuration = ThinkStrategyConfiguration()
@@ -107,8 +108,7 @@ class ThinkStrategy(PlanningPromptStrategy):
         #
 
         if not instruction:
-            raise ValueError("No instruction given")        
-                             
+            raise ValueError("No instruction given")
 
         # System message
         response_format_instr = self.response_format_instruction(
@@ -124,8 +124,6 @@ class ThinkStrategy(PlanningPromptStrategy):
         instruction_tlength = agent._openai_provider.count_message_tokens(
             instruction_msg, model_name
         )
-
-
 
         messages: list[ChatMessage] = self.construct_base_prompt(
             agent=agent,
@@ -149,7 +147,6 @@ class ThinkStrategy(PlanningPromptStrategy):
             function_call=ThinkStrategyFunctionNames.THINK,
             default_function_call="human_feedback",
         )
-
 
     # NOTE : based on planning_agent.py
     def construct_base_prompt(

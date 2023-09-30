@@ -11,12 +11,13 @@ class ContentType(str, enum.Enum):
     Attributes:
         TEXT: Represents textual content.
         CODE: Represents code-based content.
-    
+
     Example:
         >>> content_type = ContentType.TEXT
         >>> print(content_type)
         ContentType.TEXT
     """
+
     # TBD what these actually are.
     TEXT = "text"
     CODE = "code"
@@ -36,6 +37,7 @@ class Knowledge(BaseModel):
         >>> print(knowledge.content)
         Hello, World!
     """
+
     content: str
     content_type: ContentType
     content_metadata: dict[str, Any]

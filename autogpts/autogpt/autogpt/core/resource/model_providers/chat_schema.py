@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 This module defines the structure and representation of chat interactions, properties, and function specifications for a language model within a chat-based system. It includes classes for representing chat messages, function parameters, and function specifications, which are crucial for building prompts and handling interactions in a structured and type-safe manner.
 
@@ -51,17 +52,32 @@ Examples:
 import enum
 import abc
 from pydantic import BaseModel, Field
-from typing import Any, Optional, List, Union , TypedDict, Dict, TypeVar, Generic, Callable
+from typing import (
+    Any,
+    Optional,
+    List,
+    Union,
+    TypedDict,
+    Dict,
+    TypeVar,
+    Generic,
+    Callable,
+)
 
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.resource.model_providers.schema import BaseModelResponse, AbstractModelProvider, ModelProviderService, BaseModelInfo
+from autogpt.core.resource.model_providers.schema import (
+    BaseModelResponse,
+    AbstractModelProvider,
+    ModelProviderService,
+    BaseModelInfo,
+)
 
 
 class Role(str, enum.Enum):
 
     """
-    An enumeration class representing the roles of different entities in a chat conversation. 
-    The `Role` class is fundamental to role-based messaging within the module, 
+    An enumeration class representing the roles of different entities in a chat conversation.
+    The `Role` class is fundamental to role-based messaging within the module,
     serving as a key attribute in `ChatMessage` and `AssistantChatMessage` classes.
 
     Attributes:
@@ -81,6 +97,7 @@ class Role(str, enum.Enum):
 
     print(get_role("assistant"))  # Output: Role.ASSISTANT
     """
+
     USER = "user"
     SYSTEM = "system"
     ASSISTANT = "assistant"
@@ -92,32 +109,33 @@ class Role(str, enum.Enum):
 class ChatMessage(BaseModel):
     """
     We invite you to Read OpenAI API function_call documentation for further understanding. `ChatMessage` is the representation of a chat interaction with a large language model. During chat interaction different persons have send messages (system, user, assistant...).
-    
-    `ChatMessage` encapsulates a message within a chat interaction with a language model. This object captures the sender's role (`Role`) and the message content (`content`). 
-    
-    It is typically utilized in classes inheriting from `PromptStrategy`, especially within the `build_prompt` method. 
-    Instances of `ChatMessage` constitute the conversation history 
+
+    `ChatMessage` encapsulates a message within a chat interaction with a language model. This object captures the sender's role (`Role`) and the message content (`content`).
+
+    It is typically utilized in classes inheriting from `PromptStrategy`, especially within the `build_prompt` method.
+    Instances of `ChatMessage` constitute the conversation history
     in the `ChatPrompt` class, aiding in structuring the interaction with the language model.
-    
+
     Attributes:
         role (Role): The role of the entity sending the message. It can be 'user', 'system', or 'assistant'.
         content (str): The textual content of the message.
-    
+
     Methods:
         assistant(content: str) -> "ChatMessage": Constructs a ChatMessage object with role 'ASSISTANT'.
         user(content: str) -> "ChatMessage": Constructs a ChatMessage object with role 'USER'.
         system(content: str) -> "ChatMessage": Constructs a ChatMessage object with role 'SYSTEM'.
         dict(**kwargs): Returns a dictionary representation of the ChatMessage object, with 'role' represented as a string.
-    
+
     Examples:
         >>> msg1 = ChatMessage.assistant("Hello there!")
         >>> print(msg1.role, msg1.content)
         Role.ASSISTANT Hello there!
-        
+
         >>> msg2 = ChatMessage.user("Good morning!")
         >>> print(msg2.role, msg2.content)
         Role.USER Good morning!
     """
+
     role: Role
     content: str
 
@@ -141,9 +159,9 @@ class ChatMessage(BaseModel):
 
 class ChatMessageDict(TypedDict):
     """
-    `ChatMessageDict` serves as a typed dictionary representation of a chat message, 
-    providing a structured format for `ChatMessage` instances when transformed into a dictionary. 
-    It is utilized within the `ChatPrompt` class, specifically in the `raw()` method, 
+    `ChatMessageDict` serves as a typed dictionary representation of a chat message,
+    providing a structured format for `ChatMessage` instances when transformed into a dictionary.
+    It is utilized within the `ChatPrompt` class, specifically in the `raw()` method,
     to return a list of dictionary representations of chat messages.
 
 
@@ -162,6 +180,7 @@ class ChatMessageDict(TypedDict):
 
     print_message({'role': 'assistant', 'content': 'How can I help?'})  # Output: Assistant: How can I help?
     """
+
     role: str
     content: str
 
@@ -169,7 +188,7 @@ class ChatMessageDict(TypedDict):
 # Basic structure for a single property
 class Property(BaseModel):
     """
-    `Property` represents a single property within a function's parameters or a model's schema. 
+    `Property` represents a single property within a function's parameters or a model's schema.
     It is used within the `FunctionParameters` class to structure the parameters of a `CompletionModelFunction`.
 
 
@@ -192,6 +211,7 @@ class Property(BaseModel):
     )
     print(nested_prop.dict())  # Output: {'type': 'object', 'description': 'A nested object property', 'items': None, 'properties': {'name': {'type': 'string', 'description': 'The name of the item'}}}
     """
+
     type: str
     description: str
     items: Optional[Union["Property", Dict]]
@@ -219,7 +239,7 @@ class FunctionParameters(BaseModel):
         >>> func_params = FunctionParameters(type="object", properties=param_specs, required=["text"])
         >>> print(func_params.type, func_params.required)
         object ['text']
-        
+
         >>> param_specs_2 = {
         ...     "query": {"type": "string", "description": "Query text"},
         ...     "limit": {"type": "integer", "description": "Limit on responses"}
@@ -228,6 +248,7 @@ class FunctionParameters(BaseModel):
         >>> print(func_params_2.type, func_params_2.required)
         object ['query', 'limit']
     """
+
     type: str
     properties: Dict[str, Property]
     required: List[str]
@@ -235,11 +256,12 @@ class FunctionParameters(BaseModel):
 
 class CompletionModelFunction(BaseModel):
     """
-    `CompletionModelFunction` encapsulates a function specification that can be invoked by the language model 
-    within a chat-based interaction. It utilizes the `FunctionParameters` class to structure its parameters. 
-    Instances of `CompletionModelFunction` are aggregated within the `ChatPrompt` class to provide a list 
+    `CompletionModelFunction` encapsulates a function specification that can be invoked by the language model
+    within a chat-based interaction. It utilizes the `FunctionParameters` class to structure its parameters.
+    Instances of `CompletionModelFunction` are aggregated within the `ChatPrompt` class to provide a list
     of available functions for interaction with the language model.
     """
+
     name: str
     description: str
     parameters: FunctionParameters
@@ -247,8 +269,8 @@ class CompletionModelFunction(BaseModel):
 
 class AssistantFunctionCall(BaseModel):
     """
-    `AssistantFunctionCall` encapsulates a function call made by the assistant within a chat interaction. 
-    This class is utilized within `AssistantChatMessage` to represent function call information alongside 
+    `AssistantFunctionCall` encapsulates a function call made by the assistant within a chat interaction.
+    This class is utilized within `AssistantChatMessage` to represent function call information alongside
     the assistant's message content.
 
     Attributes:
@@ -260,14 +282,15 @@ class AssistantFunctionCall(BaseModel):
         >>> print(afc.name, afc.arguments)
         calculate_sum 5, 3
     """
+
     name: str
     arguments: str
 
 
 class AssistantFunctionCallDict(TypedDict):
     """
-    A Typed Dictionary for representing an `AssistantFunctionCall` as a dictionary. 
-    This representation is used within `AssistantChatMessageDict` to provide a structured 
+    A Typed Dictionary for representing an `AssistantFunctionCall` as a dictionary.
+    This representation is used within `AssistantChatMessageDict` to provide a structured
     format for function call information.
 
     Attributes:
@@ -279,14 +302,15 @@ class AssistantFunctionCallDict(TypedDict):
         >>> print(afc_dict)
         {'name': 'calculate_sum', 'arguments': '5, 3'}
     """
+
     name: str
     arguments: str
 
 
 class AssistantChatMessage(ChatMessage):
     """
-    `AssistantChatMessage` extends `ChatMessage` to include optional function call information 
-    alongside the message content. This class provides a structured representation of the assistant's 
+    `AssistantChatMessage` extends `ChatMessage` to include optional function call information
+    alongside the message content. This class provides a structured representation of the assistant's
     responses and actions within a chat interaction.
 
     Attributes:
@@ -299,6 +323,7 @@ class AssistantChatMessage(ChatMessage):
         >>> print(acm.role, acm.content, acm.function_call.name)
         Role.ASSISTANT The sum is 8 calculate_sum
     """
+
     role: Role.ASSISTANT
     content: Optional[str]
     function_call: Optional[AssistantFunctionCall]
@@ -306,7 +331,7 @@ class AssistantChatMessage(ChatMessage):
 
 class AssistantChatMessageDict(TypedDict, total=False):
     """
-    A Typed Dictionary for representing an `AssistantChatMessage` as a dictionary. 
+    A Typed Dictionary for representing an `AssistantChatMessage` as a dictionary.
     This representation provides a structured format for the assistant's message and function call information.
 
     Attributes:
@@ -319,12 +344,13 @@ class AssistantChatMessageDict(TypedDict, total=False):
         >>> print(acm_dict)
         {'role': 'assistant', 'content': 'The sum is 8', 'function_call': {'name': 'calculate_sum', 'arguments': '5, 3'}}
     """
+
     role: str
     content: str
     function_call: AssistantFunctionCallDict
 
 
-class CompletionModelFunction(BaseModel):   
+class CompletionModelFunction(BaseModel):
     """
     `CompletionModelFunction` encapsulates a function specification that can be invoked by the language model within a chat-based interaction. The instances of this class are used to communicate the available commands to the language model, as seen in the `OneShotAgentPromptStrategy` where they are provided as input to build the system prompt section detailing available commands. The class allows for a structured representation of a function's name, description, and parameters, facilitating a clear and unambiguous definition of what functions the language model can call and with what arguments.
 
@@ -443,12 +469,13 @@ class ChatPrompt(BaseModel):
         ... )
         >>> print(chat_prompt)
         USER: Hello!
-        
+
         ASSISTANT: Hi there!
         >>> raw_msgs = chat_prompt.raw()
         >>> print(raw_msgs)
         [{'role': 'user', 'content': 'Hello!'}, {'role': 'assistant', 'content': 'Hi there!'}]
     """
+
     messages: list[ChatMessage]
     functions: list[CompletionModelFunction] = Field(default_factory=list)
     function_call: str
@@ -479,7 +506,7 @@ class ChatModelResponse(BaseModelResponse, Generic[_T]):
 
     Example:
         Suppose there's a function `parse_response` that processes the language model's response to extract certain information.
-        
+
         >>> def parse_response(response: AssistantChatMessageDict) -> str:
         ...     # Assume it extracts and returns some text from the response
         ...     return extracted_text
@@ -501,7 +528,6 @@ class ChatModelResponse(BaseModelResponse, Generic[_T]):
     content: dict = None
 
 
-
 ###############
 # Chat Models #
 ###############
@@ -513,8 +539,6 @@ class ChatModelInfo(BaseModelInfo):
     llm_service = ModelProviderService.CHAT
     max_tokens: int
     has_function_call_api: bool = False
-
-
 
 
 # class ChatModelResponse(ModelResponse, Generic[_T]):

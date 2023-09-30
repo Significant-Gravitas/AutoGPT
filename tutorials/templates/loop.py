@@ -3,6 +3,7 @@ from autogpt.core.agents.base import BaseAgent, BaseLoop
 from autogpt.core.prompting.base import PromptStrategiesConfiguration, LoophooksDict
 from typing import Callable, Awaitable
 
+
 # Define your custom loop class. The class name should reflect its purpose.
 class MyCustomLoop(BaseLoop):
     """A custom loop class for handling agent execution logic.
@@ -23,7 +24,7 @@ class MyCustomLoop(BaseLoop):
         agent: BaseAgent,
         hooks: LoophooksDict,
         user_input_handler: Callable[[str], Awaitable[str]],
-        user_message_handler: Callable[[str], Awaitable[str]]
+        user_message_handler: Callable[[str], Awaitable[str]],
     ) -> dict:
         """Core method where the execution logic of the agent is defined.
 
@@ -64,9 +65,7 @@ class MyCustomLoop(BaseLoop):
         await self.save_agent()
 
         # Return any relevant information
-        return {
-            "final_response": "Your final response or information here"
-        }
+        return {"final_response": "Your final response or information here"}
 
     async def save_agent(self):
         """An example method to save the current state of the agent.

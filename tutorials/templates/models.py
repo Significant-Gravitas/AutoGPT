@@ -9,6 +9,7 @@ from autogpt.core.memory.base import MemorySettings
 from autogpt.core.plugin.simple import PluginLocation
 from autogpt.core.resource.model_providers import OpenAISettings
 
+
 # Define the Agent Systems Class
 # This class defines the systems that will be used by your custom agent.
 class MyCustomAgentSystems(SystemConfiguration):
@@ -21,6 +22,7 @@ class MyCustomAgentSystems(SystemConfiguration):
     class Config(SystemConfiguration.Config):
         # Specify any additional configuration options for this class.
         extra = "allow"
+
 
 # Define the Agent Configuration Class
 # This class holds configurations specific to your custom agent.
@@ -36,6 +38,7 @@ class MyCustomAgentConfiguration(SystemConfiguration):
         # Specify any additional configuration options for this class.
         extra = "allow"
 
+
 # Define the Agent System Settings Class
 # This class holds settings for your custom agent's systems.
 class MyCustomAgentSystemSettings(SystemSettings):
@@ -45,6 +48,7 @@ class MyCustomAgentSystemSettings(SystemSettings):
     class Config(SystemSettings.Config):
         # Specify any additional configuration options for this class.
         extra = "allow"
+
 
 # Define the Agent Settings Class
 # This class aggregates all settings required for initializing your custom agent.
@@ -67,4 +71,3 @@ class MyCustomAgentSettings(BaseModel):
 
     # Define methods for serialization, loading values, etc., as needed.
     # ...
-

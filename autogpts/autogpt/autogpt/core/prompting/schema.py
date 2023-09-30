@@ -24,4 +24,3 @@ class LanguageModelClassification(str, enum.Enum):
     FAST_MODEL_FINE_TUNED_4K: str = "FAST_MODEL_FINE_TUNED_4K"
     SMART_MODEL_8K: str = "SMART_MODEL_8K"
     SMART_MODEL_32K: str = "SMART_MODEL_32K"
-

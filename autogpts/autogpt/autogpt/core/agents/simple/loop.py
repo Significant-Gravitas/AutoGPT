@@ -194,7 +194,7 @@ class SimpleLoop(BaseLoop):
         ##############################################################
         if not usercontext:
             self._agent.agent_goals = [self._agent.agent_goal_sentence]
-        else :
+        else:
             # USER CONTEXT AGENT : Configure the agent to our context
             usercontextagent_configuration = {
                 "user_id": self._agent.user_id,
@@ -247,7 +247,7 @@ class SimpleLoop(BaseLoop):
         ### Step 4 : Start with an plan !
         ##############################################################
         plan = await self.build_initial_plan()
-        
+
         print(plan)
 
         consecutive_failures = 0
@@ -345,10 +345,10 @@ class SimpleLoop(BaseLoop):
             self.remaining_cycles = 1
 
     async def build_initial_plan(self) -> dict:
-        # plan =  self.execute_strategy( 
-        
-        plan = await self.execute_strategy( 
-            strategy_name = 'make_initial_plan',
+        # plan =  self.execute_strategy(
+
+        plan = await self.execute_strategy(
+            strategy_name="make_initial_plan",
             agent_name=self._agent.agent_name,
             agent_role=self._agent.agent_role,
             agent_goals=self._agent.agent_goals,
@@ -359,7 +359,9 @@ class SimpleLoop(BaseLoop):
         # TODO: Should probably do a step to evaluate the quality of the generated tasks,
         #  and ensure that they have actionable ready and acceptance criteria
 
-        self.plan = Plan(tasks= [Task.parse_obj(task) for task in plan.parsed_result["task_list"]]) 
+        self.plan = Plan(
+            tasks=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
+        )
         self.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
         self.plan[-1].context.status = TaskStatusList.READY
         return plan.parsed_result
@@ -383,9 +385,7 @@ class SimpleLoop(BaseLoop):
 
     async def execute_next_ability(self, user_input: str, *args, **kwargs):
         if user_input == "y":
-            ability = self.get_tools().get_ability(
-                self._next_ability["next_ability"]
-            )
+            ability = self.get_tools().get_ability(self._next_ability["next_ability"])
             ability_response = await ability(**self._next_ability["ability_arguments"])
             await self._update_tasks_and_memory(ability_response)
             if self._current_task.context.status == TaskStatusList.DONE:
@@ -446,7 +446,11 @@ class SimpleLoop(BaseLoop):
     CommandArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
-    from autogpt.core.resource.model_providers.chat_schema import ChatMessage, ChatPrompt
+    from autogpt.core.resource.model_providers.chat_schema import (
+        ChatMessage,
+        ChatPrompt,
+    )
+
     async def think(
         self,
         instruction: Optional[str] = None,

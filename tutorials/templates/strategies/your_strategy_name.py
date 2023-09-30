@@ -1,15 +1,21 @@
 # Import necessary libraries and modules from the afaas framework and other packages.
-from autogpt.core.prompting.base import BasePromptStrategy, PromptStrategiesConfiguration
+from autogpt.core.prompting.base import (
+    BasePromptStrategy,
+    PromptStrategiesConfiguration,
+)
 from autogpt.core.core.resource.model_providers.chat_schema import ChatPrompt
 from autogpt.core.core.resource.model_providers import ChatModelResponse
 from pydantic import BaseModel
 
+
 # Define a configuration class for your strategy. This will hold any custom configuration your strategy needs.
 class YourStrategyNameConfiguration(PromptStrategiesConfiguration):
     """A Pydantic model to hold the configuration for YourStrategyName."""
+
     # Add any additional configuration properties here.
     # Example:
     # custom_config_property: str
+
 
 # Define your custom strategy class. The class name should reflect its purpose.
 class YourStrategyName(BasePromptStrategy):
@@ -59,12 +65,10 @@ class YourStrategyName(BasePromptStrategy):
             dict: A dictionary containing parsed information.
         """
         # Your code to parse the response goes here.
-        # This could include extracting specific data from the response, 
+        # This could include extracting specific data from the response,
         # interpreting the model's answers, etc.
 
         # Example: Extracting a particular piece of information from the response
-        parsed_info = {
-            'extracted_data': response.parsed_result.get('some_key', None)
-        }
+        parsed_info = {"extracted_data": response.parsed_result.get("some_key", None)}
 
         return parsed_info

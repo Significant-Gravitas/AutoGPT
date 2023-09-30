@@ -50,6 +50,7 @@ class ModelProviderService(str, enum.Enum):
 class ModelProviderName(str, enum.Enum):
     OPENAI: str = "openai"
 
+
 class BaseModelInfo(BaseModel):
     """Struct for model information.
 

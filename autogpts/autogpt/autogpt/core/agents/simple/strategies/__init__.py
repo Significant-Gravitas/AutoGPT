@@ -32,8 +32,14 @@ class Strategies:
     @staticmethod
     def get_strategies(logger: Logger) -> list[PromptStrategy]:
         return [
-            InitialPlanStrategy(logger=logger, **InitialPlanStrategy.default_configuration.dict()),
-            NameAndGoalsStrategy(logger=logger, **NameAndGoalsStrategy.default_configuration.dict()),
-            NextAbilityStrategy(logger=logger, **NextAbilityStrategy.default_configuration.dict()),
+            InitialPlanStrategy(
+                logger=logger, **InitialPlanStrategy.default_configuration.dict()
+            ),
+            NameAndGoalsStrategy(
+                logger=logger, **NameAndGoalsStrategy.default_configuration.dict()
+            ),
+            NextAbilityStrategy(
+                logger=logger, **NextAbilityStrategy.default_configuration.dict()
+            ),
             ThinkStrategy(logger=logger, **ThinkStrategy.default_configuration.dict()),
         ]

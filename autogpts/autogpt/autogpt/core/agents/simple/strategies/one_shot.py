@@ -59,10 +59,9 @@ class OneShotAgentPromptConfiguration(PlanningPromptStrategiesConfiguration):
         "and respond using the JSON schema specified previously:"
     )
 
-
     body_template: str = UserConfigurable(default=DEFAULT_BODY_TEMPLATE)
     response_schema: dict = UserConfigurable(
-        default_factory= PlanningPromptStrategiesConfiguration.RESPONSE_SCHEMA.to_dict
+        default_factory=PlanningPromptStrategiesConfiguration.RESPONSE_SCHEMA.to_dict
     )
     choose_action_instruction: str = UserConfigurable(
         default=DEFAULT_CHOOSE_ACTION_INSTRUCTION
@@ -232,7 +231,9 @@ class OneShotAgentPromptStrategy(PlanningPromptStrategy):
         return "\n\n".join(steps)
 
     def response_format_instruction(self, use_functions_api: bool) -> str:
-        response_schema = OneShotAgentPromptConfiguration.RESPONSE_SCHEMA.copy(deep=True)
+        response_schema = OneShotAgentPromptConfiguration.RESPONSE_SCHEMA.copy(
+            deep=True
+        )
         if (
             use_functions_api
             and response_schema.properties
@@ -338,7 +339,9 @@ class OneShotAgentPromptStrategy(PlanningPromptStrategy):
 
         assistant_reply_dict = extract_dict_from_response(response["content"])
 
-        _, errors = OneShotAgentPromptConfiguration.RESPONSE_SCHEMA.validate_object(assistant_reply_dict, self.logger)
+        _, errors = OneShotAgentPromptConfiguration.RESPONSE_SCHEMA.validate_object(
+            assistant_reply_dict, self.logger
+        )
         if errors:
             raise InvalidAgentResponseError(
                 "Validation of response failed:\n  "

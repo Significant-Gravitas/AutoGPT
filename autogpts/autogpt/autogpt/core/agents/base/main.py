@@ -39,10 +39,10 @@ class AbstractAgent(abc.ABC):
     def get_agent_class(cls) -> BaseAgent:
         """
         Returns the agent class.
-        
+
         Returns:
             Agent: The class of the agent.
-        
+
         Example:
             >>> agent_class = BaseAgent.get_agent_class()
             >>> print(agent_class)
@@ -54,7 +54,7 @@ class AbstractAgent(abc.ABC):
     def __init__(self, *args, **kwargs):
         """
         Abstract method for the initialization of the agent.
-        
+
         Note: Implementation required in subclass.
         """
         ...
@@ -68,14 +68,14 @@ class AbstractAgent(abc.ABC):
     ) -> "AbstractAgent":
         """
         Abstract method to retrieve an agent instance using provided settings.
-        
+
         Args:
             agent_settings (BaseAgentSettings): The settings for the agent.
             logger (logging.Logger): Logger instance for logging purposes.
-            
+
         Returns:
             BaseAgent: An instance of BaseAgent.
-        
+
         Note: Implementation required in subclass.
         """
         ...
@@ -84,10 +84,10 @@ class AbstractAgent(abc.ABC):
     def __repr__(self):
         """
         Abstract method for the string representation of the agent.
-        
+
         Returns:
             str: A string representation of the agent.
-        
+
         Note: Implementation required in subclass.
         """
         ...
@@ -117,7 +117,6 @@ class BaseAgent(Configurable, AbstractAgent):
 
         # NOTE : Move to Configurable class ?
         self.agent_class = f"{self.__class__.__name__}"
-
 
     def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):
         """

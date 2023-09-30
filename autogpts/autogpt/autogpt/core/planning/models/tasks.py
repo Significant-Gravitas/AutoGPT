@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from autogpt.core.tools.schema import ToolResult
 
-if TYPE_CHECKING : 
+if TYPE_CHECKING:
     from autogpt.core.agents.base.main import BaseAgent
 
 
@@ -28,6 +28,7 @@ class TaskType(str, enum.Enum):
         >>> print(task)
         TaskType.RESEARCH
     """
+
     RESEARCH: str = "research"
     WRITE: str = "write"
     EDIT: str = "edit"
@@ -50,6 +51,7 @@ class TaskStatus(BaseModel):
         >>> print(status)
         in_progress
     """
+
     name: str
     description: str
 
@@ -91,6 +93,7 @@ class TaskStatusList(str, enum.Enum):
         >>> print(task_status)
         TaskStatusList.BACKLOG
     """
+
     BACKLOG: TaskStatus = TaskStatus(
         name="backlog", description="The task is not ready"
     )
@@ -142,6 +145,7 @@ class TaskContext(BaseModel):
         >>> print(context.cycle_count)
         5
     """
+
     cycle_count: int = 0
     status: TaskStatusList = TaskStatusList.BACKLOG
     parent: "Task" = None
@@ -170,14 +174,14 @@ class Task(BaseModel):
         >>> print(task.objective)
         "Write a report"
     """
-    responsible_agent_id: Optional[str] = Field(default = '')
+
+    responsible_agent_id: Optional[str] = Field(default="")
     objective: str
     type: str  # TaskType  FIXME: gpt does not obey the enum parameter in its schema
     priority: int
     ready_criteria: list[str]
     acceptance_criteria: list[str]
     context: TaskContext = Field(default_factory=TaskContext)
-
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.

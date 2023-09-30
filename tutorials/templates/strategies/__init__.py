@@ -1,19 +1,28 @@
 # Import necessary libraries, modules and classes.
-from autogpt.core.prompting.base import PromptStrategiesConfiguration, BasePromptStrategy, PromptStrategy
+from autogpt.core.prompting.base import (
+    PromptStrategiesConfiguration,
+    BasePromptStrategy,
+    PromptStrategy,
+)
 from logging import Logger
+
 # Import your custom strategy class from the respective file.
 from .your_strategy_name import YourStrategyName, YourStrategyNameConfiguration
+
 
 # Define a configuration class for all the strategies. Each strategy gets its own configuration.
 class StrategiesConfiguration(PromptStrategiesConfiguration):
     """A Pydantic model to hold configurations for all strategies."""
+
     # Define a configuration property for each strategy.
     your_strategy_name: YourStrategyNameConfiguration
     # Add other strategy configurations as properties here.
 
+
 # Define a Strategies class to encapsulate all your strategies and provide them to the agent.
 class Strategies:
     """Encapsulates all prompt strategies and provides a method to get them."""
+
     from autogpt.core.prompting.base import BasePromptStrategy, PromptStrategy
 
     @staticmethod
@@ -29,9 +38,12 @@ class Strategies:
         # Instantiate and return a list of your strategy objects.
         # Use the logger and any necessary configuration from StrategiesConfiguration.
         return [
-            YourStrategyName(logger=logger, **YourStrategyName.default_configuration.dict()),
+            YourStrategyName(
+                logger=logger, **YourStrategyName.default_configuration.dict()
+            ),
             # Instantiate other strategy objects and add them to the list.
         ]
+
 
 # Note:
 # - Each strategy should be defined in its own Python file within the strategies directory.

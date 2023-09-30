@@ -34,6 +34,7 @@ from autogpt.core.resource.model_providers.chat_schema import (
     CompletionModelFunction,
     ChatPrompt,
 )
+
 __all__ = [
     "AssistantChatMessage",
     "AssistantChatMessageDict",
@@ -63,5 +64,5 @@ __all__ = [
     "OPEN_AI_MODELS",
     "OpenAIProvider",
     "OpenAISettings",
-    "ChatPrompt"
+    "ChatPrompt",
 ]
