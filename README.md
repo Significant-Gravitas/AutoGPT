@@ -1,76 +1,62 @@
-# 🌟 AutoGPT: the heart of the open-source agent ecosystem
+Title: **Swarms Of Sparta**
 
-[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/AutoGPT?style=social)](https://github.com/Significant-Gravitas/AutoGPT/stargazers) [![Twitter Follow](https://img.shields.io/twitter/follow/auto_gpt?style=social)](https://twitter.com/Auto_GPT) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+1. **API Key Security**:
+   - [ ] Implement a robust method for managing user API keys securely, possibly through encryption, to ensure safe interactions with the Discord bot.
 
-**AutoGPT** is your go-to toolkit for supercharging agents. With its modular and extensible framework, you're empowered to focus on:
+2. **Forge Integration**:
+   - [ ] Integrate AutoGPT with Forge to augment functionality and user experience.
+   - [ ] Integrate other popular agents such as Smol, Swarms, and Ikigai into Forge.
 
-- 🏗️ **Building** - Lay the foundation for something amazing.
-- 🧪 **Testing** - Fine-tune your agent to perfection.
-- 👀 **Viewing** - See your progress come to life.
+3. **Meta Configuration**:
+   - [ ] Enhance the default configuration of our AutoGPT instance by incorporating useful plugins.
+   - [ ] Refine the output and the ability to summon AutoGPT from Discord using @sparticus, currently utilizing `gravelBridge/AutoGPT-Discord` for integration.
+   - [ ] Investigate other free services and plugins to further extend AutoGPT's functionality, having explored `gravelBridge/AutoGPT-BingAI`.
+   - [ ] Develop a fine-tuned version of AutoGPT with the plugins and alterations to allow users to select specific plugins to include and provide the needed API keys or work off of a provided one.
 
-Be part of the revolution! **AutoGPT** stays at the forefront of AI innovation, featuring the codebase for the reigning champion in the Open-Source ecosystem.
+4. **Task Integration**:
+   - [ ] Develop integration for group and individual tasks accessible through @AgoraAI#2435 commands, enhancing the project management aspect of our app.
 
----
+5. **Replication and Continuity**:
+   - [ ] Introduce a feature where multiple instances of the Discord bot can be created through the @AgoraAI#2435 `/summon` command.
+   - [ ] Explore options for users to run this continuously on local LLMs, possibly through a plugin like [this](https://github.com/danikhan632/Auto-GPT-Text-Gen-Plugin).
 
-<p align="center">
-  <a href="https://lablab.ai/event/autogpt-arena-hacks">
-    <img src="https://lablab.ai/_next/image?url=https%3A%2F%2Fstorage.googleapis.com%2Flablab-static-eu%2Fimages%2Fevents%2Fcll6p5cxj0000356zslac05gg%2Fcll6p5cxj0000356zslac05gg_imageLink_562z1jzj.jpg&w=1080&q=75" alt="AutoGPT Arena Hacks Hackathon" />
-  </a>
-</p>
-<p align="center">
-  <strong>We're hosting a Hackathon!</strong>
-  <br>
-  Click the banner above for details and registration!
-</p>
+## MVP (Minimum Viable Product):
 
----
+Following Elon Musk's engineering philosophy, the primary objective for the MVP is to ensure a seamless integration between Discord and AutoGPT. The following tasks are crucial for achieving this:
 
-## 🥇 Current Best Agent: AutoGPT
+- [ ] Ensure secure handling of API keys.
+- [ ] Successful integration of AutoGPT with Forge.
+- [ ] Basic task integration for group and personal task management.
+- [ ] Functional summon command to spawn instances of the Discord bot.
+- [ ] Official deployment of the Discord bot.
+- [ ] Implement a summarization feature to handle long-running outputs and provide a way to interact with AutoGPT during runtime.
 
-Among our currently benchmarked agents, AutoGPT scores the best. This will change after the hackathon - the top-performing generalist agent will earn the esteemed position as the primary AutoGPT 🎊
+## Stretch Goals:
 
-📈 To enter, submit your benchmark run through the UI.
+Stretch goals encompass additional features and integrations that enhance the functionality and user experience of the project:
 
-## 🌟 Quickstart
+- [ ] Add the ability for AutoGPT to call upon other specialist agents through the `./run agent start <agent name>` command.
+- [ ] Integrate other specialist agents, for example, the Ikigai agent for goal creation.
+- [ ] Research and integrate features from other inspiring Discord bots.
+- [ ] Enable AutoGPT to interact with other Discord bots as tools, including invoking more instances of AutoGPT and executing other Forge agents' commands.
+   - [ ] Research and identify potential Discord bots that could be utilized as tools by AutoGPT.
+   - [ ] Develop a mechanism for AutoGPT to invoke commands of other Discord bots.
+   - [ ] Establish a secure and efficient communication channel between AutoGPT and other bots.
+   - [ ] Implement a feature to execute `./run agent start <agent name>` command through other bots.
+   - [ ] Test the integration thoroughly to ensure reliability and security.
+- [ ] Enable AutoGPT to join voice channels and interact with users over voice.
+- [ ] Explore the integration of other popular agents into Forge such as Smol, Swarms, and Ikigai.
 
-- **To build your own agent** and to be eligible for the hackathon, follow the quickstart guide [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/forge/tutorials/001_getting_started.md). This will guide you through the process of creating your own agent and using the benchmark and user interface.
+## Inspiration and Resources:
 
-- **To activate the best agent** follow the guide [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/README.md).
-
-Want to build your own groundbreaking agent using AutoGPT? 🛠️ There are three major components to focus on:
-
-### 🏗️ the Forge
-
-**Forge your future!** The `forge` is your innovation lab. All the boilerplate code is already handled, letting you channel all your creativity into building a revolutionary agent. It's more than a starting point, it's a launchpad for your ideas. All tutorials are located [here](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/forge/tutorials).
-
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/forge)
-
-### 🎯 the Benchmark
-
-**Test to impress!** The `benchmark` offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
-
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark)
-
-### 🎮 the UI
-
-**Take Control!** The `frontend` is your personal command center. It gives you a user-friendly interface to control and monitor your agents, making it easier to bring your ideas to life.
-
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/frontend)
+All links and resources are compiled in the [Inspiration.md](Inspiration.md) file, detailing the hope for integrations and inspirations drawn from each link.
 
 ---
 
-### 🔄 Agent Protocol
+We invite you to share your thoughts, suggestions, or questions. Your involvement is crucial for the success of this project. Thank you!
 
-🔌 **Standardize to Maximize!** To maintain a uniform standard and ensure seamless compatibility, AutoGPT employs the [agent protocol](https://agentprotocol.ai/) from the AI Engineer Foundation. This standardizes the communication pathways from your agent to the frontend and benchmark.
+Join us on Discord at [Agora - The Creator Collective](https://discord.gg/Q3VKuj8hBT) where we will be rolling out the bots. This platform aims to connect like-minded individuals with the power of AutoGPT Discord bot integration and meta customization, enabling the ability to run any Forge agents with `./run agent start <agent name>` command.
 
-### 🤔 Questions? Problems? Suggestions?
+This project has been a long-time vision, and with the validation from the Auto-GPT team, it's inspiring to see it take shape. We have a good start, and with continued collaboration, we can build something truly beneficial for the community.
 
-#### Get help - [Discord 💬](https://discord.gg/autogpt)
-
-To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose). Please ensure someone else hasn’t created an issue for the same topic.
-
-<p align="center">
-  <a href="https://star-history.com/#Significant-Gravitas/AutoGPT&Date">
-    <img src="https://api.star-history.com/svg?repos=Significant-Gravitas/AutoGPT&type=Date" alt="Star History Chart">
-  </a>
-</p>
+## This is the future. This is Swarms. This IS SPARTA!!!.
