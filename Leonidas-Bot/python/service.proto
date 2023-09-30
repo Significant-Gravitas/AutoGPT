@@ -1,0 +1,96 @@
+// service.proto
+syntax = "proto3";
+package service;
+service ConvaiService {
+  rpc Hello(HelloRequest) returns (HelloResponse) {}
+  rpc HelloStream(stream HelloRequest) returns (stream HelloResponse) {}
+
+  rpc SpeechToText(stream STTRequest) returns (stream STTResponse) {}
+
+  rpc GetResponse(stream GetResponseRequest) returns (stream GetResponseResponse) {}
+}
+
+message AudioConfig {
+  int32 sample_rate_hertz = 1;
+}
+
+message ActionConfig {
+  message Character {
+    string name = 1;
+    string bio = 2;
+  }
+  message Object {
+    string name = 1;
+    string description = 2;
+  }
+  repeated string actions = 1;
+  repeated Character characters = 2;
+  repeated Object objects = 3;
+  string classification = 4;
+  int32 context_level = 5;
+}
+
+message STTRequest {
+  oneof request_type {
+    AudioConfig audio_config = 1;
+    bytes audio_chunk = 2;
+  }  
+}
+
+message STTResponse {
+  string text = 1;
+}
+
+message GetResponseRequest {
+  message GetResponseConfig {
+    string character_id = 2;
+    string api_key = 3;
+    string session_id = 4;
+    AudioConfig audio_config = 5;
+    ActionConfig action_config = 6;
+    string speaker = 7;
+  }
+  message GetResponseData {
+    oneof input_type {
+      bytes audio_data = 1;
+      string text_data = 2;
+    }
+  }
+  oneof request_type {
+    GetResponseConfig get_response_config = 1;
+    GetResponseData get_response_data = 2;
+  }
+}
+
+message GetResponseResponse {
+  message AudioResponse {
+    bytes audio_data = 1;
+    AudioConfig audio_config = 2;
+    string text_data = 3;
+    bool end_of_response = 4;
+  }
+
+  message ActionResponse {
+    string action = 1;
+  }
+
+  message UserTranscript {
+    string text_data = 1;
+    bool is_final = 2;
+    bool end_of_response = 3;
+  }
+  string session_id = 1;
+  oneof response_type {
+    ActionResponse action_response = 2;
+    AudioResponse audio_response = 3;
+    string debug_log = 4;
+    UserTranscript user_query = 5;
+  }
+}
+
+message HelloRequest {
+  string name = 1;
+}
+message HelloResponse {
+  string message = 1;
+}
