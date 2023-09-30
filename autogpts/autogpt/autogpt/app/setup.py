@@ -9,7 +9,7 @@ from jinja2 import Template
 from autogpt.app import utils
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
-from autogpt.core.resource.model_providers import ChatMessage, ChatModelProvider
+from autogpt.core.resource.model_providers import ChatMessage, BaseChatModelProvider
 from autogpt.logs.helpers import user_friendly_output
 from autogpt.prompts.default_prompts import (
     DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 async def interactive_ai_config_setup(
     config: Config,
-    llm_provider: ChatModelProvider,
+    llm_provider: BaseChatModelProvider,
     ai_config_template: Optional[AIConfig] = None,
 ) -> AIConfig:
     """Prompt the user for input
@@ -208,7 +208,7 @@ async def generate_aiconfig_manual(
 async def generate_aiconfig_automatic(
     user_prompt: str,
     config: Config,
-    llm_provider: ChatModelProvider,
+    llm_provider: BaseChatModelProvider,
 ) -> AIConfig:
     """Generates an AIConfig object from the given string.
 

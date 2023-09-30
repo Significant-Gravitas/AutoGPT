@@ -11,14 +11,14 @@ if TYPE_CHECKING:
     from autogpt.core.memory import Memory
     from autogpt.core.resource.model_providers import (
         EmbeddingModelProvider,
-        ChatModelProvider,
+        BaseChatModelProvider,
     )
 
     # Expand to other types as needed
     PluginType = (
         Type[Tool]  # Swappable now
         | Type[ToolsRegistry]  # Swappable maybe never
-        | Type[ChatModelProvider]  # Swappable soon
+        | Type[BaseChatModelProvider]  # Swappable soon
         | Type[EmbeddingModelProvider]  # Swappable soon
         | Type[Memory]  # Swappable now
         #    | Type[Planner]  # Swappable soon

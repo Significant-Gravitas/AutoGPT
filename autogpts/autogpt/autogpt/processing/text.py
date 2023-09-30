@@ -9,7 +9,7 @@ from autogpt.config import Config
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
     ChatMessage,
-    ChatModelProvider,
+    BaseChatModelProvider,
     ModelTokenizer,
 )
 
@@ -52,7 +52,7 @@ def chunk_content(
 
 async def summarize_text(
     text: str,
-    llm_provider: ChatModelProvider,
+    llm_provider: BaseChatModelProvider,
     config: Config,
     instruction: Optional[str] = None,
     question: Optional[str] = None,

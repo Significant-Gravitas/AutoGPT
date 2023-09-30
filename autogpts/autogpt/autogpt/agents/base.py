@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from autogpt.core.prompting.base import PromptStrategy
     from autogpt.core.resource.model_providers.schema import (
         ChatModelInfo,
-        ChatModelProvider,
+        BaseChatModelProvider,
         ChatModelResponse,
     )
     from autogpt.models.command_registry import CommandRegistry
@@ -145,7 +145,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
     def __init__(
         self,
         settings: BaseAgentSettings,
-        llm_provider: ChatModelProvider,
+        llm_provider: BaseChatModelProvider,
         prompt_strategy: PromptStrategy,
         command_registry: CommandRegistry,
         legacy_config: Config,

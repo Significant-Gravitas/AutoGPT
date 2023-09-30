@@ -6,7 +6,7 @@ from autogpt.core.planning.simple import LanguageModelConfiguration
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 from autogpt.core.resource.model_providers import (
     ChatMessage,
-    ChatModelProvider,
+    BaseChatModelProvider,
     ModelProviderName,
     OpenAIModelName,
 )
@@ -29,7 +29,7 @@ class QueryLanguageModel(Tool):
         self,
         logger: logging.Logger,
         configuration: ToolConfiguration,
-        language_model_provider: ChatModelProvider,
+        language_model_provider: BaseChatModelProvider,
     ):
         self._logger = logger
         self._configuration = configuration

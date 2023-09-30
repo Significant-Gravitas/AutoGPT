@@ -6,12 +6,12 @@ from autogpt.core.planning.schema import (
 )
 from autogpt.core.prompting.schema import (
     LanguageModelClassification,
-    ChatPrompt,
 )
 from autogpt.core.prompting.utils import json_loads, to_numbered_list
 from autogpt.core.resource.model_providers import (
     CompletionModelFunction,
     ChatMessage,
+    ChatPrompt,
 )
 
 

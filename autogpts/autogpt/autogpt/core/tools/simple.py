@@ -12,7 +12,7 @@ from autogpt.core.configuration import Configurable, SystemConfiguration, System
 from autogpt.core.memory.base import Memory
 from autogpt.core.plugin.simple import SimplePluginService
 from autogpt.core.resource.model_providers import (
-    ChatModelProvider,
+    BaseChatModelProvider,
     CompletionModelFunction,
     ModelProviderName,
 )
@@ -90,7 +90,7 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         logger: logging.Logger,
         memory: Memory,
         workspace: Workspace,
-        model_providers: dict[ModelProviderName, ChatModelProvider],
+        model_providers: dict[ModelProviderName, BaseChatModelProvider],
     ):
         """
         Initialize the SimpleAbilityRegistry.

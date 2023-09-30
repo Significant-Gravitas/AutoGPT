@@ -19,7 +19,7 @@ from autogpt.core.prompting.base import (
 )
 from autogpt.core.prompting.schema import LanguageModelClassification
 from autogpt.core.resource.model_providers import (
-    ChatModelProvider,
+    BaseChatModelProvider,
     ChatModelResponse,
     CompletionModelFunction,
     ModelProviderName,
@@ -109,14 +109,14 @@ class SimplePlanner(Configurable):
         self,
         settings: PlannerSettings,
         logger: logging.Logger,
-        model_providers: dict[ModelProviderName, ChatModelProvider],
+        model_providers: dict[ModelProviderName, BaseChatModelProvider],
         strategies: dict[str, PromptStrategy],
         workspace: Workspace = None,  # Workspace is not available during bootstrapping.
     ) -> None:
         super().__init__(settings, logger)
         self._workspace = workspace
 
-        self._providers: dict[LanguageModelClassification, ChatModelProvider] = {}
+        self._providers: dict[LanguageModelClassification, BaseChatModelProvider] = {}
         for model, model_config in self._configuration.models.items():
             self._providers[model] = model_providers[model_config.provider_name]
 
