@@ -6,7 +6,7 @@ In this segment, we're going to simulate a real-world scenario where an agent in
 
 The conversation begins by creating messages from both the user and the assistant. Each message is encapsulated as a `ChatMessage` object, identifying the sender and the content.
 
-```
+```python
 from autogpt.core.agents.usercontext.strategies.refine_user_context import Role, ChatMessage
 
 # User initiates the conversation
@@ -21,7 +21,7 @@ assistant_message1 = ChatMessage(role=Role.ASSISTANT, content="Of course! What t
 
 Now, let's define some functions that the assistant could perform to assist the user better using `CompletionModelFunction`.
 
-```
+```python
 from autogpt.core.core.resource.model_providers.openai import CompletionModelFunction, FunctionParameters, Property
 
 # Define a function to solve quadratic equations
@@ -54,7 +54,7 @@ solve_linear = CompletionModelFunction(
 
 The `ChatPrompt` is constructed using the messages and functions defined earlier. This prompt will be sent to the LLM.
 
-```
+```python
 from autogpt.core.core.resource.model_providers.chat_schema import ChatPrompt
 
 # Build the chat prompt
@@ -68,7 +68,7 @@ chat_prompt = ChatPrompt(
 
 Upon receiving the LLM's response, `PromptStrategy` aids in parsing and understanding the response to determine the next course of action.
 
-```
+```python
 # (Within a PromptStrategy method)
 parsed_result = self.parse_prompt_response(llm_response)
 ```
@@ -78,7 +78,7 @@ parsed_result = self.parse_prompt_response(llm_response)
 
 Lastly, `ChatModelResponse` in `loop.py` encapsulates the LLM's response, enabling the agent to act based on the parsed results.
 
-```
+```python
 # (Within UserContextLoop.run method in loop.py)
 model_response : ChatModelResponse = await self.execute_strategy(
     strategy_name="refine_user_context",
