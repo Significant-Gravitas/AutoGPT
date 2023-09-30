@@ -27,8 +27,8 @@ from autogpt.app.utils import (
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
 from autogpt.core.resource.model_providers import (
-    ChatModelProvider,
-    ModelProviderCredentials,
+    BaseChatModelProvider,
+    BaseModelProviderCredentials,
 )
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
@@ -216,7 +216,7 @@ def _configure_openai_provider(config: Config) -> OpenAIProvider:
         raise RuntimeError("OpenAI key is not configured")
 
     openai_settings = OpenAIProvider.default_settings.copy(deep=True)
-    openai_settings.credentials = ModelProviderCredentials(
+    openai_settings.credentials = BaseModelProviderCredentials(
         api_key=SecretStr(config.openai_api_key),
         # TODO: support OpenAI Azure credentials
         api_base=SecretStr(config.openai_api_base) if config.openai_api_base else None,
@@ -505,7 +505,7 @@ async def get_user_feedback(
 
 async def construct_main_ai_config(
     config: Config,
-    llm_provider: ChatModelProvider,
+    llm_provider: BaseChatModelProvider,
     name: Optional[str] = None,
     role: Optional[str] = None,
     goals: tuple[str] = tuple(),

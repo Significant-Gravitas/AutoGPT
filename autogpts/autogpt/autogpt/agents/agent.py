@@ -16,7 +16,7 @@ from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
     ChatMessage,
-    ChatModelProvider,
+    BaseChatModelProvider,
     ChatModelResponse,
 )
 from autogpt.llm.api_manager import ApiManager
@@ -79,7 +79,7 @@ class Agent(
     def __init__(
         self,
         settings: AgentSettings,
-        llm_provider: ChatModelProvider,
+        llm_provider: BaseChatModelProvider,
         command_registry: CommandRegistry,
         memory: VectorMemory,
         legacy_config: Config,

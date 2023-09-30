@@ -192,7 +192,9 @@ class SimpleLoop(BaseLoop):
         ##############################################################
         ### Step 2 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
         ##############################################################
-        if usercontext:
+        if not usercontext:
+            self._agent.agent_goals = [self._agent.agent_goal_sentence]
+        else :
             # USER CONTEXT AGENT : Configure the agent to our context
             usercontextagent_configuration = {
                 "user_id": self._agent.user_id,
@@ -444,7 +446,7 @@ class SimpleLoop(BaseLoop):
     CommandArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
-    from autogpt.core.prompting.schema import ChatMessage, ChatPrompt
+    from autogpt.core.resource.model_providers.chat_schema import ChatMessage, ChatPrompt
     async def think(
         self,
         instruction: Optional[str] = None,
@@ -468,7 +470,7 @@ class SimpleLoop(BaseLoop):
         raw_response: ChatModelResponse = await self.execute_strategy(
             strategy_name="think",
             agent=self._agent,
-            tools=self.get_tools().self.get_tools(),
+            tools=self.get_tools(),
             instruction=instruction,  # TODO : Move to strategy
             thought_process_id=thought_process_id,  # TODO : Remove
         )

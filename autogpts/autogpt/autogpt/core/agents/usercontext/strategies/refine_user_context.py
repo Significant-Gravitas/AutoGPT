@@ -39,13 +39,13 @@ from autogpt.core.prompting.base import (
 )
 from autogpt.core.prompting.schema import (
     LanguageModelClassification,
-    ChatPrompt,
 )
 
 from autogpt.core.resource.model_providers import (
     CompletionModelFunction,
     ChatMessage,
     AssistantChatMessageDict,
+    ChatPrompt,
 )
 
 from autogpt.core.planning.models.user_response import Questions, AgentUserResponse

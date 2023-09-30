@@ -13,7 +13,6 @@ from autogpt.core.prompting.utils import json_loads, to_numbered_list
 from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.prompting.schema import (
     LanguageModelClassification,
-    ChatPrompt,
     CompletionModelFunction,
 )
 
@@ -25,11 +24,12 @@ from autogpt.core.configuration import (
 )
 
 from autogpt.core.resource.model_providers import (
-    ChatModelProvider,
+    BaseChatModelProvider,
     ModelProviderName,
     OpenAIModelName,
     AssistantChatMessageDict,
     ChatMessage,
+    ChatPrompt,
 )
 
 

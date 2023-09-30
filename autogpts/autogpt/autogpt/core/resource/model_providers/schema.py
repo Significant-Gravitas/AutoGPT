@@ -30,10 +30,10 @@ from pydantic import BaseModel, Field, SecretStr, validator
 from autogpt.core.configuration import UserConfigurable
 from autogpt.core.resource.schema import (
     Embedding,
-    ProviderBudget,
-    ProviderCredentials,
-    ProviderSettings,
-    ProviderUsage,
+    BaseProviderBudget,
+    BaseProviderCredentials,
+    BaseProviderSettings,
+    BaseProviderUsage,
     ResourceType,
 )
 from autogpt.core.utils.json_schema import JSONSchema
@@ -50,146 +50,7 @@ class ModelProviderService(str, enum.Enum):
 class ModelProviderName(str, enum.Enum):
     OPENAI: str = "openai"
 
-
-class Role(str, enum.Enum):
-    USER = "user"
-    SYSTEM = "system"
-    ASSISTANT = "assistant"
-
-    FUNCTION = "function"
-    """May be used for the return value of function calls"""
-
-
-class ChatMessage(BaseModel):
-    role: Role
-    content: str
-
-    @staticmethod
-    def assistant(content: str) -> "ChatMessage":
-        return ChatMessage(role=Role.ASSISTANT, content=content)
-
-    @staticmethod
-    def user(content: str) -> "ChatMessage":
-        return ChatMessage(role=Role.USER, content=content)
-
-    @staticmethod
-    def system(content: str) -> "ChatMessage":
-        return ChatMessage(role=Role.SYSTEM, content=content)
-
-    def dict(self, **kwargs):
-        d = super().dict(**kwargs)
-        d["role"] = self.role.value
-        return d
-
-
-class ChatMessageDict(TypedDict):
-    role: str
-    content: str
-
-
-# Basic structure for a single property
-class Property(BaseModel):
-    type: str
-    description: str
-    items: Optional[Union["Property", Dict]]
-    properties: Optional[dict]  # Allows nested properties
-
-
-# Defines a function's parameters
-class FunctionParameters(BaseModel):
-    type: str
-    properties: Dict[str, Property]
-    required: List[str]
-
-
-class CompletionModelFunction(BaseModel):
-    name: str
-    description: str
-    parameters: FunctionParameters
-
-
-class AssistantFunctionCall(BaseModel):
-    name: str
-    arguments: str
-
-
-class AssistantFunctionCallDict(TypedDict):
-    name: str
-    arguments: str
-
-
-class AssistantChatMessage(ChatMessage):
-    role: Role.ASSISTANT
-    content: Optional[str]
-    function_call: Optional[AssistantFunctionCall]
-
-
-class AssistantChatMessageDict(TypedDict, total=False):
-    role: str
-    content: str
-    function_call: AssistantFunctionCallDict
-
-
-class CompletionModelFunction(BaseModel):
-    """General representation object for LLM-callable functions."""
-
-    name: str
-    description: str
-    parameters: dict[str, "JSONSchema"]
-
-    @property
-    def schema(self) -> dict[str, str | dict | list]:
-        """Returns an OpenAI-consumable function specification"""
-
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    name: param.to_dict() for name, param in self.parameters.items()
-                },
-                "required": [
-                    name for name, param in self.parameters.items() if param.required
-                ],
-            },
-        }
-
-    @staticmethod
-    def parse(schema: dict) -> "CompletionModelFunction":
-        return CompletionModelFunction(
-            name=schema["name"],
-            description=schema["description"],
-            parameters=JSONSchema.parse_properties(schema["parameters"]),
-        )
-
-    def _remove_none_entries(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        cleaned_data = {}
-        for key, value in data.items():
-            if value is not None:
-                if isinstance(value, dict):
-                    cleaned_data[key] = self._remove_none_entries(value)
-                else:
-                    cleaned_data[key] = value
-        return cleaned_data
-
-    def dict(self, *args, **kwargs):
-        # Call the parent class's dict() method to get the original dictionary
-        data = super().dict(*args, **kwargs)
-
-        # Remove entries with None values recursively
-        cleaned_data = self._remove_none_entries(data)
-
-        return cleaned_data
-
-    def fmt_line(self) -> str:
-        params = ", ".join(
-            f"{name}: {p.type.value}" for name, p in self.parameters.items()
-        )
-        return f"{self.name}: {self.description}. Params: ({params})"
-
-
-class ModelInfo(BaseModel):
+class BaseModelInfo(BaseModel):
     """Struct for model information.
 
     Would be lovely to eventually get this directly from APIs, but needs to be
@@ -203,15 +64,15 @@ class ModelInfo(BaseModel):
     completion_token_cost: float = 0.0
 
 
-class ModelResponse(BaseModel):
+class BaseModelResponse(BaseModel):
     """Standard response struct for a response from a model."""
 
     prompt_tokens_used: int
     completion_tokens_used: int
-    model_info: ModelInfo
+    model_info: BaseModelInfo
 
 
-class ModelProviderCredentials(ProviderCredentials):
+class BaseModelProviderCredentials(BaseProviderCredentials):
     """Credentials for a model provider."""
 
     api_key: str | None = UserConfigurable(default=None)
@@ -238,7 +99,7 @@ def unmask(model: BaseModel):
     return unmasked_fields
 
 
-class ModelProviderUsage(ProviderUsage):
+class BaseModelProviderUsage(BaseProviderUsage):
     """Usage for a particular model from a model provider."""
 
     completion_tokens: int = 0
@@ -247,7 +108,7 @@ class ModelProviderUsage(ProviderUsage):
 
     def update_usage(
         self,
-        model_response: ModelResponse,
+        model_response: BaseModelResponse,
     ) -> None:
         self.completion_tokens += model_response.completion_tokens_used
         self.prompt_tokens += model_response.prompt_tokens_used
@@ -256,15 +117,15 @@ class ModelProviderUsage(ProviderUsage):
         )
 
 
-class ModelProviderBudget(ProviderBudget):
+class BaseModelProviderBudget(BaseProviderBudget):
     total_budget: float = UserConfigurable()
     total_cost: float
     remaining_budget: float
-    usage: ModelProviderUsage
+    usage: BaseModelProviderUsage
 
     def update_usage_and_cost(
         self,
-        model_response: ModelResponse,
+        model_response: BaseModelResponse,
     ) -> None:
         """Update the usage and cost of the provider."""
         model_info = model_response.model_info
@@ -277,16 +138,16 @@ class ModelProviderBudget(ProviderBudget):
         self.remaining_budget -= incurred_cost
 
 
-class ModelProviderSettings(ProviderSettings):
+class BaseModelProviderSettings(BaseProviderSettings):
     resource_type = ResourceType.MODEL
-    credentials: ModelProviderCredentials
-    budget: ModelProviderBudget
+    credentials: BaseModelProviderCredentials
+    budget: BaseModelProviderBudget
 
 
-class ModelProvider(abc.ABC):
+class AbstractModelProvider(abc.ABC):
     """A ModelProvider abstracts the details of a particular provider of models."""
 
-    default_settings: ClassVar[ModelProviderSettings]
+    default_settings: ClassVar[BaseModelProviderSettings]
 
     @abc.abstractmethod
     def count_tokens(self, text: str, model_name: str) -> int:
@@ -322,14 +183,14 @@ class ModelTokenizer(Protocol):
 ####################
 
 
-class EmbeddingModelInfo(ModelInfo):
+class EmbeddingModelInfo(BaseModelInfo):
     """Struct for embedding model information."""
 
     llm_service = ModelProviderService.EMBEDDING
     embedding_dimensions: int
 
 
-class EmbeddingModelResponse(ModelResponse):
+class EmbeddingModelResponse(BaseModelResponse):
     """Standard response struct for a response from an embedding model."""
 
     embedding: Embedding = Field(default_factory=list)
@@ -342,7 +203,7 @@ class EmbeddingModelResponse(ModelResponse):
         return v
 
 
-class EmbeddingModelProvider(ModelProvider):
+class EmbeddingModelProvider(AbstractModelProvider):
     @abc.abstractmethod
     async def create_embedding(
         self,
@@ -351,69 +212,4 @@ class EmbeddingModelProvider(ModelProvider):
         embedding_parser: Callable[[Embedding], Embedding],
         **kwargs,
     ) -> EmbeddingModelResponse:
-        ...
-
-
-###############
-# Chat Models #
-###############
-
-
-class ChatModelInfo(ModelInfo):
-    """Struct for language model information."""
-
-    llm_service = ModelProviderService.CHAT
-    max_tokens: int
-    has_function_call_api: bool = False
-
-
-_T = TypeVar("_T")
-
-
-class ChatModelResponse(ModelResponse, Generic[_T]):
-    """Standard response struct for a response from a language model."""
-
-    response: AssistantChatMessageDict
-    parsed_result: _T = None
-    """Standard response struct for a response from a language model."""
-
-    content: dict = None
-
-
-# class ChatModelResponse(ModelResponse, Generic[_T]):
-# """Standard response struct for a response from a language model."""
-
-# response: AssistantChatMessageDict
-# parsed_result: _T = None
-
-
-class ChatModelProvider(ModelProvider):
-    @abc.abstractmethod
-    def count_message_tokens(
-        self,
-        messages: ChatMessage | list[ChatMessage],
-        model_name: str,
-    ) -> int:
-        ...
-
-    async def create_language_completion(
-        self,
-        model_prompt: list[ChatMessage],
-        model_name: str,
-        completion_parser: Callable[[dict], dict],
-        functions: list[CompletionModelFunction],
-        function_call: str,
-        **kwargs,
-    ) -> ChatModelResponse:
-        ...
-
-    @abc.abstractmethod
-    async def create_chat_completion(
-        self,
-        model_prompt: list[ChatMessage],
-        model_name: str,
-        completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
-        functions: list[CompletionModelFunction] = [],
-        **kwargs,
-    ) -> ChatModelResponse[_T]:
         ...

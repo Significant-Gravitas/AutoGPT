@@ -17,18 +17,18 @@ class ResourceType(str, enum.Enum):
     MEMORY = "memory"
 
 
-class ProviderUsage(SystemConfiguration, abc.ABC):
+class BaseProviderUsage(SystemConfiguration, abc.ABC):
     @abc.abstractmethod
     def update_usage(self, *args, **kwargs) -> None:
         """Update the usage of the resource."""
         ...
 
 
-class ProviderBudget(SystemConfiguration):
+class BaseProviderBudget(SystemConfiguration):
     total_budget: float = UserConfigurable()
     total_cost: float
     remaining_budget: float
-    usage: ProviderUsage
+    usage: BaseProviderUsage
 
     @abc.abstractmethod
     def update_usage_and_cost(self, *args, **kwargs) -> None:
@@ -36,7 +36,7 @@ class ProviderBudget(SystemConfiguration):
         ...
 
 
-class ProviderCredentials(SystemConfiguration):
+class BaseProviderCredentials(SystemConfiguration):
     """Struct for credentials."""
 
     class Config:
@@ -47,10 +47,10 @@ class ProviderCredentials(SystemConfiguration):
         }
 
 
-class ProviderSettings(SystemSettings):
+class BaseProviderSettings(SystemSettings):
     resource_type: ResourceType
-    credentials: ProviderCredentials | None = None
-    budget: ProviderBudget | None = None
+    credentials: BaseProviderCredentials | None = None
+    budget: BaseProviderBudget | None = None
 
 
 # Used both by model providers and memory providers

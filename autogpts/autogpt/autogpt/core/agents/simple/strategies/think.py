@@ -24,7 +24,6 @@ from autogpt.core.prompting.base import (
     PromptStrategiesConfiguration,
 )
 from autogpt.core.prompting.schema import (
-    ChatPrompt,
     LanguageModelClassification,
 )
 
@@ -33,6 +32,7 @@ from autogpt.core.resource.model_providers import (
     ChatMessage,
     CompletionModelFunction,
     OpenAIProvider,
+    ChatPrompt,
 )
 
 from autogpt.core.utils.json_schema import JSONSchema
