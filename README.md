@@ -23,10 +23,11 @@ Welcome to the **afaas: Agent Framework as a Service** project! This project is 
 
 - [afaas: Agent Framework as a Service](#afaas-agent-framework-as-a-service)
 - [Table of Contents](#table-of-contents)
-- [Tutorials : Build my First Agent](#table-of-contents)
+- [Tutorials : Build my First Agent](#tutorials)
 - [afaas - GitHub Branches](#afaas---github-branches)
 - [Contributing](#contributing)
 - [Setup and Execution](#setup-and-execution)
+- [Modules](#our-modules)
 - [Contact](#contact)
 
 ## afaas - GitHub Branches
@@ -93,8 +94,8 @@ Miscellaneous:
 Adoption is the most important thing, and we have a strong commitment to implement comprehensive tutorials & guides, we also provide templates you can copy to implement you agents. We are in the process of creating a comprehensive tutorial to guide developers.
 
 - **Tutorial Location**: All tutorial files are located in the `./tutorials` directory. 
-- **Templates**: Template files are provided in the `./tutorials/templates` directory **50/100**  (Under Construction) 🚧
-- **How to Use**: Navigate to the `./tutorials` directory to find step-by-step guides. Utilize the templates in the `./tutorials/templates` directory to get a head start in implementing your custom strategies and loop logic.**25/100**  (Under Construction) 🚧
+- **Templates**: Template files are provided in the `./tutorials/templates` directory **70/100**  (Under Construction) 🚧
+- **How to Use**: Navigate to the `./tutorials` directory to find step-by-step guides. Utilize the templates in the `./tutorials/templates` directory to get a head start in implementing your custom strategies and loop logic.**35/100**  (Under Construction) 🚧
 
 Stay tuned for updates as we continue to build out this tutorial section to assist developers in effectively utilizing the afaas framework.
 
@@ -131,6 +132,31 @@ For more detailed contribution guidelines, please refer to `CONTRIBUTING.md`.
 ## Setup and Execution
 
 We recommend using AutoGPT guidelines.
+
+## Our modules
+
+As a developper of agents you would only need to focus on `core/agents` & eventualy `core/tools`. Advanced developper may intergrate new memory backends, new machine learning models in `core/resource`.
+
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/ability** : Deprecated , alias of `core/tools`
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/agents** : **<span style="color:red;">Build your agents in this folder.</span>**
+  - _Team comment : **Mode information in the [tutorial](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/tutorials/)**_
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/configuration** : Contains object that serves to configure other components of the Framework.
+  - _Team comment : **Upcomming simplification, help welcomed**_
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/memory** : Adapters for memory
+  - _Team comment : **We look for tester / contributor for AWS DynamoDB & Azure CosmoDB**_
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/planning** : Orchestrate interactions between agents (`Agents`) & prompts (`PromptStrategy`) 
+  - _Team comment : **Upcomming simplification, will be merged with Agent, help welcomed**_
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/prompting** : Orchestrate interactions between agents (`Agents`) & models such as Large Languague Model
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/resource** : Manage the interaction with the LLM. 
+  - _Team comment : **We look for tcontributor for lama2 integration (contact us)**_
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/runner** : Contains applicative file (Commande Line Interface (CLI) , API, ECT...) 
+  - _Team comment : **Working hard on the API**_
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/tools** : Contains `Tools` tools are functions your agent can call, it is the interface between the agent and the word. Example of tool : An tool to edit .jpeg to add a waltermark, A tool to interact with Google Maps API.
+  - _Team comment : **Share your tools with us !**_
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/users** : Under construction, this library will manage users for our API.
+  - _Team comment : **Firebase Expert can contact us**_
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/utils** : Library that help us achieving simple actions such as Logging or Parsing JSON
+- **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/workspace** : Library to store file.
 
 ## Contact
 
