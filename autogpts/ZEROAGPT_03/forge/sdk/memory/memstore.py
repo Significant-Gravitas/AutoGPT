@@ -186,6 +186,7 @@ class ChromaMemStore(MemStore):
         query: str,
         filters: dict = None,
         document_search: dict = None,
+        n_results: int = 10
     ) -> dict:
         """
         Query the MemStore.
@@ -203,7 +204,7 @@ class ChromaMemStore(MemStore):
 
         kwargs = {
             "query_texts": [query],
-            "n_results": 10,
+            "n_results": n_results,
         }
 
         if filters:
