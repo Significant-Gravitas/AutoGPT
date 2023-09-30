@@ -8,33 +8,21 @@ Title: **Swarms Of Sparta**
 1. **API Key Security**:
    - [ ] Implement a robust method for managing user API keys securely, possibly through encryption, to ensure safe interactions with the Discord bot.
 
-... (rest of your content)
-
-
-1. **API Key Security**:
-   - [ ] Implement a robust method for managing user API keys securely, possibly through encryption, to ensure safe interactions with the Discord bot.
-
-... (rest of your content)
-
-
-1. **API Key Security**:
-   - [ ] Implement a robust method for managing user API keys securely, possibly through encryption, to ensure safe interactions with the Discord bot.
-
 2. **Forge Integration**:
    - [ ] Integrate AutoGPT with Forge to augment functionality and user experience.
    - [ ] Integrate other popular agents such as Smol, Swarms, and Ikigai into Forge.
 
 3. **Meta Configuration**:
    - [ ] Enhance the default configuration of our AutoGPT instance by incorporating useful plugins.
-   - [ ] Refine the output and the ability to summon AutoGPT from Discord using @sparticus, currently utilizing `gravelBridge/AutoGPT-Discord` for integration.
+   - [ ] Refine the output and the ability to summon AutoGPT from Discord using @Leonidas, currently utilizing `gravelBridge/AutoGPT-Discord` for integration.
    - [ ] Investigate other free services and plugins to further extend AutoGPT's functionality, having explored `gravelBridge/AutoGPT-BingAI`.
    - [ ] Develop a fine-tuned version of AutoGPT with the plugins and alterations to allow users to select specific plugins to include and provide the needed API keys or work off of a provided one.
 
 4. **Task Integration**:
-   - [ ] Develop integration for group and individual tasks accessible through @AgoraAI#2435 commands, enhancing the project management aspect of our app.
+   - [ ] Develop integration for group and individual tasks accessible through @Leonidas commands, enhancing the project management aspect of our app.
 
 5. **Replication and Continuity**:
-   - [ ] Introduce a feature where multiple instances of the Discord bot can be created through the @AgoraAI#2435 `/summon` command.
+   - [ ] Introduce a feature where multiple instances of the Discord bot can be created through the @Leonidas `/summon` command.
    - [ ] Explore options for users to run this continuously on local LLMs, possibly through a plugin like [this](https://github.com/danikhan632/Auto-GPT-Text-Gen-Plugin).
 
 ## MVP (Minimum Viable Product):
