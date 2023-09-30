@@ -1,5 +1,6 @@
 Title: **Swarms Of Sparta**
-[![Banner](Swarms-Of-Sparta/stable-diffusion-xl (33).jpg)](https://discord.gg/qUtxnK2NMf)
+
+[![Banner](Swarms-Of-Sparta/Banner.jpg)](https://discord.gg/qUtxnK2NMf)
 
 
 Title: **Swarms Of Sparta**
