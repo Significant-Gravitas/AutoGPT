@@ -20,12 +20,13 @@ Welcome to the **afaas: Agent Framework as a Service** project! This project is 
 
 ## Table of Contents
 
+
 - [afaas: Agent Framework as a Service](#afaas-agent-framework-as-a-service)
 - [Table of Contents](#table-of-contents)
+- [Tutorials : Build my First Agent](#table-of-contents)
 <!--- [afaas - GitHub Branches](#afaas---github-branches)-->
 - [Contributing](#contributing)
 - [Setup and Execution](#setup-and-execution)
-- [License](#license)
 - [Contact](#contact)
 - [Framework User Guide](#framework-user-guide)
   - [General Description](#general-description)
@@ -79,10 +80,21 @@ Miscellaneous:
 📆 (U+1F4C6) - Date, Schedule
 📊 (U+1F4CA) - Statistics, Data
 -->
+
+## Tutorials
+
+Adoption is the most important thing, and we have a strong commitment to implement comprehensive tutorials & guides, we also provide templates you can copy to implement you agents. We are in the process of creating a comprehensive tutorial to guide developers.
+
+- **Tutorial Location**: All tutorial files are located in the `./tutorials` directory. 
+- **Templates**: Template files are provided in the `./tutorials/templates` directory **50/100**  (Under Construction) 🚧
+- **How to Use**: Navigate to the `./tutorials` directory to find step-by-step guides. Utilize the templates in the `./tutorials/templates` directory to get a head start in implementing your custom strategies and loop logic.**25/100**  (Under Construction) 🚧
+
+Stay tuned for updates as we continue to build out this tutorial section to assist developers in effectively utilizing the afaas framework.
+
 ## Current status
 
 27th of September : 
-The Framework libraries are working, we are currently achieving an example of Agent implemented with the Framework and compatible with the [Agent Protocol](https://github.com/AI-Engineers-Foundation/agent-protocol) & AutoGPT Benchmarks. Other priorities are the support of more "Abilities" (tools 🔧 ), database-backends ( 📚 ).
+The Framework libraries are working, we are currently achieving an example of Agent implemented with the Framework and compatible with the [Agent Protocol](https://github.com/AI-Engineers-Foundation/agent-protocol) & AutoGPT Benchmarks other priorities are the support of more "Abilities" (tools 🔧 ), database-backends ( 📚 ).
 
 ## Contributing
 
@@ -112,23 +124,6 @@ For more detailed contribution guidelines, please refer to `CONTRIBUTING.md`.
 ## Setup and Execution
 
 We recommend using AutoGPT guidelines.
-
-## Framework User Guide
-
-Welcome to the **Framework User Guide**. This guide helps developers understand and utilize the framework efficiently, allowing you to focus on creating agents with ease.
-
-The primary goal of this framework is to provide a robust set of libraries, reducing complexities, so you can concentrate on building agents. We're actively seeking contributors to further enrich this framework.
-
-### General Description
-
-The `core/agent/` directory serves as a baseline and example for developers eager to implement agents. An agent's architecture consists of three files and one directory:
-
-1. **agent.py**: Manages the agent's creation, serving as an agent factory and overseeing basic actions (CRUD).
-2. **loop.py**: Manages the loop logic.
-3. **models.py**: Contains models required by your agent.
-4. **strategies**: Holds `PromptStrategies`.
-
-🚧 **User Guide**: This guide is under development. Check back for updates. 🚧
 
 ## Contact
 
