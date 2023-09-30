@@ -1,5 +1,14 @@
 Title: **Swarms Of Sparta**
-![Banner](./stable-diffusion-xl(33).jpg)
+[![Banner](stable-diffusion-xl(33).jpg)](https://discord.gg/qUtxnK2NMf)
+
+
+Title: **Swarms Of Sparta**
+
+1. **API Key Security**:
+   - [ ] Implement a robust method for managing user API keys securely, possibly through encryption, to ensure safe interactions with the Discord bot.
+
+... (rest of your content)
+
 
 1. **API Key Security**:
    - [ ] Implement a robust method for managing user API keys securely, possibly through encryption, to ensure safe interactions with the Discord bot.
