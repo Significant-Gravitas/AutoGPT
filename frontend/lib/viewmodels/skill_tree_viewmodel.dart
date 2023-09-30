@@ -203,16 +203,17 @@ class SkillTreeViewModel extends ChangeNotifier {
             await benchmarkService.executeBenchmarkStep(
                 task.id, BenchmarkStepRequestBody(input: node.data.task));
         Step step = Step.fromMap(stepResponse);
+        chatViewModel.fetchChatsForTask();
 
         // Check if it's the last step
         while (!step.isLast) {
-          // Fetch chats for the task
-          chatViewModel.fetchChatsForTask();
-
           // Execute next step and update the Step object
           stepResponse = await benchmarkService.executeBenchmarkStep(
               task.id, BenchmarkStepRequestBody(input: null));
           step = Step.fromMap(stepResponse);
+
+          // Fetch chats for the task
+          chatViewModel.fetchChatsForTask();
         }
 
         // Trigger the evaluation

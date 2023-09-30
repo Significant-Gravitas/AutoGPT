@@ -20,7 +20,8 @@ class ChatService {
       return await api.post(
           'agent/tasks/$taskId/steps', stepRequestBody.toJson());
     } catch (e) {
-      throw Exception('Failed to execute step: $e');
+      // TODO: We are bubbling up the full response. Revisit this.
+      rethrow;
     }
   }
 

@@ -1,12 +1,13 @@
 {
     "category": [
-        "data"
+        "data",
+        "general"
     ],
     "cutoff": 60,
     "dependencies": [
         "TestReadFile"
     ],
-    "eval_id": "db4654d7-fc97-4290-ab27-a710c2b5ce15",
+    "eval_id": "d59ec964-6f67-4b3d-a4de-c4436fc76f95",
     "ground": {
         "answer": "The csv sorted by date",
         "eval": {

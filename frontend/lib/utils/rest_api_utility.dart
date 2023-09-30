@@ -6,8 +6,7 @@ import 'package:http/http.dart' as http;
 class RestApiUtility {
   String _agentBaseUrl;
   final String _benchmarkBaseUrl = "http://127.0.0.1:8080/ap/v1";
-  final String _leaderboardBaseUrl =
-      "https://agpt-leaderboard-preview.vercel.app";
+  final String _leaderboardBaseUrl = "https://leaderboard.agpt.co";
 
   RestApiUtility(this._agentBaseUrl);
 
@@ -51,7 +50,9 @@ class RestApiUtility {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return json.decode(response.body);
     } else {
-      throw Exception('Failed to post data');
+      // TODO: We are bubbling up the full response to show better errors on the UI.
+      // Let's put some thought into how we would like to structure this.
+      throw response;
     }
   }
 
@@ -67,8 +68,6 @@ class RestApiUtility {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return json.decode(response.body);
     } else {
-      print(response.statusCode);
-      print(response.body);
       throw Exception('Failed to update data with PUT request');
     }
   }

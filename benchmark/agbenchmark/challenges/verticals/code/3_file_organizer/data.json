@@ -1,12 +1,13 @@
 {
     "category": [
-        "coding"
+        "coding",
+        "general"
     ],
     "cutoff": 90,
     "dependencies": [
         "TestPasswordGenerator"
     ],
-    "eval_id": "6ace62be-6c18-431a-947f-72fb20984b58",
+    "eval_id": "029c1e6f-2b36-451e-bca6-60063b827d2e",
     "ground": {
         "answer": "The correct python file is written and organizes the files accordingly",
         "eval": {
