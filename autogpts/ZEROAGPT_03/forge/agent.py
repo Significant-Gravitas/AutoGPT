@@ -16,6 +16,7 @@ from forge.sdk import (
     TaskRequestBody,
     PromptEngine,
     chat_completion_request,
+    ProfileGenerator
 )
 
 from forge.sdk.memory.memstore import ChromaMemStore
@@ -98,9 +99,14 @@ class ForgeAgent(Agent):
         # add to messages
         # wont memory store this as static
         self.add_chat(task_id, "system", system_prompt)
+
+        # use AI to get the proper role experts for the task
+        profile_gen = ProfileGenerator(task=task)
+
+        print(profile_gen.role_find())
         
         ontology_prompt_params = {
-            "role_expert": "Researching and Writing",
+            "role_expert": "Testing",
             "task": task.input,
             "abilities": self.abilities.list_abilities_for_prompt()
         }
@@ -200,6 +206,8 @@ class ForgeAgent(Agent):
                 "output": output
             }
 
+            ability_str = f"ability {ability['name']} ran with paramters {ability_args} had output of {output}"
+
             LOG.info(f"🔨 completed ability: {ability_json}")
 
             # add task output to memory
@@ -209,13 +217,15 @@ class ForgeAgent(Agent):
                 metadatas={"role": "assistant"}
             )
 
+            self.add_chat(task_id, "answer", json.dumps(ability_str))
+
             # Set the step output and is_last from AI
             step.output = answer["thoughts"]["speak"]
             step.is_last = answer["thoughts"]["last_step"]
 
         except json.JSONDecodeError as e:
             # Handle JSON decoding errors
-            LOG.error(f"Unable to decode chat response: {chat_response}")
+            LOG.error(f"JSON error when decoding: {e}")
         except Exception as e:
             # Handle other exceptions
             LOG.error(f"Unable to generate chat response: {e}")
