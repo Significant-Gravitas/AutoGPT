@@ -29,7 +29,7 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
     parameters=[
         {
             "name": "file_path",
-            "description": "Path to the file",
+            "description": "Path to the file including file name",
             "type": "string",
             "required": True,
         },
@@ -50,11 +50,27 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes) -> None:
         data = data.encode()
 
     agent.workspace.write(task_id=task_id, path=file_path, data=data)
-    await agent.db.create_artifact(
+
+    agent.memory.add(
+        task_id=task_id,
+        document=str(data),
+        metadatas={
+            "file_name": file_path.split("/")[-1],
+            "relative_path": file_path
+        }
+    )
+    
+    write_artifact = await agent.db.create_artifact(
         task_id=task_id,
         file_name=file_path.split("/")[-1],
         relative_path=file_path,
         agent_created=True,
+    )
+
+    # adding artifacts to task
+    await agent.db.add_artifact_task(
+        task_id=task_id, 
+        artifact_id=write_artifact.artifact_id
     )
 
 
@@ -64,7 +80,7 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes) -> None:
     parameters=[
         {
             "name": "file_path",
-            "description": "Path to the file",
+            "description": "Path to the file including file name",
             "type": "string",
             "required": True,
         },

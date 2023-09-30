@@ -26,25 +26,19 @@ LOG = ForgeLogger(__name__)
 class ForgeAgent(Agent):
     def __init__(self, database: AgentDB, workspace: Workspace):
         super().__init__(database, workspace)
-
-        # create a uuid
-        self.uuid = str(uuid.uuid4())
-
-        # create a local file path
-        self.local_file_path = f"{os.getenv('AGENT_WORKSPACE')}/{self.uuid}"
-
-        # initialize memstore
-        self.memory = ChromaMemStore(f"{self.local_file_path}")
         
         # initialize chat history per uuid
         self.chat_history = {}
 
-    def add_chat(self, role: str, content: str):
+        # memory storage
+        self.memory = None
+
+    def add_chat(self, task_id: str, role: str, content: str):
         chat_struct = {"role": role, "content": content}
         try:
-            self.chat_history[self.uuid].append(chat_struct)
+            self.chat_history[task_id].append(chat_struct)
         except KeyError:
-            self.chat_history[self.uuid] = [chat_struct]
+            self.chat_history[task_id] = [chat_struct]
     
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         try:
@@ -58,6 +52,15 @@ class ForgeAgent(Agent):
             )
         except Exception as err:
             LOG.error(f"create_task failed: {err}")
+            raise err
+        
+        # initalize memstore for task
+        try:
+            # initialize memstore
+            self.memory = ChromaMemStore(
+                f"{os.getenv('AGENT_WORKSPACE')}/{task.task_id}")
+        except Exception as err:
+            LOG.error(f"memstore creation failed: {err}")
             raise err
 
         return task
@@ -91,16 +94,10 @@ class ForgeAgent(Agent):
         system_prompt = prompt_engine.load_prompt("system-format-last")
 
         # add to messages
-        self.add_chat("system", system_prompt)
-
-        # suggestions = [
-        #     f"Use a filename with filepath for writing"
-        # ]
-
-        print(self.abilities.list_abilities_for_prompt())
+        self.add_chat(task_id, "system", system_prompt)
         
         ontology_prompt_params = {
-            "expert": "Project Manager",
+            #"role_expert": "Project Management",
             "task": task.input,
             "abilities": self.abilities.list_abilities_for_prompt()
         }
@@ -110,7 +107,7 @@ class ForgeAgent(Agent):
             **ontology_prompt_params
         )
         
-        self.add_chat("user", task_prompt)
+        self.add_chat(task_id, "user", task_prompt)
 
         print(f"Task Prompt: {task_prompt}")
 
@@ -121,7 +118,7 @@ class ForgeAgent(Agent):
 
         try:
             chat_completion_parms = {
-                "messages": self.chat_history[self.uuid],
+                "messages": self.chat_history[task_id],
                 "model": "gpt-3.5-turbo"
             }
 
@@ -167,32 +164,13 @@ class ForgeAgent(Agent):
 
                 LOG.info(f"🔨 Output: {output}")
 
-                # adding ability and output to memory
-                ability_doc = {
-                    "ability": ability["name"],
-                    "arguments": ability["args"],
-                    "output": output 
-                }
-
-                self.memory.add(
-                    task_id,
-                    str(ability_doc),
-                    {
-                        "created": str(datetime.now())
-                    }
-                )
-
-                LOG.info(
-                    f"🧠 Added completed ability to memory"
-                )
-
                 # add to converstion
                 chat_content = f"""
                     Running the ability {ability["name"]}
                     with parameters {ability["args"]}
                     produced this output {output}
                 """
-                self.add_chat("system", chat_content)
+                self.add_chat(task_id, "assistant", chat_content)
 
             # Set the step output and is_last from AI
             step.output = answer["thoughts"]["speak"]
