@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 import distro
 
 if TYPE_CHECKING:
-    from autogpt.agents.agent import Agent
+    from autogpt.core.agents.base  import BaseAgent
     from autogpt.models.action_history import Episode
 
 from autogpt.core.utils.exceptions import InvalidAgentResponseError

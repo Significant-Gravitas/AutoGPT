@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from autogpt.core.agents.base import BaseAgent
 
-from autogpt.agents.features.context import get_agent_context
+from autogpt.core.agents.base.features.context import get_agent_context
 from autogpt.core.utils.exceptions import InvalidArgumentError
 from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
         )
     },
 )
-def finish(reason: str, agent: Agent) -> None:
+def finish(reason: str, agent: BaseAgent) -> None:
     """
     A function that takes in a string and exits the program
 
@@ -58,7 +58,7 @@ def finish(reason: str, agent: Agent) -> None:
     },
     available=lambda a: bool(get_agent_context(a)),
 )
-def close_context_item(number: int, agent: Agent) -> str:
+def close_context_item(number: int, agent: BaseAgent) -> str:
     assert (context := get_agent_context(agent)) is not None
 
     if number > len(context.items) or number == 0:

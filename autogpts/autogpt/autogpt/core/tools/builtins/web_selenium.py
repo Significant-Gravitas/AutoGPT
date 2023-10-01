@@ -40,9 +40,9 @@ if TYPE_CHECKING:
 from autogpt.core.utils.exceptions import CommandExecutionError
 from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
-from autogpt.processing.text import summarize_text
-from autogpt.url_utils.validators import validate_url
+from autogpt.core.utils.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpt.core.utils.processing.text import summarize_text
+from autogpt.core.utils.url.validators import validate_url
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class BrowsingError(CommandExecutionError):
     },
 )
 @validate_url
-async def read_webpage(url: str, agent: Agent, question: str = "") -> str:
+async def read_webpage(url: str, agent: BaseAgent, question: str = "") -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -177,7 +177,7 @@ def scrape_links_with_selenium(driver: WebDriver, base_url: str) -> list[str]:
     return format_hyperlinks(hyperlinks)
 
 
-def open_page_in_browser(url: str, config: Config) -> WebDriver:
+def open_page_in_browser(url: str) -> WebDriver:
     """Open a browser window and load a web page using Selenium
 
     Params:
@@ -195,50 +195,51 @@ def open_page_in_browser(url: str, config: Config) -> WebDriver:
         "firefox": FirefoxOptions,
         "safari": SafariOptions,
     }
+    raise NotImplementedError("To be fixed fast :)")
 
-    options: BrowserOptions = options_available[config.selenium_web_browser]()
-    options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
-    )
+    # options: BrowserOptions = options_available[config.selenium_web_browser]()
+    # options.add_argument(
+    #     "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
+    # )
 
-    if config.selenium_web_browser == "firefox":
-        if config.selenium_headless:
-            options.headless = True
-            options.add_argument("--disable-gpu")
-        driver = FirefoxDriver(
-            service=GeckoDriverService(GeckoDriverManager().install()), options=options
-        )
-    elif config.selenium_web_browser == "edge":
-        driver = EdgeDriver(
-            service=EdgeDriverService(EdgeDriverManager().install()), options=options
-        )
-    elif config.selenium_web_browser == "safari":
-        # Requires a bit more setup on the users end
-        # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
-        driver = SafariDriver(options=options)
-    else:
-        if platform == "linux" or platform == "linux2":
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--remote-debugging-port=9222")
+    # if config.selenium_web_browser == "firefox":
+    #     if config.selenium_headless:
+    #         options.headless = True
+    #         options.add_argument("--disable-gpu")
+    #     driver = FirefoxDriver(
+    #         service=GeckoDriverService(GeckoDriverManager().install()), options=options
+    #     )
+    # elif config.selenium_web_browser == "edge":
+    #     driver = EdgeDriver(
+    #         service=EdgeDriverService(EdgeDriverManager().install()), options=options
+    #     )
+    # elif config.selenium_web_browser == "safari":
+    #     # Requires a bit more setup on the users end
+    #     # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
+    #     driver = SafariDriver(options=options)
+    # else:
+    #     if platform == "linux" or platform == "linux2":
+    #         options.add_argument("--disable-dev-shm-usage")
+    #         options.add_argument("--remote-debugging-port=9222")
 
-        options.add_argument("--no-sandbox")
-        if config.selenium_headless:
-            options.add_argument("--headless=new")
-            options.add_argument("--disable-gpu")
+    #     options.add_argument("--no-sandbox")
+    #     if config.selenium_headless:
+    #         options.add_argument("--headless=new")
+    #         options.add_argument("--disable-gpu")
 
-        chromium_driver_path = Path("/usr/bin/chromedriver")
+    #     chromium_driver_path = Path("/usr/bin/chromedriver")
 
-        driver = ChromeDriver(
-            service=ChromeDriverService(str(chromium_driver_path))
-            if chromium_driver_path.exists()
-            else ChromeDriverService(ChromeDriverManager().install()),
-            options=options,
-        )
-    driver.get(url)
+    #     driver = ChromeDriver(
+    #         service=ChromeDriverService(str(chromium_driver_path))
+    #         if chromium_driver_path.exists()
+    #         else ChromeDriverService(ChromeDriverManager().install()),
+    #         options=options,
+    #     )
+    # driver.get(url)
 
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.TAG_NAME, "body"))
-    )
+    # WebDriverWait(driver, 10).until(
+    #     EC.presence_of_element_located((By.TAG_NAME, "body"))
+    # )
 
     return driver
 
@@ -259,7 +260,7 @@ async def summarize_memorize_webpage(
     url: str,
     text: str,
     question: str | None,
-    agent: Agent,
+    agent: BaseAgent,
     driver: Optional[WebDriver] = None,
 ) -> str:
     """Summarize text using the OpenAI API

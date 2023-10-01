@@ -6,7 +6,7 @@ COMMAND_CATEGORY = "user_interaction"
 COMMAND_CATEGORY_TITLE = "User Interaction"
 
 from autogpt.core.agents.base import BaseAgent
-from autogpt.app.utils import clean_input
+#from autogpt.core.utils.app import clean_input
 from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
 
@@ -26,8 +26,8 @@ from autogpt.core.utils.json_schema import JSONSchema
     },
     enabled=lambda config: not config.noninteractive_mode,
 )
-async def ask_user(question: str, agent: Agent) -> str:
-    resp = await clean_input(
-        agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "
-    )
-    return f"The user's answer: '{resp}'"
+async def ask_user(question: str, agent: BaseAgent) -> str:
+    # resp = await clean_input(
+    #     agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "
+    # )
+    return agent._user_input_handler(question)

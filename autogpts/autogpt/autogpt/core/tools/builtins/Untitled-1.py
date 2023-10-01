@@ -8,7 +8,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any, Iterator
 
 if TYPE_CHECKING:
-    from autogpt.agents.base import BaseAgent
+    from autogpt.core.agents.base import BaseAgent
     
 
 

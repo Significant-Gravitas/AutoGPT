@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
     lambda config: bool(config.image_provider),
     "Requires a image provider to be set.",
 )
-def generate_image(prompt: str, agent: Agent, size: int = 256) -> str:
+def generate_image(prompt: str, agent: BaseAgent, size: int = 256) -> str:
     """Generate an image from a prompt.
 
     Args:
@@ -58,7 +58,7 @@ def generate_image(prompt: str, agent: Agent, size: int = 256) -> str:
     return "No Image Provider Set"
 
 
-def generate_image_with_hf(prompt: str, filename: str, agent: Agent) -> str:
+def generate_image_with_hf(prompt: str, filename: str, agent: BaseAgent) -> str:
     """Generate an image with HuggingFace's API.
 
     Args:
@@ -117,7 +117,7 @@ def generate_image_with_hf(prompt: str, filename: str, agent: Agent) -> str:
 
 
 def generate_image_with_dalle(
-    prompt: str, filename: str, size: int, agent: Agent
+    prompt: str, filename: str, size: int, agent: BaseAgent
 ) -> str:
     """Generate an image with DALL-E.
 
@@ -159,7 +159,7 @@ def generate_image_with_dalle(
 def generate_image_with_sd_webui(
     prompt: str,
     filename: str,
-    agent: Agent,
+    agent: BaseAgent,
     size: int = 512,
     negative_prompt: str = "",
     extra: dict = {},

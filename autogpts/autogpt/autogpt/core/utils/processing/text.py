@@ -5,8 +5,7 @@ from typing import Iterator, Optional, TypeVar
 
 import spacy
 
-from autogpt.config import Config
-from autogpt.core.prompting import ChatPrompt
+from autogpt.core.resource.model_providers.chat_schema import ChatPrompt
 from autogpt.core.resource.model_providers import (
     ChatMessage,
     BaseChatModelProvider,
@@ -53,7 +52,6 @@ def chunk_content(
 async def summarize_text(
     text: str,
     llm_provider: BaseChatModelProvider,
-    config: Config,
     instruction: Optional[str] = None,
     question: Optional[str] = None,
 ) -> tuple[str, None | list[tuple[str, str]]]:
@@ -76,7 +74,7 @@ async def summarize_text(
     if instruction and question:
         raise ValueError("Parameters 'question' and 'instructions' cannot both be set")
 
-    model = config.fast_llm
+    model = "gpt-3.5-turbo"
 
     if question:
         instruction = (
@@ -123,7 +121,6 @@ async def summarize_text(
     chunks = list(
         split_text(
             text,
-            config=config,
             max_chunk_length=max_chunk_length,
             tokenizer=llm_provider.get_tokenizer(model),
         )
@@ -137,7 +134,6 @@ async def summarize_text(
             text=chunk,
             instruction=instruction,
             llm_provider=llm_provider,
-            config=config,
         )
         summaries.append(summary)
 
@@ -146,7 +142,6 @@ async def summarize_text(
     summary, _ = await summarize_text(
         "\n\n".join(summaries),
         llm_provider=llm_provider,
-        config=config,
     )
     return summary.strip(), [
         (summaries[i], chunks[i][0]) for i in range(0, len(chunks))
@@ -155,7 +150,6 @@ async def summarize_text(
 
 def split_text(
     text: str,
-    config: Config,
     max_chunk_length: int,
     tokenizer: ModelTokenizer,
     with_overlap: bool = True,
@@ -184,7 +178,7 @@ def split_text(
     n_chunks = math.ceil(text_length / max_chunk_length)
     target_chunk_length = math.ceil(text_length / n_chunks)
 
-    nlp: spacy.language.Language = spacy.load(config.browse_spacy_language_model)
+    nlp: spacy.language.Language = spacy.load("en_core_web_sm")
     nlp.add_pipe("sentencizer")
     doc = nlp(text)
     sentences = [sentence.text.strip() for sentence in doc.sents]

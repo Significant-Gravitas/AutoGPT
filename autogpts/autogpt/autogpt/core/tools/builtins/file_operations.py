@@ -17,7 +17,7 @@ from autogpt.core.agents.base import BaseAgent
 from autogpt.core.utils.exceptions import DuplicateOperationError
 from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.memory.vector import MemoryItem, VectorMemory
+from autogpt.core.memory.base import Memory
 
 from .decorators import sanitize_path_arg
 from .file_context import open_file, open_folder  # NOQA
@@ -84,7 +84,7 @@ def file_operations_state(log_path: str | Path) -> dict[str, str]:
 
 @sanitize_path_arg("file_path")
 def is_duplicate_operation(
-    operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
+    operation: Operation, file_path: Path, agent: BaseAgent, checksum: str | None = None
 ) -> bool:
     """Check if the operation has already been performed
 
@@ -111,7 +111,7 @@ def is_duplicate_operation(
 
 @sanitize_path_arg("file_path")
 def log_operation(
-    operation: Operation, file_path: Path, agent: Agent, checksum: str | None = None
+    operation: Operation, file_path: Path, agent: BaseAgent, checksum: str | None = None
 ) -> None:
     """Log the file operation to the file_logger.log
 
@@ -145,7 +145,7 @@ def log_operation(
     },
 )
 @sanitize_path_arg("filename")
-def read_file(filename: Path, agent: Agent) -> str:
+def read_file(filename: Path, agent: BaseAgent) -> str:
     """Read a file and return the contents
 
     Args:
@@ -166,28 +166,29 @@ def read_file(filename: Path, agent: Agent) -> str:
 
 def ingest_file(
     filename: str,
-    memory: VectorMemory,
+    memory: Memory,
 ) -> None:
-    """
-    Ingest a file by reading its content, splitting it into chunks with a specified
-    maximum length and overlap, and adding the chunks to the memory storage.
+    raise NotImplementedError("Not Implemented")
+    # """
+    # Ingest a file by reading its content, splitting it into chunks with a specified
+    # maximum length and overlap, and adding the chunks to the memory storage.
 
-    Args:
-        filename: The name of the file to ingest
-        memory: An object with an add() method to store the chunks in memory
-    """
-    try:
-        logger.info(f"Ingesting file {filename}")
-        content = read_file(filename)
+    # Args:
+    #     filename: The name of the file to ingest
+    #     memory: An object with an add() method to store the chunks in memory
+    # """
+    # try:
+    #     logger.info(f"Ingesting file {filename}")
+    #     content = read_file(filename)
 
-        # TODO: differentiate between different types of files
-        file_memory = MemoryItem.from_text_file(content, filename)
-        logger.debug(f"Created memory: {file_memory.dump(True)}")
-        memory.add(file_memory)
+    #     # TODO: differentiate between different types of files
+    #     file_memory = MemoryItem.from_text_file(content, filename)
+    #     logger.debug(f"Created memory: {file_memory.dump(True)}")
+    #     memory.add(file_memory)
 
-        logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
-    except Exception as err:
-        logger.warn(f"Error while ingesting file '{filename}': {err}")
+    #     logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
+    # except Exception as err:
+    #     logger.warn(f"Error while ingesting file '{filename}': {err}")
 
 
 @tool(
@@ -208,7 +209,7 @@ def ingest_file(
     aliases=["create_file"],
 )
 @sanitize_path_arg("filename")
-def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
+def write_to_file(filename: Path, contents: str, agent: BaseAgent) -> str:
     """Write contents to a file
 
     Args:
@@ -232,7 +233,7 @@ def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
 
 @sanitize_path_arg("filename")
 def append_to_file(
-    filename: Path, text: str, agent: Agent, should_log: bool = True
+    filename: Path, text: str, agent: BaseAgent, should_log: bool = True
 ) -> None:
     """Append text to a file
 
@@ -264,7 +265,7 @@ def append_to_file(
     },
 )
 @sanitize_path_arg("folder")
-def list_folder(folder: Path, agent: Agent) -> list[str]:
+def list_folder(folder: Path, agent: BaseAgent) -> list[str]:
     """Lists files in a folder recursively
 
     Args:

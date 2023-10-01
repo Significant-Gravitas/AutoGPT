@@ -5,7 +5,7 @@ import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
-    from autogpt.agents.base import BaseAgent
+    from autogpt.core.agents.base import BaseAgent
     from autogpt.config import Config
 
 from autogpt.core.utils.json_schema import JSONSchema

@@ -11,7 +11,7 @@ from autogpt.core.agents.base import BaseAgent
 from autogpt.core.utils.exceptions import CommandExecutionError
 from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.url_utils.validators import validate_url
+from autogpt.core.utils.url.validators import validate_url
 
 from .decorators import sanitize_path_arg
 

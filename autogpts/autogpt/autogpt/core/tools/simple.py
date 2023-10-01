@@ -136,7 +136,7 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         self.categories = {}
 
     def __contains__(self, tool_name: str):
-        return tool_name in self.tools or tool_name in self.tools_aliases
+        return tool_name in self.tools or tool_name in self.tool_aliases
 
     def _import_module(self, module_name: str):
         """Imports a module using its name."""
@@ -226,13 +226,13 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
             )
         self.tools[cmd.name] = cmd
 
-        if cmd.name in self.tools_aliases:
+        if cmd.name in self.tool_aliases:
             logger.warn(
                 f"Command '{cmd.name}' will overwrite alias with the same name of "
-                f"'{self.tools_aliases[cmd.name]}'!"
+                f"'{self.tool_aliases[cmd.name]}'!"
             )
         for alias in cmd.aliases:
-            self.tools_aliases[alias] = cmd
+            self.tool_aliases[alias] = cmd
 
     def unregister(self, tool: Tool) -> None:
         """
@@ -254,7 +254,7 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         if tool.name in self.tools:
                     del self.tools[tool.name]
                     for alias in tool.aliases:
-                        del self.tools_aliases[alias]
+                        del self.tool_aliases[alias]
         else:
             raise KeyError(f"Command '{tool.name}' not found in registry.")
 
