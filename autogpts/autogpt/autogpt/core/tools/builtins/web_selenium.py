@@ -34,11 +34,11 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 if TYPE_CHECKING:
-    from autogpt.config import Config
-    from autogpt.agents.agent import Agent
+    
+    from autogpt.core.agents.base import BaseAgent
 
-from autogpt.agents.utils.exceptions import CommandExecutionError
-from autogpt.command_decorator import command
+from autogpt.core.utils.exceptions import CommandExecutionError
+from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import summarize_text
@@ -55,7 +55,7 @@ class BrowsingError(CommandExecutionError):
     """An error occurred while trying to browse the page"""
 
 
-@command(
+@tool(
     "read_webpage",
     "Read a webpage, and extract specific information from it if a question is specified."
     " If you are looking to extract specific information from the webpage, you should"

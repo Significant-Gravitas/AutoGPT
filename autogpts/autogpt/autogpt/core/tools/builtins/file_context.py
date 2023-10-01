@@ -13,22 +13,22 @@ if TYPE_CHECKING:
     from autogpt.agents import Agent, BaseAgent
 
 from autogpt.agents.features.context import ContextMixin, get_agent_context
-from autogpt.agents.utils.exceptions import (
+from autogpt.core.utils.exceptions import (
     CommandExecutionError,
     DuplicateOperationError,
 )
-from autogpt.command_decorator import command
+from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.context_item import FileContextItem, FolderContextItem
 
-from ..decorators import sanitize_path_arg
+from .decorators import sanitize_path_arg
 
 
 def agent_implements_context(agent: BaseAgent) -> bool:
     return isinstance(agent, ContextMixin)
 
 
-@command(
+@tool(
     "open_file",
     "Open a file for editing or continued viewing; create it if it does not exist yet."
     " Note: if you only need to read or write a file once, use `write_to_file` instead.",
@@ -81,7 +81,7 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
     )
 
 
-@command(
+@tool(
     "open_folder",
     "Open a folder to keep track of its content",
     {

@@ -193,6 +193,9 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
         return await self._agent._planning.execute_strategy( strategy_name = strategy_name, **kwargs)
 
     def get_tools(self) -> ToolsRegistry :
+        return self._agent._tool_registry.get_tools()
+    
+    def tool_registry(self) -> ToolsRegistry :
         return self._agent._tool_registry
     
     async def save_agent(self) : 

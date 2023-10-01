@@ -5,13 +5,13 @@ from __future__ import annotations
 COMMAND_CATEGORY = "user_interaction"
 COMMAND_CATEGORY_TITLE = "User Interaction"
 
-from autogpt.agents.agent import Agent
+from autogpt.core.agents.base import BaseAgent
 from autogpt.app.utils import clean_input
-from autogpt.command_decorator import command
+from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
 
 
-@command(
+@tool(
     "ask_user",
     (
         "If you need more details or information regarding the given goals,"

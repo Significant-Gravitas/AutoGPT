@@ -13,9 +13,9 @@ import os.path
 from pathlib import Path
 from typing import Iterator, Literal
 
-from autogpt.agents.agent import Agent
-from autogpt.agents.utils.exceptions import DuplicateOperationError
-from autogpt.command_decorator import command
+from autogpt.core.agents.base import BaseAgent
+from autogpt.core.utils.exceptions import DuplicateOperationError
+from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.memory.vector import MemoryItem, VectorMemory
 
@@ -133,7 +133,7 @@ def log_operation(
     )
 
 
-@command(
+@tool(
     "read_file",
     "Read an existing file",
     {
@@ -190,7 +190,7 @@ def ingest_file(
         logger.warn(f"Error while ingesting file '{filename}': {err}")
 
 
-@command(
+@tool(
     "write_file",
     "Write a file, creating it if necessary. If the file exists, it is overwritten.",
     {
@@ -252,7 +252,7 @@ def append_to_file(
         log_operation("append", filename, agent, checksum=checksum)
 
 
-@command(
+@tool(
     "list_folder",
     "List the items in a folder",
     {

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
     from autogpt.models.action_history import Episode
 
-from autogpt.agents.utils.exceptions import InvalidAgentResponseError
+from autogpt.core.utils.exceptions import InvalidAgentResponseError
 from autogpt.config import AIConfig, BaseAgentDirectives
 
 

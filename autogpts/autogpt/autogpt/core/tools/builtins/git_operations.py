@@ -7,16 +7,16 @@ from pathlib import Path
 
 from git.repo import Repo
 
-from autogpt.agents.agent import Agent
-from autogpt.agents.utils.exceptions import CommandExecutionError
-from autogpt.command_decorator import command
+from autogpt.core.agents.base import BaseAgent
+from autogpt.core.utils.exceptions import CommandExecutionError
+from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.url_utils.validators import validate_url
 
-from ..decorators import sanitize_path_arg
+from .decorators import sanitize_path_arg
 
 
-@command(
+@tool(
     "clone_repository",
     "Clones a Repository",
     {
@@ -36,7 +36,7 @@ from ..decorators import sanitize_path_arg
 )
 @sanitize_path_arg("clone_path")
 @validate_url
-def clone_repository(url: str, clone_path: Path, agent: Agent) -> str:
+def clone_repository(url: str, clone_path: Path, agent: BaseAgent) -> str:
     """Clone a GitHub repository locally.
 
     Args:

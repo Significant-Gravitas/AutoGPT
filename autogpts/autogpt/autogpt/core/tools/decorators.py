@@ -4,7 +4,7 @@ import functools
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypedDict
 
 # Unique identifier for auto-gpt commands
-AUTO_GPT_ABILITY_IDENTIFIER = "auto_gpt_command"
+AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
 
 if TYPE_CHECKING:
     from autogpt.core.planning.models.command import ToolOutput, ToolParameter
@@ -59,7 +59,7 @@ def ability(
 
         setattr(wrapper, "ability", ablt)
         setattr(
-            wrapper, AUTO_GPT_ABILITY_IDENTIFIER, True
+            wrapper, AUTO_GPT_TOOL_IDENTIFIER, True
         )  # Assuming you have an analogous identifier
 
         return wrapper

@@ -13,18 +13,18 @@ import docker
 from docker.errors import DockerException, ImageNotFound
 from docker.models.containers import Container as DockerContainer
 
-from autogpt.agents.agent import Agent
-from autogpt.agents.utils.exceptions import (
+from autogpt.core.agents.base import BaseAgent
+from autogpt.core.utils.exceptions import (
     CodeExecutionError,
     CommandExecutionError,
     InvalidArgumentError,
     OperationNotAllowedError,
 )
-from autogpt.command_decorator import command
-from autogpt.config import Config
+from autogpt.core.tools.command_decorator  import tool
+
 from autogpt.core.utils.json_schema import JSONSchema
 
-from ..decorators import sanitize_path_arg
+from .decorators import sanitize_path_arg
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"
 
 
-@command(
+@tool(
     "execute_python_code",
     "Executes the given Python code inside a single-use Docker container"
     " with access to your workspace folder",
@@ -44,7 +44,7 @@ DENYLIST_CONTROL = "denylist"
         ),
     },
 )
-def execute_python_code(code: str, agent: Agent) -> str:
+def execute_python_code(code: str, agent: BaseAgent) -> str:
     """Create and execute a Python file in a Docker container and return the STDOUT of the
     executed code. If there is any data that needs to be captured use a print statement
 
@@ -70,7 +70,7 @@ def execute_python_code(code: str, agent: Agent) -> str:
         tmp_code_file.close()
 
 
-@command(
+@tool(
     "execute_python_file",
     "Execute an existing Python file inside a single-use Docker container"
     " with access to your workspace folder",
@@ -90,7 +90,7 @@ def execute_python_code(code: str, agent: Agent) -> str:
 )
 @sanitize_path_arg("filename")
 def execute_python_file(
-    filename: Path, agent: Agent, args: list[str] | str = []
+    filename: Path, agent: BaseAgent, args: list[str] | str = []
 ) -> str:
     """Execute a Python file in a Docker container and return the output
 
@@ -194,29 +194,29 @@ def execute_python_file(
         )
         raise CommandExecutionError(f"Could not run the script in a container: {e}")
 
+# TODO Implement security
+# def validate_command(command: str) -> bool:
+#     """Validate a command to ensure it is allowed
 
-def validate_command(command: str, config: Config) -> bool:
-    """Validate a command to ensure it is allowed
+#     Args:
+#         command (str): The command to validate
+#         config (Config): The config to use to validate the command
 
-    Args:
-        command (str): The command to validate
-        config (Config): The config to use to validate the command
+#     Returns:
+#         bool: True if the command is allowed, False otherwise
+#     """
+#     if not command:
+#         return False
 
-    Returns:
-        bool: True if the command is allowed, False otherwise
-    """
-    if not command:
-        return False
+#     command_name = command.split()[0]
 
-    command_name = command.split()[0]
-
-    if config.shell_command_control == ALLOWLIST_CONTROL:
-        return command_name in config.shell_allowlist
-    else:
-        return command_name not in config.shell_denylist
+#     if config.shell_command_control == ALLOWLIST_CONTROL:
+#         return command_name in config.shell_allowlist
+#     else:
+#         return command_name not in config.shell_denylist
 
 
-@command(
+@tool(
     "execute_shell",
     "Execute a Shell Command, non-interactive commands only",
     {
@@ -231,7 +231,7 @@ def validate_command(command: str, config: Config) -> bool:
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config file: .env - do not attempt to bypass the restriction.",
 )
-def execute_shell(command_line: str, agent: Agent) -> str:
+def execute_shell(command_line: str, agent: BaseAgent) -> str:
     """Execute a shell command and return the output
 
     Args:
@@ -240,9 +240,10 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     Returns:
         str: The output of the command
     """
-    if not validate_command(command_line, agent.legacy_config):
-        logger.info(f"Command '{command_line}' not allowed")
-        raise OperationNotAllowedError("This shell command is not allowed.")
+    # TODO IMPLEMENT OR NO SECURITY MECHANISM
+    # if not validate_command(command_line, agent.legacy_config):
+    #     logger.info(f"Command '{command_line}' not allowed")
+    #     raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
@@ -262,7 +263,7 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     return output
 
 
-@command(
+@tool(
     "execute_shell_popen",
     "Execute a Shell Command, non-interactive commands only",
     {
@@ -277,7 +278,7 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config. Do not attempt to bypass the restriction.",
 )
-def execute_shell_popen(command_line: str, agent: Agent) -> str:
+def execute_shell_popen(command_line: str, agent: BaseAgent) -> str:
     """Execute a shell command with Popen and returns an english description
     of the event and the process id
 
@@ -287,9 +288,9 @@ def execute_shell_popen(command_line: str, agent: Agent) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
-    if not validate_command(command_line, agent.legacy_config):
-        logger.info(f"Command '{command_line}' not allowed")
-        raise OperationNotAllowedError("This shell command is not allowed.")
+    # if not validate_command(command_line, agent.legacy_config):
+    #     logger.info(f"Command '{command_line}' not allowed")
+    #     raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary

@@ -9,17 +9,17 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autogpt.agents.agent import Agent
+    from autogpt.core.agents.base import BaseAgent
 
 from autogpt.agents.features.context import get_agent_context
-from autogpt.agents.utils.exceptions import InvalidArgumentError
-from autogpt.command_decorator import command
+from autogpt.core.utils.exceptions import InvalidArgumentError
+from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 
 
-@command(
+@tool(
     "finish",
     "Use this to shut down once you have accomplished all of your goals,"
     " or when there are insurmountable problems that make it impossible"
@@ -46,7 +46,7 @@ def finish(reason: str, agent: Agent) -> None:
     quit()
 
 
-@command(
+@tool(
     "hide_context_item",
     "Hide an open file, folder or other context item, to save memory.",
     {

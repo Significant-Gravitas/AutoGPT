@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from autogpt.agents.agent import Agent
+from autogpt.core.agents.base import BaseAgent
 
 logger = logging.getLogger(__name__)
 

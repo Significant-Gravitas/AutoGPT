@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple
 
-from autogpt.core.tools import ToolResult, SimpleToolRegistry
+from autogpt.core.tools import ToolResult, SimpleToolRegistry, TOOL_CATEGORIES
 from autogpt.core.agents.base.main import BaseAgent
 from autogpt.core.agents.simple.loop import SimpleLoop
 from autogpt.core.agents.simple.models import (
@@ -107,7 +107,14 @@ class SimpleAgent(BaseAgent):
         # These are specific
         self._openai_provider = openai_provider
         self._planning = planning
-        self._tool_registry = tool_registry
+        self._tool_registry = SimpleToolRegistry.with_tool_modules(
+            modules = TOOL_CATEGORIES,
+            agent=self,
+            logger=self._logger,
+            memory=memory,
+            workspace=workspace,
+            model_providers=openai_provider
+            )
 
         self.plan: Plan = None
         self._loop = SimpleLoop(agent=self)

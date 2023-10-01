@@ -153,9 +153,13 @@ class ThinkStrategy(PlanningPromptStrategy):
         #     messages=messages,
         # )
 
+        # tools = get_openai_command_specs(
+        #         agent._tool_registry.list_available_tools(self)
+        #     ) ===== agent._tool_registry.dump_tools()
+        self._function =  agent._tool_registry.dump_tools()
         prompt = ChatPrompt(
             messages=messages,
-            functions= tools,
+            functions= self._function,
             function_call='auto',
             default_function_call="human_feedback",
         )

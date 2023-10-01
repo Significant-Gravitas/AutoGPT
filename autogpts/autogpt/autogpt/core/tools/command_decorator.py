@@ -12,10 +12,10 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command, CommandOutput, CommandParameter
 
 # Unique identifier for AutoGPT commands
-AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
+AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
 
 
-def command(
+def tool(
     name: str,
     description: str,
     parameters: dict[str, JSONSchema],
@@ -57,8 +57,8 @@ def command(
             def wrapper(*args, **kwargs) -> Any:
                 return func(*args, **kwargs)
 
-        setattr(wrapper, "command", cmd)
-        setattr(wrapper, AUTO_GPT_COMMAND_IDENTIFIER, True)
+        setattr(wrapper, "tool", cmd)
+        setattr(wrapper, AUTO_GPT_TOOL_IDENTIFIER, True)
 
         return wrapper
 

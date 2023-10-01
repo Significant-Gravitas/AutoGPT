@@ -14,14 +14,14 @@ import openai
 import requests
 from PIL import Image
 
-from autogpt.agents.agent import Agent
-from autogpt.command_decorator import command
+from autogpt.core.agents.base import BaseAgent
+from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 
 
-@command(
+@tool(
     "generate_image",
     "Generates an Image",
     {

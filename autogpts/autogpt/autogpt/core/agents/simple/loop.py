@@ -345,6 +345,7 @@ class SimpleLoop(BaseLoop):
 
     async def build_initial_plan(self) -> dict:
         # plan =  self.execute_strategy(
+        self.tool_registry().list_tools_descriptions()
 
         plan = await self.execute_strategy(
             strategy_name="make_initial_plan",
@@ -376,7 +377,7 @@ class SimpleLoop(BaseLoop):
         task = await self._evaluate_task_and_add_context(task)
         next_ability = await self._choose_next_ability(
             task,
-            self.get_tools().dump_tools(),
+            self.tool_registry().dump_tools(),
         )
         self._current_task = task
         self._next_ability = next_ability.content
@@ -384,7 +385,7 @@ class SimpleLoop(BaseLoop):
 
     async def execute_next_ability(self, user_input: str, *args, **kwargs):
         if user_input == "y":
-            ability = self.get_tools().get_tool(self._next_ability["next_ability"])
+            ability = self.tool_registry().get_tool(self._next_ability["next_ability"])
             ability_response = await ability(**self._next_ability["ability_arguments"])
             await self._update_tasks_and_memory(ability_response)
             if self._current_task.context.status == TaskStatusList.DONE:

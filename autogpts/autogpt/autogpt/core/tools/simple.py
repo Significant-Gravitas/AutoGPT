@@ -1,14 +1,28 @@
-import logging
-from logging import Logger
+from __future__ import annotations
+
 import importlib
 import inspect
-from typing import Any, Iterator
+import logging
+from logging import Logger
+from dataclasses import dataclass, field
 from types import ModuleType
+from typing import TYPE_CHECKING, Any, Iterator
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from autogpt.core.agents.base import BaseAgent
+
+
+from autogpt.core.tools.decorators import AUTO_GPT_TOOL_IDENTIFIER
 from autogpt.core.tools.base import Tool, ToolConfiguration, ToolsRegistry
-from autogpt.core.tools.builtins import BUILTIN_TOOLS
+
+logger = logging.getLogger(__name__)
+
+
+#from autogpt.core.tools.builtins import BUILTIN_TOOLS
 from autogpt.core.tools.schema import ToolResult
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
+
 from autogpt.core.memory.base import Memory
 from autogpt.core.plugin.simple import SimplePluginService
 from autogpt.core.resource.model_providers import (
@@ -16,9 +30,9 @@ from autogpt.core.resource.model_providers import (
     CompletionModelFunction,
     ModelProviderName,
 )
+
 from autogpt.core.workspace.base import Workspace
 
-from autogpt.core.tools.decorators import AUTO_GPT_ABILITY_IDENTIFIER
 
 
 class ToolsRegistryConfiguration(SystemConfiguration):
@@ -57,13 +71,14 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         description="A simple tool registry.",
         configuration=ToolsRegistryConfiguration(
             tools={
-                tool_name: tool.default_configuration
-                for tool_name, tool in BUILTIN_TOOLS.items()
+                #tool_name: tool.default_configuration
+                #for tool_name, tool in BUILTIN_TOOLS.items()
             },
         ),
     )
 
-    class ToolCategory(BaseModel):
+    @dataclass
+    class ToolCategory:
         """
         Represents a category of tools.
 
@@ -78,8 +93,8 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         name: str
         title: str
         description: str
-        tools: list[Tool]
-        modules: list[ModuleType]
+        tools: list[Tool] = field(default_factory=list[Tool])
+        modules: list[ModuleType] = field(default_factory=list[ModuleType])
 
         class Config:
             arbitrary_types_allowed = True
@@ -106,15 +121,17 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
             registry = SimpleToolRegistry(settings, logger, memory, workspace, model_providers)
         """
         super().__init__(settings, logger)
-        self._memory = memory
-        self._workspace = workspace
-        self._model_providers = model_providers
-        self._tools: list[Tool] = []
-        for (
-            tool_name,
-            tool_configuration,
-        ) in self._configuration.tools.items():
-            self.register_tool(tool_name, tool_configuration)
+        # self._memory = memory
+        # self._workspace = workspace
+        # self._model_providers = model_providers
+        # self.tools: list[Tool] = []
+        # for (
+        #     tool_name,
+        #     tool_configuration,
+        # ) in self._configuration.tools.items():
+        #     self.register_tool(tool_name, tool_configuration)
+
+        self.tools = {}
         self.tool_aliases = {}
         self.categories = {}
 
@@ -136,6 +153,58 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         aliases: list[str] = [],
         category: str = None,
     ) -> None:
+        return self.register(Tool(tool_configuration))
+    #     """
+    #     Register a new tool with the registry.
+
+    #     Args:
+    #     - tool_name (str): Name of the tool.
+    #     - tool_configuration (ToolConfiguration): Configuration details for the tool.
+    #     - aliases (list[str], optional): A list of alternative names for the tool. Defaults to an empty list.
+    #     - category (str, optional): Category to which the tool belongs. Defaults to None.
+
+    #     Example:
+    #     ```python
+    #     registry = SimpleToolRegistry(...)
+    #     registry.register_tool("sample_tool", ToolConfiguration(), aliases=["example"], category="sample_category")
+    #     ```
+    #     """
+    #     tool_class = SimplePluginService.get_plugin(tool_configuration.location)
+    #     tool_args = {
+    #         "logger": self._logger.getChild(tool_name),
+    #         "configuration": tool_configuration,
+    #     }
+    #     if tool_configuration.packages_required:
+    #         # TODO: Check packages are installed and maybe install them.
+    #         pass
+    #     if tool_configuration.memory_provider_required:
+    #         tool_args["memory"] = self._memory
+    #     if tool_configuration.workspace_required:
+    #         tool_args["workspace"] = self._workspace
+    #     if tool_configuration.language_model_required:
+    #         tool_args["language_model_provider"] = self._model_providers[
+    #             tool_configuration.language_model_required.provider_name
+    #         ]
+    #     tool = tool_class(**tool_args)
+    #     self.tools.append(tool)
+
+    #     for alias in aliases:
+    #         if alias in self.tool_aliases:
+    #             # Handle overwriting aliases or log a warning
+    #             logging.warning(f"Alias '{alias}' is already in use.")
+    #         else:
+    #             self.tool_aliases[alias] = tool_name
+
+    #     # Handle categorization
+    #     if category:
+    #         if category not in self.categories:
+    #             self.categories[category] = self.ToolCategory(
+    #                 name=category, title=category.capitalize(), description=""
+    #             )
+    #         self.categories[category].tools.append(tool_name)
+
+
+    def register(self, cmd: Tool) -> None:
         """
         Register a new tool with the registry.
 
@@ -151,39 +220,19 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         registry.register_tool("sample_tool", ToolConfiguration(), aliases=["example"], category="sample_category")
         ```
         """
-        tool_class = SimplePluginService.get_plugin(tool_configuration.location)
-        tool_args = {
-            "logger": self._logger.getChild(tool_name),
-            "configuration": tool_configuration,
-        }
-        if tool_configuration.packages_required:
-            # TODO: Check packages are installed and maybe install them.
-            pass
-        if tool_configuration.memory_provider_required:
-            tool_args["memory"] = self._memory
-        if tool_configuration.workspace_required:
-            tool_args["workspace"] = self._workspace
-        if tool_configuration.language_model_required:
-            tool_args["language_model_provider"] = self._model_providers[
-                tool_configuration.language_model_required.provider_name
-            ]
-        tool = tool_class(**tool_args)
-        self._tools.append(tool)
+        if cmd.name in self.tools:
+            logger.warn(
+                f"Command '{cmd.name}' already registered and will be overwritten!"
+            )
+        self.tools[cmd.name] = cmd
 
-        for alias in aliases:
-            if alias in self.tool_aliases:
-                # Handle overwriting aliases or log a warning
-                logging.warning(f"Alias '{alias}' is already in use.")
-            else:
-                self.tool_aliases[alias] = tool_name
-
-        # Handle categorization
-        if category:
-            if category not in self.categories:
-                self.categories[category] = self.ToolCategory(
-                    name=category, title=category.capitalize(), description=""
-                )
-            self.categories[category].tools.append(tool_name)
+        if cmd.name in self.tools_aliases:
+            logger.warn(
+                f"Command '{cmd.name}' will overwrite alias with the same name of "
+                f"'{self.tools_aliases[cmd.name]}'!"
+            )
+        for alias in cmd.aliases:
+            self.tools_aliases[alias] = cmd
 
     def unregister(self, tool: Tool) -> None:
         """
@@ -202,13 +251,16 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         registry.unregister(tool_instance)
         ```
         """
-        if tool in self._tools:
-            self._tools.remove(tool)
-            for alias, aliased_tool in self.tool_aliases.items():
-                if aliased_tool == tool.name():
-                    del self.tool_aliases[alias]
+        if tool.name in self.tools:
+                    del self.tools[tool.name]
+                    for alias in tool.aliases:
+                        del self.tools_aliases[alias]
         else:
-            raise KeyError(f"Tool '{tool.name()}' not found in registry.")
+            raise KeyError(f"Command '{tool.name}' not found in registry.")
+
+    def dump_tools(self, available = True) -> list[CompletionModelFunction]:
+        return [tool.spec for tool in self.tools]
+
 
     def reload_tools(self) -> None:
         """
@@ -222,16 +274,14 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         registry.reload_tools()
         ```
         """
-        for tool in self._tools:
-            module = self._import_module(tool.__module__)
+        for cmd_name in self.tools:
+            cmd = self.commands[cmd_name]
+            module = self._import_module(cmd.__module__)
             reloaded_module = self._reload_module(module)
-            if hasattr(reloaded_module, "register_tool"):
-                reloaded_tool = getattr(reloaded_module, "register_tool")
-                self.register_tool(
-                    reloaded_tool.name, reloaded_tool.configuration
-                )
+            if hasattr(reloaded_module, "register"):
+                reloaded_module.register(self)
 
-    def get_tool(self, tool_name: str) -> Tool:
+    def get_tool(self, tool_name: str) -> Tool | None:
         """
         Retrieve a specific tool by its name.
 
@@ -250,15 +300,11 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         tool = registry.get_tool("sample_tool")
         ```
         """
-        for tool in self._tools:
-            if tool.name() == tool_name:
-                return tool
+        if tool_name in self.tools:
+            return self.tools[tool_name]
+
         if tool_name in self.tool_aliases:
-            aliased_tool_name = self.tool_aliases[tool_name]
-            for tool in self._tools:
-                if tool.name() == aliased_tool_name:
-                    return tool
-        raise ValueError(f"Tool '{tool_name}' not found.")
+            return self.tool_aliases[tool_name]
 
     async def perform(self, tool_name: str, **kwargs) -> ToolResult:
         """
@@ -276,6 +322,7 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         Example:
             tool = registry.get_tool("example_tool")
         """
+        logger.warning("### FUNCTION DEPRECATED !!! ###")
         tool = self.get_tool(tool_name)
         if tool:
             if tool.is_async == True:
@@ -284,22 +331,22 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
                 return tool(**kwargs)
 
         raise KeyError(f"Tool '{tool_name}' not found in registry")
+    
+    def call(self, command_name: str, agent: BaseAgent, **kwargs) -> Any:
+        if command := self.get_command(command_name):
+            return command(**kwargs, agent=agent)
+        raise KeyError(f"Command '{command_name}' not found in registry")
 
-    async def call(self, tool_name: str, **kwargs) -> ToolResult:
-        logger = logging.getLogger(__name__)
-        logger.warning("ToolRegistry.call() is deprecated")
 
-        return await self.perform(tool_name=tool_name, **kwargs)
+    def list_available_tools(self, agent: BaseAgent) -> Iterator[Tool]:
+        """Iterates over all registered tools and yields those that are available.
 
-    def list_available_tools(self, agent=None) -> Iterator[Tool]:
-        """
-        Return a generator over all available tools.
+        Params:
+            agent (BaseAgent): The agent that the commands will be checked against.
 
-        Args:
-        - agent (optional): An agent instance to check tool availtool.
 
         Yields:
-        - Tool: Available tools.
+        - Tool: The next available tools.
 
         Example:
         ```python
@@ -309,7 +356,7 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         ```
         """
 
-        for tool in self._tools:
+        for tool in self.tools.values():
             available = tool.available
             if callable(tool.available):
                 available = tool.available(agent)
@@ -331,39 +378,55 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
             print(desc)
         ```
         """
-        # return [f"{tool.name()}: {tool.description()}" for tool in self._tools]
-        return [f"{tool.name()}: {tool.description}" for tool in self._tools]
+        # return [f"{tool.name()}: {tool.description()}" for tool in self.tools]
+        logger.warning("Function deprecated")
+        return [f"{tool.name()}: {tool.description}" for tool in self.tools]
 
     def get_tools_names(self) -> list[str]:
-        return [tool.name() for tool in self._tools]
+        return [tool.name() for tool in self.tools]
 
     def get_tools(self) -> list[Tool]:
-        return self._tools
+        logger.warging("### Warging this function has not being tested, we recommand against using it###")
+        # return self.tools
+        return self.tools.values()
 
-    def dump_tools(self) -> list[CompletionModelFunction]:
-        return [tool.spec for tool in self._tools]
 
     @staticmethod
     def with_tool_modules(
-        modules: list[str], config: ToolsRegistryConfiguration
+        modules: list[str], 
+        agent : BaseAgent,
+        logger: logging.Logger,
+        memory: Memory,
+        workspace: Workspace,
+        model_providers: dict[ModelProviderName, BaseChatModelProvider],
     ) -> "SimpleToolRegistry":
         """
         Creates and returns a new SimpleToolRegistry with tools from given modules.
         """
-        logger = logging.getLogger(__name__)
+        # new_registry = SimpleToolRegistry(
+        #     settings=SimpleToolRegistry.default_settings,
+        #     logger=logging.getLogger(__name__),
+        #     memory=None,
+        #     workspace=None,
+        #     model_providers={},
+        # )
         new_registry = SimpleToolRegistry(
-            settings=SimpleToolRegistry.default_settings,
-            logger=logging.getLogger(__name__),
-            memory=None,
-            workspace=None,
-            model_providers={},
+            logger= logger,
+            settings= SimpleToolRegistry.default_settings,
+            memory = memory,
+            workspace= workspace, 
+            model_providers= model_providers
         )
+        SimpleToolRegistry._agent = agent 
 
-        logger.debug(
-            f"The following tool categories are disabled: {config.disabled_tool_categories}"
-        )
+        # logger.debug(
+        #     f"The following tool categories are disabled: {config.disabled_tool_categories}"
+        # )
+        # enabled_tool_modules = [
+        #     x for x in modules if x not in config.disabled_tool_categories
+        # ]
         enabled_tool_modules = [
-            x for x in modules if x not in config.disabled_tool_categories
+            x for x in modules
         ]
 
         logger.debug(
@@ -373,21 +436,22 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         for tool_module in enabled_tool_modules:
             new_registry.import_tool_module(tool_module)
 
-        for tool in [c for c in new_registry._tools]:
-            if callable(tool.enabled) and not tool.enabled(config):
-                new_registry.unregister(tool)
-                logger.debug(
-                    f"Unregistering incompatible tool '{tool.name()}': \"{tool.disabled_reason or 'Disabled by current config.'}\""
-                )
+        # # Unregister commands that are incompatible with the current config
+        # for tool in [c for c in new_registry.tools.values()]:
+        #     if callable(tool.enabled) and not tool.enabled(config):
+        #         new_registry.unregister(tool)
+        #         logger.debug(
+        #             f"Unregistering incompatible tool '{tool.name()}': \"{tool.disabled_reason or 'Disabled by current config.'}\""
+        #         )
 
         return new_registry
 
-    def import_tool_module(self, module_name: str):
+    def import_tool_module(self, module_name: str) -> None:
         """
         Imports the specified Python module containing tool plugins.
 
         This method imports the associated module and registers any functions or
-        classes that are decorated with the `AUTO_GPT_ABILITY_IDENTIFIER` attribute
+        classes that are decorated with the `AUTO_GPT_TOOL_IDENTIFIER` attribute
         as `Tool` objects. The registered `Tool` objects are then added to the
         `tools` list of the `SimpleToolRegistry` object.
 
@@ -401,7 +465,9 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         registry.import_tool_module("sample_module")
         ```
         """
-        module = self._import_module(module_name)
+
+        module = importlib.import_module(module_name)
+
         category = self.register_module_category(module)
 
         for attr_name in dir(module):
@@ -410,7 +476,7 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
             tool = None
 
             # Register decorated functions
-            if getattr(attr, SimpleToolRegistry.AUTO_GPT_ABILITY_IDENTIFIER, False):
+            if getattr(attr, AUTO_GPT_TOOL_IDENTIFIER, False):
                 tool = attr.tool
 
             # Register tool classes
@@ -418,8 +484,8 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
                 tool = attr()
 
             if tool:
-                self.register_tool(tool.name, tool.configuration)
-                category.tools.append(tool.name)
+                self.register(tool)
+                category.tools.append(tool)
 
     def register_module_category(self, module: ModuleType) -> ToolCategory:
         """
@@ -442,14 +508,12 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
             raise ValueError(f"Cannot import invalid tool module {module.__name__}")
 
         if category_name not in self.categories:
-            self.categories[category_name] = self.ToolCategory(
+            self.categories[category_name] = SimpleToolRegistry.ToolCategory(
                 name=category_name,
                 title=getattr(
                     module, "COMMAND_CATEGORY_TITLE", category_name.capitalize()
                 ),
                 description=getattr(module, "__doc__", ""),
-                tools=[],
-                modules=[],
             )
 
         category = self.categories[category_name]
@@ -457,3 +521,9 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
             category.modules.append(module)
 
         return category
+
+    async def call(self, tool_name: str, **kwargs) -> ToolResult:
+        logger = logging.getLogger(__name__)
+        logger.warning("ToolRegistry.call() is deprecated")
+
+        return await self.perform(tool_name=tool_name, **kwargs)

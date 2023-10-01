@@ -55,7 +55,7 @@ class QueryLanguageModel(Tool):
                 content=query,
             ),
         ]
-        model_response = await self._language_model_provider.create_language_completion(
+        model_response = await self._language_model_provider.create_chat_completion(
             model_prompt=messages,
             functions=[],
             model_name=self._configuration.language_model_required.model_name,
