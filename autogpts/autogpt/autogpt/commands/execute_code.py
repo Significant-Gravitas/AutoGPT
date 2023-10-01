@@ -22,6 +22,7 @@ from autogpt.agents.utils.exceptions import (
 )
 from autogpt.command_decorator import command
 from autogpt.config import Config
+from autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 
@@ -36,11 +37,11 @@ DENYLIST_CONTROL = "denylist"
     "Executes the given Python code inside a single-use Docker container"
     " with access to your workspace folder",
     {
-        "code": {
-            "type": "string",
-            "description": "The Python code to run",
-            "required": True,
-        },
+        "code": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The Python code to run",
+            required=True,
+        ),
     },
 )
 def execute_python_code(code: str, agent: Agent) -> str:
@@ -74,16 +75,17 @@ def execute_python_code(code: str, agent: Agent) -> str:
     "Execute an existing Python file inside a single-use Docker container"
     " with access to your workspace folder",
     {
-        "filename": {
-            "type": "string",
-            "description": "The name of te file to execute",
-            "required": True,
-        },
-        "args": {
-            "type": "list[str]",
-            "description": "The (command line) arguments to pass to the script",
-            "required": False,
-        },
+        "filename": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The name of the file to execute",
+            required=True,
+        ),
+        "args": JSONSchema(
+            type=JSONSchema.Type.ARRAY,
+            description="The (command line) arguments to pass to the script",
+            required=False,
+            items=JSONSchema(type=JSONSchema.Type.STRING),
+        ),
     },
 )
 @sanitize_path_arg("filename")
@@ -218,11 +220,11 @@ def validate_command(command: str, config: Config) -> bool:
     "execute_shell",
     "Execute a Shell Command, non-interactive commands only",
     {
-        "command_line": {
-            "type": "string",
-            "description": "The command line to execute",
-            "required": True,
-        }
+        "command_line": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The command line to execute",
+            required=True,
+        )
     },
     enabled=lambda config: config.execute_local_commands,
     disabled_reason="You are not allowed to run local shell commands. To execute"
@@ -264,11 +266,11 @@ def execute_shell(command_line: str, agent: Agent) -> str:
     "execute_shell_popen",
     "Execute a Shell Command, non-interactive commands only",
     {
-        "command_line": {
-            "type": "string",
-            "description": "The command line to execute",
-            "required": True,
-        }
+        "command_line": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The command line to execute",
+            required=True,
+        )
     },
     lambda config: config.execute_local_commands,
     "You are not allowed to run local shell commands. To execute"

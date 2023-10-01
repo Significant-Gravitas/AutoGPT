@@ -47,9 +47,11 @@ class Agent:
             "http://127.0.0.1:5000",
             "http://localhost:8000",
             "http://127.0.0.1:8000",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
             # Add any other origins you want to whitelist
         ]
-
+        
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
@@ -197,7 +199,10 @@ class Agent:
         """
         try:
             artifact = await self.db.get_artifact(artifact_id)
-            file_path = os.path.join(artifact.relative_path, artifact.file_name)
+            if artifact.file_name not in artifact.relative_path:
+                file_path = os.path.join(artifact.relative_path, artifact.file_name)
+            else:
+                file_path = artifact.relative_path
             retrieved_artifact = self.workspace.read(task_id=task_id, path=file_path)
         except NotFoundError as e:
             raise

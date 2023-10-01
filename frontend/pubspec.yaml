@@ -46,6 +46,7 @@ dependencies:
   google_sign_in: ^6.1.5
   uuid: ^4.0.0
   url_launcher: ^6.1.14
+  fluttertoast: ^8.2.2
 
 dev_dependencies:
   flutter_test:

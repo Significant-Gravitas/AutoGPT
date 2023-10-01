@@ -18,6 +18,7 @@ from autogpt.agents.utils.exceptions import (
     DuplicateOperationError,
 )
 from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.models.context_item import FileContextItem, FolderContextItem
 
 from .decorators import sanitize_path_arg
@@ -32,11 +33,11 @@ def agent_implements_context(agent: BaseAgent) -> bool:
     "Open a file for editing or continued viewing; create it if it does not exist yet."
     " Note: if you only need to read or write a file once, use `write_to_file` instead.",
     {
-        "file_path": {
-            "type": "string",
-            "description": "The path of the file to open",
-            "required": True,
-        }
+        "file_path": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The path of the file to open",
+            required=True,
+        )
     },
     available=agent_implements_context,
 )
@@ -84,11 +85,11 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
     "open_folder",
     "Open a folder to keep track of its content",
     {
-        "path": {
-            "type": "string",
-            "description": "The path of the folder to open",
-            "required": True,
-        }
+        "path": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The path of the folder to open",
+            required=True,
+        )
     },
     available=agent_implements_context,
 )

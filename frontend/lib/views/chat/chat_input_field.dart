@@ -23,6 +23,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
   // Controller for the TextField to manage its content
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  final FocusNode _throwawayFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -44,7 +45,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
     final prefs = await SharedPreferences.getInstance();
     final showContinuousModeDialog =
         prefs.getBool('showContinuousModeDialog') ?? true;
-
+    FocusScope.of(context).requestFocus(_throwawayFocusNode);
     if (showContinuousModeDialog) {
       showDialog(
         context: context,

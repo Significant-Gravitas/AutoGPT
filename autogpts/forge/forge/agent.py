@@ -96,6 +96,9 @@ class ForgeAgent(Agent):
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
         """
+        For a tutorial on how to add your own logic please see the offical tutorial series:
+        https://aiedge.medium.com/autogpt-forge-e3de53cc58ec
+
         The agent protocol, which is the core of the Forge, works by creating a task and then
         executing steps for that task. This method is called when the agent is asked to execute
         a step.

@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
 from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import summarize_text
 from autogpt.url_utils.validators import validate_url
@@ -60,12 +61,16 @@ class BrowsingError(CommandExecutionError):
     " If you are looking to extract specific information from the webpage, you should"
     " specify a question.",
     {
-        "url": {"type": "string", "description": "The URL to visit", "required": True},
-        "question": {
-            "type": "string",
-            "description": "A question that you want to answer using the content of the webpage.",
-            "required": False,
-        },
+        "url": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The URL to visit",
+            required=True,
+        ),
+        "question": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="A question that you want to answer using the content of the webpage.",
+            required=False,
+        ),
     },
 )
 @validate_url

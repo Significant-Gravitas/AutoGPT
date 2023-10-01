@@ -57,18 +57,22 @@ def configure_logging(config: Config, log_dir: Path = LOG_DIR) -> None:
     # INFO log file handler
     activity_log_handler = logging.FileHandler(log_dir / LOG_FILE, "a", "utf-8")
     activity_log_handler.setLevel(logging.INFO)
-    activity_log_handler.setFormatter(AutoGptFormatter(SIMPLE_LOG_FORMAT))
+    activity_log_handler.setFormatter(
+        AutoGptFormatter(SIMPLE_LOG_FORMAT, no_color=True)
+    )
 
     if config.debug_mode:
         # DEBUG log file handler
         debug_log_handler = logging.FileHandler(log_dir / DEBUG_LOG_FILE, "a", "utf-8")
         debug_log_handler.setLevel(logging.DEBUG)
-        debug_log_handler.setFormatter(AutoGptFormatter(DEBUG_LOG_FORMAT))
+        debug_log_handler.setFormatter(
+            AutoGptFormatter(DEBUG_LOG_FORMAT, no_color=True)
+        )
 
     # ERROR log file handler
     error_log_handler = logging.FileHandler(log_dir / ERROR_LOG_FILE, "a", "utf-8")
     error_log_handler.setLevel(logging.ERROR)
-    error_log_handler.setFormatter(AutoGptFormatter(DEBUG_LOG_FORMAT))
+    error_log_handler.setFormatter(AutoGptFormatter(DEBUG_LOG_FORMAT, no_color=True))
 
     # Configure the root logger
     logging.basicConfig(

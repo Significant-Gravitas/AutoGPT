@@ -24,13 +24,14 @@ class SettingsView extends StatelessWidget {
           Expanded(
             child: ListView(
               children: [
+                // TODO: Add back dark mode toggle
                 // Dark Mode Toggle
-                SwitchListTile(
-                  title: const Text('Dark Mode'),
-                  value: viewModel.isDarkModeEnabled,
-                  onChanged: viewModel.toggleDarkMode,
-                ),
-                const Divider(),
+                // SwitchListTile(
+                //   title: const Text('Dark Mode'),
+                //   value: viewModel.isDarkModeEnabled,
+                //   onChanged: viewModel.toggleDarkMode,
+                // ),
+                // const Divider(),
                 // Developer Mode Toggle
                 SwitchListTile(
                   title: const Text('Developer Mode'),

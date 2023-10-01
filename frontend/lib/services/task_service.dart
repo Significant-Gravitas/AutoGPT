@@ -19,7 +19,8 @@ class TaskService {
     try {
       return await api.post('agent/tasks', taskRequestBody.toJson());
     } catch (e) {
-      throw Exception('Failed to create a new task: $e');
+      // TODO: We are bubbling up the full response. Revisit this.
+      rethrow;
     }
   }
 

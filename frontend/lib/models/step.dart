@@ -8,6 +8,7 @@ class Step {
   final String status;
   final String output;
   final Map<String, dynamic> additionalOutput;
+  // TODO: Create an actual artifact object
   final List<dynamic> artifacts;
   final bool isLast;
 

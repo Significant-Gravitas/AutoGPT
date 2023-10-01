@@ -1,9 +1,10 @@
 import 'package:auto_gpt_flutter_client/constants/app_colors.dart';
+import 'package:auto_gpt_flutter_client/utils/uri_utility.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LeaderboardSubmissionDialog extends StatefulWidget {
-  final VoidCallback? onSubmit;
+  final Function(String, String, String)? onSubmit;
 
   const LeaderboardSubmissionDialog({
     Key? key,
@@ -56,6 +57,9 @@ class _LeaderboardSubmissionDialogState
     if (_repoUrlController.text.isEmpty) {
       isValid = false;
       _repoUrlError = 'Repo URL is required';
+    } else if (!UriUtility.isURL(_repoUrlController.text)) {
+      isValid = false;
+      _repoUrlError = 'Invalid URL format';
     } else {
       _repoUrlError = null;
     }
@@ -68,8 +72,11 @@ class _LeaderboardSubmissionDialogState
     }
 
     if (isValid) {
+      print('Valid leaderboard submission parameters!');
       _saveToSharedPreferences();
-      widget.onSubmit?.call();
+      widget.onSubmit?.call(_teamNameController.text, _repoUrlController.text,
+          _commitShaController.text);
+      Navigator.of(context).pop();
     } else {
       setState(() {});
     }
