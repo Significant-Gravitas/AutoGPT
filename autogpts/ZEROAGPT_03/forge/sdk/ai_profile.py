@@ -16,24 +16,29 @@ The possibilities are limited just by your imagination.
 
 import openai
 
+from forge.sdk import PromptEngine
+
 
 class ProfileGenerator:
-    def __init__(self, task: str):
+    def __init__(self, task: str, prompt_engine: PromptEngine):
         """
         Initialize the profile generator with the task to be performed.
         """
         self.task = task
+        self.prompt_engine = prompt_engine
 
     def role_find(self) -> str:
         """
         Ask LLM what role this task would fit
         Return role
         """
-
-        prompt = f"Give me the type of expert role this task would work great for. Return only the type of expert name and nothing else. {self.task.input}"
+        role_prompt = self.prompt_engine.load_prompt(
+            "role-selection",
+            **{"task": self.task.input}
+        )
 
         model = "text-davinci-003"
-        response = openai.Completion.create(engine=model, prompt=prompt, max_tokens=50)
+        response = openai.Completion.create(engine=model, prompt=role_prompt, max_tokens=50)
 
         return response.choices[0].text.strip()
 

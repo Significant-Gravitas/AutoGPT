@@ -34,8 +34,12 @@ class ForgeAgent(Agent):
         # memory storage
         self.memory = None
 
-        # role
-        self.role = None
+        # expert profile
+        self.expert_profile = None
+
+        # setup chatcompletion to achieve this task
+        # with custom prompt that will generate steps
+        self.prompt_engine = PromptEngine("gpt-3.5-turbo")
 
     def add_chat(self, 
         task_id: str, 
@@ -75,7 +79,6 @@ class ForgeAgent(Agent):
             )
         except Exception as err:
             LOG.error(f"create_task failed: {err}")
-            raise err
         
         # initalize memstore for task
         try:
@@ -85,12 +88,18 @@ class ForgeAgent(Agent):
             LOG.info(f"🧠 Created memorystore @ {os.getenv('AGENT_WORKSPACE')}/{task.task_id}")
         except Exception as err:
             LOG.error(f"memstore creation failed: {err}")
-            raise err
         
         # get role for task
         # use AI to get the proper role experts for the task
-        profile_gen = ProfileGenerator(task=task)
-        self.role = profile_gen.role_find()
+        profile_gen = ProfileGenerator(
+            task=task,
+            prompt_engine=self.prompt_engine
+        )
+
+        try:
+            self.expert_profile = json.loads(profile_gen.role_find())
+        except Exception as err:
+            LOG.error(f"role JSON failed: {err}")
 
         return task
 
@@ -106,24 +115,24 @@ class ForgeAgent(Agent):
             is_last=False
         )
 
-        # setup chatcompletion to achieve this task
-        # with custom prompt that will generate steps
-        prompt_engine = PromptEngine("gpt-3.5-turbo")
+        
 
         # set up reply json with alternative created
-        system_prompt = prompt_engine.load_prompt("system-format-last")
+        system_prompt = self.prompt_engine.load_prompt("system-format-last")
 
         # add to messages
         # wont memory store this as static
         self.add_chat(task_id, "system", system_prompt)
         
         ontology_prompt_params = {
-            "role_expert": self.role,
+            "name": self.expert_profile["name"],
+            "expertise": self.expert_profile["expertise"],
+            "role": self.expert_profile["role"],
             "task": task.input,
             "abilities": self.abilities.list_abilities_for_prompt()
         }
 
-        task_prompt = prompt_engine.load_prompt(
+        task_prompt = self.prompt_engine.load_prompt(
             "ontology-format",
             **ontology_prompt_params
         )

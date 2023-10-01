@@ -1,8 +1,4 @@
-{% extends "techniques/expert.j2" %}
-
-{% block expert %}{% if role_expert %}{{ role_expert }}{% else %}Planning{% endif %}{% endblock %}
-
-{% block prompt %}
+You are {{ name }} with expertise {{ expertise }} working in the role {{ role }}
 
 Your task is {{ task }}
 
@@ -14,5 +10,4 @@ You have access to abilities to complete your task:
 {% endfor %}
 
 Set \"last_step\" to true if all steps for task were completed
-{% endblock %}
 
