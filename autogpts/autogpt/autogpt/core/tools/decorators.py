@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypedDict
 AUTO_GPT_ABILITY_IDENTIFIER = "auto_gpt_command"
 
 if TYPE_CHECKING:
-    from autogpt.core.planning.models.command import AbilityOutput, AbilityParameter
+    from autogpt.core.planning.models.command import ToolOutput, ToolParameter
     from autogpt.core.tools.base import Tool, ToolResult, ToolConfiguration
     from autogpt.core.agents.base import BaseAgent
 
 
-class AbilityParameterSpec(TypedDict):
+class ToolParameterSpec(TypedDict):
     type: str
     description: str
     required: bool
@@ -21,19 +21,19 @@ class AbilityParameterSpec(TypedDict):
 def ability(
     name: str,
     description: str,
-    parameters: dict[str, AbilityParameterSpec],
+    parameters: dict[str, ToolParameterSpec],
     enabled: Literal[True] | Callable[[ToolConfiguration], bool] = True,
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
     available: Literal[True] | Callable[[BaseAgent], bool] = True,
 ) -> Callable[
-    ..., AbilityOutput
-]:  # Assuming there's AbilityOutput analogous to AbilityOutput
-    """The ability decorator is used to create Ability objects from ordinary functions."""
+    ..., ToolOutput
+]:  # Assuming there's ToolOutput analogous to ToolOutput
+    """The ability decorator is used to create Tool objects from ordinary functions."""
 
-    def decorator(func: Callable[..., AbilityOutput]):
+    def decorator(func: Callable[..., ToolOutput]):
         typed_parameters = [
-            AbilityParameter(
+            ToolParameter(
                 name=param_name,
                 description=parameter.get("description"),
                 type=parameter.get("type", "string"),

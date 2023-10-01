@@ -8,11 +8,11 @@ from autogpt.core.tools.schema import ToolResult
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 
 
-class CreateNewAbility(Tool):
+class CreateNewTool(Tool):
     default_configuration = ToolConfiguration(
         location=PluginLocation(
             storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-            storage_route="autogpt.core.tools.builtins.CreateNewAbility",
+            storage_route="autogpt.core.tools.builtins.CreateNewTool",
         ),
     )
 

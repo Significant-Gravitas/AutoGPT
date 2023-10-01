@@ -7,15 +7,15 @@ if TYPE_CHECKING:
 
 from .context_items import ContextItem
 
-AbilityReturnValue = Any
-AbilityOutput = AbilityReturnValue | tuple[AbilityReturnValue, ContextItem]
+ToolReturnValue = Any
+ToolOutput = ToolReturnValue | tuple[ToolReturnValue, ContextItem]
 
 
-class AbilityParameter:
+class ToolParameter:
     name: str
     type: str
     description: str
     required: bool
 
     def __repr__(self):
-        return f"AbilityParameter('{self.name}', '{self.type}', '{self.description}', {self.required})"
+        return f"ToolParameter('{self.name}', '{self.type}', '{self.description}', {self.required})"

@@ -8,7 +8,7 @@ from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 
 from autogpt.core.utils.json_schema import JSONSchema
 
-from autogpt.core.prompting.utils import json_loads, to_numbered_list, to_string_list
+from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list, to_string_list
 from autogpt.core.prompting.base import (
     BasePromptStrategy,
     PromptStrategiesConfiguration,
@@ -65,12 +65,12 @@ class InitialPlanStrategy(BasePromptStrategy):
 
     DEFAULT_SYSTEM_INFO = [
         "The OS you are running on is: {os_info}",
-        "It takes money to let you run. Your API budget is ${api_budget:.3f}",
-        "The current time and date is {current_time}",
+        #"It takes money to let you run. Your API budget is ${api_budget:.3f}",
+        #"The current time and date is {current_time}",
     ]
 
     DEFAULT_USER_PROMPT_TEMPLATE = (
-        "You are {agent_name}, {agent_role}\n" "Your goals are:\n" "{agent_goals}"
+        "You are {agent_name}\n" "Your goals are:\n" "{agent_goals}"
     )
 
     ###

@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple
 
-from autogpt.core.ability import ToolResult, SimpleAbilityRegistry
+from autogpt.core.tools import ToolResult, SimpleToolRegistry
 from autogpt.core.agents.base.main import BaseAgent
 from autogpt.core.agents.usercontext.loop import UserContextLoop
 from autogpt.core.agents.usercontext.models import (
@@ -47,7 +47,7 @@ class UserContextAgent(BaseAgent, Configurable):
             systems=UserContextAgentSystems(
                 ability_registry=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.ability.SimpleAbilityRegistry",
+                    storage_route="autogpt.core.ability.SimpleToolRegistry",
                 ),
                 memory=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,

@@ -3,7 +3,7 @@ from typing import Callable
 
 from pydantic import BaseModel, Field
 
-from autogpt.core.resource.model_providers.schema import CompletionModelFunction
+from autogpt.core.resource.model_providers.chat_schema import CompletionModelFunction
 from autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger("PromptScratchpad")
@@ -14,7 +14,8 @@ class CallableCompletionModelFunction(CompletionModelFunction):
 
 
 class PromptScratchpad(BaseModel):
-    commands: dict[str, CallableCompletionModelFunction] = Field(default_factory=dict)
+    # commands: dict[str, CallableCompletionModelFunction] = Field(default_factory=dict) 
+    commands: dict[str, CompletionModelFunction] = Field(default_factory=dict)
     resources: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
     best_practices: list[str] = Field(default_factory=list)

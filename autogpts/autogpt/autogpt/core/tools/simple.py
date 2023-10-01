@@ -6,7 +6,7 @@ from typing import Any, Iterator
 from types import ModuleType
 from pydantic import BaseModel
 from autogpt.core.tools.base import Tool, ToolConfiguration, ToolsRegistry
-from autogpt.core.tools.builtins import BUILTIN_ABILITIES
+from autogpt.core.tools.builtins import BUILTIN_TOOLS
 from autogpt.core.tools.schema import ToolResult
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.memory.base import Memory
@@ -23,10 +23,10 @@ from autogpt.core.tools.decorators import AUTO_GPT_ABILITY_IDENTIFIER
 
 class ToolsRegistryConfiguration(SystemConfiguration):
     """
-    Configuration for the AbilityRegistry subsystem.
+    Configuration for the ToolRegistry subsystem.
 
     Attributes:
-        tools: A dictionary mapping ability names to their configurations.
+        tools: A dictionary mapping tool names to their configurations.
     """
 
     tools: dict[str, ToolConfiguration]
@@ -34,36 +34,36 @@ class ToolsRegistryConfiguration(SystemConfiguration):
 
 class ToolsRegistrySettings(SystemSettings):
     """
-    System settings for AbilityRegistry.
+    System settings for ToolRegistry.
 
     Attributes:
-        configuration: Configuration settings for AbilityRegistry.
+        configuration: Configuration settings for ToolRegistry.
     """
 
     configuration: ToolsRegistryConfiguration
 
 
-class SimpleAbilityRegistry(ToolsRegistry, Configurable):
+class SimpleToolRegistry(ToolsRegistry, Configurable):
     """
-    A manager for a collection of Ability objects. Supports registration, modification, retrieval, and loading
-    of ability plugins from a specified directory.
+    A manager for a collection of Tool objects. Supports registration, modification, retrieval, and loading
+    of tool plugins from a specified directory.
 
     Attributes:
-        default_settings: Default system settings for the SimpleAbilityRegistry.
+        default_settings: Default system settings for the SimpleToolRegistry.
     """
 
     default_settings = ToolsRegistrySettings(
         name="simple_tool_registry",
-        description="A simple ability registry.",
+        description="A simple tool registry.",
         configuration=ToolsRegistryConfiguration(
             tools={
-                ability_name: ability.default_configuration
-                for ability_name, ability in BUILTIN_ABILITIES.items()
+                tool_name: tool.default_configuration
+                for tool_name, tool in BUILTIN_TOOLS.items()
             },
         ),
     )
 
-    class AbilityCategory(BaseModel):
+    class ToolCategory(BaseModel):
         """
         Represents a category of tools.
 
@@ -71,7 +71,7 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
             name: Name of the category.
             title: Display title for the category.
             description: Description of the category.
-            tools: List of Ability objects associated with the category.
+            tools: List of Tool objects associated with the category.
             modules: List of ModuleType objects related to the category.
         """
 
@@ -93,7 +93,7 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
     ):
         """
-        Initialize the SimpleAbilityRegistry.
+        Initialize the SimpleToolRegistry.
 
         Args:
             settings: Configuration settings for the registry.
@@ -103,7 +103,7 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
             model_providers: A dictionary mapping model provider names to chat model providers.
 
         Example:
-            registry = SimpleAbilityRegistry(settings, logger, memory, workspace, model_providers)
+            registry = SimpleToolRegistry(settings, logger, memory, workspace, model_providers)
         """
         super().__init__(settings, logger)
         self._memory = memory
@@ -111,15 +111,15 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         self._model_providers = model_providers
         self._tools: list[Tool] = []
         for (
-            ability_name,
-            ability_configuration,
+            tool_name,
+            tool_configuration,
         ) in self._configuration.tools.items():
-            self.register_ability(ability_name, ability_configuration)
-        self.ability_aliases = {}
+            self.register_tool(tool_name, tool_configuration)
+        self.tool_aliases = {}
         self.categories = {}
 
-    def __contains__(self, ability_name: str):
-        return ability_name in self.tools or ability_name in self.tools_aliases
+    def __contains__(self, tool_name: str):
+        return tool_name in self.tools or tool_name in self.tools_aliases
 
     def _import_module(self, module_name: str):
         """Imports a module using its name."""
@@ -129,229 +129,230 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         """Reloads a given module."""
         return importlib.reload(module)
 
-    def register_ability(
+    def register_tool(
         self,
-        ability_name: str,
-        ability_configuration: ToolConfiguration,
+        tool_name: str,
+        tool_configuration: ToolConfiguration,
         aliases: list[str] = [],
         category: str = None,
     ) -> None:
         """
-        Register a new ability with the registry.
+        Register a new tool with the registry.
 
         Args:
-        - ability_name (str): Name of the ability.
-        - ability_configuration (AbilityConfiguration): Configuration details for the ability.
-        - aliases (list[str], optional): A list of alternative names for the ability. Defaults to an empty list.
-        - category (str, optional): Category to which the ability belongs. Defaults to None.
+        - tool_name (str): Name of the tool.
+        - tool_configuration (ToolConfiguration): Configuration details for the tool.
+        - aliases (list[str], optional): A list of alternative names for the tool. Defaults to an empty list.
+        - category (str, optional): Category to which the tool belongs. Defaults to None.
 
         Example:
         ```python
-        registry = SimpleAbilityRegistry(...)
-        registry.register_ability("sample_ability", AbilityConfiguration(), aliases=["example"], category="sample_category")
+        registry = SimpleToolRegistry(...)
+        registry.register_tool("sample_tool", ToolConfiguration(), aliases=["example"], category="sample_category")
         ```
         """
-        ability_class = SimplePluginService.get_plugin(ability_configuration.location)
-        ability_args = {
-            "logger": self._logger.getChild(ability_name),
-            "configuration": ability_configuration,
+        tool_class = SimplePluginService.get_plugin(tool_configuration.location)
+        tool_args = {
+            "logger": self._logger.getChild(tool_name),
+            "configuration": tool_configuration,
         }
-        if ability_configuration.packages_required:
+        if tool_configuration.packages_required:
             # TODO: Check packages are installed and maybe install them.
             pass
-        if ability_configuration.memory_provider_required:
-            ability_args["memory"] = self._memory
-        if ability_configuration.workspace_required:
-            ability_args["workspace"] = self._workspace
-        if ability_configuration.language_model_required:
-            ability_args["language_model_provider"] = self._model_providers[
-                ability_configuration.language_model_required.provider_name
+        if tool_configuration.memory_provider_required:
+            tool_args["memory"] = self._memory
+        if tool_configuration.workspace_required:
+            tool_args["workspace"] = self._workspace
+        if tool_configuration.language_model_required:
+            tool_args["language_model_provider"] = self._model_providers[
+                tool_configuration.language_model_required.provider_name
             ]
-        ability = ability_class(**ability_args)
-        self._tools.append(ability)
+        tool = tool_class(**tool_args)
+        self._tools.append(tool)
 
         for alias in aliases:
-            if alias in self.ability_aliases:
+            if alias in self.tool_aliases:
                 # Handle overwriting aliases or log a warning
                 logging.warning(f"Alias '{alias}' is already in use.")
             else:
-                self.ability_aliases[alias] = ability_name
+                self.tool_aliases[alias] = tool_name
 
         # Handle categorization
         if category:
             if category not in self.categories:
-                self.categories[category] = self.AbilityCategory(
+                self.categories[category] = self.ToolCategory(
                     name=category, title=category.capitalize(), description=""
                 )
-            self.categories[category].tools.append(ability_name)
+            self.categories[category].tools.append(tool_name)
 
-    def unregister(self, ability: Tool) -> None:
+    def unregister(self, tool: Tool) -> None:
         """
-        Unregister an ability from the registry.
+        Unregister an tool from the registry.
 
         Args:
-        - ability (Ability): The ability instance to unregister.
+        - tool (Tool): The tool instance to unregister.
 
         Raises:
-        - KeyError: If the ability is not found in the registry.
+        - KeyError: If the tool is not found in the registry.
 
         Example:
         ```python
-        registry = SimpleAbilityRegistry(...)
-        ability_instance = ...
-        registry.unregister(ability_instance)
+        registry = SimpleToolRegistry(...)
+        tool_instance = ...
+        registry.unregister(tool_instance)
         ```
         """
-        if ability in self._tools:
-            self._tools.remove(ability)
-            for alias, aliased_ability in self.ability_aliases.items():
-                if aliased_ability == ability.name():
-                    del self.ability_aliases[alias]
+        if tool in self._tools:
+            self._tools.remove(tool)
+            for alias, aliased_tool in self.tool_aliases.items():
+                if aliased_tool == tool.name():
+                    del self.tool_aliases[alias]
         else:
-            raise KeyError(f"Ability '{ability.name()}' not found in registry.")
+            raise KeyError(f"Tool '{tool.name()}' not found in registry.")
 
     def reload_tools(self) -> None:
         """
-        Reloads all loaded ability plugins.
+        Reloads all loaded tool plugins.
 
         Useful for dynamically updating tools without restarting the application.
 
         Example:
         ```python
-        registry = SimpleAbilityRegistry(...)
+        registry = SimpleToolRegistry(...)
         registry.reload_tools()
         ```
         """
-        for ability in self._tools:
-            module = self._import_module(ability.__module__)
+        for tool in self._tools:
+            module = self._import_module(tool.__module__)
             reloaded_module = self._reload_module(module)
-            if hasattr(reloaded_module, "register_ability"):
-                reloaded_ability = getattr(reloaded_module, "register_ability")
-                self.register_ability(
-                    reloaded_ability.name, reloaded_ability.configuration
+            if hasattr(reloaded_module, "register_tool"):
+                reloaded_tool = getattr(reloaded_module, "register_tool")
+                self.register_tool(
+                    reloaded_tool.name, reloaded_tool.configuration
                 )
 
-    def get_ability(self, ability_name: str) -> Tool:
+    def get_tool(self, tool_name: str) -> Tool:
         """
-        Retrieve a specific ability by its name.
+        Retrieve a specific tool by its name.
 
         Args:
-        - ability_name (str): Name of the ability to retrieve.
+        - tool_name (str): Name of the tool to retrieve.
 
         Returns:
-        - Ability: The matched ability.
+        - Tool: The matched tool.
 
         Raises:
-        - ValueError: If the ability is not found.
+        - ValueError: If the tool is not found.
 
         Example:
         ```python
-        registry = SimpleAbilityRegistry(...)
-        ability = registry.get_ability("sample_ability")
+        registry = SimpleToolRegistry(...)
+        tool = registry.get_tool("sample_tool")
         ```
         """
-        for ability in self._tools:
-            if ability.name() == ability_name:
-                return ability
-        if ability_name in self.ability_aliases:
-            aliased_ability_name = self.ability_aliases[ability_name]
-            for ability in self._tools:
-                if ability.name() == aliased_ability_name:
-                    return ability
-        raise ValueError(f"Ability '{ability_name}' not found.")
+        for tool in self._tools:
+            if tool.name() == tool_name:
+                return tool
+        if tool_name in self.tool_aliases:
+            aliased_tool_name = self.tool_aliases[tool_name]
+            for tool in self._tools:
+                if tool.name() == aliased_tool_name:
+                    return tool
+        raise ValueError(f"Tool '{tool_name}' not found.")
 
-    async def perform(self, ability_name: str, **kwargs) -> ToolResult:
+    async def perform(self, tool_name: str, **kwargs) -> ToolResult:
         """
-        Retrieve a registered ability by its name.
+        Retrieve a registered tool by its name.
 
         Args:
-            ability_name: Name or alias of the ability to retrieve.
+            tool_name: Name or alias of the tool to retrieve.
 
         Returns:
-            The requested Ability instance.
+            The requested Tool instance.
 
         Raises:
-            ValueError: If no ability with the given name or alias is found.
+            ValueError: If no tool with the given name or alias is found.
 
         Example:
-            ability = registry.get_ability("example_ability")
+            tool = registry.get_tool("example_tool")
         """
-        ability = self.get_ability(ability_name)
-        if ability:
-            if ability.is_async == True:
-                return await ability(**kwargs)
+        tool = self.get_tool(tool_name)
+        if tool:
+            if tool.is_async == True:
+                return await tool(**kwargs)
             else:
-                return ability(**kwargs)
+                return tool(**kwargs)
 
-        raise KeyError(f"Ability '{ability_name}' not found in registry")
+        raise KeyError(f"Tool '{tool_name}' not found in registry")
 
-    async def call(self, ability_name: str, **kwargs) -> ToolResult:
+    async def call(self, tool_name: str, **kwargs) -> ToolResult:
         logger = logging.getLogger(__name__)
-        logger.warning("AbilityRegistry.call() is deprecated")
+        logger.warning("ToolRegistry.call() is deprecated")
 
-        return await self.perform(ability_name=ability_name, **kwargs)
+        return await self.perform(tool_name=tool_name, **kwargs)
 
     def list_available_tools(self, agent=None) -> Iterator[Tool]:
         """
         Return a generator over all available tools.
 
         Args:
-        - agent (optional): An agent instance to check ability availability.
+        - agent (optional): An agent instance to check tool availtool.
 
         Yields:
-        - Ability: Available tools.
+        - Tool: Available tools.
 
         Example:
         ```python
-        registry = SimpleAbilityRegistry(...)
-        for ability in registry.list_available_tools():
-            print(ability.name())
+        registry = SimpleToolRegistry(...)
+        for tool in registry.list_available_tools():
+            print(tool.name())
         ```
         """
 
-        for ability in self._tools:
-            available = ability.available
-            if callable(ability.available):
-                available = ability.available(agent)
+        for tool in self._tools:
+            available = tool.available
+            if callable(tool.available):
+                available = tool.available(agent)
             if available:
-                yield ability
+                yield tool
 
     def list_tools_descriptions(self) -> list[str]:
         """
         List descriptions of all registered tools.
 
         Returns:
-        - list[str]: List of ability descriptions.
+        - list[str]: List of tool descriptions.
 
         Example:
         ```python
-        registry = SimpleAbilityRegistry(...)
+        registry = SimpleToolRegistry(...)
         descriptions = registry.list_tools_descriptions()
         for desc in descriptions:
             print(desc)
         ```
         """
-        return [f"{ability.name()}: {ability.description()}" for ability in self._tools]
+        # return [f"{tool.name()}: {tool.description()}" for tool in self._tools]
+        return [f"{tool.name()}: {tool.description}" for tool in self._tools]
 
     def get_tools_names(self) -> list[str]:
-        return [ability.name() for ability in self._tools]
+        return [tool.name() for tool in self._tools]
 
     def get_tools(self) -> list[Tool]:
         return self._tools
 
-    def dump_tools(self) -> list[dict]:
-        return [ability.dump() for ability in self._tools]
+    def dump_tools(self) -> list[CompletionModelFunction]:
+        return [tool.spec for tool in self._tools]
 
     @staticmethod
-    def with_ability_modules(
+    def with_tool_modules(
         modules: list[str], config: ToolsRegistryConfiguration
-    ) -> "SimpleAbilityRegistry":
+    ) -> "SimpleToolRegistry":
         """
-        Creates and returns a new SimpleAbilityRegistry with tools from given modules.
+        Creates and returns a new SimpleToolRegistry with tools from given modules.
         """
         logger = logging.getLogger(__name__)
-        new_registry = SimpleAbilityRegistry(
-            settings=SimpleAbilityRegistry.default_settings,
+        new_registry = SimpleToolRegistry(
+            settings=SimpleToolRegistry.default_settings,
             logger=logging.getLogger(__name__),
             memory=None,
             workspace=None,
@@ -359,45 +360,45 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         )
 
         logger.debug(
-            f"The following ability categories are disabled: {config.disabled_ability_categories}"
+            f"The following tool categories are disabled: {config.disabled_tool_categories}"
         )
-        enabled_ability_modules = [
-            x for x in modules if x not in config.disabled_ability_categories
+        enabled_tool_modules = [
+            x for x in modules if x not in config.disabled_tool_categories
         ]
 
         logger.debug(
-            f"The following ability categories are enabled: {enabled_ability_modules}"
+            f"The following tool categories are enabled: {enabled_tool_modules}"
         )
 
-        for ability_module in enabled_ability_modules:
-            new_registry.import_ability_module(ability_module)
+        for tool_module in enabled_tool_modules:
+            new_registry.import_tool_module(tool_module)
 
-        for ability in [c for c in new_registry._tools]:
-            if callable(ability.enabled) and not ability.enabled(config):
-                new_registry.unregister(ability)
+        for tool in [c for c in new_registry._tools]:
+            if callable(tool.enabled) and not tool.enabled(config):
+                new_registry.unregister(tool)
                 logger.debug(
-                    f"Unregistering incompatible ability '{ability.name()}': \"{ability.disabled_reason or 'Disabled by current config.'}\""
+                    f"Unregistering incompatible tool '{tool.name()}': \"{tool.disabled_reason or 'Disabled by current config.'}\""
                 )
 
         return new_registry
 
-    def import_ability_module(self, module_name: str):
+    def import_tool_module(self, module_name: str):
         """
-        Imports the specified Python module containing ability plugins.
+        Imports the specified Python module containing tool plugins.
 
         This method imports the associated module and registers any functions or
         classes that are decorated with the `AUTO_GPT_ABILITY_IDENTIFIER` attribute
-        as `Ability` objects. The registered `Ability` objects are then added to the
-        `tools` list of the `SimpleAbilityRegistry` object.
+        as `Tool` objects. The registered `Tool` objects are then added to the
+        `tools` list of the `SimpleToolRegistry` object.
 
         Args:
-            module_name (str): The name of the module to import for ability plugins.
+            module_name (str): The name of the module to import for tool plugins.
 
 
         Example:
         ```python
-        registry = SimpleAbilityRegistry(...)
-        registry.import_ability_module("sample_module")
+        registry = SimpleToolRegistry(...)
+        registry.import_tool_module("sample_module")
         ```
         """
         module = self._import_module(module_name)
@@ -406,42 +407,42 @@ class SimpleAbilityRegistry(ToolsRegistry, Configurable):
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
 
-            ability = None
+            tool = None
 
             # Register decorated functions
-            if getattr(attr, SimpleAbilityRegistry.AUTO_GPT_ABILITY_IDENTIFIER, False):
-                ability = attr.ability
+            if getattr(attr, SimpleToolRegistry.AUTO_GPT_ABILITY_IDENTIFIER, False):
+                tool = attr.tool
 
-            # Register ability classes
+            # Register tool classes
             elif inspect.isclass(attr) and issubclass(attr, Tool) and attr != Tool:
-                ability = attr()
+                tool = attr()
 
-            if ability:
-                self.register_ability(ability.name, ability.configuration)
-                category.tools.append(ability.name)
+            if tool:
+                self.register_tool(tool.name, tool.configuration)
+                category.tools.append(tool.name)
 
-    def register_module_category(self, module: ModuleType) -> AbilityCategory:
+    def register_module_category(self, module: ModuleType) -> ToolCategory:
         """
-        Registers a module's category in the ability registry.
+        Registers a module's category in the tool registry.
 
         Args:
         - module (ModuleType): The module from which the category is to be registered.
 
         Returns:
-        - AbilityCategory: The registered category.
+        - ToolCategory: The registered category.
 
         Example:
         ```python
-        registry = SimpleAbilityRegistry(...)
+        registry = SimpleToolRegistry(...)
         module = ...
         category = registry.register_module_category(module)
         ```
         """
         if not (category_name := getattr(module, "COMMAND_CATEGORY", None)):
-            raise ValueError(f"Cannot import invalid ability module {module.__name__}")
+            raise ValueError(f"Cannot import invalid tool module {module.__name__}")
 
         if category_name not in self.categories:
-            self.categories[category_name] = self.AbilityCategory(
+            self.categories[category_name] = self.ToolCategory(
                 name=category_name,
                 title=getattr(
                     module, "COMMAND_CATEGORY_TITLE", category_name.capitalize()

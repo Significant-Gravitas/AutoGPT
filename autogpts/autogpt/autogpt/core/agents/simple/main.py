@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple
 
-from autogpt.core.tools import ToolResult, SimpleAbilityRegistry
+from autogpt.core.tools import ToolResult, SimpleToolRegistry
 from autogpt.core.agents.base.main import BaseAgent
 from autogpt.core.agents.simple.loop import SimpleLoop
 from autogpt.core.agents.simple.models import (
@@ -61,7 +61,7 @@ class SimpleAgent(BaseAgent):
             systems=SimpleAgentSystems(
                 tool_registry=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.tools.SimpleAbilityRegistry",
+                    storage_route="autogpt.core.tools.SimpleToolRegistry",
                 ),
                 memory=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
@@ -87,7 +87,7 @@ class SimpleAgent(BaseAgent):
         self,
         settings: SimpleAgentSystemSettings,
         logger: logging.Logger,
-        tool_registry: SimpleAbilityRegistry,
+        tool_registry: SimpleToolRegistry,
         memory: Memory,
         openai_provider: OpenAIProvider,
         workspace: SimpleWorkspace,
@@ -111,6 +111,7 @@ class SimpleAgent(BaseAgent):
 
         self.plan: Plan = None
         self._loop = SimpleLoop(agent=self)
+        self.prompt_settings = self.load_prompt_settings()
 
         # NOTE : MOVE ADD HOOK TO BaseLoop
 
@@ -214,7 +215,7 @@ class SimpleAgent(BaseAgent):
         # strategies_config = SimplePromptStrategiesConfiguration(
         #         name_and_goals=strategies.NameAndGoals.default_configuration,
         #         initial_plan=strategies.InitialPlan.default_configuration,
-        #         next_ability=strategies.NextAbility.default_configuration,)
+        #         next_ability=strategies.NextTool.default_configuration,)
         # #agent_settings.planning.configuration.prompt_strategies = strategies_config
 
         # #
@@ -295,6 +296,10 @@ class SimpleAgent(BaseAgent):
 
     def __repr__(self):
         return "SimpleAgent()"
+
+    @classmethod
+    def load_prompt_settings(cls):
+        return super().load_prompt_settings(erase = False, file_path= __file__)
 
 
 def test_hook(**kwargs):

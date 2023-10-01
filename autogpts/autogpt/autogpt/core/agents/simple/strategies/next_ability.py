@@ -7,7 +7,7 @@ from autogpt.core.planning.schema import (
 from autogpt.core.prompting.schema import (
     LanguageModelClassification,
 )
-from autogpt.core.prompting.utils import json_loads, to_numbered_list
+from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
 from autogpt.core.resource.model_providers import (
     CompletionModelFunction,
     ChatMessage,
@@ -15,7 +15,7 @@ from autogpt.core.resource.model_providers import (
 )
 
 
-class NextAbilityConfiguration(SystemConfiguration):
+class NextToolConfiguration(SystemConfiguration):
     model_classification: LanguageModelClassification = UserConfigurable()
     system_prompt_template: str = UserConfigurable()
     system_info: list[str] = UserConfigurable()
@@ -23,7 +23,7 @@ class NextAbilityConfiguration(SystemConfiguration):
     additional_ability_arguments: dict = UserConfigurable()
 
 
-class NextAbilityStrategy(BasePromptStrategy):
+class NextToolStrategy(BasePromptStrategy):
     STRATEGY_NAME = "next_ability"
     FIRST_SYSTEM_PROMPT_TEMPLATE = "System Info:\n{system_info}"
 
@@ -64,7 +64,7 @@ class NextAbilityStrategy(BasePromptStrategy):
         },
     }
 
-    default_configuration = NextAbilityConfiguration(
+    default_configuration = NextToolConfiguration(
         model_classification=LanguageModelClassification.SMART_MODEL_8K,
         system_prompt_template=FIRST_SYSTEM_PROMPT_TEMPLATE,
         system_info=DEFAULT_SYSTEM_INFO,

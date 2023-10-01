@@ -4,4 +4,4 @@ from __future__ import annotations
 
 from autogpt.core.tools.base import Tool, ToolsRegistry
 from autogpt.core.tools.schema import ToolResult
-from autogpt.core.tools.simple import ToolsRegistrySettings, SimpleAbilityRegistry
+from autogpt.core.tools.simple import ToolsRegistrySettings, SimpleToolRegistry

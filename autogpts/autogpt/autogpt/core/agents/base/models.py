@@ -132,3 +132,16 @@ class BaseAgentSettings(BaseModel):
         # self.agent_class = agent_goal_sentence["agent_class"]
         # self.agent_id = agent_goals["agent_id"]
         # self.agent_id = agent_goal_sentence["agent_id"]
+
+class BaseAgentDirectives(dict):
+    """An object that contains the basic directives for the AI prompt.
+
+    Attributes:
+        constraints (list): A list of constraints that the AI should adhere to.
+        resources (list): A list of resources that the AI can utilize.
+        best_practices (list): A list of best practices that the AI should follow.
+    """
+
+    constraints: list[str]
+    resources: list[str]
+    best_practices: list[str]

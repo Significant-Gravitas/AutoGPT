@@ -6,25 +6,25 @@ import json
 import platform
 import re
 from logging import Logger
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Optional
+
 
 import distro
 
+from autogpt.core.agents.base.agent_directives import BaseAgentDirectives
 if TYPE_CHECKING:
     from autogpt.core.agents.simple import SimpleAgent
 
-from pydantic import BaseModel
 
-from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 
 # prompting
 from autogpt.core.prompting.base import (
-    PlanningPromptStrategiesConfiguration,
-    PlanningPromptStrategy,
-    PromptStrategiesConfiguration,
-)
-from autogpt.core.prompting.schema import (
     LanguageModelClassification,
+    RESPONSE_SCHEMA
+)
+from autogpt.core.prompting.planningstrategies import (
+    PlanningPromptStrategiesConfiguration,
+    PlanningPromptStrategy
 )
 
 from autogpt.core.resource.model_providers import (
@@ -37,48 +37,29 @@ from autogpt.core.resource.model_providers import (
 
 from autogpt.core.utils.json_schema import JSONSchema
 
-from autogpt.core.prompting.utils import json_loads, to_numbered_list, to_string_list
+from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list, to_string_list
 
-
-DEFAULT_TRIGGERING_PROMPT = (
-    "Determine exactly one command to use next based on the given goals "
-    "and the progress you have made so far, "
-    "and respond using the JSON schema specified previously:"
-)
 
 
 class ThinkStrategyFunctionNames(str, enum.Enum):
     THINK: str = "think"
 
 
+###
+### CONFIGURATION
+####
 class ThinkStrategyConfiguration(PlanningPromptStrategiesConfiguration):
     model_classification: LanguageModelClassification = (
         LanguageModelClassification.FAST_MODEL_16K
     )
 
 
+###
+### STRATEGY
+####
 class ThinkStrategy(PlanningPromptStrategy):
-    default_configuration = ThinkStrategyConfiguration()
+    default_configuration: ThinkStrategyConfiguration =  ThinkStrategyConfiguration()
     STRATEGY_NAME = "think"
-
-    FIRST_SYSTEM_PROMPT_TEMPLATE = DEFAULT_TRIGGERING_PROMPT
-
-    FUNCTION_THINK = CompletionModelFunction(
-        name=ThinkStrategyFunctionNames.THINK,
-        description="Seals the iterative process of refining requirements. It gets activated when the user communicates satisfaction with the requirements, signaling readiness to finalize the current list of goals.",
-        parameters={
-            "goal_list": JSONSchema(
-                type=JSONSchema.Type.ARRAY,
-                minItems=1,
-                maxItems=5,
-                items=JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                ),
-                description="List of user requirements that emerged from prior interactions. Each entry in the list stands for a distinct and atomic requirement or aim expressed by the user.",
-                required=True,
-            )
-        },
-    )
 
     def __init__(
         self,
@@ -86,71 +67,260 @@ class ThinkStrategy(PlanningPromptStrategy):
         model_classification: LanguageModelClassification,
         **kwargs,
     ):
-        super().__init__(**kwargs)
-        self._logger = logger
-        self._model_classification = model_classification
-        self._config = self.default_configuration
+        super().__init__(
+                        logger = logger, 
+                        model_classification = model_classification,
+                        **kwargs
+                        )
 
-        self._functions = [ThinkStrategy.FUNCTION_THINK]
 
     @property
     def model_classification(self) -> LanguageModelClassification:
         return self._model_classification
 
     def build_prompt(
-        self, agent: SimpleAgent, instruction: str, thought_process_id, **kwargs
+        self, 
+        agent: "SimpleAgent", 
+        #instruction: str, 
+        **kwargs
     ) -> ChatPrompt:
-        # #self._provider : OpenAIProvider = kwargs['provider']
+        """Constructs and returns a prompt with the following structure:
+        1. System prompt
+        2. Message history of the agent, truncated & prepended with running summary as needed
+        3. `cycle_instruction`
+
+        Params:
+            cycle_instruction: The final instruction for a thinking cycle
+        """
+
         model_name = kwargs["model_name"]
+        self._functions = agent._tool_registry.dump_tools()
 
-        #
-        # STEP 1 : List all functions available
-        #
+        ###
+        ### To Facilitate merge with AutoGPT changes
+        ###
+        event_history = False 
+        include_os_info = True
+        del  kwargs["tools"]
+        tools = self._functions
+        agent_directives =  BaseAgentDirectives.from_file(agent=agent)
+        extra_messages: list[ChatMessage] = []
 
-        if not instruction:
-            raise ValueError("No instruction given")
 
-        # System message
+        system_prompt = self._construct_system_prompt(
+            agent = agent,
+            agent_directives = agent_directives,
+            tools = tools,
+            include_os_info = include_os_info,
+            **kwargs
+        )
+        # system_prompt_tlength = count_message_tokens(ChatMessage.system(system_prompt))
+
         response_format_instr = self.response_format_instruction(
             agent=agent,
-            thought_process_id=thought_process_id,
             model_name=model_name,
         )
-        if response_format_instr:
-            self._append_messages.append(ChatMessage.system(response_format_instr))
+        extra_messages.append(ChatMessage.system(response_format_instr))
 
-        # User Message
-        instruction_msg = ChatMessage.user(instruction)
-        instruction_tlength = agent._openai_provider.count_message_tokens(
-            instruction_msg, model_name
-        )
+        final_instruction_msg = ChatMessage.user(self._config.choose_action_instruction)
+        # final_instruction_tlength = count_message_tokens(final_instruction_msg)
 
-        messages: list[ChatMessage] = self.construct_base_prompt(
-            agent=agent,
-            thought_process_id=thought_process_id,
-            append_messages=self._append_messages,
-            reserve_tokens=instruction_tlength,
-        )
 
-        # ADD user input message ("triggering prompt")
-        messages.append(instruction_msg)
 
-        messages: list[ChatMessage] = agent._loop.on_before_think(
+        if event_history:
+            # progress = self.compile_progress(
+            #     event_history,
+            #     count_tokens=count_tokens,
+            #     max_tokens=(
+            #         max_prompt_tokens
+            #         - system_prompt_tlength
+            #         - final_instruction_tlength
+            #         - count_message_tokens(extra_messages)
+            #     ),
+            # )
+            # extra_messages.insert(
+            #     0,
+            #     ChatMessage.system(f"## Progress\n\n{progress}"),
+            # )
+            pass
+        
+        messages = [
+                ChatMessage.system(system_prompt),
+                *extra_messages,
+                final_instruction_msg,
+            ]
+        # messages: list[ChatMessage] = agent._loop.on_before_think(
+        #     messages=messages,
+        # )
+
+        prompt = ChatPrompt(
             messages=messages,
-            thought_process_id=thought_process_id,
-            instruction=instruction,
-        )
-
-        return ChatPrompt(
-            messages=messages,
-            functions=self.get_functions(),  # self._agent._tool_registry.dump_tools()
-            function_call=ThinkStrategyFunctionNames.THINK,
+            functions= tools,
+            function_call='auto',
             default_function_call="human_feedback",
         )
 
+        return prompt
+
+
+    #
+    # response_format_instruction
+    #
+    def response_format_instruction( self, agent: "SimpleAgent",  model_name: str,
+                               **kargs) -> str:  
+        return super().response_format_instruction( agent = agent, model_name = model_name)
+
+    #
+    # _generate_intro_prompt
+    #
+    def _generate_intro_prompt(self, agent = "SimpleAgent",
+                               **kargs) -> list[str]:
+        """Generates the introduction part of the prompt.
+
+        Returns:
+            list[str]: A list of strings forming the introduction part of the prompt.
+        """
+        return super()._generate_intro_prompt(agent ,
+                               **kargs)
+    #
+    # _generate_os_info
+    #
+    def _generate_os_info(self, **kwargs) -> list[str]:
+        """Generates the OS information part of the prompt.
+
+        Params:
+            config (Config): The configuration object.
+
+        Returns:
+            str: The OS information part of the prompt.
+        """
+
+        return super()._generate_os_info(**kwargs)
+
+    #
+    #     def _generate_budget_constraint
+    #
+    def _generate_budget_constraint(self, api_budget: float,
+                               **kargs) -> list[str]:
+        """Generates the budget information part of the prompt.
+
+        Returns:
+            list[str]: The budget information part of the prompt, or an empty list.
+        """
+        return super()._generate_budget_constraint(api_budget,
+                               **kargs)
+
+    #
+    # _generate_goals_info
+    #
+    def _generate_goals_info(self, goals: list[str],
+                               **kargs) -> list[str]:
+        """Generates the goals information part of the prompt.
+
+        Returns:
+            str: The goals information part of the prompt.
+        """
+        return super()._generate_goals_info(goals,
+                               **kargs)
+
+    #
+    # _generate_tools_list
+    #
+    def _generate_tools_list(self, tools: list[CompletionModelFunction],
+                               **kargs) -> str:
+        """Lists the tools available to the agent.
+
+        Params:
+            agent: The agent for which the tools are being listed.
+
+        Returns:
+            str: A string containing a numbered list of tools.
+        """
+        return super()._generate_tools_list(tools,
+                               **kargs)
+
+
+    ###
+    ### parse_response_content
+    ###
+    def parse_response_content(
+        self,
+        response_content: AssistantChatMessageDict,
+    ) -> dict:
+        """Parse the actual text response from the objective model.
+
+        Args:
+            response_content: The raw response content from the objective model.
+
+        Returns:
+            The parsed response.
+
+        """
+        try:
+            parsed_response = json_loads(response_content["function_call"]["arguments"])
+        except Exception:
+            self._agent._logger.warning(parsed_response)
+
+        parsed_response["name"] = response_content["function_call"]["name"]
+
+        return parsed_response
+
+
+    # FIXME Move to new format
+    # def parse_response_content(
+    #     self,
+    #     response_content: AssistantChatMessageDict,
+    # ) -> dict:
+    #     """Parse the actual text response from the objective model.
+
+    #     Args:
+    #         response_content: The raw response content from the objective model.
+
+    #     Returns:
+    #         The parsed response.
+
+    #     """
+    #     if "content" not in response_content:
+    #         raise InvalidAgentResponseError("Assistant response has no text content")
+
+    #     assistant_reply_dict = extract_dict_from_response(response_content["content"])
+        
+    #     try:
+    #         parsed_response = json_loads(response_content["function_call"]["arguments"])
+    #     except Exception:
+    #         self._agent._logger.warning(parsed_response)
+
+    #     parsed_response["name"] = response_content["function_call"]["name"]
+
+    #     # Get command name and arguments
+    #     command_name, arguments = self.extract_command(
+    #         assistant_reply_dict, response, self._config.use_functions_api
+    #     )
+    #     return command_name, arguments, assistant_reply_dict
+    
+    #     return parsed_response
+
+    def save(self):
+        pass
+
+    #############
+    # Utilities #
+    #############
+    def extract_command(
+        assistant_reply_json: dict,
+        assistant_reply: AssistantChatMessageDict,
+        use_openai_functions_api: bool,
+    ) -> tuple[str, dict[str, str]]:
+        super().extract_command(
+        assistant_reply_json = assistant_reply_json,
+        assistant_reply = assistant_reply,
+        use_openai_functions_api = use_openai_functions_api
+    ) 
+
+
     # NOTE : based on planning_agent.py
     def construct_base_prompt(
-        self, agent: SimpleAgent, thought_process_id: str, **kwargs
+        self, agent: "SimpleAgent", **kwargs
     ) -> list[ChatMessage]:
         # Add the current plan to the prompt, if any
         if agent.plan:
@@ -178,61 +348,8 @@ class ThinkStrategy(PlanningPromptStrategy):
 
             self._prepend_messages.append(ChatMessage.system("\n".join(plan_section)))
 
-        # NOTE : PLANCE HOLDER
-        # if agent.context:
-        #     context_section = [
-        #         "## Context",
-        #         "Below is information that may be relevant to your task. These take up "
-        #         "part of your working memory, which is limited, so when a context item is "
-        #         "no longer relevant for your plan, use the `close_context_item` command to "
-        #         "free up some memory."
-        #         "\n",
-        #         self.context.format_numbered(),
-        #     ]
-        #     self._prepend_messages.append(ChatMessage.system("\n".join(context_section)))
-
-        # match thought_process_id:
-        #     case "plan":
-        #         # TODO: add planning instructions; details about what to pay attention to when planning
-        #         pass
-        #     case "action":
-        #         # TODO: need to insert the functions here again?
-        #         pass
-        #     case "evaluate":
-        #         # TODO: insert latest action (with reasoning) + result + evaluation instructions
-        #         pass
-        #     case _:
-        #         raise NotImplementedError(
-        #             f"Unknown thought process '{thought_process_id}'"
-        #         )
-
         messages = super().construct_base_prompt(
-            agent=agent, thought_process_id=thought_process_id, **kwargs
+            agent=agent,  **kwargs
         )
 
         return messages
-
-    def parse_response_content(
-        self,
-        response_content: AssistantChatMessageDict,
-    ) -> dict:
-        """Parse the actual text response from the objective model.
-
-        Args:
-            response_content: The raw response content from the objective model.
-
-        Returns:
-            The parsed response.
-
-        """
-        try:
-            parsed_response = json_loads(response_content["function_call"]["arguments"])
-        except Exception:
-            self._agent._logger.warning(parsed_response)
-
-        parsed_response["name"] = response_content["function_call"]["name"]
-
-        return parsed_response
-
-    def save(self):
-        pass

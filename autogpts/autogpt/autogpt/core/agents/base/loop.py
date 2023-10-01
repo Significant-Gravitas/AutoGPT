@@ -122,11 +122,6 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
             "user_message_handler": user_message_handler,
             "kwargs": hook["kwargs"],
         }
-        # result = hook['function'](agent = agent,
-        #                   loop = self,
-        #                   user_input_handler = user_input_handler,
-        #                   user_message_handler = user_message_handler,
-        #                     *hook['args'])
 
         result = hook["function"](**kwargs)
 

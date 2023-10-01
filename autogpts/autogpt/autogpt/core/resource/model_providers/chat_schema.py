@@ -253,20 +253,6 @@ class FunctionParameters(BaseModel):
     properties: Dict[str, Property]
     required: List[str]
 
-
-class CompletionModelFunction(BaseModel):
-    """
-    `CompletionModelFunction` encapsulates a function specification that can be invoked by the language model
-    within a chat-based interaction. It utilizes the `FunctionParameters` class to structure its parameters.
-    Instances of `CompletionModelFunction` are aggregated within the `ChatPrompt` class to provide a list
-    of available functions for interaction with the language model.
-    """
-
-    name: str
-    description: str
-    parameters: FunctionParameters
-
-
 class AssistantFunctionCall(BaseModel):
     """
     `AssistantFunctionCall` encapsulates a function call made by the assistant within a chat interaction.

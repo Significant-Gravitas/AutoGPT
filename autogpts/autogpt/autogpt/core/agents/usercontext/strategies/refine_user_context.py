@@ -32,7 +32,7 @@ from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 
 from autogpt.core.utils.json_schema import JSONSchema
 
-from autogpt.core.prompting.utils import json_loads, to_numbered_list, to_string_list
+from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list, to_string_list
 from autogpt.core.prompting.base import (
     BasePromptStrategy,
     PromptStrategiesConfiguration,

@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from dataclasses import dataclass
 from typing import Any, Iterator, Literal, Optional
 
-from autogpt.core.prompting.utils import to_numbered_list, indent
+from autogpt.core.prompting.utils.utils import to_numbered_list, indent
 
 
 @dataclass

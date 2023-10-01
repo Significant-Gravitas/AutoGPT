@@ -4,7 +4,7 @@ from autogpt.core.prompting.base import BasePromptStrategy, PromptStrategy
 from autogpt.core.prompting.schema import (
     LanguageModelClassification,
 )
-from autogpt.core.prompting.utils import json_loads
+from autogpt.core.prompting.utils.utils import json_loads
 from autogpt.core.resource.model_providers import (
     CompletionModelFunction,
     ChatMessage,

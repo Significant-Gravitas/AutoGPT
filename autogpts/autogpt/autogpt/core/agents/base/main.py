@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import abc
 import logging
 import uuid
+from abc import ABC, abstractmethod
+import os
+import yaml
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Dict, Tuple
 
@@ -22,6 +24,7 @@ from autogpt.core.agents.base.models import (
     BaseAgentSettings,
     BaseAgentSystems,
     BaseAgentSystemSettings,
+    BaseAgentDirectives
 )
 from autogpt.core.memory.base import Memory
 from autogpt.core.plugin.simple import SimplePluginService
@@ -29,7 +32,7 @@ from autogpt.core.workspace import Workspace
 from autogpt.core.configuration import Configurable
 
 
-class AbstractAgent(abc.ABC):
+class AbstractAgent(ABC):
     CLASS_SYSTEM_SETINGS = BaseAgentSystemSettings
     CLASS_CONFIGURATION = BaseAgentConfiguration
     CLASS_SETTINGS = BaseAgentSettings
@@ -50,7 +53,7 @@ class AbstractAgent(abc.ABC):
         """
         return cls
 
-    @abc.abstractmethod
+    @abstractmethod
     def __init__(self, *args, **kwargs):
         """
         Abstract method for the initialization of the agent.
@@ -60,7 +63,7 @@ class AbstractAgent(abc.ABC):
         ...
 
     @classmethod
-    @abc.abstractmethod
+    @abstractmethod
     def get_agent_from_settings(
         cls,
         agent_settings: BaseAgentSettings,
@@ -80,7 +83,7 @@ class AbstractAgent(abc.ABC):
         """
         ...
 
-    @abc.abstractmethod
+    @abstractmethod
     def __repr__(self):
         """
         Abstract method for the string representation of the agent.
@@ -96,6 +99,7 @@ class AbstractAgent(abc.ABC):
     # _loophooks: Dict[str, BaseLoop.LoophooksDict] = {}
 
 
+        
 class BaseAgent(Configurable, AbstractAgent):
     def __init__(
         self,
@@ -306,7 +310,7 @@ class BaseAgent(Configurable, AbstractAgent):
         return agent
 
     @classmethod
-    @abc.abstractmethod
+    @abstractmethod
     def _get_agent_from_settings(
         cls, agent_settings: BaseAgentSettings, agent_args: list, logger: logging.Logger
     ) -> Tuple[BaseAgentSettings, list]:
@@ -515,6 +519,48 @@ class BaseAgent(Configurable, AbstractAgent):
             **kwargs,
         )
         return system_instance
+
+
+    @classmethod
+    @abstractmethod
+    def load_prompt_settings(cls, erase = False, file_path : str ='') -> BaseAgentDirectives:
+        # Get the directory containing the current class file
+        base_agent_dir = os.path.dirname(__file__)
+        # Construct the path to the YAML file based on __file__
+        current_settings_path = os.path.join(base_agent_dir, "prompt_settings.yaml")
+
+        settings = {}
+        # Load settings from the current directory (based on __file__)
+        if os.path.exists(current_settings_path):
+            with open(current_settings_path, "r") as file:
+                settings = yaml.load(file, Loader=yaml.FullLoader)
+        else :
+            raise FileNotFoundError(f"Can't locate file {current_settings_path}")
+        
+        agent_directives =  BaseAgentDirectives(
+            constraints=settings.get("constraints", []),
+            resources=settings.get("resources", []),
+            best_practices=settings.get("best_practices", []),
+        )
+
+        # Load settings from the specified directory (based on 'file')
+        if file_path:
+            specified_settings_path = os.path.join(os.path.dirname(file_path), "prompt_settings.yaml")
+
+            if os.path.exists(specified_settings_path):
+                with open(specified_settings_path, "r") as file_path:
+                    specified_settings = yaml.safe_load(file_path)
+                    for key, items in specified_settings.items():
+                        if key not in agent_directives.keys():
+                            agent_directives[key].append(items)
+                        else:
+                            # If the item already exists, update it with specified_settings
+                            if erase : 
+                                agent_directives[key] = items
+                            else : 
+                                pass
+
+        return agent_directives
 
     ################################################################################
     ################################ DB INTERACTIONS ################################

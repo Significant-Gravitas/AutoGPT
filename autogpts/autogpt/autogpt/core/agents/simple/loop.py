@@ -12,7 +12,7 @@ from autogpt.core.planning.models.action import (
     ActionErrorResult,
 )
 from autogpt.core.planning.models.context_items import ContextItem
-from autogpt.core.planning.models.command import AbilityOutput
+from autogpt.core.planning.models.command import ToolOutput
 from autogpt.core.planning.models.plan import Plan
 from autogpt.core.planning.models.tasks import Task, TaskStatusList
 
@@ -115,7 +115,6 @@ class SimpleLoop(BaseLoop):
     def on_before_think(
         self,
         messages: list[ChatMessage],
-        thought_process_id: Literal["one-shot"],
         instruction: str,
         **kwargs,
     ) -> list[ChatMessage]:
@@ -205,7 +204,7 @@ class SimpleLoop(BaseLoop):
                 "memory": self._agent._memory._settings.dict(),
                 "workspace": self._agent._workspace._settings.dict(),
                 "openai_provider": self._agent._openai_provider._settings.dict()
-                # _type_ = 'autogpt.core.agents.usercontext.agent.UserContextAgent',
+                # _type_ = 'autogpt.core.agents.usercontext.main.UserContextAgent',
                 # agent_class = 'UserContextAgent'
             }
 
@@ -385,7 +384,7 @@ class SimpleLoop(BaseLoop):
 
     async def execute_next_ability(self, user_input: str, *args, **kwargs):
         if user_input == "y":
-            ability = self.get_tools().get_ability(self._next_ability["next_ability"])
+            ability = self.get_tools().get_tool(self._next_ability["next_ability"])
             ability_response = await ability(**self._next_ability["ability_arguments"])
             await self._update_tasks_and_memory(ability_response)
             if self._current_task.context.status == TaskStatusList.DONE:
@@ -441,7 +440,6 @@ class SimpleLoop(BaseLoop):
 
     from typing import Literal, Any
 
-    ThoughtProcessID = Literal["one-shot"]
     CommandName = str
     CommandArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
@@ -453,9 +451,7 @@ class SimpleLoop(BaseLoop):
 
     async def think(
         self,
-        instruction: Optional[str] = None,
-        thought_process_id: ThoughtProcessID = "one-shot",
-    ) -> ThoughtProcessOutput:
+    ) :
         """Runs the agent for one cycle.
 
         Params:
@@ -464,21 +460,11 @@ class SimpleLoop(BaseLoop):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
-
-        from autogpt.core.agents.simple.strategies.think import (
-            DEFAULT_TRIGGERING_PROMPT,
-        )
-
-        instruction: str = instruction or DEFAULT_TRIGGERING_PROMPT
-
         raw_response: ChatModelResponse = await self.execute_strategy(
             strategy_name="think",
             agent=self._agent,
             tools=self.get_tools(),
-            instruction=instruction,  # TODO : Move to strategy
-            thought_process_id=thought_process_id,  # TODO : Remove
         )
-
         return raw_response
 
     async def execute(
@@ -570,7 +556,7 @@ def execute_command(
     command_name: str,
     arguments: dict[str, str],
     agent: BaseAgent,
-) -> AbilityOutput:
+) -> ToolOutput:
     """Execute the command and return the result
 
     Args:

@@ -1,5 +1,6 @@
 import logging
 
+from typing import ClassVar
 from autogpt.core.tools.base import Tool, ToolConfiguration
 from autogpt.core.tools.schema import ToolResult
 from autogpt.core.planning.simple import LanguageModelConfiguration
@@ -10,6 +11,7 @@ from autogpt.core.resource.model_providers import (
     ModelProviderName,
     OpenAIModelName,
 )
+from autogpt.core.utils.json_schema import JSONSchema
 
 
 class QueryLanguageModel(Tool):
@@ -35,22 +37,17 @@ class QueryLanguageModel(Tool):
         self._configuration = configuration
         self._language_model_provider = language_model_provider
 
-    @classmethod
-    def description(cls) -> str:
-        return "Query a language model. A query should be a question and any relevant context."
+    description: ClassVar[str] = (
+        "Query a language model."
+        " A query should be a question and any relevant context."
+    )
 
-    @classmethod
-    def arguments(cls) -> dict:
-        return {
-            "query": {
-                "type": "string",
-                "description": "A query for a language model. A query should contain a question and any relevant context.",
-            },
-        }
-
-    @classmethod
-    def required_arguments(cls) -> list[str]:
-        return ["query"]
+    parameters: ClassVar[dict[str, JSONSchema]] = {
+        "query": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="A query for a language model. A query should contain a question and any relevant context.",
+        )
+    }
 
     async def __call__(self, query: str) -> ToolResult:
         messages = [
@@ -62,13 +59,13 @@ class QueryLanguageModel(Tool):
             model_prompt=messages,
             functions=[],
             model_name=self._configuration.language_model_required.model_name,
-            completion_parser=self._parse_response,
+ 
         )
         return ToolResult(
             ability_name=self.name(),
             ability_args={"query": query},
             success=True,
-            message=model_response.content["content"],
+            message=model_response.response["content"],
         )
 
     @staticmethod
