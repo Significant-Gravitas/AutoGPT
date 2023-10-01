@@ -1,0 +1,33 @@
+triggers:
+  - label_substring: summarize
+    on_issue: false
+    on_pull_request: true
+    run: summarize_pr
+  - branch_name: main
+    run: generate_readme_summaries
+    parameters:
+      FILE_SUMMARY_PROMPT: |
+        Write an executive summary of this file, intended for someone seeing it for the first time.
+        Don't explain simple or trivial things like imports, but do explain what the purpose of the file is.
+        Be short and concise, especially if the file is empty.
+        Respond in 1-10 bullet points, prefixed with emojis, with five spaces at the end of each line.
+      FILE_SUMMARY_INSTRUCTIONS: |
+        Respond in 1-10 bullet points, prefixed of emojis. Try to pick contextually relevant emojis.
+        Be short and concise.
+        An example of the structure I'm expecting:
+        ~~~
+        💧 line item 1     
+        🚚 line item 2     
+        ~~~
+        PUT FIVE SPACES ON THE END OF EACH ONLINE.
+      FOLDER_SUMMARY_PROMPT: |
+        Write a high level overview of this folder, intended for someone seeing it for the first time.
+        Don't explain simple or trivial things like imports, but do explain what the purpose is of the contents of the folder.
+        Be high-level, and very concise.
+      FOLDER_SUMMARY_INSTRUCTIONS: |
+        Be very concise, and respond in the form of a short paragraph (max 3 sentences).
+      IGNORE_FILES:
+        - website
+        - .github
+        - .autopr
+        - tests
