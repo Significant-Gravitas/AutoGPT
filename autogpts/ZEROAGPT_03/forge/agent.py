@@ -34,9 +34,30 @@ class ForgeAgent(Agent):
         # memory storage
         self.memory = None
 
-    def add_chat(self, task_id: str, role: str, content: str):
-        chat_struct = {"role": role, "content": content}
+        # role
+        self.role = None
+
+    def add_chat(self, 
+        task_id: str, 
+        role: str, 
+        content: str,
+        is_function: bool = False,
+        function_name: str = None):
+        
+        if is_function:
+            chat_struct = {
+                "role": role,
+                "name": function_name,
+                "content": content
+            }
+        else:
+            chat_struct = {
+                "role": role, 
+                "content": content
+            }
+        
         try:
+            # cut down on messages being repeated in chat
             if chat_struct not in self.chat_history[task_id]:
                 self.chat_history[task_id].append(chat_struct)
         except KeyError:
@@ -65,20 +86,16 @@ class ForgeAgent(Agent):
         except Exception as err:
             LOG.error(f"memstore creation failed: {err}")
             raise err
+        
+        # get role for task
+        # use AI to get the proper role experts for the task
+        profile_gen = ProfileGenerator(task=task)
+        self.role = profile_gen.role_find()
 
         return task
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
         task = await self.db.get_task(task_id)
-        
-        # get past steps if any
-        # this currently not helping so will need to use the chat
-        # list_steps = await self.db.list_steps(task_id)
-        # past_step = ""
-        # if len(list_steps[0]) > 0:
-        #     # get the last recent step to place in prompt memory
-        #     # sort steps and get the most recent one
-        #     past_step = sorted(list_steps[0], key=lambda x: x.modified_at)[0]
 
         # Create a new step in the database
         # have AI determine last step
@@ -99,14 +116,9 @@ class ForgeAgent(Agent):
         # add to messages
         # wont memory store this as static
         self.add_chat(task_id, "system", system_prompt)
-
-        # use AI to get the proper role experts for the task
-        profile_gen = ProfileGenerator(task=task)
-
-        print(profile_gen.role_find())
         
         ontology_prompt_params = {
-            "role_expert": "Testing",
+            "role_expert": self.role,
             "task": task.input,
             "abilities": self.abilities.list_abilities_for_prompt()
         }
@@ -114,37 +126,6 @@ class ForgeAgent(Agent):
         task_prompt = prompt_engine.load_prompt(
             "ontology-format",
             **ontology_prompt_params
-        )
-
-        # find memories similar to prompt
-        past_chat = self.memory.query(
-            task_id=task_id,
-            query=task_prompt,
-            filters={"role": "assistant"}
-        )
-
-        # if memory found add past-convo prompt to chat
-        if len(past_chat["documents"][0]) > 0:
-            past_convo_params = {
-                "previous_chat": past_chat["documents"][0][:1]
-            }
-
-            past_convo_prompt = prompt_engine.load_prompt(
-                "past-convo",
-                **past_convo_params
-            )
-
-            self.add_chat(task_id, "user", past_convo_prompt)
-
-            LOG.info(f"🧠 added past convo {pprint.pformat(past_convo_prompt)}")
-
-        # add task to memory store
-        self.memory.add(
-            task_id=task_id,
-            document=task_prompt,
-            metadatas={
-                "role": "user"
-            }
         )
 
         self.add_chat(task_id, "user", task_prompt)
@@ -155,8 +136,6 @@ class ForgeAgent(Agent):
                 "model": "gpt-3.5-turbo"
             }
 
-            LOG.info(f"chat log\n{pprint.pformat(self.chat_history[task_id])}")
-
             chat_response = await chat_completion_request(
                 **chat_completion_parms)
             
@@ -165,24 +144,12 @@ class ForgeAgent(Agent):
             
             LOG.info(pprint.pformat(answer))
 
-            # add to memory
-            self.memory.add(
-                task_id=task_id,
-                document=chat_response["choices"][0]["message"]["content"],
-                metadatas={"role": "assistant"}
-            )
-
             # Extract the ability from the answer
             ability = answer["ability"]
 
             LOG.info(f"🔨 Running Ability {ability}")
 
             # Run the ability and get the output
-            if "args" in ability:
-                ability_args = ability["args"]
-            else:
-                ability_args = None
-
             if "args" in ability:
                 output = await self.abilities.run_ability(
                     task_id,
@@ -195,29 +162,22 @@ class ForgeAgent(Agent):
                     ability["name"]
                 )
 
-            output = str(output) if output else "Success"
+            output = str(output) if output else "None"
 
             # add to converstion
-            ability_json = {
-                "ability": {
-                    "name": ability["name"],
-                    "args": ability_args
-                },
-                "output": output
-            }
+            # add arguments to function content, if any
+            if "args" in ability:
+                ccontent = f"[Arguments {ability['args']}]: {output} "
+            else:
+                ccontent = output
 
-            ability_str = f"ability {ability['name']} ran with paramters {ability_args} had output of {output}"
-
-            LOG.info(f"🔨 completed ability: {ability_json}")
-
-            # add task output to memory
-            self.memory.add(
+            self.add_chat(
                 task_id=task_id,
-                document=json.dumps(ability_json),
-                metadatas={"role": "assistant"}
+                role="function",
+                content=ccontent,
+                is_function=True,
+                function_name=ability["name"]
             )
-
-            self.add_chat(task_id, "answer", json.dumps(ability_str))
 
             # Set the step output and is_last from AI
             step.output = answer["thoughts"]["speak"]
@@ -229,6 +189,8 @@ class ForgeAgent(Agent):
         except Exception as e:
             # Handle other exceptions
             LOG.error(f"Unable to generate chat response: {e}")
+
+        LOG.info(f"chat log\n{pprint.pformat(self.chat_history[task_id])}")
 
         # Return the completed step
         return step

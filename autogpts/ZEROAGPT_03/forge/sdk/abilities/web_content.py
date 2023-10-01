@@ -2,10 +2,21 @@
 web content abilities
 """
 import requests
+import os
 from bs4 import BeautifulSoup
+
+from forge.sdk.memory.memstore import ChromaMemStore
 
 from .registry import ability
 
+def add_memory(task_id: str, document: str, ability_name: str) -> None:
+    chromadb_path = f"{os.getenv('AGENT_WORKSPACE')}/{task_id}"
+    memory = ChromaMemStore(chromadb_path)
+    memory.add(
+        task_id=task_id,
+        document=document,
+        metadatas={"function": ability_name}
+    )
 
 @ability(
     name="html_to_file",
@@ -45,6 +56,8 @@ async def html_to_file(agent, task_id: str, url: str, file_path: str) -> None:
             relative_path=file_path,
             agent_created=True,
         )
+
+        add_memory(task_id, data, "html_to_file")
     except Exception as e:
         raise e
 
@@ -90,24 +103,8 @@ async def html_to_text_file(agent, task_id: str, url: str, file_path: str) -> No
             relative_path=file_path,
             agent_created=True,
         )
+
+        add_memory(task_id, html_soap.get_text(), "html_to_text_file")
     except Exception as e:
         raise e
 
-
-@ability(
-    name="fetch_webpage",
-    description="Retrieve the content of a webpage",
-    parameters=[
-        {
-            "name": "url",
-            "description": "Webpage URL",
-            "type": "string",
-            "required": True,
-        }
-    ],
-    output_type="string",
-)
-async def fetch_webpage(agent, task_id: str, url: str) -> str:
-    response = requests.get(url)
-    
-    return response.text
