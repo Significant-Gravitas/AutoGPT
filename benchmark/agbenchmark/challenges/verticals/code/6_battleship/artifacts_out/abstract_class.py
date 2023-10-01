@@ -100,7 +100,7 @@ class AbstractBattleship(ABC):
         pass
 
     @abstractmethod
-    def create_game(self, game_id: str) -> None:
+    def create_game(self) -> None:
         """
         Create a new game.
         """
