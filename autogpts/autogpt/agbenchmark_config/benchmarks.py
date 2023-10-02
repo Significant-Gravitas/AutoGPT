@@ -32,7 +32,11 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
     config.workspace_path = Workspace.init_workspace_directory(config)
     config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
 
-    configure_logging(config, LOG_DIR)
+    configure_logging(
+        debug_mode=config.debug_mode,
+        plain_output=config.plain_output,
+        log_dir=LOG_DIR,
+    )
 
     command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
 

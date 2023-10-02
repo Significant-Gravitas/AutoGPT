@@ -16,6 +16,7 @@ import click
 @click.option(
     "--ai-settings",
     "-C",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help=(
         "Specifies which ai_settings.yaml file to use, relative to the AutoGPT"
         " root directory. Will also automatically skip the re-prompt."
@@ -24,6 +25,7 @@ import click
 @click.option(
     "--prompt-settings",
     "-P",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Specifies which prompt_settings.yaml file to use.",
 )
 @click.option(
@@ -92,8 +94,8 @@ def main(
     ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
-    ai_settings: str,
-    prompt_settings: str,
+    ai_settings: Optional[Path],
+    prompt_settings: Optional[Path],
     skip_reprompt: bool,
     speak: bool,
     debug: bool,

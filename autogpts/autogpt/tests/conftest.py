@@ -38,7 +38,7 @@ def workspace(workspace_root: Path) -> Workspace:
 def temp_plugins_config_file():
     """Create a plugins_config.yaml file in a temp directory so that it doesn't mess with existing ones"""
     config_directory = TemporaryDirectory()
-    config_file = os.path.join(config_directory.name, "plugins_config.yaml")
+    config_file = Path(config_directory.name) / "plugins_config.yaml"
     with open(config_file, "w+") as f:
         f.write(yaml.dump({}))
 
@@ -46,7 +46,7 @@ def temp_plugins_config_file():
 
 
 @pytest.fixture()
-def config(temp_plugins_config_file: str, mocker: MockerFixture, workspace: Workspace):
+def config(temp_plugins_config_file: Path, mocker: MockerFixture, workspace: Workspace):
     config = ConfigBuilder.build_config_from_env(workspace.root.parent)
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
@@ -79,7 +79,11 @@ def config(temp_plugins_config_file: str, mocker: MockerFixture, workspace: Work
 
 @pytest.fixture(scope="session")
 def setup_logger(config: Config):
-    configure_logging(config, Path(__file__).parent / "logs")
+    configure_logging(
+        debug_mode=config.debug_mode,
+        plain_output=config.plain_output,
+        log_dir=Path(__file__).parent / "logs",
+    )
 
 
 @pytest.fixture()
