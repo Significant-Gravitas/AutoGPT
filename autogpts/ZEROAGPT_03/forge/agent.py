@@ -39,7 +39,7 @@ class ForgeAgent(Agent):
 
         # setup chatcompletion to achieve this task
         # with custom prompt that will generate steps
-        self.prompt_engine = PromptEngine("gpt-3.5-turbo")
+        self.prompt_engine = PromptEngine("gpt-4")
 
     def add_chat(self, 
         task_id: str, 
@@ -117,8 +117,6 @@ class ForgeAgent(Agent):
             is_last=False
         )
 
-        
-
         # set up reply json with alternative created
         system_prompt = self.prompt_engine.load_prompt("system-format-last")
 
@@ -144,7 +142,7 @@ class ForgeAgent(Agent):
         try:
             chat_completion_parms = {
                 "messages": self.chat_history[task_id],
-                "model": "gpt-3.5-turbo"
+                "model": "gpt-4"
             }
 
             chat_response = await chat_completion_request(
@@ -153,7 +151,7 @@ class ForgeAgent(Agent):
             answer = json.loads(
                 chat_response["choices"][0]["message"]["content"])
             
-            LOG.info(pprint.pformat(answer))
+            LOG.info(f"[From AI]\n{answer}")
 
             # Extract the ability from the answer
             ability = answer["ability"]

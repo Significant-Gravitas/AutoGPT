@@ -1,0 +1,18 @@
+Reply only in json with the following format:
+
+{
+    "thoughts": {
+        "text":  "thoughts",
+        "reasoning": "reasoning behind thoughts",
+        "plan": "- short bulleted\\n- list that conveys\\n- long-term plan",
+        "criticism": "constructive self-criticism",
+        "speak": "thoughts summary to say to user",
+        "last_step": "boolean in python format, True if completed task else False"
+    },
+    "ability": {
+        "name": "name of ability",
+        "args": {
+            "arg1": "value1",...
+        }
+    }
+}
