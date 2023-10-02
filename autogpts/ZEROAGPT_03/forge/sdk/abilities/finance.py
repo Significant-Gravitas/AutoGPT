@@ -4,6 +4,8 @@ Using yahoo finance
 """
 import yfinance as yf
 import json
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 from forge.sdk.memory.memstore_tools import add_memory
 
@@ -43,9 +45,12 @@ async def get_ticker_info(
     json_info = json.dumps(stock_info)
     return json_info
 
+# yahoo finance only seems to have financials up to three years
+three_years_ago = (datetime.now() - relativedelta(years=3))
+three_years_ago = three_years_ago.strftime('%Y')
 @ability(
     name="get_financials_year",
-    description="Get financial information of a company for a specific year",
+    description=f"Get financial information of a company up to year {three_years_ago}",
     parameters=[
         {
             "name": "ticker_symbol",
@@ -87,3 +92,4 @@ async def get_financials_year(
 
     json_data = json.dumps(year_financial_data)
     return json_data
+
