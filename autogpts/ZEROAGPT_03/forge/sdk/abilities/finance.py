@@ -5,7 +5,12 @@ Using yahoo finance
 import yfinance as yf
 import json
 
+from forge.sdk.memory.memstore_tools import add_memory
+
+from ..forge_log import ForgeLogger
 from .registry import ability
+
+logger = ForgeLogger(__name__)
 
 ability(
     name="get_ticker_info",
@@ -25,11 +30,18 @@ async def get_ticker_info(
     task_id: str,
     ticker_symbol: str
 ) -> str:
-    
     # get ticker then financial information as dict
     # dict has structure where timestamp are keys
-    stock = yf.Ticker(ticker_symbol)
-    return json.dumps(stock.get_info())
+    stock_info = {}
+
+    try:
+        stock = yf.Ticker(ticker_symbol)
+        stock_info = stock.get_info()
+    except Exception as err:
+        logger.error(f"get_ticker_info failed: {err}")
+
+    json_info = json.dumps(stock_info)
+    return json_info
 
 @ability(
     name="get_financials_year",
@@ -56,19 +68,22 @@ async def get_financials_year(
     ticker_symbol: str,
     year: int
 ) -> str:
-    
     # get ticker then financial information as dict
     # dict has structure where timestamp are keys
-    stock = yf.Ticker(ticker_symbol)
-    financials_dict = stock.financials.to_dict()
-
     year_financial_data = {}
 
-    # get financial informatio and return dict
-    for timestamp, financial_data in financial_data.items():
-        key_year = int(str(timestamp).split("-")[0])
+    try:
+        stock = yf.Ticker(ticker_symbol)
+        financials_dict = stock.financials.to_dict()
 
-        if key_year == year:
-            year_financial_data = financials_dict
+        # get financial informatio and return dict
+        for timestamp, financial_data in financial_data.items():
+            key_year = int(str(timestamp).split("-")[0])
 
-    return json.dumps(year_financial_data)
+            if key_year == year:
+                year_financial_data = financials_dict
+    except Exception as err:
+        logger.error(f"get_financials_year failed: {err}")
+
+    json_data = json.dumps(year_financial_data)
+    return json_data
