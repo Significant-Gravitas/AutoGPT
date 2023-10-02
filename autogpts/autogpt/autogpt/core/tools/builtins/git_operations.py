@@ -1,14 +1,14 @@
-"""Commands to perform Git operations"""
+"""Tools to perform Git operations"""
 
-COMMAND_CATEGORY = "git_operations"
-COMMAND_CATEGORY_TITLE = "Git Operations"
+TOOL_CATEGORY = "git_operations"
+TOOL_CATEGORY_TITLE = "Git Operations"
 
 from pathlib import Path
 
 from git.repo import Repo
 
 from autogpt.core.agents.base import BaseAgent
-from autogpt.core.utils.exceptions import CommandExecutionError
+from autogpt.core.utils.exceptions import ToolExecutionError
 from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.utils.url.validators import validate_url
@@ -53,6 +53,6 @@ def clone_repository(url: str, clone_path: Path, agent: BaseAgent) -> str:
     try:
         Repo.clone_from(url=auth_repo_url, to_path=clone_path)
     except Exception as e:
-        raise CommandExecutionError(f"Could not clone repo: {e}")
+        raise ToolExecutionError(f"Could not clone repo: {e}")
 
     return f"""Cloned {url} to {clone_path}"""

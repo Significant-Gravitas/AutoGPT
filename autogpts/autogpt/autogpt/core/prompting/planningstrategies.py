@@ -233,7 +233,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
             str: A string containing a numbered list of tools.
         """
         try:
-            var = [cmd().fmt_line() for cmd in tools]
+            var = [cmd.fmt_line() for cmd in tools]
             return to_numbered_list(var)
         except AttributeError:
             self.logger.warn(f"Formatting tools failed. {tools}")

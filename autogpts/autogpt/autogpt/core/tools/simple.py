@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from autogpt.core.agents.base import BaseAgent
 
 
-from autogpt.core.tools.decorators import AUTO_GPT_TOOL_IDENTIFIER
+from autogpt.core.tools.command_decorator import AUTO_GPT_TOOL_IDENTIFIER
 from autogpt.core.tools.base import Tool, ToolConfiguration, ToolsRegistry
 
 logger = logging.getLogger(__name__)
@@ -222,13 +222,13 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         """
         if cmd.name in self.tools:
             logger.warn(
-                f"Command '{cmd.name}' already registered and will be overwritten!"
+                f"Tool '{cmd.name}' already registered and will be overwritten!"
             )
         self.tools[cmd.name] = cmd
 
         if cmd.name in self.tool_aliases:
             logger.warn(
-                f"Command '{cmd.name}' will overwrite alias with the same name of "
+                f"Tool '{cmd.name}' will overwrite alias with the same name of "
                 f"'{self.tool_aliases[cmd.name]}'!"
             )
         for alias in cmd.aliases:
@@ -256,12 +256,32 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
                     for alias in tool.aliases:
                         del self.tool_aliases[alias]
         else:
-            raise KeyError(f"Command '{tool.name}' not found in registry.")
+            raise KeyError(f"Tool '{tool.name}' not found in registry.")
 
-    def dump_tools(self, available = True) -> list[CompletionModelFunction]:
-        return [tool.spec for tool in self.tools]
+    def dump_tools(self, available = None) -> list[CompletionModelFunction]:
+        if (available is not None) : 
+            self._logger.warning("Parameter `available` not implemented")
+        
+        param_dict = {}
+        function_list :list[CompletionModelFunction] = []
+        
+        for tool in self.tools.values():
+            param_dict = {}  # Reset param_dict for each tool
+            for parameter in tool.parameters:
+                param_dict[parameter.name] = parameter.spec
 
+            name = tool.name
+            description = tool.description
 
+            function_list.append(CompletionModelFunction(
+                name=name,
+                description=description,
+                parameters=param_dict,
+            ))
+
+        return function_list
+
+#CompletionModelFunction.parse
     def reload_tools(self) -> None:
         """
         Reloads all loaded tool plugins.
@@ -335,7 +355,7 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
     def call(self, command_name: str, agent: BaseAgent, **kwargs) -> Any:
         if command := self.get_command(command_name):
             return command(**kwargs, agent=agent)
-        raise KeyError(f"Command '{command_name}' not found in registry")
+        raise KeyError(f"Tool '{command_name}' not found in registry")
 
 
     def list_available_tools(self, agent: BaseAgent) -> Iterator[Tool]:
@@ -378,15 +398,14 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
             print(desc)
         ```
         """
-        # return [f"{tool.name()}: {tool.description()}" for tool in self.tools]
         logger.warning("Function deprecated")
-        return [f"{tool.name()}: {tool.description}" for tool in self.tools]
+        return [f"{tool.name}: {tool.description}" for tool in self.tools.values()]
 
     def get_tools_names(self) -> list[str]:
         return [tool.name() for tool in self.tools]
 
     def get_tools(self) -> list[Tool]:
-        logger.warging("### Warging this function has not being tested, we recommand against using it###")
+        logger.warning("### Warning this function has not being tested, we recommand against using it###")
         # return self.tools
         return self.tools.values()
 
@@ -504,14 +523,14 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         category = registry.register_module_category(module)
         ```
         """
-        if not (category_name := getattr(module, "COMMAND_CATEGORY", None)):
+        if not (category_name := getattr(module, "TOOL_CATEGORY", None)):
             raise ValueError(f"Cannot import invalid tool module {module.__name__}")
 
         if category_name not in self.categories:
             self.categories[category_name] = SimpleToolRegistry.ToolCategory(
                 name=category_name,
                 title=getattr(
-                    module, "COMMAND_CATEGORY_TITLE", category_name.capitalize()
+                    module, "TOOL_CATEGORY_TITLE", category_name.capitalize()
                 ),
                 description=getattr(module, "__doc__", ""),
             )

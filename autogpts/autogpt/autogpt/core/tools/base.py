@@ -68,7 +68,7 @@ class Tool(abc.ABC):
     #     }
 
 
-    #@property
+    @property
     @classmethod
     def spec(cls) -> CompletionModelFunction:
         return CompletionModelFunction(

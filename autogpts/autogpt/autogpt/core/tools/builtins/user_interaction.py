@@ -1,9 +1,9 @@
-"""Commands to interact with the user"""
+"""Tools to interact with the user"""
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "user_interaction"
-COMMAND_CATEGORY_TITLE = "User Interaction"
+TOOL_CATEGORY = "user_interaction"
+TOOL_CATEGORY_TITLE = "User Interaction"
 
 from autogpt.core.agents.base import BaseAgent
 #from autogpt.core.utils.app import clean_input

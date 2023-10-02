@@ -1,7 +1,7 @@
-"""Commands to execute code"""
+"""Tools to execute code"""
 
-COMMAND_CATEGORY = "execute_code"
-COMMAND_CATEGORY_TITLE = "Execute Code"
+TOOL_CATEGORY = "execute_code"
+TOOL_CATEGORY_TITLE = "Execute Code"
 
 import logging
 import os
@@ -16,7 +16,7 @@ from docker.models.containers import Container as DockerContainer
 from autogpt.core.agents.base import BaseAgent
 from autogpt.core.utils.exceptions import (
     CodeExecutionError,
-    CommandExecutionError,
+    ToolExecutionError,
     InvalidArgumentError,
     OperationNotAllowedError,
 )
@@ -65,7 +65,7 @@ def execute_python_code(code: str, agent: BaseAgent) -> str:
     try:
         return execute_python_file(tmp_code_file.name, agent)
     except Exception as e:
-        raise CommandExecutionError(*e.args)
+        raise ToolExecutionError(*e.args)
     finally:
         tmp_code_file.close()
 
@@ -192,7 +192,7 @@ def execute_python_file(
         logger.warn(
             "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
         )
-        raise CommandExecutionError(f"Could not run the script in a container: {e}")
+        raise ToolExecutionError(f"Could not run the script in a container: {e}")
 
 # TODO Implement security
 # def validate_command(command: str) -> bool:
@@ -218,7 +218,7 @@ def execute_python_file(
 
 @tool(
     "execute_shell",
-    "Execute a Shell Command, non-interactive commands only",
+    "Execute a Shell Tool, non-interactive commands only",
     {
         "command_line": JSONSchema(
             type=JSONSchema.Type.STRING,
@@ -242,7 +242,7 @@ def execute_shell(command_line: str, agent: BaseAgent) -> str:
     """
     # TODO IMPLEMENT OR NO SECURITY MECHANISM
     # if not validate_command(command_line, agent.legacy_config):
-    #     logger.info(f"Command '{command_line}' not allowed")
+    #     logger.info(f"Tool '{command_line}' not allowed")
     #     raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = Path.cwd()
@@ -265,7 +265,7 @@ def execute_shell(command_line: str, agent: BaseAgent) -> str:
 
 @tool(
     "execute_shell_popen",
-    "Execute a Shell Command, non-interactive commands only",
+    "Execute a Shell Tool, non-interactive commands only",
     {
         "command_line": JSONSchema(
             type=JSONSchema.Type.STRING,
@@ -289,7 +289,7 @@ def execute_shell_popen(command_line: str, agent: BaseAgent) -> str:
         str: Description of the fact that the process started and its id
     """
     # if not validate_command(command_line, agent.legacy_config):
-    #     logger.info(f"Command '{command_line}' not allowed")
+    #     logger.info(f"Tool '{command_line}' not allowed")
     #     raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = Path.cwd()

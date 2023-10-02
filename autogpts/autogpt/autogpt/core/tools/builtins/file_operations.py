@@ -1,9 +1,9 @@
-"""Commands to perform operations on files"""
+"""Tools to perform operations on files"""
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "file_operations"
-COMMAND_CATEGORY_TITLE = "File Operations"
+TOOL_CATEGORY = "file_operations"
+TOOL_CATEGORY_TITLE = "File Operations"
 
 import contextlib
 import hashlib

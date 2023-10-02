@@ -12,28 +12,28 @@ if TYPE_CHECKING:
     
 
 
-from autogpt.command_decorator import AUTO_GPT_COMMAND_IDENTIFIER
-from autogpt.models.command import Command
+from autogpt.command_decorator import AUTO_GPT_TOOL_IDENTIFIER
+from autogpt.core.planning.models.command import Tool
 
 logger = logging.getLogger(__name__)
 
 
-class CommandRegistry:
+class ToolRegistry:
     """
-    The CommandRegistry class is a manager for a collection of Command objects.
-    It allows the registration, modification, and retrieval of Command objects,
+    The ToolRegistry class is a manager for a collection of Tool objects.
+    It allows the registration, modification, and retrieval of Tool objects,
     as well as the scanning and loading of command plugins from a specified
     directory.
     """
 
-    commands: dict[str, Command]
-    commands_aliases: dict[str, Command]
+    commands: dict[str, Tool]
+    commands_aliases: dict[str, Tool]
 
     # Alternative way to structure the registry; currently redundant with self.commands
-    categories: dict[str, CommandCategory]
+    categories: dict[str, ToolCategory]
 
     @dataclass
-    class CommandCategory:
+    class ToolCategory:
         """
         Represents a category of tools.
 
@@ -47,7 +47,7 @@ class CommandRegistry:
         name: str
         title: str
         description: str
-        commands: list[Command] = field(default_factory=list[Command])
+        commands: list[Tool] = field(default_factory=list[Tool])
         modules: list[ModuleType] = field(default_factory=list[ModuleType])
 
     def __init__(self):
@@ -77,7 +77,7 @@ class CommandRegistry:
     def _reload_module(self, module: Any) -> Any:
         return importlib.reload(module)
 
-    def register(self, cmd: Command) -> None:
+    def register(self, cmd: Tool) -> None:
         """
         Register a new tool with the registry.
 
@@ -95,19 +95,19 @@ class CommandRegistry:
         """
         if cmd.name in self.commands:
             logger.warn(
-                f"Command '{cmd.name}' already registered and will be overwritten!"
+                f"Tool '{cmd.name}' already registered and will be overwritten!"
             )
         self.commands[cmd.name] = cmd
 
         if cmd.name in self.commands_aliases:
             logger.warn(
-                f"Command '{cmd.name}' will overwrite alias with the same name of "
+                f"Tool '{cmd.name}' will overwrite alias with the same name of "
                 f"'{self.commands_aliases[cmd.name]}'!"
             )
         for alias in cmd.aliases:
             self.commands_aliases[alias] = cmd
 
-    def unregister(self, command: Command) -> None:
+    def unregister(self, command: Tool) -> None:
         """
         Unregister an tool from the registry.
 
@@ -129,7 +129,7 @@ class CommandRegistry:
             for alias in command.aliases:
                 del self.commands_aliases[alias]
         else:
-            raise KeyError(f"Command '{command.name}' not found in registry.")
+            raise KeyError(f"Tool '{command.name}' not found in registry.")
 
     def reload_commands(self) -> None:
         """
@@ -150,7 +150,7 @@ class CommandRegistry:
             if hasattr(reloaded_module, "register"):
                 reloaded_module.register(self)
 
-    def get_command(self, name: str) -> Command | None:
+    def get_command(self, name: str) -> Tool | None:
         """
         Retrieve a specific tool by its name.
 
@@ -178,16 +178,16 @@ class CommandRegistry:
     def call(self, command_name: str, agent: BaseAgent, **kwargs) -> Any:
         if command := self.get_command(command_name):
             return command(**kwargs, agent=agent)
-        raise KeyError(f"Command '{command_name}' not found in registry")
+        raise KeyError(f"Tool '{command_name}' not found in registry")
 
-    def list_available_commands(self, agent: BaseAgent) -> Iterator[Command]:
+    def list_available_commands(self, agent: BaseAgent) -> Iterator[Tool]:
         """Iterates over all registered commands and yields those that are available.
 
         Params:
             agent (BaseAgent): The agent that the commands will be checked against.
 
         Yields:
-            Command: The next available command.
+            Tool: The next available command.
         """
 
         for cmd in self.commands.values():
@@ -206,11 +206,11 @@ class CommandRegistry:
     #     MUST take command AVAILABILITY into account.
 
     @staticmethod
-    def with_command_modules(modules: list[str], config: Config) -> CommandRegistry:
+    def with_command_modules(modules: list[str], config: Config) -> ToolRegistry:
         """
         Creates and returns a new SimpleToolRegistry with tools from given modules.
         """
-        new_registry = CommandRegistry()
+        new_registry = ToolRegistry()
 
         logger.debug(
             f"The following command categories are disabled: {config.disabled_command_categories}"
@@ -242,9 +242,9 @@ class CommandRegistry:
         Imports the specified Python module containing command plugins.
 
         This method imports the associated module and registers any functions or
-        classes that are decorated with the `AUTO_GPT_COMMAND_IDENTIFIER` attribute
-        as `Command` objects. The registered `Command` objects are then added to the
-        `commands` dictionary of the `CommandRegistry` object.
+        classes that are decorated with the `AUTO_GPT_TOOL_IDENTIFIER` attribute
+        as `Tool` objects. The registered `Tool` objects are then added to the
+        `commands` dictionary of the `ToolRegistry` object.
 
         Args:
             module_name (str): The name of the module to import for command plugins.
@@ -260,12 +260,12 @@ class CommandRegistry:
             command = None
 
             # Register decorated functions
-            if getattr(attr, AUTO_GPT_COMMAND_IDENTIFIER, False):
+            if getattr(attr, AUTO_GPT_TOOL_IDENTIFIER, False):
                 command = attr.command
 
             # Register command classes
             elif (
-                inspect.isclass(attr) and issubclass(attr, Command) and attr != Command
+                inspect.isclass(attr) and issubclass(attr, Tool) and attr != Tool
             ):
                 command = attr()
 
@@ -273,7 +273,7 @@ class CommandRegistry:
                 self.register(command)
                 category.commands.append(command)
 
-    def register_module_category(self, module: ModuleType) -> CommandCategory:
+    def register_module_category(self, module: ModuleType) -> ToolCategory:
         """
         Registers a module's category in the tool registry.
 
@@ -290,14 +290,14 @@ class CommandRegistry:
         category = registry.register_module_category(module)
         ```
         """
-        if not (category_name := getattr(module, "COMMAND_CATEGORY", None)):
+        if not (category_name := getattr(module, "TOOL_CATEGORY", None)):
             raise ValueError(f"Cannot import invalid command module {module.__name__}")
 
         if category_name not in self.categories:
-            self.categories[category_name] = CommandRegistry.CommandCategory(
+            self.categories[category_name] = ToolRegistry.ToolCategory(
                 name=category_name,
                 title=getattr(
-                    module, "COMMAND_CATEGORY_TITLE", category_name.capitalize()
+                    module, "TOOL_CATEGORY_TITLE", category_name.capitalize()
                 ),
                 description=getattr(module, "__doc__", ""),
             )

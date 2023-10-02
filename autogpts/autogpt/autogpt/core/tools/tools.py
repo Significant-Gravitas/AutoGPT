@@ -5,16 +5,16 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
-    from autogpt.config import Config
+    from autogpt.config import Any
 
-from .command_parameter import CommandParameter
-from .context_item import ContextItem
+from .tool_parameters import ToolParameter
+from ..planning.models.context_items import ContextItem
 
-CommandReturnValue = Any
-CommandOutput = CommandReturnValue | tuple[CommandReturnValue, ContextItem]
+ToolReturnValue = Any
+ToolOutput = ToolReturnValue | tuple[ToolReturnValue, ContextItem]
 
 
-class Command:
+class Tool:
     """A class representing a command.
 
     Attributes:
@@ -27,9 +27,9 @@ class Command:
         self,
         name: str,
         description: str,
-        method: Callable[..., CommandOutput],
-        parameters: list[CommandParameter],
-        enabled: Literal[True] | Callable[[Config], bool] = True,
+        method: Callable[..., ToolOutput],
+        parameters: list[ToolParameter],
+        enabled: Literal[True] | Callable[[Any], bool] = True,
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
         available: Literal[True] | Callable[[BaseAgent], bool] = True,
@@ -48,15 +48,15 @@ class Command:
         return inspect.iscoroutinefunction(self.method)
 
     def __call__(self, *args, agent: BaseAgent, **kwargs) -> Any:
-        if callable(self.enabled) and not self.enabled(agent.legacy_config):
-            if self.disabled_reason:
-                raise RuntimeError(
-                    f"Command '{self.name}' is disabled: {self.disabled_reason}"
-                )
-            raise RuntimeError(f"Command '{self.name}' is disabled")
+        # if callable(self.enabled) and not self.enabled(agent.legacy_config):
+        #     if self.disabled_reason:
+        #         raise RuntimeError(
+        #             f"Tool '{self.name}' is disabled: {self.disabled_reason}"
+        #         )
+        #     raise RuntimeError(f"Tool '{self.name}' is disabled")
 
-        if callable(self.available) and not self.available(agent):
-            raise RuntimeError(f"Command '{self.name}' is not available")
+        # if callable(self.available) and not self.available(agent):
+        #     raise RuntimeError(f"Tool '{self.name}' is not available")
 
         return self.method(*args, **kwargs, agent=agent)
 

@@ -10,7 +10,7 @@ import distro
 
 if TYPE_CHECKING:
     from autogpt.core.agents.base  import BaseAgent
-    from autogpt.models.action_history import Episode
+    from autogpt.core.planning.models.action_history import Episode
 
 from autogpt.core.utils.exceptions import InvalidAgentResponseError
 from autogpt.config import AIConfig, BaseAgentDirectives

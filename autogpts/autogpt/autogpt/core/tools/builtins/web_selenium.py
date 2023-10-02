@@ -1,9 +1,9 @@
-"""Commands for browsing a website"""
+"""Tools for browsing a website"""
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "web_browse"
-COMMAND_CATEGORY_TITLE = "Web Browsing"
+TOOL_CATEGORY = "web_browse"
+TOOL_CATEGORY_TITLE = "Web Browsing"
 
 import logging
 import re
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     
     from autogpt.core.agents.base import BaseAgent
 
-from autogpt.core.utils.exceptions import CommandExecutionError
+from autogpt.core.utils.exceptions import ToolExecutionError
 from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.utils.processing.html import extract_hyperlinks, format_hyperlinks
@@ -51,7 +51,7 @@ TOKENS_TO_TRIGGER_SUMMARY = 50
 LINKS_TO_RETURN = 20
 
 
-class BrowsingError(CommandExecutionError):
+class BrowsingError(ToolExecutionError):
     """An error occurred while trying to browse the page"""
 
 
@@ -126,7 +126,7 @@ async def read_webpage(url: str, agent: BaseAgent, question: str = "") -> str:
                 f"A networking error occurred while trying to load the page: "
                 + re.sub(r"^unknown error: ", "", msg)
             )
-        raise CommandExecutionError(msg)
+        raise ToolExecutionError(msg)
     finally:
         if driver:
             close_browser(driver)

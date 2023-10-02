@@ -1,9 +1,9 @@
-"""Commands to search the web with"""
+"""Tools to search the web with"""
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "web_search"
-COMMAND_CATEGORY_TITLE = "Web Search"
+TOOL_CATEGORY = "web_search"
+TOOL_CATEGORY_TITLE = "Web Search"
 
 import json
 import time

@@ -87,7 +87,7 @@ PLAN_PROMPT_MAIN = (
     "GOALS:\n\n{goals}\n\n"
     "Info:\n{info}\n\n"
     "Constraints:\n{constraints}\n\n"
-    "Commands:\n{commands}\n\n"
+    "Tools:\n{commands}\n\n"
     "Resources:\n{resources}\n\n"
     "Performance Evaluations:\n{performance_evaluations}\n\n"
     "You should only respond in JSON format as described below\n"

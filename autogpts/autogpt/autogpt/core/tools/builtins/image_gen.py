@@ -1,7 +1,7 @@
-"""Commands to generate images based on text input"""
+"""Tools to generate images based on text input"""
 
-COMMAND_CATEGORY = "text_to_image"
-COMMAND_CATEGORY_TITLE = "Text to Image"
+TOOL_CATEGORY = "text_to_image"
+TOOL_CATEGORY_TITLE = "Text to Image"
 
 import io
 import json

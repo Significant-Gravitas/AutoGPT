@@ -12,7 +12,7 @@ from autogpt.core.planning.models.action import (
     ActionErrorResult,
 )
 from autogpt.core.planning.models.context_items import ContextItem
-from autogpt.core.planning.models.command import ToolOutput
+from autogpt.core.tools import ToolOutput
 from autogpt.core.planning.models.plan import Plan
 from autogpt.core.planning.models.tasks import Task, TaskStatusList
 
@@ -25,9 +25,9 @@ from autogpt.core.runner.client_lib.parser import (
 )
 from autogpt.core.agents.base.exceptions import (
     AgentException,
-    CommandExecutionError,
+    ToolExecutionError,
     InvalidAgentResponseError,
-    UnknownCommandError,
+    UnknownToolError,
 )
 
 if TYPE_CHECKING:
@@ -71,88 +71,6 @@ class SimpleLoop(BaseLoop):
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""
-
-    # def construct_prompt(
-    #     self,
-    #     cycle_instruction: str,
-    #     thought_process_id: ThoughtProcessID,
-    # ) -> ChatPrompt:
-    #     """Constructs and returns a prompt with the following structure:
-    #     1. System prompt
-    #     2. Message history of the agent, truncated & prepended with running summary as needed
-    #     3. `cycle_instruction`
-
-    #     Params:
-    #         cycle_instruction: The final instruction for a thinking cycle
-    #     """
-
-    #     if not cycle_instruction:
-    #         raise ValueError("No instruction given")
-
-    #     cycle_instruction_msg = ChatMessage.user(cycle_instruction)
-    #     cycle_instruction_tlength = self.llm_provider.count_message_tokens(
-    #         cycle_instruction_msg, self.llm.name
-    #     )
-
-    #     append_messages: list[ChatMessage] = []
-
-    #     response_format_instr = self.response_format_instruction(agent = agent , thought_process_id = thought_process_id)
-    #     if response_format_instr:
-    #         append_messages.append(ChatMessage.system(response_format_instr))
-
-    #     prompt = self.construct_base_prompt(
-    #         thought_process_id,
-    #         append_messages=append_messages,
-    #         reserve_tokens=cycle_instruction_tlength,
-    #     )
-
-    #     # ADD user input message ("triggering prompt")
-    #     prompt.messages.append(cycle_instruction_msg)
-
-    #     return prompt
-
-    # FIXME : create before_think hook & move to this hook ! :)
-    def on_before_think(
-        self,
-        messages: list[ChatMessage],
-        instruction: str,
-        **kwargs,
-    ) -> list[ChatMessage]:
-        # current_tokens_used = prompt.token_length
-        # plugin_count = len(self.config.plugins)
-        # for i, plugin in enumerate(self.config.plugins):
-        #     if not plugin.can_handle_on_planning():
-        #         continue
-        #     plugin_response = plugin.on_planning(self.prompt_generator, prompt.raw())
-        #     if not plugin_response or plugin_response == "":
-        #         continue
-        #     message_to_add = ChatMessage.system( plugin_response)
-        #     tokens_to_add = count_message_tokens(message_to_add, self.llm.name)
-        #     if current_tokens_used + tokens_to_add > self.send_token_limit:
-        #         self._agent._logger.debug(f"Plugin response too long, skipping: {plugin_response}")
-        #         self._agent._logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
-        #         break
-        #     prompt.insert(
-        #         -1, message_to_add
-        #     )  # HACK: assumes cycle instruction to be at the end
-        #     current_tokens_used += tokens_to_add
-
-        # self.log_cycle_handler.log_count_within_cycle = 0
-        # self.log_cycle_handler.log_cycle(
-        #     self.ai_config.ai_name,
-        #     self.created_at,
-        #     self.cycle_count,
-        #     self.action_history.cycles,
-        #     FULL_MESSAGE_HISTORY_FILE_NAME,
-        # )
-        # self.log_cycle_handler.log_cycle(
-        #     self.ai_config.ai_name,
-        #     self.created_at,
-        #     self.cycle_count,
-        #     messages.raw(),
-        #     CURRENT_CONTEXT_FILE_NAME,
-        # )
-        return messages
 
     async def run(
         self,
@@ -247,7 +165,7 @@ class SimpleLoop(BaseLoop):
         ##############################################################
         plan = await self.build_initial_plan()
 
-        print(plan)
+        parse_agent_plan(plan)
 
         consecutive_failures = 0
         try:
@@ -308,7 +226,7 @@ class SimpleLoop(BaseLoop):
                         command_name = "human_feedback"
 
                 ###################
-                # Execute Command #
+                # Execute Tool #
                 ###################
                 # Decrement the cycle counter first to reduce the likelihood of a SIGINT
                 # happening during command execution, setting the cycles remaining to 1,
@@ -325,7 +243,7 @@ class SimpleLoop(BaseLoop):
                     self._agent._logger.info(result)
                 elif result.status == "error":
                     self._agent._logger.warn(
-                        f"Command {command_name} returned an error: {result.error or result.reason}"
+                        f"Tool {command_name} returned an error: {result.error or result.reason}"
                     )
 
     async def start(
@@ -353,7 +271,7 @@ class SimpleLoop(BaseLoop):
             agent_role=self._agent.agent_role,
             agent_goals=self._agent.agent_goals,
             agent_goal_sentence=self._agent.agent_goal_sentence,
-            tools=self.get_tools().list_tools_descriptions(),
+            tools=self.tool_registry().list_tools_descriptions(),
         )
 
         # TODO: Should probably do a step to evaluate the quality of the generated tasks,
@@ -441,10 +359,10 @@ class SimpleLoop(BaseLoop):
 
     from typing import Literal, Any
 
-    CommandName = str
-    CommandArgs = dict[str, str]
+    ToolName = str
+    ToolArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
-    ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
+    ThoughtProcessOutput = tuple[ToolName, ToolArgs, AgentThoughts]
     from autogpt.core.resource.model_providers.chat_schema import (
         ChatMessage,
         ChatPrompt,
@@ -511,7 +429,7 @@ class SimpleLoop(BaseLoop):
                     context_item = return_value[1]
                     return_value = return_value[0]
                     self._agent._logger.debug(
-                        f"Command {command_name} returned a ContextItem: {context_item}"
+                        f"Tool {command_name} returned a ContextItem: {context_item}"
                     )
                     self.context.add(context_item)
 
@@ -531,11 +449,11 @@ class SimpleLoop(BaseLoop):
         if result.status == "success":
             self._agent.message_history.add(
                 "system",
-                f"Command {command_name} returned: {result.outputs}",
+                f"Tool {command_name} returned: {result.outputs}",
                 "action_result",
             )
         elif result.status == "error":
-            message = f"Command {command_name} failed: {result.reason}"
+            message = f"Tool {command_name} failed: {result.reason}"
 
             # Append hint to the error message if the exception has a hint
             if (
@@ -575,7 +493,7 @@ def execute_command(
         except AgentException:
             raise
         except Exception as e:
-            raise CommandExecutionError(str(e))
+            raise ToolExecutionError(str(e))
 
     # Handle non-native commands (e.g. from plugins)
     for name, command in agent.prompt_generator.commands.items():
@@ -585,8 +503,8 @@ def execute_command(
             except AgentException:
                 raise
             except Exception as e:
-                raise CommandExecutionError(str(e))
+                raise ToolExecutionError(str(e))
 
-    raise UnknownCommandError(
+    raise UnknownToolError(
         f"Cannot execute command '{command_name}': unknown command."
     )

@@ -41,7 +41,7 @@ class PromptScratchpad(BaseModel):
         Registers a command.
 
         *Should only be used by plugins.* Native commands should be added
-        directly to the CommandRegistry.
+        directly to the ToolRegistry.
 
         Params:
             name (str): The name of the command (e.g. `command_name`).

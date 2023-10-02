@@ -1,67 +1,67 @@
-from __future__ import annotations
+# from __future__ import annotations
 
-import functools
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypedDict
+# import functools
+# from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, TypedDict
 
-# Unique identifier for auto-gpt commands
-AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
+# # Unique identifier for auto-gpt commands
+# AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
 
-if TYPE_CHECKING:
-    from autogpt.core.planning.models.command import ToolOutput, ToolParameter
-    from autogpt.core.tools.base import Tool, ToolResult, ToolConfiguration
-    from autogpt.core.agents.base import BaseAgent
-
-
-class ToolParameterSpec(TypedDict):
-    type: str
-    description: str
-    required: bool
+# if TYPE_CHECKING:
+#     from autogpt.core.planning.models.command import ToolOutput, ToolParameter
+#     from autogpt.core.tools.base import Tool, ToolResult, ToolConfiguration
+#     from autogpt.core.agents.base import BaseAgent
 
 
-def ability(
-    name: str,
-    description: str,
-    parameters: dict[str, ToolParameterSpec],
-    enabled: Literal[True] | Callable[[ToolConfiguration], bool] = True,
-    disabled_reason: Optional[str] = None,
-    aliases: list[str] = [],
-    available: Literal[True] | Callable[[BaseAgent], bool] = True,
-) -> Callable[
-    ..., ToolOutput
-]:  # Assuming there's ToolOutput analogous to ToolOutput
-    """The ability decorator is used to create Tool objects from ordinary functions."""
+# class ToolParameterSpec(TypedDict):
+#     type: str
+#     description: str
+#     required: bool
 
-    def decorator(func: Callable[..., ToolOutput]):
-        typed_parameters = [
-            ToolParameter(
-                name=param_name,
-                description=parameter.get("description"),
-                type=parameter.get("type", "string"),
-                required=parameter.get("required", False),
-            )
-            for param_name, parameter in parameters.items()
-        ]
 
-        ablt = Tool(
-            name=name,
-            description=description,
-            method=func,
-            parameters=typed_parameters,
-            enabled=enabled,
-            disabled_reason=disabled_reason,
-            aliases=aliases,
-            available=available,
-        )
+# def ability(
+#     name: str,
+#     description: str,
+#     parameters: dict[str, ToolParameterSpec],
+#     enabled: Literal[True] | Callable[[ToolConfiguration], bool] = True,
+#     disabled_reason: Optional[str] = None,
+#     aliases: list[str] = [],
+#     available: Literal[True] | Callable[[BaseAgent], bool] = True,
+# ) -> Callable[
+#     ..., ToolOutput
+# ]:  # Assuming there's ToolOutput analogous to ToolOutput
+#     """The ability decorator is used to create Tool objects from ordinary functions."""
 
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
-            return func(*args, **kwargs)
+#     def decorator(func: Callable[..., ToolOutput]):
+#         typed_parameters = [
+#             ToolParameter(
+#                 name=param_name,
+#                 description=parameter.get("description"),
+#                 type=parameter.get("type", "string"),
+#                 required=parameter.get("required", False),
+#             )
+#             for param_name, parameter in parameters.items()
+#         ]
 
-        setattr(wrapper, "ability", ablt)
-        setattr(
-            wrapper, AUTO_GPT_TOOL_IDENTIFIER, True
-        )  # Assuming you have an analogous identifier
+#         ablt = Tool(
+#             name=name,
+#             description=description,
+#             method=func,
+#             parameters=typed_parameters,
+#             enabled=enabled,
+#             disabled_reason=disabled_reason,
+#             aliases=aliases,
+#             available=available,
+#         )
 
-        return wrapper
+#         @functools.wraps(func)
+#         def wrapper(*args, **kwargs) -> Any:
+#             return func(*args, **kwargs)
 
-    return decorator
+#         setattr(wrapper, "ability", ablt)
+#         setattr(
+#             wrapper, AUTO_GPT_TOOL_IDENTIFIER, True
+#         )  # Assuming you have an analogous identifier
+
+#         return wrapper
+
+#     return decorator

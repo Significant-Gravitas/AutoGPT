@@ -1,9 +1,9 @@
-"""Commands to control the internal state of the program"""
+"""Tools to control the internal state of the program"""
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "system"
-COMMAND_CATEGORY_TITLE = "System"
+TOOL_CATEGORY = "system"
+TOOL_CATEGORY_TITLE = "System"
 
 import logging
 from typing import TYPE_CHECKING

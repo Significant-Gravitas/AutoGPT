@@ -9,7 +9,8 @@ if TYPE_CHECKING:
     from autogpt.config import Config
 
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.command import Command, CommandOutput, CommandParameter
+from autogpt.core.tools import Tool , ToolOutput
+from autogpt.core.tools.tool_parameters import ToolParameter
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
@@ -23,18 +24,18 @@ def tool(
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
     available: Literal[True] | Callable[[BaseAgent], bool] = True,
-) -> Callable[..., CommandOutput]:
-    """The command decorator is used to create Command objects from ordinary functions."""
+) -> Callable[..., ToolOutput]:
+    """The command decorator is used to create Tool objects from ordinary functions."""
 
-    def decorator(func: Callable[..., CommandOutput]):
+    def decorator(func: Callable[..., ToolOutput]):
         typed_parameters = [
-            CommandParameter(
+            ToolParameter(
                 name=param_name,
                 spec=spec,
             )
             for param_name, spec in parameters.items()
         ]
-        cmd = Command(
+        cmd = Tool(
             name=name,
             description=description,
             method=func,

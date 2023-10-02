@@ -1,9 +1,9 @@
-"""Commands to perform operations on files"""
+"""Tools to perform operations on files"""
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "file_operations"
-COMMAND_CATEGORY_TITLE = "File Operations"
+TOOL_CATEGORY = "file_operations"
+TOOL_CATEGORY_TITLE = "File Operations"
 
 import contextlib
 from pathlib import Path
@@ -13,12 +13,12 @@ if TYPE_CHECKING:
     from autogpt.core.agents.base import  BaseAgent
 
 from autogpt.core.utils.exceptions import (
-    CommandExecutionError,
+    ToolExecutionError,
     DuplicateOperationError,
 )
 from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.models.context_item import FileContextItem, FolderContextItem
+from autogpt.core.planning.models.context_items import FileContextItem, FolderContextItem
 
 from .decorators import sanitize_path_arg
 
@@ -65,7 +65,7 @@ def open_file(file_path: Path, agent: BaseAgent) -> tuple[str, FileContextItem]:
         file_path.touch()
         created = True
     elif not file_path.is_file():
-        raise CommandExecutionError(f"{file_path} exists but is not a file")
+        raise ToolExecutionError(f"{file_path} exists but is not a file")
 
     file_path = relative_file_path or file_path
 
@@ -116,7 +116,7 @@ def open_folder(path: Path, agent: BaseAgent) -> tuple[str, FolderContextItem]:
     if not path.exists():
         raise FileNotFoundError(f"open_folder {path} failed: no such file or directory")
     elif not path.is_dir():
-        raise CommandExecutionError(f"{path} exists but is not a folder")
+        raise ToolExecutionError(f"{path} exists but is not a folder")
 
     path = relative_path or path
 
