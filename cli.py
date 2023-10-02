@@ -269,8 +269,8 @@ def start(agent_name):
     run_bench_command = os.path.join(agent_dir, "run_benchmark")
     if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
         os.chdir(agent_dir)
-        setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
-        setup_process.wait()
+        #setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
+        #setup_process.wait()
         subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
         click.echo(f"Benchmark Server starting please wait...")
         subprocess.Popen(["./run"], cwd=agent_dir)

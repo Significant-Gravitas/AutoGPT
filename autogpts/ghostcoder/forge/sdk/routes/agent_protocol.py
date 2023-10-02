@@ -80,8 +80,6 @@ async def create_agent_task(request: Request, task_request: TaskRequestBody) -> 
                 "artifacts": [],
             }
     """
-    print("hej")
-    print(request)
     agent = request["agent"]
 
     try:

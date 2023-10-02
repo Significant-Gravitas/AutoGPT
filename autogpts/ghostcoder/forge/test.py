@@ -20,6 +20,14 @@ async def execute(input: str):
         if step.is_last:
             finished = True
 
+async def execute_task(task_id):
+    finished = False
+    while not finished:
+        step = await agent.execute_step(task_id, StepRequestBody(input=input))
+        if step.is_last:
+            finished = True
+
+
 
 input = "Create a three_sum function in a file called sample_code.py. Given an array of integers, return indices of the three numbers such that they add up to a specific target. You may assume that each input would have exactly one solution, and you may not use the same element twice. Example: Given nums = [2, 7, 11, 15], target = 20, Because nums[0] + nums[1] + nums[2] = 2 + 7 + 11 = 20, return [0, 1, 2]."
 input = "Read the file called file_to_read.txt and write its content to a file called output.txt"
@@ -274,5 +282,5 @@ Success criteria:
 - you're not allowed to modify any other file than the battleship.py. You can add other files as long as the main entrypoint is the battleship class."""
 
 #output = asyncio.run(create_task(input))
-output = asyncio.run(execute(input))
+output = asyncio.run(execute_task("c81e40e7-fb83-46e0-88be-74cdb321396a"))
 

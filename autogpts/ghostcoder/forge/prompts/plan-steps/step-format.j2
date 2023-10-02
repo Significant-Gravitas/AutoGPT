@@ -1,0 +1,22 @@
+Respond in JSON with the following format:
+
+{
+    "thoughts": {
+        "text":  "thoughts",
+        "reasoning": "reasoning behind thoughts",
+        "criticism": "constructive self-criticism",
+        "speak": "thoughts summary to say to user",
+    },
+    "steps": [
+        {
+            "name": "name of the step",
+            "ability": {
+                "name": "ability name",
+                "args": {
+                    "arg1": "value1", etc...
+                }
+            },
+            "description": "short step description"
+        }
+    ]
+}

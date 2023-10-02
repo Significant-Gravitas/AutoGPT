@@ -3,6 +3,10 @@ import os
 import typing
 from pathlib import Path
 
+from forge.sdk.forge_log import ForgeLogger
+
+LOG = ForgeLogger(__name__)
+
 
 class Workspace(abc.ABC):
     @abc.abstractclassmethod
@@ -40,15 +44,18 @@ class LocalWorkspace(Workspace):
         path = path if not path.startswith("/") else path[1:]
         abs_path = (self.base_path / task_id / path).resolve()
         if not str(abs_path).startswith(str(self.base_path)):
-            print("Error")
             raise ValueError(f"Directory traversal is not allowed! - {abs_path}")
         try:
             abs_path.parent.mkdir(parents=True, exist_ok=True)
         except FileExistsError:
             pass
+        LOG.debug(f"Resolved path: {abs_path}")
         return abs_path
 
-    def read(self, task_id: str, path: str) -> bytes:
+    def read(self, task_id: str, path: str) -> typing.Optional[bytes]:
+        if not self.exists(task_id, path):
+            return None
+
         with open(self._resolve_path(task_id, path), "rb") as f:
             return f.read()
 
@@ -71,9 +78,10 @@ class LocalWorkspace(Workspace):
             os.remove(resolved_path)
 
     def exists(self, task_id: str, path: str) -> bool:
-        path = self.base_path / task_id / path
         return self._resolve_path(task_id, path).exists()
 
     def list(self, task_id: str, path: str) -> typing.List[str]:
-        base = self.base_path / task_id / path
+        base = self._resolve_path(task_id, path)
+        if not base.exists():
+            return []
         return [str(p.relative_to(base)) for p in base.iterdir()]
