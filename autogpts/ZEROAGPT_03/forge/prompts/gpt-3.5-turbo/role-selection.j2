@@ -1,7 +1,8 @@
 {% extends "techniques/expert.j2" %}
 {% block expert %}Human Resources{% endblock %}
 {% block prompt %}
-Generate a profile for an expert who can help with the task '{{ task }}'. Please provide the following details in JSON format:
+Generate a profile for an expert who can help with the task '{{ task }}'. 
+Reply only in json with the following format:
 {
     \"name\": \"the expert's name\",
     \"expertise\": \"specify the area in which the expert specializes\"

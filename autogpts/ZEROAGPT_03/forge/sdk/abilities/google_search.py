@@ -14,7 +14,7 @@ from .registry import ability
     parameters=[
         {
             "name": "query",
-            "description": "search query",
+            "description": "detailed search query",
             "type": "string",
             "required": True,
         }
@@ -37,6 +37,9 @@ async def google_search(agent, task_id: str, query: str) -> List[str]:
     ).execute()
 
     for result in response["items"]:
-        response_snippets.append(result["snippet"])
+        response_snippets.append({
+            "url": result["formattedUrl"],
+            "snippet": result["snippet"]
+        })
 
     return response_snippets

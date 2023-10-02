@@ -97,7 +97,9 @@ class ForgeAgent(Agent):
         )
 
         try:
-            self.expert_profile = json.loads(profile_gen.role_find())
+            role_json = profile_gen.role_find()
+            LOG.info(f"role json: {role_json}")
+            self.expert_profile = json.loads(role_json)
         except Exception as err:
             LOG.error(f"role JSON failed: {err}")
 
