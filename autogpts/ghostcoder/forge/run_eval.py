@@ -28,7 +28,7 @@ data3 = {
 }
 
 
-input = """Build a battleship game
+input = """"Build a battleship game
 
 Specifications:
 
@@ -166,7 +166,7 @@ class AbstractBattleship(ABC):
         pass
 
     @abstractmethod
-    def create_game(self, game_id: str) -> None:
+    def create_game(self) -> None:
         \"\"\"
         Create a new game.
         \"\"\"
@@ -185,7 +185,7 @@ Success criteria:
 
 
 battleship = {
-    "input": input,
+    "input": "input",
     "eval_id": "4d613d05-475f-4f72-bf12-f6d3714340c1"
 }
 
