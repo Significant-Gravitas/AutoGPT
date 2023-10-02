@@ -77,11 +77,11 @@ async def get_financials_year(
         financials_dict = stock.financials.to_dict()
 
         # get financial informatio and return dict
-        for timestamp, financial_data in financial_data.items():
+        for timestamp, financial_data in financials_dict.items():
             key_year = int(str(timestamp).split("-")[0])
 
             if key_year == year:
-                year_financial_data = financials_dict
+                year_financial_data = financial_data
     except Exception as err:
         logger.error(f"get_financials_year failed: {err}")
 
