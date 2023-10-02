@@ -354,6 +354,7 @@ async def execute_agent_task_step(
         # An empty step request represents a yes to continue command
         if not step:
             step = StepRequestBody(input="y")
+
         step = await agent.execute_step(task_id, step)
         return Response(
             content=step.json(),
