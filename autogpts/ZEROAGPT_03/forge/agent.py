@@ -132,7 +132,6 @@ class ForgeAgent(Agent):
         ontology_prompt_params = {
             "name": self.expert_profile["name"],
             "expertise": self.expert_profile["expertise"],
-            "role": self.expert_profile["role"],
             "task": task.input,
             "abilities": self.abilities.list_abilities_for_prompt()
         }

@@ -52,9 +52,14 @@ async def write_file(agent, task_id: str, file_name: str, data: bytes) -> None:
     """
     Write data to a file
     """
+
+    logger.info(f"\nwrite_file data: {str(data)}\n")
+
+    data = str(data).replace("\\\\", "\\")
+
     if isinstance(data, str):
         # ai adding too many escape back slashes
-        data = data.replace("\\\\", '\\').encode()
+        data = data.encode()
 
     agent.workspace.write(task_id=task_id, path=file_name, data=data)
     
