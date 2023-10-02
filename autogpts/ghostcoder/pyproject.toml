@@ -20,14 +20,7 @@ hypercorn = "^0.14.4"
 python-multipart = "^0.0.6"
 toml = "^0.10.2"
 jinja2 = "^3.1.2"
-langchain = "^0.0.281"
-pydantic = "^1"
-pytest = "^7.3.1"
-tiktoken = "^0.4.0"
-pathspec = "^0.11.1"
-gitpython = "^3.1.31"
-pyfakefs = "^5.2.3"
-tree-sitter-languages = "^1.7.0"
+ghostcoder = { path = "../../../ghostcoder" }
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"
