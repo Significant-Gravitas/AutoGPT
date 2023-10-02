@@ -139,7 +139,7 @@ class ForgeAgent(Agent):
     async def execute_step(self, task_id: str, step_request: StepRequestBody, is_retry: bool = False) -> Step:
         task = await self.db.get_task(task_id)
 
-        steps, page = await self.db.list_steps(task_id)
+        steps, page = await self.db.list_steps(task_id, per_page=100)
         if not steps:
             return await self.plan_steps(task, step_request)
 
@@ -150,6 +150,8 @@ class ForgeAgent(Agent):
                 next_steps.append(step)
             elif step.status == Status.completed:
                 previous_steps.append(step)
+
+        LOG.info(f"Found {len(steps)} steps, {len(previous_steps)} have been completed, {len(next_steps)} have not")
 
         if not next_steps:
             LOG.info(f"Tried to execute with no next steps, return last step as the last")
@@ -205,12 +207,13 @@ class ForgeAgent(Agent):
             LOG.info(f"Finish task")
             current_step.is_last = True
         else:
-            LOG.info(f"Run ability {ability}")
+            LOG.info(f"Run ability {ability['name']} with args {ability['args']}")
             output = await self.abilities.run_ability(
                 task_id, ability["name"], **ability["args"]
             )
 
             current_step.output = str(output)
+            LOG.debug(f"Executed step [{current_step.name}] output: {current_step.output[:19]}")
 
             prompt_engine = PromptEngine("review-steps")
 
@@ -227,7 +230,7 @@ class ForgeAgent(Agent):
                 {"role": "system", "content": system_format},
             ]
 
-            LOG.debug("Review next steps:")
+            LOG.debug(f"Will review {len(next_steps)} next steps ({len(previous_steps)} have been run):")
             for i, step in enumerate(next_steps):
                 LOG.debug(f"{i+1}: {step.name}: {step.input}")
 

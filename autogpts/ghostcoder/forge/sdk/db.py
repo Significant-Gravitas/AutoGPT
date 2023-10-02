@@ -105,7 +105,7 @@ def convert_to_step(step_model: StepModel, debug_enabled: bool = False) -> Step:
     ]
 
     if step_model.status == "completed":
-        status = Status.running
+        status = Status.completed
     elif step_model.status == "skipped":
         status = Status.skipped
     else:
@@ -409,7 +409,7 @@ class AgentDB:
             raise
 
     async def list_steps(
-        self, task_id: str, page: int = 1, per_page: int = 100
+        self, task_id: str, page: int = 1, per_page: int = 10
     ) -> Tuple[List[Step], Pagination]:
         if self.debug_enabled:
             LOG.debug(f"Listing steps for task_id: {task_id}")

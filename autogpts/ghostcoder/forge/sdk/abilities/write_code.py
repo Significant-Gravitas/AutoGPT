@@ -16,9 +16,6 @@ LOG = ForgeLogger(__name__)
 smart_llm_name = "gpt-4"
 basic_llm_name = "gpt-3.5-turbo"
 
-log_dir = Path(".prompt_log")
-max_retries = 3
-
 @ability(
     name="write_code",
     description="Use this to write code. Provide as detailed instructions as possible in free text and list the files that should be updated or created",
@@ -80,16 +77,16 @@ async def write_tests(
     file_to_test: str,
     test_file: str
 ) -> str:
-    file_items = [FileItem(file_path=file_to_test, readonly=True), FileItem(file_path=test_file)]
-    return await run_code_writer(agent, task_id, instructions, file_items)
+    file_items = [FileItem(file_path=file_to_test), FileItem(file_path=test_file)]
+    return await run_code_writer(agent, task_id, instructions, file_items, retries=3)
 
 
-async def run_code_writer(agent, task_id: str, instructions: str, file_items: List[FileItem] = []):
+async def run_code_writer(agent, task_id: str, instructions: str, file_items: List[FileItem] = [], retries: int = 1):
     task = await agent.db.get_task(task_id)
 
     repo_dir = agent.workspace.base_path / task_id
 
-    llm = create_openai_client(log_dir=log_dir, llm_name=smart_llm_name, temperature=0.0, streaming=False)
+    llm = create_openai_client(log_dir=repo_dir / ".prompt_log", llm_name=smart_llm_name, temperature=0.0, streaming=False)
 
     repository = FileRepository(repo_path=repo_dir, use_git=False)
 
@@ -120,10 +117,11 @@ async def run_code_writer(agent, task_id: str, instructions: str, file_items: Li
                       items=[TextItem(text=task.input), TextItem(text=instructions)] + file_items)
 
     outgoing_messages = code_writer.execute(incoming_messages=[message])
-    outgoing_messages.extend(verify(repository, messages=[message] + outgoing_messages))
+    verification_message = verify(repository, messages=[message] + outgoing_messages, retries=retries)
+    outgoing_messages.append(verification_message)
 
     artifacts = []
-    for file_item in outgoing_messages[0].find_items_by_type("updated_file"):
+    for file_item in verification_message.find_items_by_type("file"):
         if file_item.file_path.startswith("/"):
             file_path = file_item.file_path[1:]
         else:
@@ -139,47 +137,48 @@ async def run_code_writer(agent, task_id: str, instructions: str, file_items: Li
         LOG.debug(f"Created artifact {artifact.artifact_id} for {file_path}")
         artifacts.append(artifact)
 
-    return outgoing_messages[-1].to_prompt()
+    llm_messages = ""
+    for message in outgoing_messages:
+        llm_messages += "\n\n" + message.to_prompt()
+    return llm_messages
 
 
-def verify(repository: FileRepository, messages: List[Message], retry: int = 0, last_run: int = 0) -> [Message]:
+def verify(repository: FileRepository, messages: List[Message], retries: int = 1, last_run: int = 0) -> [Message]:
     verifier = CodeVerifier(repository=repository, language="python")
 
-    updated_files = dict()
+    files = dict()
 
     for message in messages:
+        filtered_items = []
         for item in message.items:
             if isinstance(item, UpdatedFileItem) and not item.invalid:
-                updated_files[item.file_path] = item
-
-    if not updated_files:
-        # TODO: Handle if no files where updated in last run?
-        return []
+                files[item.file_path] = FileItem(file_path=item.file_path, content=item.content)
+            elif isinstance(item, FileItem):
+                files[item.file_path] = FileItem(file_path=item.file_path, content=item.content)
+            else:
+                filtered_items.append(item)
+        message.items = filtered_items
 
     file_items = []
-    for file_item in updated_files.values():
+    for file_item in files.values():
         if repository:
             content = repository.get_file_content(file_path=file_item.file_path)
         else:
             content = file_item.content
 
         file_items.append(FileItem(file_path=file_item.file_path,
-                                   content=content,
-                                   invalid=file_item.invalid))
+                                   content=content))
 
-    outgoing_messages = []
-
-    LOG.info(f"Updated files, verifying...")
+    LOG.info(f"Run verification  ({retries} tries left)...")
     verification_message = verifier.execute()
-    outgoing_messages.append(verification_message)
+    verification_message.items.extend(file_items)
 
     failures = verification_message.find_items_by_type("verification_failure")
     if failures:
-        if retry < max_retries or len(failures) < last_run:
-            verification_message.items.extend(file_items)
 
-            retry += 1
-            incoming_messages = make_summary(messages)
+        if retries > 0 or len(failures) < last_run:
+            log_dir = repository.repo_path / ".prompt_log"
+            retries -= 1
 
             llm = create_openai_client(log_dir=log_dir, llm_name=smart_llm_name, temperature=0.0, streaming=False)
 
@@ -187,32 +186,12 @@ def verify(repository: FileRepository, messages: List[Message], retry: int = 0, 
                                          sys_prompt=FIX_TESTS_PROMPT,
                                          repository=repository,
                                          auto_mode=True)
-            LOG.info(f"{len(failures)} verifications failed (last run {last_run}, retrying ({retry}/{max_retries})...")
-            incoming_messages.append(verification_message)
-            response_messages = test_fix_writer.execute(incoming_messages=incoming_messages)
+            LOG.info(f"{len(failures)} verifications failed (last run {last_run}, retrying ({retries} left)...")
+            response_messages = test_fix_writer.execute(incoming_messages=messages)
             return verify(repository, messages=messages + [verification_message] + response_messages,
-                          retry=retry,
+                          retries=retries,
                           last_run=len(failures))
         else:
             LOG.info(f"Verification failed, giving up...")
 
-    return outgoing_messages
-
-
-def make_summary(messages: List[Message]) -> List[Message]:
-    summarized_messages = []
-    sys_prompt = """Make a short summary of the provided message."""
-
-    for message in messages:
-        if message.sender == "Human":
-            text_items = message.find_items_by_type("text")
-            summarized_messages.append(Message(sender=message.sender, items=text_items))
-        else:
-            if not message.summary:
-                llm = create_openai_client(log_dir=log_dir, llm_name=basic_llm_name, temperature=0.0, streaming=False)
-                message.summary, stats = llm.generate(sys_prompt, messages=[message])
-                LOG.debug(f"Created summary {stats.json}")
-            if message.summary:
-                summarized_messages.append(Message(sender=message.sender, items=[TextItem(text=message.summary)]))
-
-    return summarized_messages
+    return verification_message
