@@ -21,6 +21,8 @@ from forge.sdk import (
 
 from forge.sdk.memory.memstore import ChromaMemStore
 
+# from elevenlabs import generate, play
+
 LOG = ForgeLogger(__name__)
 
 
@@ -47,6 +49,9 @@ class ForgeAgent(Agent):
         content: str,
         is_function: bool = False,
         function_name: str = None):
+
+        for k,v in self.chat_history.items():
+            LOG.info(f"🗣️ {k} loaded key in chat_history")
         
         if is_function:
             chat_struct = {
@@ -171,7 +176,11 @@ class ForgeAgent(Agent):
                     ability["name"]
                 )
 
-            output = str(output) if output else "None"
+            # change output to string if there is output
+            if isinstance(output, bytes):
+                output = output.decode()
+            elif output:
+                output = str(output)
 
             # add to converstion
             # add arguments to function content, if any
@@ -192,12 +201,22 @@ class ForgeAgent(Agent):
             step.output = answer["thoughts"]["speak"]
             step.is_last = answer["thoughts"]["last_step"]
 
+            # have ai speak through speakers
+            # cant use yet due to pydantic version differences
+            # audio = generate(
+            #     text=answer["thoughts"]["speak"],
+            #     voice="Dorothy",
+            #     model="eleven_multilingual_v2"
+            # )
+
+            # play(audio)
+
         except json.JSONDecodeError as e:
             # Handle JSON decoding errors
             LOG.error(f"JSON error when decoding: {e}")
         except Exception as e:
             # Handle other exceptions
-            LOG.error(f"Unable to generate chat response: {e}")
+            LOG.error(f"execute_step error: {e}")
 
         LOG.info(f"chat log\n{pprint.pformat(self.chat_history[task_id])}")
 
