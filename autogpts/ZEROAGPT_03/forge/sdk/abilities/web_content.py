@@ -5,22 +5,12 @@ import requests
 import os
 from bs4 import BeautifulSoup
 
-from forge.sdk.memory.memstore import ChromaMemStore
+from forge.sdk.memory.memstore_tools import add_memory
 
 from ..forge_log import ForgeLogger
 from .registry import ability
 
 logger = ForgeLogger(__name__)
-
-def add_memory(task_id: str, document: str, ability_name: str) -> None:
-    logger.info(f"🧠 Adding ability '{ability_name}' memory for task {task_id}")
-    chromadb_path = f"{os.getenv('AGENT_WORKSPACE')}/{task_id}"
-    memory = ChromaMemStore(chromadb_path)
-    memory.add(
-        task_id=task_id,
-        document=document,
-        metadatas={"function": ability_name}
-    )
 
 @ability(
     name="html_to_file",
@@ -63,7 +53,7 @@ async def html_to_file(agent, task_id: str, url: str, file_path: str) -> None:
 
         add_memory(task_id, data, "html_to_file")
     except Exception as e:
-        raise e
+        logger.error(f"html_to_file failed: {e}")
 
 
 @ability(
@@ -110,5 +100,5 @@ async def html_to_text_file(agent, task_id: str, url: str, file_path: str) -> No
 
         add_memory(task_id, html_soap.get_text(), "html_to_text_file")
     except Exception as e:
-        raise e
+        logger.error(f"html_to_text_file failed: {e}")
 
