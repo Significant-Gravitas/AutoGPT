@@ -27,5 +27,5 @@
         "side_effects": []
     },
     "name": "RevenueRetrieval",
-    "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 billion)."
+    "task": "Write tesla's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
 }
