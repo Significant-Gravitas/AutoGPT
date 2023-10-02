@@ -2,10 +2,6 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from autogpt.config import Config
 
 from autogpt.speech.base import VoiceBase
 
@@ -13,7 +9,7 @@ from autogpt.speech.base import VoiceBase
 class MacOSTTS(VoiceBase):
     """MacOS TTS Voice."""
 
-    def _setup(self, config: Config) -> None:
+    def _setup(self) -> None:
         pass
 
     def _speech(self, text: str, voice_index: int = 0) -> bool:

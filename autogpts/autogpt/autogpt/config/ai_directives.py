@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import yaml
 from pydantic import BaseModel
@@ -25,7 +26,7 @@ class AIDirectives(BaseModel):
     best_practices: list[str]
 
     @staticmethod
-    def from_file(prompt_settings_file: str) -> AIDirectives:
+    def from_file(prompt_settings_file: Path) -> AIDirectives:
         (validated, message) = validate_yaml_file(prompt_settings_file)
         if not validated:
             logger.error(message, extra={"title": "FAILED FILE VALIDATION"})

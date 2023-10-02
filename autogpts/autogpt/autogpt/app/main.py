@@ -14,7 +14,7 @@ from pydantic import SecretStr
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
-from autogpt.app.configurator import create_config
+from autogpt.app.configurator import apply_overrides_to_config
 from autogpt.app.setup import interactive_ai_config_setup
 from autogpt.app.spinner import Spinner
 from autogpt.app.utils import (
@@ -25,7 +25,12 @@ from autogpt.app.utils import (
     markdown_to_ansi_style,
 )
 from autogpt.commands import COMMAND_CATEGORIES
-from autogpt.config import AIConfig, Config, ConfigBuilder, check_openai_api_key
+from autogpt.config import (
+    AIConfig,
+    Config,
+    ConfigBuilder,
+    assert_config_has_openai_api_key,
+)
 from autogpt.core.resource.model_providers import (
     ChatModelProvider,
     ModelProviderCredentials,
@@ -46,8 +51,8 @@ from scripts.install_plugin_deps import install_plugin_dependencies
 async def run_auto_gpt(
     continuous: bool,
     continuous_limit: int,
-    ai_settings: str,
-    prompt_settings: str,
+    ai_settings: Optional[Path],
+    prompt_settings: Optional[Path],
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -67,9 +72,9 @@ async def run_auto_gpt(
     config = ConfigBuilder.build_config_from_env(workdir=working_directory)
 
     # TODO: fill in llm values here
-    check_openai_api_key(config)
+    assert_config_has_openai_api_key(config)
 
-    create_config(
+    apply_overrides_to_config(
         config,
         continuous,
         continuous_limit,
@@ -87,7 +92,11 @@ async def run_auto_gpt(
     )
 
     # Set up logging module
-    configure_logging(config)
+    configure_logging(
+        debug_mode=debug,
+        plain_output=config.plain_output,
+        tts_config=config.tts_config,
+    )
 
     llm_provider = _configure_openai_provider(config)
 
@@ -105,39 +114,9 @@ async def run_auto_gpt(
             )
 
     if not config.skip_news:
-        motd, is_new_motd = get_latest_bulletin()
-        if motd:
-            motd = markdown_to_ansi_style(motd)
-            for motd_line in motd.split("\n"):
-                logger.info(
-                    extra={
-                        "title": "NEWS:",
-                        "title_color": Fore.GREEN,
-                        "preserve_color": True,
-                    },
-                    msg=motd_line,
-                )
-            if is_new_motd and not config.chat_messages_enabled:
-                input(
-                    Fore.MAGENTA
-                    + Style.BRIGHT
-                    + "NEWS: Bulletin was updated! Press Enter to continue..."
-                    + Style.RESET_ALL
-                )
-
-        git_branch = get_current_git_branch()
-        if git_branch and git_branch != "stable":
-            logger.warn(
-                f"You are running on `{git_branch}` branch"
-                " - this is not a supported branch."
-            )
-        if sys.version_info < (3, 10):
-            logger.error(
-                "WARNING: You are running on an older version of Python. "
-                "Some people have observed problems with certain "
-                "parts of AutoGPT with this version. "
-                "Please consider upgrading to Python 3.10 or higher.",
-            )
+        print_motd(config, logger)
+        print_git_branch_info(logger)
+        print_python_version_info(logger)
 
     if install_plugin_deps:
         install_plugin_dependencies()
@@ -165,15 +144,6 @@ async def run_auto_gpt(
         role=ai_role,
         goals=ai_goals,
     )
-    # print(prompt)
-
-    # Initialize memory and make sure it is empty.
-    # this is particularly important for indexing and referencing pinecone memory
-    memory = get_memory(config)
-    memory.clear()
-    print_attribute("Configured Memory", memory.__class__.__name__)
-
-    print_attribute("Configured Browser", config.selenium_web_browser)
 
     agent_prompt_config = Agent.default_settings.prompt_config.copy(deep=True)
     agent_prompt_config.use_functions_api = config.openai_functions
@@ -192,6 +162,14 @@ async def run_auto_gpt(
         history=Agent.default_settings.history.copy(deep=True),
     )
 
+    # Initialize memory and make sure it is empty.
+    # this is particularly important for indexing and referencing pinecone memory
+    memory = get_memory(config)
+    memory.clear()
+    print_attribute("Configured Memory", memory.__class__.__name__)
+
+    print_attribute("Configured Browser", config.selenium_web_browser)
+
     agent = Agent(
         settings=agent_settings,
         llm_provider=llm_provider,
@@ -201,6 +179,47 @@ async def run_auto_gpt(
     )
 
     await run_interaction_loop(agent)
+
+
+def print_motd(config: Config, logger: logging.Logger):
+    motd, is_new_motd = get_latest_bulletin()
+    if motd:
+        motd = markdown_to_ansi_style(motd)
+        for motd_line in motd.split("\n"):
+            logger.info(
+                extra={
+                    "title": "NEWS:",
+                    "title_color": Fore.GREEN,
+                    "preserve_color": True,
+                },
+                msg=motd_line,
+            )
+        if is_new_motd and not config.chat_messages_enabled:
+            input(
+                Fore.MAGENTA
+                + Style.BRIGHT
+                + "NEWS: Bulletin was updated! Press Enter to continue..."
+                + Style.RESET_ALL
+            )
+
+
+def print_git_branch_info(logger: logging.Logger):
+    git_branch = get_current_git_branch()
+    if git_branch and git_branch != "stable":
+        logger.warn(
+            f"You are running on `{git_branch}` branch"
+            " - this is not a supported branch."
+        )
+
+
+def print_python_version_info(logger: logging.Logger):
+    if sys.version_info < (3, 10):
+        logger.error(
+            "WARNING: You are running on an older version of Python. "
+            "Some people have observed problems with certain "
+            "parts of AutoGPT with this version. "
+            "Please consider upgrading to Python 3.10 or higher.",
+        )
 
 
 def _configure_openai_provider(config: Config) -> OpenAIProvider:
@@ -331,7 +350,11 @@ async def run_interaction_loop(
         ###############
         # Print the assistant's thoughts and the next command to the user.
         update_user(
-            legacy_config, ai_config, command_name, command_args, assistant_reply_dict
+            ai_config,
+            command_name,
+            command_args,
+            assistant_reply_dict,
+            speak_mode=legacy_config.tts_config.speak_mode,
         )
 
         ##################
@@ -405,11 +428,11 @@ async def run_interaction_loop(
 
 
 def update_user(
-    config: Config,
     ai_config: AIConfig,
     command_name: CommandName,
     command_args: CommandArgs,
     assistant_reply_dict: AgentThoughts,
+    speak_mode: bool = False,
 ) -> None:
     """Prints the assistant's thoughts and the next command to the user.
 
@@ -422,9 +445,13 @@ def update_user(
     """
     logger = logging.getLogger(__name__)
 
-    print_assistant_thoughts(ai_config.ai_name, assistant_reply_dict, config)
+    print_assistant_thoughts(
+        ai_name=ai_config.ai_name,
+        assistant_reply_json_valid=assistant_reply_dict,
+        speak_mode=speak_mode,
+    )
 
-    if config.speak_mode:
+    if speak_mode:
         speak(f"I want to execute {command_name}")
 
     # First log new-line so user can differentiate sections better in console
@@ -589,7 +616,7 @@ Continue ({config.authorise_key}/{config.exit_key}): """,
 def print_assistant_thoughts(
     ai_name: str,
     assistant_reply_json_valid: dict,
-    config: Config,
+    speak_mode: bool = False,
 ) -> None:
     logger = logging.getLogger(__name__)
 
@@ -634,7 +661,7 @@ def print_assistant_thoughts(
 
     # Speak the assistant's thoughts
     if assistant_thoughts_speak:
-        if config.speak_mode:
+        if speak_mode:
             speak(assistant_thoughts_speak)
         else:
             print_attribute("SPEAK", assistant_thoughts_speak, title_color=Fore.YELLOW)
