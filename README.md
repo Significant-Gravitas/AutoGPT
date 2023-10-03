@@ -65,7 +65,7 @@ Want to build your own groundbreaking agent using AutoGPT? 🛠️ There are thr
 
 ### 🤔 Questions? Problems? Suggestions?
 
-#### Get help
+#### Get help - [Discord 💬](https://discord.gg/autogpt)
 
 [![Join us on Discord](https://invidget.switchblade.xyz/autogpt)](https://discord.gg/autogpt)
 
