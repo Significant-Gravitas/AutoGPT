@@ -1,15 +1,13 @@
-import asyncio
 import os
 import pathlib
 from io import BytesIO
 from uuid import uuid4
 
+import uvicorn
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from hypercorn.asyncio import serve
-from hypercorn.config import Config
 
 from .abilities.registry import AbilityRegister
 from .db import AgentDB
@@ -29,12 +27,11 @@ class Agent:
         self.workspace = workspace
         self.abilities = AbilityRegister(self)
 
-    def start(self, port: int = 8000, router: APIRouter = base_router):
+    def get_agent_app(self, router: APIRouter = base_router):
         """
         Start the agent server.
         """
-        config = Config()
-        config.bind = [f"localhost:{port}"]
+
         app = FastAPI(
             title="AutoGPT Forge",
             description="Modified version of The Agent Protocol.",
@@ -51,7 +48,7 @@ class Agent:
             "http://127.0.0.1:8080",
             # Add any other origins you want to whitelist
         ]
-        
+
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
@@ -79,11 +76,12 @@ class Agent:
             )
         app.add_middleware(AgentMiddleware, agent=self)
 
-        config.loglevel = "ERROR"
-        config.bind = [f"0.0.0.0:{port}"]
+        return app
 
-        LOG.info(f"Agent server starting on http://localhost:{port}")
-        asyncio.run(serve(app, config))
+    def start(self, port):
+        uvicorn.run(
+            "forge.app:app", host="localhost", port=port, log_level="error", reload=True
+        )
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """
