@@ -6,7 +6,12 @@ authors = ["Merwane Hamadi <merwanehamadi@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.12"
+gunicorn = "^21.2.0"
+uvicorn = "^0.23.2"
+pandas = "^2.1.1"
+beautifulsoup4 = "^4.12.2"
+bs4 = "^0.0.1"
 
 
 [build-system]
