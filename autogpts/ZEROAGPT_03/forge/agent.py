@@ -49,9 +49,6 @@ class ForgeAgent(Agent):
         content: str,
         is_function: bool = False,
         function_name: str = None):
-
-        for k,v in self.chat_history.items():
-            LOG.info(f"🗣️ {k} loaded key in chat_history")
         
         if is_function:
             chat_struct = {
@@ -210,7 +207,15 @@ class ForgeAgent(Agent):
 
             # Set the step output and is_last from AI
             step.output = answer["thoughts"]["speak"]
-            step.is_last = answer["thoughts"]["last_step"]
+            
+            if (bool(answer["thoughts"]["last_step"])
+                or answer["thoughts"]["last_step"] == "True"
+                or answer["thoughts"]["last_step"] == "true"):
+                step.status = "completed"
+                step.is_last = True
+            else:
+                step.status = "running"
+                step.is_last = False
 
             # have ai speak through speakers
             # cant use yet due to pydantic version differences
@@ -224,7 +229,7 @@ class ForgeAgent(Agent):
 
         except json.JSONDecodeError as e:
             # Handle JSON decoding errors
-            LOG.error(f"JSON error when decoding: {e}")
+            LOG.error(f"agent.py - JSON error when decoding: {e}")
         except Exception as e:
             # Handle other exceptions
             LOG.error(f"execute_step error: {e}")

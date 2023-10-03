@@ -178,3 +178,37 @@ class TaskStepsListResponse(BaseModel):
 class TaskArtifactsListResponse(BaseModel):
     artifacts: Optional[List[Artifact]] = None
     pagination: Optional[Pagination] = None
+
+class ChatHistory(BaseModel):
+    created_at: datetime = Field(
+        ...,
+        description="The creation datetime of the task.",
+        example="2023-01-01T00:00:00Z",
+        json_encoders={datetime: lambda v: v.isoformat()},
+    )
+    modified_at: datetime = Field(
+        ...,
+        description="The modification datetime of the task.",
+        example="2023-01-01T00:00:00Z",
+        json_encoders={datetime: lambda v: v.isoformat()},
+    )
+    task_id: str = Field(
+        ...,
+        description="The ID of the task this step belongs to.",
+        example="50da533e-3904-4401-8a07-c49adf88b5eb",
+    )
+    role: str = Field(
+        ...,
+        description="role of the chat message",
+        example="user"
+    )
+    content: str = Field(
+        ...,
+        description="content of the chat message",
+        example="hello"
+    )
+    function_name: Optional[str] = Field(
+        None,
+        description="The name of the function used.",
+        example="write_file"
+    )
