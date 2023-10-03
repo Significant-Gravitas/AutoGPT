@@ -3,6 +3,8 @@ import pprint
 import os
 import shutil
 
+from pathlib import Path
+
 from forge.sdk import (
     Agent,
     AgentDB,
@@ -75,10 +77,11 @@ class ForgeAgent(Agent):
         tmp = self.workspace.get_temp_path(task_id)
 
         for filename in os.listdir(cwd):
-            file_path = os.path.join(cwd, filename)
-            if os.path.isfile(file_path):
-                LOG.info(f"copying {str(file_path)} to {tmp}")
-                shutil.copy(file_path, tmp)
+            if ".sqlite3" not in filename:
+                file_path = os.path.join(cwd, filename)
+                if os.path.isfile(file_path):
+                    LOG.info(f"copying {str(file_path)} to {tmp}")
+                    shutil.copy(file_path, tmp)
 
     
     async def create_task(self, task_request: TaskRequestBody) -> Task:
@@ -97,10 +100,11 @@ class ForgeAgent(Agent):
         # initalize memstore for task
         try:
             # initialize memstore
-            chroma_dir = f"{os.getenv('AGENT_WORKSPACE')}/{task.task_id}/chromadb"
-            os.mkdir(chroma_dir)
-            self.memory = ChromaMemStore(chroma_dir)
-            LOG.info(f"🧠 Created memorystore @ {os.getenv('AGENT_WORKSPACE')}/{task.task_id}")
+            cwd = self.workspace.get_cwd_path(task.task_id)
+            chroma_dir = f"{cwd}/chromadb"
+            os.makedirs(chroma_dir)
+            self.memory = ChromaMemStore(chroma_dir+"/")
+            LOG.info(f"🧠 Created memorystore @ {os.getenv('AGENT_WORKSPACE')}/{task.task_id}/chroma")
         except Exception as err:
             LOG.error(f"memstore creation failed: {err}")
         
@@ -166,97 +170,105 @@ class ForgeAgent(Agent):
 
             chat_response = await chat_completion_request(
                 **chat_completion_parms)
-            
-            answer = json.loads(
-                chat_response["choices"][0]["message"]["content"])
-            
-            # add response to chat log
-            self.add_chat(
-                task_id,
-                "assistant",
-                chat_response["choices"][0]["message"]["content"],
-            )
-            
-            LOG.info(f"[From AI]\n{answer}")
-
-            # Extract the ability from the answer
-            ability = answer["ability"]
-
-            if ability and ability["name"] != "":
-                LOG.info(f"🔨 Running Ability {ability}")
-
-                # Run the ability and get the output
-                if "args" in ability:
-                    output = await self.abilities.run_ability(
-                        task_id,
-                        ability["name"],
-                        **ability["args"]
-                    )
-                else:
-                    output = await self.abilities.run_ability(
-                        task_id,
-                        ability["name"]
-                    )
-
-                # change output to string if there is output
-                if isinstance(output, bytes):
-                    output = output.decode()
-                elif output:
-                    output = str(output)
-
-                # add to converstion
-                # add arguments to function content, if any
-                if "args" in ability:
-                    ccontent = f"[Arguments {ability['args']}]: {output} "
-                else:
-                    ccontent = output
-
+        except Exception as err:
+            LOG.error(f"Error with chat completion API\nSTOPPING TASK\n{err}")
+            step.status = "completed"
+            step.is_last = True
+        else:
+            try:
+                answer = json.loads(
+                    chat_response["choices"][0]["message"]["content"])
+                
+                # add response to chat log
                 self.add_chat(
-                    task_id=task_id,
-                    role="function",
-                    content=ccontent,
-                    is_function=True,
-                    function_name=ability["name"]
+                    task_id,
+                    "assistant",
+                    chat_response["choices"][0]["message"]["content"],
                 )
+                
+                LOG.info(f"[From AI]\n{answer}")
 
-            # Set the step output and is_last from AI
-            step.output = answer["thoughts"]["speak"]
-            
-            last_step_code = answer["thoughts"]["last_step"]
-            if isinstance(last_step_code, str):
-                try:
-                    last_step_code = int(last_step_code)
-                except:
-                    last_step_code = 0
+                # Extract the ability from the answer
+                ability = answer["ability"]
 
-            if (bool(last_step_code)):
-                step.status = "completed"
-                step.is_last = True
-                self.copy_to_temp(task_id)
-            else:
+                if ability and ability["name"] != "":
+                    LOG.info(f"🔨 Running Ability {ability}")
+
+                    # Run the ability and get the output
+                    if "args" in ability:
+                        output = await self.abilities.run_ability(
+                            task_id,
+                            ability["name"],
+                            **ability["args"]
+                        )
+                    else:
+                        output = await self.abilities.run_ability(
+                            task_id,
+                            ability["name"]
+                        )
+
+                    # change output to string if there is output
+                    if isinstance(output, bytes):
+                        output = output.decode()
+                    elif output:
+                        output = str(output)
+
+                    # add to converstion
+                    # add arguments to function content, if any
+                    if "args" in ability:
+                        ccontent = f"[Arguments {ability['args']}]: {output} "
+                    else:
+                        ccontent = output
+
+                    self.add_chat(
+                        task_id=task_id,
+                        role="function",
+                        content=ccontent,
+                        is_function=True,
+                        function_name=ability["name"]
+                    )
+
+                # Set the step output and is_last from AI
+                step.output = answer["thoughts"]["speak"]
+                
+                last_step_code = answer["thoughts"]["last_step"]
+                if isinstance(last_step_code, str):
+                    try:
+                        last_step_code = int(last_step_code)
+                    except:
+                        last_step_code = 0
+
+                if (bool(last_step_code)):
+                    step.status = "completed"
+                    step.is_last = True
+                    self.copy_to_temp(task_id)
+                else:
+                    step.status = "running"
+                    step.is_last = False
+                
+                LOG.info(f"step status {step.status} - is_last {step.is_last}")
+
+                # have ai speak through speakers
+                # cant use yet due to pydantic version differences
+                # audio = generate(
+                #     text=answer["thoughts"]["speak"],
+                #     voice="Dorothy",
+                #     model="eleven_multilingual_v2"
+                # )
+
+                # play(audio)
+
+            except json.JSONDecodeError as e:
+                # Handle JSON decoding errors
+                LOG.error(f"agent.py - JSON error when decoding: {e}")
                 step.status = "running"
                 step.is_last = False
-            
-            LOG.info(f"step status {step.status} - is_last {step.is_last}")
-
-            # have ai speak through speakers
-            # cant use yet due to pydantic version differences
-            # audio = generate(
-            #     text=answer["thoughts"]["speak"],
-            #     voice="Dorothy",
-            #     model="eleven_multilingual_v2"
-            # )
-
-            # play(audio)
-
-        except json.JSONDecodeError as e:
-            # Handle JSON decoding errors
-            LOG.error(f"agent.py - JSON error when decoding: {e}")
-        except Exception as e:
-            # Handle other exceptions
-            LOG.error(f"execute_step error: {e}")
-
-        
+            except Exception as e:
+                # Handle other exceptions
+                LOG.error(f"execute_step error: {e}")
+                LOG.info("chat_response: {chat_response}")
+                step.status = "running"
+                step.is_last = False
 
         # Return the completed step
         return step

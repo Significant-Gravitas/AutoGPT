@@ -125,9 +125,14 @@ async def read_file(agent, task_id: str, file_name: str) -> bytes:
     """
     Read data from a file
     """
-    read_file = agent.workspace.read(task_id=task_id, path=file_name)
+    read_file = bytes()
 
-    add_memory(task_id, str(read_file), "read_file")
+    try:
+        read_file = agent.workspace.read(task_id=task_id, path=file_name)
+        add_memory(task_id, str(read_file), "read_file")
+    except Exception as e:
+        logger.error(f"read_file failed: {e}")
+
     
     return read_file
 
