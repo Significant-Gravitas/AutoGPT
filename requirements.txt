@@ -1679,9 +1679,6 @@ wasabi==1.1.2 ; python_version >= "3.10" and python_version < "4.0" \
 wcwidth==0.2.6 ; python_version >= "3.10" and python_version < "4" \
     --hash=sha256:795b138f6875577cd91bba52baf9e445cd5118fd32723b460e30a0af30ea230e \
     --hash=sha256:a5220780a404dbe3353789870978e472cfe477761f06ee55077256e509b156d0
-webdriver-manager==4.0.0 ; python_version >= "3.10" and python_version < "4.0" \
-    --hash=sha256:05f58ab599b907b03e0aa8d6b43624b1ca8c12d5d48455c79c531b9052ae2356 \
-    --hash=sha256:2b8d1c2cb590d296ade18bc7bc2589578a868f5587133922d744641f6a757a20
 websocket-client==1.6.3 ; python_version >= "3.10" and python_version < "4.0" \
     --hash=sha256:3aad25d31284266bcfcfd1fd8a743f63282305a364b8d0948a43bd606acc652f \
     --hash=sha256:6cfc30d051ebabb73a5fa246efdcc14c8fbebbd0330f8984ac3bb6d9edd2ad03
@@ -1842,4 +1839,4 @@ yarl==1.9.2 ; python_version >= "3.10" and python_version < "4.0" \
     --hash=sha256:f3b078dbe227f79be488ffcfc7a9edb3409d018e0952cf13f15fd6512847f3f7 \
     --hash=sha256:f4e2d08f07a3d7d3e12549052eb5ad3eab1c349c53ac51c209a0e5991bbada78 \
     --hash=sha256:f7a3d8146575e08c29ed1cd287068e6d02f1c7bdff8970db96683b9591b86ee7
-webdriver-manager==4.0.0
+
