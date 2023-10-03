@@ -160,3 +160,11 @@ async def search_file(agent, task_id: str, file_name: str, regex: str) -> List[M
 
     return search_rgx
 
+@ability(
+    name="get_cwd",
+    description="Get the current working directory",
+    parameters=[],
+    output_type="str"
+)
+async def get_cwd(agent, task_id) -> str:
+    return agent.workspace.get_cwd_path(task_id)

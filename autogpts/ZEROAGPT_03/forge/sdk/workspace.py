@@ -61,7 +61,7 @@ class LocalWorkspace(Workspace):
         file_path = self._resolve_path(task_id, path)
         with open(file_path, 'w') as f:
             f.write(data)
-            
+
     def delete(
         self, task_id: str, path: str, directory: bool = False, recursive: bool = False
     ) -> None:
@@ -83,3 +83,6 @@ class LocalWorkspace(Workspace):
         path = self.base_path / task_id / path
         base = self._resolve_path(task_id, path)
         return [str(p.relative_to(self.base_path / task_id)) for p in base.iterdir()]
+
+    def get_cwd_path(self, task_id: str) -> str:
+        return str(self.base_path / task_id)
