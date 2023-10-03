@@ -49,7 +49,6 @@ class LocalWorkspace(Workspace):
             abs_path.parent.mkdir(parents=True, exist_ok=True)
         except FileExistsError:
             pass
-        LOG.debug(f"Resolved path: {abs_path}")
         return abs_path
 
     def read(self, task_id: str, path: str) -> typing.Optional[bytes]:

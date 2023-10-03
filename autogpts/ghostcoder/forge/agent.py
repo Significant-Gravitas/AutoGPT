@@ -151,8 +151,6 @@ class ForgeAgent(Agent):
             elif step.status == Status.completed:
                 previous_steps.append(step)
 
-        LOG.info(f"Found {len(steps)} steps, {len(previous_steps)} have been completed, {len(next_steps)} have not")
-
         if not next_steps:
             LOG.info(f"Tried to execute with no next steps, return last step as the last")
             step = previous_steps[-1]
@@ -163,57 +161,19 @@ class ForgeAgent(Agent):
         next_steps = next_steps[1:]
         ability = current_step.additional_input["ability"]
 
-        prompt_engine = PromptEngine("run-ability")
-        system_kwargs = {
-            "abilities": self.abilities.list_abilities_for_prompt(),
-            "previous_steps": previous_steps
-        }
-        system_prompt = prompt_engine.load_prompt("system-prompt", **system_kwargs)
-
-        ability_kwargs = {
-            "ability": json.dumps(ability),
-            "previous_steps": previous_steps
-        }
-        ability_prompt = prompt_engine.load_prompt("user-prompt", **ability_kwargs)
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": ability_prompt},
-        ]
-
-        chat_completion_kwargs = {
-            "messages": messages,
-            "model": MODEL_NAME,
-        }
-
-        try:
-            #LOG.debug(pprint.pformat(messages))
-            chat_response = await chat_completion_request(**chat_completion_kwargs)
-            ability_answer = json.loads(chat_response["choices"][0]["message"]["content"])
-            ability_names = [a.name for a in self.abilities.list_abilities().values()]
-            if isinstance(ability_answer, dict) and ability_answer["name"] in ability_names:
-                if ability != ability_answer:
-                    LOG.info(f"Update ability: {ability_answer}")
-                ability = ability_answer
-            else:
-                LOG.warning(f"Invalid ability: {ability_answer}")
-
-        except json.JSONDecodeError as e:
-            LOG.warning(f"Unable to parse chat response: {chat_response}. Error: {e}.")
-        except Exception as e:
-            LOG.error(f"Unable to generate chat response: {e}")
+        # ability = await self.review_ability(ability, previous_steps)
 
         if ability["name"] == "finish":
             LOG.info(f"Finish task")
             current_step.is_last = True
         else:
-            LOG.info(f"Run ability {ability['name']} with args {ability['args']}")
+            LOG.info(f"Run ability {ability['name']} with arguments {ability['args']}")
             output = await self.abilities.run_ability(
                 task_id, ability["name"], **ability["args"]
             )
 
             current_step.output = str(output)
-            LOG.debug(f"Executed step [{current_step.name}] output: {current_step.output[:19]}")
+            LOG.debug(f"Executed step [{current_step.name}] output:\n{current_step.output}")
 
             prompt_engine = PromptEngine("review-steps")
 
@@ -230,9 +190,7 @@ class ForgeAgent(Agent):
                 {"role": "system", "content": system_format},
             ]
 
-            LOG.debug(f"Will review {len(next_steps)} next steps ({len(previous_steps)} have been run):")
-            for i, step in enumerate(next_steps):
-                LOG.debug(f"{i+1}: {step.name}: {step.input}")
+            LOG.debug(f"Will review {len(next_steps)} next steps ({len(previous_steps)} steps have been completed):")
 
             next_step_dicts = [{"name": step.name,
                                 "description": step.input,
@@ -259,6 +217,12 @@ class ForgeAgent(Agent):
                 if not isinstance(answer["steps"], list):
                     LOG.info(f"Invalid next steps provided {answer['steps']}")
                 else:
+                    #if len(answer["steps"]) == len(next_steps):
+                    #    existing_abilities = [step.additional_input["ability"] for step in next_steps]
+                    #    new_abilities = [step["ability"] for step in answer["steps"]]
+                    #    if existing_abilities == new_abilities:
+                    #        LOG.info(f"The abilities in the new steps are the same as the existing steps, skip replace")
+                    #else:
                     LOG.info(f"Replace {len(next_steps)} steps with {len(answer['steps'])} new steps")
                     for next_step in next_steps:
                         await self.db.update_step(task.task_id, next_step.step_id, "skipped")
@@ -268,16 +232,58 @@ class ForgeAgent(Agent):
                         LOG.info(f"Create step {i + 1} {new_step['name']}:\n{new_step['description']}\n{new_step['ability']}")
                         await self.create_step(task.task_id, new_step)
                         next_steps.append(new_step)
+            else:
+                LOG.info(f"No new steps provided")
 
         await self.db.update_step(task.task_id, current_step.step_id, "completed", output=current_step.output)
-
         LOG.info(f"Step completed: {current_step.step_id} input: {current_step.input[:19]}")
 
         if not next_steps:
             LOG.info(f"Task completed: {task.task_id} input: {task.input[:19]}")
             current_step.is_last = True
+        elif len(previous_steps) > 15:
+            LOG.info(f"Giving up after {len(previous_steps)} steps")
+            current_step.is_last = True
 
         return current_step
+
+    async def review_ability(self, ability, previous_steps):
+        prompt_engine = PromptEngine("run-ability")
+        system_kwargs = {
+            "abilities": self.abilities.list_abilities_for_prompt(),
+            "previous_steps": previous_steps
+        }
+        system_prompt = prompt_engine.load_prompt("system-prompt", **system_kwargs)
+        ability_kwargs = {
+            "ability": json.dumps(ability),
+            "previous_steps": previous_steps
+        }
+        ability_prompt = prompt_engine.load_prompt("user-prompt", **ability_kwargs)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": ability_prompt},
+        ]
+        chat_completion_kwargs = {
+            "messages": messages,
+            "model": MODEL_NAME,
+        }
+        try:
+            # LOG.debug(pprint.pformat(messages))
+            chat_response = await chat_completion_request(**chat_completion_kwargs)
+            ability_answer = json.loads(chat_response["choices"][0]["message"]["content"])
+            ability_names = [a.name for a in self.abilities.list_abilities().values()]
+            if isinstance(ability_answer, dict) and ability_answer["name"] in ability_names:
+                if ability != ability_answer:
+                    LOG.info(f"Update ability {ability['name']} with {ability_answer['name']}")
+                ability = ability_answer
+            else:
+                LOG.warning(f"Invalid ability: {ability_answer}")
+
+        except json.JSONDecodeError as e:
+            LOG.warning(f"Unable to parse chat response: {chat_response}. Error: {e}.")
+        except Exception as e:
+            LOG.error(f"Unable to generate chat response: {e}")
+        return ability
 
     async def do_steps_request(self, messages: List[dict], new_plan: bool = False, retry: int = 0):
         chat_completion_kwargs = {
@@ -293,12 +299,13 @@ class ForgeAgent(Agent):
                 raise Exception("Failed to create steps")
 
         try:
-            LOG.debug(pprint.pformat(messages))
+            #LOG.debug(pprint.pformat(messages))
             chat_response = await chat_completion_request(**chat_completion_kwargs)
+            response = chat_response["choices"][0]["message"]["content"]
             answer = json.loads(chat_response["choices"][0]["message"]["content"])
-            LOG.debug(pprint.pformat(answer))
+            #LOG.debug(pprint.pformat(answer))
         except json.JSONDecodeError as e:
-            LOG.warning(f"Unable to parse chat response: {e}")
+            LOG.warning(f"Unable to parse chat response: {response}. Got exception {e}")
             return await do_retry([{"role": "user", "content": f"Invalid response. {e}. Please try again."}])
         except Exception as e:
             LOG.error(f"Unable to generate chat response: {e}")
@@ -312,6 +319,15 @@ class ForgeAgent(Agent):
             invalid_abilities = self.validate_ability(step)
             if invalid_abilities:
                 return await do_retry(messages)
+
+        if "thoughts" in answer and answer["thoughts"]:
+            LOG.debug(f"Thoughts:"
+                      f"\n\tReasoning: {answer['thoughts']['reasoning']}"
+                      f"\n\tCriticism: {answer['thoughts']['criticism']}"
+                      f"\n\tText: {answer['thoughts']['text']}"
+                      f"\n\tSpeak: {answer['thoughts']['speak']}")
+        else:
+            LOG.warning(f"No thoughts provided, retry {retry}")
 
         return answer
 

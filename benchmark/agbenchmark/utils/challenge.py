@@ -62,12 +62,13 @@ class Challenge(ABC):
         )
         print(f"\033[1;30mTask: {self.task}\033[0m")
 
-        await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
-
         # hidden files are added after the agent runs. Hidden files can be python test files.
         # We copy them in the temporary folder to make it easy to import the code produced by the agent
         for path in artifact_paths:
             copy_artifacts_into_temp_folder(TEMP_FOLDER_ABS_PATH, "custom_python", path)
+
+        await run_api_agent(self.data, config, self.ARTIFACTS_LOCATION, cutoff)
+
 
     def test_method(self, config: Dict[str, Any]) -> None:
         raise NotImplementedError

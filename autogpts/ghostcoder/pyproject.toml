@@ -20,7 +20,7 @@ hypercorn = "^0.14.4"
 python-multipart = "^0.0.6"
 toml = "^0.10.2"
 jinja2 = "^3.1.2"
-ghostcoder = { path = "../../../ghostcoder" }
+ghostcoder = "0.0.7"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"

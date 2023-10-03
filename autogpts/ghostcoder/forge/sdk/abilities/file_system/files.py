@@ -63,7 +63,7 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes) -> str:
 
     LOG.debug(f"Wrote data to file {file_path} and created artifact {artifact.artifact_id}")
 
-    return f"Wrote data to file {file_path}"
+    return f"{file_path}:\n```\n{data.decode('utf-8')}\n```\n"
 
 
 @ability(
@@ -92,4 +92,4 @@ async def read_file(agent, task_id: str, file_path: str) -> str:
         data = data.decode("utf-8")
 
     LOG.debug(f"Read file {file_path}")
-    return data
+    return f"{file_path}:\n```\n{data}\n```\n"

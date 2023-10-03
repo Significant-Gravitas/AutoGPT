@@ -8,6 +8,7 @@ from ghostcoder.actions.write_code.prompt import FIX_TESTS_PROMPT
 from ghostcoder.benchmark.utils import create_openai_client
 from ghostcoder.codeblocks import create_parser, CodeBlockType
 from ghostcoder.schema import Message, TextItem, FileItem, UpdatedFileItem
+from ghostcoder.test_tools.verify_python_pytest import PythonPytestTestTool
 from ..forge_log import ForgeLogger
 from .registry import ability
 
@@ -78,10 +79,10 @@ async def write_tests(
     test_file: str
 ) -> str:
     file_items = [FileItem(file_path=file_to_test), FileItem(file_path=test_file)]
-    return await run_code_writer(agent, task_id, instructions, file_items, retries=3)
+    return await run_code_writer(agent, task_id, instructions, file_items, test_file=test_file)
 
 
-async def run_code_writer(agent, task_id: str, instructions: str, file_items: List[FileItem] = [], retries: int = 1):
+async def run_code_writer(agent, task_id: str, instructions: str, file_items: List[FileItem] = [], test_file: str = None):
     task = await agent.db.get_task(task_id)
 
     repo_dir = agent.workspace.base_path / task_id
@@ -117,11 +118,13 @@ async def run_code_writer(agent, task_id: str, instructions: str, file_items: Li
                       items=[TextItem(text=task.input), TextItem(text=instructions)] + file_items)
 
     outgoing_messages = code_writer.execute(incoming_messages=[message])
-    verification_message = verify(repository, messages=[message] + outgoing_messages, retries=retries)
-    outgoing_messages.append(verification_message)
+
+    if test_file:
+        verification_message = verify(repository, messages=[message] + outgoing_messages, test_file=test_file)
+        outgoing_messages.append(verification_message)
 
     artifacts = []
-    for file_item in verification_message.find_items_by_type("file"):
+    for file_item in outgoing_messages[-1].find_items_by_type("file"):
         if file_item.file_path.startswith("/"):
             file_path = file_item.file_path[1:]
         else:
@@ -143,8 +146,9 @@ async def run_code_writer(agent, task_id: str, instructions: str, file_items: Li
     return llm_messages
 
 
-def verify(repository: FileRepository, messages: List[Message], retries: int = 1, last_run: int = 0) -> [Message]:
-    verifier = CodeVerifier(repository=repository, language="python")
+def verify(repository: FileRepository, messages: List[Message], test_file: str, retries: int = 3, last_run: int = 0) -> [Message]:
+    test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern=test_file)
+    verifier = CodeVerifier(repository=repository, test_tool=test_tool)
 
     files = dict()
 
@@ -175,7 +179,6 @@ def verify(repository: FileRepository, messages: List[Message], retries: int = 1
 
     failures = verification_message.find_items_by_type("verification_failure")
     if failures:
-
         if retries > 0 or len(failures) < last_run:
             log_dir = repository.repo_path / ".prompt_log"
             retries -= 1
@@ -187,9 +190,10 @@ def verify(repository: FileRepository, messages: List[Message], retries: int = 1
                                          repository=repository,
                                          auto_mode=True)
             LOG.info(f"{len(failures)} verifications failed (last run {last_run}, retrying ({retries} left)...")
-            response_messages = test_fix_writer.execute(incoming_messages=messages)
+            response_messages = test_fix_writer.execute(incoming_messages=messages + [verification_message])
             return verify(repository, messages=messages + [verification_message] + response_messages,
                           retries=retries,
+                          test_file=test_file,
                           last_run=len(failures))
         else:
             LOG.info(f"Verification failed, giving up...")
