@@ -1,5 +1,7 @@
 # Quickstart Guide
 
+> For the complete getting started [tutorial series](https://aiedge.medium.com/autogpt-forge-e3de53cc58ec) <- click here
+
 Welcome to the Quickstart Guide! This guide will walk you through the process of setting up and running your own AutoGPT agent. Whether you're a seasoned AI developer or just starting out, this guide will provide you with the necessary steps to jumpstart your journey in the world of AI development with AutoGPT.
 
 ## System Requirements
@@ -36,7 +38,7 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
     It can be accessed by running the `run` command by typing `./run` in the terminal.
 
     The first command you need to use is `./run setup` This will guide you through the process of setting up your system.
-    Intially you will get instructions for installing flutter, chrome and setting up your github access token like the following image:
+    Initially you will get instructions for installing flutter, chrome and setting up your github access token like the following image:
 
     > Note: for advanced users. The github access token is only needed for the ./run arena enter command so the system can automatically create a PR
 

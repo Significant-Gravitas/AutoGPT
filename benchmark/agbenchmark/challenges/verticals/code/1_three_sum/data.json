@@ -1,13 +1,13 @@
 {
     "category": [
         "coding",
-        "iterate"
+        "general"
     ],
     "cutoff": 60,
     "dependencies": [
         "TestWriteFile"
     ],
-    "eval_id": "29a10990-2584-4602-8b9d-c217f6edbc4f",
+    "eval_id": "a1ff38a4-1032-4bf2-960a-3b927f9936f4",
     "ground": {
         "answer": "The three_sum function coded properly.",
         "eval": {
@@ -24,7 +24,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "Tests ability for the agent to create the three_sum function.",
+        "description": "Tests if the agent can create the three_sum function.",
         "difficulty": "basic",
         "side_effects": []
     },

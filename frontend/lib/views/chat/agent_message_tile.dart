@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 
 class AgentMessageTile extends StatefulWidget {
   final Chat chat;
+  final VoidCallback onArtifactsButtonPressed;
 
   const AgentMessageTile({
     Key? key,
-    required this.chat, // The agent message to be displayed
+    required this.chat,
+    required this.onArtifactsButtonPressed,
   }) : super(key: key);
 
   @override
@@ -22,12 +24,12 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
   @override
   Widget build(BuildContext context) {
     String jsonString = jsonEncode(widget.chat.jsonResponse);
+    int artifactsCount = widget.chat.artifacts.length;
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        double chatViewWidth = constraints.maxWidth; // Get the chat view width
-        double tileWidth = (chatViewWidth >= 1000)
-            ? 900
-            : chatViewWidth - 40; // Determine tile width
+        double chatViewWidth = constraints.maxWidth;
+        double tileWidth = (chatViewWidth >= 1000) ? 900 : chatViewWidth - 40;
 
         return Align(
           alignment: Alignment.center,
@@ -43,13 +45,11 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
               children: [
-                // Container for Agent title, message, and controls
                 Container(
                   constraints: const BoxConstraints(minHeight: 50),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Agent title
                       const Text(
                         "Agent",
                         style: TextStyle(
@@ -59,7 +59,6 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                         ),
                       ),
                       const SizedBox(width: 20),
-                      // Message content
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.fromLTRB(0, 10, 20, 10),
@@ -69,9 +68,8 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                           ),
                         ),
                       ),
-                      // Artifacts button (static for now)
                       ElevatedButton(
-                        onPressed: () {},
+                        onPressed: widget.onArtifactsButtonPressed,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.white,
                           foregroundColor: Colors.black,
@@ -80,7 +78,7 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        child: const Text("2 Artifacts"),
+                        child: Text('$artifactsCount Artifacts'),
                       ),
                       const SizedBox(width: 20),
                       // Expand/Collapse button
@@ -91,7 +89,7 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                             : Icons.keyboard_arrow_down),
                         onPressed: () {
                           setState(() {
-                            isExpanded = !isExpanded; // Toggle expanded view
+                            isExpanded = !isExpanded;
                           });
                         },
                       ),
@@ -105,10 +103,8 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                     child: SizedBox(
                       height: 200,
                       child: Padding(
-                        padding: const EdgeInsets.only(
-                            right: 20), // Padding for the right side
+                        padding: const EdgeInsets.only(right: 20),
                         child: JsonCodeSnippetView(
-                          // JSON code snippet view
                           jsonString: jsonString,
                         ),
                       ),

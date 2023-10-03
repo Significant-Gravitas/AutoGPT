@@ -1,6 +1,7 @@
 import enum
 import json
 from logging import Logger
+from textwrap import indent
 from typing import Literal, Optional
 
 from jsonschema import Draft7Validator
@@ -114,3 +115,40 @@ class JSONSchema(BaseModel):
         logger.debug("The JSON object is valid.")
 
         return True, None
+
+    def to_typescript_object_interface(self, interface_name: str = "") -> str:
+        if self.type != JSONSchema.Type.OBJECT:
+            raise NotImplementedError("Only `object` schemas are supported")
+
+        if self.properties:
+            attributes: list[str] = []
+            for name, property in self.properties.items():
+                if property.description:
+                    attributes.append(f"// {property.description}")
+                attributes.append(f"{name}: {property.typescript_type};")
+            attributes_string = "\n".join(attributes)
+        else:
+            attributes_string = "[key: string]: any"
+
+        return (
+            f"interface {interface_name} " if interface_name else ""
+        ) + f"{{\n{indent(attributes_string, '  ')}\n}}"
+
+    @property
+    def typescript_type(self) -> str:
+        if self.type == JSONSchema.Type.BOOLEAN:
+            return "boolean"
+        elif self.type in {JSONSchema.Type.INTEGER, JSONSchema.Type.NUMBER}:
+            return "number"
+        elif self.type == JSONSchema.Type.STRING:
+            return "string"
+        elif self.type == JSONSchema.Type.ARRAY:
+            return f"Array<{self.items.typescript_type}>" if self.items else "Array"
+        elif self.type == JSONSchema.Type.OBJECT:
+            if not self.properties:
+                return "Record<string, any>"
+            return self.to_typescript_object_interface()
+        else:
+            raise NotImplementedError(
+                f"JSONSchema.typescript_type does not support Type.{self.type.name} yet"
+            )

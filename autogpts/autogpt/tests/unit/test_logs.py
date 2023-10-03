@@ -12,7 +12,7 @@ from autogpt.logs.utils import remove_color_codes
         ),
         (
             "{'Schaue dir meine Projekte auf github () an, als auch meine Webseiten': 'https://github.com/Significant-Gravitas/AutoGPT, https://discord.gg/autogpt und https://twitter.com/Auto_GPT'}",
-            "{'Schaue dir meine Projekte auf github () an, als auch meine Webseiten': 'https://github.com/Significant-Gravitas/AutoGPT, https://discord.gg/autogpt und https://twitter.com/SigGravitas'}",
+            "{'Schaue dir meine Projekte auf github () an, als auch meine Webseiten': 'https://github.com/Significant-Gravitas/AutoGPT, https://discord.gg/autogpt und https://twitter.com/Auto_GPT'}",
         ),
         ("", ""),
         ("hello", "hello"),

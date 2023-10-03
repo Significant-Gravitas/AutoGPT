@@ -63,7 +63,7 @@ def config(temp_plugins_config_file: str, mocker: MockerFixture, workspace: Work
     from autogpt.plugins.plugins_config import PluginsConfig
 
     config.plugins_config = PluginsConfig.load_config(
-        plugins_config_file=config.plugins_config_file,
+        plugins_config_file=config.workdir / config.plugins_config_file,
         plugins_denylist=config.plugins_denylist,
         plugins_allowlist=config.plugins_allowlist,
     )
@@ -107,6 +107,9 @@ def agent(config: Config, llm_provider: ChatModelProvider) -> Agent:
     memory_json_file = get_memory(config)
     memory_json_file.clear()
 
+    agent_prompt_config = Agent.default_settings.prompt_config.copy(deep=True)
+    agent_prompt_config.use_functions_api = config.openai_functions
+
     agent_settings = AgentSettings(
         name=Agent.default_settings.name,
         description=Agent.default_settings.description,
@@ -117,6 +120,7 @@ def agent(config: Config, llm_provider: ChatModelProvider) -> Agent:
             use_functions_api=config.openai_functions,
             plugins=config.plugins,
         ),
+        prompt_config=agent_prompt_config,
         history=Agent.default_settings.history.copy(deep=True),
     )
 

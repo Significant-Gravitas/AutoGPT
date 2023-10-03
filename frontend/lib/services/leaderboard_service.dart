@@ -12,7 +12,7 @@ class LeaderboardService {
   /// [benchmarkRun] is a BenchmarkRun object representing the data of a completed benchmark.
   Future<Map<String, dynamic>> submitReport(BenchmarkRun benchmarkRun) async {
     try {
-      return await api.post(
+      return await api.put(
         'api/reports',
         benchmarkRun.toJson(),
         apiType: ApiType.leaderboard,

@@ -45,6 +45,8 @@ dependencies:
   firebase_analytics: ^10.5.0
   google_sign_in: ^6.1.5
   uuid: ^4.0.0
+  url_launcher: ^6.1.14
+  fluttertoast: ^8.2.2
 
 dev_dependencies:
   flutter_test:
@@ -70,8 +72,11 @@ flutter:
 
   assets:
   - assets/tree_structure.json
-  - assets/google_logo.svg.png
-  - assets/github_logo.svg.png
+  - assets/images/google_logo.svg.png
+  - assets/images/github_logo.svg.png
+  - assets/images/autogpt_logo.png
+  - assets/images/discord_logo.png
+  - assets/images/twitter_logo.png
   - assets/general_tree_structure.json
   - assets/coding_tree_structure.json
   - assets/data_tree_structure.json

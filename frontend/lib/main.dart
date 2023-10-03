@@ -73,6 +73,7 @@ class MyApp extends StatelessWidget {
     taskService.loadDeletedTasks();
 
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'AutoGPT Flutter Client',
       theme: ThemeData(
         primarySwatch: Colors.blue,
