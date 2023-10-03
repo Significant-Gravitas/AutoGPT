@@ -1,13 +1,14 @@
-import asyncio
 import os
 import pathlib
 from io import BytesIO
 from uuid import uuid4
 
+import uvicorn
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+
 from .abilities.registry import AbilityRegister
 from .db import AgentDB
 from .errors import NotFoundError
@@ -76,6 +77,11 @@ class Agent:
         app.add_middleware(AgentMiddleware, agent=self)
 
         return app
+
+    def start(self, port):
+        uvicorn.run(
+            "forge.app:app", host="localhost", port=port, log_level="error", reload=True
+        )
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """
