@@ -331,15 +331,22 @@ async def proxy(request: Request, task_id: str):
 
 @router.post("/agent/tasks/{task_id}/evaluations")
 async def create_evaluation(task_id: str) -> deque:
+    from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH
     from agbenchmark.agent_api_interface import copy_agent_artifacts_into_temp_folder
+    from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
     from agbenchmark.generate_test import create_challenge
 
     try:
         async with ApiClient(configuration) as api_client:
             api_instance = AgentApi(api_client)
             await copy_agent_artifacts_into_temp_folder(api_instance, task_id)
-
+        # add custom python
         data = CHALLENGES[task_informations[task_id]["eval_id"]]
+
+        artifact_path = str(Path(data["path"]).parent)
+        copy_artifacts_into_temp_folder(
+            TEMP_FOLDER_ABS_PATH, "custom_python", artifact_path
+        )
         json_file = CHALLENGES[task_informations[task_id]["eval_id"]]["path"]
         json_files = deque()
 
