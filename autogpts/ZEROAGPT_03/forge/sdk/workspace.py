@@ -39,9 +39,11 @@ class LocalWorkspace(Workspace):
     def _resolve_path(self, task_id: str, path: str) -> Path:
         path = path if not path.startswith("/") else path[1:]
         abs_path = (self.base_path / task_id / path).resolve()
-        if not str(abs_path).startswith(str(self.base_path)):
+        abs_path_str = abs_path.as_posix()
+        base_path_str = self.base_path.as_posix()
+        if not abs_path_str.startswith(base_path_str):
             print("Error")
-            raise ValueError(f"Directory traversal is not allowed! - {abs_path}")
+            raise ValueError(f"Directory traversal is not allowed! - {abs_path_str}")
         try:
             abs_path.parent.mkdir(parents=True, exist_ok=True)
         except FileExistsError:
@@ -85,4 +87,5 @@ class LocalWorkspace(Workspace):
         return [str(p.relative_to(self.base_path / task_id)) for p in base.iterdir()]
 
     def get_cwd_path(self, task_id: str) -> str:
-        return str(self.base_path / task_id)
+        path_obj = (self.base_path / task_id).resolve()
+        return path_obj.as_posix()
