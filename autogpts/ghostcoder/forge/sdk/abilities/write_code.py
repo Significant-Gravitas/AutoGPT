@@ -48,7 +48,7 @@ async def write_code(
 
 @ability(
     name="write_tests",
-    description="Use this to write unit tests. Provide as detailed instructions as possible in free text and the file that should be tested and the file where the tests should be written.",
+    description="Use this to write and run unit tests to verify the code. Provide as detailed instructions as possible in free text and the file that should be tested and the file where the tests should be written.",
     parameters=[
         {
             "name": "instructions",
@@ -114,8 +114,12 @@ async def run_code_writer(agent, task_id: str, instructions: str, file_items: Li
             file.readonly = True
             file_items.append(file)
 
+    items = [TextItem(text=task.input), TextItem(text=instructions)]
+    if test_file:
+        items.append(TextItem(text=f"Be sure that you write test cases for all requirements and corner cases."))
+
     message = Message(sender="Human",
-                      items=[TextItem(text=task.input), TextItem(text=instructions)] + file_items)
+                      items=items + file_items)
 
     outgoing_messages = code_writer.execute(incoming_messages=[message])
 
