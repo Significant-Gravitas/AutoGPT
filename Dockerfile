@@ -1,4 +1,6 @@
-FROM ai_ticket
+ARG OFFICIAL_PYTHON_IMAGE
+FROM ${OFFICIAL_PYTHON_IMAGE} 
+
 
 # Install browsers
 RUN apt-get update && apt-get install -y \

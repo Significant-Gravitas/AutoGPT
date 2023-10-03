@@ -25,8 +25,8 @@ WORKDIR /app
 #RUN poetry run pip install /opt/ai-ticket
 # RUN poetry install
 
-RUN poetry install --verbose ||echo some failed lets inspect
-#RUN poetry install --verbose ||echo some failed lets inspect
+RUN poetry install --verbose ||echo fail
+RUN poetry install --verbose ||echo fail2
 
 ENTRYPOINT ["poetry", "run", "autogpt", "--install-plugin-deps"]
 #ENTRYPOINT ["poetry", "install" ]
