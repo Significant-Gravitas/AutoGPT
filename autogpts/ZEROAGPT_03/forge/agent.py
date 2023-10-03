@@ -41,7 +41,7 @@ class ForgeAgent(Agent):
 
         # setup chatcompletion to achieve this task
         # with custom prompt that will generate steps
-        self.prompt_engine = PromptEngine("gpt-4")
+        self.prompt_engine = PromptEngine(os.getenv("OPENAI_MODEL"))
 
     def add_chat(self, 
         task_id: str, 
@@ -146,7 +146,7 @@ class ForgeAgent(Agent):
         try:
             chat_completion_parms = {
                 "messages": self.chat_history[task_id],
-                "model": "gpt-4"
+                "model": os.getenv("OPENAI_MODEL")
             }
 
             chat_response = await chat_completion_request(

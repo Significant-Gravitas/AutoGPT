@@ -45,12 +45,9 @@ async def get_ticker_info(
     json_info = json.dumps(stock_info)
     return json_info
 
-# yahoo finance only seems to have financials up to three years
-three_years_ago = (datetime.now() - relativedelta(years=3))
-three_years_ago = three_years_ago.strftime('%Y')
 @ability(
     name="get_financials_year",
-    description=f"Get financial information of a company up to year {three_years_ago}",
+    description=f"Get financial information of a company",
     parameters=[
         {
             "name": "ticker_symbol",
@@ -75,7 +72,7 @@ async def get_financials_year(
 ) -> str:
     # get ticker then financial information as dict
     # dict has structure where timestamp are keys
-    year_financial_data = {}
+    year_financial_data = None
 
     try:
         stock = yf.Ticker(ticker_symbol)
@@ -90,6 +87,9 @@ async def get_financials_year(
     except Exception as err:
         logger.error(f"get_financials_year failed: {err}")
 
-    json_data = json.dumps(year_financial_data)
-    return json_data
+    if year_financial_data:
+        json_data = json.dumps(year_financial_data)
+        return json_data
+    else:
+        return "Financial information not found. Try searching the internet."
 
