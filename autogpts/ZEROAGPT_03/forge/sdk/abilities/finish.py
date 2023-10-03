@@ -33,5 +33,6 @@ async def finish(
         A result string from create chat completion. A list of suggestions to
             improve the code.
     """
+
     logger.info(reason, extra={"title": "Shutting down...\n"})
     return reason

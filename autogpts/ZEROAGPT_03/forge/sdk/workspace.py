@@ -89,3 +89,7 @@ class LocalWorkspace(Workspace):
     def get_cwd_path(self, task_id: str) -> str:
         path_obj = (self.base_path / task_id).resolve()
         return path_obj.as_posix()
+    
+    def get_temp_path(self, task_id: str) -> str:
+        path_obj = (self.base_path.parent / "temp_folder")
+        return path_obj.as_posix()

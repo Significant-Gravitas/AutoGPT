@@ -1,11 +1,10 @@
 {% extends "techniques/expert.j2" %}
 {% block expert %}Project Manager{% endblock %}
 {% block prompt %}
-Generate a profile for the best expert who can complete the task \"{{ task }}\". 
-Reply only in json with the following format:
+Generate a profile for the most accurate expert who can definitely complete the task '{{ task }}' correctly without issue. 
+Reply only in json with the following format exactly:
 {
-    \"name\": \"the expert's name\",
-    \"expertise\": \"specify the area in which the expert specializes\"
-    \"role\": \"specify the role the expert will play in the task\"
+    "name": "the expert's name",
+    "expertise": "specify the area in which the expert specializes"
 }
 {% endblock %}

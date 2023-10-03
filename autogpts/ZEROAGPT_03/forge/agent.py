@@ -1,9 +1,7 @@
 import json
 import pprint
-import uuid
 import os
-
-from datetime import datetime
+import shutil
 
 from forge.sdk import (
     Agent,
@@ -69,6 +67,20 @@ class ForgeAgent(Agent):
         except KeyError:
             self.chat_history[task_id] = [chat_struct]
     
+    def copy_to_temp(self, task_id: str):
+        """
+        Copy files created from cwd to temp
+        """
+        cwd = self.workspace.get_cwd_path(task_id)
+        tmp = self.workspace.get_temp_path(task_id)
+
+        for filename in os.listdir(cwd):
+            file_path = os.path.join(cwd, filename)
+            if os.path.isfile(file_path):
+                LOG.info(f"copying {str(file_path)} to {tmp}")
+                shutil.copy(file_path, tmp)
+
+    
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         try:
             task = await self.db.create_task(
@@ -85,8 +97,9 @@ class ForgeAgent(Agent):
         # initalize memstore for task
         try:
             # initialize memstore
-            self.memory = ChromaMemStore(
-                f"{os.getenv('AGENT_WORKSPACE')}/{task.task_id}")
+            chroma_dir = f"{os.getenv('AGENT_WORKSPACE')}/{task.task_id}/chromadb"
+            os.mkdir(chroma_dir)
+            self.memory = ChromaMemStore(chroma_dir)
             LOG.info(f"🧠 Created memorystore @ {os.getenv('AGENT_WORKSPACE')}/{task.task_id}")
         except Exception as err:
             LOG.error(f"memstore creation failed: {err}")
@@ -169,53 +182,62 @@ class ForgeAgent(Agent):
             # Extract the ability from the answer
             ability = answer["ability"]
 
-            LOG.info(f"🔨 Running Ability {ability}")
+            if ability and ability["name"] != "":
+                LOG.info(f"🔨 Running Ability {ability}")
 
-            # Run the ability and get the output
-            if "args" in ability:
-                output = await self.abilities.run_ability(
-                    task_id,
-                    ability["name"],
-                    **ability["args"]
+                # Run the ability and get the output
+                if "args" in ability:
+                    output = await self.abilities.run_ability(
+                        task_id,
+                        ability["name"],
+                        **ability["args"]
+                    )
+                else:
+                    output = await self.abilities.run_ability(
+                        task_id,
+                        ability["name"]
+                    )
+
+                # change output to string if there is output
+                if isinstance(output, bytes):
+                    output = output.decode()
+                elif output:
+                    output = str(output)
+
+                # add to converstion
+                # add arguments to function content, if any
+                if "args" in ability:
+                    ccontent = f"[Arguments {ability['args']}]: {output} "
+                else:
+                    ccontent = output
+
+                self.add_chat(
+                    task_id=task_id,
+                    role="function",
+                    content=ccontent,
+                    is_function=True,
+                    function_name=ability["name"]
                 )
-            else:
-                output = await self.abilities.run_ability(
-                    task_id,
-                    ability["name"]
-                )
-
-            # change output to string if there is output
-            if isinstance(output, bytes):
-                output = output.decode()
-            elif output:
-                output = str(output)
-
-            # add to converstion
-            # add arguments to function content, if any
-            if "args" in ability:
-                ccontent = f"[Arguments {ability['args']}]: {output} "
-            else:
-                ccontent = output
-
-            self.add_chat(
-                task_id=task_id,
-                role="function",
-                content=ccontent,
-                is_function=True,
-                function_name=ability["name"]
-            )
 
             # Set the step output and is_last from AI
             step.output = answer["thoughts"]["speak"]
             
-            if (bool(answer["thoughts"]["last_step"])
-                or answer["thoughts"]["last_step"] == "True"
-                or answer["thoughts"]["last_step"] == "true"):
+            last_step_code = answer["thoughts"]["last_step"]
+            if isinstance(last_step_code, str):
+                try:
+                    last_step_code = int(last_step_code)
+                except:
+                    last_step_code = 0
+
+            if (bool(last_step_code)):
                 step.status = "completed"
                 step.is_last = True
+                self.copy_to_temp(task_id)
             else:
                 step.status = "running"
                 step.is_last = False
+            
+            LOG.info(f"step status {step.status} - is_last {step.is_last}")
 
             # have ai speak through speakers
             # cant use yet due to pydantic version differences
