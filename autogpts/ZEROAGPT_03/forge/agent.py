@@ -121,6 +121,11 @@ class ForgeAgent(Agent):
             additional_input=step_request.additional_input,
             is_last=False
         )
+        
+        if task_id in self.chat_history:
+            LOG.info(f"{pprint.pformat(self.chat_history[task_id])}")
+        else:
+            LOG.info("No chat log yet")
 
         # set up reply json with alternative created
         system_prompt = self.prompt_engine.load_prompt("system-format-last")
@@ -154,6 +159,13 @@ class ForgeAgent(Agent):
             
             answer = json.loads(
                 chat_response["choices"][0]["message"]["content"])
+            
+            # add response to chat log
+            self.add_chat(
+                task_id,
+                "assistant",
+                chat_response["choices"][0]["message"]["content"],
+            )
             
             LOG.info(f"[From AI]\n{answer}")
 
@@ -217,7 +229,7 @@ class ForgeAgent(Agent):
             # Handle other exceptions
             LOG.error(f"execute_step error: {e}")
 
-        LOG.info(f"chat log\n{pprint.pformat(self.chat_history[task_id])}")
+        
 
         # Return the completed step
         return step

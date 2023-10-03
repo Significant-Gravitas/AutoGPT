@@ -12,8 +12,8 @@ from ..registry import ability
     description="run a python file",
     parameters=[
         {
-            "name": "file_path",
-            "description": "Path to the file",
+            "name": "file_name",
+            "description": "Name of the file",
             "type": "string",
             "required": True
         }
@@ -21,13 +21,13 @@ from ..registry import ability
     output_type="dict"
 )
 
-async def run_python_file(agent, task_id: str, file_path: str) -> Dict:
+async def run_python_file(agent, task_id: str, file_name: str) -> Dict:
     """
     run_python_file
     Uses the UNSAFE exec method after reading file from local workspace
     Look for safer method
     """
-    open_file = agent.workspace.read(task_id, file_path)
+    open_file = agent.workspace.read(task_id, file_name)
     
     response = {
         "output": None,
@@ -41,6 +41,6 @@ async def run_python_file(agent, task_id: str, file_path: str) -> Dict:
             exec(open_file)
         response["output"] = out_io.getvalue()
     except Exception as e:
-        response["errors"] += str(e)
+        response["errors"] = str(e)
     
     return response

@@ -28,6 +28,47 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
     """
     return agent.workspace.list(task_id=task_id, path=path)
 
+@ability(
+    name="write_source_code",
+    description="Write programming language source code to a file",
+    parameters=[
+        {
+            "name": "file_name",
+            "description": "Name of the file",
+            "type": "string",
+            "required": True,
+        },
+        {
+            "name": "code",
+            "description": "Code to write to the file",
+            "type": "string",
+            "required": True,
+        },
+    ],
+    output_type="None",
+)
+async def write_source_code(agent, task_id: str, file_name: str, code: str) -> None:
+    """
+    Write source code as string/text to a file
+    """
+
+    # clean extra escape slashes
+    code = code.replace('\\\\', '\\')
+    
+    # clean \n being written as text and not a new line
+    code = code.replace('\\n', '\n')
+
+    agent.workspace.write_str(task_id=task_id, path=file_name, data=code)
+    
+    await agent.db.create_artifact(
+        task_id=task_id,
+        file_name=file_name.split("/")[-1],
+        relative_path=file_name,
+        agent_created=True,
+    )
+
+    add_memory(task_id, code, "write_source_code")
+
 
 @ability(
     name="write_file",
@@ -52,11 +93,6 @@ async def write_file(agent, task_id: str, file_name: str, data: bytes) -> None:
     """
     Write data to a file
     """
-
-    logger.info(f"\nwrite_file data: {str(data)}\n")
-
-    data = str(data).replace("\\\\", "\\")
-
     if isinstance(data, str):
         # ai adding too many escape back slashes
         data = data.encode()
