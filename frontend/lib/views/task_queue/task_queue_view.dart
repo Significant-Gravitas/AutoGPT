@@ -97,18 +97,22 @@ class TaskQueueView extends StatelessWidget {
               children: [
                 // TestSuiteButton
                 TestSuiteButton(
-                  onPressed: viewModel.isBenchmarkRunning
-                      ? null
-                      : () {
-                          final chatViewModel = Provider.of<ChatViewModel>(
-                              context,
-                              listen: false);
-                          final taskViewModel = Provider.of<TaskViewModel>(
-                              context,
-                              listen: false);
-                          chatViewModel.clearCurrentTaskAndChats();
-                          viewModel.runBenchmark(chatViewModel, taskViewModel);
-                        },
+                  isDisabled: viewModel.isBenchmarkRunning,
+                  selectedOption: viewModel.selectedOption,
+                  onOptionSelected: (selectedOption) {
+                    print('Option Selected: $selectedOption');
+                    viewModel.updateSelectedNodeHierarchyBasedOnOption(
+                        selectedOption);
+                  },
+                  onPlayPressed: (selectedOption) {
+                    print('Starting benchmark with option: $selectedOption');
+                    final chatViewModel =
+                        Provider.of<ChatViewModel>(context, listen: false);
+                    final taskViewModel =
+                        Provider.of<TaskViewModel>(context, listen: false);
+                    chatViewModel.clearCurrentTaskAndChats();
+                    viewModel.runBenchmark(chatViewModel, taskViewModel);
+                  },
                 ),
                 SizedBox(height: 8), // Gap of 8 points between buttons
                 // LeaderboardSubmissionButton
