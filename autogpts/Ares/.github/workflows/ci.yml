@@ -1,0 +1,261 @@
+name: Python CI
+
+on:
+  push:
+    branches: [ master, ci-test* ]
+    paths-ignore:
+      - 'tests/Auto-GPT-test-cassettes'
+      - 'tests/challenges/current_score.json'
+  pull_request:
+    branches: [ stable, master, release-* ]
+  pull_request_target:
+    branches: [ master, release-*, ci-test* ]
+
+concurrency:
+  group: ${{ format('ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+
+jobs:
+  lint:
+    # eliminate duplicate runs
+    if: github.event_name == 'push' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
+
+    runs-on: ubuntu-latest
+    env:
+      min-python-version: "3.10"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - id: get_date
+        name: Get date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ steps.get_date.outputs.date }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with flake8
+        run: flake8
+
+      - name: Check black formatting
+        run: black . --check
+        if: success() || failure()
+
+      - name: Check isort formatting
+        run: isort . --check
+        if: success() || failure()
+
+      - name: Check mypy formatting
+        run: mypy
+        if: success() || failure()
+
+      - name: Check for unused imports and pass statements
+        run: |
+          cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests"
+          $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
+
+  test:
+    # eliminate duplicate runs
+    if: github.event_name == 'push' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
+
+    permissions:
+      # Gives the action the necessary permissions for publishing new
+      # comments in pull requests.
+      pull-requests: write
+      # Gives the action the necessary permissions for pushing data to the
+      # python-coverage-comment-action branch, and for editing existing
+      # comments (to avoid publishing multiple comments in the same PR)
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        python-version: ["3.10"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          submodules: true
+
+      - name: Configure git user Auto-GPT-Bot
+        run: |
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+
+      - name: Checkout cassettes
+        if: ${{ startsWith(github.event_name, 'pull_request') }}
+        run: |
+          cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+          cassette_base_branch="${{ github.event.pull_request.base.ref }}"
+          cd tests/Auto-GPT-test-cassettes
+
+          if ! git ls-remote --exit-code --heads origin $cassette_base_branch ; then
+            cassette_base_branch="master"
+          fi
+
+          if git ls-remote --exit-code --heads origin $cassette_branch ; then
+            git fetch origin $cassette_branch
+            git fetch origin $cassette_base_branch
+
+            git checkout $cassette_branch
+
+            # Pick non-conflicting cassette updates from the base branch
+            git merge --no-commit --strategy-option=ours origin/$cassette_base_branch
+            echo "Using cassettes from mirror branch '$cassette_branch'," \
+              "synced to upstream branch '$cassette_base_branch'."
+          else
+            git checkout -b $cassette_branch
+            echo "Branch '$cassette_branch' does not exist in cassette submodule." \
+              "Using cassettes from '$cassette_base_branch'."
+          fi
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - id: get_date
+        name: Get date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ steps.get_date.outputs.date }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pytest with coverage
+        run: |
+          pytest -vv --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+            --numprocesses=logical --durations=10 \
+            tests/unit tests/integration tests/challenges
+          python tests/challenges/utils/build_current_score.py
+        env:
+          CI: true
+          PROXY: ${{ github.event_name == 'pull_request_target' && secrets.PROXY || '' }}
+          AGENT_MODE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_MODE || '' }}
+          AGENT_TYPE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_TYPE || '' }}
+          OPENAI_API_KEY: ${{ github.event_name != 'pull_request_target' && secrets.OPENAI_API_KEY || '' }}
+          PLAIN_OUTPUT: True
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v3
+
+      - id: setup_git_auth
+        name: Set up git token authentication
+        # Cassettes may be pushed even when tests fail
+        if: success() || failure()
+        run: |
+          config_key="http.${{ github.server_url }}/.extraheader"
+          base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+
+          git config "$config_key" \
+            "Authorization: Basic $base64_pat"
+
+          cd tests/Auto-GPT-test-cassettes
+          git config "$config_key" \
+            "Authorization: Basic $base64_pat"
+
+          echo "config_key=$config_key" >> $GITHUB_OUTPUT
+
+      - name: Push updated challenge scores
+        if: github.event_name == 'push'
+        run: |
+          score_file="tests/challenges/current_score.json"
+
+          if ! git diff --quiet $score_file; then
+            git add $score_file
+            git commit -m "Update challenge scores"
+            git push origin HEAD:${{ github.ref_name }}
+          else
+            echo "The challenge scores didn't change."
+          fi
+
+      - id: push_cassettes
+        name: Push updated cassettes
+        # For pull requests, push updated cassettes even when tests fail
+        if: github.event_name == 'push' || success() || failure()
+        run: |
+          if [ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]; then
+            is_pull_request=true
+            cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+          else
+            cassette_branch="${{ github.ref_name }}"
+          fi
+
+          cd tests/Auto-GPT-test-cassettes
+          # Commit & push changes to cassettes if any
+          if ! git diff --quiet; then
+            git add .
+            git commit -m "Auto-update cassettes"
+            git push origin HEAD:$cassette_branch
+            if [ ! $is_pull_request ]; then
+              cd ../..
+              git add tests/Auto-GPT-test-cassettes
+              git commit -m "Update cassette submodule"
+              git push origin HEAD:$cassette_branch
+            fi
+            echo "updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "updated=false" >> $GITHUB_OUTPUT
+            echo "No cassette changes to commit"
+          fi
+
+      - name: Post Set up git token auth
+        if: steps.setup_git_auth.outcome == 'success'
+        run: |
+          git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
+          git submodule foreach git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
+
+      - name: Apply "behaviour change" label and comment on PR
+        if: ${{ startsWith(github.event_name, 'pull_request') }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          TOKEN=${{ secrets.PAT_REVIEW }}
+          REPO=${{ github.repository }}
+
+          if [[ "${{ steps.push_cassettes.outputs.updated }}" == "true" ]]; then
+            echo "Adding label and comment..."
+            curl -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels \
+            -d '{"labels":["behaviour change"]}'
+
+            echo $TOKEN | gh auth login --with-token
+            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
+          fi
+
+      - name: Upload logs to artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-logs
+          path: logs/

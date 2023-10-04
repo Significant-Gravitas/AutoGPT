@@ -1,3 +1,21 @@
 [submodule "autogpts/autogpt/tests/vcr_cassettes"]
 	path = autogpts/autogpt/tests/vcr_cassettes
 	url = https://github.com/Significant-Gravitas/Auto-GPT-test-cassettes
+[submodule "Open-Sourcerer"]
+	path = Open-Sourcerer
+	url = git@github.com:Agora-X/Open-Sourcerer.git
+[submodule "Apollo"]
+	path = Apollo
+	url = git@github.com:Agora-X/Apollo.git
+[submodule "Cyber"]
+	path = Cyber
+	url = git@github.com:Agora-X/Cyber.git
+[submodule "Ares"]
+	path = Ares
+	url = git@github.com:Agora-X/Ares.git
+[submodule "Synthia"]
+	path = Synthia
+	url = git@github.com:Agora-X/Synthia.git
+[submodule "orchistrator"]
+	path = orchistrator
+	url = git@github.com:ZackBradshaw/orchistrator.git

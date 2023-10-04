@@ -107,7 +107,7 @@ async def configure_env(interaction):
     openai_key = key_message.content
 
     # Update the .env file in the specified directory
-    env_file_path = '../auto-ikigAI/.env'
+    env_file_path = '../autogpts/autogptold'
 
     # Using 'a' mode to append the key without overwriting existing content
     with open(env_file_path, 'a') as file:

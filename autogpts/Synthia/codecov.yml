@@ -1,0 +1,18 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        target: 80%     
+ 
+## Please add this section once you've separated your coverage uploads for unit and integration tests
+# 
+# flags:
+#   unit-tests:
+#     carryforward: true 
+#   integration-tests:
+#     carryforward: true
