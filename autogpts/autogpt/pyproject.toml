@@ -86,10 +86,6 @@ pytest-recording = "*"
 pytest-xdist = "*"
 vcrpy = {git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master"}
 
-[tool.poetry.group.benchmark.dependencies]
-agbenchmark = { path = "../../benchmark" }
-
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
