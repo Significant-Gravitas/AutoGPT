@@ -439,6 +439,7 @@ def update_user(
         },
     )
 
+command_chain = ["Y",] # FIXME this is not good.
 
 async def get_user_feedback(
     config: Config,
@@ -475,9 +476,10 @@ async def get_user_feedback(
         if config.chat_messages_enabled:
             console_input = await clean_input(config, "Waiting for your response...")
         else:
-            console_input = await clean_input(
-                config, Fore.MAGENTA + "Input: " + Style.RESET_ALL
-            )
+            if len(command_chain)>0:
+                console_input = command_chain.pop()
+            else:
+                console_input = "n" # NJET
 
         # Parse user input
         if console_input.lower().strip() == config.authorise_key:
