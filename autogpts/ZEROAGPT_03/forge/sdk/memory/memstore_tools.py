@@ -10,7 +10,7 @@ logger = ForgeLogger(__name__)
 def add_memory(task_id: str, document: str, ability_name: str) -> None:
     logger.info(f"🧠 Adding ability '{ability_name}' memory for task {task_id}")
     try:
-        chromadb_path = f"{os.getenv('AGENT_WORKSPACE')}/{task_id}"
+        chromadb_path = f"{os.getenv('AGENT_WORKSPACE')}/{task_id}/chromadb/"
         memory = ChromaMemStore(chromadb_path)
         memory.add(
             task_id=task_id,

@@ -66,6 +66,18 @@ class ForgeAgent(Agent):
             # cut down on messages being repeated in chat
             if chat_struct not in self.chat_history[task_id]:
                 self.chat_history[task_id].append(chat_struct)
+
+                # check length if greater than 15 cut to last 5
+                if len(self.chat_history) > 15:
+                    last_msgs = self.chat_history[10:]
+                    # add the first two system msgs to new_history
+                    # 
+                    new_history = [
+                        self.chat_history[0],
+                        self.chat_history[1]] + last_msgs
+                    
+                    self.chat_history[task_id] = new_history
+
         except KeyError:
             self.chat_history[task_id] = [chat_struct]
     
@@ -83,6 +95,33 @@ class ForgeAgent(Agent):
                     LOG.info(f"copying {str(file_path)} to {tmp}")
                     shutil.copy(file_path, tmp)
 
+    def set_system_messages(self, task_id: str, task_input: str):
+        """
+        Add the call to action and response formatting
+        system messages
+        """
+        # add system prompts to chat for task
+        # set up reply json with alternative created
+        system_prompt = self.prompt_engine.load_prompt("system-reformat")
+
+        # add to messages
+        # wont memory store this as static
+        self.add_chat(task_id, "system", system_prompt)
+
+        #setup call to action (cta) with task and abilities        
+        ctoa_prompt_params = {
+            "name": self.expert_profile["name"],
+            "expertise": self.expert_profile["expertise"],
+            "task": task_input,
+            "abilities": self.abilities.list_abilities_for_prompt()
+        }
+
+        task_prompt = self.prompt_engine.load_prompt(
+            "task-format2",
+            **ctoa_prompt_params
+        )
+
+        self.add_chat(task_id, "system", task_prompt)
     
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         try:
@@ -121,8 +160,13 @@ class ForgeAgent(Agent):
             self.expert_profile = json.loads(role_json)
         except Exception as err:
             LOG.error(f"role JSON failed: {err}")
+        
+        # add system prompts to chat for task
+        self.set_system_messages(task.task_id, task.input)
 
         return task
+    
+        
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
         task = await self.db.get_task(task_id)
@@ -136,32 +180,7 @@ class ForgeAgent(Agent):
             is_last=False
         )
         
-        if task_id in self.chat_history:
-            LOG.info(f"{pprint.pformat(self.chat_history[task_id])}")
-        else:
-            LOG.info("No chat log yet")
-
-        # set up reply json with alternative created
-        system_prompt = self.prompt_engine.load_prompt("system-format-last")
-
-        # add to messages
-        # wont memory store this as static
-        self.add_chat(task_id, "system", system_prompt)
-        
-        ontology_prompt_params = {
-            "name": self.expert_profile["name"],
-            "expertise": self.expert_profile["expertise"],
-            "task": task.input,
-            "abilities": self.abilities.list_abilities_for_prompt()
-        }
-
-        task_prompt = self.prompt_engine.load_prompt(
-            "ontology-format",
-            **ontology_prompt_params
-        )
-
-        self.add_chat(task_id, "user", task_prompt)
-
+        # load current chat into chat completion
         try:
             chat_completion_parms = {
                 "messages": self.chat_history[task_id],
@@ -171,9 +190,12 @@ class ForgeAgent(Agent):
             chat_response = await chat_completion_request(
                 **chat_completion_parms)
         except Exception as err:
-            LOG.error(f"Error with chat completion API\nSTOPPING TASK\n{err}")
-            step.status = "completed"
-            step.is_last = True
+            self.add_chat(
+                    task_id,
+                    "user",
+                    f"[{step.step_id}] API error, please shorten your replies\error: {err}")
+            step.status = "continue"
+            step.is_last = False
         else:
             try:
                 answer = json.loads(
@@ -188,64 +210,80 @@ class ForgeAgent(Agent):
                 
                 LOG.info(f"[From AI]\n{answer}")
 
-                # Extract the ability from the answer
-                ability = answer["ability"]
+                if "ability" in answer:
 
-                if ability and ability["name"] != "":
-                    LOG.info(f"🔨 Running Ability {ability}")
+                    # Extract the ability from the answer
+                    ability = answer["ability"]
 
-                    # Run the ability and get the output
-                    if "args" in ability:
-                        output = await self.abilities.run_ability(
-                            task_id,
-                            ability["name"],
-                            **ability["args"]
+                    if ability and ability["name"] != "":
+                        LOG.info(f"🔨 Running Ability {ability}")
+
+                        # Run the ability and get the output
+                        if "args" in ability:
+                            output = await self.abilities.run_ability(
+                                task_id,
+                                ability["name"],
+                                **ability["args"]
+                            )
+                        else:
+                            output = await self.abilities.run_ability(
+                                task_id,
+                                ability["name"]
+                            )
+
+                        # change output to string if there is output
+                        if isinstance(output, bytes):
+                            output = output.decode()
+                        
+
+                        # add to converstion
+                        # add arguments to function content, if any
+                        if "args" in ability:
+                            ccontent = f"[Arguments {ability['args']}]: {output} "
+                        else:
+                            ccontent = output
+
+                        self.add_chat(
+                            task_id=task_id,
+                            role="function",
+                            content=ccontent,
+                            is_function=True,
+                            function_name=ability["name"]
                         )
-                    else:
-                        output = await self.abilities.run_ability(
-                            task_id,
-                            ability["name"]
-                        )
 
-                    # change output to string if there is output
-                    if isinstance(output, bytes):
-                        output = output.decode()
-                    elif output:
-                        output = str(output)
+                        if ability["name"] == "finish":
+                            step.status = "completed"
+                            step.is_last = True
+                            self.copy_to_temp(task_id)
+                        else:
+                            step.status = "running"
+                            step.is_last = False
+                else:
+                    system_prompt = self.prompt_engine.load_prompt("system-reformat")
 
-                    # add to converstion
-                    # add arguments to function content, if any
-                    if "args" in ability:
-                        ccontent = f"[Arguments {ability['args']}]: {output} "
-                    else:
-                        ccontent = output
-
-                    self.add_chat(
-                        task_id=task_id,
-                        role="function",
-                        content=ccontent,
-                        is_function=True,
-                        function_name=ability["name"]
-                    )
+                    # add to messages
+                    # wont memory store this as static
+                    self.add_chat(task_id, "system", f"There was an error with your reply\n{system_prompt}") 
 
                 # Set the step output and is_last from AI
                 step.output = answer["thoughts"]["speak"]
                 
-                last_step_code = answer["thoughts"]["last_step"]
-                if isinstance(last_step_code, str):
-                    try:
-                        last_step_code = int(last_step_code)
-                    except:
-                        last_step_code = 0
+                # if "last_step" in answer["thoughts"]:
+                #     last_step_code = answer["thoughts"]["last_step"]
+                #     if isinstance(last_step_code, str):
+                #         try:
+                #             last_step_code = int(last_step_code)
+                #         except:
+                #             last_step_code = 0
 
-                if (bool(last_step_code)):
-                    step.status = "completed"
-                    step.is_last = True
-                    self.copy_to_temp(task_id)
-                else:
-                    step.status = "running"
-                    step.is_last = False
-                
+                #     if (bool(last_step_code)):
+                #         step.status = "completed"
+                #         step.is_last = True
+                #         self.copy_to_temp(task_id)
+                #     else:
+                #         step.status = "running"
+                #         step.is_last = False
+                    
                 LOG.info(f"step status {step.status} - is_last {step.is_last}")
 
                 # have ai speak through speakers
@@ -261,14 +299,31 @@ class ForgeAgent(Agent):
             except json.JSONDecodeError as e:
                 # Handle JSON decoding errors
                 LOG.error(f"agent.py - JSON error when decoding: {e}")
+                
                 step.status = "running"
                 step.is_last = False
+
+                self.add_chat(
+                    task_id,
+                    "user",
+                    f"[{step.step_id}] Your reply was not formatted correctly. Can you please fix and try again?\error: {e}")
             except Exception as e:
                 # Handle other exceptions
                 LOG.error(f"execute_step error: {e}")
-                LOG.info("chat_response: {chat_response}")
+                LOG.info(f"chat_response: {chat_response}")
                 step.status = "running"
                 step.is_last = False
+
+                self.add_chat(
+                    task_id,
+                    "user",
+                    f"[{step.step_id}] Something went wrong with processing on our end. Please reformat your reply and try again.\error: {e}")
+
+
+        if task_id in self.chat_history:
+            LOG.info(f"{pprint.pformat(self.chat_history[task_id])}")
+        else:
+            LOG.info("No chat log yet")
 
         # Return the completed step
         return step

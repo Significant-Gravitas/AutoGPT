@@ -28,9 +28,10 @@ async def mem_search(agent, task_id: str, query: str) -> List[str]:
     mem_docs = []
 
     try:
-        chromadb_path = f"{os.getenv('AGENT_WORKSPACE')}/{task_id}"
+        cwd = agent.workspace.get_cwd_path(task_id)
+        chroma_dir = f"{cwd}/chromadb/"
 
-        memory = ChromaMemStore(chromadb_path)
+        memory = ChromaMemStore(chroma_dir)
         memory_resp = memory.query(
             task_id=task_id,
             query=query

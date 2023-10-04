@@ -26,7 +26,14 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
     """
     List files in a workspace directory
     """
-    return agent.workspace.list(task_id=task_id, path=path)
+    
+    try:
+        file_list = agent.workspace.list(task_id=task_id, path=path)
+    except Exception as e:
+        logger.error(f"list_file failed: {e}")
+        file_list = []
+    
+    return file_list 
 
 @ability(
     name="write_source_code",
@@ -125,7 +132,7 @@ async def read_file(agent, task_id: str, file_name: str) -> bytes:
     """
     Read data from a file
     """
-    read_file = bytes()
+    read_file = "No file found".encode()
 
     try:
         read_file = agent.workspace.read(task_id=task_id, path=file_name)
@@ -159,9 +166,13 @@ async def search_file(agent, task_id: str, file_name: str, regex: str) -> List[M
     """
     Search file using regex
     """
-    open_file = agent.workspace.read(task_id=task_id, path=file_name)
+    search_rgx = []
 
-    search_rgx = re.findall(rf"{regex}", open_file.decode())
+    try:
+        open_file = agent.workspace.read(task_id=task_id, path=file_name)
+        search_rgx = re.findall(rf"{regex}", open_file.decode())
+    except Exception as e:
+        logger.error(f"search_file failed: {e}")
 
     return search_rgx
 

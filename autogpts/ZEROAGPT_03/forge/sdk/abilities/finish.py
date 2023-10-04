@@ -6,7 +6,7 @@ logger = ForgeLogger(__name__)
 
 @ability(
     name="finish",
-    description="Use this to shut down once you have accomplished all of your goals,"
+    description="Use this to shut down once you have accomplished your task,"
     " or when there are insurmountable problems that make it impossible"
     " for you to finish your task.",
     parameters=[

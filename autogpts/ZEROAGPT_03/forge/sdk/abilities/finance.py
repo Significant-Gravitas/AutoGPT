@@ -46,8 +46,8 @@ async def get_ticker_info(
     return json_info
 
 @ability(
-    name="get_financials_year",
-    description=f"Get financial information of a company",
+    name="get_ticker_financials_year",
+    description=f"Get financial information of a stock market ticker",
     parameters=[
         {
             "name": "ticker_symbol",

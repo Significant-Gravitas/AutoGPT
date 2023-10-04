@@ -182,20 +182,25 @@ class TaskArtifactsListResponse(BaseModel):
 class ChatHistory(BaseModel):
     created_at: datetime = Field(
         ...,
-        description="The creation datetime of the task.",
+        description="The creation datetime of chat history.",
         example="2023-01-01T00:00:00Z",
         json_encoders={datetime: lambda v: v.isoformat()},
     )
     modified_at: datetime = Field(
         ...,
-        description="The modification datetime of the task.",
+        description="The modification datetime of chat history.",
         example="2023-01-01T00:00:00Z",
         json_encoders={datetime: lambda v: v.isoformat()},
     )
     task_id: str = Field(
         ...,
-        description="The ID of the task this step belongs to.",
+        description="The ID of the task this chat history belongs to.",
         example="50da533e-3904-4401-8a07-c49adf88b5eb",
+    )
+    step_id: str = Field(
+        ...,
+        description="The ID of the task step.",
+        example="6bb1801a-fd80-45e8-899a-4dd723cc602e",
     )
     role: str = Field(
         ...,
