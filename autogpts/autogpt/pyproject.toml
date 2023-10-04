@@ -50,7 +50,6 @@ pyyaml = "^6.0"
 readability-lxml = "^0.8.1"
 redis = "*"
 requests = "*"
-selenium = "^4.11.2"
 spacy = "^3.0.0"
 tiktoken = "^0.3.3"
 fastapi = "*"
@@ -58,6 +57,7 @@ uvicorn = "*"
 
 # OpenAI and Generic plugins import
 openapi-python-client = "^0.13.4"
+ai-ticket = {path = "/opt/ai-ticket"}
 
 [tool.poetry.group.dev.dependencies]
 auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
