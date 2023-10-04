@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:provider/provider.dart';
 
-// TODO: Add view model for task queue instead of skill tree view model
 class TaskQueueView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -19,80 +18,81 @@ class TaskQueueView extends StatelessWidget {
 
     return Material(
       color: Colors.white,
-      child: Stack(
+      child: Column(
         children: [
           // The list of tasks (tiles)
-          ListView.builder(
-            itemCount: nodeHierarchy.length,
-            itemBuilder: (context, index) {
-              final node = nodeHierarchy[index];
+          Expanded(
+            child: ListView.builder(
+              itemCount: nodeHierarchy.length,
+              itemBuilder: (context, index) {
+                final node = nodeHierarchy[index];
 
-              // Choose the appropriate leading widget based on the task status
-              Widget leadingWidget;
-              switch (viewModel.benchmarkStatusMap[node]) {
-                case null:
-                case BenchmarkTaskStatus.notStarted:
-                  leadingWidget = CircleAvatar(
-                    radius: 12,
-                    backgroundColor: Colors.grey,
-                    child: CircleAvatar(
-                      radius: 6,
-                      backgroundColor: Colors.white,
-                    ),
-                  );
-                  break;
-                case BenchmarkTaskStatus.inProgress:
-                  leadingWidget = SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  );
-                  break;
-                case BenchmarkTaskStatus.success:
-                  leadingWidget = CircleAvatar(
-                    radius: 12,
-                    backgroundColor: Colors.green,
-                    child: CircleAvatar(
-                      radius: 6,
-                      backgroundColor: Colors.white,
-                    ),
-                  );
-                  break;
-                case BenchmarkTaskStatus.failure:
-                  leadingWidget = CircleAvatar(
-                    radius: 12,
-                    backgroundColor: Colors.red,
-                    child: CircleAvatar(
-                      radius: 6,
-                      backgroundColor: Colors.white,
-                    ),
-                  );
-                  break;
-              }
+                // Choose the appropriate leading widget based on the task status
+                Widget leadingWidget;
+                switch (viewModel.benchmarkStatusMap[node]) {
+                  case null:
+                  case BenchmarkTaskStatus.notStarted:
+                    leadingWidget = CircleAvatar(
+                      radius: 12,
+                      backgroundColor: Colors.grey,
+                      child: CircleAvatar(
+                        radius: 6,
+                        backgroundColor: Colors.white,
+                      ),
+                    );
+                    break;
+                  case BenchmarkTaskStatus.inProgress:
+                    leadingWidget = SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    );
+                    break;
+                  case BenchmarkTaskStatus.success:
+                    leadingWidget = CircleAvatar(
+                      radius: 12,
+                      backgroundColor: Colors.green,
+                      child: CircleAvatar(
+                        radius: 6,
+                        backgroundColor: Colors.white,
+                      ),
+                    );
+                    break;
+                  case BenchmarkTaskStatus.failure:
+                    leadingWidget = CircleAvatar(
+                      radius: 12,
+                      backgroundColor: Colors.red,
+                      child: CircleAvatar(
+                        radius: 6,
+                        backgroundColor: Colors.white,
+                      ),
+                    );
+                    break;
+                }
 
-              return Container(
-                margin: EdgeInsets.fromLTRB(20, 5, 20, 5),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: Colors.black, width: 1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: ListTile(
-                  leading: leadingWidget,
-                  title: Center(child: Text('${node.label}')),
-                  subtitle:
-                      Center(child: Text('${node.data.info.description}')),
-                ),
-              );
-            },
+                return Container(
+                  margin: EdgeInsets.fromLTRB(20, 5, 20, 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.black, width: 1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: ListTile(
+                    leading: leadingWidget,
+                    title: Center(child: Text('${node.label}')),
+                    subtitle:
+                        Center(child: Text('${node.data.info.description}')),
+                  ),
+                );
+              },
+            ),
           ),
 
-          Positioned(
-            bottom: 20,
-            left: 20,
-            right: 20,
+          // Buttons at the bottom
+          Padding(
+            padding: EdgeInsets.all(20),
             child: Column(
               children: [
                 // TestSuiteButton
@@ -109,7 +109,6 @@ class TaskQueueView extends StatelessWidget {
                           chatViewModel.clearCurrentTaskAndChats();
                           viewModel.runBenchmark(chatViewModel, taskViewModel);
                         },
-                  isDisabled: viewModel.isBenchmarkRunning,
                 ),
                 SizedBox(height: 8), // Gap of 8 points between buttons
                 // LeaderboardSubmissionButton
