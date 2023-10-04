@@ -1,3 +1,6 @@
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
 class UriUtility {
   static bool isURL(String url) {
     // Validate if the URL string is empty, or contains spaces or invalid characters
@@ -43,5 +46,30 @@ class UriUtility {
 
     print('URL is valid.');
     return true;
+  }
+
+  Future<bool> isValidGitHubRepo(String repoUrl) async {
+    var uri = Uri.parse(repoUrl);
+    if (uri.host != 'github.com') {
+      return false;
+    }
+
+    var segments = uri.pathSegments;
+    if (segments.length < 2) {
+      return false;
+    }
+
+    var user = segments[0];
+    var repo = segments[1];
+
+    var apiUri = Uri.https('api.github.com', '/repos/$user/$repo');
+
+    var response = await http.get(apiUri);
+    if (response.statusCode != 200) {
+      return false;
+    }
+
+    var data = json.decode(response.body);
+    return data is Map && data['full_name'] == '$user/$repo';
   }
 }
