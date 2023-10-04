@@ -244,8 +244,8 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
     def build_prompt(
         self,
         scratchpad: PromptScratchpad,
-        extra_commands: list[CompletionModelFunction] = [],
-        extra_messages: list[ChatMessage] = [],
+        extra_commands: Optional[list[CompletionModelFunction]] = None,
+        extra_messages: Optional[list[ChatMessage]] = None,
         **extras,
     ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
@@ -256,6 +256,10 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         Params:
             cycle_instruction: The final instruction for a thinking cycle
         """
+        if extra_commands is None:
+            extra_commands = []
+        if extra_messages is None:
+            extra_messages = []
 
         # Apply additions from plugins
         for plugin in self.config.plugins:
