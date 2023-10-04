@@ -26,12 +26,12 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
     """
     List files in a workspace directory
     """
-    
+
     try:
         file_list = agent.workspace.list(task_id=task_id, path=path)
     except Exception as e:
         logger.error(f"list_file failed: {e}")
-        file_list = []
+        file_list = [{}]
     
     return file_list 
 

@@ -30,7 +30,10 @@ async def chat_completion_request(
             for label in custom_labels.keys():
                 # This is an example showing adding in the labels as helicone properties
                 kwargs["headers"][f"Helicone-Property-{label}"] = custom_labels[label]
-
+        
+        # static writing/tuning temperature
+        kwargs["temperature"] = 0.2
+        
         resp = await openai.ChatCompletion.acreate(**kwargs)
 
         return resp

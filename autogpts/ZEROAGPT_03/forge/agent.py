@@ -108,12 +108,19 @@ class ForgeAgent(Agent):
         # wont memory store this as static
         self.add_chat(task_id, "system", system_prompt)
 
+        # add abilities prompt
+        abilities_prompt = self.prompt_engine.load_prompt(
+            "abilities-list",
+            **{"abilities": self.abilities.list_abilities_for_prompt()}
+        )
+
+        self.add_chat(task_id, "system", abilities_prompt)
+
         #setup call to action (cta) with task and abilities        
         ctoa_prompt_params = {
             "name": self.expert_profile["name"],
             "expertise": self.expert_profile["expertise"],
-            "task": task_input,
-            "abilities": self.abilities.list_abilities_for_prompt()
+            "task": task_input
         }
 
         task_prompt = self.prompt_engine.load_prompt(
@@ -121,7 +128,8 @@ class ForgeAgent(Agent):
             **ctoa_prompt_params
         )
 
-        self.add_chat(task_id, "system", task_prompt)
+        self.add_chat(task_id, "user", task_prompt)
+
     
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         try:
@@ -169,7 +177,7 @@ class ForgeAgent(Agent):
         
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
-        task = await self.db.get_task(task_id)
+        # task = await self.db.get_task(task_id)
 
         # Create a new step in the database
         # have AI determine last step
@@ -235,7 +243,6 @@ class ForgeAgent(Agent):
                         if isinstance(output, bytes):
                             output = output.decode()
                         
-
                         # add to converstion
                         # add arguments to function content, if any
                         if "args" in ability:
@@ -259,7 +266,7 @@ class ForgeAgent(Agent):
                             step.status = "running"
                             step.is_last = False
                 else:
-                    system_prompt = self.prompt_engine.load_prompt("system-reformat")
+                    system_prompt = self.prompt_engine.load_prompt("system-format")
 
                     # add to messages
                     # wont memory store this as static
