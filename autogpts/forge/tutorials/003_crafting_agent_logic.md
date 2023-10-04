@@ -86,7 +86,7 @@ Now that we've demystified the process to ace the 'write file' test, it's time t
 
 ## Building the Foundations For Our Smart Agent
 
-Alright, first order of business: Let's purge that cheeky excuse_step function of its deceptive logic and lay the groundwork for our brainy agent. Remember, when our execute_step function gets the call, it's initially clueless about the specific task at hand. So, our initial task is to rectify this.
+Alright, first order of business: Let's remove the hardcoded solution from the execute_step() function and have it work on the provided request instead. 
 
 To bridge this knowledge gap, we'll summon the task details using the task_id provided. Here's the code magic to make it happen:
 
