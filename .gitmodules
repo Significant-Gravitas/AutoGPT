@@ -16,3 +16,6 @@
 [submodule "autogpts/Synthia"]
 	path = autogpts/Synthia
 	url = git@github.com:Agora-X/Synthia.git
+[submodule "autogpts/Spartan"]
+	path = autogpts/Spartan
+	url = git@github.com:Agora-X/Spartan.git
