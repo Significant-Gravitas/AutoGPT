@@ -19,3 +19,6 @@
 [submodule "orchistrator"]
 	path = orchistrator
 	url = git@github.com:ZackBradshaw/orchistrator.git
+[submodule "Leonidas"]
+	path = Leonidas
+	url = git@github.com:ZackBradshaw/Open-Sourcerer.git
