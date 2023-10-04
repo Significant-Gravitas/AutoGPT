@@ -208,10 +208,9 @@ The PromptEngine equips us with a potent tool to converse seamlessly with large 
 
 ## Engaging with your LLM
 
-To fully exploit the capabilities of LLMd, it goes beyond simply sending a solitary prompt. It’s about tasking the model with a series of structured directives. To do this we need to structure our prompts into the format our LLM is primed to process a list of messages. Using the system_prompt and task_prompt we previously prepared create the 
+To fully exploit the capabilities of LLMd, it goes beyond simply sending a solitary prompt. It’s about tasking the model with a series of structured directives. To do this we need to structure our prompts into the format our LLM is primed to process a list of messages. Using the system_prompt and task_prompt we previously prepared, create the messages list:
 
 ```python
-messages list:
  messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": task_prompt}
