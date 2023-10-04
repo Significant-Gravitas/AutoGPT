@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     pass
 
 
-class SimpleAgentSystems(BaseAgentSystems):
+class PlannerAgentSystems(BaseAgentSystems):
     tool_registry: PluginLocation
     openai_provider: PluginLocation
     planning: PluginLocation
@@ -29,8 +29,8 @@ class SimpleAgentSystems(BaseAgentSystems):
         pass
 
 
-class SimpleAgentConfiguration(BaseAgentConfiguration):
-    systems: SimpleAgentSystems
+class PlannerAgentConfiguration(BaseAgentConfiguration):
+    systems: PlannerAgentSystems
     agent_name: str = Field(default="New Agent")
     agent_role: Optional[str] = Field(default=None)
     agent_goals: Optional[list[str]] = Field(default=None)
@@ -40,8 +40,8 @@ class SimpleAgentConfiguration(BaseAgentConfiguration):
         pass
 
 
-class SimpleAgentSystemSettings(BaseAgentSystemSettings):
-    configuration: SimpleAgentConfiguration
+class PlannerSystemSettings(BaseAgentSystemSettings):
+    configuration: PlannerAgentConfiguration
     # user_id: Optional[uuid.UUID] = Field(default=None)
     # agent_id: Optional[uuid.UUID] = Field(default=None)
 
@@ -49,8 +49,8 @@ class SimpleAgentSystemSettings(BaseAgentSystemSettings):
         pass
 
 
-class SimpleAgentSettings(BaseAgentSettings):
-    agent: SimpleAgentSystemSettings
+class PlannerAgentSettings(BaseAgentSettings):
+    agent: PlannerSystemSettings
     openai_provider: OpenAISettings
     tool_registry: ToolsRegistrySettings
     planning: PlannerSettings
@@ -60,7 +60,7 @@ class SimpleAgentSettings(BaseAgentSettings):
     agent_role: Optional[str] = Field(default=None)
     agent_goals: Optional[list] = Field(default=None)
     agent_goal_sentence: Optional[list] = Field(default=None)
-    agent_class: str = Field(default="autogpt.core.agents.simple.main.SimpleAgent")
+    agent_class: str = Field(default="autogpt.core.agents.simple.main.PlannerAgent")
 
     class Config(BaseAgentSettings.Config):
         pass

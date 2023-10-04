@@ -6,7 +6,7 @@ from pathlib import Path
 from logging import Logger
 from autogpt.core.agents import (
     AgentSettings,
-    SimpleAgent,
+    PlannerAgent,
 )  ### TODO should work for every Agent
 from autogpt.core.runner.client_lib.logging import get_client_logger
 from autogpt.core.runner.client_lib.parser import (
@@ -25,7 +25,7 @@ async def workspace_loader(
     """Run the Auto-GPT CLI client."""
 
     # Step 1. Collate the user's settings with the default system settings.
-    agent_settings: AgentSettings = SimpleAgent.compile_settings(
+    agent_settings: AgentSettings = PlannerAgent.compile_settings(
         client_logger,
         user_configuration,
     )
@@ -36,7 +36,7 @@ async def workspace_loader(
 
     user_objective = click.prompt("What do you want Auto-GPT to do?")
     # Ask a language model to determine a name and goals for a suitable agent.
-    name_and_goals = await SimpleAgent.determine_agent_name_and_goals(
+    name_and_goals = await PlannerAgent.determine_agent_name_and_goals(
         user_objective,
         agent_settings,
         client_logger,
@@ -48,7 +48,7 @@ async def workspace_loader(
     agent_settings.update_agent_name_and_goals(name_and_goals)
 
     # Step 3. Provision the agent.
-    agent_workspace = SimpleAgent.provision_agent(agent_settings, client_logger)
+    agent_workspace = PlannerAgent.provision_agent(agent_settings, client_logger)
     print("agent is provisioned")
     return agent_workspace
 

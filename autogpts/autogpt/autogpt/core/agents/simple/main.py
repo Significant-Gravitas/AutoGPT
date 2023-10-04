@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple
 
 from autogpt.core.tools import ToolResult, SimpleToolRegistry, TOOL_CATEGORIES
 from autogpt.core.agents.base.main import BaseAgent
-from autogpt.core.agents.simple.loop import SimpleLoop
+from autogpt.core.agents.simple.loop import PlannerLoop
 from autogpt.core.agents.simple.models import (
-    SimpleAgentConfiguration,
-    SimpleAgentSettings,
-    SimpleAgentSystems,
-    SimpleAgentSystemSettings,
+    PlannerAgentConfiguration,
+    PlannerAgentSettings,
+    PlannerAgentSystems,
+    PlannerSystemSettings,
 )
 from autogpt.core.configuration import Configurable
 from autogpt.core.memory.base import Memory
@@ -28,20 +28,20 @@ if TYPE_CHECKING:
 from autogpt.core.agents.base.loop import BaseLoopHook
 
 
-class SimpleAgent(BaseAgent):
+class PlannerAgent(BaseAgent):
     ################################################################################
     ##################### REFERENCE SETTINGS FOR FACTORY ###########################
     ################################################################################
 
-    CLASS_SYSTEM_SETINGS = SimpleAgentSystemSettings
-    CLASS_CONFIGURATION = SimpleAgentConfiguration
-    CLASS_SETTINGS = SimpleAgentSettings
-    CLASS_SYSTEMS = SimpleAgentSystems
+    CLASS_SYSTEM_SETINGS = PlannerSystemSettings
+    CLASS_CONFIGURATION = PlannerAgentConfiguration
+    CLASS_SETTINGS = PlannerAgentSettings
+    CLASS_SYSTEMS = PlannerAgentSystems
 
-    default_settings = SimpleAgentSystemSettings(
+    default_settings = PlannerSystemSettings(
         name="simple_agent",
         description="A simple agent.",
-        configuration=SimpleAgentConfiguration(
+        configuration=PlannerAgentConfiguration(
             agent_name="Entrepreneur-GPT",
             agent_role=(
                 "An AI designed to autonomously develop and run businesses with "
@@ -58,7 +58,7 @@ class SimpleAgent(BaseAgent):
             cycle_count=0,
             max_task_cycle_count=3,
             creation_time="",
-            systems=SimpleAgentSystems(
+            systems=PlannerAgentSystems(
                 tool_registry=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
                     storage_route="autogpt.core.tools.SimpleToolRegistry",
@@ -85,7 +85,7 @@ class SimpleAgent(BaseAgent):
 
     def __init__(
         self,
-        settings: SimpleAgentSystemSettings,
+        settings: PlannerSystemSettings,
         logger: logging.Logger,
         tool_registry: SimpleToolRegistry,
         memory: Memory,
@@ -117,8 +117,10 @@ class SimpleAgent(BaseAgent):
             )
 
         self.plan: Plan = None
-        self._loop = SimpleLoop(agent=self)
-        self.prompt_settings = self.load_prompt_settings()
+        self._loop = PlannerLoop()
+        self._loop.set_agent(agent=self)
+
+        self.prompt_settings= self.load_prompt_settings()
 
         # NOTE : MOVE ADD HOOK TO BaseLoop
 
@@ -136,12 +138,12 @@ class SimpleAgent(BaseAgent):
         # self.add_hook(name: str, hook: BaseLoopHook, uuid: uuid.UUID)
         # self.add_hook(name: str, hook: BaseLoopHook, uuid: uuid.UUID)
 
-    def loophooks(self) -> SimpleLoop.LoophooksDict:
+    def loophooks(self) -> PlannerLoop.LoophooksDict:
         if not self._loop._loophooks:
             self._loop._loophooks = {}
         return self._loop._loophooks
 
-    def loop(self) -> SimpleLoop:
+    def loop(self) -> PlannerLoop:
         return self._loop
 
     def add_hook(self, hook: BaseLoopHook, uuid: uuid.UUID):
@@ -180,14 +182,14 @@ class SimpleAgent(BaseAgent):
 
     @classmethod
     def _create_agent_custom_treatment(
-        cls, agent_settings: SimpleAgentSettings, logger: logging.Logger
+        cls, agent_settings: PlannerAgentSettings, logger: logging.Logger
     ) -> None:
         return cls._create_workspace(agent_settings=agent_settings, logger=logger)
 
     @classmethod
     def _create_workspace(
         cls,
-        agent_settings: SimpleAgentSettings,
+        agent_settings: PlannerAgentSettings,
         logger: logging.Logger,
     ):
         from autogpt.core.workspace import SimpleWorkspace
@@ -202,10 +204,10 @@ class SimpleAgent(BaseAgent):
     @classmethod
     def _get_agent_from_settings(
         cls,
-        agent_settings: SimpleAgentSettings,
+        agent_settings: PlannerAgentSettings,
         agent_args: list,
         logger: logging.Logger,
-    ) -> Tuple[SimpleAgentSettings, list]:
+    ) -> Tuple[PlannerAgentSettings, list]:
         agent_args["openai_provider"] = cls._get_system_instance(
             "openai_provider",
             agent_settings,
@@ -278,7 +280,7 @@ class SimpleAgent(BaseAgent):
     async def determine_agent_name_and_goals(
         cls,
         user_objective: str,
-        agent_settings: SimpleAgentSettings,
+        agent_settings: PlannerAgentSettings,
         logger: logging.Logger,
     ) -> dict:
         logger.debug("Loading OpenAI provider.")
@@ -302,7 +304,7 @@ class SimpleAgent(BaseAgent):
         return model_response.content
 
     def __repr__(self):
-        return "SimpleAgent()"
+        return "PlannerAgent()"
 
     @classmethod
     def load_prompt_settings(cls):

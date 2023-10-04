@@ -13,7 +13,7 @@ import distro
 
 from autogpt.core.agents.base.agent_directives import BaseAgentDirectives
 if TYPE_CHECKING:
-    from autogpt.core.agents.simple import SimpleAgent
+    from autogpt.core.agents.simple import PlannerAgent
 
 
 
@@ -80,7 +80,7 @@ class ThinkStrategy(PlanningPromptStrategy):
 
     def build_prompt(
         self, 
-        agent: "SimpleAgent", 
+        agent: "PlannerAgent", 
         #instruction: str, 
         **kwargs
     ) -> ChatPrompt:
@@ -161,7 +161,7 @@ class ThinkStrategy(PlanningPromptStrategy):
             messages=messages,
             functions= self._function,
             function_call='auto',
-            default_function_call="human_feedback",
+            default_function_call="ask_user",
         )
 
         return prompt
@@ -170,14 +170,14 @@ class ThinkStrategy(PlanningPromptStrategy):
     #
     # response_format_instruction
     #
-    def response_format_instruction( self, agent: "SimpleAgent",  model_name: str,
+    def response_format_instruction( self, agent: "PlannerAgent",  model_name: str,
                                **kargs) -> str:  
         return super().response_format_instruction( agent = agent, model_name = model_name)
 
     #
     # _generate_intro_prompt
     #
-    def _generate_intro_prompt(self, agent = "SimpleAgent",
+    def _generate_intro_prompt(self, agent = "PlannerAgent",
                                **kargs) -> list[str]:
         """Generates the introduction part of the prompt.
 
@@ -324,8 +324,9 @@ class ThinkStrategy(PlanningPromptStrategy):
 
     # NOTE : based on planning_agent.py
     def construct_base_prompt(
-        self, agent: "SimpleAgent", **kwargs
+        self, agent: "PlannerAgent", **kwargs
     ) -> list[ChatMessage]:
+        
         # Add the current plan to the prompt, if any
         if agent.plan:
             plan_section = [

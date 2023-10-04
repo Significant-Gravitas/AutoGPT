@@ -8,7 +8,7 @@ class Plan(BaseModel):
     Represents a plan consisting of a list of tasks.
     """
 
-    tasks: list[Task]
+    tasks: list[Task] = []
 
     def dump(self, depth=0) -> dict:
         """
@@ -36,7 +36,7 @@ class Plan(BaseModel):
 
         # Recursively process tasks up to the specified depth
         if depth > 0:
-            return_dict["tasks"] = [task.dump(depth - 1) for task in self.tasks]
+            return_dict["tasks"] = [task.dump(depth = depth - 1) for task in self.tasks]
 
         return return_dict
 

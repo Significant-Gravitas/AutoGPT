@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Union
 from autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.simple.main import SimpleAgent
+    from autogpt.core.agents.simple.main import PlannerAgent
     from autogpt.core.agents.base.main import BaseAgent
 
 from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
@@ -56,8 +56,8 @@ class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
          "You can leverage access to the following resources:\n"
          "{resources}\n"
          "\n"
-        "## tools\n"
-        "You have access to the following tools:\n"
+        "## Commands\n"
+        "You have access to the following commands:\n"
         "{tools}\n"
         "\n"
          "## Best practices\n"
@@ -105,7 +105,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
     # NOTE : Legacy Autogpt and it's dodgy architecture :)
     def construct_base_prompt(
         self,
-        agent: SimpleAgent,
+        agent: PlannerAgent,
         prepend_messages: list[ChatMessage] = [],
         append_messages: list[ChatMessage] = [],
         reserve_tokens: int = 0,
@@ -144,7 +144,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
     # FIXME : Uncompleted migration from AutoGPT Agent
 
     def _construct_system_prompt(self, 
-                                 agent: SimpleAgent,
+                                 agent: PlannerAgent,
                                  agent_directives : list ,
                                  include_os_info : bool,
                                  tools : list,
@@ -158,9 +158,27 @@ class PlanningPromptStrategy(BasePromptStrategy):
         Returns:
             str: The constructed system prompt.
         """
+        reminder: str = (
+         "## Constraints\n"
+         "You operate within the following constraints:\n"
+         "{constraints}\n"
+         "\n"
+         "## Resources\n"
+         "You can leverage access to the following resources:\n"
+         "{resources}\n"
+         "\n"
+        "## Commands\n"
+        "You have access to the following commands:\n"
+        "{tools}\n"
+        "\n"
+         "## Best practices\n"
+         "{best_practices}"
+    )
+        
         system_prompt_parts = (
             self._generate_intro_prompt(agent,**kwargs)
             + (self._generate_os_info(**kwargs) if include_os_info else [])
+            + ([f"Plan :\n{agent.plan.dump(depth=1)}\n\n"] if agent.plan is not None else [])
             + [
                 self._config.body_template.format(
                     constraints=to_numbered_list(
@@ -240,7 +258,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
             raise
 
     def _generate_intro_prompt(self, 
-                               agent: Union[SimpleAgent, BaseAgent],
+                               agent: Union[PlannerAgent, BaseAgent],
                                **kwargs) -> list[str]:
         """Generates the introduction part of the prompt.
 
@@ -255,7 +273,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         ]
 
     # FIXME :)
-    def _generate_budget_info(self, agent: Union[SimpleAgent, BaseAgent]) -> list[str]:
+    def _generate_budget_info(self, agent: Union[PlannerAgent, BaseAgent]) -> list[str]:
         """Generates the budget information part of the prompt.
 
         Returns:
@@ -268,7 +286,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
             ]
         return []
 
-    def _generate_goals_info(self, agent: SimpleAgent) -> list[str]:
+    def _generate_goals_info(self, agent: PlannerAgent) -> list[str]:
         """Generates the goals information part of the prompt.
 
         Returns:
@@ -286,54 +304,54 @@ class PlanningPromptStrategy(BasePromptStrategy):
             ]
         return []
 
-    def _generate_body(
-        self,
-        agent: Union[SimpleAgent, BaseAgent],
-        *,
-        additional_constraints: list[str] = [],
-        additional_resources: list[str] = [],
-        additional_best_practices: list[str] = [],
-    ) -> list[str]:
-        """
-        Generates a prompt section containing the constraints, tools, resources,
-        and best practices.
+    # def _generate_body(
+    #     self,
+    #     agent: Union[PlannerAgent, BaseAgent],
+    #     *,
+    #     additional_constraints: list[str] = [],
+    #     additional_resources: list[str] = [],
+    #     additional_best_practices: list[str] = [],
+    # ) -> list[str]:
+    #     """
+    #     Generates a prompt section containing the constraints, tools, resources,
+    #     and best practices.
 
-        Params:
-            agent: The agent for which the prompt string is being generated.
-            additional_constraints: Additional constraints to be included in the prompt string.
-            additional_resources: Additional resources to be included in the prompt string.
-            additional_best_practices: Additional best practices to be included in the prompt string.
+    #     Params:
+    #         agent: The agent for which the prompt string is being generated.
+    #         additional_constraints: Additional constraints to be included in the prompt string.
+    #         additional_resources: Additional resources to be included in the prompt string.
+    #         additional_best_practices: Additional best practices to be included in the prompt string.
 
-        Returns:
-            str: The generated prompt section.
-        """
-        body: list[str] = []
+    #     Returns:
+    #         str: The generated prompt section.
+    #     """
+    #     body: list[str] = []
 
-        # NOTE : if agent.constraints :
-        #     body.append("## Constraints\n"
-        #     "You operate within the following constraints:\n"
-        #     f"{to_numbered_list(agent.constraints + additional_constraints)}")
+    #     # NOTE : if agent.constraints :
+    #     #     body.append("## Constraints\n"
+    #     #     "You operate within the following constraints:\n"
+    #     #     f"{to_numbered_list(agent.constraints + additional_constraints)}")
 
-        # NOTE : PLANCE HOLDER
-        # if agent.resources :
-        #     body.append("## Resources\n"
-        #     "You can leverage access to the following resources:\n"
-        #     f"{to_numbered_list(agent.resources + additional_resources)}")
+    #     # NOTE : PLANCE HOLDER
+    #     # if agent.resources :
+    #     #     body.append("## Resources\n"
+    #     #     "You can leverage access to the following resources:\n"
+    #     #     f"{to_numbered_list(agent.resources + additional_resources)}")
 
-        body.append(
-            "## tools\n"
-            "You have access to the following tools:\n"
-            f"{self._list_tools(agent)}"
-        )
+    #     body.append(
+    #         "## Abilities\n"
+    #         "You have access to the following commands:\n"
+    #         f"{self._list_tools(agent)}"
+    #     )
 
-        # NOTE : PLANCE HOLDER
-        # if agent.best_practices :
-        #     body.append("## Best practices\n"
-        #     f"{to_numbered_list(agent.best_practices + additional_best_practices)}")
+    #     # NOTE : PLANCE HOLDER
+    #     # if agent.best_practices :
+    #     #     body.append("## Best practices\n"
+    #     #     f"{to_numbered_list(agent.best_practices + additional_best_practices)}")
 
-        return body
+    #     return body
 
-    def _list_tools(self, agent: Union[SimpleAgent, BaseAgent]) -> str:
+    def _list_tools(self, agent: Union[PlannerAgent, BaseAgent]) -> str:
         """Lists the tools available to the agent.
 
         Params:
@@ -350,7 +368,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
     # NOTE : based on autogpt agent.py
     # This can be expanded to support multiple types of (inter)actions within an agent
     def response_format_instruction(
-        self, agent: SimpleAgent,  model_name: str) -> str:
+        self, agent: PlannerAgent,  model_name: str) -> str:
 
         use_functions_api = agent._openai_provider.has_function_call_api(
             model_name=model_name

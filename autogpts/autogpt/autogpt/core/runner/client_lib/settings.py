@@ -2,11 +2,11 @@ from pathlib import Path
 
 import yaml
 
-from autogpt.core.agents import SimpleAgent
+from autogpt.core.agents import PlannerAgent
 
 
 def make_user_configuration(settings_file_path: Path):
-    user_configuration = SimpleAgent.build_user_configuration()
+    user_configuration = PlannerAgent.build_user_configuration()
 
     settings_file_path.parent.mkdir(parents=True, exist_ok=True)
     print("Writing settings to", settings_file_path)

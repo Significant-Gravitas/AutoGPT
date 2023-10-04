@@ -9,15 +9,13 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any, Iterator
 from pydantic import BaseModel
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from autogpt.core.agents.base import BaseAgent
 
-
+from autogpt.core.tools.base import Tool, BaseToolsRegistry, ToolConfiguration
 from autogpt.core.tools.command_decorator import AUTO_GPT_TOOL_IDENTIFIER
-from autogpt.core.tools.base import Tool, ToolConfiguration, ToolsRegistry
-
-logger = logging.getLogger(__name__)
-
 
 #from autogpt.core.tools.builtins import BUILTIN_TOOLS
 from autogpt.core.tools.schema import ToolResult
@@ -44,7 +42,7 @@ class ToolsRegistryConfiguration(SystemConfiguration):
     """
 
     tools: dict[str, ToolConfiguration]
-
+ToolsRegistryConfiguration.update_forward_refs()
 
 class ToolsRegistrySettings(SystemSettings):
     """
@@ -57,7 +55,7 @@ class ToolsRegistrySettings(SystemSettings):
     configuration: ToolsRegistryConfiguration
 
 
-class SimpleToolRegistry(ToolsRegistry, Configurable):
+class SimpleToolRegistry(BaseToolsRegistry, Configurable):
     """
     A manager for a collection of Tool objects. Supports registration, modification, retrieval, and loading
     of tool plugins from a specified directory.
@@ -120,7 +118,7 @@ class SimpleToolRegistry(ToolsRegistry, Configurable):
         Example:
             registry = SimpleToolRegistry(settings, logger, memory, workspace, model_providers)
         """
-        super().__init__(settings, logger)
+        
         # self._memory = memory
         # self._workspace = workspace
         # self._model_providers = model_providers

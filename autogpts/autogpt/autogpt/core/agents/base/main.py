@@ -18,7 +18,7 @@ from autogpt.core.agents.base.loop import (
     BaseLoopHook,
 )
 
-from autogpt.core.tools.base import ToolsRegistry
+from autogpt.core.tools.base import BaseToolsRegistry
 from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
@@ -552,13 +552,13 @@ class BaseAgent(Configurable, AbstractAgent):
                     specified_settings = yaml.safe_load(file_path)
                     for key, items in specified_settings.items():
                         if key not in agent_directives.keys():
-                            agent_directives[key].append(items)
+                            agent_directives[key] : list[str] = items
                         else:
                             # If the item already exists, update it with specified_settings
                             if erase : 
                                 agent_directives[key] = items
                             else : 
-                                pass
+                                agent_directives[key] +=  items 
 
         return agent_directives
 

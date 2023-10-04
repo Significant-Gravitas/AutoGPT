@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import abc
 from pprint import pformat
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TYPE_CHECKING
 
 import inflection
 from pydantic import Field
@@ -13,19 +15,22 @@ from autogpt.core.utils.json_schema import JSONSchema
 from .schema import ToolResult
 
 
+from autogpt.core.agents.base.features.agentmixin import AgentMixin
+from autogpt.core.plugin.base import PluginLocation
+
 class ToolConfiguration(SystemConfiguration):
     """Struct for model configuration."""
 
-    from autogpt.core.plugin.base import PluginLocation
+
 
     location: PluginLocation
     packages_required: list[str] = Field(default_factory=list)
     language_model_required: LanguageModelConfiguration = None
     memory_provider_required: bool = False
     workspace_required: bool = False
+ToolConfiguration.update_forward_refs()
 
-
-class Tool(abc.ABC):
+class Tool(AgentMixin, abc.ABC):
     """A class representing an agent ability."""
 
     default_configuration: ClassVar[ToolConfiguration]
@@ -77,7 +82,10 @@ class Tool(abc.ABC):
             parameters=cls.parameters,
         )
 
-class ToolsRegistry(abc.ABC):
+class BaseToolsRegistry(AgentMixin, abc.ABC):
+    def __init__(self, settings, logger) :
+        pass # NOTE : Avoid passing too many arguments to AgentMixin
+
     @abc.abstractmethod
     def register_tool(
         self, tool_name: str, tool_configuration: ToolConfiguration

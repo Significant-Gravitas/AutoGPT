@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 
 if TYPE_CHECKING:
-    from autogpt.core.tools import Tool, ToolsRegistry
+    from autogpt.core.tools import Tool, BaseToolsRegistry
     from autogpt.core.memory import Memory
     from autogpt.core.resource.model_providers import (
         EmbeddingModelProvider,
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     # Expand to other types as needed
     PluginType = (
         Type[Tool]  # Swappable now
-        | Type[ToolsRegistry]  # Swappable maybe never
+        | Type[BaseToolsRegistry]  # Swappable maybe never
         | Type[BaseChatModelProvider]  # Swappable soon
         | Type[EmbeddingModelProvider]  # Swappable soon
         | Type[Memory]  # Swappable now

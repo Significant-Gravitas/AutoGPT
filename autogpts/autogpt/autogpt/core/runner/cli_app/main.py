@@ -1,7 +1,7 @@
 import click
 import logging
 
-from autogpt.core.agents import BaseAgentSettings, SimpleAgent
+from autogpt.core.agents import BaseAgentSettings, PlannerAgent
 from autogpt.core.runner.client_lib.logging import get_client_logger
 
 
@@ -28,7 +28,7 @@ async def run_auto_gpt(user_configuration: dict):
     client_logger.info("Getting agent settings")
 
     # Step 1. Collate the user's settings with the default system settings.
-    agent_settings: BaseAgentSettings = SimpleAgent.compile_settings(
+    agent_settings: BaseAgentSettings = PlannerAgent.compile_settings(
         client_logger,
         user_configuration,
     )
@@ -42,7 +42,7 @@ async def run_auto_gpt(user_configuration: dict):
     agent_settings.user_id = user_id
 
     # NOTE : Real world scenario, this user_id will be passed as an argument
-    agent_dict_list = SimpleAgent.get_agentsetting_list_from_memory(
+    agent_dict_list = PlannerAgent.get_agentsetting_list_from_memory(
         user_id=user_id, logger=client_logger
     )
 
@@ -58,13 +58,13 @@ async def run_auto_gpt(user_configuration: dict):
             f"Loading agent {agent_id} from get_agentsetting_list_from_memory"
         )
         agent_settings.update_agent_name_and_goals(agent_dict_list[0])
-        agent_from_list = SimpleAgent.get_agent_from_settings(
+        agent_from_list = PlannerAgent.get_agent_from_settings(
             agent_settings=agent_settings,
             logger=client_logger,
         )
 
         client_logger.info(f"Loading agent {agent_id} from get_agent_from_memory")
-        agent_from_memory = SimpleAgent.get_agent_from_memory(
+        agent_from_memory = PlannerAgent.get_agent_from_memory(
             agent_settings=agent_settings,
             agent_id=agent_id,
             user_id=user_id,
@@ -113,7 +113,7 @@ async def run_auto_gpt(user_configuration: dict):
         #     # We'll do this by asking the user for a prompt.
         #     user_objective = click.prompt("What do you want Auto-GPT to do? (We will make Pancakes for our tests...)")
         #     # Ask a language model to determine a name and goals for a suitable agent.
-        #     name_and_goals = await SimpleAgent.determine_agent_name_and_goals(
+        #     name_and_goals = await PlannerAgent.determine_agent_name_and_goals(
         #         user_objective,
         #         agent_settings,
         #         client_logger,
@@ -136,12 +136,12 @@ async def run_auto_gpt(user_configuration: dict):
 
         agent_settings.agent_goal_sentence = user_objective
 
-        agent_settings.agent_class = "SimpleAgent"
-        agent_settings._type_ = "autogpt.core.agents.simple.main.SimpleAgent"
+        agent_settings.agent_class = "PlannerAgent"
+        agent_settings._type_ = "autogpt.core.agents.simple.main.PlannerAgent"
         # agent_settings.load_root_values()
 
         # Step 3. Create the agent.
-        agent = SimpleAgent.create_agent(
+        agent = PlannerAgent.create_agent(
             agent_settings=agent_settings,
             logger=client_logger,
         )

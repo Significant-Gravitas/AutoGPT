@@ -28,12 +28,12 @@ class AgentConfiguration(BaseModel):
             raise ValueError("Must specify either objective or name, role, and goals")
 
 
-class SimpleAgentMessageRequestBody(BaseModel):
+class PlannerAgentMessageRequestBody(BaseModel):
     message: str = Field(..., min_length=1)
     start: bool = Field(default=False)
 
 
-class SimpleAgentMessageResponseBody(BaseModel):
+class PlannerAgentMessageResponseBody(BaseModel):
     ability_result: Dict[str, Any]
     current_task: Optional[Any]
     next_ability: Optional[Any]

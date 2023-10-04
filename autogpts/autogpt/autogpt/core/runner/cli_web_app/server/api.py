@@ -6,7 +6,7 @@ AP alias /agent/tasks (GET): Returns a list of all agents.
     
 /agent (POST): Create a new agent.
 AP alias /agent/tasks (POST): Create a new agent.
-    => TODO : Save an Agent (or SimpleAgent) in the workspace (can't find the method still reading the code)
+    => TODO : Save an Agent (or PlannerAgent) in the workspace (can't find the method still reading the code)
 
     
 /agent/{agent_id} (GET): Get an agent from its ID & return an agent.
@@ -16,9 +16,9 @@ AP alias /agent/tasks/{agent_id} (GET): Get an agent from its ID & return an age
 /agent/{agent_id}/start (POST): Send a message to an agent.
 /agent/{agent_id}/message (POST): Sends a message to the agent.
 /agent/{agent_id}/messagehistory (GET): Get message history for an agent.
-    => need SimpleAgent to provide a method 
+    => need PlannerAgent to provide a method 
 /agent/{agent_id}/lastmessage (GET): Get the last message for an agent.
-    => need SimpleAgent to provide a method 
+    => need PlannerAgent to provide a method 
 """
 import uuid
 from pathlib import Path
@@ -29,13 +29,13 @@ from autogpt.core.runner.client_lib.shared_click_commands import (
     make_settings,
 )
 
-from autogpt.core.runner.cli_web_app.server.schema import SimpleAgentMessageRequestBody
+from autogpt.core.runner.cli_web_app.server.schema import PlannerAgentMessageRequestBody
 from autogpt.core.runner.client_lib.workspacebuilder import (
     workspace_loader,
     get_settings_from_file,
     get_logger_and_workspace,
 )
-from autogpt.core.agents import AgentSettings, SimpleAgent
+from autogpt.core.agents import AgentSettings, PlannerAgent
 from autogpt.core.runner.client_lib.parser import (
     parse_agent_name_and_goals,
     parse_ability_result,
@@ -62,7 +62,7 @@ async def get_agents(request: Request):
     Agents need a UUID.
     Agents need a name.
     Ideally, agents should have a "status" property (Active, Inactive, Deleted) to avoid concurrent access.
-    Ideally, agents should have a boolean property ("retrievable", "front", or "clientfacing") to exclude sub-agents. Default to False, but SimpleAgents should have it set to "True."
+    Ideally, agents should have a boolean property ("retrievable", "front", or "clientfacing") to exclude sub-agents. Default to False, but PlannerAgents should have it set to "True."
     Comment: Ideally returns all client_facing, active and inactive agents.
     """
     settings = get_settings_from_file()
@@ -70,7 +70,7 @@ async def get_agents(request: Request):
     # workspace =  workspace_loader(settings, client_logger, agent_workspace)
     agent = {}
     if agent_workspace:
-        agent = SimpleAgent.from_workspace(
+        agent = PlannerAgent.from_workspace(
             agent_workspace,
             client_logger,
         )
@@ -111,7 +111,7 @@ async def get_agent_by_id(request: Request, agent_id: str):
     # workspace =  workspace_loader(settings, client_logger, agent_workspace)
     agent = {}
     if agent_workspace:
-        agent = SimpleAgent.from_workspace(
+        agent = PlannerAgent.from_workspace(
             agent_workspace,
             client_logger,
         )
@@ -143,7 +143,7 @@ async def start_simple_agent_main_loop(request: Request, agent_id: str):
         raise BaseException
 
     # launch agent interaction loop
-    agent = SimpleAgent.from_workspace(
+    agent = PlannerAgent.from_workspace(
         agent_workspace,
         client_logger,
     )
@@ -161,7 +161,7 @@ async def start_simple_agent_main_loop(request: Request, agent_id: str):
 
 @router.post("/agent/{agent_id}/message")
 async def message_simple_agent(
-    request: Request, agent_id: str, body: SimpleAgentMessageRequestBody
+    request: Request, agent_id: str, body: PlannerAgentMessageRequestBody
 ):
     """
     Description: Sends a message to the agent.
@@ -184,7 +184,7 @@ async def message_simple_agent(
         raise BaseException
 
     # launch agent interaction loop
-    agent = SimpleAgent.from_workspace(
+    agent = PlannerAgent.from_workspace(
         agent_workspace,
         client_logger,
     )

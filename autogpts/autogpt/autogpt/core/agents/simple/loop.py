@@ -30,11 +30,12 @@ from autogpt.core.agents.base.exceptions import (
     UnknownToolError,
 )
 
+
 if TYPE_CHECKING:
-    from autogpt.core.agents.base.main import BaseAgent
-    from autogpt.core.agents.simple import SimpleAgentSettings
+    from autogpt.core.agents.simple import PlannerAgent, PlannerAgentSettings
     from autogpt.core.prompting.schema import ChatModelResponse
     from autogpt.core.resource.model_providers import ChatMessage
+
 
 # NOTE : This is an example of customization that allow to share part of a project in Github while keeping part not released
 try:
@@ -59,13 +60,16 @@ usercontext = False
 # )
 
 
-class SimpleLoop(BaseLoop):
+class PlannerLoop(BaseLoop):
+    _agent : PlannerAgent
     class LoophooksDict(BaseLoop.LoophooksDict):
         after_plan: Dict[BaseLoopHook]
         after_determine_next_ability: Dict[BaseLoopHook]
 
-    def __init__(self, agent: BaseAgent) -> None:
-        super().__init__(agent)
+    def __init__(self) -> None:
+        super().__init__()
+        # AgentMixin.__init__()
+
         self._active = False
         self.remaining_cycles = 1
 
@@ -74,7 +78,7 @@ class SimpleLoop(BaseLoop):
 
     async def run(
         self,
-        agent: BaseAgent,
+        agent: PlannerAgent,
         hooks: LoophooksDict,
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
@@ -115,10 +119,10 @@ class SimpleLoop(BaseLoop):
             # USER CONTEXT AGENT : Configure the agent to our context
             usercontextagent_configuration = {
                 "user_id": self._agent.user_id,
+                "parent_agent_id": self._agent.agent_id,
                 "agent_name": "UCC (User Context Checker)",
                 "agent_goals": self._agent.agent_goals,
                 "agent_goal_sentence": self._agent.agent_goal_sentence,
-                "parent_agent_id": self._agent.agent_id,
                 "memory": self._agent._memory._settings.dict(),
                 "workspace": self._agent._workspace._settings.dict(),
                 "openai_provider": self._agent._openai_provider._settings.dict()
@@ -164,28 +168,16 @@ class SimpleLoop(BaseLoop):
         ### Step 4 : Start with an plan !
         ##############################################################
         plan = await self.build_initial_plan()
+        self._agent.plan = Plan()
+        for task in plan['task_list'] :
+            self._agent.plan.tasks.append(Task(data = task))
+
 
         parse_agent_plan(plan)
+        self._agent._logger.info(parse_agent_plan)
 
         consecutive_failures = 0
-        try:
-            ###
-            ### Step 4 a : think()
-            ###
-            response: ChatModelResponse = await self.think()
-
-            command_name = response.parsed_result["name"]
-            command_args = response.parsed_result
-            assistant_reply_dict = response.content
-        except InvalidAgentResponseError as e:
-            self._agent._logger.warn(f"The agent's thoughts could not be parsed: {e}")
-            consecutive_failures += 1
-            if consecutive_failures >= 3:
-                self._agent._logger.error(
-                    f"The agent failed to output valid thoughts {consecutive_failures} "
-                    "times in a row. Terminating..."
-                )
-
+               
         ##############################################################
         # NOTE : Important KPI to log during crashes
         ##############################################################
@@ -199,6 +191,25 @@ class SimpleLoop(BaseLoop):
             if self._active:
                 # logger.debug(f"Cycle budget: {cycle_budget}; remaining: {self.remaining_cycles}")
                 self._loop_count += 1
+
+                try:
+                    ###
+                    ### Step 4 a : think()
+                    ###
+                    response: ChatModelResponse = await self.think()
+
+                    command_name = response.parsed_result["name"]
+                    del response.parsed_result["name"]
+                    command_args = response.parsed_result
+                    assistant_reply_dict = response.content
+                except InvalidAgentResponseError as e:
+                    self._agent._logger.warn(f"The agent's thoughts could not be parsed: {e}")
+                    consecutive_failures += 1
+                    if consecutive_failures >= 3:
+                        self._agent._logger.error(
+                            f"The agent failed to output valid thoughts {consecutive_failures} "
+                            "times in a row. Terminating..."
+                        )
 
                 # Print the assistant's thoughts and the next command to the user.
                 self._agent._logger.info(
@@ -223,7 +234,7 @@ class SimpleLoop(BaseLoop):
                     if user_input.lower().strip() == "y":
                         pass
                     else:
-                        command_name = "human_feedback"
+                        command_name = "ask_user"
 
                 ###################
                 # Execute Tool #
@@ -231,7 +242,7 @@ class SimpleLoop(BaseLoop):
                 # Decrement the cycle counter first to reduce the likelihood of a SIGINT
                 # happening during command execution, setting the cycles remaining to 1,
                 # and then having the decrement set it to 0, exiting the application.
-                if command_name != "human_feedback":
+                if command_name != "ask_user":
                     self.remaining_cycles -= 1
 
                 if not command_name:
@@ -248,7 +259,7 @@ class SimpleLoop(BaseLoop):
 
     async def start(
         self,
-        agent: BaseAgent = None,
+        agent: PlannerAgent = None,
         user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None,
         user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None,
     ) -> None:
@@ -264,7 +275,6 @@ class SimpleLoop(BaseLoop):
     async def build_initial_plan(self) -> dict:
         # plan =  self.execute_strategy(
         self.tool_registry().list_tools_descriptions()
-
         plan = await self.execute_strategy(
             strategy_name="make_initial_plan",
             agent_name=self._agent.agent_name,
@@ -317,42 +327,42 @@ class SimpleLoop(BaseLoop):
         else:
             raise NotImplementedError
 
-    async def _evaluate_task_and_add_context(self, task: Task) -> Task:
-        """Evaluate the task and add context to it."""
-        if task.context.status == TaskStatusList.IN_PROGRESS:
-            # Nothing to do here
-            return task
-        else:
-            self._agent._logger.debug(
-                f"Evaluating task {task} and adding relevant context."
-            )
-            # TODO: Look up relevant memories (need working memory system)
-            # TODO: Evaluate whether there is enough information to start the task (language model call).
-            task.context.enough_info = True
-            task.context.status = TaskStatusList.IN_PROGRESS
-            return task
+    # async def _evaluate_task_and_add_context(self, task: Task) -> Task:
+    #     """Evaluate the task and add context to it."""
+    #     if task.context.status == TaskStatusList.IN_PROGRESS:
+    #         # Nothing to do here
+    #         return task
+    #     else:
+    #         self._agent._logger.debug(
+    #             f"Evaluating task {task} and adding relevant context."
+    #         )
+    #         # TODO: Look up relevant memories (need working memory system)
+    #         # TODO: Evaluate whether there is enough information to start the task (language model call).
+    #         task.context.enough_info = True
+    #         task.context.status = TaskStatusList.IN_PROGRESS
+    #         return task
 
-    async def _choose_next_ability(self, task: Task, ability_schema: list[dict]):
-        """Choose the next ability to use for the task."""
-        self._agent._logger.debug(f"Choosing next ability for task {task}.")
-        if task.context.cycle_count > self._agent._configuration.max_task_cycle_count:
-            # Don't hit the LLM, just set the next action as "breakdown_task" with an appropriate reason
-            raise NotImplementedError
-        elif not task.context.enough_info:
-            # Don't ask the LLM, just set the next action as "breakdown_task" with an appropriate reason
-            raise NotImplementedError
-        else:
-            next_ability = await self._agent._planning.determine_next_ability(
-                task, ability_schema
-            )
-            return next_ability
+    # async def _choose_next_ability(self, task: Task, ability_schema: list[dict]):
+    #     """Choose the next ability to use for the task."""
+    #     self._agent._logger.debug(f"Choosing next ability for task {task}.")
+    #     if task.context.cycle_count > self._agent._configuration.max_task_cycle_count:
+    #         # Don't hit the LLM, just set the next action as "breakdown_task" with an appropriate reason
+    #         raise NotImplementedError
+    #     elif not task.context.enough_info:
+    #         # Don't ask the LLM, just set the next action as "breakdown_task" with an appropriate reason
+    #         raise NotImplementedError
+    #     else:
+    #         next_ability = await self._agent._planning.determine_next_ability(
+    #             task, ability_schema
+    #         )
+    #         return next_ability
 
-    async def _update_tasks_and_memory(self, ability_result: ToolResult):
-        self._current_task.context.cycle_count += 1
-        self._current_task.context.prior_actions.append(ability_result)
-        # TODO: Summarize new knowledge
-        # TODO: store knowledge and summaries in memory and in relevant tasks
-        # TODO: evaluate whether the task is complete
+    # async def _update_tasks_and_memory(self, ability_result: ToolResult):
+    #     self._current_task.context.cycle_count += 1
+    #     self._current_task.context.prior_actions.append(ability_result)
+    #     # TODO: Summarize new knowledge
+    #     # TODO: store knowledge and summaries in memory and in relevant tasks
+    #     # TODO: evaluate whether the task is complete
 
     def __repr__(self):
         return "SimpleLoop()"
@@ -394,13 +404,9 @@ class SimpleLoop(BaseLoop):
     ) -> ActionResult:
         result: ActionResult
 
-        if command_name == "human_feedback":
+        if command_name == "ask_user":
             result = ActionInterruptedByHuman(user_input)
-            self.message_history.add(
-                "user",
-                "I interrupted the execution of the command you proposed "
-                f"to give you some feedback: {user_input}",
-            )
+
             # self.log_cycle_handler.log_cycle(
             #     self._agent.agent_name,
             #     self._agent.created_at,
@@ -419,7 +425,7 @@ class SimpleLoop(BaseLoop):
                 return_value = await execute_command(
                     command_name=command_name,
                     arguments=command_args,
-                    agent=self,
+                    agent=self._agent,
                 )
 
                 # Intercept ContextItem if one is returned by the command
@@ -474,7 +480,7 @@ class SimpleLoop(BaseLoop):
 def execute_command(
     command_name: str,
     arguments: dict[str, str],
-    agent: BaseAgent,
+    agent: PlannerAgent,
 ) -> ToolOutput:
     """Execute the command and return the result
 
@@ -487,23 +493,13 @@ def execute_command(
         str: The result of the command
     """
     # Execute a native command with the same name or alias, if it exists
-    if command := agent.command_registry.get_command(command_name):
+    if command := agent._tool_registry.get_tool(tool_name = command_name):
         try:
             return command(**arguments, agent=agent)
         except AgentException:
             raise
         except Exception as e:
             raise ToolExecutionError(str(e))
-
-    # Handle non-native commands (e.g. from plugins)
-    for name, command in agent.prompt_generator.commands.items():
-        if command_name == name or command_name.lower() == command.description.lower():
-            try:
-                return command.function(**arguments)
-            except AgentException:
-                raise
-            except Exception as e:
-                raise ToolExecutionError(str(e))
 
     raise UnknownToolError(
         f"Cannot execute command '{command_name}': unknown command."

@@ -176,12 +176,26 @@ class Task(BaseModel):
     """
 
     responsible_agent_id: Optional[str] = Field(default="")
-    objective: str
-    type: str  # TaskType  FIXME: gpt does not obey the enum parameter in its schema
-    priority: int
-    ready_criteria: list[str]
-    acceptance_criteria: list[str]
+    objective: Optional[str]
+    type: Optional[str]  # TaskType  FIXME: gpt does not obey the enum parameter in its schema
+    priority: Optional[int]
+    ready_criteria: Optional[list[str]]
+    acceptance_criteria: Optional[list[str]]
     context: TaskContext = Field(default_factory=TaskContext)
+    subtasks: Optional[list[Task]]
+
+    def dump(self, depth=0) -> dict:
+        if depth < 0:
+            raise ValueError("Depth must be a non-negative integer.")
+
+        # Initialize the return dictionary
+        return_dict = self.dict()
+
+        # Recursively process subtasks up to the specified depth
+        if depth > 0 and self.subtasks:
+            return_dict["subtasks"] = [subtask.dump(depth=depth - 1) for subtask in self.subtasks]
+
+        return return_dict
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.

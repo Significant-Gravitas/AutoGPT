@@ -6,10 +6,10 @@ from autogpt.core.agents.base.models import (
     BaseAgentSystems,
     BaseAgentSystemSettings,
 )
-from autogpt.core.agents.simple import SimpleAgent
+from autogpt.core.agents.simple import PlannerAgent
 from autogpt.core.agents.simple.models import (
-    SimpleAgentConfiguration,
-    SimpleAgentSettings,
-    SimpleAgentSystems,
-    SimpleAgentSystemSettings,
+    PlannerAgentConfiguration,
+    PlannerAgentSettings,
+    PlannerAgentSystems,
+    PlannerSystemSettings,
 )

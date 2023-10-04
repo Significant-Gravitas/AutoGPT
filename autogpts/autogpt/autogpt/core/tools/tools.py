@@ -6,8 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
     from autogpt.config import Any
-
-from .tool_parameters import ToolParameter
+    from .tool_parameters import ToolParameter
 from ..planning.models.context_items import ContextItem
 
 ToolReturnValue = Any

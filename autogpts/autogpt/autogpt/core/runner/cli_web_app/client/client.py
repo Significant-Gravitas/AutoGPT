@@ -1,12 +1,12 @@
 """
-It is essential that Agent (the parent of SimpleAgent) provide a method to load an object from a dictionary/json object for webapps
+It is essential that Agent (the parent of PlannerAgent) provide a method to load an object from a dictionary/json object for webapps
 """
 import json
 import requests
 from pathlib import Path
 import click
 
-from autogpt.core.agents import AgentSettings, SimpleAgent
+from autogpt.core.agents import AgentSettings, PlannerAgent
 from autogpt.core.runner.client_lib.logging import get_client_logger
 
 import requests
@@ -102,11 +102,11 @@ def run():
     response_data = response.json()
     simple_agent_as_dict = response_data.get("agents")[0]
 
-    # Todo : Needs to create a SimpleAgent from a dict
+    # Todo : Needs to create a PlannerAgent from a dict
     exit(
-        "Demo stops here as a method SimpleAgent.load_from_dict(simple_agent_as_dict) is needed"
+        "Demo stops here as a method PlannerAgent.load_from_dict(simple_agent_as_dict) is needed"
     )
-    agent = SimpleAgent.load_from_dict(simple_agent_as_dict)
+    agent = PlannerAgent.load_from_dict(simple_agent_as_dict)
     print("agent is loaded")
 
     response = requests.post(f"{BASE_URL}/agent/{agent_id}/start")

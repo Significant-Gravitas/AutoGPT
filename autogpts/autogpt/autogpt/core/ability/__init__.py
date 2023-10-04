@@ -3,7 +3,7 @@ from .. import tools
 import warnings
 
 warnings.warn(
-    "autogpt.core.tools is deprecated and will be removed in a future version. "
+    "autogpt.core.ability is deprecated and will be removed in a future version. "
     "Use autogpt.core.tools instead.",
     DeprecationWarning,
     stacklevel=2,

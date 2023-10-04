@@ -15,3 +15,15 @@ best_practices: [
   'Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps.',
   'Only make use of your information gathering abilities to find information that you don''t yet have knowledge of.'
 ]
+tools : [
+    "autogpt.core.tools.builtins.execute_code",
+    "autogpt.core.tools.builtins.file_operations",
+    "autogpt.core.tools.builtins.user_interaction",
+    "autogpt.core.tools.builtins.web_search",
+    "autogpt.core.tools.builtins.web_selenium",
+    "autogpt.core.tools.builtins.system",
+    "autogpt.core.tools.builtins.image_gen",
+]
+agents : [
+    "autogpt.core.agents.simple",
+]

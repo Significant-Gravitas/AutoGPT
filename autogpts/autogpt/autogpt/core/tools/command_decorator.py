@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from autogpt.config import Config
 
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.tools import Tool , ToolOutput
+from autogpt.core.tools.tools import Tool , ToolOutput
 from autogpt.core.tools.tool_parameters import ToolParameter
 
 # Unique identifier for AutoGPT commands

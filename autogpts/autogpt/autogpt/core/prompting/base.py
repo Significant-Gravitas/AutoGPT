@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Union
 from autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.simple.main import SimpleAgent
+    from autogpt.core.agents.simple.main import PlannerAgent
     from autogpt.core.agents.base.main import BaseAgent
 
 from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list

@@ -5,11 +5,12 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Optional, Dict
 
 from typing_extensions import NamedTuple, TypedDict
 
+
+from autogpt.core.agents.base.features.agentmixin import AgentMixin
 if TYPE_CHECKING:
     from autogpt.core.agents.base.main import BaseAgent
     from autogpt.core.prompting.schema import ChatModelResponse
-    from autogpt.core.tools import ToolsRegistry
-
+    from autogpt.core.tools import BaseToolsRegistry, Tool
 
 class BaseLoopMeta(abc.ABCMeta):
     def __call__(cls, *args, **kwargs):
@@ -42,7 +43,7 @@ class UserFeedback(str, enum.Enum):
     TEXT = "TEXT"
 
 
-class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
+class BaseLoop(AgentMixin,abc.ABC,  metaclass=BaseLoopMeta):
     class LoophooksDict(TypedDict):
         begin_run: Dict[BaseLoopHook]
         end_run: Dict[BaseLoopHook]
@@ -50,10 +51,9 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
     _loophooks: LoophooksDict
 
     @abc.abstractmethod
-    def __init__(self, agent: BaseAgent):
+    def __init__(self):
         # Step 1 : Setting loop variables
         self._is_running: bool = False
-        self._agent = agent
         self._loophooks = self.LoophooksDict()
         for key in self.LoophooksDict.__annotations__.keys():
             self._loophooks[key] = {}
@@ -191,12 +191,3 @@ class BaseLoop(abc.ABC, metaclass=BaseLoopMeta):
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
         return await self._agent._planning.execute_strategy( strategy_name = strategy_name, **kwargs)
-
-    def get_tools(self) -> ToolsRegistry :
-        return self._agent._tool_registry.get_tools()
-    
-    def tool_registry(self) -> ToolsRegistry :
-        return self._agent._tool_registry
-    
-    async def save_agent(self) : 
-        return self._agent.save_agent_in_memory() 
