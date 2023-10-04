@@ -1,9 +1,6 @@
 [submodule "autogpts/autogpt/tests/vcr_cassettes"]
 	path = autogpts/autogpt/tests/vcr_cassettes
 	url = https://github.com/Significant-Gravitas/Auto-GPT-test-cassettes
-[submodule "autogpts/Open-Sourcerer"]
-	path = autogpts/Open-Sourcerer
-	url = git@github.com:Agora-X/Open-Sourcerer.git
 [submodule "autogpts/Apollo"]
 	path = autogpts/Apollo
 	url = git@github.com:Agora-X/Apollo.git
@@ -16,3 +13,6 @@
 [submodule "autogpts/Synthia"]
 	path = autogpts/Synthia
 	url = git@github.com:Agora-X/Synthia.git
+[submodule "autogpts/Open-Sourcerer"]
+	path = autogpts/Open-Sourcerer
+	url = git@github.com:Agora-X/Open-Sourcerer.git
