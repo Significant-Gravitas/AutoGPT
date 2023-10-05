@@ -4,20 +4,8 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
-            "name": "R - Legacy cli",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/autogpts/autogpt/autogpt/app/cli.py",
-            "console": "integratedTerminal",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${env:PYTHONPATH}"
-            }
-        },
-        {
-
-            "name": "R - New Cli",
+            "name": "Mac Cli",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/autogpts/autogpt/autogpt/core/runner/cli_app/cli.py",
@@ -25,6 +13,18 @@
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${env:PYTHONPATH}"
+            }
+            
+        },
+        {
+            "name": "Windows Cli",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/autogpts/autogpt/autogpt/core/runner/cli_app/cli.py",
+            "args": ["run"],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/;${env:PYTHONPATH}"
             }
             
         }
