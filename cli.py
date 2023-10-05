@@ -7,6 +7,7 @@ To ensure efficiency, add the imports to the functions so only what is needed is
 try:
     import click
     import github
+
 except ImportError:
     import os
 
@@ -592,8 +593,8 @@ def enter(agent_name, branch):
     import subprocess
     from datetime import datetime
 
-    from github import Github
-
+    import os
+    os.system('pip install PyGithub')
     # Check if the agent_name directory exists in the autogpts directory
     agent_dir = f"./autogpts/{agent_name}"
     if not os.path.exists(agent_dir):
