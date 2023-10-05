@@ -1,10 +1,15 @@
-{% extends "techniques/expert.j2" %}
-{% block expert %}Project Manager{% endblock %}
-{% block prompt %}
-Generate a profile for the most accurate expert who can definitely complete the task '{{ task }}' correctly without issue. 
+Generate a name and expertise for a person who can complete this task. 
+
+Remember that most tasks can be completed through Python programming. 
+
+'{{ task }}' 
+
+# Constraints
+- Must be someone that can do this correctly, without issue, and complete it.
+- Must be a real expertise
+
 Reply only in json with the following format exactly:
 {
     "name": "the expert's name",
     "expertise": "specify the area in which the expert specializes"
 }
-{% endblock %}

@@ -1,17 +1,15 @@
-Reply only in json with the following format:
+Reply only in json exactly in the following format:
 
 {
-    "thoughts": {
-        "text":  "thoughts",
-        "reasoning": "reasoning behind thoughts",
-        "plan": "- short bulleted\\n- list that conveys\\n- long-term plan",
-        "criticism": "constructive self-criticism",
-        "speak": "thoughts summary to say to user"
+    \"thoughts\": {
+        \"reasoning\": \"reasoning behind thoughts\",
+        \"criticism\": \"constructive self-criticism\",
+        \"speak\": \"thoughts summary to say to user\"
     },
-    "ability": {
-        "name": "name of ability",
-        "args": {
-            "arg1": "value1",...
+    \"ability\": {
+        \"name\": \"name of ability to use\",
+        \"args\": {
+            \"arg1\": \"value1", ...
         }
     }
 }
