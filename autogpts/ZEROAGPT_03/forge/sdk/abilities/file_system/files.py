@@ -145,11 +145,11 @@ async def read_file(agent, task_id: str, file_name: str) -> bytes:
 
 @ability(
     name="search_file",
-    description="Search data from a file using regex",
+    description="Search the contents of a file using regex",
     parameters=[
         {
             "name": "regex",
-            "description": "regular expression for searching file",
+            "description": "Regular expression",
             "type": "string",
             "required": True
         },
@@ -184,3 +184,26 @@ async def search_file(agent, task_id: str, file_name: str, regex: str) -> List[M
 )
 async def get_cwd(agent, task_id) -> str:
     return agent.workspace.get_cwd_path(task_id)
+
+@ability(
+    name="file_content_length",
+    description="Get the content lenght of the file",
+    parameters=[
+        {
+            "name": "file_name",
+            "description": "Name of file",
+            "type": "string",
+            "required": True,
+        }
+    ],
+    output_type="str"
+)
+async def file_content_length(agent, task_id, file_name) -> int:
+    content_length = 0
+    try:
+        open_file = agent.workspace.read(task_id=task_id, path=file_name)
+        content_length = len(str(open_file).split())
+    except Exception as e:
+        logger.error(f"file_content_length: {e}")
+    
+    return content_length

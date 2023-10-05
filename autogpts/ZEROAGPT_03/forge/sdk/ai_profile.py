@@ -15,8 +15,11 @@ The possibilities are limited just by your imagination.
 """
 
 import openai
+import os
+import json
 
 from forge.sdk import PromptEngine
+from . import chat_completion_request
 
 
 class ProfileGenerator:
@@ -27,7 +30,7 @@ class ProfileGenerator:
         self.task = task
         self.prompt_engine = prompt_engine
 
-    def role_find(self) -> str:
+    async def role_find(self) -> str:
         """
         Ask LLM what role this task would fit
         Return role
@@ -37,9 +40,35 @@ class ProfileGenerator:
             **{"task": self.task.input}
         )
 
-        model = "text-davinci-003"
-        response = openai.Completion.create(engine=model, prompt=role_prompt, max_tokens=50)
+        chat_list = [
+            {
+                "role": "system",
+                "content": "You are a professional HR Specialist"
+            },
+            {
+                "role": "user", 
+                "content": role_prompt
+            }
+        ]
 
-        return response.choices[0].text.strip()
+        chat_completion_parms = {
+            "messages": chat_list,
+            "model": os.getenv("OPENAI_MODEL")
+        }
+
+        response = await chat_completion_request(
+            **chat_completion_parms)
+
+        json_resp = "{}"
+
+        try:
+            json_resp = json.loads(
+                response["choices"][0]["message"]["content"])
+        except Exception as err:
+            self.logger.error(f"JSON loads failed: {err}")
+            print(
+                response["choices"][0]["message"]["content"])
+            
+        return json_resp
 
 

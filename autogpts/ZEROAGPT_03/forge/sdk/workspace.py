@@ -81,15 +81,13 @@ class LocalWorkspace(Workspace):
 
     def list(self, task_id: str, path: str) -> typing.List[str]:
         # path = self.base_path / task_id / path
-        print(f"list path {path} {type(path)}")
         base = self._resolve_path(task_id, path)
-        print(f"base: {base}")
         file_list = []
         for p in base.iterdir():
             filename = str(p.relative_to(self.base_path / task_id))
-            if p.is_dir:
+            if p.is_dir():
                 filetype = "directory"
-            elif p.is_file:
+            elif p.is_file():
                 filetype = "file"
             
             file_list.append({
