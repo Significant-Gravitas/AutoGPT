@@ -49,11 +49,6 @@ class Challenge(ABC):
     async def setup_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
         from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
 
-        artifact_paths = [
-            self.ARTIFACTS_LOCATION,
-            str(Path(self.CHALLENGE_LOCATION).parent),
-        ]
-
         if not self.task:
             return
 
@@ -66,6 +61,10 @@ class Challenge(ABC):
 
         # hidden files are added after the agent runs. Hidden files can be python test files.
         # We copy them in the temporary folder to make it easy to import the code produced by the agent
+        artifact_paths = [
+            self.ARTIFACTS_LOCATION,
+            str(Path(self.CHALLENGE_LOCATION).parent),
+        ]
         for path in artifact_paths:
             copy_artifacts_into_temp_folder(TEMP_FOLDER_ABS_PATH, "custom_python", path)
 

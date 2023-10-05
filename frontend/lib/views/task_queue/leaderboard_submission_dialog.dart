@@ -44,14 +44,18 @@ class _LeaderboardSubmissionDialogState
     });
   }
 
-  void _validateAndSubmit() {
+  void _validateAndSubmit() async {
+    setState(() {
+      _teamNameError = null;
+      _repoUrlError = null;
+      _commitShaError = null;
+    });
+
     bool isValid = true;
 
     if (_teamNameController.text.isEmpty) {
       isValid = false;
       _teamNameError = 'Team Name is required';
-    } else {
-      _teamNameError = null;
     }
 
     if (_repoUrlController.text.isEmpty) {
@@ -60,20 +64,20 @@ class _LeaderboardSubmissionDialogState
     } else if (!UriUtility.isURL(_repoUrlController.text)) {
       isValid = false;
       _repoUrlError = 'Invalid URL format';
-    } else {
-      _repoUrlError = null;
+    } else if (!(await UriUtility()
+        .isValidGitHubRepo(_repoUrlController.text))) {
+      isValid = false;
+      _repoUrlError = 'Not a valid GitHub repository';
     }
 
     if (_commitShaController.text.isEmpty) {
       isValid = false;
       _commitShaError = 'Commit SHA is required';
-    } else {
-      _commitShaError = null;
     }
 
     if (isValid) {
       print('Valid leaderboard submission parameters!');
-      _saveToSharedPreferences();
+      await _saveToSharedPreferences();
       widget.onSubmit?.call(_teamNameController.text, _repoUrlController.text,
           _commitShaController.text);
       Navigator.of(context).pop();
