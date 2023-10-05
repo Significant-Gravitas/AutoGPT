@@ -1,7 +1,7 @@
 import pytest
-
 from agbenchmark.utils.dependencies.graphs import extract_subgraph_based_on_category
 
+# ----- Fixtures -----
 
 @pytest.fixture
 def curriculum_graph():
@@ -13,34 +13,17 @@ def curriculum_graph():
             {"from": "World History", "to": "Modern History"},
         ],
         "nodes": [
-            {"data": {"category": ["math"]}, "id": "Calculus", "label": "Calculus"},
-            {
-                "data": {"category": ["math"]},
-                "id": "Advanced Calculus",
-                "label": "Advanced Calculus",
-            },
-            {"data": {"category": ["math"]}, "id": "Algebra", "label": "Algebra"},
-            {"data": {"category": ["science"]}, "id": "Biology", "label": "Biology"},
-            {
-                "data": {"category": ["science"]},
-                "id": "Advanced Biology",
-                "label": "Advanced Biology",
-            },
-            {
-                "data": {"category": ["history"]},
-                "id": "World History",
-                "label": "World History",
-            },
-            {
-                "data": {"category": ["history"]},
-                "id": "Modern History",
-                "label": "Modern History",
-            },
+            {"data": {"category": ["math"]}, "id": "Calculus"},
+            {"data": {"category": ["math"]}, "id": "Advanced Calculus"},
+            {"data": {"category": ["math"]}, "id": "Algebra"},
+            {"data": {"category": ["science"]}, "id": "Biology"},
+            {"data": {"category": ["science"]}, "id": "Advanced Biology"},
+            {"data": {"category": ["history"]}, "id": "World History"},
+            {"data": {"category": ["history"]}, "id": "Modern History"},
         ],
     }
 
-
-graph_example = {
+GRAPH_EXAMPLE = {
     "nodes": [
         {"id": "A", "data": {"category": []}},
         {"id": "B", "data": {"category": []}},
@@ -49,40 +32,33 @@ graph_example = {
     "edges": [{"from": "B", "to": "C"}, {"from": "A", "to": "C"}],
 }
 
+# ----- Helper Functions -----
+
+def node_ids_from_graph(graph):
+    return set(node["id"] for node in graph["nodes"])
+
+def edge_pairs_from_graph(graph):
+    return set((edge["from"], edge["to"]) for edge in graph["edges"])
+
+# ----- Tests -----
 
 def test_dfs_category_math(curriculum_graph):
     result_graph = extract_subgraph_based_on_category(curriculum_graph, "math")
 
-    # Expected nodes: Algebra, Calculus, Advanced Calculus
-    # Expected edges: Algebra->Calculus, Calculus->Advanced Calculus
+    expected_nodes = {"Algebra", "Calculus", "Advanced Calculus"}
+    expected_edges = {("Algebra", "Calculus"), ("Calculus", "Advanced Calculus")}
 
-    expected_nodes = ["Algebra", "Calculus", "Advanced Calculus"]
-    expected_edges = [
-        {"from": "Algebra", "to": "Calculus"},
-        {"from": "Calculus", "to": "Advanced Calculus"},
-    ]
-
-    assert set(node["id"] for node in result_graph["nodes"]) == set(expected_nodes)
-    assert set((edge["from"], edge["to"]) for edge in result_graph["edges"]) == set(
-        (edge["from"], edge["to"]) for edge in expected_edges
-    )
-
+    assert node_ids_from_graph(result_graph) == expected_nodes
+    assert edge_pairs_from_graph(result_graph) == expected_edges
 
 def test_extract_subgraph_math_category():
-    subgraph = extract_subgraph_based_on_category(graph_example, "math")
-    assert set(
-        (node["id"], tuple(node["data"]["category"])) for node in subgraph["nodes"]
-    ) == set(
-        (node["id"], tuple(node["data"]["category"])) for node in graph_example["nodes"]
-    )
-    assert set((edge["from"], edge["to"]) for edge in subgraph["edges"]) == set(
-        (edge["from"], edge["to"]) for edge in graph_example["edges"]
-    )
-
+    subgraph = extract_subgraph_based_on_category(GRAPH_EXAMPLE, "math")
+    
+    assert node_ids_from_graph(subgraph) == node_ids_from_graph(GRAPH_EXAMPLE)
+    assert edge_pairs_from_graph(subgraph) == edge_pairs_from_graph(GRAPH_EXAMPLE)
 
 def test_extract_subgraph_non_existent_category():
-    result_graph = extract_subgraph_based_on_category(graph_example, "toto")
+    result_graph = extract_subgraph_based_on_category(GRAPH_EXAMPLE, "toto")
 
-    # Asserting that the result graph has no nodes and no edges
-    assert len(result_graph["nodes"]) == 0
-    assert len(result_graph["edges"]) == 0
+    assert node_ids_from_graph(result_graph) == set()
+    assert edge_pairs_from_graph(result_graph) == set()
