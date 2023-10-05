@@ -28,6 +28,10 @@ class AIPlanning:
         self.prompt_engine = PromptEngine(os.getenv("OPENAI_MODEL"))
 
     async def create_steps(self) -> str:
+        step_format_prompt = self.prompt_engine.load_prompt(
+            "step-format"
+        )
+        
         step_prompt = self.prompt_engine.load_prompt(
             "get-steps",
             **{
@@ -37,6 +41,10 @@ class AIPlanning:
         )
 
         chat_list = [
+            {
+                "role": "system",
+                "content": step_format_prompt
+            },
             {
                 "role": "system",
                 "content": "You are a professional Project Planner."

@@ -151,6 +151,15 @@ class ForgeAgent(Agent):
         # ----------------------------------------------------
         # AI planning and steps way
 
+        # add system prompts to chat for task
+        # set up reply json with alternative created
+        system_prompt = self.prompt_engine.load_prompt("system-reformat")
+
+        # add to messages
+        # wont memory store this as static
+        LOG.info(f"🖥️  {system_prompt}")
+        self.add_chat(task_id, "system", system_prompt)
+
         # add role system prompt
         try:
             role_prompt_params = {
@@ -197,7 +206,8 @@ class ForgeAgent(Agent):
         )
 
         LOG.info(f"🤓 {task_prompt}")
-        self.add_chat(task_id, "user", task_prompt)  
+        self.add_chat(task_id, "user", task_prompt)
+        # ----------------------------------------------------
 
     def copy_to_temp(self, task_id: str):
         """
