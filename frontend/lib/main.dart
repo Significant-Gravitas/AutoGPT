@@ -84,7 +84,10 @@ class MyApp extends StatelessWidget {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return CircularProgressIndicator();
           }
-          if (snapshot.hasData && snapshot.data != null) {
+          String hostname = Uri.base.host;
+
+          if (snapshot.hasData && snapshot.data != null ||
+              hostname.contains('github.dev')) {
             return MultiProvider(
               providers: [
                 ChangeNotifierProvider(
