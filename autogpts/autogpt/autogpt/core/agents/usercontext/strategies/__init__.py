@@ -14,7 +14,7 @@ class StrategiesSetConfiguration(PromptStrategiesConfiguration):
 
 
 class StrategiesSet:
-    from autogpt.core.prompting.base import BasePromptStrategy, PromptStrategy
+    from autogpt.core.prompting.base import BasePromptStrategy, AbstractPromptStrategy
 
     @staticmethod
     def get_strategies(logger=Logger) -> list[BasePromptStrategy]:

@@ -37,12 +37,12 @@ from autogpt.core.resource.model_providers import (
 
 from autogpt.core.utils.json_schema import JSONSchema
 
-from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list, to_string_list
+from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list, to_string_list, indent
 
-
+from autogpt.core.agents.simple.lib.models.action_history import Episode
 
 class ThinkStrategyFunctionNames(str, enum.Enum):
-    THINK: str = "think"
+    THINK: str = "select_tool"
 
 
 ###
@@ -59,7 +59,7 @@ class ThinkStrategyConfiguration(PlanningPromptStrategiesConfiguration):
 ####
 class ThinkStrategy(PlanningPromptStrategy):
     default_configuration: ThinkStrategyConfiguration =  ThinkStrategyConfiguration()
-    STRATEGY_NAME = "think"
+    STRATEGY_NAME = "select_tool"
 
     def __init__(
         self,
@@ -90,7 +90,7 @@ class ThinkStrategy(PlanningPromptStrategy):
         3. `cycle_instruction`
 
         Params:
-            cycle_instruction: The final instruction for a thinking cycle
+            cycle_instruction: The final instruction for a select_tooling cycle
         """
 
         model_name = kwargs["model_name"]
@@ -128,20 +128,20 @@ class ThinkStrategy(PlanningPromptStrategy):
 
 
         if event_history:
-            # progress = self.compile_progress(
-            #     event_history,
-            #     count_tokens=count_tokens,
-            #     max_tokens=(
-            #         max_prompt_tokens
-            #         - system_prompt_tlength
-            #         - final_instruction_tlength
-            #         - count_message_tokens(extra_messages)
-            #     ),
-            # )
-            # extra_messages.insert(
-            #     0,
-            #     ChatMessage.system(f"## Progress\n\n{progress}"),
-            # )
+            progress = self.compile_progress(
+                event_history,
+                # count_tokens=count_tokens,
+                # max_tokens=(
+                #     max_prompt_tokens
+                #     - system_prompt_tlength
+                #     - final_instruction_tlength
+                #     - count_message_tokens(extra_messages)
+                # ),
+            )
+            extra_messages.insert(
+                0,
+                ChatMessage.system(f"## Progress\n\n{progress}"),
+            )
             pass
         
         messages = [
@@ -149,7 +149,7 @@ class ThinkStrategy(PlanningPromptStrategy):
                 *extra_messages,
                 final_instruction_msg,
             ]
-        # messages: list[ChatMessage] = agent._loop.on_before_think(
+        # messages: list[ChatMessage] = agent._loop.on_before_select_tool(
         #     messages=messages,
         # )
 
@@ -265,9 +265,21 @@ class ThinkStrategy(PlanningPromptStrategy):
         except Exception:
             self._agent._logger.warning(parsed_response)
 
-        parsed_response["name"] = response_content["function_call"]["name"]
 
-        return parsed_response
+        ###
+        ### OLD 
+        ###
+        # parsed_response["name"] = response_content["function_call"]["name"]
+        # return parsed_response
+
+        ###
+        ### NEW 
+        ###
+        command_name = response_content["function_call"]["name"]
+        command_args = parsed_response
+        assistant_reply_dict = response_content['content']
+
+        return command_name, command_args, assistant_reply_dict
 
 
     # FIXME Move to new format
@@ -322,39 +334,85 @@ class ThinkStrategy(PlanningPromptStrategy):
     ) 
 
 
-    # NOTE : based on planning_agent.py
-    def construct_base_prompt(
-        self, agent: "PlannerAgent", **kwargs
-    ) -> list[ChatMessage]:
+    # # NOTE : based on planning_agent.py
+    # def construct_base_prompt(
+    #     self, agent: "PlannerAgent", **kwargs
+    # ) -> list[ChatMessage]:
         
-        # Add the current plan to the prompt, if any
-        if agent.plan:
-            plan_section = [
-                "## Plan",
-                "To complete your task, you have composed the following plan:",
-            ]
-            plan_section += [f"{i}. {s}" for i, s in enumerate(agent.plan, 1)]
+    #     # Add the current plan to the prompt, if any
+    #     if agent.plan:
+    #         plan_section = [
+    #             "## Plan",
+    #             "To complete your task, you have composed the following plan:",
+    #         ]
+    #         plan_section += [f"{i}. {s}" for i, s in enumerate(agent.plan, 1)]
 
-            # Add the actions so far to the prompt
-            if agent.event_history:
-                plan_section += [
-                    "\n### Progress",
-                    "So far, you have executed the following actions based on the plan:",
-                ]
-                for i, cycle in enumerate(agent.event_history, 1):
-                    if not (cycle.action and cycle.result):
-                        agent._logger.warn(f"Incomplete action in history: {cycle}")
-                        continue
+    #         # Add the actions so far to the prompt
+    #         if agent.event_history:
+    #             plan_section += [
+    #                 "\n### Progress",
+    #                 "So far, you have executed the following actions based on the plan:",
+    #             ]
+    #             for i, cycle in enumerate(agent.event_history, 1):
+    #                 if not (cycle.action and cycle.result):
+    #                     agent._logger.warn(f"Incomplete action in history: {cycle}")
+    #                     continue
 
-                    plan_section.append(
-                        f"{i}. You executed the command `{cycle.action.format_call()}`, "
-                        f"which gave the result `{cycle.result}`."
-                    )
+    #                 plan_section.append(
+    #                     f"{i}. You executed the command `{cycle.action.format_call()}`, "
+    #                     f"which gave the result `{cycle.result}`."
+    #                 )
 
-            self._prepend_messages.append(ChatMessage.system("\n".join(plan_section)))
+    #         self._prepend_messages.append(ChatMessage.system("\n".join(plan_section)))
 
-        messages = super().construct_base_prompt(
-            agent=agent,  **kwargs
-        )
+    #     messages = super().construct_base_prompt(
+    #         agent=agent,  **kwargs
+    #     )
 
-        return messages
+        # return messages
+    
+    def compile_progress(
+        self,
+        episode_history: list[Episode],
+        max_tokens: Optional[int] = None,
+        count_tokens: Optional[Callable[[str], int]] = None,
+    ) -> str:
+        if max_tokens and not count_tokens:
+            raise ValueError("count_tokens is required if max_tokens is set")
+
+        steps: list[str] = []
+        tokens: int = 0
+        start: int = len(episode_history)
+
+        for i, c in reversed(list(enumerate(episode_history))):
+            step = f"### Step {i+1}: Executed `{c.action.format_call()}`\n"
+            step += f'- **Reasoning:** "{c.action.reasoning}"\n'
+            step += (
+                f"- **Status:** `{c.result.status if c.result else 'did_not_finish'}`\n"
+            )
+            if c.result:
+                if c.result.status == "success":
+                    result = str(c.result)
+                    result = "\n" + indent(result) if "\n" in result else result
+                    step += f"- **Output:** {result}"
+                elif c.result.status == "error":
+                    step += f"- **Reason:** {c.result.reason}\n"
+                    if c.result.error:
+                        step += f"- **Error:** {c.result.error}\n"
+                elif c.result.status == "interrupted_by_human":
+                    step += f"- **Feedback:** {c.result.feedback}\n"
+
+            if max_tokens and count_tokens:
+                step_tokens = count_tokens(step)
+                if tokens + step_tokens > max_tokens:
+                    break
+                tokens += step_tokens
+
+            steps.insert(0, step)
+            start = i
+
+        # TODO: summarize remaining
+
+        part = slice(0, start)
+
+        return "\n\n".join(steps)

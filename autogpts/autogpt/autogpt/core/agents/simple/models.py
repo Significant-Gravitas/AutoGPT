@@ -12,7 +12,7 @@ from autogpt.core.agents.base.models import (
     BaseAgentSystems,
     BaseAgentSystemSettings,
 )
-from autogpt.core.planning import PlannerSettings
+from autogpt.core.agents.simple.lib import SimplePlannerSettings
 from autogpt.core.plugin.simple import PluginLocation
 from autogpt.core.resource.model_providers import OpenAISettings
 
@@ -53,7 +53,7 @@ class PlannerAgentSettings(BaseAgentSettings):
     agent: PlannerSystemSettings
     openai_provider: OpenAISettings
     tool_registry: ToolsRegistrySettings
-    planning: PlannerSettings
+    planning: SimplePlannerSettings
     user_id: Optional[uuid.UUID] = Field(default=None)
     agent_id: Optional[uuid.UUID] = Field(default=None)
     agent_name: str = Field(default="New Agent")

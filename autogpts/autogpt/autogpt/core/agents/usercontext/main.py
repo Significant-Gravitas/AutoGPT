@@ -15,7 +15,7 @@ from autogpt.core.agents.usercontext.models import (
 )
 from autogpt.core.configuration import Configurable
 from autogpt.core.memory.base import Memory
-from autogpt.core.planning import SimplePlanner, Task, TaskStatusList
+from autogpt.core.agents.simple.lib import SimplePlanner, Task, TaskStatusList
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 from autogpt.core.resource.model_providers import OpenAIProvider
 from autogpt.core.workspace.simple import SimpleWorkspace
@@ -59,7 +59,7 @@ class UserContextAgent(BaseAgent, Configurable):
                 ),
                 planning=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.planning.SimplePlanner",
+                    storage_route="autogpt.core.agents.simple.lib.SimplePlanner",
                 ),
                 workspace=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,

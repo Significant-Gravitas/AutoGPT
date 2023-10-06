@@ -15,9 +15,9 @@ from autogpt.core.agents.simple.models import (
 )
 from autogpt.core.configuration import Configurable
 from autogpt.core.memory.base import Memory
-from autogpt.core.planning import SimplePlanner
-from autogpt.core.planning.models.tasks import TaskStatusList
-from autogpt.core.planning.models.plan import Plan, Task
+from autogpt.core.agents.simple.lib import SimplePlanner
+from autogpt.core.agents.simple.lib.models.tasks import TaskStatusList
+from autogpt.core.agents.simple.lib.models.plan import Plan, Task
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 from autogpt.core.resource.model_providers import OpenAIProvider
 from autogpt.core.workspace.simple import SimpleWorkspace
@@ -73,7 +73,7 @@ class PlannerAgent(BaseAgent):
                 ),
                 planning=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.planning.SimplePlanner",
+                    storage_route="autogpt.core.agents.simple.lib.SimplePlanner",
                 ),
                 workspace=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
@@ -106,7 +106,10 @@ class PlannerAgent(BaseAgent):
 
         # These are specific
         self._openai_provider = openai_provider
+
         self._planning = planning
+        self._planning.set_agent(agent=self)
+
         self._tool_registry = SimpleToolRegistry.with_tool_modules(
             modules = TOOL_CATEGORIES,
             agent=self,
@@ -115,15 +118,19 @@ class PlannerAgent(BaseAgent):
             workspace=workspace,
             model_providers=openai_provider
             )
+        #self._tool_registry.set_agent(agent=self)
+        
 
-        self.plan: Plan = None
-        self._loop = PlannerLoop()
+
+        self._loop : PlannerLoop = PlannerLoop()
         self._loop.set_agent(agent=self)
 
         self.prompt_settings= self.load_prompt_settings()
+        self.plan: Plan = None
 
-        # NOTE : MOVE ADD HOOK TO BaseLoop
-
+        # TODO : Get hook added from configuration files 
+        # Exemple :
+        # self.add_hook( hook: BaseLoopHook, uuid: uuid.UUID) 
         self.add_hook(
             hook=BaseLoopHook(
                 name="begin_run",
@@ -134,9 +141,8 @@ class PlannerAgent(BaseAgent):
             ),
             uuid=uuid.uuid4(),
         )
-        # self.add_hook(name: str, hook: BaseLoopHook, uuid: uuid.UUID)
-        # self.add_hook(name: str, hook: BaseLoopHook, uuid: uuid.UUID)
-        # self.add_hook(name: str, hook: BaseLoopHook, uuid: uuid.UUID)
+
+
 
     def loophooks(self) -> PlannerLoop.LoophooksDict:
         if not self._loop._loophooks:
@@ -233,7 +239,7 @@ class PlannerAgent(BaseAgent):
         # #
         # simple_strategies = {}
         # import inspect
-        # from  autogpt.core.planning.base import PromptStrategy
+        # from  autogpt.core.agents.simple.lib.base import PromptStrategy
         # for strategy_name, strategy_config in strategies_config.__dict__.items():
         #     strategy_module = getattr(strategies, strategy_name)
         #     # Filter classes that are subclasses of PromptStrategy and are defined within that module

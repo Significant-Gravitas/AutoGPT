@@ -4,7 +4,7 @@ from typing import Any, Iterator, Literal, Optional
 
 from pydantic import BaseModel
 
-from autogpt.prompts.utils import format_numbered_list, indent
+from autogpt.core.prompting.utils.utils import to_numbered_list, indent
 
 
 class Action(BaseModel):
@@ -121,7 +121,7 @@ class EpisodicActionHistory(BaseModel):
             self.cursor = len(self.episodes)
 
     def fmt_list(self) -> str:
-        return format_numbered_list(self.episodes)
+        return to_numbered_list(self.episodes)
 
     def fmt_paragraph(self) -> str:
         steps: list[str] = []

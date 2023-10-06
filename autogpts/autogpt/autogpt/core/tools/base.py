@@ -9,9 +9,10 @@ from pydantic import Field
 
 from autogpt.core.tools.schema import ToolResult
 from autogpt.core.configuration import SystemConfiguration
-from autogpt.core.planning.simple import LanguageModelConfiguration
 from autogpt.core.resource.model_providers import CompletionModelFunction
 from autogpt.core.utils.json_schema import JSONSchema
+
+from autogpt.core.agents.simple.lib.simple import LanguageModelConfiguration
 from .schema import ToolResult
 
 

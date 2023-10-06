@@ -6,7 +6,7 @@ from typing_extensions import TypedDict
 
 from autogpt.core.ability import ToolResult
 from autogpt.core.agents.base import BaseLoop, BaseLoopHook
-from autogpt.core.planning import Task, TaskStatusList
+from autogpt.core.agents.simple.lib import Task, TaskStatusList
 from autogpt.core.runner.client_lib.parser import (
     parse_ability_result,
     parse_agent_plan,

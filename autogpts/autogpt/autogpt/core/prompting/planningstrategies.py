@@ -15,7 +15,7 @@ from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
 from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.prompting.schema import (
     LanguageModelClassification,
-    CompletionModelFunction,
+
 )
 
 from autogpt.core.configuration import (
@@ -32,6 +32,7 @@ from autogpt.core.resource.model_providers import (
     AssistantChatMessageDict,
     ChatMessage,
     ChatPrompt,
+    CompletionModelFunction,
 )
 
 from .base import (PromptStrategiesConfiguration, BasePromptStrategy, RESPONSE_SCHEMA)
@@ -93,6 +94,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         model_classification: LanguageModelClassification,
         **kwargs,
     ):
+        super().__init__()
         self._prepend_messages: list[ChatMessage] = []
         self._append_messages: list[ChatMessage] = []
 
@@ -102,47 +104,45 @@ class PlanningPromptStrategy(BasePromptStrategy):
         self._config = self.default_configuration
 
 
-    # NOTE : Legacy Autogpt and it's dodgy architecture :)
-    def construct_base_prompt(
-        self,
-        agent: PlannerAgent,
-        prepend_messages: list[ChatMessage] = [],
-        append_messages: list[ChatMessage] = [],
-        reserve_tokens: int = 0,
-        **kwargs
-    ) -> list[ChatMessage]:
-        """Constructs and returns a prompt with the following structure:
-        1. System prompt
-        2. `prepend_messages`
-        3. `append_messages`
+    # def construct_base_prompt(
+    #     self,
+    #     agent: PlannerAgent,
+    #     prepend_messages: list[ChatMessage] = [],
+    #     append_messages: list[ChatMessage] = [],
+    #     reserve_tokens: int = 0,
+    #     **kwargs
+    # ) -> list[ChatMessage]:
+    #     """Constructs and returns a prompt with the following structure:
+    #     1. System prompt
+    #     2. `prepend_messages`
+    #     3. `append_messages`
 
-        Params:
-            prepend_messages: Messages to insert between the system prompt and message history
-            append_messages: Messages to insert after the message history
-            reserve_tokens: Number of tokens to reserve for content that is added later
-        """
+    #     Params:
+    #         prepend_messages: Messages to insert between the system prompt and message history
+    #         append_messages: Messages to insert after the message history
+    #         reserve_tokens: Number of tokens to reserve for content that is added later
+    #     """
 
-        # NOTE : PLANCE HOLDER
-        # if agent.event_history:
-        #     self._prepend_messages.insert(
-        #         0,
-        #         ChatMessage.system(
-        #             "## Progress\n\n" f"{agent.event_history.fmt_paragraph()}"
-        #         ),
-        #     )
+    #     # NOTE : PLANCE HOLDER
+    #     # if agent.event_history:
+    #     #     self._prepend_messages.insert(
+    #     #         0,
+    #     #         ChatMessage.system(
+    #     #             "## Progress\n\n" f"{agent.event_history.fmt_paragraph()}"
+    #     #         ),
+    #     #     )
 
-        messages: list[ChatMessage] = [
-            ChatMessage.system(self._construct_system_prompt(agent=agent, **kwargs))
-        ]
-        if self._prepend_messages:
-            messages.extend(self._prepend_messages)
-        if self._append_messages:
-            messages.extend(self._append_messages)
+    #     messages: list[ChatMessage] = [
+    #         ChatMessage.system(self._construct_system_prompt(agent=agent, **kwargs))
+    #     ]
+    #     if self._prepend_messages:
+    #         messages.extend(self._prepend_messages)
+    #     if self._append_messages:
+    #         messages.extend(self._append_messages)
 
-        return messages
+    #     return messages
 
     # FIXME : Uncompleted migration from AutoGPT Agent
-
     def _construct_system_prompt(self, 
                                  agent: PlannerAgent,
                                  agent_directives : list ,
@@ -201,7 +201,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         #     plugin.post_prompt(self)
 
         # Construct full prompt
-        from autogpt.core.planning.simple import get_os_info
+        from autogpt.core.agents.simple.lib.simple import get_os_info
 
         full_prompt_parts: list[str] = (
             self._generate_intro_prompt(agent=agent)

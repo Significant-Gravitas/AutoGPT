@@ -13,12 +13,13 @@ if TYPE_CHECKING:
         BaseLoop,
         BaseLoopHook,
     )
+    from autogpt.core.tools.base import BaseToolsRegistry
 
 from autogpt.core.agents.base.loop import (
     BaseLoopHook,
 )
 
-from autogpt.core.tools.base import BaseToolsRegistry
+
 from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from autogpt.core.planning.models.tasks import Task
+from autogpt.core.agents.simple.lib.models.tasks import Task
 from typing import Union
 
 

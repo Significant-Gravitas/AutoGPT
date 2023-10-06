@@ -48,7 +48,7 @@ from autogpt.core.resource.model_providers import (
     ChatPrompt,
 )
 
-from autogpt.core.planning.models.user_response import Questions, AgentUserResponse
+from autogpt.core.agents.simple.lib.models.user_response import Questions, AgentUserResponse
 
 
 class RefineUserContextFunctionNames(str, enum.Enum):

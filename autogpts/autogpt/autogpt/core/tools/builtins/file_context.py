@@ -18,7 +18,7 @@ from autogpt.core.utils.exceptions import (
 )
 from autogpt.core.tools.command_decorator  import tool
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.planning.models.context_items import FileContextItem, FolderContextItem
+from autogpt.core.agents.simple.lib.models.context_items import FileContextItem, FolderContextItem
 
 from .decorators import sanitize_path_arg
 

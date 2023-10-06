@@ -1,7 +1,7 @@
 from logging import Logger
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.prompting.base import BasePromptStrategy, PromptStrategy
-from autogpt.core.planning.schema import (
+from autogpt.core.prompting.base import BasePromptStrategy, AbstractPromptStrategy
+from autogpt.core.agents.simple.lib.schema import (
     Task,
 )
 from autogpt.core.prompting.schema import (

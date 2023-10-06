@@ -4,17 +4,17 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Dict, Optional
 from typing_extensions import TypedDict
 
-from autogpt.core.planning.models.action import (
+from autogpt.core.agents.simple.lib.models.action import (
     ActionHistory,
     ActionResult,
     ActionInterruptedByHuman,
     ActionSuccessResult,
     ActionErrorResult,
 )
-from autogpt.core.planning.models.context_items import ContextItem
+from autogpt.core.agents.simple.lib.models.context_items import ContextItem
 from autogpt.core.tools import ToolOutput
-from autogpt.core.planning.models.plan import Plan
-from autogpt.core.planning.models.tasks import Task, TaskStatusList
+from autogpt.core.agents.simple.lib.models.plan import Plan
+from autogpt.core.agents.simple.lib.models.tasks import Task, TaskStatusList
 
 from autogpt.core.tools import ToolResult
 from autogpt.core.agents.base import BaseLoop, BaseLoopHook, UserFeedback
@@ -33,8 +33,8 @@ from autogpt.core.agents.base.exceptions import (
 
 if TYPE_CHECKING:
     from autogpt.core.agents.simple import PlannerAgent, PlannerAgentSettings
-    from autogpt.core.prompting.schema import ChatModelResponse
-    from autogpt.core.resource.model_providers import ChatMessage
+    #from autogpt.core.prompting.schema import ChatModelResponse
+    from autogpt.core.resource.model_providers import ChatMessage, ChatModelResponse
 
 
 # NOTE : This is an example of customization that allow to share part of a project in Github while keeping part not released
@@ -162,7 +162,7 @@ class PlannerLoop(BaseLoop):
         ##############################################################
         ### Step 3 : Saving agent with its new goals
         ##############################################################
-        self.save_agent()
+        await self.save_agent()
 
         ##############################################################
         ### Step 4 : Start with an plan !
@@ -186,76 +186,27 @@ class PlannerLoop(BaseLoop):
 
         # _is_running is important because it avoid having two concurent loop in the same agent (cf : Agent.run())
         while self._is_running:
+
             # if _active is false, then the loop is paused
             # FIXME replace _active by self.remaining_cycles > 0:
             if self._active:
                 # logger.debug(f"Cycle budget: {cycle_budget}; remaining: {self.remaining_cycles}")
                 self._loop_count += 1
 
-                try:
-                    ###
-                    ### Step 4 a : think()
-                    ###
-                    response: ChatModelResponse = await self.think()
+                ##############################################################
+                ### Step 5 : select_tool()
+                ##############################################################
+                command_name, command_args, assistant_reply_dict = await self.select_tool()
 
-                    command_name = response.parsed_result["name"]
-                    del response.parsed_result["name"]
-                    command_args = response.parsed_result
-                    assistant_reply_dict = response.content
-                except InvalidAgentResponseError as e:
-                    self._agent._logger.warn(f"The agent's thoughts could not be parsed: {e}")
-                    consecutive_failures += 1
-                    if consecutive_failures >= 3:
-                        self._agent._logger.error(
-                            f"The agent failed to output valid thoughts {consecutive_failures} "
-                            "times in a row. Terminating..."
-                        )
-
-                # Print the assistant's thoughts and the next command to the user.
-                self._agent._logger.info(
-                    (
-                        f"command_name : {command_name} \n\n"
-                        + f"command_args : {str(command_args)}\n\n"
-                        + f"assistant_reply_dict : {str(assistant_reply_dict)}\n\n"
-                    )
-                )
-
-                user_input = ""
-                # Get user input if there is no more automated cycles
-                if self.remaining_cycles == 1:
-                    user_input = await self._user_input_handler(
-                        f"Enter y to authorise command, "
-                        f"y -N' to run N continuous commands, "
-                        f"q to exit program, or enter feedback for "
-                        + self._agent.agent_name
-                        + "..."
-                    )
-
-                    if user_input.lower().strip() == "y":
-                        pass
-                    else:
-                        command_name = "ask_user"
-
-                ###################
-                # Execute Tool #
-                ###################
+                ##############################################################
+                ### execute() #
+                ##############################################################
                 # Decrement the cycle counter first to reduce the likelihood of a SIGINT
                 # happening during command execution, setting the cycles remaining to 1,
                 # and then having the decrement set it to 0, exiting the application.
-                if command_name != "ask_user":
-                    self.remaining_cycles -= 1
+                result = await self.execute_tool(command_name, command_args)
 
-                if not command_name:
-                    continue
 
-                result = await self.execute(command_name, command_args, user_input)
-
-                if result.status == "success":
-                    self._agent._logger.info(result)
-                elif result.status == "error":
-                    self._agent._logger.warn(
-                        f"Tool {command_name} returned an error: {result.error or result.reason}"
-                    )
 
     async def start(
         self,
@@ -378,7 +329,7 @@ class PlannerLoop(BaseLoop):
         ChatPrompt,
     )
 
-    async def think(
+    async def select_tool(
         self,
     ) :
         """Runs the agent for one cycle.
@@ -390,13 +341,25 @@ class PlannerLoop(BaseLoop):
             The command name and arguments, if any, and the agent's thoughts.
         """
         raw_response: ChatModelResponse = await self.execute_strategy(
-            strategy_name="think",
+            strategy_name= "select_tool",
             agent=self._agent,
             tools=self.get_tools(),
         )
-        return raw_response
 
-    async def execute(
+        command_name = raw_response.parsed_result[0]
+        command_args = raw_response.parsed_result[1]
+        assistant_reply_dict = raw_response.parsed_result[2]
+
+        self._agent._logger.info(
+            (
+                f"command_name : {command_name} \n\n"
+                + f"command_args : {str(command_args)}\n\n"
+                + f"assistant_reply_dict : {str(assistant_reply_dict)}\n\n"
+            )
+        )
+        return command_name, command_args, assistant_reply_dict 
+
+    async def execute_tool(
         self,
         command_name: str,
         command_args: dict[str, str] = {},
@@ -404,7 +367,7 @@ class PlannerLoop(BaseLoop):
     ) -> ActionResult:
         result: ActionResult
 
-        if command_name == "ask_user":
+        if command_name == "humand_feedback":
             result = ActionInterruptedByHuman(user_input)
 
             # self.log_cycle_handler.log_cycle(
@@ -421,6 +384,9 @@ class PlannerLoop(BaseLoop):
             #         continue
             #     command_name, arguments = plugin.pre_command(command_name, command_args)
 
+            # NOTE : Test tools individually
+            command_name =  "web_search" 
+            command_args : {'query': 'instructions for building a Pizza oven'}
             try:
                 return_value = await execute_command(
                     command_name=command_name,
@@ -473,6 +439,13 @@ class PlannerLoop(BaseLoop):
 
         # Update action history
         self._agent.event_history.register_result(result)
+
+        if result.status == "success":
+            self._agent._logger.info(result)
+        elif result.status == "error":
+            self._agent._logger.warn(
+                f"Tool {command_name} returned an error: {result.error or result.reason}"
+            )
 
         return result
 

@@ -15,6 +15,9 @@ class AgentMixin:
         pass
 
     def set_agent(self, agent : BaseAgent) :
+        if hasattr(self, '_agent') and self._agent is not None:
+            raise Exception("Agent aulready set")
+         
         self._agent = agent
 
     def get_tools(self) -> list[Tool] :
@@ -25,3 +28,9 @@ class AgentMixin:
     
     async def save_agent(self) : 
         return self._agent.save_agent_in_memory()
+    
+    def message_user(self , message : str) : 
+        return self._agent._user_input_handler(message)
+    
+    def get_user_input(self , message : str) : 
+        return self._agent._user_input_handler(message)

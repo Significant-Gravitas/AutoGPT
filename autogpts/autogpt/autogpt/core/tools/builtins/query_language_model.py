@@ -3,7 +3,7 @@ import logging
 from typing import ClassVar
 from autogpt.core.tools.base import Tool, ToolConfiguration
 from autogpt.core.tools.schema import ToolResult
-from autogpt.core.planning.simple import LanguageModelConfiguration
+from autogpt.core.agents.simple.lib.simple import LanguageModelConfiguration
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 from autogpt.core.resource.model_providers import (
     ChatMessage,

@@ -24,7 +24,7 @@ from autogpt.core.resource.model_providers import (
     ChatPrompt,
 )
 
-from autogpt.core.planning.schema import (
+from autogpt.core.agents.simple.lib.schema import (
     Task,
     TaskType,
 )

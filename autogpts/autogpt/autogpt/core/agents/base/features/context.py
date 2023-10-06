@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from autogpt.core.prompting import ChatPrompt
-    from autogpt.core.planning.models.context_items import ContextItem
+    from autogpt.core.agents.simple.lib.models.context_items import ContextItem
 
     from ..base import BaseAgent
 

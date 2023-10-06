@@ -1,8 +1,14 @@
+from __future__ import annotations
 import logging
 import platform
 import time
 
 from pydantic import validator
+from typing import TYPE_CHECKING
+
+from autogpt.core.agents.base.features.agentmixin import AgentMixin
+if TYPE_CHECKING : 
+    from autogpt.core.agents.base.main import BaseAgent
 
 from autogpt.core.configuration import (
     Configurable,
@@ -11,10 +17,10 @@ from autogpt.core.configuration import (
     UserConfigurable,
 )
 
-from autogpt.core.planning.schema import Task
+#from autogpt.core.agents.simple.lib.schema import Task
 from autogpt.core.prompting.base import (
     BasePromptStrategy,
-    PromptStrategy,
+    AbstractPromptStrategy,
     PromptStrategiesConfiguration,
 )
 from autogpt.core.prompting.schema import LanguageModelClassification
@@ -45,8 +51,8 @@ class LanguageModelConfiguration(SystemConfiguration):
     temperature: float = UserConfigurable()
 
 
-class PlannerConfiguration(SystemConfiguration):
-    """Configuration for the Planner subsystem."""
+class SimplePlannerConfiguration(SystemConfiguration):
+    """Configuration for the SimplePlanner subsystem."""
 
     models: dict[LanguageModelClassification, LanguageModelConfiguration]
 
@@ -62,19 +68,19 @@ class PlannerConfiguration(SystemConfiguration):
         return models
 
 
-class PlannerSettings(SystemSettings):
-    """Settings for the Planner subsystem."""
+class SimplePlannerSettings(SystemSettings):
+    """Settings for the SimplePlanner subsystem."""
 
-    configuration: PlannerConfiguration
+    configuration: SimplePlannerConfiguration
 
 
-class SimplePlanner(Configurable):
+class SimplePlanner(Configurable, AgentMixin):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
-    default_settings = PlannerSettings(
+    default_settings = SimplePlannerSettings(
         name="planner",
         description="Manages the agent's planning and goal-setting by constructing language model prompts.",
-        configuration=PlannerConfiguration(
+        configuration=SimplePlannerConfiguration(
             models={
                 LanguageModelClassification.FAST_MODEL_4K: LanguageModelConfiguration(
                     model_name=OpenAIModelName.GPT3,
@@ -107,13 +113,13 @@ class SimplePlanner(Configurable):
 
     def __init__(
         self,
-        settings: PlannerSettings,
+        settings: SimplePlannerSettings,
         logger: logging.Logger,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
-        strategies: dict[str, PromptStrategy],
+        strategies: dict[str, AbstractPromptStrategy],
         workspace: Workspace = None,  # Workspace is not available during bootstrapping.
     ) -> None:
-        super().__init__(settings, logger)
+        super().__init__(settings = settings, logger = logger)
         self._workspace = workspace
 
         self._providers: dict[LanguageModelClassification, BaseChatModelProvider] = {}
@@ -124,9 +130,14 @@ class SimplePlanner(Configurable):
         for strategy in strategies:
             self._prompt_strategies[strategy.STRATEGY_NAME] = strategy
 
-        logger.debug(f"Planner created with strategies : {self._prompt_strategies}")
+        logger.debug(f"SimplePlanner created with strategies : {self._prompt_strategies}")
         # self._prompt_strategies = strategies
 
+    # def set_agent(self,agent : BaseAgent) : 
+    #     self._agent = agent
+    #     for strategy in self._prompt_strategies:
+    #         self._prompt_strategies[strategy.STRATEGY_NAME].set_agent(agent)
+    
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
         """
         await simple_planner.execute_strategy('name_and_goals', user_objective='Learn Python')
@@ -136,47 +147,48 @@ class SimplePlanner(Configurable):
         if strategy_name not in self._prompt_strategies:
             raise ValueError(f"Invalid strategy name {strategy_name}")
 
-        prompt_strategy = self._prompt_strategies[strategy_name]
+        prompt_strategy : BasePromptStrategy = self._prompt_strategies[strategy_name]
+        prompt_strategy.set_agent(agent = self._agent)
 
         kwargs.update(self.get_system_info(prompt_strategy))
 
         return await self.chat_with_model(prompt_strategy, **kwargs)
 
-    async def decide_name_and_goals(self, user_objective: str) -> ChatModelResponse:
-        return await self.chat_with_model(
-            self._prompt_strategies["name_and_goals"],
-            user_objective=user_objective,
-        )
+    # async def decide_name_and_goals(self, user_objective: str) -> ChatModelResponse:
+    #     return await self.chat_with_model(
+    #         self._prompt_strategies["name_and_goals"],
+    #         user_objective=user_objective,
+    #     )
 
-    async def make_initial_plan(
-        self,
-        agent_name: str,
-        agent_role: str,
-        agent_goals: list[str],
-        tools: list[str],
-    ) -> ChatModelResponse:
-        return await self.chat_with_model(
-            self._prompt_strategies["initial_plan"],
-            agent_name=agent_name,
-            agent_role=agent_role,
-            agent_goals=agent_goals,
-            tools=tools,
-        )
+    # async def make_initial_plan(
+    #     self,
+    #     agent_name: str,
+    #     agent_role: str,
+    #     agent_goals: list[str],
+    #     tools: list[str],
+    # ) -> ChatModelResponse:
+    #     return await self.chat_with_model(
+    #         self._prompt_strategies["initial_plan"],
+    #         agent_name=agent_name,
+    #         agent_role=agent_role,
+    #         agent_goals=agent_goals,
+    #         tools=tools,
+    #     )
 
-    async def determine_next_ability(
-        self,
-        task: Task,
-        ability_specs: list[CompletionModelFunction],
-    ):
-        return await self.chat_with_model(
-            self._prompt_strategies["next_ability"],
-            task=task,
-            ability_specs=ability_specs,
-        )
+    # async def determine_next_ability(
+    #     self,
+    #     task: Task,
+    #     ability_specs: list[CompletionModelFunction],
+    # ):
+    #     return await self.chat_with_model(
+    #         self._prompt_strategies["next_ability"],
+    #         task=task,
+    #         ability_specs=ability_specs,
+    #     )
 
     async def chat_with_model(
         self,
-        prompt_strategy: PromptStrategy,
+        prompt_strategy: AbstractPromptStrategy,
         **kwargs,
     ) -> ChatModelResponse:
         model_classification = prompt_strategy.model_classification
@@ -203,7 +215,7 @@ class SimplePlanner(Configurable):
         )
         return response
 
-    def get_system_info(self, strategy: PromptStrategy) -> SystemInfo:
+    def get_system_info(self, strategy: AbstractPromptStrategy) -> SystemInfo:
         provider = self._providers[strategy.model_classification]
         template_kwargs = {
             "os_info": get_os_info(),

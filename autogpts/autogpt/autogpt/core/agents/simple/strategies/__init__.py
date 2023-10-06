@@ -27,10 +27,10 @@ class StrategiesConfiguration(PromptStrategiesConfiguration):
 
 
 class Strategies:
-    from autogpt.core.prompting.base import BasePromptStrategy, PromptStrategy
+    from autogpt.core.prompting.base import BasePromptStrategy, AbstractPromptStrategy
 
     @staticmethod
-    def get_strategies(logger: Logger) -> list[PromptStrategy]:
+    def get_strategies(logger: Logger) -> list[AbstractPromptStrategy]:
         return [
             InitialPlanStrategy(
                 logger=logger, **InitialPlanStrategy.default_configuration.dict()

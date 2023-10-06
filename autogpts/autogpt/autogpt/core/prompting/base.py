@@ -11,10 +11,8 @@ if TYPE_CHECKING:
 
 from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
 from autogpt.core.configuration import SystemConfiguration
-from autogpt.core.prompting.schema import (
-    LanguageModelClassification,
-    CompletionModelFunction,
-)
+from autogpt.core.prompting.schema import LanguageModelClassification
+
 
 from autogpt.core.configuration import (
     Configurable,
@@ -30,6 +28,7 @@ from autogpt.core.resource.model_providers import (
     AssistantChatMessageDict,
     ChatMessage,
     ChatPrompt,
+    CompletionModelFunction,
 )
 
 
@@ -89,7 +88,8 @@ class PromptStrategiesConfiguration(SystemConfiguration):
 
 
 
-class PromptStrategy(abc.ABC):
+from autogpt.core.agents.base.features.agentmixin import AgentMixin
+class AbstractPromptStrategy(AgentMixin, abc.ABC):
     STRATEGY_NAME: str
     default_configuration: SystemConfiguration
 
@@ -107,7 +107,7 @@ class PromptStrategy(abc.ABC):
         ...
 
 
-class BasePromptStrategy(PromptStrategy):
+class BasePromptStrategy(AbstractPromptStrategy):
     @property
     def model_classification(self) -> LanguageModelClassification:
         return self._model_classification

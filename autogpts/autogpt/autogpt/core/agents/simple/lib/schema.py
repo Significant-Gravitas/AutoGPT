@@ -1,4 +1,4 @@
-from autogpt.core.planning.models.tasks import (
+from autogpt.core.agents.simple.lib.models.tasks import (
     Task,
     TaskContext,
     TaskStatusList,

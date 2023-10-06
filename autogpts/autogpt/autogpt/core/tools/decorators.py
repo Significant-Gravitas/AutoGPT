@@ -7,7 +7,7 @@
 # AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
 
 # if TYPE_CHECKING:
-#     from autogpt.core.planning.models.command import ToolOutput, ToolParameter
+#     from autogpt.core.agents.simple.lib.models.command import ToolOutput, ToolParameter
 #     from autogpt.core.tools.base import Tool, ToolResult, ToolConfiguration
 #     from autogpt.core.agents.base import BaseAgent
 
