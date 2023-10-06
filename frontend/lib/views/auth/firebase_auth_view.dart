@@ -24,7 +24,7 @@ class FirebaseAuthView extends StatelessWidget {
               },
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.blue,
-                side: const BorderSide(color: Colors.blue, width: 2),
+                side: const BorderSide(color: Colors.red, width: 2),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               ),
