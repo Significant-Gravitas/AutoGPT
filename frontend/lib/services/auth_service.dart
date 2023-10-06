@@ -7,7 +7,7 @@ class AuthService {
       clientId:
           "387936576242-iejdacrjljds7hf99q0p6eqna8rju3sb.apps.googleusercontent.com");
 
-// Sign in with Google using popup
+// Sign in with Google using redirect
   Future<UserCredential?> signInWithGoogle() async {
     try {
       final GoogleAuthProvider googleProvider = GoogleAuthProvider();
@@ -28,8 +28,8 @@ class AuthService {
       // Step 3: Update OAuth 2.0 provider configuration dynamically
       googleProvider.setCustomParameters({'redirect_uri': redirectUri});
 
-      // Use signInWithPopup instead of signInWithRedirect
-      final result = await _auth.signInWithPopup(googleProvider);
+      await _auth.signInWithRedirect(googleProvider);
+      final result = await _auth.getRedirectResult();
       print(result);
       return result;
     } catch (e) {
@@ -38,7 +38,7 @@ class AuthService {
     }
   }
 
-// Sign in with GitHub using popup
+// Sign in with GitHub using redirect
   Future<UserCredential?> signInWithGitHub() async {
     try {
       final GithubAuthProvider githubProvider = GithubAuthProvider();
@@ -59,9 +59,8 @@ class AuthService {
       // Step 3: Update OAuth 2.0 provider configuration dynamically
       githubProvider.setCustomParameters({'redirect_uri': redirectUri});
 
-      // Use signInWithPopup instead of signInWithRedirect
-      final result = await _auth.signInWithPopup(githubProvider);
-      return result;
+      await _auth.signInWithRedirect(githubProvider);
+      return await _auth.getRedirectResult();
     } catch (e) {
       print("Error during GitHub Sign-In: $e");
       return null;
