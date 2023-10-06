@@ -90,18 +90,10 @@ class _ChatViewState extends State<ChatView> {
                     key: ValueKey(chat.id),
                     chat: chat,
                     onArtifactsButtonPressed: () {
-                      // TODO: Create an actual artifact object
                       // Loop through each artifact and download it using the artifact_id
                       for (var artifact in chat.artifacts) {
-                        if (artifact is Map) {
-                          final artifactMap = artifact.cast<String,
-                              dynamic>(); // Cast each item to Map<String, dynamic>
-
-                          final artifactId = artifactMap['artifact_id']
-                              .toString(); // Get the artifact_id
-                          widget.viewModel.downloadArtifact(
-                              chat.taskId, artifactId); // Download the artifact
-                        }
+                        widget.viewModel
+                            .downloadArtifact(chat.taskId, artifact.artifactId);
                       }
                     },
                   );
