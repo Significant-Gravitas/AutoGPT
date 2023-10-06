@@ -29,52 +29,52 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
 
     try:
         file_list = agent.workspace.list(task_id=task_id, path=path)
-    except Exception as e:
-        logger.error(f"list_file failed: {e}")
-        file_list = [{}]
+    except Exception as err:
+        logger.error(f"list_files failed: {err}")
+        raise err
     
     return file_list 
 
-@ability(
-    name="write_source_code",
-    description="Write programming language source code to a file",
-    parameters=[
-        {
-            "name": "file_name",
-            "description": "Name of the file",
-            "type": "string",
-            "required": True,
-        },
-        {
-            "name": "code",
-            "description": "Code to write to the file",
-            "type": "string",
-            "required": True,
-        },
-    ],
-    output_type="None",
-)
-async def write_source_code(agent, task_id: str, file_name: str, code: str) -> None:
-    """
-    Write source code as string/text to a file
-    """
+# @ability(
+#     name="write_source_code",
+#     description="Write programming language source code to a file",
+#     parameters=[
+#         {
+#             "name": "file_name",
+#             "description": "Name of the file",
+#             "type": "string",
+#             "required": True,
+#         },
+#         {
+#             "name": "code",
+#             "description": "Code to write to the file",
+#             "type": "string",
+#             "required": True,
+#         },
+#     ],
+#     output_type="None",
+# )
+# async def write_source_code(agent, task_id: str, file_name: str, code: str) -> None:
+#     """
+#     Write source code as string/text to a file
+#     """
 
-    # clean extra escape slashes
-    code = code.replace('\\\\', '\\')
+#     # clean extra escape slashes
+#     code = code.replace('\\\\', '\\')
     
-    # clean \n being written as text and not a new line
-    code = code.replace('\\n', '\n')
+#     # clean \n being written as text and not a new line
+#     code = code.replace('\\n', '\n')
 
-    agent.workspace.write_str(task_id=task_id, path=file_name, data=code)
+#     agent.workspace.write_str(task_id=task_id, path=file_name, data=code)
     
-    await agent.db.create_artifact(
-        task_id=task_id,
-        file_name=file_name.split("/")[-1],
-        relative_path=file_name,
-        agent_created=True,
-    )
+#     await agent.db.create_artifact(
+#         task_id=task_id,
+#         file_name=file_name.split("/")[-1],
+#         relative_path=file_name,
+#         agent_created=True,
+#     )
 
-    add_memory(task_id, code, "write_source_code")
+#     await add_memory(task_id, code, "write_source_code")
 
 
 @ability(
@@ -100,21 +100,32 @@ async def write_file(agent, task_id: str, file_name: str, data: bytes) -> None:
     """
     Write data to a file
     """
-    if isinstance(data, str):
-        # ai adding too many escape back slashes
-        data = data.encode()
+    # convert to string and clean up data
+    try:
+        if isinstance(data, bytes):
+            data = data.decode()
+        
+        data = data.replace('\\\\', '\\')
+        data = data.replace('\\n', '\n')
 
-    agent.workspace.write(task_id=task_id, path=file_name, data=data)
+        # add to memory
+        await add_memory(task_id, data, "write_file")
+
+        # convert back to bytes
+        data = str.encode(data)
+
+        agent.workspace.write(task_id=task_id, path=file_name, data=data)
     
-    await agent.db.create_artifact(
-        task_id=task_id,
-        file_name=file_name.split("/")[-1],
-        relative_path=file_name,
-        agent_created=True,
-    )
-
-    add_memory(task_id, str(data), "write_file")
-
+        await agent.db.create_artifact(
+            task_id=task_id,
+            file_name=file_name.split("/")[-1],
+            relative_path=file_name,
+            agent_created=True,
+        )
+    except Exception as err:
+        logger.error(f"write_file failed: {err}")
+        raise err
+    
 @ability(
     name="read_file",
     description="Read data from a file",
@@ -136,9 +147,16 @@ async def read_file(agent, task_id: str, file_name: str) -> bytes:
 
     try:
         read_file = agent.workspace.read(task_id=task_id, path=file_name)
-        add_memory(task_id, str(read_file), "read_file")
-    except Exception as e:
-        logger.error(f"read_file failed: {e}")
+        
+        # trim down file read to 255 characters
+        file_str = read_file.decode()
+        file_str = file_str[:255]
+        read_file = str.encode(file_str)
+        
+        await add_memory(task_id, read_file.decode(), "read_file")
+    except Exception as err:
+        logger.error(f"read_file failed: {err}")
+        raise err
 
     
     return read_file
@@ -171,19 +189,20 @@ async def search_file(agent, task_id: str, file_name: str, regex: str) -> List[M
     try:
         open_file = agent.workspace.read(task_id=task_id, path=file_name)
         search_rgx = re.findall(rf"{regex}", open_file.decode())
-    except Exception as e:
-        logger.error(f"search_file failed: {e}")
+    except Exception as err:
+        logger.error(f"search_file failed: {err}")
+        raise err
 
     return search_rgx
 
-@ability(
-    name="get_cwd",
-    description="Get the current working directory",
-    parameters=[],
-    output_type="str"
-)
-async def get_cwd(agent, task_id) -> str:
-    return agent.workspace.get_cwd_path(task_id)
+# @ability(
+#     name="get_cwd",
+#     description="Get the current working directory",
+#     parameters=[],
+#     output_type="str"
+# )
+# async def get_cwd(agent, task_id) -> str:
+#     return agent.workspace.get_cwd_path(task_id)
 
 @ability(
     name="file_content_length",
@@ -203,7 +222,8 @@ async def file_content_length(agent, task_id, file_name) -> int:
     try:
         open_file = agent.workspace.read(task_id=task_id, path=file_name)
         content_length = len(str(open_file).split())
-    except Exception as e:
-        logger.error(f"file_content_length: {e}")
+    except Exception as err:
+        logger.error(f"file_content_length failed: {err}")
+        raise err
     
     return content_length

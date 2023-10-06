@@ -41,6 +41,7 @@ async def get_ticker_info(
         stock_info = stock.get_info()
     except Exception as err:
         logger.error(f"get_ticker_info failed: {err}")
+        raise err
 
     json_info = json.dumps(stock_info)
     return json_info
@@ -84,8 +85,15 @@ async def get_financials_year(
 
             if key_year == year:
                 year_financial_data = financial_data
+
+                await add_memory(
+                    task_id,
+                    financial_data,
+                    "get_financials_year"
+                )
     except Exception as err:
         logger.error(f"get_financials_year failed: {err}")
+        raise err
 
     if year_financial_data:
         json_data = json.dumps(year_financial_data)

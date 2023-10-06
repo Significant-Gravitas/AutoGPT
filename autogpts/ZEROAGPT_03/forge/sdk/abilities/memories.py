@@ -39,8 +39,9 @@ async def mem_search(agent, task_id: str, query: str) -> List[str]:
 
         mem_docs = memory_resp["documents"][0]
     except Exception as err:
-        logger.error(f"mem_search filed: {err}")
-
+        logger.error(f"mem_search failed: {err}")
+        raise err
+    
     return mem_docs
 
 

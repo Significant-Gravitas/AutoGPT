@@ -4,6 +4,11 @@ import hashlib
 import chromadb
 from chromadb.config import Settings
 
+from ..llm import (
+    create_text_embedding_request,
+    create_chat_embedding_request
+)
+
 
 class MemStore(abc.ABC):
     """
@@ -167,7 +172,7 @@ class ChromaMemStore(MemStore):
             path=store_path, settings=Settings(anonymized_telemetry=False)
         )
 
-    def add(self, task_id: str, document: str, metadatas: dict) -> None:
+    async def add(self, task_id: str, document: str, metadatas: dict) -> None:
         """
         Add a document to the MemStore.
 
@@ -178,6 +183,31 @@ class ChromaMemStore(MemStore):
         """
         doc_id = hashlib.sha256(document.encode()).hexdigest()[:20]
         collection = self.client.get_or_create_collection(task_id)
+
+        # get embeddings
+        emb_rsp = await create_text_embedding_request(document)
+        text_embeddings = emb_rsp['data'][0]['embedding']
+        collection.add(
+            embeddings=[text_embeddings],
+            documents=[document],
+            metadatas=[metadatas],
+            ids=[doc_id]
+        )
+    
+    def add_chat(self, task_id: str, chats: list[dict], metadatas: dict) -> None:
+        """
+        Add chat messages to the MemStore.
+
+        Args:
+            task_id (str): The ID of the task.
+            document (str): The document to be added.
+            metadatas (dict): The metadata of the document.
+        """
+        doc_id = hashlib.sha256(document.encode()).hexdigest()[:20]
+        collection = self.client.get_or_create_collection(task_id)
+
+        # get embeddings
+        
         collection.add(documents=[document], metadatas=[metadatas], ids=[doc_id])
 
     def query(

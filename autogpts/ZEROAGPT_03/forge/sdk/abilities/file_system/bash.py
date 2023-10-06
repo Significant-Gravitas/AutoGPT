@@ -45,17 +45,16 @@ async def run_bash_command(agent, task_id: str, command: str) -> str:
 
         return_dict["return_code"] = req.returncode
         return_dict["stdout"] = req.stdout.decode()
-        return_dict["stderr"] = req.stderr.decode()
-
-        return_json = json.dumps(return_dict)
-        add_memory(task_id, return_json, "run_bash_command")
-
-        return return_json
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON dumps failed for return_dict in run_bash_command: {e}")
-        add_memory(task_id, str(return_dict), "run_bash_command")
-    except Exception as e:
-        logger.error(f"subprocess call failed: {e}")
+        return_dict["stderr"] = req.stderr.decode()        
+    except Exception as err:
+        logger.error(f"subprocess call failed: {err}")
+        raise err
     
+    try:
+        return_json = json.dumps(return_dict)
+    except json.JSONDecodeError as err:
+        logger.error(f"JSON dumps failed in run_bash_command: {err}")
+        raise err
 
-    return str(return_dict)
+    await add_memory(task_id, return_json, "run_bash_command")
+    return return_json

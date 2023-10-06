@@ -37,7 +37,7 @@ async def chat_completion_request(
         
         # tuning temperature
         if temperature:
-            kwargs["temperature"] = 0,5
+            kwargs["temperature"] = temperature
         
         resp = await openai.ChatCompletion.acreate(**kwargs)
 
@@ -49,7 +49,7 @@ async def chat_completion_request(
 
 
 @retry(wait=wait_random_exponential(min=1, max=40), stop=stop_after_attempt(3))
-async def create_embedding_request(
+async def create_chat_embedding_request(
     messages, model="text-embedding-ada-002"
 ) -> typing.Union[typing.Dict[str, typing.Any], Exception]:
     """Generate an embedding for a list of messages using OpenAI's API"""
@@ -63,6 +63,20 @@ async def create_embedding_request(
         LOG.error(f"Exception: {e}")
         raise
 
+@retry(wait=wait_random_exponential(min=1, max=40), stop=stop_after_attempt(3))
+async def create_text_embedding_request(
+    text, model="text-embedding-ada-002"
+) -> typing.Union[typing.Dict[str, typing.Any], Exception]:
+    """Generate an embedding for a list of messages using OpenAI's API"""
+    try:
+        return await openai.Embedding.acreate(
+            input=[text],
+            engine=model,
+        )
+    except Exception as e:
+        LOG.error("Unable to generate ChatCompletion response")
+        LOG.error(f"Exception: {e}")
+        raise
 
 @retry(wait=wait_random_exponential(min=1, max=40), stop=stop_after_attempt(3))
 async def transcribe_audio(

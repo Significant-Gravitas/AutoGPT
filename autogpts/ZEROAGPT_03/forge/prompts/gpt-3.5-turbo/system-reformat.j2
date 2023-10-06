@@ -1,16 +1,18 @@
-Reply only in json exactly in the following format:
+Reply only in JSON exactly in the following format:
 
 {
     \"thoughts\": {
+        \"current step\": \"current step being done\",
         \"reasoning\": \"reasoning behind thoughts\",
         \"criticism\": \"constructive self-criticism\",
-        \"next step\": \"what your next step will be to complete task\",
-        \"speak\": \"thoughts summary to say to user\"
+        \"feeling\": \"how does this step make you feel?\",
+        \"speak\": \"thoughts summary to say to user\",
+        \"last_step\": \"0 if not last step, 1 if it is\"
     },
     \"ability\": {
         \"name\": \"name of ability to use\",
         \"args\": {
-            \"arg1\": \"value1", ...
+            \"arg1\": \"value1\", ...
         }
     }
 }

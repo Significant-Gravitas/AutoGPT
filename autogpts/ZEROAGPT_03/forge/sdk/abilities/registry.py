@@ -66,7 +66,13 @@ class Ability(pydantic.BaseModel):
         func_summary = f"{self.name}("
         for param in self.parameters:
             func_summary += f"{param.name}: {param.type}, "
-        func_summary = func_summary[:-2] + ")"
+        
+        # fix for abilities with no arguments
+        if func_summary[:-2]:
+            func_summary = func_summary[:-2] + ")"
+        else:
+            func_summary = ""
+
         func_summary += f" -> {self.output_type}. Usage: {self.description},"
         return func_summary
 

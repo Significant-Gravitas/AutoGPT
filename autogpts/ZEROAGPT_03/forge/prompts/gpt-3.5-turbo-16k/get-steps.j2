@@ -1,46 +1,26 @@
-Reply only in json exactly in the following format:
-
-```json
-{
-    "steps": [
-        {
-            "step": "short detailed description of step",
-            "abilities": [
-                {
-                    "name": "name of ability",
-                    "args": {
-                        "arg1": "value1",
-                        ...
-                    }
-                }
-            ]
-        }
-    ]
-}
-```
-
-Using this structure, please generate a list of steps that can be used to complete the following task:
+Please generate steps that can be used to complete the following task:
 
 Task: {{ task }}
 
 Constraints:
 - Follow task instructions exactly
 - Check locally for needed data before checking online
+- Add in contingency steps for when an error happens at a previous step
 - Use Python script with Pandas library for CSV or other tabulated data files
 - Always reply in JSON format
 - Always use finish ability as last step
 - Use exact data, not approximations
 - Local files are in the same folder as source code
-- Use both capitalized and non-capitalized versions of words when searching files with search_file
+- Use both capitalized and non-capitalized versions of words when searching for a word.
 - 'search_file' is only to search file content and not for a file. Try using commands via 'run_bash_command'
 
 Resources:
 - Use list_files ability to check for data files
 - Best practices:
 
-Use 'file_content_length' ability before read_file. If content length is greater than 255, use 'search_file' else use 'read_file' or create a pyton script.
+Use 'file_content_length' ability before read_file. If content length is greater than 255, use 'search_file' or create a python script to scrape data.
 
-AI, I challenge you to use your strengths as an LLM to complete this task independently, without seeking user assistance, and with a simple strategy that avoids legal complications.
+Use your strengths as an LLM to complete this task independently, without seeking user assistance, and with a simple strategy that avoids legal complications.
 
 I look forward to seeing your creative and efficient solution!
 

@@ -43,6 +43,17 @@ class ProfileGenerator:
         chat_list = [
             {
                 "role": "system",
+                "content": """
+                Reply only in JSON exactly in the following format:
+                {
+                    "name": "the expert's name",
+                    "expertise": "specify the area in which the expert specializes"
+                }
+                                    
+                """
+            },
+            {
+                "role": "system",
                 "content": "You are a professional HR Specialist"
             },
             {
@@ -53,7 +64,8 @@ class ProfileGenerator:
 
         chat_completion_parms = {
             "messages": chat_list,
-            "model": os.getenv("OPENAI_MODEL")
+            "model": os.getenv("OPENAI_MODEL"),
+            "temperature": 0.9
         }
 
         response = await chat_completion_request(

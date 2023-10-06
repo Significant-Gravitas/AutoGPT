@@ -31,12 +31,17 @@ class AIPlanning:
         step_format_prompt = self.prompt_engine.load_prompt(
             "step-format"
         )
+
+        # add abilities prompt
+        abilities_prompt = self.prompt_engine.load_prompt(
+            "abilities-list",
+            **{"abilities": self.abilities}
+        )
         
         step_prompt = self.prompt_engine.load_prompt(
             "get-steps",
             **{
-                "task": self.task,
-                "abilities": self.abilities
+                "task": self.task
             }
         )
 
@@ -44,6 +49,10 @@ class AIPlanning:
             {
                 "role": "system",
                 "content": step_format_prompt
+            },
+            {
+                "role": "system",
+                "content": abilities_prompt
             },
             {
                 "role": "system",
@@ -55,12 +64,12 @@ class AIPlanning:
             }
         ]
 
-        self.logger.info(f"[AIPlanner] chat: {chat_list}")
+        # self.logger.info(f"[AIPlanner] chat: {chat_list}")
 
         chat_completion_parms = {
             "messages": chat_list,
             "model": os.getenv("OPENAI_MODEL"),
-            "temperature": 0.0
+            "temperature": 0.6
         }
         
         response = await chat_completion_request(

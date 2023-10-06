@@ -17,6 +17,10 @@ class Workspace(abc.ABC):
     def write(self, task_id: str, path: str, data: bytes) -> None:
         pass
 
+    # @abc.abstractclassmethod
+    # def write_str(self, task_id: str, path: str, data: str) -> None:
+    #     pass
+
     @abc.abstractclassmethod
     def delete(
         self, task_id: str, path: str, directory: bool = False, recursive: bool = False
@@ -57,10 +61,10 @@ class LocalWorkspace(Workspace):
         with open(file_path, "wb") as f:
             f.write(data)
 
-    def write_str(self, task_id: str, path: str, data: str) -> None:
-        file_path = self._resolve_path(task_id, path)
-        with open(file_path, 'w') as f:
-            f.write(data)
+    # def write_str(self, task_id: str, path: str, data: str) -> None:
+    #     file_path = self._resolve_path(task_id, path)
+    #     with open(file_path, 'w') as f:
+    #         f.write(data)
 
     def delete(
         self, task_id: str, path: str, directory: bool = False, recursive: bool = False

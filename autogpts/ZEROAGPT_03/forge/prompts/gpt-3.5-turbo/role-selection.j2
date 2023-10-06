@@ -1,11 +1,9 @@
-{% extends "techniques/expert.j2" %}
-{% block expert %}Human Resources{% endblock %}
-{% block prompt %}
-Generate a profile for an expert who can help with the task '{{ task }}'. 
-Reply only in json with the following format:
-{
-    \"name\": \"the expert's name\",
-    \"expertise\": \"specify the area in which the expert specializes\"
-    \"role\": \"specify the role the expert will play in the task\"
-}
-{% endblock %}
+Generate a name and expertise for a person who can complete this task. 
+
+Remember that most tasks can be completed through Python programming. 
+
+'{{ task }}' 
+
+# Constraints
+- Must be someone that can do this correctly, without issue, and complete it.
+- Must be a real expertise
