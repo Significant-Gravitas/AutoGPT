@@ -301,7 +301,7 @@
                         "output.csv"
                     ],
                     "should_contain": [
-                        "Item, Color\nBanana, Yellow\nLeaf, Green\nSky, Blue\nSunflower, Yellow\nGrass, Green\nJeans, Blue\nLemon, Yellow\nTree, Green\nOcean, Blue\nDaisy, Yellow\nFern, Green"
+                        "Item,Color\nBanana,yellow\nLeaf,green\nSky,blue\nSunflower,yellow\nGrass,green\nJeans,blue\nLemon,yellow\nTree,green\nOcean,blue\nDaisy,yellow\nFern,green"
                     ]
                 },
                 "info": {
