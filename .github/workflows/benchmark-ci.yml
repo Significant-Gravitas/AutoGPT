@@ -98,7 +98,7 @@ jobs:
 
       - name: Run regression tests
         run: |
-          ./run agent start ${{ matrix.agent-name }}
+          ./run agent start ${{ matrix.agent-name }} --setup
           sleep 10
           cd autogpts/${{ matrix.agent-name }}
           set +e # Ignore non-zero exit codes and continue execution
