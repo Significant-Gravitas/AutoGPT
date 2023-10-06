@@ -1,4 +1,5 @@
 import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_status.dart';
+import 'package:auto_gpt_flutter_client/models/test_option.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/task_queue/leaderboard_submission_button.dart';
@@ -98,11 +99,11 @@ class TaskQueueView extends StatelessWidget {
                 // TestSuiteButton
                 TestSuiteButton(
                   isDisabled: viewModel.isBenchmarkRunning,
-                  selectedOption: viewModel.selectedOption,
+                  selectedOptionString: viewModel.selectedOption.description,
                   onOptionSelected: (selectedOption) {
                     print('Option Selected: $selectedOption');
                     viewModel.updateSelectedNodeHierarchyBasedOnOption(
-                        selectedOption);
+                        TestOptionExtension.fromDescription(selectedOption)!);
                   },
                   onPlayPressed: (selectedOption) {
                     print('Starting benchmark with option: $selectedOption');
