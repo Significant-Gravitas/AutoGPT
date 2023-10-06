@@ -8,11 +8,20 @@ class AuthService {
           "387936576242-iejdacrjljds7hf99q0p6eqna8rju3sb.apps.googleusercontent.com");
 
 // Sign in with Google using redirect
+// Sign in with Google using redirect
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      final GoogleAuthProvider googleProvider = GoogleAuthProvider();
-      await _auth.signInWithRedirect(googleProvider);
-      return await _auth.getRedirectResult();
+      final GoogleSignInAccount? googleSignInAccount =
+          await googleSignIn.signIn();
+      if (googleSignInAccount != null) {
+        final GoogleSignInAuthentication googleSignInAuthentication =
+            await googleSignInAccount.authentication;
+        final AuthCredential credential = GoogleAuthProvider.credential(
+          accessToken: googleSignInAuthentication.accessToken,
+          idToken: googleSignInAuthentication.idToken,
+        );
+        return await _auth.signInWithCredential(credential);
+      }
     } catch (e) {
       print("Error during Google Sign-In: $e");
       return null;
@@ -22,9 +31,8 @@ class AuthService {
 // Sign in with GitHub using redirect
   Future<UserCredential?> signInWithGitHub() async {
     try {
-      final GithubAuthProvider githubProvider = GithubAuthProvider();
-      await _auth.signInWithRedirect(githubProvider);
-      return await _auth.getRedirectResult();
+      final GithubAuthProvider provider = GithubAuthProvider();
+      return await _auth.signInWithPopup(provider);
     } catch (e) {
       print("Error during GitHub Sign-In: $e");
       return null;
