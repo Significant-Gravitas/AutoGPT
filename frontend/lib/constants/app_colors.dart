@@ -19,7 +19,7 @@ class AppColors {
   static const tooltipLight = Color(0xFF9CA4B6);
   static const chatHistoryTabLight = Color(0xFFDDE2EA);
   static const cardLight = Color(0xFFF8FAFD);
-  static const skilltreeBackgroundLight = Color(0xFFEFF2F8);
+  static const skilltreeBackgroundLight = Color(0xFFEFF2F7);
   static const codeBlockArtefactsLight = Color(0xFFDDE2EA);
   static const promptBarTestPanelLight = Color(0xFFBFC7D3);
   static const logsBackgroundLight = Color(0xFFBFC7D3);

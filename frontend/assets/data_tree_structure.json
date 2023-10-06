@@ -14,7 +14,7 @@
         },
         {
             "arrows": "to",
-            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "from": "agbenchmcdsdsark/generate_test.py::TestReadFile::test_method[challenge_data0]",
             "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]",
             "to": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]"
         },
