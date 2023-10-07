@@ -108,10 +108,13 @@ class Agent(
     def build_prompt(
         self,
         *args,
-        extra_messages: list[ChatMessage] = [],
+        extra_messages: Optional[list[ChatMessage]] = None,
         include_os_info: Optional[bool] = None,
         **kwargs,
     ) -> ChatPrompt:
+        if not extra_messages:
+            extra_messages = []
+
         # Clock
         extra_messages.append(
             ChatMessage.system(f"The current time and date is {time.strftime('%c')}"),
