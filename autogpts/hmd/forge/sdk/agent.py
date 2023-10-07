@@ -178,33 +178,71 @@ class Agent:
         if they want the agent to continue or not.
         """
 
-        # An example that
-        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
+        task = await self.db.get_task(task_id)
 
         step = await self.db.create_step(
             task_id=task_id, input=step_request, is_last=True
         )
 
-        step_input = "None"
-        if step.input:
-            step_input = step.input[:19]
-        message=f"\t🔄 Step executed: {step.step_id} input: {step_input}"
+        # Log the message
+        LOG.info(f"\t✅ Final Step completed: {step.step_id} input: {step.input[:19]}")
 
-        if step.is_last:
-            message = (
-                f"\t✅ Final Step completed: {step.step_id} input: {step_input}"
-            )
+        # Initialize the PromptEngine with the "gpt-3.5-turbo" model
+        prompt_engine = PromptEngine("gpt-3.5-turbo")
 
-        LOG.info (message)
+        # Load the system and task prompts
+        system_prompt = prompt_engine.load_prompt("system-format")
+
+        # Initialize the messages list with the system prompt
+        messages = [
+            {"role": "system", "content": system_prompt},
+        ]
         
-        artifact = await self.db.create_artifact(
-            task_id=task_id,
-            step_id=step.step_id,
-            file_name="output.txt",
-            relative_path="",
-            agent_created=True,
+        # Define the task parameters
+        task_kwargs = {
+            "task": task.input,
+            "abilities": self.abilities.list_abilities_for_prompt(),
+        }
+
+        # Load the task prompt with the defined task parameters
+        task_prompt = prompt_engine.load_prompt("task-step", **task_kwargs)
+
+        # Append the task prompt to the messages list
+        messages.append({"role": "user", "content": task_prompt})
+
+        try:
+            # Define the parameters for the chat completion request
+            chat_completion_kwargs = {
+                "messages": messages,
+                "model": "gpt-3.5-turbo",
+            }
+            # Make the chat completion request and parse the response
+            chat_response = await chat_completion_request(**chat_completion_kwargs)
+            answer = json.loads(chat_response["choices"][0]["message"]["content"])
+
+            # Log the answer for debugging purposes
+            LOG.info(pprint.pformat(answer))
+
+        except json.JSONDecodeError as e:
+            # Handle JSON decoding errors
+            LOG.error(f"Unable to decode chat response: {chat_response}")
+        except Exception as e:
+            # Handle other exceptions
+            LOG.error(f"Unable to generate chat response: {e}") #Step 7: Executing the Derived Ability
+
+        # self.abilities = AbilityRegister(self)
+
+        # Extract the ability from the answer
+        ability = answer["ability"]
+
+        # Run the ability and get the output
+        # We don't actually use the output in this example
+        output = await self.abilities.run_ability(
+            task_id, ability["name"], **ability["args"]
         )
-        step.output = "Washington D.C"
+
+        # Set the step output to the "speak" part of the answer
+        step.output = answer["thoughts"]["speak"]
 
         return step
 
