@@ -38,10 +38,9 @@ jobs:
           curl -sSL https://install.python-poetry.org | python -
 
       - name: Run regression tests
-        working-directory: ./autogpts/${{ matrix.agent-name }}/
         run: |
-          sh run &
-          sleep 20
+          ./run agent start ${{ matrix.agent-name }} --setup
+          cd autogpts/${{ matrix.agent-name }}
           poetry run agbenchmark --mock
           poetry run agbenchmark --test=WriteFile
         env:

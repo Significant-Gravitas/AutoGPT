@@ -8,6 +8,7 @@ import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_edge.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
 import 'package:auto_gpt_flutter_client/models/step.dart';
 import 'package:auto_gpt_flutter_client/models/task.dart';
+import 'package:auto_gpt_flutter_client/models/test_option.dart';
 import 'package:auto_gpt_flutter_client/models/test_suite.dart';
 import 'package:auto_gpt_flutter_client/services/benchmark_service.dart';
 import 'package:auto_gpt_flutter_client/services/leaderboard_service.dart';
@@ -18,6 +19,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:graphview/GraphView.dart';
 import 'package:uuid/uuid.dart';
+import 'package:auto_gpt_flutter_client/utils/stack.dart';
 
 class SkillTreeViewModel extends ChangeNotifier {
   // TODO: Potentially move to task queue view model when we create one
@@ -37,6 +39,9 @@ class SkillTreeViewModel extends ChangeNotifier {
   SkillTreeNode? _selectedNode;
   // TODO: Potentially move to task queue view model when we create one
   List<SkillTreeNode>? _selectedNodeHierarchy;
+
+  TestOption _selectedOption = TestOption.runSingleTest;
+  TestOption get selectedOption => _selectedOption;
 
   List<SkillTreeNode> get skillTreeNodes => _skillTreeNodes;
   List<SkillTreeEdge> get skillTreeEdges => _skillTreeEdges;
@@ -101,9 +106,92 @@ class SkillTreeViewModel extends ChangeNotifier {
     } else {
       // Select the new node
       _selectedNode = _skillTreeNodes.firstWhere((node) => node.id == nodeId);
-      populateSelectedNodeHierarchy(nodeId);
+      updateSelectedNodeHierarchyBasedOnOption(_selectedOption);
     }
     notifyListeners();
+  }
+
+  void updateSelectedNodeHierarchyBasedOnOption(TestOption selectedOption) {
+    _selectedOption = selectedOption;
+    switch (selectedOption) {
+      case TestOption.runSingleTest:
+        _selectedNodeHierarchy = _selectedNode != null ? [_selectedNode!] : [];
+        break;
+
+      case TestOption.runTestSuiteIncludingSelectedNodeAndAncestors:
+        if (_selectedNode != null) {
+          populateSelectedNodeHierarchy(_selectedNode!.id);
+        }
+        break;
+
+      case TestOption.runAllTestsInCategory:
+        if (_selectedNode != null) {
+          _getAllNodesInDepthFirstOrderEnsuringParents();
+        }
+        break;
+    }
+    notifyListeners();
+  }
+
+  void _getAllNodesInDepthFirstOrderEnsuringParents() {
+    var nodes = <SkillTreeNode>[];
+    var stack = Stack<SkillTreeNode>();
+    var visited = <String>{};
+
+    // Identify the root node by its label
+    var root = _skillTreeNodes.firstWhere((node) => node.label == "WriteFile");
+
+    stack.push(root);
+    visited.add(root.id);
+
+    while (stack.isNotEmpty) {
+      var node = stack.peek(); // Peek the top node, but do not remove it yet
+      var parents = _getParentsOfNodeUsingEdges(node.id);
+
+      // Check if all parents are visited
+      if (parents.every((parent) => visited.contains(parent.id))) {
+        nodes.add(node);
+        stack.pop(); // Remove the node only when all its parents are visited
+
+        // Get the children of the current node using edges
+        var children = _getChildrenOfNodeUsingEdges(node.id)
+            .where((child) => !visited.contains(child.id));
+
+        children.forEach((child) {
+          visited.add(child.id);
+          stack.push(child);
+        });
+      } else {
+        stack
+            .pop(); // Remove the node if not all parents are visited, it will be re-added when its parents are visited
+      }
+    }
+
+    _selectedNodeHierarchy = nodes;
+  }
+
+  List<SkillTreeNode> _getParentsOfNodeUsingEdges(String nodeId) {
+    var parents = <SkillTreeNode>[];
+
+    for (var edge in _skillTreeEdges) {
+      if (edge.to == nodeId) {
+        parents.add(_skillTreeNodes.firstWhere((node) => node.id == edge.from));
+      }
+    }
+
+    return parents;
+  }
+
+  List<SkillTreeNode> _getChildrenOfNodeUsingEdges(String nodeId) {
+    var children = <SkillTreeNode>[];
+
+    for (var edge in _skillTreeEdges) {
+      if (edge.from == nodeId) {
+        children.add(_skillTreeNodes.firstWhere((node) => node.id == edge.to));
+      }
+    }
+
+    return children;
   }
 
   // TODO: Do we want to continue testing other branches of tree if one branch side fails benchmarking?
