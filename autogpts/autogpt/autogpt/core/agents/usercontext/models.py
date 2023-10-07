@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 class UserContextAgentSystems(BaseAgentSystems):
     ability_registry: PluginLocation
-    openai_provider: PluginLocation
+    chat_model_provider: PluginLocation
     planning: PluginLocation
 
     class Config(BaseAgentSystems.Config):
@@ -47,7 +47,7 @@ class UserContextAgentSystemSettings(BaseAgentSystemSettings):
 
 class UserContextAgentSettings(BaseAgentSettings):
     agent: UserContextAgentSystemSettings
-    openai_provider: OpenAISettings
+    chat_model_provider: OpenAISettings
     planning: SimplePlannerSettings
     user_id: Optional[uuid.UUID] = Field(default=None)
     agent_id: Optional[uuid.UUID] = Field(default=None)

@@ -156,7 +156,7 @@ class BasePromptStrategy(AbstractPromptStrategy):
     def response_format_instruction(
         self, agent: PlannerAgent,  model_name: str) -> str:
 
-        use_functions_api = agent._openai_provider.has_function_call_api(
+        use_functions_api = agent._chat_model_provider.has_function_call_api(
             model_name=model_name
         )
         

@@ -188,7 +188,7 @@ class OpenAIProvider(
     """
 
     default_settings = OpenAISettings(
-        name="openai_provider",
+        name="chat_model_provider",
         description="Provides access to OpenAI's API.",
         configuration=OpenAIConfiguration(
             retries_per_request=10,
@@ -396,29 +396,25 @@ class OpenAIProvider(
         """
 
         completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
-
         completion_kwargs["function_call"] = function_call
 
-        try:
-            response = await self._create_chat_completion(
-                messages=model_prompt,
-                **completion_kwargs,
+
+        response : openai.Completion = await self._create_chat_completion(
+            messages=model_prompt,
+            **completion_kwargs,
+        )
+        response_args = {
+            "model_info": OPEN_AI_CHAT_MODELS[model_name],
+            "prompt_tokens_used": response.usage.prompt_tokens,
+            "completion_tokens_used": response.usage.completion_tokens,
+        }
+        response_message = response.choices[0].message.to_dict_recursive()
+
+        if functions is not None and not "function_call" in response_message:
+            self._logger.error(
+                f"Attempt number {self._func_call_fails_count + 1} : Function Call was expected  "
             )
 
-            response_args = {
-                "model_info": OPEN_AI_CHAT_MODELS[model_name],
-                "prompt_tokens_used": response.usage.prompt_tokens,
-                "completion_tokens_used": response.usage.completion_tokens,
-            }
-
-            response_message = response.choices[0].message.to_dict_recursive()
-
-            if functions is not None and not "function_call" in response_message:
-                self._logger.error(
-                    f"Attempt number {self._func_call_fails_count + 1} : Function Call was expected  "
-                )
-                raise Exception("function_call was expected")
-        except:
             if self._func_call_fails_count <= self._configuration.maximum_retry:
                 if (
                     self._func_call_fails_count
@@ -438,6 +434,8 @@ class OpenAIProvider(
                 # alternative is to pass the **kwarg not the completion kwarg
                 completion_kwargs["functions"] = functions
 
+                response.update(response_args )
+                self._budget.update_usage_and_cost(model_response=response)
                 return await self.create_language_completion(
                     model_prompt=model_prompt,
                     # functions = functions,
@@ -447,7 +445,7 @@ class OpenAIProvider(
                 )
 
             else:
-                # FIXME : Provide self improvement mechanism
+                # FIXME : Provide (self improvement mechanism (for program not agent)
                 # TODO : Provide self improvement mechanism
                 # NOTE : Provide self improvement mechanism
 
@@ -459,22 +457,17 @@ class OpenAIProvider(
 
         self._func_call_fails_count = 0
 
+        ###
+        ### TOP PRIORITY IMLMPLEMENT SimpleAgentImprovement Here
+        ###
+
         # New
         response = ChatModelResponse(
             response=response_message,
             parsed_result=completion_parser(response_message),
             **response_args,
         )
-
-        # Old
-        # parsed_response = completion_parser(
-        #          response_message
-        #      )
-        # response = ChatModelResponse(
-        #     content=parsed_response,
-        #     **response_args,
-        # )
-        self._budget.update_usage_and_cost(response)
+        self._budget.update_usage_and_cost(model_response=response)
         return response
 
     async def create_language_completion(self, **kwargs):

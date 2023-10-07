@@ -138,7 +138,7 @@ class PlannerLoop(BaseLoop):
             ##############################################################
             ### Step 5 : Make an plan !
             ##############################################################
-            lll_response = await self.build_initial_plan(description = description, routing_feedbacks = routing_feedbacks)
+            llm_response = await self.build_initial_plan(description = description, routing_feedbacks = routing_feedbacks)
             # self._agent.plan = Plan()
             # for task in plan['task_list'] :
             #     self._agent.plan.tasks.append(Task(data = task))
@@ -193,7 +193,7 @@ class PlannerLoop(BaseLoop):
             "agent_goal_sentence": self._agent.agent_goal_sentence,
             "memory": self._agent._memory._settings.dict(),
             "workspace": self._agent._workspace._settings.dict(),
-            "openai_provider": self._agent._openai_provider._settings.dict()
+            "chat_model_provider": self._agent._chat_model_provider._settings.dict()
             # _type_ = 'autogpt.core.agents.usercontext.main.UserContextAgent',
             # agent_class = 'UserContextAgent'
         }

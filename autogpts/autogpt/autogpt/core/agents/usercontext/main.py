@@ -53,7 +53,7 @@ class UserContextAgent(BaseAgent, Configurable):
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
                     storage_route="autogpt.core.memory.base.Memory",
                 ),
-                openai_provider=PluginLocation(
+                chat_model_provider=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
                     storage_route="autogpt.core.resource.model_providers.OpenAIProvider",
                 ),
@@ -74,7 +74,7 @@ class UserContextAgent(BaseAgent, Configurable):
         settings: UserContextAgentSystemSettings,
         logger: logging.Logger,
         memory: Memory,
-        openai_provider: OpenAIProvider,
+        chat_model_provider: OpenAIProvider,
         workspace: SimpleWorkspace,
         planning: SimplePlanner,
         user_id: uuid.UUID,
@@ -90,7 +90,7 @@ class UserContextAgent(BaseAgent, Configurable):
         )
 
         # These are specific
-        self._openai_provider = openai_provider
+        self._chat_model_provider = chat_model_provider
         self._planning = planning
 
         self._loop = UserContextLoop(agent=self)
@@ -150,8 +150,8 @@ class UserContextAgent(BaseAgent, Configurable):
         agent_args: list,
         logger: logging.Logger,
     ) -> Tuple[UserContextAgentSettings, list]:
-        agent_args["openai_provider"] = cls._get_system_instance(
-            "openai_provider",
+        agent_args["chat_model_provider"] = cls._get_system_instance(
+            "chat_model_provider",
             agent_settings,
             logger,
         )
@@ -165,7 +165,7 @@ class UserContextAgent(BaseAgent, Configurable):
             "planning",
             agent_settings,
             logger,
-            model_providers={"openai": agent_args["openai_provider"]},
+            model_providers={"openai": agent_args["chat_model_provider"]},
             strategies=user_context_strategies,
         )
 
@@ -181,8 +181,8 @@ class UserContextAgent(BaseAgent, Configurable):
             agent_settings=agent_settings, 
             logger=logger
         )
-        agent_args["openai_provider"] = cls._get_system_instance(
-            "openai_provider",
+        agent_args["chat_model_provider"] = cls._get_system_instance(
+            "chat_model_provider",
             agent_settings,
             logger,
         )
@@ -190,17 +190,17 @@ class UserContextAgent(BaseAgent, Configurable):
             "planning",
             agent_settings,
             logger,
-            model_providers={"openai": agent_args["openai_provider"]},
+            model_providers={"openai": agent_args["chat_model_provider"]},
         )
 
-        # NOTE : Can't be moved to super() because require agent_args["openai_provider"]
+        # NOTE : Can't be moved to super() because require agent_args["chat_model_provider"]
         agent_args["ability_registry"] = cls._get_system_instance(
             "ability_registry",
             agent_settings,
             logger,
             workspace=agent_args["workspace"],
             memory=agent_args["memory"],
-            model_providers={"openai": agent_args["openai_provider"]},
+            model_providers={"openai": agent_args["chat_model_provider"]},
         )
         return cls(**agent_args)"""
 
@@ -213,7 +213,7 @@ class UserContextAgent(BaseAgent, Configurable):
     ) -> dict:
         logger.debug("Loading OpenAI provider.")
         provider: OpenAIProvider = cls._get_system_instance(
-            "openai_provider",
+            "chat_model_provider",
             agent_settings,
             logger=logger,
         )

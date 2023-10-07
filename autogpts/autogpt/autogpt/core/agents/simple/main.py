@@ -67,7 +67,7 @@ class PlannerAgent(BaseAgent):
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
                     storage_route="autogpt.core.memory.base.Memory",
                 ),
-                openai_provider=PluginLocation(
+                chat_model_provider=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
                     storage_route="autogpt.core.resource.model_providers.OpenAIProvider",
                 ),
@@ -89,7 +89,7 @@ class PlannerAgent(BaseAgent):
         logger: logging.Logger,
         tool_registry: SimpleToolRegistry,
         memory: Memory,
-        openai_provider: OpenAIProvider,
+        chat_model_provider: OpenAIProvider,
         workspace: SimpleWorkspace,
         planning: SimplePlanner,
         user_id: uuid.UUID,
@@ -105,7 +105,7 @@ class PlannerAgent(BaseAgent):
         )
 
         # These are specific
-        self._openai_provider = openai_provider
+        self._chat_model_provider = chat_model_provider
 
         self._planning = planning
         self._planning.set_agent(agent=self)
@@ -116,7 +116,7 @@ class PlannerAgent(BaseAgent):
             logger=self._logger,
             memory=memory,
             workspace=workspace,
-            model_providers=openai_provider
+            model_providers=chat_model_provider
             )
         #self._tool_registry.set_agent(agent=self)
         
@@ -214,8 +214,8 @@ class PlannerAgent(BaseAgent):
         agent_args: list,
         logger: logging.Logger,
     ) -> Tuple[PlannerAgentSettings, list]:
-        agent_args["openai_provider"] = cls._get_system_instance(
-            "openai_provider",
+        agent_args["chat_model_provider"] = cls._get_system_instance(
+            "chat_model_provider",
             agent_settings,
             logger,
         )
@@ -254,23 +254,23 @@ class PlannerAgent(BaseAgent):
         #     simple_strategies[strategy_name] = strategy_instance
 
         simple_strategies = Strategies.get_strategies(logger=logger)
-        # NOTE : Can't be moved to super() because require agent_args["openai_provider"]
+        # NOTE : Can't be moved to super() because require agent_args["chat_model_provider"]
         agent_args["planning"] = cls._get_system_instance(
             "planning",
             agent_settings,
             logger,
-            model_providers={"openai": agent_args["openai_provider"]},
+            model_providers={"openai": agent_args["chat_model_provider"]},
             strategies=simple_strategies,
         )
 
-        # NOTE : Can't be moved to super() because require agent_args["openai_provider"]
+        # NOTE : Can't be moved to super() because require agent_args["chat_model_provider"]
         agent_args["tool_registry"] = cls._get_system_instance(
             "tool_registry",
             agent_settings,
             logger,
             workspace=agent_args["workspace"],
             memory=agent_args["memory"],
-            model_providers={"openai": agent_args["openai_provider"]},
+            model_providers={"openai": agent_args["chat_model_provider"]},
         )
 
         # agent = cls(**agent_args)
@@ -291,7 +291,7 @@ class PlannerAgent(BaseAgent):
     ) -> dict:
         logger.debug("Loading OpenAI provider.")
         provider: OpenAIProvider = cls._get_system_instance(
-            "openai_provider",
+            "chat_model_provider",
             agent_settings,
             logger=logger,
         )

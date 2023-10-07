@@ -154,38 +154,6 @@ class SimplePlanner(Configurable, AgentMixin):
 
         return await self.chat_with_model(prompt_strategy, **kwargs)
 
-    # async def decide_name_and_goals(self, user_objective: str) -> ChatModelResponse:
-    #     return await self.chat_with_model(
-    #         self._prompt_strategies["name_and_goals"],
-    #         user_objective=user_objective,
-    #     )
-
-    # async def make_initial_plan(
-    #     self,
-    #     agent_name: str,
-    #     agent_role: str,
-    #     agent_goals: list[str],
-    #     tools: list[str],
-    # ) -> ChatModelResponse:
-    #     return await self.chat_with_model(
-    #         self._prompt_strategies["initial_plan"],
-    #         agent_name=agent_name,
-    #         agent_role=agent_role,
-    #         agent_goals=agent_goals,
-    #         tools=tools,
-    #     )
-
-    # async def determine_next_ability(
-    #     self,
-    #     task: Task,
-    #     ability_specs: list[CompletionModelFunction],
-    # ):
-    #     return await self.chat_with_model(
-    #         self._prompt_strategies["next_ability"],
-    #         task=task,
-    #         ability_specs=ability_specs,
-    #     )
-
     async def chat_with_model(
         self,
         prompt_strategy: AbstractPromptStrategy,

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 class PlannerAgentSystems(BaseAgentSystems):
     tool_registry: PluginLocation
-    openai_provider: PluginLocation
+    chat_model_provider: PluginLocation
     planning: PluginLocation
 
     class Config(BaseAgentSystems.Config):
@@ -51,7 +51,7 @@ class PlannerSystemSettings(BaseAgentSystemSettings):
 
 class PlannerAgentSettings(BaseAgentSettings):
     agent: PlannerSystemSettings
-    openai_provider: OpenAISettings
+    chat_model_provider: OpenAISettings
     tool_registry: ToolsRegistrySettings
     planning: SimplePlannerSettings
     user_id: Optional[uuid.UUID] = Field(default=None)

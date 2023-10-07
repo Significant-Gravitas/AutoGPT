@@ -52,7 +52,7 @@ class BaseAgentSettings(BaseModel):
             "agent",
             "workspace",
             "planning",
-            "openai_provider",
+            "chat_model_provider",
             "memory",
             "tool_registry",
         }
