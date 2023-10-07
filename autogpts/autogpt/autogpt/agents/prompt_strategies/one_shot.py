@@ -198,7 +198,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         max_prompt_tokens: int,
         count_tokens: Callable[[str], int],
         count_message_tokens: Callable[[ChatMessage | list[ChatMessage]], int],
-        extra_messages: list[ChatMessage] = [],
+        extra_messages: Optional[list[ChatMessage]] = None,
         **extras,
     ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
@@ -209,12 +209,14 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         Params:
             cycle_instruction: The final instruction for a thinking cycle
         """
+        if not extra_messages:
+            extra_messages = []
 
         system_prompt = self.build_system_prompt(
-            ai_config,
-            ai_directives,
-            commands,
-            include_os_info,
+            ai_config=ai_config,
+            ai_directives=ai_directives,
+            commands=commands,
+            include_os_info=include_os_info,
         )
         system_prompt_tlength = count_message_tokens(ChatMessage.system(system_prompt))
 
