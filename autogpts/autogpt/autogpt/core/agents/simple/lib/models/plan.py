@@ -5,7 +5,7 @@ from autogpt.core.agents.simple.lib.models.tasks import Task
 from typing import Union, Optional, List
 from logging import Logger
 
-logger = Logger()
+logger = Logger(name = __name__) 
 
 
 class Plan(BaseModel):
@@ -233,6 +233,26 @@ class Plan(BaseModel):
         
         return pitch
     
+    @staticmethod
+    def parse_agent_plan(plan: dict) -> str:
+        parsed_response = f"Agent Plan:\n"
+        for i, task in enumerate(plan.tasks):
+            parsed_response += f"{i+1}. {task.name}\n"
+            parsed_response += f"Description {task.description}\n"
+            parsed_response += f"Task type: {task.type}  "
+            parsed_response += f"Priority: {task.priority}\n"
+            parsed_response += f"Ready Criteria:\n"
+            for j, criteria in enumerate(task.ready_criteria):
+                parsed_response += f"    {j+1}. {criteria}\n"
+            parsed_response += f"Acceptance Criteria:\n"
+            for j, criteria in enumerate(task.acceptance_criteria):
+                parsed_response += f"    {j+1}. {criteria}\n"
+            parsed_response += "\n"
+
+        return parsed_response
+    
+    async def save() : 
+        pass
 
 # # 1. Find the first ready task
 # first_ready_task = plan.get_first_ready_task()

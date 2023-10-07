@@ -9,8 +9,10 @@ from autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
     from autogpt.core.agents.simple.main import PlannerAgent
+
     from autogpt.core.agents.base.main import BaseAgent
 
+from autogpt.core.agents.simple.lib.models.plan import Plan
 from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
 from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.prompting.schema import (
@@ -175,10 +177,24 @@ class PlanningPromptStrategy(BasePromptStrategy):
          "{best_practices}"
     )
         
+        from autogpt.core.runner.client_lib.parser import (
+            parse_ability_result,
+            parse_agent_plan,
+            parse_next_ability,
+        )
+
+        print(f"""################################################################################################################################################################################################################################
+              DEBUG PLAN : Plan :\n{agent.plan.dump(depth=1)}\n\n
+              """)
+        print(f"""################################################################################################################################################################################################################################
+              DEBUG PLAN : Plan :\n{Plan.parse_agent_plan(agent.plan)}\n\n
+              """)
+
+        plan_part =   [f"Plan :\n{agent.plan.dump(depth=1)}\n\n"] if agent.plan is not None else []
         system_prompt_parts = (
             self._generate_intro_prompt(agent,**kwargs)
             + (self._generate_os_info(**kwargs) if include_os_info else [])
-            + ([f"Plan :\n{agent.plan.dump(depth=1)}\n\n"] if agent.plan is not None else [])
+            + plan_part
             + [
                 self._config.body_template.format(
                     constraints=to_numbered_list(
@@ -365,35 +381,6 @@ class PlanningPromptStrategy(BasePromptStrategy):
 
         return []
 
-    # NOTE : based on autogpt agent.py
-    # This can be expanded to support multiple types of (inter)actions within an agent
-    def response_format_instruction(
-        self, agent: PlannerAgent,  model_name: str) -> str:
-
-        use_functions_api = agent._openai_provider.has_function_call_api(
-            model_name=model_name
-        )
-        
-        response_schema = RESPONSE_SCHEMA.copy(deep=True)
-        if (
-            use_functions_api
-            and response_schema.properties
-            and "command" in response_schema.properties
-        ):
-            del response_schema.properties["command"]
-
-        # Unindent for performance
-        response_format: str = re.sub(
-            r"\n\s+",
-            "\n",
-            response_schema.to_typescript_object_interface("Response"),
-        )
-
-        return (
-            f"Respond strictly with JSON{', and also specify a command to use through a function_call' if use_functions_api else ''}. "
-            "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
-            f"{response_format}"
-        )
         
     # FIXME : Implement this to converge to AutoGPT vs Loose "default_function_call functionality" => Move to OpenAPIProvider safer
     # #############

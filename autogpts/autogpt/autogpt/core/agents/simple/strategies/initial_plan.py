@@ -13,8 +13,9 @@ from autogpt.core.prompting.base import (
     BasePromptStrategy,
     PromptStrategiesConfiguration,
 )
-from autogpt.core.prompting.schema import (
+from autogpt.core.prompting.base import (
     LanguageModelClassification,
+    RESPONSE_SCHEMA
 )
 
 from autogpt.core.resource.model_providers import (
@@ -86,6 +87,14 @@ class InitialPlanStrategy(BasePromptStrategy):
                 items=JSONSchema(
                     type=JSONSchema.Type.OBJECT,
                     properties={
+                        "name": JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description="The name of the task",
+                        ),
+                        "description": JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description="An short description in the from `As a <type of user>, I want <some goal> so that <some reason>`",
+                        ),
                         "objective": JSONSchema(
                             type=JSONSchema.Type.STRING,
                             description="An imperative verb phrase that succinctly describes the task.",
@@ -177,8 +186,14 @@ class InitialPlanStrategy(BasePromptStrategy):
         )
         strategy_functions = self._strategy_functions
 
+        response_format_instr = ChatMessage.system(self.response_format_instruction(
+            agent= self._agent,
+            model_name = kwargs["model_name"],
+            )
+        )
+
         return ChatPrompt(
-            messages=[system_prompt, user_prompt],
+            messages=[system_prompt, user_prompt, response_format_instr],
             functions=strategy_functions,
             function_call=InitialPlanFunctionNames.INITIAL_PLAN.value,
             default_function_call=InitialPlanFunctionNames.INITIAL_PLAN.value,

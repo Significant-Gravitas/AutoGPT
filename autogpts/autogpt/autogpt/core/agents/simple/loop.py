@@ -110,38 +110,46 @@ class PlannerLoop(BaseLoop):
             user_input_handler=self._user_input_handler,
             user_message_handler=self._user_message_handler,
         )
-        ##############################################################
-        ### Step 2 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
-        ##############################################################
-        if not aaas["usercontext"]:
-            self._agent.agent_goals = [self._agent.agent_goal_sentence]
-        else:
-            agent_goal_sentence, agent_goals = await self.run_user_context_agent()
-            self._agent.agent_goal_sentence = agent_goal_sentence
-            self._agent.agent_goals = agent_goals
 
-        ##############################################################
-        ### Step 3 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
-        ##############################################################
-        routing_feedbacks = ''
-        if aaas["whichway"]:
-            routing_feedbacks = await self.run_whichway_agent()
+        if self.plan() is None : 
+            ##############################################################
+            ### Step 2 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
+            ##############################################################
+            if not aaas["usercontext"]:
+                self._agent.agent_goals = [self._agent.agent_goal_sentence]
+            else:
+                agent_goal_sentence, agent_goals = await self.run_user_context_agent()
+                self._agent.agent_goal_sentence = agent_goal_sentence
+                self._agent.agent_goals = agent_goals
 
-        ##############################################################
-        ### Step 3 : Saving agent with its new goals
-        ##############################################################
-        await self.save_agent()
+            ##############################################################
+            ### Step 3 : Define the approach
+            ##############################################################
+            routing_feedbacks = ''
+            description=''
+            if aaas["whichway"]:
+                description, routing_feedbacks = await self.run_whichway_agent()
 
-        ##############################################################
-        ### Step 4 : Start with an plan !
-        ##############################################################
-        plan = await self.build_initial_plan(routing_feedbacks = routing_feedbacks)
-        self._agent.plan = Plan()
-        for task in plan['task_list'] :
-            self._agent.plan.tasks.append(Task(data = task))
+            ##############################################################
+            ### Step 4 : Saving agent with its new goals
+            ##############################################################
+            await self.save_agent()
 
-        parse_agent_plan(plan)
-        self._agent._logger.info(parse_agent_plan)
+            ##############################################################
+            ### Step 5 : Make an plan !
+            ##############################################################
+            lll_response = await self.build_initial_plan(description = description, routing_feedbacks = routing_feedbacks)
+            # self._agent.plan = Plan()
+            # for task in plan['task_list'] :
+            #     self._agent.plan.tasks.append(Task(data = task))
+
+            # Debugging :)
+            self._agent._logger.info(Plan.parse_agent_plan(self._agent.plan))
+
+            ###
+            ### Assign task
+            ### 
+
 
         ##############################################################
         # NOTE : Important KPI to log during crashes
@@ -160,14 +168,15 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 ### Step 5 : select_tool()
                 ##############################################################
-                command_name, command_args, assistant_reply_dict = await self.select_tool()
+                command_name, command_args, assistant_reply_dict = await self.select_tool() 
 
                 ##############################################################
                 ### Step 6 : execute_tool() #
                 ##############################################################
                 result = await self.execute_tool(command_name, command_args)
 
-            self.save_agent()
+
+            self.save_plan()
 
     async def run_user_context_agent(self):
         """
@@ -234,7 +243,7 @@ class PlannerLoop(BaseLoop):
         if not self.remaining_cycles:
             self.remaining_cycles = 1
 
-    async def build_initial_plan(self, routing_feedbacks = '') -> dict:
+    async def build_initial_plan(self, description ='', routing_feedbacks = '') -> dict:
         # plan =  self.execute_strategy(
         self.tool_registry().list_tools_descriptions()
         plan = await self.execute_strategy(
@@ -243,6 +252,7 @@ class PlannerLoop(BaseLoop):
             agent_role=self._agent.agent_role,
             agent_goals=self._agent.agent_goals,
             agent_goal_sentence=self._agent.agent_goal_sentence,
+            description = description,
             routing_feedbacks = routing_feedbacks,
             tools=self.tool_registry().list_tools_descriptions(),
         )
@@ -250,12 +260,12 @@ class PlannerLoop(BaseLoop):
         # TODO: Should probably do a step to evaluate the quality of the generated tasks,
         #  and ensure that they have actionable ready and acceptance criteria
 
-        self.plan = Plan(
+        self._agent.plan = Plan(
             tasks=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
         )
-        self.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
-        self.plan[-1].context.status = TaskStatusList.READY
-        return plan.parsed_result
+        self._agent.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
+        self._agent.plan[-1].context.status = TaskStatusList.READY
+        return plan
 
     async def determine_next_ability(self, *args, **kwargs):
         if not self._task_queue:

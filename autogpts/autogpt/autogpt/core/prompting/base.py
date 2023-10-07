@@ -2,6 +2,7 @@ from __future__ import annotations
 import abc
 
 from pydantic import validator
+import re
 from typing import TYPE_CHECKING, Union
 from autogpt.core.utils.json_schema import JSONSchema
 
@@ -39,6 +40,11 @@ RESPONSE_SCHEMA = JSONSchema(
             type=JSONSchema.Type.OBJECT,
             required=True,
             properties={
+                "limits": JSONSchema(
+                    description="Briefly express your limitations as an Agent that is hosted on a server and interact with a LLM, which has specific limitations (Context Limitation, Token Limitation, Cognitive Limitation)",
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
                 "text": JSONSchema(
                     description="Thoughts",
                     type=JSONSchema.Type.STRING,
@@ -143,4 +149,35 @@ class BasePromptStrategy(AbstractPromptStrategy):
             ['refine_requirements']
         """
         return [item.name for item in self._functions]
+    
+
+    # NOTE : based on autogpt agent.py
+    # This can be expanded to support multiple types of (inter)actions within an agent
+    def response_format_instruction(
+        self, agent: PlannerAgent,  model_name: str) -> str:
+
+        use_functions_api = agent._openai_provider.has_function_call_api(
+            model_name=model_name
+        )
+        
+        response_schema = RESPONSE_SCHEMA.copy(deep=True)
+        if (
+            use_functions_api
+            and response_schema.properties
+            and "command" in response_schema.properties
+        ):
+            del response_schema.properties["command"]
+
+        # Unindent for performance
+        response_format: str = re.sub(
+            r"\n\s+",
+            "\n",
+            response_schema.to_typescript_object_interface("Response"),
+        )
+
+        return (
+            f"Respond strictly with JSON{', and also specify a command to use through a function_call' if use_functions_api else ''}. "
+            "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
+            f"{response_format}"
+        )
 

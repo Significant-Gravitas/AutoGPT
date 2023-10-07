@@ -9,8 +9,9 @@ def parse_agent_name_and_goals(name_and_goals: dict) -> str:
 
 def parse_agent_plan(plan: dict) -> str:
     parsed_response = f"Agent Plan:\n"
-    for i, task in enumerate(plan["task_list"]):
-        parsed_response += f"{i+1}. {task.objective}\n"
+    for i, task in enumerate(plan.tasks):
+        parsed_response += f"{i+1}. {task.name}\n"
+        parsed_response += f"Description {task.description}\n"
         parsed_response += f"Task type: {task.type}  "
         parsed_response += f"Priority: {task.priority}\n"
         parsed_response += f"Ready Criteria:\n"
