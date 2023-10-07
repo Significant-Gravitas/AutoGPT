@@ -190,7 +190,9 @@ class PlanningPromptStrategy(BasePromptStrategy):
               DEBUG PLAN : Plan :\n{Plan.parse_agent_plan(agent.plan)}\n\n
               """)
 
-        plan_part =   [f"Plan :\n{agent.plan.dump(depth=1)}\n\n"] if agent.plan is not None else []
+        #plan_part =   [f"Plan :\n{agent.plan.dump(depth=1)}\n\n"] if agent.plan is not None else []
+        plan_part =   [f"Plan :\n {self.plan().generate_pitch(task =  self._agent.current_task)}"]
+
         system_prompt_parts = (
             self._generate_intro_prompt(agent,**kwargs)
             + (self._generate_os_info(**kwargs) if include_os_info else [])

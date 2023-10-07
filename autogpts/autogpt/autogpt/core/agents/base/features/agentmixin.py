@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from autogpt.core.tools.base import BaseToolsRegistry 
 
     from autogpt.core.tools.tools import Tool 
+    from autogpt.core.agents.simple.lib.models.plan import Plan
 
 class AgentMixin:
 
@@ -48,10 +49,14 @@ class AgentMixin:
     def tool_registry(self) -> BaseToolsRegistry :
         return self._agent._tool_registry
     
-    def get_tools(self) -> list[Tool] :
+    def get_tool_list(self) -> list[Tool] :
         return self._agent._tool_registry.get_tools()
     
-    def plan(self)  : 
+    def get_tools_as_functions_for_api(self) :
+        self._agent._tool_registry.dump_tools()
+    
+    def plan(self) -> Plan: 
         return self._agent.plan
+    
     
     

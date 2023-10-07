@@ -204,13 +204,14 @@ class Plan(BaseModel):
 
         return None
 
-    def generate_pitch(self):
-        # Get the first ready task
-        task = self.get_first_ready_task()
+    def generate_pitch(self , task = None):
+        
+        if task is None : 
+            task = self.get_first_ready_task()
         
         # Extract the task's siblings and path
         siblings = [sib for sib in self.tasks if sib.task_parent_id == task.task_parent_id and sib != task]
-        path_to_task = self.find_task_path(task)
+        path_to_task = task.find_task_path()
         
         # Build the pitch
         pitch = """

@@ -264,7 +264,8 @@ class PlannerLoop(BaseLoop):
             tasks=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
         )
         self._agent.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
-        self._agent.plan[-1].context.status = TaskStatusList.READY
+        self._agent.current_task = self._agent.plan[-1]
+        self._agent.current_task.context.status = TaskStatusList.READY
         return plan
 
     async def determine_next_ability(self, *args, **kwargs):
@@ -365,7 +366,7 @@ class PlannerLoop(BaseLoop):
         raw_response: ChatModelResponse = await self.execute_strategy(
             strategy_name= "select_tool",
             agent=self._agent,
-            tools=self.get_tools(),
+            tools=self.get_tool_list(),
         )
 
         command_name = raw_response.parsed_result[0]

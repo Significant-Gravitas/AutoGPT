@@ -402,7 +402,7 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
     def get_tools_names(self) -> list[str]:
         return [tool.name() for tool in self.tools]
 
-    def get_tools(self) -> list[Tool]:
+    def get_tool_list(self) -> list[Tool]:
         logger.warning("### Warning this function has not being tested, we recommand against using it###")
         # return self.tools
         return self.tools.values()
