@@ -1,3 +1,4 @@
+import 'package:auto_gpt_flutter_client/models/artifact.dart';
 import 'package:auto_gpt_flutter_client/models/message_type.dart';
 
 /// Represents a chat message related to a specific task.
@@ -8,7 +9,7 @@ class Chat {
   final DateTime timestamp;
   final MessageType messageType;
   final Map<String, dynamic>? jsonResponse;
-  final List<dynamic> artifacts;
+  final List<Artifact> artifacts;
 
   Chat({
     required this.id,
@@ -29,7 +30,10 @@ class Chat {
       timestamp: DateTime.parse(map['timestamp']),
       messageType: MessageType.values.firstWhere(
           (e) => e.toString() == 'MessageType.${map['messageType']}'),
-      artifacts: List<dynamic>.from(map['artifacts'] ?? []),
+      artifacts: (map['artifacts'] as List)
+          .map(
+              (artifact) => Artifact.fromJson(artifact as Map<String, dynamic>))
+          .toList(),
     );
   }
 

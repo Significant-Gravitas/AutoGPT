@@ -97,10 +97,10 @@ jobs:
           curl -sSL https://install.python-poetry.org | python -
 
       - name: Run regression tests
-        working-directory: ./autogpts/${{ matrix.agent-name }}/
         run: |
-          sh run &
-          sleep 20
+          ./run agent start ${{ matrix.agent-name }} --setup
+          sleep 10
+          cd autogpts/${{ matrix.agent-name }}
           set +e # Ignore non-zero exit codes and continue execution
           echo "Running the following command: poetry run agbenchmark --maintain --mock"
 
@@ -123,8 +123,6 @@ jobs:
 
           echo "Running the following command: poetry run agbenchmark --test=WriteFile"
           poetry run agbenchmark --test=WriteFile
-          sh run_benchmark serve &
-          sleep 10
           cd ../../benchmark
           poetry install
           echo "Adding the BUILD_SKILL_TREE environment variable. This will attempt to add new elements in the skill tree. If new elements are added, the CI fails because they should have been pushed"
