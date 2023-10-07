@@ -4,7 +4,7 @@ Bash terminal abilities
 import subprocess
 import json
 
-from forge.sdk.memory.memstore_tools import add_memory
+from forge.sdk.memory.memstore_tools import add_ability_memory
 
 from ...forge_log import ForgeLogger
 from ..registry import ability
@@ -56,5 +56,5 @@ async def run_bash_command(agent, task_id: str, command: str) -> str:
         logger.error(f"JSON dumps failed in run_bash_command: {err}")
         raise err
 
-    await add_memory(task_id, return_json, "run_bash_command")
+    await add_ability_memory(task_id, return_json, "run_bash_command")
     return return_json

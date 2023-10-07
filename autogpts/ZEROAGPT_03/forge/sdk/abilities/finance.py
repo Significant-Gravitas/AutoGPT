@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-from forge.sdk.memory.memstore_tools import add_memory
+from forge.sdk.memory.memstore_tools import add_ability_memory
 
 from ..forge_log import ForgeLogger
 from .registry import ability
@@ -86,9 +86,9 @@ async def get_financials_year(
             if key_year == year:
                 year_financial_data = financial_data
 
-                await add_memory(
+                await add_ability_memory(
                     task_id,
-                    financial_data,
+                    str(financial_data),
                     "get_financials_year"
                 )
     except Exception as err:

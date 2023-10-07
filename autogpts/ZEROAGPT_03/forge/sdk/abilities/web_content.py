@@ -5,7 +5,7 @@ import requests
 import os
 from bs4 import BeautifulSoup
 
-from forge.sdk.memory.memstore_tools import add_memory
+from forge.sdk.memory.memstore_tools import add_ability_memory
 
 from ..forge_log import ForgeLogger
 from .registry import ability
@@ -104,7 +104,7 @@ async def html_to_text_file(agent, task_id: str, url: str, file_path: str) -> No
             agent_created=True,
         )
 
-        await add_memory(task_id, html_soap.get_text(), "html_to_text_file")
+        await add_ability_memory(task_id, html_soap.get_text(), "html_to_text_file")
     except Exception as err:
         logger.error(f"html_to_text_file failed: {err}")
         raise err

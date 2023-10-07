@@ -1,30 +1,28 @@
-Please generate steps that can be used to complete the following task:
+Please create a series of steps to accomplish the following task:
 
-Task: {{ task }}
+**Task:** {{ task }}
 
-Constraints:
-- Follow task instructions exactly
-- Check locally for needed data before checking online
-- Use Python script with Pandas library for CSV or other tabulated data files
-- Always reply in JSON format
-- Always use finish ability as last step
-- Use exact data, not approximations
-- Local files are in the same folder as source code
-- Use both capitalized and non-capitalized versions of words when searching for a word.
-- 'search_file' is only to search file content and not for a file. Try using commands via 'run_bash_command'
+## Constraints:
 
-Resources:
-- Use list_files ability to check for data files
-- Best practices:
+1. Always include the 'finish' ability as the final step.
+2. Avoid using abilities as arguments for other abilities.
+3. Use placeholders marked with '<>' for steps that require undefined data.
+4. Note that 'read_file' can only display the initial 255 characters; it won't show the entire file.
+5. Prioritize local data sources over online ones.
+6. When handling scraping tasks involving CSV files, utilize the 'query_csv' ability.
+7. For .csv files, develop a Python program using the pandas library for extraction; refrain from reading large files.
+   7a. Utilize the sum attribute in pandas for category sums.
+8. Avoid reading every file, especially if they are large or may contain sensitive data.
+9. Restrict 'read_file' to text documents, excluding CSVs or tabulated data.
 
-Use 'file_content_length' ability before read_file. If content length is greater than 255, use 'search_file' or create a python script to scrape data.
+## Resources:
 
-Use your strengths as an LLM to complete this task independently, without seeking user assistance, and with a simple strategy that avoids legal complications.
+1. Utilize the 'list_files' ability to check for data files.
 
-I look forward to seeing your creative and efficient solution!
+## Best Practices:
 
-Abilities to pick from:
+1. When conducting data scraping, consider using the 'file_content_length' ability before 'read_file'. If the content length exceeds 255 characters, employ 'search_file' to search for text within the file.
+2. Account for all available .csv, .txt, or other data files when progressing through a step. There might be multiple files to incorporate for a comprehensive solution.
+3. If necessary, use 'read_file' to determine what to search for in a file, but exercise caution, especially with large or potentially sensitive data files.
 
-{% for ability in abilities %}
-- {{ ability }}
-{% endfor %}
+By adhering to these guidelines, you can efficiently plan the steps for the task while ensuring compliance with the specified constraints, resources, and best practices.

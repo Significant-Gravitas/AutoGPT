@@ -14,6 +14,10 @@ class Workspace(abc.ABC):
         pass
 
     @abc.abstractclassmethod
+    def readlines(self, task_id: str, path: str) -> typing.List[bytes]:
+        pass
+
+    @abc.abstractclassmethod
     def write(self, task_id: str, path: str, data: bytes) -> None:
         pass
 
@@ -55,6 +59,10 @@ class LocalWorkspace(Workspace):
     def read(self, task_id: str, path: str) -> bytes:
         with open(self._resolve_path(task_id, path), "rb") as f:
             return f.read()
+        
+    def readlines(self, task_id: str, path: str) -> typing.List[bytes]:
+        with open(self._resolve_path(task_id, path), "rb") as f:
+            return f.readlines()
 
     def write(self, task_id: str, path: str, data: bytes) -> None:
         file_path = self._resolve_path(task_id, path)

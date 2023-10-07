@@ -3,29 +3,23 @@ Please generate steps that can be used to complete the following task:
 Task: {{ task }}
 
 Constraints:
-- Follow task instructions exactly
-- Check locally for needed data before checking online
-- Add in contingency steps for when an error happens at a previous step
-- Use Python script with Pandas library for CSV or other tabulated data files
-- Always reply in JSON format
-- Always use finish ability as last step
-- Use exact data, not approximations
-- Local files are in the same folder as source code
-- Use both capitalized and non-capitalized versions of words when searching for a word.
-- 'search_file' is only to search file content and not for a file. Try using commands via 'run_bash_command'
+1. Always use the 'finish' ability as the last step in the sequence.
+2. Do not use abilities as arguments for other abilities.
+3. Use placeholders, denoted with angle brackets '<>' around the placeholder label, for steps that require data not yet defined.
+4. Allow the step runner to fill in the regular expression (regex) for the 'search_file' ability, as they will have read the file and know what to look for.
+5. The 'read_file' ability is limited to displaying only the first 255 characters, so it will not show the entire file.
+6. Ensure that there is a 'read_file' step executed before a 'search_file' step to determine what to search for.
+7. Check locally for required data before searching online.
+8. Local files are expected to be in the same folder as the source code.
+9. Use all versions (capitalized and non-capitalized) of words when utilizing the 'search_file' ability.
+10. Note that 'search_file' is exclusively meant for searching within file content, not for searching for a file itself.
+11. Note and use the proper notation of any value or text from the task instructions
 
 Resources:
-- Use list_files ability to check for data files
-- Best practices:
+1. Utilize the 'list_files' ability to check for data files.
 
-Use 'file_content_length' ability before read_file. If content length is greater than 255, use 'search_file' or create a python script to scrape data.
+Best Practices:
+1. When scraping data, consider using the 'file_content_length' ability before 'read_file'. If the content length is greater than 255 characters, use 'search_file' to search for text within the file.
+2. Take into account all .csv, .txt or other data files to work through a step. There might be multiple files to combine for an answer.
 
-Use your strengths as an LLM to complete this task independently, without seeking user assistance, and with a simple strategy that avoids legal complications.
-
-I look forward to seeing your creative and efficient solution!
-
-Abilities to pick from:
-
-{% for ability in abilities %}
-- {{ ability }}
-{% endfor %}
+By following these guidelines, you can efficiently and effectively plan the task steps while adhering to the specified constraints, resources and best practices.

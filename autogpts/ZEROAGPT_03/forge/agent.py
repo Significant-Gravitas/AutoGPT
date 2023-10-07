@@ -24,6 +24,8 @@ from forge.sdk.memory.memstore import ChromaMemStore
 
 from forge.sdk.ai_planning import AIPlanning
 
+import openai
+
 # from elevenlabs import generate, play
 
 LOG = ForgeLogger(__name__)
@@ -49,9 +51,8 @@ class ForgeAgent(Agent):
         # ai plan
         self.ai_plan = None
 
-        # instruction messages amount
-        # used for cleaning chat history
-        self.instruct_amt = 0
+        # instruction messages
+        self.instruction_msgs = {}
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         # set instruction amount to 0
@@ -91,6 +92,7 @@ class ForgeAgent(Agent):
         self.expert_profile = await profile_gen.role_find()
         
         # add system prompts to chat for task
+        self.instruction_msgs[task.task_id] = []
         await self.set_instruction_messages(task.task_id, task.input)
 
         return task
@@ -126,19 +128,30 @@ class ForgeAgent(Agent):
         """
         Cut down chat and remake it with last 4 messages,
         including beginning needed system messages
+        Also rebuild the steps and professional
         """
-        await self.set_instruction_messages(task_id, task_input)
-
-        # get last two most recent messages if not system messages
-        last_chat_history = None
-        if len(self.chat_history[task_id]) > self.instruct_amt:
-            last_chat_history = self.chat_history[task_id][-2:]
-
         # clear chat and rebuild
         self.chat_history[task_id] = []
 
-        if last_chat_history:
-            self.chat_history[task_id] += last_chat_history
+        # get last two most recent messages if not system messages
+        last_chat_history = []
+        print(f"len of chat history @ {task_id}: {len(self.chat_history[task_id])}")
+        print(f"len of instruction msgs @ {task_id}: {len(self.instruction_msgs[task_id])}")
+
+        if len(self.chat_history[task_id]) > len(self.instruction_msgs[task_id]):
+            # get past two assistant messages to add context
+            last_chat_history.append(self.chat_history[task_id][-2])
+            print(last_chat_history)
+
+        for imsg in self.instruction_msgs[task_id]:
+            msg = {
+                "role": imsg[0],
+                "content": imsg[1]
+            }
+
+            self.chat_history[task_id].append(msg)
+
+        self.chat_history[task_id] += last_chat_history
 
     async def set_instruction_messages(self, task_id: str, task_input: str):
         """
@@ -173,7 +186,7 @@ class ForgeAgent(Agent):
         # add to messages
         # wont memory store this as static
         LOG.info(f"🖥️  {system_prompt}")
-        self.instruct_amt += 1
+        self.instruction_msgs[task_id].append(("system", system_prompt))
         self.add_chat(task_id, "system", system_prompt)
 
         # add abilities prompt
@@ -183,7 +196,7 @@ class ForgeAgent(Agent):
         )
 
         LOG.info(f"🖥️  {abilities_prompt}")
-        self.instruct_amt += 1
+        self.instruction_msgs[task_id].append(("system", abilities_prompt))
         self.add_chat(task_id, "system", abilities_prompt)
 
         # add role system prompt
@@ -209,7 +222,7 @@ class ForgeAgent(Agent):
         )
 
         LOG.info(f"🖥️  {role_prompt}")
-        self.instruct_amt += 1
+        self.instruction_msgs[task_id].append(("system", role_prompt))
         self.add_chat(task_id, "system", role_prompt)
 
         # setup call to action (cta) with task and abilities
@@ -233,7 +246,7 @@ class ForgeAgent(Agent):
         )
 
         LOG.info(f"🤓 {task_prompt}")
-        self.instruct_amt += 1
+        self.instruction_msgs[task_id].append(("user", task_prompt))
         self.add_chat(task_id, "user", task_prompt)
         # ----------------------------------------------------
 
@@ -273,7 +286,7 @@ class ForgeAgent(Agent):
             chat_completion_parms = {
                 "messages": self.chat_history[task_id],
                 "model": os.getenv("OPENAI_MODEL"),
-                "temperature": 0.9
+                "temperature": 1
             }
 
             chat_response = await chat_completion_request(
@@ -328,6 +341,8 @@ class ForgeAgent(Agent):
                                         task_id,
                                         ability["name"]
                                     )
+
+                                    LOG.info(f"🔨 Ability Output\n{output}")
                             except Exception as err:
                                 LOG.error(f"Ability run failed: {err}")
                                 self.add_chat(
@@ -365,7 +380,7 @@ class ForgeAgent(Agent):
                     # Set the step output and is_last from AI
                     step.output = answer["thoughts"]["speak"]
                     LOG.info(f"🤖 Thoughts")
-                    LOG.info(f"{answer['thoughts']}")
+                    LOG.info(f"🤖 {answer['thoughts']}")
 
                     # if "last_step" in answer["thoughts"]:
                     #     last_step_code = answer["thoughts"]["last_step"]

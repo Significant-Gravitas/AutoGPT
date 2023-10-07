@@ -69,7 +69,7 @@ class AIPlanning:
         chat_completion_parms = {
             "messages": chat_list,
             "model": os.getenv("OPENAI_MODEL"),
-            "temperature": 0.6
+            "temperature": 1
         }
         
         response = await chat_completion_request(

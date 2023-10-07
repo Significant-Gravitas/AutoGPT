@@ -1,13 +1,41 @@
-Process this outline of steps. 
-Focusing getting toward the end step
-Work through the outline carefully and intelligently
-
-If there is an error when executing a step, add a step to investigate and fix
+This is a list of initial steps from the Project Manager. Review each step carefully and process them accordingly.
 
 {% for step in steps %}
 - {{ step.step }}
+   + Is this the last step? {{ step.last_step }}
    {% for ability in step.abilities %}
    * Ability Name: {{ ability.name }}
    * Arguments: {{ ability.args }}
    {% endfor %} 
 {% endfor %}
+
+Efficiently complete each step, leveraging your capabilities as an LLM. While working through these steps, feel free to add or modify them as needed. If you encounter any errors, add corrective steps to address the issues.
+
+# Constraints:
+1. For .csv files, develop a Python program using pandas to extract data, ensuring the correct separator is used.
+   1a. Avoid printing large .csv files to prevent potential errors.
+   1b. Utilize pandas' sum attribute for calculating category sums.
+2. Exercise caution when reading files, particularly those that may be excessively large or contain private information.
+3. When utilizing abilities with '<>' placeholders, replace them with actual data, filenames, or relevant information. Do not use placeholders within steps, as this may lead to errors.
+4. Prioritize using locally available data over online sources.
+5. Note that 'read_file' can only display up to 255 characters and won't show the entire file.
+6. Always conclude tasks with the 'finish' ability as the final step.
+7. Ensure precision in your data, avoiding approximations.
+8. Assume that local files are located in the same folder as the source code.
+9. Adhere to the provided notation for values or text in the task instructions.
+10. Utilize the discovered files to complete the current step effectively.
+11. Before using 'run_python_file,' verify that a relevant file is present or create one if necessary.
+12. Restrict 'read_file' to text documents; refrain from using it for CSVs or tabulated data.
+
+# Resources:
+1. Employ the 'list_files' ability to check for data files.
+
+# Best Practices:
+1. When engaging in scraping tasks, consider using 'file_content_length' before 'read_file.'
+   1a. If the content exceeds 255 characters, consider creating a Python script for scraping.
+2. If a Python script you've written returns no results, it signifies an error; take steps to resolve it.
+3. If you are unfamiliar with a programming library, consult online documentation for guidance.
+4. When tackling steps, consider all available data files (.csv, .txt, etc.). Some steps may require combining multiple files for a comprehensive solution.
+   4a. When combining files, employ Python or Bash command-line tools for efficiency.
+
+By adhering to these constraints and best practices, you can efficiently complete the steps, ensuring compliance with the provided guidelines and maintaining accuracy.
