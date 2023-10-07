@@ -12,11 +12,13 @@ from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from pydantic import Field, validator
 
+import autogpt
 from autogpt.core.configuration.schema import Configurable, SystemSettings
 from autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
 
+PROJECT_ROOT = Path(autogpt.__file__).parent.parent
 AI_SETTINGS_FILE = Path("ai_settings.yaml")
 AZURE_CONFIG_FILE = Path("azure.yaml")
 PLUGINS_CONFIG_FILE = Path("plugins_config.yaml")
@@ -32,7 +34,8 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     ########################
     # Application Settings #
     ########################
-    workdir: Path = None
+    project_root: Path = PROJECT_ROOT
+    app_data_dir: Path = project_root / "data"
     skip_news: bool = False
     skip_reprompt: bool = False
     authorise_key: str = "y"
@@ -48,8 +51,8 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Agent Control Settings #
     ##########################
     # Paths
-    ai_settings_file: Path = AI_SETTINGS_FILE
-    prompt_settings_file: Path = PROMPT_SETTINGS_FILE
+    ai_settings_file: Path = project_root / AI_SETTINGS_FILE
+    prompt_settings_file: Path = project_root / PROMPT_SETTINGS_FILE
     workspace_path: Optional[Path] = None
     file_logger_path: Optional[Path] = None
     # Model configuration
@@ -103,7 +106,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Plugin Settings #
     ###################
     plugins_dir: str = "plugins"
-    plugins_config_file: Path = PLUGINS_CONFIG_FILE
+    plugins_config_file: Path = project_root / PLUGINS_CONFIG_FILE
     plugins_config: PluginsConfig = Field(
         default_factory=lambda: PluginsConfig(plugins={})
     )
@@ -122,7 +125,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     openai_api_version: Optional[str] = None
     openai_organization: Optional[str] = None
     use_azure: bool = False
-    azure_config_file: Optional[Path] = AZURE_CONFIG_FILE
+    azure_config_file: Optional[Path] = project_root / AZURE_CONFIG_FILE
     azure_model_to_deployment_id_map: Optional[Dict[str, str]] = None
     # Github
     github_api_key: Optional[str] = None
@@ -221,27 +224,26 @@ class ConfigBuilder(Configurable[Config]):
     default_settings = Config()
 
     @classmethod
-    def build_config_from_env(cls, workdir: Path) -> Config:
+    def build_config_from_env(cls, project_root: Path = PROJECT_ROOT) -> Config:
         """Initialize the Config class"""
         config_dict = {
-            "workdir": workdir,
+            "project_root": project_root,
             "authorise_key": os.getenv("AUTHORISE_COMMAND_KEY"),
             "exit_key": os.getenv("EXIT_KEY"),
             "plain_output": os.getenv("PLAIN_OUTPUT", "False") == "True",
             "shell_command_control": os.getenv("SHELL_COMMAND_CONTROL"),
-            "ai_settings_file": Path(os.getenv("AI_SETTINGS_FILE", AI_SETTINGS_FILE)),
-            "prompt_settings_file": Path(
-                os.getenv("PROMPT_SETTINGS_FILE", PROMPT_SETTINGS_FILE)
-            ),
+            "ai_settings_file": project_root
+            / Path(os.getenv("AI_SETTINGS_FILE", AI_SETTINGS_FILE)),
+            "prompt_settings_file": project_root
+            / Path(os.getenv("PROMPT_SETTINGS_FILE", PROMPT_SETTINGS_FILE)),
             "fast_llm": os.getenv("FAST_LLM", os.getenv("FAST_LLM_MODEL")),
             "smart_llm": os.getenv("SMART_LLM", os.getenv("SMART_LLM_MODEL")),
             "embedding_model": os.getenv("EMBEDDING_MODEL"),
             "browse_spacy_language_model": os.getenv("BROWSE_SPACY_LANGUAGE_MODEL"),
             "openai_api_key": os.getenv("OPENAI_API_KEY"),
             "use_azure": os.getenv("USE_AZURE") == "True",
-            "azure_config_file": Path(
-                os.getenv("AZURE_CONFIG_FILE", AZURE_CONFIG_FILE)
-            ),
+            "azure_config_file": project_root
+            / Path(os.getenv("AZURE_CONFIG_FILE", AZURE_CONFIG_FILE)),
             "execute_local_commands": os.getenv("EXECUTE_LOCAL_COMMANDS", "False")
             == "True",
             "restrict_to_workspace": os.getenv("RESTRICT_TO_WORKSPACE", "True")
@@ -271,9 +273,8 @@ class ConfigBuilder(Configurable[Config]):
             "redis_password": os.getenv("REDIS_PASSWORD"),
             "wipe_redis_on_start": os.getenv("WIPE_REDIS_ON_START", "True") == "True",
             "plugins_dir": os.getenv("PLUGINS_DIR"),
-            "plugins_config_file": Path(
-                os.getenv("PLUGINS_CONFIG_FILE", PLUGINS_CONFIG_FILE)
-            ),
+            "plugins_config_file": project_root
+            / Path(os.getenv("PLUGINS_CONFIG_FILE", PLUGINS_CONFIG_FILE)),
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
         }
 
@@ -325,7 +326,7 @@ class ConfigBuilder(Configurable[Config]):
 
         if config_dict["use_azure"]:
             azure_config = cls.load_azure_config(
-                workdir / config_dict["azure_config_file"]
+                project_root / config_dict["azure_config_file"]
             )
             config_dict.update(azure_config)
 
@@ -345,7 +346,7 @@ class ConfigBuilder(Configurable[Config]):
         # Set secondary config variables (that depend on other config variables)
 
         config.plugins_config = PluginsConfig.load_config(
-            config.workdir / config.plugins_config_file,
+            config.plugins_config_file,
             config.plugins_denylist,
             config.plugins_allowlist,
         )

@@ -47,7 +47,7 @@ def temp_plugins_config_file():
 
 @pytest.fixture()
 def config(temp_plugins_config_file: Path, mocker: MockerFixture, workspace: Workspace):
-    config = ConfigBuilder.build_config_from_env(workspace.root.parent)
+    config = ConfigBuilder.build_config_from_env(project_root=workspace.root.parent)
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
 
@@ -63,7 +63,7 @@ def config(temp_plugins_config_file: Path, mocker: MockerFixture, workspace: Wor
     from autogpt.plugins.plugins_config import PluginsConfig
 
     config.plugins_config = PluginsConfig.load_config(
-        plugins_config_file=config.workdir / config.plugins_config_file,
+        plugins_config_file=config.plugins_config_file,
         plugins_denylist=config.plugins_denylist,
         plugins_allowlist=config.plugins_allowlist,
     )

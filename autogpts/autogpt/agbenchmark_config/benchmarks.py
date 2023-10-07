@@ -11,7 +11,6 @@ from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.workspace import Workspace
 
-PROJECT_DIR = Path().resolve()
 LOG_DIR = Path(__file__).parent / "logs"
 
 
@@ -21,7 +20,7 @@ def run_specific_agent(task: str, continuous_mode: bool = False) -> None:
 
 
 def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
-    config = ConfigBuilder.build_config_from_env(workdir=PROJECT_DIR)
+    config = ConfigBuilder.build_config_from_env()
     config.debug_mode = False
     config.continuous_mode = continuous_mode
     config.continuous_limit = 20
