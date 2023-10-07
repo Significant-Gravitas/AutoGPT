@@ -258,7 +258,8 @@ def create(agent_name):
 
 @agent.command()
 @click.argument("agent_name")
-def start(agent_name):
+@click.option("--setup", is_flag=True, help="Rebuilds your poetry env")
+def start(agent_name, setup):
     """Start agent command"""
     import os
     import subprocess
@@ -269,8 +270,9 @@ def start(agent_name):
     run_bench_command = os.path.join(agent_dir, "run_benchmark")
     if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
         os.chdir(agent_dir)
-        setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
-        setup_process.wait()
+        if setup:
+            setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
+            setup_process.wait()
         subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
         click.echo(f"Benchmark Server starting please wait...")
         subprocess.Popen(["./run"], cwd=agent_dir)
