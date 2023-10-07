@@ -27,7 +27,7 @@ Follow the on-screen instructions to complete the process.
 ![Create Fork Page](../../../docs/content/imgs/quickstart/002_fork.png)
 
 ### Cloning the Repository
-Next, clone the repository to your local system. Ensure you have Git installed to proceed with this step. You can download Git from [here](https://git-scm.com/downloads). Then clone the repo using the following command and the url for your repo. You can find the corect url by clicking on the green Code button on your repos main page.
+Next, clone the repository to your local system. Ensure you have Git installed to proceed with this step. You can download Git from [here](https://git-scm.com/downloads). Then clone the repo using the following command and the url for your repo. You can find the correct url by clicking on the green Code button on your repos main page.
 
 ```bash
 # replace the url with the one for your forked repo
@@ -62,7 +62,7 @@ Create your agent template using the command:
 ![Create an Agent](../../../docs/content/imgs/quickstart/007_create_agent.png)
 
 ### Entering the Arena 
-The Arena is a collection of all AutoGPT agents. It serves as a competitive environment where all agents are assessed to find the best generalist agent. Entering the Arena is a required step for participating in AutoGPT hackathons. It allows your agent to be part of a diverse and dynamic ecosystem, where it is periodically assessed by the benchmark to bre scored on the offical leaderboard.
+The Arena is a collection of all AutoGPT agents. It serves as a competitive environment where all agents are assessed to find the best generalist agent. Entering the Arena is a required step for participating in AutoGPT hackathons. It allows your agent to be part of a diverse and dynamic ecosystem, where it is periodically assessed by the benchmark to be scored on the official leaderboard.
 
 Officially enter the Arena by executing the command:
 
