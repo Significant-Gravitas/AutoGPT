@@ -69,7 +69,7 @@ async def run_auto_gpt(
     ai_role: Optional[str] = None,
     ai_goals: tuple[str] = tuple(),
 ):
-    config = ConfigBuilder.build_config_from_env(workdir=working_directory)
+    config = ConfigBuilder.build_config_from_env()
 
     # TODO: fill in llm values here
     assert_config_has_openai_api_key(config)

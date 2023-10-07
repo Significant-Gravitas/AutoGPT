@@ -131,7 +131,7 @@ def apply_overrides_to_config(
             exit(1)
 
         print_attribute("Using AI Settings File", file)
-        config.ai_settings_file = file
+        config.ai_settings_file = config.project_root / file
         config.skip_reprompt = True
 
     if prompt_settings_file:
@@ -145,7 +145,7 @@ def apply_overrides_to_config(
             exit(1)
 
         print_attribute("Using Prompt Settings File", file)
-        config.prompt_settings_file = file
+        config.prompt_settings_file = config.project_root / file
 
     if browser_name:
         config.selenium_web_browser = browser_name
