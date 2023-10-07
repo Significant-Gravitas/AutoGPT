@@ -151,7 +151,7 @@ azure_model_map:
 
     os.environ["USE_AZURE"] = "True"
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
-    config = ConfigBuilder.build_config_from_env(workspace.root.parent)
+    config = ConfigBuilder.build_config_from_env(project_root=workspace.root.parent)
 
     assert config.openai_api_type == "azure"
     assert config.openai_api_base == "https://dummy.openai.azure.com"

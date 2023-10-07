@@ -13,8 +13,6 @@ from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 
-PROJECT_DIR = Path().resolve()
-
 
 async def task_handler(task_input) -> StepHandler:
     task = task_input.__root__ if task_input else {}
@@ -82,7 +80,7 @@ async def interaction_step(
 
 
 def bootstrap_agent(task, continuous_mode) -> Agent:
-    config = ConfigBuilder.build_config_from_env(workdir=PROJECT_DIR)
+    config = ConfigBuilder.build_config_from_env()
     config.debug_mode = True
     config.continuous_mode = continuous_mode
     config.temperature = 0
