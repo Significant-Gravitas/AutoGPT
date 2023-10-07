@@ -38,27 +38,27 @@ if TYPE_CHECKING:
 
 
 # NOTE : This is an example of customization that allow to share part of a project in Github while keeping part not released
+aaas  =  {}
 try:
     from autogpt.core.agents.usercontext import (
         UserContextAgent,
         UserContextAgentSettings,
     )
-
-    usercontext = True
+    aaas["usercontext"] = True
 except ImportError:
-    usercontext = False
+    aaas["usercontext"] = False
+try:
+    from autogpt.core.agents.whichway import (
+        RoutingAgent,
+        RoutingAgentSettings,
+    )
+    aaas["whichway"] = True
+except ImportError:
+    aaas["whichway"] = False
 
 
-usercontext = False
-
-# from autogpt.logs.log_cycle import (
-#     CURRENT_CONTEXT_FILE_NAME,
-#     FULL_MESSAGE_HISTORY_FILE_NAME,
-#     NEXT_ACTION_FILE_NAME,
-#     USER_INPUT_FILE_NAME,
-#     LogCycleHandler,
-# )
-
+aaas["usercontext"] = False
+aaas["whichway"] = False
 
 class PlannerLoop(BaseLoop):
     _agent : PlannerAgent
@@ -113,51 +113,19 @@ class PlannerLoop(BaseLoop):
         ##############################################################
         ### Step 2 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
         ##############################################################
-        if not usercontext:
+        if not aaas["usercontext"]:
             self._agent.agent_goals = [self._agent.agent_goal_sentence]
         else:
-            # USER CONTEXT AGENT : Configure the agent to our context
-            usercontextagent_configuration = {
-                "user_id": self._agent.user_id,
-                "parent_agent_id": self._agent.agent_id,
-                "agent_name": "UCC (User Context Checker)",
-                "agent_goals": self._agent.agent_goals,
-                "agent_goal_sentence": self._agent.agent_goal_sentence,
-                "memory": self._agent._memory._settings.dict(),
-                "workspace": self._agent._workspace._settings.dict(),
-                "openai_provider": self._agent._openai_provider._settings.dict()
-                # _type_ = 'autogpt.core.agents.usercontext.main.UserContextAgent',
-                # agent_class = 'UserContextAgent'
-            }
+            agent_goal_sentence, agent_goals = await self.run_user_context_agent()
+            self._agent.agent_goal_sentence = agent_goal_sentence
+            self._agent.agent_goals = agent_goals
 
-            # USER CONTEXT AGENT : Create Agent Settings
-            usercontext_settings: UserContextAgentSettings = (
-                UserContextAgent.compile_settings(
-                    logger=self._agent._logger,
-                    user_configuration=usercontextagent_configuration,
-                )
-            )
-            # usercontext_settings = UserContextAgent.build_agent_configuration(configuration=agent_settings)
-
-            # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
-            new_user_context_agent = UserContextAgent.create_agent(
-                agent_settings=usercontext_settings, logger=self._agent._logger
-            )
-
-            # USER CONTEXT AGENT : Get UserContextAgent from DB (for POW / POC)
-            usercontext_settings.agent_id = new_user_context_agent.agent_id
-            user_context_agent = UserContextAgent.get_agent_from_settings(
-                agent_settings=usercontext_settings,
-                logger=self._agent._logger,
-            )
-
-            user_context_return: dict = await user_context_agent.run(
-                user_input_handler=self._user_input_handler,
-                user_message_handler=self._user_message_handler,
-            )
-
-            self._agent.agent_goal_sentence = user_context_return["agent_goal_sentence"]
-            self._agent.agent_goals = user_context_return["agent_goals"]
+        ##############################################################
+        ### Step 3 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
+        ##############################################################
+        routing_feedbacks = ''
+        if aaas["whichway"]:
+            routing_feedbacks = await self.run_whichway_agent()
 
         ##############################################################
         ### Step 3 : Saving agent with its new goals
@@ -167,17 +135,14 @@ class PlannerLoop(BaseLoop):
         ##############################################################
         ### Step 4 : Start with an plan !
         ##############################################################
-        plan = await self.build_initial_plan()
+        plan = await self.build_initial_plan(routing_feedbacks = routing_feedbacks)
         self._agent.plan = Plan()
         for task in plan['task_list'] :
             self._agent.plan.tasks.append(Task(data = task))
 
-
         parse_agent_plan(plan)
         self._agent._logger.info(parse_agent_plan)
 
-        consecutive_failures = 0
-               
         ##############################################################
         # NOTE : Important KPI to log during crashes
         ##############################################################
@@ -190,7 +155,6 @@ class PlannerLoop(BaseLoop):
             # if _active is false, then the loop is paused
             # FIXME replace _active by self.remaining_cycles > 0:
             if self._active:
-                # logger.debug(f"Cycle budget: {cycle_budget}; remaining: {self.remaining_cycles}")
                 self._loop_count += 1
 
                 ##############################################################
@@ -199,14 +163,61 @@ class PlannerLoop(BaseLoop):
                 command_name, command_args, assistant_reply_dict = await self.select_tool()
 
                 ##############################################################
-                ### execute() #
+                ### Step 6 : execute_tool() #
                 ##############################################################
-                # Decrement the cycle counter first to reduce the likelihood of a SIGINT
-                # happening during command execution, setting the cycles remaining to 1,
-                # and then having the decrement set it to 0, exiting the application.
                 result = await self.execute_tool(command_name, command_args)
 
+            self.save_agent()
 
+    async def run_user_context_agent(self):
+        """
+        Configures the user context agent based on the current agent settings and executes the user context agent.
+        Returns the updated agent goals.
+        """
+        
+        # USER CONTEXT AGENT : Configure the agent to our context
+        usercontextagent_configuration = {
+            "user_id": self._agent.user_id,
+            "parent_agent_id": self._agent.agent_id,
+            "agent_name": "UCC (User Context Checker)",
+            "agent_goals": self._agent.agent_goals,
+            "agent_goal_sentence": self._agent.agent_goal_sentence,
+            "memory": self._agent._memory._settings.dict(),
+            "workspace": self._agent._workspace._settings.dict(),
+            "openai_provider": self._agent._openai_provider._settings.dict()
+            # _type_ = 'autogpt.core.agents.usercontext.main.UserContextAgent',
+            # agent_class = 'UserContextAgent'
+        }
+
+        # USER CONTEXT AGENT : Create Agent Settings
+        usercontext_settings: UserContextAgentSettings = (
+            UserContextAgent.compile_settings(
+                logger=self._agent._logger,
+                user_configuration=usercontextagent_configuration,
+            )
+        )
+        
+        # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
+        new_user_context_agent = UserContextAgent.create_agent(
+            agent_settings=usercontext_settings, logger=self._agent._logger
+        )
+
+        # USER CONTEXT AGENT : Get UserContextAgent from DB (for POW / POC)
+        usercontext_settings.agent_id = new_user_context_agent.agent_id
+        user_context_agent = UserContextAgent.get_agent_from_settings(
+            agent_settings=usercontext_settings,
+            logger=self._agent._logger,
+        )
+
+        user_context_return: dict = await user_context_agent.run(
+            user_input_handler=self._user_input_handler,
+            user_message_handler=self._user_message_handler,
+        )
+        
+        return user_context_return["agent_goal_sentence"], user_context_return["agent_goals"]
+
+    async def run_whichway_agent(): 
+        pass
 
     async def start(
         self,
@@ -223,7 +234,7 @@ class PlannerLoop(BaseLoop):
         if not self.remaining_cycles:
             self.remaining_cycles = 1
 
-    async def build_initial_plan(self) -> dict:
+    async def build_initial_plan(self, routing_feedbacks = '') -> dict:
         # plan =  self.execute_strategy(
         self.tool_registry().list_tools_descriptions()
         plan = await self.execute_strategy(
@@ -232,6 +243,7 @@ class PlannerLoop(BaseLoop):
             agent_role=self._agent.agent_role,
             agent_goals=self._agent.agent_goals,
             agent_goal_sentence=self._agent.agent_goal_sentence,
+            routing_feedbacks = routing_feedbacks,
             tools=self.tool_registry().list_tools_descriptions(),
         )
 

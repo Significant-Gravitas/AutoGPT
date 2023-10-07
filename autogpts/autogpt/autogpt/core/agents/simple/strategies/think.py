@@ -177,7 +177,7 @@ class ThinkStrategy(PlanningPromptStrategy):
     #
     # _generate_intro_prompt
     #
-    def _generate_intro_prompt(self, agent = "PlannerAgent",
+    def _generate_intro_prompt(self, agent : "PlannerAgent",
                                **kargs) -> list[str]:
         """Generates the introduction part of the prompt.
 

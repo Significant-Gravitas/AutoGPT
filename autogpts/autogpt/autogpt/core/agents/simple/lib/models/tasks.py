@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import enum
+import uuid
+import string
+import random
 from typing import Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
@@ -174,15 +177,23 @@ class Task(BaseModel):
         >>> print(task.objective)
         "Write a report"
     """
-
+    task_id: str = Field(default_factory=lambda: 'T'+str(uuid.uuid4()))
+    #task_id: str = Task.generate_short_id()
+    parent_task : Optional[Task]
+    task_parent_id : Optional[str]
+    task_predecessor_id : Optional[str]
     responsible_agent_id: Optional[str] = Field(default="")
-    objective: Optional[str]
-    type: Optional[str]  # TaskType  FIXME: gpt does not obey the enum parameter in its schema
-    priority: Optional[int]
-    ready_criteria: Optional[list[str]]
+    name: str
+    description : str
+
     acceptance_criteria: Optional[list[str]]
     context: TaskContext = Field(default_factory=TaskContext)
     subtasks: Optional[list[Task]]
+
+    type: Optional[str]  # TaskType  FIXME: gpt does not obey the enum parameter in its schema
+    priority: Optional[int]
+    ready_criteria: Optional[list[str]]
+
 
     def dump(self, depth=0) -> dict:
         if depth < 0:
@@ -196,7 +207,65 @@ class Task(BaseModel):
             return_dict["subtasks"] = [subtask.dump(depth=depth - 1) for subtask in self.subtasks]
 
         return return_dict
+    
+    def find_task(self, search_task_id: str):
+        """
+        Recursively searches for a task with the given task_id in the tree of tasks.
+        """
+        # Check current task
+        if self.task_id == search_task_id:
+            return self
 
+        # If there are subtasks, recursively check them
+        if self.subtasks:
+            for subtask in self.subtasks:
+                found_task = subtask.find_task(search_task_id)
+                if found_task:
+                    return found_task
+        return None
+
+    def find_task_path_with_id(self, search_task_id: str):
+        """
+        Recursively searches for a task with the given task_id and its parent tasks.
+        Returns the parent task and all child tasks on the path to the desired task.
+        """
+        if self.task_id == search_task_id:
+            return self
+
+        if self.subtasks:
+            for subtask in self.subtasks:
+                found_task = subtask.find_task_path_with_id(search_task_id)
+                if found_task:
+                    return [self] + [found_task]
+        return None
+    
+    def find_task_path(self):
+        """
+        Finds the path from this task to the root.
+        """
+        path = [self]
+        current_task = self
+
+        while current_task.parent_task is not None:
+            path.append(current_task.parent_task)
+            current_task = current_task.parent_task
+
+        return path
+
+    
+    def get_path_structure(self, task)-> str:
+        path_to_task = self.find_task_path(task)
+        indented_structure = ""
+        
+        for i, task in enumerate(path_to_task):
+            indented_structure += "  " * i + "-> " + task.name + "\n"
+            
+        return indented_structure
+
+    @classmethod
+    def generate_short_id(length=6):
+        characters = string.ascii_letters + string.digits
+        return 'T'.join(random.choice(characters) for i in range(length))
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
 Task.update_forward_refs()

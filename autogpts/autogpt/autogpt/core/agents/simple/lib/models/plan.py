@@ -1,6 +1,11 @@
+from __future__ import annotations
+
 from pydantic import BaseModel
 from autogpt.core.agents.simple.lib.models.tasks import Task
-from typing import Union
+from typing import Union, Optional, List
+from logging import Logger
+
+logger = Logger()
 
 
 class Plan(BaseModel):
@@ -96,3 +101,148 @@ class Plan(BaseModel):
             return self.tasks[start:]
         else:
             raise ValueError("Invalid index type")
+
+    def find_task(self, task_id: str) -> Optional[Task]:
+        """
+        Find a task with the given task_id in the list of tasks.
+        """
+        for task in self.tasks:
+            found_task = task.find_task(task_id)
+            if found_task:
+                return found_task
+        return None
+
+    def find_task_path_with_id(self, task_id: str) -> Optional[List[Task]]:
+        """
+        Find the path to a task with the given task_id in the list of tasks.
+        """
+        logger.warning("Deprecated : Recommended function is Task.find_task_path()")
+        for task in self.tasks:
+            path = task.find_task_path_with_id(task_id)
+            if path:
+                return path
+        return None
+
+    ###
+    ### NOTE : To test
+    ###
+    def remove_task(self, task_id: str):
+        # 1. Set all task_predecessor_id to null if they reference the task to be removed
+        def clear_predecessors(task: Task):
+            if task.task_predecessor_id == task_id:
+                task.task_predecessor_id = None
+            for subtask in task.subtasks or []:
+                clear_predecessors(subtask)
+
+        # 2. Remove leaves with status "DONE" if ALL their siblings have this status
+        def should_remove_siblings(task: Task, parent_task: Optional[Task] = None) -> bool:
+            # If it's a leaf and has a parent
+            if not task.subtasks and parent_task:
+                all_done = all(st.status == "DONE" for st in parent_task.subtasks)
+                if all_done:
+                    # Delete the Task objects
+                    for st in parent_task.subtasks:
+                        del st
+                    parent_task.subtasks = None  # or []
+                return all_done
+            # elif task.subtasks:
+            #     for st in task.subtasks:
+            #         should_remove_siblings(st, task)
+            return False
+
+        for task in self.tasks:
+            should_remove_siblings(task)
+            clear_predecessors(task)
+
+    def get_ready_leaf_tasks(self) -> List[Task]:
+        """
+        Get tasks that have status "READY", no subtasks, and no task_predecessor_id.
+        
+        Returns:
+            List[Task]: A list of tasks meeting the specified criteria.
+        """
+        ready_tasks = []
+
+        def check_task(task: Task):
+            if task.status == "READY" and not task.subtasks and not task.task_predecessor_id:
+                ready_tasks.append(task)
+            
+            # Check subtasks recursively
+            for subtask in (task.subtasks or []):
+                check_task(subtask)
+
+        # Start checking from the root tasks in the plan
+        for task in self.tasks:
+            check_task(task)
+
+        return ready_tasks
+            
+    def get_first_ready_task(self) -> Optional[Task]:
+        """
+        Get the first task that has status "READY", no subtasks, and no task_predecessor_id.
+        
+        Returns:
+            Task or None: The first task meeting the specified criteria or None if no such task is found.
+        """
+
+        def check_task(task: Task) -> Optional[Task]:
+            if task.status == "READY" and not task.subtasks and not task.task_predecessor_id:
+                return task
+            
+            # Check subtasks recursively
+            for subtask in (task.subtasks or []):
+                found_task = check_task(subtask)
+                if found_task:  # If a task is found in the subtasks, return it immediately
+                    return found_task
+            return None
+
+        # Start checking from the root tasks in the plan
+        for task in self.tasks:
+            found_task = check_task(task)
+            if found_task:
+                return found_task
+
+        return None
+
+    def generate_pitch(self):
+        # Get the first ready task
+        task = self.get_first_ready_task()
+        
+        # Extract the task's siblings and path
+        siblings = [sib for sib in self.tasks if sib.task_parent_id == task.task_parent_id and sib != task]
+        path_to_task = self.find_task_path(task)
+        
+        # Build the pitch
+        pitch = """
+        # INSTRUCTION
+        Your goal is to find the best-suited command in order to achieve the following task: {task_description}
+
+        # CONTEXT
+        The high-level plan designed to achieve our goal is: 
+        {high_level_plan}
+        
+        We are working on the task "{task_name}" that consists in: {task_command}. This task is located in:
+        {path_structure}
+        """.format(
+            task_description=task.description,
+            high_level_plan="\n".join(["{}: {}".format(t.name, t.description) for t in self.tasks if not t.task_parent_id]),
+            task_name=task.name,
+            task_command=task.command, # assuming each task has a 'command' attribute
+            path_structure="\n".join(["->".join(p.name for p in path_to_task)])
+        )
+        
+        return pitch
+    
+
+# # 1. Find the first ready task
+# first_ready_task = plan.get_first_ready_task()
+
+# # 2. Retrieve the task and its siblings
+# parent_task_id = first_ready_task.task_parent_id
+# siblings = []
+# if parent_task_id:
+#     parent_task = plan.find_task(parent_task_id)
+#     siblings = parent_task.subtasks
+
+# # 3. Retrieve the list of tasks on the path
+# path_to_task = plan.find_task_path(first_ready_task.task_id)
