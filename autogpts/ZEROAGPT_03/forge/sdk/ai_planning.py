@@ -26,7 +26,7 @@ class AIPlanning:
         self.task_id = task_id
         self.abilities = abilities
         self.workspace = workspace
-        self.files = []
+        self.model = model
 
         self.logger = ForgeLogger(__name__)
 
