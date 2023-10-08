@@ -30,7 +30,7 @@ class AIPlanning:
 
         self.logger = ForgeLogger(__name__)
 
-        self.prompt_engine = PromptEngine(os.getenv("OPENAI_MODEL"))
+        self.prompt_engine = PromptEngine(self.model)
 
     async def create_steps(self) -> str:
         step_format_prompt = self.prompt_engine.load_prompt(

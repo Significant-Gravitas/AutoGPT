@@ -25,15 +25,15 @@ from . import chat_completion_request
 class ProfileGenerator:
     def __init__(
         self, 
-        task: str, 
-        prompt_engine: PromptEngine,
+        task: str,
         model: str = os.getenv("OPENAI_MODEL")):
         """
         Initialize the profile generator with the task to be performed.
         """
         self.task = task
-        self.prompt_engine = prompt_engine
         self.model = model
+        
+        self.prompt_engine = PromptEngine(self.model)
 
     async def role_find(self) -> str:
         """

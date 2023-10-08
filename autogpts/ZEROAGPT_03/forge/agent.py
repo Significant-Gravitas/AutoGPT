@@ -80,7 +80,6 @@ class ForgeAgent(Agent):
         # use AI to get the proper role experts for the task
         profile_gen = ProfileGenerator(
             task,
-            self.prompt_engine,
             "gpt-3.5-turbo"
         )
 
