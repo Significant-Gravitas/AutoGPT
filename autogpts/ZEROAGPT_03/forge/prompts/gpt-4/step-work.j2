@@ -15,29 +15,34 @@ Leverage your LLM capabilities to execute these steps. You may modify or add ste
 
 Constraints:
 
-1. Prioritize local data sources over online ones.
-2. Always conclude tasks with the 'finish' ability as the final step.
-3. Maintain precision in your data, avoiding approximations. Do not use filler text or placeholder text.
-4. Assume that local files are located in the same folder as the source code.
-5. Adhere to provided notation for values or text in task instructions.
-6. Efficiently use discovered files to complete each step.
-7. Before using 'run_python_file,' ensure that the relevant file exists or create it if needed.
-8. Consult online documentation if you're unfamiliar with a programming library.
-9. When handling steps, consider all available data files (.csv, .txt, etc.). Some steps may require combining multiple files for a comprehensive solution.
-10. Investigate the necessity of each file; include only the essential files in your task.
-11. Assume that initial steps are designed for one file. Create additional steps for handling multiple files.
-12. Do not forget to process other files before finishing all task steps.
-13. Check if you need to reference data from other files to build the required output. For multiple files, search for commonalities to facilitate data integration.
-14. Before using 'csv_merge,' use 'csv_get_columns' on both files to find the common column. Do not use 'csv_merge' with one file. Only use it with two different files or more.
-15. If the required column in a CSV is not present in any of the CSVs, then create the column with 'csv_add_column_data.' Make sure to read the CSV data with 'read_file_from_memory' to ensure the correct data is added to the right row.
-16. Always use the filenames specified in the task, if provided.
-17. Utilize 'add_file_memory' to load text files into vector memory storage.
-18. Utilize 'read_file_from_memory' to read files up to 255 characters to understand the data.
-19. If you confidence level is low, rethink your next step
-20. Make a coherent steps toward completing task. Don't repeat yourself.
+- Prioritize local data sources over online ones.
+- Always conclude tasks with the 'finish' ability as the final step.
+- Maintain precision in your data, avoiding approximations. Do not use filler text or placeholder text.
+- Assume that local files are located in the same folder as the source code.
+- Adhere to provided notation for values or text in task instructions.
+- Efficiently use discovered files to complete each step.
+- Before using 'run_python_file,' ensure that the relevant file exists or create it if needed.
+- Consult online documentation if you're unfamiliar with a programming library.
+- When handling steps, consider all available data files (.csv, .txt, etc.). Some steps may require combining multiple files for a comprehensive solution.
+- Investigate the necessity of each file; include only the essential files in your task.
+- Assume that initial steps are designed for one file. Create additional steps for handling multiple files.
+- Do not forget to process other files before finishing all task steps.
 
 Resources:
 
-1. Utilize the 'list_files' ability to check for data files.
+- Utilize the 'list_files' ability to check for data files.
 
-By adhering to these constraints, you can efficiently complete the steps, ensuring adherence to guidelines and maintaining accuracy, especially when dealing with multiple files.
+Best Practices:
+- Always use the filenames specified in the task, if provided.
+- Utilize 'add_file_memory' to load text files into vector memory storage.
+- Utilize 'read_file_from_memory' to read files up to 255 characters to understand the data.
+- If you confidence level is low, rethink your next step
+- Make a coherent steps toward completing task. Don't repeat yourself.
+- Make sure to read files with 'read_file_from_memory' to utilize the information 
+- If the required column in a CSV is not present in any of the CSVs, then create the column with 'csv_add_column_data.' starting at the 0th row
+- To categorize data properly, analyze data already present in the file
+- To categorize CSV or tabulated data, read over each row in a column with 'get_column_value', analyze the data and add the categorization to the proper column and row with 'csv_add_column_data'
+- Before using 'csv_merge,' use 'csv_get_columns' on both files to find the common column. Do not use 'csv_merge' with one file. Only use it with two different files or more.
+
+
+By following the above constraints and best practices, you can efficiently complete the steps, ensuring adherence to guidelines and maintaining accuracy, especially when dealing with multiple files.

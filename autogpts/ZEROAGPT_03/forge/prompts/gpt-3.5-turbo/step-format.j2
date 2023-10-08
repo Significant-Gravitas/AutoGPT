@@ -1,15 +1,12 @@
-Reply only in JSON exactly in the following format:
+Adhere only to JSON format. Say nothing else but the JSON format reply:
 
 {
-    \"steps\": [
+    "steps": [
         {
-            \"step\": \"short detailed description of step\",
-            \"last_step\": \"Is this the last step?\",
-            \"abilities\": [
-                {
-                    \"name\": \"name of ability\"
-                }
-            ]
+            "step": "short description of step",
+            "abilities": [{
+                "name": "name of ability to use"
+             }]
         }
     ]
 }

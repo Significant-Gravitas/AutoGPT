@@ -86,15 +86,15 @@ class ForgeAgent(Agent):
         # keep trying until json loads works, meaning
         # properly formatted reply
         # while solution breaks autogpt
-        # while self.expert_profile is None:
         LOG.info("💡 Generating expert profile...")
-        role_reply = await profile_gen.role_find()
-        try:        
-            self.expert_profile = json.loads(role_reply)
-        except Exception as err:
-            # pass
-            LOG.error(f"role_reply failed\n{err}")
-        
+        while self.expert_profile is None:
+            role_reply = await profile_gen.role_find()
+            try:        
+                self.expert_profile = json.loads(role_reply)
+            except Exception as err:
+                pass
+                # LOG.error(f"role_reply failed\n{err}")
+        LOG.info("💡 Profile generated!")
         # add system prompts to chat for task
         self.instruction_msgs[task.task_id] = []
         await self.set_instruction_messages(task.task_id, task.input)
@@ -149,7 +149,6 @@ class ForgeAgent(Agent):
         """
 
         # get last two most recent messages if not system messages
-        last_chat_history = []
         print(f"len of chat history @ {task_id}: {len(self.chat_history[task_id])}")
         print(f"len of instruction msgs @ {task_id}: {len(self.instruction_msgs[task_id])}")
 
@@ -158,24 +157,18 @@ class ForgeAgent(Agent):
             # this will give system some context. Also add in message about
             # how it went over its limits and needs to reduce
 
-            chat_cnt = 0
-            chis = self.chat_history[task_id]
-            for ci in range(len(chis)-1, -1, -1):
-                if chis[ci]["role"] == "assistant" and chat_cnt < 2:
-                    last_chat_history.append(chis[ci])
-                    chat_cnt += 1
+            # chat_cnt = 0
+            # chis = self.chat_history[task_id]
+            # for ci in range(len(chis)-1, -1, -1):
+            #     if chis[ci]["role"] == "assistant" and chat_cnt < 1:
+            #         last_chat_history.append(chis[ci])
+            #         chat_cnt += 1
 
             timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
             warning_msg = {
                 "role": "user",
-                "content": f"[{timestamp}] You went over the token and content limits of the API I am using to talk to you. Avoid using anything that will cause this to happen again."
+                "content": f"[{timestamp}] You went over the token and content limits of the API. Adhere to short and concise messages in the given JSON format."
             }
-
-            last_chat_history.append(warning_msg)
-
-            
-
-            print(last_chat_history)
 
         # clear chat and rebuild
         self.chat_history[task_id] = []
@@ -188,7 +181,7 @@ class ForgeAgent(Agent):
 
             self.chat_history[task_id].append(msg)
 
-        self.chat_history[task_id] += last_chat_history
+        self.chat_history[task_id].append(warning_msg)
 
     async def set_instruction_messages(self, task_id: str, task_input: str):
         """
@@ -336,7 +329,7 @@ class ForgeAgent(Agent):
             chat_completion_parms = {
                 "messages": self.chat_history[task_id],
                 "model": os.getenv("OPENAI_MODEL"),
-                "temperature": 1
+                "temperature": 0.5
             }
 
             chat_response = await chat_completion_request(
@@ -466,7 +459,7 @@ class ForgeAgent(Agent):
                 self.add_chat(
                     task_id,
                     "system",
-                    f"[{timestamp}] Something went wrong with processing on our end. Please reformat your reply and try again.")
+                    f"[{timestamp}] Something went wrong with processing on our end. Please reformat your reply and try again.\n{e}")
 
         # dump whole chat log at last step
         if step.is_last and task_id in self.chat_history:

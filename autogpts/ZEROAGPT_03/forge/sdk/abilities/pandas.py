@@ -21,19 +21,22 @@ def get_sep(tfile_readlines):
     
     return delim
 
-def load_csv(agent, task_id, file_name) -> Any:
-    """
-    Load CSV file in CWD
-    """
-    df = None
-    if ".csv" in file_name or ".CSV" in file_name:
-        file_readlines = agent.workspace.readlines(task_id=task_id, path=file_name)
-        file_sep = get_sep(file_readlines)
+# def load_csv(agent, task_id, file_name) -> Any:
+#     """
+#     Load CSV file in CWD
+#     """
+#     df = None
 
-        gcwd = agent.workspace.get_cwd_path(task_id)
-        df = pandas.read_csv(f"{gcwd}/{file_name}", sep=file_sep)
+#     try:
+#         file_readlines = agent.workspace.readlines(task_id=task_id, path=file_name)
+#         file_sep = get_sep(file_readlines)
+
+#         gcwd = agent.workspace.get_cwd_path(task_id)
+#         df = pandas.read_csv(f"{gcwd}/{file_name}", sep=file_sep)
+#     except Exception as err:
+#         logger.error(f"load_csv failed {err}")
     
-    return df
+#     return df
 
 @ability(
     name="csv_get_columns",
@@ -79,17 +82,21 @@ async def get_amount_rows(
     task_id: str,
     file_name: str) -> int:
 
-    df = load_csv(agent, task_id, file_name)
-    if df:
-        try:
-            row_amt = df.shape[0]
-        except Exception as err:
-            logger.error(f"getting row value failed: {err}")
-            raise err
+    row_amt = 0
+
+    file_readlines = agent.workspace.readlines(task_id=task_id, path=file_name)
+    file_sep = get_sep(file_readlines)
+
+    gcwd = agent.workspace.get_cwd_path(task_id)
+    df = pandas.read_csv(f"{gcwd}/{file_name}", sep=file_sep)
+
+    try:
+        row_amt = df.shape[0]
+    except Exception as err:
+        logger.error(f"getting row value failed: {err}")
+        raise err
         
-        return row_amt
-    else:
-        return "No CSV file found"
+    return row_amt
 
 @ability(
     name="get_column_value",
@@ -123,17 +130,19 @@ async def get_column_value(
     column: str,
     row_idx: str
 ) -> Any:
-    df = load_csv(agent, task_id, file_name)
-    if df:
-        try:
-            row_val = df.iloc[row_idx][column]
-        except Exception as err:
-            logger.error(f"getting row value failed: {err}")
-            raise err
-        
-        return row_val
-    else:
-        return "No CSV file found"
+    file_readlines = agent.workspace.readlines(task_id=task_id, path=file_name)
+    file_sep = get_sep(file_readlines)
+
+    gcwd = agent.workspace.get_cwd_path(task_id)
+    df = pandas.read_csv(f"{gcwd}/{file_name}", sep=file_sep)
+    
+    try:
+        row_val = df.iloc[row_idx][column]
+    except Exception as err:
+        logger.error(f"getting row value failed: {err}")
+        raise err
+    
+    return row_val
 
 @ability(
     name="csv_group_by_sum",

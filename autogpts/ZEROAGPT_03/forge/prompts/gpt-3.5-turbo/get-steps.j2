@@ -1,29 +1,20 @@
-Please create a series of steps to accomplish the following task:
+Please create a series of steps to accomplish the task below. Do adhere to these Constraints and Best Practices, you can efficiently plan the task steps, ensuring compliance with the provided guidelines and maintaining accuracy.
 
 Task: {{ task }}
 
 Constraints:
-
-1. Each step should utilize only one ability. Using more than one ability in a step will result in an error.
-2. Always conclude each sequence of steps with the 'finish' ability as the final step, providing a reason for 'finish.'
-3. Avoid using abilities as arguments for other abilities.
-4. Only use abilities listed in the provided task abilities list in any way to complete the task.
-5. Prioritize using local data sources over online sources.
-6. When handling multiple files (e.g., .csv, .txt), some steps may require combining multiple files for a comprehensive solution.
-7. Limit CSV-related abilities to CSV files.
-8. Investigate the necessity of each file and include only essential files in your task.
-9. Maintain precision in your data, avoiding approximations. Do not use filler text or placeholder text.
-
-Additional Instructions for Handling Multiple Files:
-
-1. When encountering multiple files, create separate steps for each file, ensuring that each contributes to the task.
-2. If you encounter two or more CSV files requiring merging, include a step to merge them in pairs before proceeding with the task.
-
-Resources:
-
-1. Utilize the 'list_files' ability to check for available data files.
+- Always conclude each sequence of steps with the 'finish' ability as the final step, providing a reason for 'finish.'
+- Avoid using abilities as arguments for other abilities.
+- Only use abilities listed in the provided task abilities list in any way to complete the task.
+- Prioritize using local data sources over online sources.
+- When handling multiple files (e.g., .csv, .txt), some steps may require combining multiple files for a comprehensive solution.
+- Limit CSV-related abilities to CSV files.
+- Investigate the necessity of each file and include only essential files in your task.
+- Maintain precision in your data, avoiding approximations. Do not use filler text or placeholder text.
 
 Best Practices:
+- When encountering multiple files, create separate steps for each file, ensuring that each contributes to the task.
+- If you encounter two or more CSV files requiring merging, include a step to merge them in pairs before proceeding with the task.
 - If a required column is absent in any CSV, create the column using 'csv_add_column_data.' Ensure that you read the CSV data to ensure the correct data is added to the right row.
 - Make sure to gather information about the CSV and its contents before adding a new column data with 'csv_add_column_data'
 - Before using 'csv_merge,' apply 'csv_get_columns' to both files to identify common columns. Do not use 'csv_merge' with only one file; use it with two different files or more.
@@ -31,6 +22,6 @@ Best Practices:
 - Do not forget to process other files before completing the task.
 - Utilize the 'read_file_from_memory' ability to read a file, extracting up to 255 characters for data comprehension.
 - Utilize the 'add_file_memory' ability to load text files into vector memory storage.
+- Utilize the 'list_files' ability to check for available data files.
 
 
-By adhering to these constraints, best practices and additional instructions, you can efficiently plan the task steps, ensuring compliance with the provided guidelines and maintaining accuracy.
