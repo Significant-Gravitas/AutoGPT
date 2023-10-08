@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2023-10-08T22:54:04.080Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15" etag="GPp9qFw8l1L9jofiDxu7" version="22.0.4" type="github">
+<mxfile host="app.diagrams.net" modified="2023-10-08T23:00:02.579Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15" etag="1cumbpopuixUOnbqeFFU" version="22.0.4" type="github">
   <diagram name="Page-1" id="kvVddJow024RuchNI2nA">
     <mxGraphModel dx="1059" dy="729" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
@@ -13,22 +13,28 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-6" value="Pro" style="swimlane;childLayout=stackLayout;resizeParent=1;resizeParentMax=0;startSize=20;html=1;" vertex="1" parent="1">
-          <mxGeometry x="110.00000000000045" y="20" width="1200" height="940" as="geometry" />
+          <mxGeometry x="110.00000000000045" y="20" width="1220" height="940" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-7" value="Lane 1" style="swimlane;startSize=20;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-6">
-          <mxGeometry y="20" width="200" height="920" as="geometry" />
+          <mxGeometry y="20" width="220" height="920" as="geometry" />
         </mxCell>
-        <mxCell id="TOSoZfk68G_ceMJ3JVFy-4" value="PlannerAgent.run()" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontColor=#000000;fillColor=#ffffc0;strokeColor=#ff0000;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-7">
-          <mxGeometry x="20" y="70" width="120" height="610" as="geometry" />
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-4" value="PlannerAgent .run()" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontColor=#000000;fillColor=#ffffc0;strokeColor=#ff0000;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-7">
+          <mxGeometry x="20" y="70" width="90" height="690" as="geometry" />
+        </mxCell>
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-52" value="PlannerAgent .user_message_handler()" style="whiteSpace=wrap;html=1;fillColor=#ffffc0;strokeColor=#ff0000;fontColor=#000000;rounded=1;arcSize=40;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-7">
+          <mxGeometry x="100" y="780" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-55" value="Proxy Agent?" style="ellipse;shape=umlControl;whiteSpace=wrap;html=1;dashed=1;fontStyle=2" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-7">
+          <mxGeometry x="130" y="840" width="90" height="60" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-8" value="Lane 2" style="swimlane;startSize=20;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-6">
-          <mxGeometry x="200" y="20" width="200" height="920" as="geometry" />
+          <mxGeometry x="220" y="20" width="200" height="920" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-10" value="PlannerLoop.run()" style="rounded=1;whiteSpace=wrap;html=1;arcSize=40;fontColor=#000000;fillColor=#ffffc0;strokeColor=#ff0000;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-8">
           <mxGeometry x="30" y="100" width="120" height="550" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-9" value="Lane 3" style="swimlane;startSize=20;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-6">
-          <mxGeometry x="400" y="20" width="200" height="920" as="geometry" />
+          <mxGeometry x="420" y="20" width="200" height="920" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-17" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="TOSoZfk68G_ceMJ3JVFy-9" source="TOSoZfk68G_ceMJ3JVFy-11" target="TOSoZfk68G_ceMJ3JVFy-16">
           <mxGeometry relative="1" as="geometry" />
@@ -47,7 +53,7 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-18" value="Lane 3" style="swimlane;startSize=20;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-6">
-          <mxGeometry x="600" y="20" width="200" height="920" as="geometry" />
+          <mxGeometry x="620" y="20" width="200" height="920" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-23" value="PromptStrategy.&lt;br&gt;build_prompt()" style="whiteSpace=wrap;html=1;fillColor=#ffffc0;strokeColor=#ff0000;fontColor=#000000;rounded=1;arcSize=40;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-18">
           <mxGeometry x="36" y="191" width="120" height="60" as="geometry" />
@@ -76,16 +82,19 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-25" value="Lane 3" style="swimlane;startSize=20;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-6">
-          <mxGeometry x="800" y="20" width="200" height="920" as="geometry" />
+          <mxGeometry x="820" y="20" width="200" height="920" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-26" value="OpenAIProvider.&lt;br&gt;create_chat_completion()" style="whiteSpace=wrap;html=1;fillColor=#ffffc0;strokeColor=#ff0000;fontColor=#000000;rounded=1;arcSize=40;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-25">
           <mxGeometry x="40" y="277" width="120" height="80" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-44" value="retry when API calls fais" style="ellipse;shape=umlControl;whiteSpace=wrap;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-25">
-          <mxGeometry x="110" y="390" width="90" height="70" as="geometry" />
+          <mxGeometry x="100" y="357" width="90" height="70" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-45" value="retry when no function_calls" style="ellipse;shape=umlControl;whiteSpace=wrap;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-25">
-          <mxGeometry x="110" y="460" width="90" height="60" as="geometry" />
+          <mxGeometry x="100" y="427" width="90" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-49" value="check LLM result sanity ?" style="ellipse;shape=umlControl;whiteSpace=wrap;html=1;dashed=1;fontStyle=2" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-25">
+          <mxGeometry x="100" y="515" width="90" height="60" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-27" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.983;entryY=0.135;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="TOSoZfk68G_ceMJ3JVFy-6" source="TOSoZfk68G_ceMJ3JVFy-23" target="TOSoZfk68G_ceMJ3JVFy-16">
           <mxGeometry relative="1" as="geometry" />
@@ -106,7 +115,7 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-39" value="Lane 3" style="swimlane;startSize=20;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-6">
-          <mxGeometry x="1000" y="20" width="200" height="920" as="geometry" />
+          <mxGeometry x="1020" y="20" width="200" height="920" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-41" value="&lt;b&gt;LLM&lt;/b&gt;" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-39">
           <mxGeometry x="44" y="258" width="120" height="144" as="geometry" />
@@ -118,6 +127,22 @@
           <mxGeometry relative="1" as="geometry">
             <Array as="points" />
           </mxGeometry>
+        </mxCell>
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-50" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.997;entryY=0.837;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="TOSoZfk68G_ceMJ3JVFy-6" target="TOSoZfk68G_ceMJ3JVFy-10">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="429.99999999999955" y="580" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-51" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.019;exitY=0.919;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="TOSoZfk68G_ceMJ3JVFy-6" source="TOSoZfk68G_ceMJ3JVFy-10" target="TOSoZfk68G_ceMJ3JVFy-52">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="169.99999999999955" y="760" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-53" value="" style="ellipse;html=1;shape=endState;fillColor=#000000;strokeColor=#ff0000;" vertex="1" parent="1">
+          <mxGeometry x="20" y="835" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-54" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="TOSoZfk68G_ceMJ3JVFy-52" target="TOSoZfk68G_ceMJ3JVFy-53">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
