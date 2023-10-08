@@ -55,34 +55,7 @@ class LanguageModelConfiguration(SystemConfiguration):
 class SimplePlannerConfiguration(SystemConfiguration):
     """Configuration for the SimplePlanner subsystem."""
 
-    models: dict[LanguageModelClassification, LanguageModelConfiguration]
-
-    @validator("models")
-    def validate_models(cls, models):
-        expected_keys = set(LanguageModelClassification)
-        actual_keys = set(models.keys())
-
-        if expected_keys != actual_keys:
-            missing_keys = expected_keys - actual_keys
-            raise ValueError(f"Missing keys in 'models': {missing_keys}")
-
-        return models
-
-
-class SimplePlannerSettings(SystemSettings):
-    """Settings for the SimplePlanner subsystem."""
-
-    configuration: SimplePlannerConfiguration
-
-
-class SimplePlanner(Configurable, AgentMixin):
-    """Manages the agent's planning and goal-setting by constructing language model prompts."""
-
-    default_settings = SimplePlannerSettings(
-        name="planner",
-        description="Manages the agent's planning and goal-setting by constructing language model prompts.",
-        configuration=SimplePlannerConfiguration(
-            models={
+    models: dict[LanguageModelClassification, LanguageModelConfiguration] = {
                 LanguageModelClassification.FAST_MODEL_4K: LanguageModelConfiguration(
                     model_name=OpenAIModelName.GPT3,
                     provider_name=ModelProviderName.OPENAI,
@@ -108,9 +81,31 @@ class SimplePlanner(Configurable, AgentMixin):
                     provider_name=ModelProviderName.OPENAI,
                     temperature=0.9,
                 ),
-            },
-        ),
-    )
+    }
+
+    @validator("models")
+    def validate_models(cls, models):
+        expected_keys = set(LanguageModelClassification)
+        actual_keys = set(models.keys())
+
+        if expected_keys != actual_keys:
+            missing_keys = expected_keys - actual_keys
+            raise ValueError(f"Missing keys in 'models': {missing_keys}")
+
+        return models
+
+
+class SimplePlannerSettings(SystemSettings):
+    """Settings for the SimplePlanner subsystem."""
+    name="planner"
+    description="Manages the agent's planning and goal-setting by constructing language model prompts."
+    configuration: SimplePlannerConfiguration = SimplePlannerConfiguration()
+
+
+class SimplePlanner(Configurable, AgentMixin):
+    """Manages the agent's planning and goal-setting by constructing language model prompts."""
+
+    default_settings = SimplePlannerSettings()
 
     def __init__(
         self,

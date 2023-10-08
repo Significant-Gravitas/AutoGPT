@@ -36,23 +36,7 @@ class UserContextAgent(BaseAgent, Configurable):
     CLASS_SETTINGS = UserContextAgentSettings
     CLASS_SYSTEMS = UserContextAgentSystems
 
-    default_settings = UserContextAgentSystemSettings(
-        name="usercontext_agent",
-        description="An agent that improve the quality of input provided by users.",
-        configuration=UserContextAgentConfiguration(
-            agent_name="UCC (User Context Checker)",
-            cycle_count=0,
-            max_task_cycle_count=3,
-            creation_time="",
-            systems=UserContextAgentSystems(
-                # ability_registry ="autogpt.core.ability.SimpleToolRegistry",  
-                # memory ="autogpt.core.memory.base.Memory",         
-                # chat_model_provider = "autogpt.core.resource.model_providers.OpenAIProvider",
-                # planning="autogpt.core.agents.simple.lib.SimplePlanner",
-                # workspace ="autogpt.core.workspace.SimpleWorkspace",
-                ),
-            ),
-        )
+    default_settings = UserContextAgentSystemSettings()
 
     def __init__(
         self,

@@ -30,15 +30,17 @@ class UserContextAgentSystems(BaseAgentSystems):
 
 
 class UserContextAgentConfiguration(BaseAgentConfiguration):
-    systems: UserContextAgentSystems
-    agent_name: str = Field(default="New Agent")
+    systems: UserContextAgentSystems = UserContextAgentSystems()
+    agent_name="UCC (User Context Checker)"
 
     class Config(BaseAgentConfiguration.Config):
         pass
 
 
 class UserContextAgentSystemSettings(BaseAgentSystemSettings):
-    configuration: UserContextAgentConfiguration
+    configuration: UserContextAgentConfiguration = UserContextAgentConfiguration()
+    name="usercontext_agent"
+    description="An agent that improve the quality of input provided by users."
     user_id: Optional[uuid.UUID] = Field(default=None)
     agent_id: Optional[uuid.UUID] = Field(default=None)
 
@@ -47,9 +49,9 @@ class UserContextAgentSystemSettings(BaseAgentSystemSettings):
 
 
 class UserContextAgentSettings(BaseAgentSettings):
-    agent: UserContextAgentSystemSettings
-    chat_model_provider: OpenAISettings
-    planning: SimplePlannerSettings
+    agent: UserContextAgentSystemSettings = UserContextAgentSystemSettings()
+    chat_model_provider: OpenAISettings = OpenAISettings()
+    planning: SimplePlannerSettings =SimplePlannerSettings()
     user_id: Optional[uuid.UUID] = Field(default=None)
     agent_id: Optional[uuid.UUID] = Field(default=None)
     agent_name: str = Field(default="New Agent")

@@ -39,8 +39,7 @@ class ToolsRegistryConfiguration(SystemConfiguration):
     Attributes:
         tools: A dictionary mapping tool names to their configurations.
     """
-
-    tools: dict[str, ToolConfiguration]
+    tools: dict[str, ToolConfiguration] = {}
 
 
 ToolsRegistryConfiguration.update_forward_refs()
@@ -54,7 +53,9 @@ class ToolsRegistrySettings(SystemSettings):
         configuration: Configuration settings for ToolRegistry.
     """
 
-    configuration: ToolsRegistryConfiguration
+    configuration: ToolsRegistryConfiguration =  ToolsRegistryConfiguration()
+    name : str ="simple_tool_registry"
+    description : str ="A simple tool registry."
 
 
 class SimpleToolRegistry(BaseToolsRegistry, Configurable):
@@ -66,16 +67,7 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         default_settings: Default system settings for the SimpleToolRegistry.
     """
 
-    default_settings = ToolsRegistrySettings(
-        name="simple_tool_registry",
-        description="A simple tool registry.",
-        configuration=ToolsRegistryConfiguration(
-            tools={
-                # tool_name: tool.default_configuration
-                # for tool_name, tool in BUILTIN_TOOLS.items()
-            },
-        ),
-    )
+    default_settings = ToolsRegistrySettings()
 
     @dataclass
     class ToolCategory:

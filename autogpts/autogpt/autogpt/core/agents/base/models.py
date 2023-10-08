@@ -25,10 +25,10 @@ class BaseAgentSystems(SystemConfiguration):
         return getattr(import_module(module_path), class_name)
 
 class BaseAgentConfiguration(SystemConfiguration):
-    cycle_count: int
-    max_task_cycle_count: int
-    creation_time: str
-    systems: BaseAgentSystems
+    cycle_count : int =0
+    max_task_cycle_count : int =3
+    creation_time : str=""
+    systems: BaseAgentSystems =BaseAgentSystems()
     user_id: Optional[uuid.UUID] = Field(default=None)
     agent_id: Optional[uuid.UUID] = Field(default=None)
 
@@ -37,7 +37,7 @@ class BaseAgentConfiguration(SystemConfiguration):
 
 
 class BaseAgentSystemSettings(SystemSettings):
-    configuration: BaseAgentConfiguration
+    configuration: BaseAgentConfiguration = BaseAgentConfiguration()
     # user_id: Optional[uuid.UUID] = Field(default=None)
     # agent_id: Optional[uuid.UUID] = Field(default=None)
 
@@ -46,10 +46,10 @@ class BaseAgentSystemSettings(SystemSettings):
 
 
 class BaseAgentSettings(BaseModel):
-    agent: BaseAgentSystemSettings
-    memory: MemorySettings
-    workspace: WorkspaceSettings
+    agent: BaseAgentSystemSettings 
     agent_class: str
+    memory: MemorySettings = MemorySettings()
+    workspace: WorkspaceSettings = WorkspaceSettings()
 
     class Config(BaseModel.Config):
         # This is a list of Field to Exclude during serialization

@@ -145,9 +145,9 @@ class OpenAIConfiguration(SystemConfiguration):
         maximum_retry_before_default_function: The maximum number of retries before a default function is used.
     """
 
-    retries_per_request: int = UserConfigurable()
-    maximum_retry = 1
-    maximum_retry_before_default_function = 1
+    retries_per_request: int = UserConfigurable(default = 10 )
+    maximum_retry : int = 1
+    maximum_retry_before_default_function : int = 1
 
 
 class OpenAIModelProviderBudget(BaseModelProviderBudget):
@@ -158,8 +158,14 @@ class OpenAIModelProviderBudget(BaseModelProviderBudget):
         warning_threshold: The warning threshold for budget.
     """
 
-    graceful_shutdown_threshold: float = UserConfigurable()
-    warning_threshold: float = UserConfigurable()
+    graceful_shutdown_threshold: float = UserConfigurable(default = 0.005)
+    warning_threshold: float = UserConfigurable(default =0.01)
+
+
+    total_budget : float =math.inf
+    total_cost : float =0.0
+    remaining_budget : float =math.inf
+    usage : BaseModelProviderUsage = BaseModelProviderUsage()
 
 
 class OpenAISettings(BaseModelProviderSettings):
@@ -171,9 +177,13 @@ class OpenAISettings(BaseModelProviderSettings):
         budget: Budget settings for the model provider.
     """
 
-    configuration: OpenAIConfiguration
-    credentials: BaseModelProviderCredentials
-    budget: OpenAIModelProviderBudget
+    configuration: OpenAIConfiguration = OpenAIConfiguration()
+    credentials : BaseModelProviderCredentials=BaseModelProviderCredentials()
+    budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()
+
+
+    name="chat_model_provider"
+    description="Provides access to OpenAI's API."
 
 
 class OpenAIProvider(
@@ -187,26 +197,7 @@ class OpenAIProvider(
         default_settings: The default settings for the OpenAI provider.
     """
 
-    default_settings = OpenAISettings(
-        name="chat_model_provider",
-        description="Provides access to OpenAI's API.",
-        configuration=OpenAIConfiguration(
-            retries_per_request=10,
-        ),
-        credentials=BaseModelProviderCredentials(),
-        budget=OpenAIModelProviderBudget(
-            total_budget=math.inf,
-            total_cost=0.0,
-            remaining_budget=math.inf,
-            usage=BaseModelProviderUsage(
-                prompt_tokens=0,
-                completion_tokens=0,
-                total_tokens=0,
-            ),
-            graceful_shutdown_threshold=0.005,
-            warning_threshold=0.01,
-        ),
-    )
+    default_settings = OpenAISettings()
 
     def __init__(
         self,

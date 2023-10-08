@@ -18,25 +18,17 @@ if typing.TYPE_CHECKING:
 
 
 class WorkspaceConfiguration(SystemConfiguration):
-    root: str
-    parent: str = UserConfigurable()
-    restrict_to_workspace: bool = UserConfigurable()
-
+    root: str = ""
+    parent: str = UserConfigurable(default = "~/auto-gpt/agents")
+    restrict_to_workspace: bool = UserConfigurable(default =True)
 
 class WorkspaceSettings(SystemSettings):
-    configuration: WorkspaceConfiguration
-
-
+    configuration: WorkspaceConfiguration=WorkspaceConfiguration()
+    name = "workspace"
+    description="The workspace is the root directory for all agent activity."
+    
 class SimpleWorkspace(Configurable, Workspace):
-    default_settings = WorkspaceSettings(
-        name="workspace",
-        description="The workspace is the root directory for all agent activity.",
-        configuration=WorkspaceConfiguration(
-            root="",
-            parent="~/auto-gpt/agents",
-            restrict_to_workspace=True,
-        ),
-    )
+    default_settings = WorkspaceSettings()
 
     NULL_BYTES = ["\0", "\000", "\x00", "\u0000", "%00"]
 
