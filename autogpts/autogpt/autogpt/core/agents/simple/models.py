@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from typing import TYPE_CHECKING, Optional
-
 from pydantic import Field
 
 from autogpt.core.tools import ToolsRegistrySettings
@@ -21,12 +20,13 @@ if TYPE_CHECKING:
 
 
 class PlannerAgentSystems(BaseAgentSystems):
-    tool_registry: PluginLocation
-    chat_model_provider: PluginLocation
-    planning: PluginLocation
+    tool_registry : str ="autogpt.core.tools.SimpleToolRegistry"
+    chat_model_provider : str ="autogpt.core.resource.model_providers.OpenAIProvider"
+    planning : str ="autogpt.core.agents.simple.lib.SimplePlanner"
 
     class Config(BaseAgentSystems.Config):
         pass
+
 
 
 class PlannerAgentConfiguration(BaseAgentConfiguration):
@@ -35,22 +35,66 @@ class PlannerAgentConfiguration(BaseAgentConfiguration):
     agent_role: Optional[str] = Field(default=None)
     agent_goals: Optional[list[str]] = Field(default=None)
     agent_goal_sentence: Optional[str] = Field(default=None)
+    cycle_count : int =0 
+    max_task_cycle_count : int =3
+    creation_time : str=""
+    systems=PlannerAgentSystems()
 
     class Config(BaseAgentConfiguration.Config):
         pass
 
 
-class PlannerSystemSettings(BaseAgentSystemSettings):
-    configuration: PlannerAgentConfiguration
-    # user_id: Optional[uuid.UUID] = Field(default=None)
-    # agent_id: Optional[uuid.UUID] = Field(default=None)
+class PlannerAgentSystemSettings(BaseAgentSystemSettings):
+    name: str ="simple_agent"
+    description: str ="A simple agent."
+    configuration : PlannerAgentConfiguration = PlannerAgentConfiguration(
+        # agent_name="Entrepreneur-GPT",
+        # agent_role=(
+        #     "An AI designed to autonomously develop and run businesses with "
+        #     "the sole goal of increasing your net worth."
+        # ),
+        # agent_goals=[
+        #     "Increase net worth",
+        #     "Grow Twitter Account",
+        #     "Develop and manage multiple businesses autonomously",
+        # ],
+        # agent_goal_sentence="""Increase net worth
+        #     and Grow Twitter Account
+        #     and Develop and manage multiple businesses autonomously""",
+        # cycle_count=0,
+        # max_task_cycle_count=3,
+        # creation_time="",
+        # systems=PlannerAgentSystems(
+        #     # tool_registry=PluginLocation(
+        #     #     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+        #     #     storage_route="autogpt.core.tools.SimpleToolRegistry",
+        #     # ),
+        #     # memory=PluginLocation(
+        #     #     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+        #     #     storage_route="autogpt.core.memory.base.Memory",
+        #     # ),
+        #     # chat_model_provider=PluginLocation(
+        #     #     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+        #     #     storage_route="autogpt.core.resource.model_providers.OpenAIProvider",
+        #     # ),
+        #     # planning=PluginLocation(
+        #     #     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+        #     #     storage_route="autogpt.core.agents.simple.lib.SimplePlanner",
+        #     # ),
+        #     # workspace=PluginLocation(
+        #     #     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
+        #     #     storage_route="autogpt.core.workspace.SimpleWorkspace",
+        #     # ),
+        # ),
+    )
+
 
     class Config(BaseAgentSystemSettings.Config):
         pass
 
 
 class PlannerAgentSettings(BaseAgentSettings):
-    agent: PlannerSystemSettings
+    agent: PlannerAgentSystemSettings
     chat_model_provider: OpenAISettings
     tool_registry: ToolsRegistrySettings
     planning: SimplePlannerSettings

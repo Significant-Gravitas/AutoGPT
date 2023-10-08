@@ -1,6 +1,7 @@
 import uuid
 from typing import Optional
 
+from importlib import import_module
 from pydantic import BaseModel, Field
 
 from autogpt.core.configuration import SystemConfiguration, SystemSettings
@@ -10,12 +11,18 @@ from autogpt.core.workspace.simple import WorkspaceSettings
 
 
 class BaseAgentSystems(SystemConfiguration):
-    memory: PluginLocation
-    workspace: PluginLocation
+    memory :str  = "autogpt.core.memory.base.Memory"
+    workspace : str = "autogpt.core.workspace.SimpleWorkspace"
 
     class Config(SystemConfiguration.Config):
         extra = "allow"
 
+    @classmethod
+    #def load_from_import_path(cls, attr) -> "Configurable":
+    def load_from_import_path(cls, system_location : str):
+        """Load a plugin from an import path."""
+        module_path, _, class_name = system_location.rpartition(".")
+        return getattr(import_module(module_path), class_name)
 
 class BaseAgentConfiguration(SystemConfiguration):
     cycle_count: int

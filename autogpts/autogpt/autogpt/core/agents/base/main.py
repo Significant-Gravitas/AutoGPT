@@ -8,12 +8,14 @@ import yaml
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Dict, Tuple
 
+
 if TYPE_CHECKING:
     from autogpt.core.agents.base.loop import (  # Import only where it's needed
         BaseLoop,
         BaseLoopHook,
     )
     from autogpt.core.tools.base import BaseToolsRegistry
+    from autogpt.core.configuration import SystemConfiguration , SystemSettings
 
 from autogpt.core.agents.base.loop import (
     BaseLoopHook,
@@ -28,7 +30,6 @@ from autogpt.core.agents.base.models import (
     BaseAgentDirectives,
 )
 from autogpt.core.memory.base import Memory
-from autogpt.core.plugin.simple import SimplePluginService
 from autogpt.core.workspace import Workspace
 from autogpt.core.configuration import Configurable
 
@@ -366,13 +367,19 @@ class BaseAgent(Configurable, AbstractAgent):
 
         system_locations = configuration_dict["agent"]["configuration"]["systems"]
 
-        # # Build up default configuration
         for system_name, system_location in system_locations.items():
             if system_location is not None and not isinstance(
                 system_location, uuid.UUID
             ):
                 logger.debug(f"Compiling configuration for system {system_name}")
-                system_class = SimplePluginService.get_plugin(system_location)
+    #             system_settings = getattr(cls.CLASS_SETTINGS, system_name, None)
+    #             if system_settings:
+    #                 configuration_dict[system_name] = system_settings
+    #             else:
+    #                 raise ValueError(f"No system class found for {system_name} in CLASS_SETTINGS")
+
+                system_class : Configurable = cls.CLASS_SYSTEMS.load_from_import_path( system_location = system_locations[system_name])  #SimplePluginService.get_plugin(system_location)
+
                 configuration_dict[
                     system_name
                 ] = system_class.get_agent_configuration().dict()
@@ -490,13 +497,12 @@ class BaseAgent(Configurable, AbstractAgent):
         *args,
         **kwargs,
     ):
-        # logger.debug("\ncls._get_system_instance : " + str(cls))
-        # logger.debug("\n_get_system_instance agent_settings: " + str(agent_settings))
-        # logger.debug("\n_get_system_instance system_name: " + str(system_name))
-        system_locations = agent_settings.agent.configuration.systems.dict()
+        system_settings : SystemSettings = getattr(agent_settings, system_name)
+        #system_class = getattr(cls.CLASS_SETTINGS, system_name, None)
+        system_class : Configurable = cls.CLASS_SYSTEMS.load_from_import_path(getattr(agent_settings.agent.configuration.systems, system_name ))
 
-        system_settings = getattr(agent_settings, system_name)
-        system_class = SimplePluginService.get_plugin(system_locations[system_name])
+        if not system_class:
+            raise ValueError(f"No system class found for {system_name} in CLASS_SETTINGS")
         system_instance = system_class(
             system_settings,
             *args,
@@ -588,7 +594,7 @@ class BaseAgent(Configurable, AbstractAgent):
             /
         """
 
-        memory_settings = MemorySettings(configuration=MemoryConfig())
+        memory_settings = MemorySettings()
 
         memory = Memory.get_adapter(memory_settings=memory_settings, logger=logger)
         agent_table: AgentsTable = memory.get_table("agents")

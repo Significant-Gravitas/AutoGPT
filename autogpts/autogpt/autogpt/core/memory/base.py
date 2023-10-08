@@ -58,7 +58,7 @@ class MemoryConfig(SystemConfiguration):
 
 
 class MemorySettings(SystemSettings):
-    configuration: MemoryConfig
+    configuration: MemoryConfig = MemoryConfig()
     name: str = "Memory"
     description: str = "Memory is an abstract memory adapter"
 
@@ -67,25 +67,8 @@ class MemorySettings(SystemSettings):
 
 
 class Memory(Configurable, abc.ABC):
-    default_settings = MemorySettings(
-        name="new_memory",
-        description="Memory is an abstract memory adapter",
-        configuration=MemoryConfig(
-            memory_adapter=MemoryAdapterType.NOSQL_JSON_FILE,
-            json_file_path=str(Path("~/auto-gpt/data/").expanduser().resolve()),
-            # sqllikejson_file_path=str(Path("~/auto-gpt/sqlikejsondata/").expanduser().resolve()),
-            # cosmos_endpoint=None,
-            # cosmos_key=None,
-            # cosmos_database_name=None,
-            # aws_access_key_id=None,
-            # aws_secret_access_key,
-            # dynamodb_region_name=None,
-            # mongodb_connection_string='connection_string',
-            # mongodb_database_name='database_name',
-            # mongo_uri=None,
-            # mongo_db_name=None
-        ),
-    )
+    default_settings = MemorySettings()
+    
     _instances = {}
 
     """

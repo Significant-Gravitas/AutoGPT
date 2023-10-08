@@ -45,29 +45,14 @@ class UserContextAgent(BaseAgent, Configurable):
             max_task_cycle_count=3,
             creation_time="",
             systems=UserContextAgentSystems(
-                ability_registry=PluginLocation(
-                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.ability.SimpleToolRegistry",
-                ),
-                memory=PluginLocation(
-                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.memory.base.Memory",
-                ),
-                chat_model_provider=PluginLocation(
-                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.resource.model_providers.OpenAIProvider",
-                ),
-                planning=PluginLocation(
-                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.agents.simple.lib.SimplePlanner",
-                ),
-                workspace=PluginLocation(
-                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.workspace.SimpleWorkspace",
+                # ability_registry ="autogpt.core.ability.SimpleToolRegistry",  
+                # memory ="autogpt.core.memory.base.Memory",         
+                # chat_model_provider = "autogpt.core.resource.model_providers.OpenAIProvider",
+                # planning="autogpt.core.agents.simple.lib.SimplePlanner",
+                # workspace ="autogpt.core.workspace.SimpleWorkspace",
                 ),
             ),
-        ),
-    )
+        )
 
     def __init__(
         self,

@@ -447,6 +447,24 @@ class OpenAIProvider(
         # ### Step 5: Self feedback
         # ##############################################################################
 
+        # Create an option to deactivate feedbacks
+        # Option : Maximum number of feedbacks allowed
+
+        # Prerequisite : Read OpenAI API (Chat Model) function_call section
+
+        # User : 1 shirt take 5 minutes to dry , how long take 10 shirt to dry 
+        # Assistant : It takes 50 minutes
+
+        # System : "The user question was .... 
+        # The Assistant Response was ..."
+        # Is it ok ? 
+        # If not provide a feedback
+
+        # => T shirt can be dried at the same time
+
+
+
+
         # ##############################################################################
         # ### Step 6: Formulate the response
         # ##############################################################################

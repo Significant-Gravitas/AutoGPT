@@ -20,10 +20,11 @@ if TYPE_CHECKING:
 
 
 class UserContextAgentSystems(BaseAgentSystems):
-    ability_registry: PluginLocation
-    chat_model_provider: PluginLocation
-    planning: PluginLocation
 
+    ability_registry : str  ="autogpt.core.ability.SimpleToolRegistry"
+    chat_model_provider : str  = "autogpt.core.resource.model_providers.OpenAIProvider"
+    planning : str ="autogpt.core.agents.simple.lib.SimplePlanner"
+    
     class Config(BaseAgentSystems.Config):
         pass
 
