@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from autogpt.models.action_history import Episode
 
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
-from autogpt.config import AIConfig, AIDirectives
+from autogpt.config import AIProfile, AIDirectives
 from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
 from autogpt.core.prompting import (
     ChatPrompt,
@@ -190,7 +190,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
     def build_prompt(
         self,
         *,
-        ai_config: AIConfig,
+        ai_profile: AIProfile,
         ai_directives: AIDirectives,
         commands: list[CompletionModelFunction],
         event_history: list[Episode],
@@ -213,7 +213,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             extra_messages = []
 
         system_prompt = self.build_system_prompt(
-            ai_config=ai_config,
+            ai_profile=ai_profile,
             ai_directives=ai_directives,
             commands=commands,
             include_os_info=include_os_info,
@@ -256,26 +256,26 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
     def build_system_prompt(
         self,
-        ai_config: AIConfig,
+        ai_profile: AIProfile,
         ai_directives: AIDirectives,
         commands: list[CompletionModelFunction],
         include_os_info: bool,
     ) -> str:
         system_prompt_parts = (
-            self._generate_intro_prompt(ai_config)
+            self._generate_intro_prompt(ai_profile)
             + (self._generate_os_info() if include_os_info else [])
             + [
                 self.config.body_template.format(
                     constraints=format_numbered_list(
                         ai_directives.constraints
-                        + self._generate_budget_constraint(ai_config.api_budget)
+                        + self._generate_budget_constraint(ai_profile.api_budget)
                     ),
                     resources=format_numbered_list(ai_directives.resources),
                     commands=self._generate_commands_list(commands),
                     best_practices=format_numbered_list(ai_directives.best_practices),
                 )
             ]
-            + self._generate_goals_info(ai_config.ai_goals)
+            + self._generate_goals_info(ai_profile.ai_goals)
         )
 
         # Join non-empty parts together into paragraph format
@@ -349,14 +349,14 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             f"{response_format}"
         )
 
-    def _generate_intro_prompt(self, ai_config: AIConfig) -> list[str]:
+    def _generate_intro_prompt(self, ai_profile: AIProfile) -> list[str]:
         """Generates the introduction part of the prompt.
 
         Returns:
             list[str]: A list of strings forming the introduction part of the prompt.
         """
         return [
-            f"You are {ai_config.ai_name}, {ai_config.ai_role.rstrip('.')}.",
+            f"You are {ai_profile.ai_name}, {ai_profile.ai_role.rstrip('.')}.",
             "Your decisions must always be made independently without seeking "
             "user assistance. Play to your strengths as an LLM and pursue "
             "simple strategies with no legal complications.",

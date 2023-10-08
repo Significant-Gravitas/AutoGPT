@@ -5,7 +5,7 @@ from pathlib import Path
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.main import _configure_openai_provider, run_interaction_loop
 from autogpt.commands import COMMAND_CATEGORIES
-from autogpt.config import AIConfig, ConfigBuilder
+from autogpt.config import AIProfile, ConfigBuilder
 from autogpt.logs.config import configure_logging
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
@@ -39,7 +39,7 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
 
     command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
 
-    ai_config = AIConfig(
+    ai_profile = AIProfile(
         ai_name="AutoGPT",
         ai_role="a multi-purpose AI assistant.",
         ai_goals=[task],
@@ -50,7 +50,7 @@ def bootstrap_agent(task: str, continuous_mode: bool) -> Agent:
     agent_settings = AgentSettings(
         name=Agent.default_settings.name,
         description=Agent.default_settings.description,
-        ai_config=ai_config,
+        ai_profile=ai_profile,
         config=AgentConfiguration(
             fast_llm=config.fast_llm,
             smart_llm=config.smart_llm,

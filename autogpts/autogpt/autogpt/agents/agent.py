@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from autogpt.memory.vector import VectorMemory
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.config import AIConfig
+from autogpt.config import AIProfile
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
@@ -70,7 +70,7 @@ class Agent(
     default_settings: AgentSettings = AgentSettings(
         name="Agent",
         description=__doc__,
-        ai_config=AIConfig(ai_name="AutoGPT"),
+        ai_profile=AIProfile(ai_name="AutoGPT"),
         config=AgentConfiguration(),
         prompt_config=OneShotAgentPromptStrategy.default_configuration,
         history=BaseAgent.default_settings.history,
@@ -159,7 +159,7 @@ class Agent(
 
         self.log_cycle_handler.log_count_within_cycle = 0
         self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
+            self.ai_profile.ai_name,
             self.created_at,
             self.config.cycle_count,
             prompt.raw(),
@@ -184,7 +184,7 @@ class Agent(
         ) = self.prompt_strategy.parse_response_content(llm_response.response)
 
         self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
+            self.ai_profile.ai_name,
             self.created_at,
             self.config.cycle_count,
             assistant_reply_dict,
@@ -212,7 +212,7 @@ class Agent(
         if command_name == "human_feedback":
             result = ActionInterruptedByHuman(feedback=user_input)
             self.log_cycle_handler.log_cycle(
-                self.ai_config.ai_name,
+                self.ai_profile.ai_name,
                 self.created_at,
                 self.config.cycle_count,
                 user_input,

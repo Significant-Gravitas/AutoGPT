@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from autogpt.models.command_registry import CommandRegistry
 
 from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
-from autogpt.config.ai_config import AIConfig
+from autogpt.config.ai_profile import AIProfile
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.core.configuration import (
     Configurable,
@@ -118,8 +118,8 @@ class BaseAgentConfiguration(SystemConfiguration):
 
 
 class BaseAgentSettings(SystemSettings):
-    ai_config: AIConfig
-    """The AIConfig or "personality" object associated with this agent."""
+    ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
+    """The AIProfile or "personality" of this agent."""
 
     config: BaseAgentConfiguration
     """The configuration for this BaseAgent subsystem instance."""
@@ -137,7 +137,6 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
     default_settings = BaseAgentSettings(
         name="BaseAgent",
         description=__doc__,
-        ai_config=AIConfig(),
         config=BaseAgentConfiguration(),
         history=EpisodicActionHistory(),
     )
@@ -150,7 +149,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         command_registry: CommandRegistry,
         legacy_config: Config,
     ):
-        self.ai_config = settings.ai_config
+        self.ai_profile = settings.ai_profile
         self.ai_directives = AIDirectives.from_file(legacy_config.prompt_settings_file)
 
         self.llm_provider = llm_provider
@@ -173,7 +172,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         # Support multi-inheritance and mixins for subclasses
         super(BaseAgent, self).__init__()
 
-        logger.debug(f"Created {__class__} '{self.ai_config.ai_name}'")
+        logger.debug(f"Created {__class__} '{self.ai_profile.ai_name}'")
 
     @property
     def llm(self) -> ChatModelInfo:
@@ -273,7 +272,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         extra_commands += list(scratchpad.commands.values())
 
         prompt = self.prompt_strategy.build_prompt(
-            ai_config=self.ai_config,
+            ai_profile=self.ai_profile,
             ai_directives=ai_directives,
             commands=get_openai_command_specs(
                 self.command_registry.list_available_commands(self)

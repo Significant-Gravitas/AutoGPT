@@ -1,15 +1,12 @@
-"""A module that contains the AIConfig class object that contains the configuration"""
-from __future__ import annotations
-
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, Field
 
 
-class AIConfig(BaseModel):
+class AIProfile(BaseModel):
     """
-    A class object that contains the configuration information for the AI
+    Object to hold the AI's personality.
 
     Attributes:
         ai_name (str): The name of the AI.
@@ -24,7 +21,7 @@ class AIConfig(BaseModel):
     api_budget: float = 0.0
 
     @staticmethod
-    def load(ai_settings_file: str | Path) -> "AIConfig":
+    def load(ai_settings_file: str | Path) -> "AIProfile":
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget)
         loaded from yaml file if yaml file exists, else returns class with no parameters.
@@ -52,7 +49,7 @@ class AIConfig(BaseModel):
         ]
         api_budget = config_params.get("api_budget", 0.0)
 
-        return AIConfig(
+        return AIProfile(
             ai_name=ai_name, ai_role=ai_role, ai_goals=ai_goals, api_budget=api_budget
         )
 
