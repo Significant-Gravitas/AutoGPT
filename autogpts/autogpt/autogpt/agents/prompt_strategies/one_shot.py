@@ -7,6 +7,7 @@ from logging import Logger
 from typing import TYPE_CHECKING, Callable, Optional
 
 import distro
+from pydantic import Field
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
@@ -166,7 +167,9 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
     #########
     # State #
     #########
-    progress_summaries: dict[tuple[int, int], str] = {(0, 0): ""}
+    progress_summaries: dict[tuple[int, int], str] = Field(
+        default_factory=lambda: {(0, 0): ""}
+    )
 
 
 class OneShotAgentPromptStrategy(PromptStrategy):

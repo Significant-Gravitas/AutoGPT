@@ -26,6 +26,7 @@ from autogpt.app.utils import (
 )
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import (
+    AIDirectives,
     AIProfile,
     Config,
     ConfigBuilder,
@@ -40,10 +41,8 @@ from autogpt.core.runner.client_lib.utils import coroutine
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
-from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
-from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
 
@@ -62,7 +61,6 @@ async def run_auto_gpt(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
-    working_directory: Path,
     workspace_directory: str | Path,
     install_plugin_deps: bool,
     ai_name: Optional[str] = None,
@@ -121,16 +119,6 @@ async def run_auto_gpt(
     if install_plugin_deps:
         install_plugin_dependencies()
 
-    # TODO: have this directory live outside the repository (e.g. in a user's
-    #   home directory) and have it come in as a command line argument or part of
-    #   the env file.
-    config.workspace_path = Workspace.init_workspace_directory(
-        config, workspace_directory
-    )
-
-    # HACK: doing this here to collect some globals that depend on the workspace.
-    config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
-
     config.plugins = scan_plugins(config, config.debug_mode)
     configure_chat_plugins(config)
 
@@ -144,6 +132,7 @@ async def run_auto_gpt(
         role=ai_role,
         goals=ai_goals,
     )
+    ai_directives = AIDirectives.from_file(config.prompt_settings_file)
 
     agent_prompt_config = Agent.default_settings.prompt_config.copy(deep=True)
     agent_prompt_config.use_functions_api = config.openai_functions
@@ -152,9 +141,11 @@ async def run_auto_gpt(
         name=Agent.default_settings.name,
         description=Agent.default_settings.description,
         ai_profile=ai_profile,
+        directives=ai_directives,
         config=AgentConfiguration(
             fast_llm=config.fast_llm,
             smart_llm=config.smart_llm,
+            allow_fs_access=not config.restrict_to_workspace,
             use_functions_api=config.openai_functions,
             plugins=config.plugins,
         ),
@@ -162,21 +153,22 @@ async def run_auto_gpt(
         history=Agent.default_settings.history.copy(deep=True),
     )
 
-    # Initialize memory and make sure it is empty.
-    # this is particularly important for indexing and referencing pinecone memory
-    memory = get_memory(config)
-    memory.clear()
-    print_attribute("Configured Memory", memory.__class__.__name__)
-
     print_attribute("Configured Browser", config.selenium_web_browser)
 
     agent = Agent(
         settings=agent_settings,
         llm_provider=llm_provider,
         command_registry=command_registry,
-        memory=memory,
         legacy_config=config,
     )
+    agent.attach_fs(config.app_data_dir / "agents" / "AutoGPT")  # HACK
+
+    if not agent.config.allow_fs_access:
+        logger.info(
+            f"{Fore.YELLOW}NOTE: All files/directories created by this agent"
+            f" can be found inside its workspace at:{Fore.RESET} {agent.workspace.root}",
+            extra={"preserve_color": True},
+        )
 
     await run_interaction_loop(agent)
 
@@ -587,12 +579,6 @@ Continue ({config.authorise_key}/{config.exit_key}): """,
         ai_profile = await interactive_ai_profile_setup(config, llm_provider)
         ai_profile.save(config.ai_settings_file)
 
-    if config.restrict_to_workspace:
-        logger.info(
-            f"{Fore.YELLOW}NOTE: All files/directories created by this agent"
-            f" can be found inside its workspace at:{Fore.RESET} {config.workspace_path}",
-            extra={"preserve_color": True},
-        )
     # set the total api budget
     api_manager = ApiManager()
     api_manager.set_total_budget(ai_profile.api_budget)

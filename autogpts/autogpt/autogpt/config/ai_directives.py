@@ -1,10 +1,8 @@
-from __future__ import annotations
-
 import logging
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from autogpt.logs.helpers import request_user_double_check
 from autogpt.utils import validate_yaml_file
@@ -21,12 +19,12 @@ class AIDirectives(BaseModel):
         best_practices (list): A list of best practices that the AI should follow.
     """
 
-    constraints: list[str]
-    resources: list[str]
-    best_practices: list[str]
+    resources: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    best_practices: list[str] = Field(default_factory=list)
 
     @staticmethod
-    def from_file(prompt_settings_file: Path) -> AIDirectives:
+    def from_file(prompt_settings_file: Path) -> "AIDirectives":
         (validated, message) = validate_yaml_file(prompt_settings_file)
         if not validated:
             logger.error(message, extra={"title": "FAILED FILE VALIDATION"})

@@ -44,7 +44,7 @@ def generate_image(prompt: str, agent: Agent, size: int = 256) -> str:
     Returns:
         str: The filename of the image
     """
-    filename = agent.legacy_config.workspace_path / f"{str(uuid.uuid4())}.jpg"
+    filename = agent.workspace.root / f"{str(uuid.uuid4())}.jpg"
 
     # DALL-E
     if agent.legacy_config.image_provider == "dalle":

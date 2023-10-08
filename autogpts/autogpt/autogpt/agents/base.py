@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from pydantic import Field, validator
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from autogpt.config import Config
     from autogpt.core.prompting.base import PromptStrategy
     from autogpt.core.resource.model_providers.schema import (
@@ -18,6 +20,7 @@ if TYPE_CHECKING:
     from autogpt.models.command_registry import CommandRegistry
 
 from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
+from autogpt.config import ConfigBuilder
 from autogpt.config.ai_profile import AIProfile
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.core.configuration import (
@@ -40,6 +43,8 @@ from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
+from .utils.agent_file_manager import AgentFileManager
+
 logger = logging.getLogger(__name__)
 
 CommandName = str
@@ -48,6 +53,8 @@ AgentThoughts = dict[str, Any]
 
 
 class BaseAgentConfiguration(SystemConfiguration):
+    allow_fs_access: bool = UserConfigurable(default=False)
+
     fast_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
     smart_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT4)
     use_functions_api: bool = UserConfigurable(default=False)
@@ -118,27 +125,33 @@ class BaseAgentConfiguration(SystemConfiguration):
 
 
 class BaseAgentSettings(SystemSettings):
-    ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
-    """The AIProfile or "personality" of this agent."""
+    agent_data_dir: Optional[Path] = None
 
-    config: BaseAgentConfiguration
+    ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
+    """The AI profile or "personality" of the agent."""
+
+    directives: AIDirectives = Field(
+        default_factory=lambda: AIDirectives.from_file(
+            ConfigBuilder.default_settings.prompt_settings_file
+        )
+    )
+    """Directives (general instructional guidelines) for the agent."""
+
+    config: BaseAgentConfiguration = Field(default_factory=BaseAgentConfiguration)
     """The configuration for this BaseAgent subsystem instance."""
 
-    history: EpisodicActionHistory
+    history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
     """(STATE) The action history of the agent."""
 
 
 class BaseAgent(Configurable[BaseAgentSettings], ABC):
     """Base class for all AutoGPT agent classes."""
 
-    ThoughtProcessID = Literal["one-shot"]
     ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
 
     default_settings = BaseAgentSettings(
         name="BaseAgent",
         description=__doc__,
-        config=BaseAgentConfiguration(),
-        history=EpisodicActionHistory(),
     )
 
     def __init__(
@@ -149,8 +162,20 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         command_registry: CommandRegistry,
         legacy_config: Config,
     ):
+        self.state = settings
+        self.config = settings.config
         self.ai_profile = settings.ai_profile
-        self.ai_directives = AIDirectives.from_file(legacy_config.prompt_settings_file)
+        self.ai_directives = settings.directives
+        self.event_history = settings.history
+
+        self.legacy_config = legacy_config
+        """LEGACY: Monolithic application configuration."""
+
+        self.file_manager = (
+            AgentFileManager(settings.agent_data_dir)
+            if settings.agent_data_dir
+            else None
+        )
 
         self.llm_provider = llm_provider
 
@@ -159,20 +184,18 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         self.command_registry = command_registry
         """The registry containing all commands available to the agent."""
 
-        self.llm_provider = llm_provider
-
-        self.legacy_config = legacy_config
-        self.config = settings.config
-        """The applicable application configuration."""
-
-        self.event_history = settings.history
-
         self._prompt_scratchpad: PromptScratchpad | None = None
 
         # Support multi-inheritance and mixins for subclasses
         super(BaseAgent, self).__init__()
 
         logger.debug(f"Created {__class__} '{self.ai_profile.ai_name}'")
+
+    def attach_fs(self, agent_dir: Path) -> AgentFileManager:
+        self.file_manager = AgentFileManager(agent_dir)
+        self.file_manager.initialize()
+        self.state.agent_data_dir = agent_dir
+        return self.file_manager
 
     @property
     def llm(self) -> ChatModelInfo:

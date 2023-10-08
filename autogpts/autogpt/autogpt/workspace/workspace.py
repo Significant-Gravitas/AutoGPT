@@ -13,8 +13,6 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from autogpt.config import Config
-
 logger = logging.getLogger(__name__)
 
 
@@ -37,25 +35,8 @@ class Workspace:
         """Whether to restrict generated paths to the workspace."""
         return self._restrict_to_workspace
 
-    @classmethod
-    def make_workspace(cls, workspace_directory: str | Path, *args, **kwargs) -> Path:
-        """Create a workspace directory and return the path to it.
-
-        Parameters
-        ----------
-        workspace_directory
-            The path to the workspace directory.
-
-        Returns
-        -------
-        Path
-            The path to the workspace directory.
-
-        """
-        # TODO: have this make the env file and ai settings file in the directory.
-        workspace_directory = cls._sanitize_path(workspace_directory)
-        workspace_directory.mkdir(exist_ok=True, parents=True)
-        return workspace_directory
+    def initialize(self) -> None:
+        self.root.mkdir(exist_ok=True, parents=True)
 
     def get_path(self, relative_path: str | Path) -> Path:
         """Get the full path for an item in the workspace.
@@ -144,26 +125,3 @@ class Workspace:
             )
 
         return full_path
-
-    @staticmethod
-    def build_file_logger_path(workspace_directory: Path) -> Path:
-        file_logger_path = workspace_directory / "file_logger.log"
-        if not file_logger_path.exists():
-            with file_logger_path.open(mode="w", encoding="utf-8") as f:
-                f.write("File Operation Logger ")
-        return file_logger_path
-
-    @staticmethod
-    def init_workspace_directory(
-        config: Config, override_workspace_path: Optional[str | Path] = None
-    ) -> Path:
-        if override_workspace_path is None:
-            workspace_path = config.workdir / "auto_gpt_workspace"
-        elif type(override_workspace_path) == str:
-            workspace_path = Path(override_workspace_path)
-        else:
-            workspace_path = override_workspace_path
-
-        # TODO: pass in the ai_settings file and the env file and have them cloned into
-        #   the workspace directory so we can bind them to the agent.
-        return Workspace.make_workspace(workspace_path)
