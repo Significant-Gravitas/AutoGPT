@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from autogpt.config import Config
-    from autogpt.memory.vector import VectorMemory
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.config import AIProfile
+from pydantic import Field
+
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
 from autogpt.core.resource.model_providers import (
@@ -54,8 +54,12 @@ class AgentConfiguration(BaseAgentConfiguration):
 
 
 class AgentSettings(BaseAgentSettings):
-    config: AgentConfiguration
-    prompt_config: OneShotAgentPromptConfiguration
+    config: AgentConfiguration = Field(default_factory=AgentConfiguration)
+    prompt_config: OneShotAgentPromptConfiguration = Field(
+        default_factory=(
+            lambda: OneShotAgentPromptStrategy.default_configuration.copy(deep=True)
+        )
+    )
 
 
 class Agent(
@@ -70,10 +74,6 @@ class Agent(
     default_settings: AgentSettings = AgentSettings(
         name="Agent",
         description=__doc__,
-        ai_profile=AIProfile(ai_name="AutoGPT"),
-        config=AgentConfiguration(),
-        prompt_config=OneShotAgentPromptStrategy.default_configuration,
-        history=BaseAgent.default_settings.history,
     )
 
     def __init__(
@@ -81,7 +81,6 @@ class Agent(
         settings: AgentSettings,
         llm_provider: ChatModelProvider,
         command_registry: CommandRegistry,
-        memory: VectorMemory,
         legacy_config: Config,
     ):
         prompt_strategy = OneShotAgentPromptStrategy(
@@ -95,9 +94,6 @@ class Agent(
             command_registry=command_registry,
             legacy_config=legacy_config,
         )
-
-        self.memory = memory
-        """VectorMemoryProvider used to manage the agent's context (TODO)"""
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         """Timestamp the agent was created; only used for structured debug logging."""

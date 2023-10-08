@@ -24,14 +24,30 @@ pytest_plugins = [
 
 
 @pytest.fixture()
-def workspace_root(tmp_path: Path) -> Path:
-    return tmp_path / "home/users/monty/auto_gpt_workspace"
+def tmp_project_root(tmp_path: Path) -> Path:
+    return tmp_path
+
+
+@pytest.fixture()
+def app_data_dir(tmp_project_root: Path) -> Path:
+    return tmp_project_root / "data"
+
+
+@pytest.fixture()
+def agent_data_dir(app_data_dir: Path) -> Path:
+    return app_data_dir / "agents/AutoGPT"
+
+
+@pytest.fixture()
+def workspace_root(agent_data_dir: Path) -> Path:
+    return agent_data_dir / "workspace"
 
 
 @pytest.fixture()
 def workspace(workspace_root: Path) -> Workspace:
-    workspace_root = Workspace.make_workspace(workspace_root)
-    return Workspace(workspace_root, restrict_to_workspace=True)
+    workspace = Workspace(workspace_root, restrict_to_workspace=True)
+    workspace.initialize()
+    return workspace
 
 
 @pytest.fixture
@@ -46,12 +62,17 @@ def temp_plugins_config_file():
 
 
 @pytest.fixture()
-def config(temp_plugins_config_file: Path, mocker: MockerFixture, workspace: Workspace):
-    config = ConfigBuilder.build_config_from_env(project_root=workspace.root.parent)
+def config(
+    temp_plugins_config_file: Path,
+    tmp_project_root: Path,
+    app_data_dir: Path,
+    mocker: MockerFixture,
+):
+    config = ConfigBuilder.build_config_from_env(project_root=tmp_project_root)
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
 
-    config.workspace_path = workspace.root
+    config.app_data_dir = app_data_dir
 
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
@@ -66,13 +87,6 @@ def config(temp_plugins_config_file: Path, mocker: MockerFixture, workspace: Wor
         plugins_config_file=config.plugins_config_file,
         plugins_denylist=config.plugins_denylist,
         plugins_allowlist=config.plugins_allowlist,
-    )
-
-    # Do a little setup and teardown since the config object is a singleton
-    mocker.patch.multiple(
-        config,
-        workspace_path=workspace.root,
-        file_logger_path=workspace.get_path("file_logger.log"),
     )
     yield config
 
@@ -99,7 +113,9 @@ def llm_provider(config: Config) -> OpenAIProvider:
 
 
 @pytest.fixture
-def agent(config: Config, llm_provider: ChatModelProvider) -> Agent:
+def agent(
+    agent_data_dir: Path, config: Config, llm_provider: ChatModelProvider
+) -> Agent:
     ai_profile = AIProfile(
         ai_name="Base",
         ai_role="A base AI",
@@ -107,9 +123,6 @@ def agent(config: Config, llm_provider: ChatModelProvider) -> Agent:
     )
 
     command_registry = CommandRegistry()
-    config.memory_backend = "json_file"
-    memory_json_file = get_memory(config)
-    memory_json_file.clear()
 
     agent_prompt_config = Agent.default_settings.prompt_config.copy(deep=True)
     agent_prompt_config.use_functions_api = config.openai_functions
@@ -121,6 +134,7 @@ def agent(config: Config, llm_provider: ChatModelProvider) -> Agent:
         config=AgentConfiguration(
             fast_llm=config.fast_llm,
             smart_llm=config.smart_llm,
+            allow_fs_access=not config.restrict_to_workspace,
             use_functions_api=config.openai_functions,
             plugins=config.plugins,
         ),
@@ -128,10 +142,11 @@ def agent(config: Config, llm_provider: ChatModelProvider) -> Agent:
         history=Agent.default_settings.history.copy(deep=True),
     )
 
-    return Agent(
+    agent = Agent(
         settings=agent_settings,
         llm_provider=llm_provider,
         command_registry=command_registry,
-        memory=memory_json_file,
         legacy_config=config,
     )
+    agent.attach_fs(agent_data_dir)
+    return agent

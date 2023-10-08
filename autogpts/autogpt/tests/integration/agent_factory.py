@@ -50,7 +50,6 @@ def dummy_agent(config: Config, llm_provider, memory_json_file):
         settings=agent_settings,
         llm_provider=llm_provider,
         command_registry=command_registry,
-        memory=memory_json_file,
         legacy_config=config,
     )
 
