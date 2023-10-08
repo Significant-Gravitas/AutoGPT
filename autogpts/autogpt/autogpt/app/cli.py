@@ -84,10 +84,39 @@ import click
     help="AI role override",
 )
 @click.option(
-    "--ai-goal",
+    "--constraint",
     type=str,
     multiple=True,
-    help="AI goal override; may be used multiple times to pass multiple goals",
+    help=(
+        "Add or override AI constraints to include in the prompt;"
+        " may be used multiple times to pass multiple constraints"
+    ),
+)
+@click.option(
+    "--resource",
+    type=str,
+    multiple=True,
+    help=(
+        "Add or override AI resources to include in the prompt;"
+        " may be used multiple times to pass multiple resources"
+    ),
+)
+@click.option(
+    "--best-practice",
+    type=str,
+    multiple=True,
+    help=(
+        "Add or override AI best practices to include in the prompt;"
+        " may be used multiple times to pass multiple best practices"
+    ),
+)
+@click.option(
+    "--override-directives",
+    is_flag=True,
+    help=(
+        "If specified, --constraint, --resource and --best-practice will override"
+        " the AI's directives instead of being appended to them"
+    ),
 )
 @click.pass_context
 def main(
@@ -109,7 +138,10 @@ def main(
     install_plugin_deps: bool,
     ai_name: Optional[str],
     ai_role: Optional[str],
-    ai_goal: tuple[str],
+    resource: tuple[str],
+    constraint: tuple[str],
+    best_practice: tuple[str],
+    override_directives: bool,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -136,9 +168,12 @@ def main(
             skip_news=skip_news,
             workspace_directory=workspace_directory,
             install_plugin_deps=install_plugin_deps,
-            ai_name=ai_name,
-            ai_role=ai_role,
-            ai_goals=ai_goal,
+            override_ai_name=ai_name,
+            override_ai_role=ai_role,
+            resources=list(resource),
+            constraints=list(constraint),
+            best_practices=list(best_practice),
+            override_directives=override_directives,
         )
 
 

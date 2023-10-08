@@ -137,6 +137,9 @@ class BaseAgentSettings(SystemSettings):
     )
     """Directives (general instructional guidelines) for the agent."""
 
+    task: str = "Terminate immediately"  # FIXME: placeholder for forge.sdk.schema.Task
+    """The user-given task that the agent is working on."""
+
     config: BaseAgentConfiguration = Field(default_factory=BaseAgentConfiguration)
     """The configuration for this BaseAgent subsystem instance."""
 
@@ -165,7 +168,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         self.state = settings
         self.config = settings.config
         self.ai_profile = settings.ai_profile
-        self.ai_directives = settings.directives
+        self.directives = settings.directives
         self.event_history = settings.history
 
         self.legacy_config = legacy_config
@@ -288,13 +291,14 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
             if not plugin.can_handle_post_prompt():
                 continue
             plugin.post_prompt(scratchpad)
-        ai_directives = self.ai_directives.copy(deep=True)
+        ai_directives = self.directives.copy(deep=True)
         ai_directives.resources += scratchpad.resources
         ai_directives.constraints += scratchpad.constraints
         ai_directives.best_practices += scratchpad.best_practices
         extra_commands += list(scratchpad.commands.values())
 
         prompt = self.prompt_strategy.build_prompt(
+            task=self.state.task,
             ai_profile=self.ai_profile,
             ai_directives=ai_directives,
             commands=get_openai_command_specs(
