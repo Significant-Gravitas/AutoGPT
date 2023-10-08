@@ -15,7 +15,8 @@ if TYPE_CHECKING:
         BaseLoopHook,
     )
     from autogpt.core.tools.base import BaseToolsRegistry
-    from autogpt.core.configuration import SystemConfiguration , SystemSettings
+
+from autogpt.core.configuration import SystemConfiguration , SystemSettings
 
 from autogpt.core.agents.base.loop import (
     BaseLoopHook,
@@ -26,7 +27,6 @@ from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     BaseAgentSystems,
-    BaseAgentSystemSettings,
     BaseAgentDirectives,
 )
 from autogpt.core.memory.base import Memory
@@ -39,6 +39,15 @@ class AbstractAgent(ABC):
     CLASS_CONFIGURATION = BaseAgentConfiguration
     CLASS_SETTINGS = BaseAgentSettings
     CLASS_SYSTEMS = BaseAgentSystems # BaseAgentSystems() = cls.SystemSettings().configuration.systems
+
+    class SystemSettings(SystemSettings):
+        configuration: BaseAgentConfiguration = BaseAgentConfiguration()
+        # user_id: Optional[uuid.UUID] = Field(default=None)
+        # agent_id: Optional[uuid.UUID] = Field(default=None)
+
+        class Config(SystemSettings.Config):
+            extra = "allow"
+
 
     @classmethod
     def get_agent_class(cls) -> BaseAgent:
@@ -104,7 +113,7 @@ class AbstractAgent(ABC):
 class BaseAgent(Configurable, AbstractAgent):
     def __init__(
         self,
-        settings: BaseAgentSystemSettings,
+        settings: BaseAgent.SystemSettings,
         logger: logging.Logger,
         memory: Memory,
         workspace: Workspace,
@@ -465,7 +474,7 @@ class BaseAgent(Configurable, AbstractAgent):
         # TODO : Remove the user_id argument
         # NOTE : Monkey Patching
         BaseAgentSettings.Config.extra = "allow"
-        BaseAgentSystemSettings.Config.extra = "allow"
+        BaseAgent.SystemSettings.Config.extra = "allow"
         BaseAgentSystems.Config.extra = "allow"
         BaseAgentConfiguration.Config.extra = "allow"
         agent_settings.agent.configuration.user_id = str(user_id)

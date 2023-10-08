@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple
+from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple, Optional
+from pydantic import Field
 
 from autogpt.core.tools import ToolResult, SimpleToolRegistry
 from autogpt.core.agents.base.main import BaseAgent
@@ -11,7 +12,6 @@ from autogpt.core.agents.usercontext.models import (
     UserContextAgentConfiguration,
     UserContextAgentSettings,
     UserContextAgentSystems,
-    UserContextAgentSystemSettings,
 )
 from autogpt.core.configuration import Configurable
 from autogpt.core.memory.base import Memory
@@ -35,12 +35,20 @@ class UserContextAgent(BaseAgent):
     CLASS_SETTINGS = UserContextAgentSettings
     CLASS_SYSTEMS = UserContextAgentSystems
 
-    class SystemSettings(UserContextAgentSystemSettings):
-        pass
+
+    class SystemSettings(BaseAgent.SystemSettings):
+        configuration : UserContextAgentConfiguration = UserContextAgentConfiguration()
+        name="usercontext_agent"
+        description="An agent that improve the quality of input provided by users."
+        # user_id: Optional[uuid.UUID] = Field(default=None)
+        # agent_id: Optional[uuid.UUID] = Field(default=None)
+
+        class Config(BaseAgent.SystemSettings.Config):
+            pass
 
     def __init__(
         self,
-        settings: UserContextAgentSystemSettings,
+        settings: UserContextAgent.SystemSettings,
         logger: logging.Logger,
         memory: Memory,
         chat_model_provider: OpenAIProvider,

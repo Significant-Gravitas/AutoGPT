@@ -38,56 +38,8 @@ class Configurable(abc.ABC, Generic[S]):
             extra = "allow"
             use_enum_values = True
 
-    # New implementation remove default_settings & nest a Configuration class
-    # class Configuration(SystemConfiguration) : 
-    #    pass
-
 
     def __init__(self, settings: S, logger: logging.Logger):
         self._settings = settings
         self._configuration = settings.configuration
         self._logger = logger
-
-    # @classmethod
-    # def get_user_config(cls) -> dict[str, Any]:
-    #     return _get_user_config_fields(cls.default_settings)
-
-    # @classmethod
-    # def get_agent_configuration(cls) -> S:
-    #     """Process the configuration for this object."""
-        
-    #     return cls.SystemSettings()
-
-
-# def _get_user_config_fields(instance: BaseModel) -> dict[str, Any]:
-#     """
-#     Get the user config fields of a Pydantic model instance.
-
-#     Args:
-#         instance: The Pydantic model instance.
-
-#     Returns:
-#         The user config fields of the instance.
-#     """
-#     user_config_fields = {}
-
-#     for name, value in instance.__dict__.items():
-#         field_info = instance.__fields__[name]
-#         if "user_configurable" in field_info.field_info.extra:
-#             user_config_fields[name] = value
-#         elif isinstance(value, SystemConfiguration):
-#             user_config_fields[name] = value.get_user_config()
-#         elif isinstance(value, list) and all(
-#             isinstance(i, SystemConfiguration) for i in value
-#         ):
-#             user_config_fields[name] = [i.get_user_config() for i in value]
-#         elif isinstance(value, dict) and all(
-#             isinstance(i, SystemConfiguration) for i in value.values()
-#         ):
-#             user_config_fields[name] = {
-#                 k: v.get_user_config() for k, v in value.items()
-#             }
-
-#     return user_config_fields
-
-

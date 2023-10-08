@@ -36,15 +36,6 @@ class BaseAgentConfiguration(SystemConfiguration):
         extra = "allow"
 
 
-class BaseAgentSystemSettings(SystemSettings):
-    configuration: BaseAgentConfiguration = BaseAgentConfiguration()
-    # user_id: Optional[uuid.UUID] = Field(default=None)
-    # agent_id: Optional[uuid.UUID] = Field(default=None)
-
-    class Config(SystemSettings.Config):
-        extra = "allow"
-
-
 class BaseAgentSettings(BaseModel):
     #agent: BaseAgentSystemSettings 
     agent_class: str
@@ -128,17 +119,6 @@ class BaseAgentSettings(BaseModel):
         for key, value in agent_goals.items():
             # if key != 'agent' and key != 'workspace'  :
             setattr(self, key, value)
-
-        # self.agent_name = agent_goals["agent_name"]
-        # self.agent_name = agent_goal_sentence["agent_name"]
-        # self.agent_role = agent_goals["agent_role"]
-        # self.agent_role = agent_goal_sentence["agent_role"]
-        # self.agent_goals = agent_goals["agent_goals"]
-        # self.agent_goals = agent_goals["agent_goal_sentence"]
-        # self.agent_class = agent_goals["agent_class"]
-        # self.agent_class = agent_goal_sentence["agent_class"]
-        # self.agent_id = agent_goals["agent_id"]
-        # self.agent_id = agent_goal_sentence["agent_id"]
 
 
 class BaseAgentDirectives(dict):

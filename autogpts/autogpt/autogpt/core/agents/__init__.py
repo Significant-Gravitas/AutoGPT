@@ -4,7 +4,6 @@ from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     BaseAgentSystems,
-    BaseAgentSystemSettings,
 )
 from autogpt.core.agents.simple import PlannerAgent
 from autogpt.core.agents.simple.models import (

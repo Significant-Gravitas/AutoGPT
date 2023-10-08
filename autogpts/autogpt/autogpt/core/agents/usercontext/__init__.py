@@ -6,5 +6,4 @@ from autogpt.core.agents.usercontext.models import (
     UserContextAgentConfiguration,
     UserContextAgentSettings,
     UserContextAgentSystems,
-    UserContextAgentSystemSettings,
 )

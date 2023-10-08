@@ -4,5 +4,4 @@ from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     BaseAgentSystems,
-    BaseAgentSystemSettings,
 )

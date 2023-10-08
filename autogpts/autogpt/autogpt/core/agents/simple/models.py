@@ -9,7 +9,6 @@ from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     BaseAgentSystems,
-    BaseAgentSystemSettings,
 )
 from autogpt.core.agents.simple.lib import SimplePlannerSettings
 from autogpt.core.plugin.simple import PluginLocation
@@ -42,16 +41,6 @@ class PlannerAgentConfiguration(BaseAgentConfiguration):
 
     class Config(BaseAgentConfiguration.Config):
         pass
-
-
-# class PlannerAgentSystemSettings(BaseAgentSystemSettings):
-#     name: str ="simple_agent"
-#     description: str ="A simple agent."
-#     configuration : PlannerAgentConfiguration = PlannerAgentConfiguration()
-
-
-#     class Config(BaseAgentSystemSettings.Config):
-#         pass
 
 
 class PlannerAgentSettings(BaseAgentSettings):

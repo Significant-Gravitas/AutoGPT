@@ -9,7 +9,6 @@ from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     BaseAgentSystems,
-    BaseAgentSystemSettings,
 )
 from autogpt.core.agents.simple.lib import SimplePlannerSettings
 from autogpt.core.plugin.simple import PluginLocation
@@ -37,19 +36,19 @@ class UserContextAgentConfiguration(BaseAgentConfiguration):
         pass
 
 
-class UserContextAgentSystemSettings(BaseAgentSystemSettings):
-    configuration: UserContextAgentConfiguration = UserContextAgentConfiguration()
-    name="usercontext_agent"
-    description="An agent that improve the quality of input provided by users."
-    user_id: Optional[uuid.UUID] = Field(default=None)
-    agent_id: Optional[uuid.UUID] = Field(default=None)
+# class UserContextAgentSystemSettings(BaseAgentSystemSettings):
+#     configuration: UserContextAgentConfiguration = UserContextAgentConfiguration()
+#     name="usercontext_agent"
+#     description="An agent that improve the quality of input provided by users."
+#     user_id: Optional[uuid.UUID] = Field(default=None)
+#     agent_id: Optional[uuid.UUID] = Field(default=None)
 
-    class Config(BaseAgentSystemSettings.Config):
-        pass
+#     class Config(BaseAgentSystemSettings.Config):
+#         pass
 
 
 class UserContextAgentSettings(BaseAgentSettings):
-    agent: UserContextAgentSystemSettings = UserContextAgentSystemSettings()
+    # agent: UserContextAgentSystemSettings = UserContextAgentSystemSettings()
     chat_model_provider: OpenAISettings = OpenAISettings()
     planning: SimplePlannerSettings =SimplePlannerSettings()
     user_id: Optional[uuid.UUID] = Field(default=None)
