@@ -33,7 +33,7 @@ class PromptScratchpad(BaseModel):
         self,
         name: str,
         description: str,
-        params: dict[str, str],
+        params: dict[str, str | dict],
         function: Callable,
     ) -> None:
         """
@@ -50,15 +50,20 @@ class PromptScratchpad(BaseModel):
             function (callable, optional): A callable function to be called when
                 the command is executed. Defaults to None.
         """
-        for p, t in params.items():
+        for p, s in params.items():
             invalid = False
-            if t not in JSONSchema.Type._value2member_map_:
+            if type(s) == str and s not in JSONSchema.Type._value2member_map_:
                 invalid = True
                 logger.warning(
                     f"Cannot add command '{name}':"
-                    f" parameter '{p}' has invalid type '{t}'."
+                    f" parameter '{p}' has invalid type '{s}'."
                     f" Valid types are: {JSONSchema.Type._value2member_map_.keys()}"
                 )
+            elif isinstance(s, dict):
+                try:
+                    JSONSchema.from_dict(s)
+                except KeyError:
+                    invalid = True
             if invalid:
                 return
 
@@ -66,9 +71,10 @@ class PromptScratchpad(BaseModel):
             name=name,
             description=description,
             parameters={
-                # TODO: require plugins to specify parameters as a JSON schema
-                name: JSONSchema(type=JSONSchema.Type._value2member_map_[type])
-                for name, type in params.items()
+                name: JSONSchema(type=JSONSchema.Type._value2member_map_[spec])
+                if type(spec) == str
+                else JSONSchema.from_dict(spec)
+                for name, spec in params.items()
             },
             method=function,
         )
