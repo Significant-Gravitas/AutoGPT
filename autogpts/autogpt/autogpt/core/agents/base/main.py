@@ -35,10 +35,10 @@ from autogpt.core.configuration import Configurable
 
 
 class AbstractAgent(ABC):
-    CLASS_SYSTEM_SETINGS = BaseAgentSystemSettings
+
     CLASS_CONFIGURATION = BaseAgentConfiguration
     CLASS_SETTINGS = BaseAgentSettings
-    CLASS_SYSTEMS = BaseAgentSystems
+    CLASS_SYSTEMS = BaseAgentSystems # BaseAgentSystems() = cls.SystemSettings().configuration.systems
 
     @classmethod
     def get_agent_class(cls) -> BaseAgent:
@@ -278,7 +278,8 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_args = {}
 
         agent_args["user_id"] = agent_settings.user_id
-        agent_args["settings"] = agent_settings.agent
+        # agent_args["settings"] = agent_settings.agent
+        agent_args["settings"] = cls.SystemSettings()
         agent_args["logger"] = logger
         agent_args["workspace"] = cls._get_system_instance(
             "workspace",
@@ -344,49 +345,49 @@ class BaseAgent(Configurable, AbstractAgent):
     #     configuration_dict = _prune_empty_dicts(configuration_dict)
     #     return configuration_dict
 
-    @classmethod
-    def compile_settings(cls, logger: logging.Logger) -> BaseAgentSettings:
-        """
-        Compile the user's configuration settings with the default agent settings.
+    # @classmethod
+    # def compile_settings(cls, logger: logging.Logger) -> BaseAgentSettings:
+    #     """
+    #     Compile the user's configuration settings with the default agent settings.
 
-        Args:
-            logger (logging.Logger): Logger to use for the agent.
+    #     Args:
+    #         logger (logging.Logger): Logger to use for the agent.
 
-        Returns:
-            BaseAgentSettings: Combined agent settings.
+    #     Returns:
+    #         BaseAgentSettings: Combined agent settings.
 
-        Example:
-            logger = logging.getLogger()
-            user_config = {"agent": ...}
-            agent_settings = YourClass.compile_settings(logger, user_config)
-        """
-        logger.debug("Processing agent system configuration.")
-        logger.debug("compile_settings" + str(cls))
-        configuration_dict = {}
-        configuration_dict["agent"] = cls.get_agent_configuration().dict()
+    #     Example:
+    #         logger = logging.getLogger()
+    #         user_config = {"agent": ...}
+    #         agent_settings = YourClass.compile_settings(logger, user_config)
+    #     """
+    #     logger.debug("Processing agent system configuration.")
+    #     logger.debug("compile_settings" + str(cls))
+    #     configuration_dict = {}
+    #     configuration_dict["agent"] = cls.SystemSettings().dict()
 
-        system_locations = configuration_dict["agent"]["configuration"]["systems"]
+    #     system_locations = configuration_dict["agent"]["configuration"]["systems"]
 
-        for system_name, system_location in system_locations.items():
-            if system_location is not None and not isinstance(
-                system_location, uuid.UUID
-            ):
-                logger.debug(f"Compiling configuration for system {system_name}")
-    #             system_settings = getattr(cls.CLASS_SETTINGS, system_name, None)
-    #             if system_settings:
-    #                 configuration_dict[system_name] = system_settings
-    #             else:
-    #                 raise ValueError(f"No system class found for {system_name} in CLASS_SETTINGS")
+    #     for system_name, system_location in system_locations.items():
+    #         if system_location is not None and not isinstance(
+    #             system_location, uuid.UUID
+    #         ):
+    #             logger.debug(f"Compiling configuration for system {system_name}")
+    # #             system_settings = getattr(cls.CLASS_SETTINGS, system_name, None)
+    # #             if system_settings:
+    # #                 configuration_dict[system_name] = system_settings
+    # #             else:
+    # #                 raise ValueError(f"No system class found for {system_name} in CLASS_SETTINGS")
 
-                system_class : Configurable = cls.CLASS_SYSTEMS.load_from_import_path( system_location = system_locations[system_name])  #SimplePluginService.get_plugin(system_location)
+    #             system_class : Configurable = cls.CLASS_SYSTEMS.load_from_import_path( system_location = system_locations[system_name])  #SimplePluginService.get_plugin(system_location)
 
-                configuration_dict[
-                    system_name
-                ] = system_class.get_agent_configuration().dict()
-            else:
-                configuration_dict[system_name] = system_location
+    #             configuration_dict[
+    #                 system_name
+    #             ] = system_class.SystemSettings().dict()
+    #         else:
+    #             configuration_dict[system_name] = system_location
 
-        return cls.CLASS_SETTINGS.parse_obj(configuration_dict)
+    #     return cls.CLASS_SETTINGS.parse_obj(configuration_dict)
 
     ################################################################
     # Factory interface for agent bootstrapping and initialization #
@@ -499,7 +500,7 @@ class BaseAgent(Configurable, AbstractAgent):
     ):
         system_settings : SystemSettings = getattr(agent_settings, system_name)
         #system_class = getattr(cls.CLASS_SETTINGS, system_name, None)
-        system_class : Configurable = cls.CLASS_SYSTEMS.load_from_import_path(getattr(agent_settings.agent.configuration.systems, system_name ))
+        system_class : Configurable = cls.CLASS_SYSTEMS.load_from_import_path(getattr( cls.CLASS_SYSTEMS(), system_name ))
 
         if not system_class:
             raise ValueError(f"No system class found for {system_name} in CLASS_SETTINGS")
@@ -583,7 +584,7 @@ class BaseAgent(Configurable, AbstractAgent):
         from autogpt.core.memory.base import (
             Memory,
             MemoryConfig,
-            MemorySettings,
+            Memory,
         )
         from autogpt.core.memory.table.base import AgentsTable, BaseTable
 
@@ -594,7 +595,7 @@ class BaseAgent(Configurable, AbstractAgent):
             /
         """
 
-        memory_settings = MemorySettings()
+        memory_settings = Memory.SystemSettings()
 
         memory = Memory.get_adapter(memory_settings=memory_settings, logger=logger)
         agent_table: AgentsTable = memory.get_table("agents")
@@ -629,7 +630,7 @@ class BaseAgent(Configurable, AbstractAgent):
         )
         from autogpt.core.memory.table.base import AgentsTable
 
-        # memory_settings = MemorySettings(configuration=agent_settings.memory)
+        # memory_settings = Memory.SystemSettings(configuration=agent_settings.memory)
         memory_settings = agent_settings.memory
 
         memory = Memory.get_adapter(memory_settings=memory_settings, logger=logger)

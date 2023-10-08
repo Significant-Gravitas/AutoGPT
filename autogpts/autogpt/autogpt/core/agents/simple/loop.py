@@ -192,27 +192,17 @@ class PlannerLoop(BaseLoop):
         Returns the updated agent goals.
         """
 
-        # USER CONTEXT AGENT : Configure the agent to our context
-        usercontextagent_configuration = {
-            "user_id": self._agent.user_id,
-            "parent_agent_id": self._agent.agent_id,
-            "agent_name": "UCC (User Context Checker)",
-            "agent_goals": self._agent.agent_goals,
-            "agent_goal_sentence": self._agent.agent_goal_sentence,
-            "memory": self._agent._memory._settings.dict(),
-            "workspace": self._agent._workspace._settings.dict(),
-            "chat_model_provider": self._agent._chat_model_provider._settings.dict()
-            # _type_ = 'autogpt.core.agents.usercontext.main.UserContextAgent',
-            # agent_class = 'UserContextAgent'
-        }
 
         # USER CONTEXT AGENT : Create Agent Settings
-        usercontext_settings: UserContextAgentSettings = (
-            UserContextAgent.compile_settings(
-                logger=self._agent._logger,
-                user_configuration=usercontextagent_configuration,
-            )
-        )
+        usercontext_settings: UserContextAgentSettings = UserContextAgentSettings()
+        usercontext_settings["user_id"]= self._agent.user_id,
+        usercontext_settings["parent_agent_id"]=  self._agent.agent_id,
+        usercontext_settings["agent_goals"]=  self._agent.agent_goals,
+        usercontext_settings["agent_goal_sentence"]=  self._agent.agent_goal_sentence,
+        usercontext_settings["memory"]=  self._agent._memory._settings.dict(),
+        usercontext_settings["workspace"]=  self._agent._workspace._settings.dict(),
+        usercontext_settings["chat_model_provider"]=  self._agent._chat_model_provider._settings.dict()
+
 
         # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
         new_user_context_agent = UserContextAgent.create_agent(

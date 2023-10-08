@@ -5,9 +5,9 @@ from importlib import import_module
 from pydantic import BaseModel, Field
 
 from autogpt.core.configuration import SystemConfiguration, SystemSettings
-from autogpt.core.memory.base import MemorySettings
+from autogpt.core.memory.base import Memory
 from autogpt.core.plugin.simple import PluginLocation
-from autogpt.core.workspace.simple import WorkspaceSettings
+from autogpt.core.workspace.simple import SimpleWorkspace
 
 
 class BaseAgentSystems(SystemConfiguration):
@@ -46,10 +46,10 @@ class BaseAgentSystemSettings(SystemSettings):
 
 
 class BaseAgentSettings(BaseModel):
-    agent: BaseAgentSystemSettings 
+    #agent: BaseAgentSystemSettings 
     agent_class: str
-    memory: MemorySettings = MemorySettings()
-    workspace: WorkspaceSettings = WorkspaceSettings()
+    memory: Memory.SystemSettings = Memory.SystemSettings()
+    workspace: SystemSettings = SimpleWorkspace.SystemSettings()
 
     class Config(BaseModel.Config):
         # This is a list of Field to Exclude during serialization

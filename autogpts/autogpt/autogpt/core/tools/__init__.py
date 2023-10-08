@@ -5,5 +5,5 @@ from __future__ import annotations
 from autogpt.core.tools.base import BaseToolsRegistry
 from autogpt.core.tools.tools import Tool, ToolOutput
 from autogpt.core.tools.schema import ToolResult
-from autogpt.core.tools.simple import ToolsRegistrySettings, SimpleToolRegistry
+from autogpt.core.tools.simple import SimpleToolRegistry
 from .builtins import TOOL_CATEGORIES

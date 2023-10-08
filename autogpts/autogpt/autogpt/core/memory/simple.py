@@ -10,7 +10,7 @@
 #     pass
 
 
-# class MemorySettings(SystemSettings):
+# class Memory.SystemSettings(SystemSettings):
 #     configuration: MemoryConfiguration
 
 
@@ -20,7 +20,7 @@
 
 
 # class SimpleMemory(Memory, Configurable):
-#     default_settings = MemorySettings(
+#     default_settings = Memory.SystemSettings(
 #         name="simple_memory",
 #         description="A simple memory.",
 #         configuration=MemoryConfiguration(),
@@ -28,7 +28,7 @@
 
 #     def __init__(
 #         self,
-#         settings: MemorySettings,
+#         settings: Memory.SystemSettings,
 #         logger: logging.Logger,
 #         workspace: Workspace,
 #     ):

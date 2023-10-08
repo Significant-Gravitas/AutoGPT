@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, List
 from pymongo import MongoClient
 
 if TYPE_CHECKING:
-    from autogpt.core.memory.base import MemorySettings
+    from autogpt.core.memory.base import Memory
 
 from autogpt.core.memory.nosqlmemory import NoSQLMemory
 
@@ -21,7 +21,7 @@ class MongoDBMemory(NoSQLMemory):
 
     def __init__(
         self,
-        settings: MemorySettings,
+        settings: Memory.SystemSettings,
         logger: Logger,
     ):
         super().__init__(settings, logger)

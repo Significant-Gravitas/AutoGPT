@@ -105,7 +105,9 @@ class SimplePlannerSettings(SystemSettings):
 class SimplePlanner(Configurable, AgentMixin):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
-    default_settings = SimplePlannerSettings()
+    #default_settings = SimplePlannerSettings()
+    class Settings(SimplePlannerSettings):
+        pass
 
     def __init__(
         self,

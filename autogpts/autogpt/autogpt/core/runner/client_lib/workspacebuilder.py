@@ -5,7 +5,7 @@ import click
 from pathlib import Path
 from logging import Logger
 from autogpt.core.agents import (
-    AgentSettings,
+    PlannerAgentSettings,
     PlannerAgent,
 )  ### TODO should work for every Agent
 from autogpt.core.runner.client_lib.logging import get_client_logger
@@ -25,10 +25,7 @@ async def workspace_loader(
     """Run the Auto-GPT CLI client."""
 
     # Step 1. Collate the user's settings with the default system settings.
-    agent_settings: AgentSettings = PlannerAgent.compile_settings(
-        client_logger,
-        user_configuration,
-    )
+    agent_settings: PlannerAgentSettings = PlannerAgentSettings()
 
     # Step 2. Get a name and goals for the agent.
     # First we need to figure out what the user wants to do with the agent.

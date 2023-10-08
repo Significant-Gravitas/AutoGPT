@@ -1,7 +1,7 @@
 import click
 import logging
 
-from autogpt.core.agents import BaseAgentSettings, PlannerAgent
+from autogpt.core.agents import BaseAgentSettings, PlannerAgent, PlannerAgentSettings
 from autogpt.core.runner.client_lib.logging import get_client_logger
 
 
@@ -28,9 +28,7 @@ async def run_auto_gpt():
     client_logger.info("Getting agent settings")
 
     # Step 1. Collate the user's settings with the default system settings.
-    agent_settings: BaseAgentSettings = PlannerAgent.compile_settings(
-        client_logger,
-    )
+    agent_settings: BaseAgentSettings = PlannerAgentSettings()
 
     import uuid
 

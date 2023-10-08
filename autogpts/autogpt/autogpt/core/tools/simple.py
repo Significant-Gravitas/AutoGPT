@@ -45,20 +45,7 @@ class ToolsRegistryConfiguration(SystemConfiguration):
 ToolsRegistryConfiguration.update_forward_refs()
 
 
-class ToolsRegistrySettings(SystemSettings):
-    """
-    System settings for ToolRegistry.
-
-    Attributes:
-        configuration: Configuration settings for ToolRegistry.
-    """
-
-    configuration: ToolsRegistryConfiguration =  ToolsRegistryConfiguration()
-    name : str ="simple_tool_registry"
-    description : str ="A simple tool registry."
-
-
-class SimpleToolRegistry(BaseToolsRegistry, Configurable):
+class SimpleToolRegistry(Configurable,BaseToolsRegistry):
     """
     A manager for a collection of Tool objects. Supports registration, modification, retrieval, and loading
     of tool plugins from a specified directory.
@@ -67,7 +54,17 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         default_settings: Default system settings for the SimpleToolRegistry.
     """
 
-    default_settings = ToolsRegistrySettings()
+    class SystemSettings(Configurable.SystemSettings) :
+        """
+        System settings for ToolRegistry.
+
+        Attributes:
+            configuration: Configuration settings for ToolRegistry.
+        """
+
+        configuration: ToolsRegistryConfiguration =  ToolsRegistryConfiguration()
+        name : str ="simple_tool_registry"
+        description : str ="A simple tool registry."
 
     @dataclass
     class ToolCategory:
@@ -93,7 +90,7 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
 
     def __init__(
         self,
-        settings: ToolsRegistrySettings,
+        settings: SimpleToolRegistry.SystemSettings,
         logger: logging.Logger,
         memory: Memory,
         workspace: Workspace,
@@ -417,7 +414,7 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         Creates and returns a new SimpleToolRegistry with tools from given modules.
         """
         # new_registry = SimpleToolRegistry(
-        #     settings=SimpleToolRegistry.default_settings,
+        #     settings=SimpleToolRegistry.SystemSettings(),
         #     logger=logging.getLogger(__name__),
         #     memory=None,
         #     workspace=None,
@@ -425,7 +422,7 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         # )
         new_registry = SimpleToolRegistry(
             logger=logger,
-            settings=SimpleToolRegistry.default_settings,
+            settings=SimpleToolRegistry.SystemSettings(),
             memory=memory,
             workspace=workspace,
             model_providers=model_providers,

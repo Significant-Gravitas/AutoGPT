@@ -11,7 +11,7 @@ from autogpt.core.agents.simple.models import (
     PlannerAgentConfiguration,
     PlannerAgentSettings,
     PlannerAgentSystems,
-    PlannerAgentSystemSettings,
+    # PlannerAgentSystemSettings,
 )
 from autogpt.core.configuration import Configurable
 from autogpt.core.memory.base import Memory
@@ -33,59 +33,22 @@ class PlannerAgent(BaseAgent):
     ##################### REFERENCE SETTINGS FOR FACTORY ###########################
     ################################################################################
 
-    CLASS_SYSTEM_SETINGS = PlannerAgentSystemSettings
     CLASS_CONFIGURATION = PlannerAgentConfiguration
     CLASS_SETTINGS = PlannerAgentSettings
-    CLASS_SYSTEMS = PlannerAgentSystems
+    CLASS_SYSTEMS = PlannerAgentSystems # PlannerAgentSystems() = cls.SystemSettings().configuration.systems
 
-    default_settings = PlannerAgentSystemSettings()
-    #     name="simple_agent",
-    #     description="A simple agent.",
-    #     configuration=PlannerAgentConfiguration(
-    #         agent_name="Entrepreneur-GPT",
-    #         agent_role=(
-    #             "An AI designed to autonomously develop and run businesses with "
-    #             "the sole goal of increasing your net worth."
-    #         ),
-    #         agent_goals=[
-    #             "Increase net worth",
-    #             "Grow Twitter Account",
-    #             "Develop and manage multiple businesses autonomously",
-    #         ],
-    #         agent_goal_sentence="""Increase net worth
-    #             and Grow Twitter Account
-    #             and Develop and manage multiple businesses autonomously""",
-    #         cycle_count=0,
-    #         max_task_cycle_count=3,
-    #         creation_time="",
-    #         systems=PlannerAgentSystems(
-    #             # tool_registry=PluginLocation(
-    #             #     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-    #             #     storage_route="autogpt.core.tools.SimpleToolRegistry",
-    #             # ),
-    #             # memory=PluginLocation(
-    #             #     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-    #             #     storage_route="autogpt.core.memory.base.Memory",
-    #             # ),
-    #             # chat_model_provider=PluginLocation(
-    #             #     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-    #             #     storage_route="autogpt.core.resource.model_providers.OpenAIProvider",
-    #             # ),
-    #             # planning=PluginLocation(
-    #             #     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-    #             #     storage_route="autogpt.core.agents.simple.lib.SimplePlanner",
-    #             # ),
-    #             # workspace=PluginLocation(
-    #             #     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-    #             #     storage_route="autogpt.core.workspace.SimpleWorkspace",
-    #             # ),
-    #         ),
-    #     ),
-    # )
+    class SystemSettings(BaseAgent.SystemSettings):
+        name: str ="simple_agent"
+        description: str ="A simple agent."
+        configuration : PlannerAgentConfiguration = PlannerAgentConfiguration()
+
+        class Config(BaseAgent.SystemSettings.Config):
+            pass
+
 
     def __init__(
         self,
-        settings: PlannerAgentSystemSettings,
+        settings: PlannerAgent.SystemSettings,
         logger: logging.Logger,
         tool_registry: SimpleToolRegistry,
         memory: Memory,

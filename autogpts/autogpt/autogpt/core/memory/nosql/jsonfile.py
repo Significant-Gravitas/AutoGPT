@@ -5,14 +5,14 @@ from logging import Logger
 from pathlib import Path
 from typing import List
 
-from autogpt.core.memory.base import MemorySettings
+from autogpt.core.memory.base import Memory
 from autogpt.core.memory.nosqlmemory import NoSQLMemory
 
 
 class JSONFileMemory(NoSQLMemory):
     def __init__(
         self,
-        settings: MemorySettings,
+        settings: Memory.SystemSettings,
         logger: Logger,
     ):
         super().__init__(settings, logger)

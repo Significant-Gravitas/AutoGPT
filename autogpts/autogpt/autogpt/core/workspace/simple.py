@@ -22,19 +22,19 @@ class WorkspaceConfiguration(SystemConfiguration):
     parent: str = UserConfigurable(default = "~/auto-gpt/agents")
     restrict_to_workspace: bool = UserConfigurable(default =True)
 
-class WorkspaceSettings(SystemSettings):
-    configuration: WorkspaceConfiguration=WorkspaceConfiguration()
-    name = "workspace"
-    description="The workspace is the root directory for all agent activity."
     
 class SimpleWorkspace(Configurable, Workspace):
-    default_settings = WorkspaceSettings()
+    
+    class SystemSettings(Configurable.SystemSettings):
+        name = "workspace"
+        description="The workspace is the root directory for all agent activity."
+        configuration: WorkspaceConfiguration=WorkspaceConfiguration()
 
     NULL_BYTES = ["\0", "\000", "\x00", "\u0000", "%00"]
 
     def __init__(
         self,
-        settings: WorkspaceSettings,
+        settings: Configurable.SystemSettings,
         logger: logging.Logger,
     ):
         super().__init__(settings, logger.getChild("workspace"))
@@ -163,7 +163,7 @@ class SimpleWorkspace(Configurable, Workspace):
         workspace_root = workspace_parent / str(user_id) / str(agent_id)
         workspace_root.mkdir(parents=True, exist_ok=True)
 
-        cls.default_settings.configuration.root = str(workspace_root)
+        cls.SystemSettings().configuration.root = str(workspace_root)
 
         log_path = workspace_root / "logs"
         log_path.mkdir(parents=True, exist_ok=True)

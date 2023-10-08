@@ -26,17 +26,17 @@ if TYPE_CHECKING:
 from autogpt.core.agents.base.loop import BaseLoopHook
 
 
-class UserContextAgent(BaseAgent, Configurable):
+class UserContextAgent(BaseAgent):
     ################################################################################
     ##################### REFERENCE SETTINGS FOR FACTORY ###########################
     ################################################################################
 
-    CLASS_SYSTEM_SETINGS = UserContextAgentSystemSettings
     CLASS_CONFIGURATION = UserContextAgentConfiguration
     CLASS_SETTINGS = UserContextAgentSettings
     CLASS_SYSTEMS = UserContextAgentSystems
 
-    default_settings = UserContextAgentSystemSettings()
+    class SystemSettings(UserContextAgentSystemSettings):
+        pass
 
     def __init__(
         self,

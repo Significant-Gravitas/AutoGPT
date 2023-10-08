@@ -57,17 +57,25 @@ class MemoryConfig(SystemConfiguration):
     # mongo_db_name=None
 
 
-class MemorySettings(SystemSettings):
-    configuration: MemoryConfig = MemoryConfig()
-    name: str = "Memory"
-    description: str = "Memory is an abstract memory adapter"
+# class Memory.SystemSettings(SystemSettings):
+#         configuration: MemoryConfig = MemoryConfig()
+#         name: str = "Memory"
+#         description: str = "Memory is an abstract memory adapter"
 
-    class Config(SystemSettings.Config):
-        extra = "allow"
+#         class Config(SystemSettings.Config):
+#             extra = "allow"
 
 
 class Memory(Configurable, abc.ABC):
-    default_settings = MemorySettings()
+
+    class SystemSettings(Configurable.SystemSettings) :
+        configuration: MemoryConfig = MemoryConfig()
+        name: str = "Memory"
+        description: str = "Memory is an abstract memory adapter"
+
+        class Config(SystemSettings.Config):
+            extra = "allow"
+
     
     _instances = {}
 
@@ -101,7 +109,7 @@ class Memory(Configurable, abc.ABC):
     @abc.abstractmethod
     def __init__(
         self,
-        settings: MemorySettings,
+        settings: Memory.SystemSettings,
         logger: Logger,
     ):
         Memory._instances = {}
@@ -111,7 +119,7 @@ class Memory(Configurable, abc.ABC):
 
     @classmethod
     def get_adapter(
-        cls, memory_settings: MemorySettings, logger=Logger, *args, **kwargs
+        cls, memory_settings: Memory.SystemSettings, logger=Logger, *args, **kwargs
     ) -> "Memory":
         """
         Get an instance of a memory adapter based on the provided configuration.
