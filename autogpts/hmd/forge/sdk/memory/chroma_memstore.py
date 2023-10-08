@@ -1,4 +1,3 @@
-from .memstore import MemStore
 
 import chromadb
 from chromadb.config import Settings

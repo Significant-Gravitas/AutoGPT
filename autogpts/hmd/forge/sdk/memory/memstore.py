@@ -1,8 +1,4 @@
 import abc
-import hashlib
-
-import chromadb
-from chromadb.config import Settings
 
 
 class MemStore(abc.ABC):

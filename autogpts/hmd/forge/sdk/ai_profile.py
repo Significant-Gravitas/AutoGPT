@@ -1,10 +1,10 @@
 """
 PROFILE CONCEPT:
 
-The profile generator is used to intiliase and configure an ai agent. 
+The profile generator is used to intiliase and configure an ai agent.
 It came from the obsivation that if an llm is provided with a profile such as:
 ```
-Expert: 
+Expert:
 
 ```
 Then it's performance at a task can impove. Here we use the profile to generate

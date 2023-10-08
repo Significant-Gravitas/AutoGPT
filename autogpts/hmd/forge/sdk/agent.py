@@ -197,7 +197,7 @@ class Agent:
         messages = [
             {"role": "system", "content": system_prompt},
         ]
-        
+
         # Define the task parameters
         task_kwargs = {
             "task": task.input,
@@ -228,7 +228,7 @@ class Agent:
             LOG.error(f"Unable to decode chat response: {chat_response}")
         except Exception as e:
             # Handle other exceptions
-            LOG.error(f"Unable to generate chat response: {e}") #Step 7: Executing the Derived Ability
+            LOG.error(f"Unable to generate chat response: {e}")  # Step 7: Executing the Derived Ability
 
         # self.abilities = AbilityRegister(self)
 

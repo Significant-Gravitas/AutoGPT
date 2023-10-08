@@ -6,7 +6,6 @@ To ensure efficiency, add the imports to the functions so only what is needed is
 """
 try:
     import click
-    import github
 except ImportError:
     import os
 
@@ -29,15 +28,15 @@ def setup():
     click.echo(
         click.style(
             """
-       d8888          888             .d8888b.  8888888b. 88888888888 
-      d88888          888            d88P  Y88b 888   Y88b    888     
-     d88P888          888            888    888 888    888    888     
-    d88P 888 888  888 888888 .d88b.  888        888   d88P    888     
-   d88P  888 888  888 888   d88""88b 888  88888 8888888P"     888     
-  d88P   888 888  888 888   888  888 888    888 888           888     
- d8888888888 Y88b 888 Y88b. Y88..88P Y88b  d88P 888           888     
-d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888     
-                                                                                                                                       
+       d8888          888             .d8888b.  8888888b. 88888888888
+      d88888          888            d88P  Y88b 888   Y88b    888
+     d88P888          888            888    888 888    888    888
+    d88P 888 888  888 888888 .d88b.  888        888   d88P    888
+   d88P  888 888  888 888   d88""88b 888  88888 8888888P"     888
+  d88P   888 888  888 888   888  888 888    888 888           888
+ d8888888888 Y88b 888 Y88b. Y88..88P Y88b  d88P 888           888
+d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
+
 """,
             fg="green",
         )
@@ -312,6 +311,7 @@ def stop():
     except subprocess.CalledProcessError:
         click.echo("No process is running on port 8080")
 
+
 @agent.command()
 def list():
     """List agents command"""
@@ -579,6 +579,7 @@ def benchmark_tests_details(test_name):
                 print(f"IOError: file could not be read: {data_file}")
                 continue
 
+
 @cli.group()
 def arena():
     """Commands to enter the arena"""
@@ -760,7 +761,7 @@ Hey there amazing builders! We're thrilled to have you join this exciting journe
 
 - **Starting Point:** (Are you building from scratch or starting with an existing agent? Do tell!)
 - **Preliminary Ideas:** (Share your initial ideas and what kind of project you are aiming to build. We are all ears!)
-  
+
 #### 🏆 Prize Category
 
 - **Target Prize:** (Which prize caught your eye? Which one are you aiming for?)

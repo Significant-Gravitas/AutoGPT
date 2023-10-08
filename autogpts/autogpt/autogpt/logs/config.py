@@ -84,7 +84,7 @@ def configure_logging(config: Config, log_dir: Path = LOG_DIR) -> None:
         ),
     )
 
-    ## Set up user-friendly loggers
+    # Set up user-friendly loggers
 
     # Console output handler which simulates typing
     typing_console_handler = TypingConsoleHandler(stream=sys.stdout)

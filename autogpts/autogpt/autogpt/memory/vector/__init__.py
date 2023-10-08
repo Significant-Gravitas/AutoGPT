@@ -1,4 +1,3 @@
-import logging
 
 from autogpt.config import Config
 
