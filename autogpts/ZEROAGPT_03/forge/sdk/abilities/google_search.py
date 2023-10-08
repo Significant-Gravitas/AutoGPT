@@ -51,7 +51,7 @@ async def google_search(agent, task_id: str, query: str) -> List[str]:
                 "snippet": result["snippet"]
             })
 
-        await add_ability_memory(task_id, str(response_snippets), "google_search")
+        add_ability_memory(task_id, str(response_snippets), "google_search")
     except Exception as err:
         logger.error(f"google_search failed: {err}")
         raise err

@@ -6,8 +6,8 @@ import json
 
 from forge.sdk.memory.memstore_tools import add_ability_memory
 
-from ...forge_log import ForgeLogger
-from ..registry import ability
+from ..forge_log import ForgeLogger
+from .registry import ability
 
 logger = ForgeLogger(__name__)
 
@@ -56,5 +56,5 @@ async def run_bash_command(agent, task_id: str, command: str) -> str:
         logger.error(f"JSON dumps failed in run_bash_command: {err}")
         raise err
 
-    await add_ability_memory(task_id, return_json, "run_bash_command")
+    add_ability_memory(task_id, return_json, "run_bash_command")
     return return_json

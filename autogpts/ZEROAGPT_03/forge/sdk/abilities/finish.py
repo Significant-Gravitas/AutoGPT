@@ -3,12 +3,12 @@ from .registry import ability
 
 logger = ForgeLogger(__name__)
 
+#"" or when there are insurmountable problems that make it impossible"
+#" for you to finish your task.",
 
 @ability(
     name="finish",
-    description="Use this to shut down once you have accomplished your task,"
-    " or when there are insurmountable problems that make it impossible"
-    " for you to finish your task.",
+    description="Use this to shut down once you have accomplished your task",
     parameters=[
         {
             "name": "reason",

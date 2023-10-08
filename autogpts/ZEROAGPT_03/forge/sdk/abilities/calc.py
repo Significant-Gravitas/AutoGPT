@@ -1,58 +1,42 @@
 """
-Ability for running Python code
+Calculator for AI
 """
-from typing import Dict
+
 import subprocess
 import json
 
 from forge.sdk.memory.memstore_tools import add_ability_memory
 
-from ...forge_log import ForgeLogger
-from ..registry import ability
+from ..forge_log import ForgeLogger
+from .registry import ability
 
 logger = ForgeLogger(__name__)
 
-# causing more issues than solutions maybe
-# using openai it doesn't need this
-# need to make an ai_programmer using a model attuned for programming
-# from prompt
-
 @ability(
-    name="run_python_file",
-    description="run a python file",
+    name="math_run_expression",
+    description="Eval and return answer to mathematical expression using Python",
     parameters=[
         {
-            "name": "file_name",
-            "description": "Name of the file",
+            "name": "math_expression",
+            "description": "Mathematical expression",
             "type": "string",
-            "required": True
+            "required": True,
         }
     ],
-    output_type="dict"
+    output_type="str",
 )
-
-async def run_python_file(agent, task_id: str, file_name: str) -> Dict:
-    """
-    run_python_file
-    Uses the UNSAFE exec method after reading file from local workspace
-    Look for safer method
-    """
-
-    get_cwd = agent.workspace.get_cwd_path(task_id)
-
+async def math_run_expression(agent, task_id: str, math_expression: str) -> str:
     return_dict = {
         "return_code": -1,
         "stdout": "",
         "stderr": ""
     }
 
-    command = f"python {file_name}"
-
+    command = f"python -c 'print({math_expression})'"
     try:
         req = subprocess.run(command,
             shell=True,
-            capture_output=True,
-            cwd=get_cwd
+            capture_output=True
         )
 
         return_dict["return_code"] = req.returncode

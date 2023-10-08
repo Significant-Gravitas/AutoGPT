@@ -29,3 +29,8 @@ Comming soon:
 4. Abilities
 5. The Planning Loop
 6. Memories
+
+
+# Dev Notes
+
+Will need to add in other AI models currently focus is openai and gpt

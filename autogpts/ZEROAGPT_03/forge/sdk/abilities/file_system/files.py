@@ -26,14 +26,20 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
     """
     List files in a workspace directory
     """
-
+    only_files = []
     try:
         file_list = agent.workspace.list(task_id=task_id, path=path)
+        for ffile in file_list:
+            if ffile["filetype"] == "file":
+                only_files.append(ffile["filename"])
     except Exception as err:
         logger.error(f"list_files failed: {err}")
         raise err
     
-    return file_list 
+    if len(only_files) == 0:
+        only_files.append('no files found')
+        
+    return only_files
 
 # @ability(
 #     name="write_source_code",
@@ -74,7 +80,7 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
 #         agent_created=True,
 #     )
 
-#     await add_ability_memory(task_id, code, "write_source_code")
+#     add_ability_memory(task_id, code, "write_source_code")
 
 
 @ability(
@@ -109,7 +115,7 @@ async def write_file(agent, task_id: str, file_name: str, data: bytes) -> None:
         data = data.replace('\\n', '\n')
 
         # add to memory
-        await add_ability_memory(task_id, data, "write_file")
+        add_ability_memory(task_id, data, "write_file")
 
         # convert back to bytes
         data = str.encode(data)
@@ -126,45 +132,45 @@ async def write_file(agent, task_id: str, file_name: str, data: bytes) -> None:
         logger.error(f"write_file failed: {err}")
         raise err
     
-@ability(
-    name="read_file",
-    description="Read data from a file",
-    parameters=[
-        {
-            "name": "file_name",
-            "description": "Name of the file",
-            "type": "string",
-            "required": True,
-        },
-    ],
-    output_type="bytes",
-)
-async def read_file(agent, task_id: str, file_name: str) -> bytes:
-    """
-    Read data from a file
-    """
-    read_file = "No file found".encode()
+# @ability(
+#     name="read_file",
+#     description="Read data from a file",
+#     parameters=[
+#         {
+#             "name": "file_name",
+#             "description": "Name of the file",
+#             "type": "string",
+#             "required": True,
+#         },
+#     ],
+#     output_type="bytes",
+# )
+# async def read_file(agent, task_id: str, file_name: str) -> bytes:
+#     """
+#     Read data from a file
+#     """
+#     read_file = "No file found".encode()
 
-    try:
-        read_file = agent.workspace.readlines(task_id=task_id, path=file_name)
+#     try:
+#         read_file = agent.workspace.readlines(task_id=task_id, path=file_name)
         
-        # trim down file read to 255 characters
-        file_str = ""
-        for rfline in read_file[:255]:
-            file_str += rfline.decode()
+#         # trim down file read to 255 characters
+#         file_str = ""
+#         for rfline in read_file[:255]:
+#             file_str += rfline.decode()
 
-        await add_ability_memory(task_id, file_str, "read_file")
+#         add_ability_memory(task_id, file_str, "read_file")
 
-        read_file = str.encode(file_str)
-    except Exception as err:
-        logger.error(f"read_file failed: {err}")
-        raise err
+#         read_file = str.encode(file_str)
+#     except Exception as err:
+#         logger.error(f"read_file failed: {err}")
+#         raise err
 
     
-    return read_file
+#     return read_file
 
 # @ability(
-#     name="search_file",
+#     name="search_in_file",
 #     description="Search the contents of a file using regex",
 #     parameters=[
 #         {
@@ -180,9 +186,9 @@ async def read_file(agent, task_id: str, file_name: str) -> bytes:
 #             "required": True,
 #         }
 #     ],
-#     output_type="list[match]"
+#     output_type="list"
 # )
-# async def search_file(agent, task_id: str, file_name: str, regex: str) -> List[Match]:
+# async def search_in_file(agent, task_id: str, file_name: str, regex: str) -> List:
 #     """
 #     Search file using regex
 #     """
@@ -219,7 +225,7 @@ async def read_file(agent, task_id: str, file_name: str) -> bytes:
     ],
     output_type="str"
 )
-async def file_content_length(agent, task_id, file_name) -> int:
+async def file_content_length(agent, task_id, file_name) -> str:
     content_length = 0
     try:
         open_file = agent.workspace.readlines(task_id=task_id, path=file_name)
@@ -228,4 +234,4 @@ async def file_content_length(agent, task_id, file_name) -> int:
         logger.error(f"file_content_length failed: {err}")
         raise err
     
-    return content_length
+    return f"Content Length of {file_name} is {content_length} lines"

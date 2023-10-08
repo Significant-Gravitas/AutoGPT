@@ -23,7 +23,11 @@ from . import chat_completion_request
 
 
 class ProfileGenerator:
-    def __init__(self, task: str, prompt_engine: PromptEngine):
+    def __init__(
+        self, 
+        task: str, 
+        prompt_engine: PromptEngine,
+        model: str = os.getenv("OPENAI_MODEL")):
         """
         Initialize the profile generator with the task to be performed.
         """
@@ -65,22 +69,12 @@ class ProfileGenerator:
         chat_completion_parms = {
             "messages": chat_list,
             "model": os.getenv("OPENAI_MODEL"),
-            "temperature": 1
+            "temperature": 0
         }
 
         response = await chat_completion_request(
             **chat_completion_parms)
-
-        json_resp = "{}"
-
-        try:
-            json_resp = json.loads(
-                response["choices"][0]["message"]["content"])
-        except Exception as err:
-            self.logger.error(f"JSON loads failed: {err}")
-            print(
-                response["choices"][0]["message"]["content"])
-            
-        return json_resp
+        
+        return response["choices"][0]["message"]["content"]
 
 

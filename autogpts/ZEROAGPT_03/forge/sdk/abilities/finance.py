@@ -86,7 +86,7 @@ async def get_financials_year(
             if key_year == year:
                 year_financial_data = financial_data
 
-                await add_ability_memory(
+                add_ability_memory(
                     task_id,
                     str(financial_data),
                     "get_financials_year"

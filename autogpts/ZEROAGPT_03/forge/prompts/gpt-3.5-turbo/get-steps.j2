@@ -1,23 +1,32 @@
-Please generate steps that can be used to complete the following task:
+Please create a series of steps to accomplish the following task:
 
 Task: {{ task }}
 
 Constraints:
-1. Always use the 'finish' ability as the last step in the sequence.
-2. Do not use abilities as arguments for other abilities.
-3. Use placeholders, denoted with angle brackets '<>' around the placeholder label, for steps that require data not yet defined.
-4. Allow the step runner to fill in the regular expression (regex) for the 'search_file' ability, as they will have read the file and know what to look for.
-5. The 'read_file' ability is limited to displaying only the first 255 characters , so it will not show the entire file.
-6. Ensure that there is a 'read_file' step executed before a 'search_file' step to determine what to search for.
-7. Check locally for required data before searching online.
-8. Local files are expected to be in the same folder as the source code.
-9. Use all versions (capitalized and non-capitalized) of words when utilizing the 'search_file' ability.
-10. Note that 'search_file' is exclusively meant for searching within file content, not for searching for a file itself.
+
+1. Each step should utilize only one ability. Using more than one ability in a step will result in an error.
+2. Always conclude each sequence of steps with the 'finish' ability as the final step, providing a reason for 'finish.'
+3. Avoid using abilities as arguments for other abilities.
+4. Utilize the 'add_file_memory' ability to load text files into vector memory storage.
+5. Utilize the 'read_file_from_memory' ability to read a file, extracting up to 255 characters for data comprehension.
+6. Only use abilities listed in the provided task abilities list in any way to complete the task.
+7. Prioritize using local data sources over online sources.
+8. When handling multiple files (e.g., .csv, .txt), some steps may require combining multiple files for a comprehensive solution.
+9. Limit CSV-related abilities to CSV files.
+10. Investigate the necessity of each file and include only essential files in your task.
+11. Before using 'csv_merge,' apply 'csv_get_columns' to both files to identify common columns. Do not use 'csv_merge' with only one file; use it with two different files or more.
+12. If a required column is absent in any CSV, create the column using 'csv_add_column_data.' Ensure that you read the CSV data to ensure the correct data is added to the right row.
+13. Always use the filenames specified in the task, if provided.
+14. Do not forget to process other files before completing the task.
+15. Maintain precision in your data, avoiding approximations. Do not use filler text or placeholder text.
+
+Additional Instructions for Handling Multiple Files:
+
+1. When encountering multiple files, create separate steps for each file, ensuring that each contributes to the task.
+2. If you encounter two or more CSV files requiring merging, include a step to merge them in pairs before proceeding with the task.
 
 Resources:
-1. Utilize the 'list_files' ability to check for data files.
 
-Best Practices:
-1. When scraping data, consider using the 'file_content_length' ability before 'read_file'. If the content length is greater than 255 characters, use 'search_file' to search for text within the file.
+1. Utilize the 'list_files' ability to check for available data files.
 
-By following these guidelines, you can efficiently and effectively plan the task steps while adhering to the specified constraints, resources and best practices.
+By adhering to these constraints and additional instructions, you can efficiently plan the task steps, ensuring compliance with the provided guidelines and maintaining accuracy.

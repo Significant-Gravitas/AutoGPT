@@ -1,36 +1,34 @@
-Your task:
-
-This is a list of steps from the Project Manager. 
-Finish the task efficiently and eloquently while illustrating each move.
+This is a list of initial steps from the Project Manager. Review each step carefully and process them accordingly.
 
 {% for step in steps %}
 - {{ step.step }}
-   + last step? {{ step.last_step }}
+   + Is this the last step? {{ step.last_step }}
    {% for ability in step.abilities %}
    * Ability Name: {{ ability.name }}
    * Arguments: {{ ability.args }}
    {% endfor %} 
 {% endfor %}
 
-Constraints:
-1. Work through each step and, if needed, add or change steps.
-2. If you run into errors, add steps to fix issue.
-3. When using abilities with placeholders denoted by '<>', ensure that these placeholders are replaced with actual data, filenames, or relevant information.
-   1a. Do not use placeholders when working through steps. They should only be filled in with actual data. Using placeholders at this point will create errors.
-4. Prioritize checking for needed data locally before considering online sources.
-5. The 'read_file' ability can only display a maximum of 255 characters and will not show the entire file.
-6. Always conclude the task by using the 'finish' ability as the last step.
-7. Utilize precise data rather than approximations.
-8. Assume that local files are located in the same folder as the source code.
-9. Ensure that all versions (capitalized and non-capitalized) of words are considered when using the 'search_file' ability.
-10. Remember that the 'search_file' ability is exclusively intended for searching within file content, not for searching for a file itself.
+Efficiently complete each step, leveraging your capabilities as an LLM. While working through these steps, feel free to add or modify them as needed. If you encounter any errors, add corrective steps to address the issues.
 
-Resources:
-1. Utilize the 'list_files' ability to check for data files.
+# Constraints:
+1. Exercise caution when reading files, particularly those that may be excessively large or contain private information.
+2. When utilizing abilities with '<>' placeholders, replace them with actual data, filenames, or relevant information. Do not use placeholders within steps, as this may lead to errors.
+3. Prioritize using locally available data over online sources.
+4. Note that 'read_file' can only display up to 255 characters and won't show the entire file.
+5. Always conclude tasks with the 'finish' ability as the final step.
+6. Ensure precision in your data, avoiding approximations.
+7. Assume that local files are located in the same folder as the source code.
+8. Adhere to the provided notation for values or text in the task instructions.
+9. Utilize the discovered files to complete the current step effectively.
+10. Before using 'run_python_file,' verify that a relevant file is present or create one if necessary.
+11. Restrict 'read_file' to text documents; refrain from using it for CSVs or tabulated data.
+12. When engaging in scraping tasks, consider using 'file_content_length' before 'read_file.'
+   12a. If the content exceeds 255 characters, consider other methods
+13. If you are unfamiliar with a programming library, consult online documentation for guidance.
+14. When tackling steps, consider all available data files (.csv, .txt, etc.). Some steps may require combining multiple files for a comprehensive solution.
 
-Best Practices:
-1. When performing scraping tasks, it is recommended to use the 'file_content_length' ability before 'read_file'. If the content length exceeds 255 characters, consider using the 'search_file' ability to search for specific text within the file.
-2. When using 'search_file' make sure the regular expression gets the context around the word or text being searched for.
-3, Whe dealing with a CSV or other tabulated data file, use the ability 'query_csv' to scrape it better 
+# Resources:
+1. Employ the 'list_files' ability to check for data files.
 
-By following these constraints and best practices, you can efficiently complete the steps while adhering to the specified guidelines and ensuring accuracy.
+By adhering to these constraints, you can efficiently complete the steps, ensuring compliance with the provided guidelines and maintaining accuracy.

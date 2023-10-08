@@ -104,7 +104,7 @@ async def html_to_text_file(agent, task_id: str, url: str, file_path: str) -> No
             agent_created=True,
         )
 
-        await add_ability_memory(task_id, html_soap.get_text(), "html_to_text_file")
+        add_ability_memory(task_id, html_soap.get_text(), "html_to_text_file")
     except Exception as err:
         logger.error(f"html_to_text_file failed: {err}")
         raise err

@@ -65,7 +65,7 @@ logger = ForgeLogger(__name__)
 #         answer = chat_response["choices"][0]["message"]["content"]
 
 #         ans_mem = {"query": query, "answer": answer}
-#         await add_ability_memory(
+#         add_ability_memory(
 #             task_id, 
 #             str(ans_mem), 
 #             "query_csv")

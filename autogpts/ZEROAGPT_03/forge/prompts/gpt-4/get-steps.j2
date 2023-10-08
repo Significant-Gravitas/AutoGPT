@@ -1,28 +1,32 @@
 Please create a series of steps to accomplish the following task:
 
-**Task:** {{ task }}
+Task: {{ task }}
 
-## Constraints:
+Constraints:
 
-1. Always include the 'finish' ability as the final step.
-2. Avoid using abilities as arguments for other abilities.
-3. Use placeholders marked with '<>' for steps that require undefined data.
-4. Note that 'read_file' can only display the initial 255 characters; it won't show the entire file.
-5. Prioritize local data sources over online ones.
-6. When handling scraping tasks involving CSV files, utilize the 'query_csv' ability.
-7. For .csv files, develop a Python program using the pandas library for extraction; refrain from reading large files.
-   7a. Utilize the sum attribute in pandas for category sums.
-8. Avoid reading every file, especially if they are large or may contain sensitive data.
-9. Restrict 'read_file' to text documents, excluding CSVs or tabulated data.
+1. Use only one ability per step.
+2. Always conclude each sequence of steps with the 'finish' ability as the final step.
+    2a. Make sure to always have a reason for 'finish'
+3. Avoid using abilities as arguments for other abilities.
+4. Utilize 'add_file_memory' to load text files into vector memory storage for reading.
+5. Employ placeholders marked with '<>' for steps that require undefined data.
+6. Prioritize local data sources over online ones.
+7. When working on steps, consider all available data files (.csv, .txt, etc.). Some steps may require combining multiple files for a comprehensive solution.
+8. Limit CSV-related abilities to CSV files.
+9. Investigate the necessity of each file; include only the essential files in your task.
+10. Before using 'csv_merge' use 'csv_get_columns' on both files to find the common column
+   10a. Do not use 'csv_merge' with one file. Only use with two different files or more.
+11. If column need in CSV is not present in any of the CSVs then create the column with 'csv_add_column_data'
+   11a. Make sure to read the CSV data to make sure the right data is being added to the right row
+12. Always use the filenames specified in the task, if any
 
-## Resources:
+Additional Instructions for Handling Multiple Files:
 
-1. Utilize the 'list_files' ability to check for data files.
+1. When you encounter multiple files, create separate steps for each file, ensuring that each one contributes to the task.
+2. If you encounter two or more CSV files, include a step to merge them before proceeding with the task.
 
-## Best Practices:
+Resources:
 
-1. When conducting data scraping, consider using the 'file_content_length' ability before 'read_file'. If the content length exceeds 255 characters, employ 'search_file' to search for text within the file.
-2. Account for all available .csv, .txt, or other data files when progressing through a step. There might be multiple files to incorporate for a comprehensive solution.
-3. If necessary, use 'read_file' to determine what to search for in a file, but exercise caution, especially with large or potentially sensitive data files.
+Utilize the 'list_files' ability to check for data files.
 
-By adhering to these guidelines, you can efficiently plan the steps for the task while ensuring compliance with the specified constraints, resources, and best practices.
+By adhering to these constraints and additional instructions, you can efficiently plan the task steps, ensuring compliance with the provided guidelines and maintaining accuracy.

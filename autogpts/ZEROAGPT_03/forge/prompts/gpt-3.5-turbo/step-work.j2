@@ -1,36 +1,41 @@
-Your task:
+Please review the following steps provided by the Project Manager for completing the task:
 
-This is a list of steps from the Project Manager. 
-Finish the task efficiently and eloquently while illustrating each move.
+Task: 
+{{ task }}
 
+Steps: 
 {% for step in steps %}
 - {{ step.step }}
-   + last step? {{ step.last_step }}
    {% for ability in step.abilities %}
    * Ability Name: {{ ability.name }}
-   * Arguments: {{ ability.args }}
    {% endfor %} 
 {% endfor %}
 
+Leverage your LLM capabilities to execute these steps. You may modify or add steps as necessary to address any errors encountered.
+
 Constraints:
-1. Work through each step and, if needed, add or change steps.
-2. If you run into errors, add steps to fix issue.
-3. When using abilities with placeholders denoted by '<>', ensure that these placeholders are replaced with actual data, filenames, or relevant information.
-   1a. Do not use placeholders when working through steps. They should only be filled in with actual data. Using placeholders at this point will create errors.
-4. Prioritize checking for needed data locally before considering online sources.
-5. The 'read_file' ability can only display a maximum of 255 charactersand will not show the entire file.
-6. Always conclude the task by using the 'finish' ability as the last step.
-7. Utilize precise data rather than approximations.
-8. Assume that local files are located in the same folder as the source code.
-9. Ensure that all versions (capitalized and non-capitalized) of words are considered when using the 'search_file' ability.
-10. Remember that the 'search_file' ability is exclusively intended for searching within file content, not for searching for a file itself.
+
+0. DO NOT GIVE UP
+1. Prioritize local data sources over online ones.
+2. Always end tasks with the 'finish' ability as the final step.
+3. Maintain precision in your data, avoiding approximations.
+   3a. Do not use filler text or placeholder text.
+4. Assume that local files are in the same folder as the source code.
+5. Adhere to provided notation for values or text in task instructions.
+6. Efficiently use discovered files to complete each step.
+7. Before using 'run_python_file,' ensure that the relevant file exists or create it if needed.
+8. Consult online documentation if you're unfamiliar with a programming library.
+9. When handling steps, consider all available data files (.csv, .txt, etc.). Some steps may require combining multiple files for a comprehensive solution.
+10. Investigate the necessity of each file; include only the essential files in your task.
+11. Assume that initial steps are designed for one file. Create additional steps for handling multiple files.
+12. Do not forget to process other files before finishing all task steps.
+13. Check if you need to reference data from other files to build the required output.For multiple files, search for commonalities to facilitate data integration.
+14. Before using 'csv_merge' use 'csv_get_columns' on both files to find the common column. Do not use 'csv_merge' with one file. Only use with two different files or more.
+15. If column need in CSV is not present in any of the CSVs then create the column with 'csv_add_column_data'. Make sure to read the CSV data with 'read_file_from_memory' to make sure the right data is being added to the right row
+16. Always use the filenames specified in the task, if any
 
 Resources:
+
 1. Utilize the 'list_files' ability to check for data files.
 
-Best Practices:
-1. When performing scraping tasks, it is recommended to use the 'file_content_length' ability before 'read_file'. If the content length exceeds 255 characters, consider using the 'search_file' ability to search for specific text within the file.
-2. When using 'search_file' make sure the regular expression gets the context around the word or text being searched for.
-3, Whe dealing with a CSV or other tabulated data file, use the ability 'query_csv' to scrape it better 
-
-By following these constraints and best practices, you can efficiently complete the steps while adhering to the specified guidelines and ensuring accuracy.
+By adhering to these constraints, you can efficiently complete the steps, ensuring adherence to guidelines and maintaining accuracy, especially when dealing with multiple files.
