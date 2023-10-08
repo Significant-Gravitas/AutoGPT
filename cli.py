@@ -318,6 +318,7 @@ def stop():
     except subprocess.CalledProcessError:
         click.echo("No process is running on port 8080")
 
+
 @agent.command()
 def list():
     """List agents command"""

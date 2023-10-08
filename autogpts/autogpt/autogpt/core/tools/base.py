@@ -19,17 +19,19 @@ from .schema import ToolResult
 from autogpt.core.agents.base.features.agentmixin import AgentMixin
 from autogpt.core.plugin.base import PluginLocation
 
+
 class ToolConfiguration(SystemConfiguration):
     """Struct for model configuration."""
-
-
 
     location: PluginLocation
     packages_required: list[str] = Field(default_factory=list)
     language_model_required: LanguageModelConfiguration = None
     memory_provider_required: bool = False
     workspace_required: bool = False
+
+
 ToolConfiguration.update_forward_refs()
+
 
 class Tool(AgentMixin, abc.ABC):
     """A class representing an agent ability."""
@@ -60,7 +62,6 @@ class Tool(AgentMixin, abc.ABC):
 
     def __str__(self) -> str:
         return pformat(self.spec)
-    
 
     # def dump(self) -> dict:
     #     return {
@@ -73,7 +74,6 @@ class Tool(AgentMixin, abc.ABC):
     #         },
     #     }
 
-
     @property
     @classmethod
     def spec(cls) -> CompletionModelFunction:
@@ -83,9 +83,10 @@ class Tool(AgentMixin, abc.ABC):
             parameters=cls.parameters,
         )
 
+
 class BaseToolsRegistry(AgentMixin, abc.ABC):
-    def __init__(self, settings, logger) :
-        pass # NOTE : Avoid passing too many arguments to AgentMixin
+    def __init__(self, settings, logger):
+        pass  # NOTE : Avoid passing too many arguments to AgentMixin
 
     @abc.abstractmethod
     def register_tool(
@@ -98,7 +99,7 @@ class BaseToolsRegistry(AgentMixin, abc.ABC):
         ...
 
     @abc.abstractmethod
-    def dump_tools(self)  -> list[CompletionModelFunction]:
+    def dump_tools(self) -> list[CompletionModelFunction]:
         ...
 
     @abc.abstractmethod

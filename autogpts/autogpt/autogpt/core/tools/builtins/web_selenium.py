@@ -34,11 +34,10 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 if TYPE_CHECKING:
-    
     from autogpt.core.agents.base import BaseAgent
 
 from autogpt.core.utils.exceptions import ToolExecutionError
-from autogpt.core.tools.command_decorator  import tool
+from autogpt.core.tools.command_decorator import tool
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.utils.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.core.utils.processing.text import summarize_text

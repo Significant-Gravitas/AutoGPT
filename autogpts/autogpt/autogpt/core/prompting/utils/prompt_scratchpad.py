@@ -14,7 +14,7 @@ class CallableCompletionModelFunction(CompletionModelFunction):
 
 
 class PromptScratchpad(BaseModel):
-    # commands: dict[str, CallableCompletionModelFunction] = Field(default_factory=dict) 
+    # commands: dict[str, CallableCompletionModelFunction] = Field(default_factory=dict)
     commands: dict[str, CompletionModelFunction] = Field(default_factory=dict)
     resources: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)

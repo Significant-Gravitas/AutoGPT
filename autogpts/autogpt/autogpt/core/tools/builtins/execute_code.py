@@ -20,7 +20,7 @@ from autogpt.core.utils.exceptions import (
     InvalidArgumentError,
     OperationNotAllowedError,
 )
-from autogpt.core.tools.command_decorator  import tool
+from autogpt.core.tools.command_decorator import tool
 
 from autogpt.core.utils.json_schema import JSONSchema
 
@@ -193,6 +193,7 @@ def execute_python_file(
             "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
         )
         raise ToolExecutionError(f"Could not run the script in a container: {e}")
+
 
 # TODO Implement security
 # def validate_command(command: str) -> bool:

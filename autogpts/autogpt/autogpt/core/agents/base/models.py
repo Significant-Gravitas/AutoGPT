@@ -133,6 +133,7 @@ class BaseAgentSettings(BaseModel):
         # self.agent_id = agent_goals["agent_id"]
         # self.agent_id = agent_goal_sentence["agent_id"]
 
+
 class BaseAgentDirectives(dict):
     """An object that contains the basic directives for the AI prompt.
 

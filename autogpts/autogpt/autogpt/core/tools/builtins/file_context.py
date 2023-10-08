@@ -10,15 +10,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base import  BaseAgent
+    from autogpt.core.agents.base import BaseAgent
 
 from autogpt.core.utils.exceptions import (
     ToolExecutionError,
     DuplicateOperationError,
 )
-from autogpt.core.tools.command_decorator  import tool
+from autogpt.core.tools.command_decorator import tool
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.agents.simple.lib.models.context_items import FileContextItem, FolderContextItem
+from autogpt.core.agents.simple.lib.models.context_items import (
+    FileContextItem,
+    FolderContextItem,
+)
 
 from .decorators import sanitize_path_arg
 
@@ -26,7 +29,7 @@ from .decorators import sanitize_path_arg
 def agent_implements_context(agent: BaseAgent) -> bool:
     raise NotImplementedError("Not Implemented")
     return False
-    #return isinstance(agent, ContextMixin)
+    # return isinstance(agent, ContextMixin)
 
 
 @tool(
@@ -57,8 +60,8 @@ def open_file(file_path: Path, agent: BaseAgent) -> tuple[str, FileContextItem]:
     relative_file_path = None
     with contextlib.suppress(ValueError):
         relative_file_path = file_path.relative_to(agent.workspace.root)
-    print ("NOT IMPLEMENTED KOIGUFGIUOIPOYIUFGYHGHOIUIGYU")
-    #assert (agent_context := get_agent_context(agent)) is not None
+    print("NOT IMPLEMENTED KOIGUFGIUOIPOYIUFGYHGHOIUIGYU")
+    # assert (agent_context := get_agent_context(agent)) is not None
 
     created = False
     if not file_path.exists():
@@ -111,7 +114,7 @@ def open_folder(path: Path, agent: BaseAgent) -> tuple[str, FolderContextItem]:
         relative_path = path.relative_to(agent.workspace.root)
 
     print("NOT IMPLEMENT IUGYUFTCDGVHHUOZIGYUFTYC")
-    #assert (agent_context := get_agent_context(agent)) is not None
+    # assert (agent_context := get_agent_context(agent)) is not None
 
     if not path.exists():
         raise FileNotFoundError(f"open_folder {path} failed: no such file or directory")

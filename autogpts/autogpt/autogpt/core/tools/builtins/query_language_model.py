@@ -59,7 +59,6 @@ class QueryLanguageModel(Tool):
             model_prompt=messages,
             functions=[],
             model_name=self._configuration.language_model_required.model_name,
- 
         )
         return ToolResult(
             ability_name=self.name(),

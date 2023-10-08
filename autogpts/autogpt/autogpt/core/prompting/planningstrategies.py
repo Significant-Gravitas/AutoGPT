@@ -17,7 +17,6 @@ from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
 from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.prompting.schema import (
     LanguageModelClassification,
-
 )
 
 from autogpt.core.configuration import (
@@ -37,13 +36,16 @@ from autogpt.core.resource.model_providers import (
     CompletionModelFunction,
 )
 
-from .base import (PromptStrategiesConfiguration, BasePromptStrategy, RESPONSE_SCHEMA)
+from .base import PromptStrategiesConfiguration, BasePromptStrategy, RESPONSE_SCHEMA
 from .utils.prompt_scratchpad import PromptScratchpad
-from .utils.templates import PLAN_PROMPT_CONSTRAINTS, PLAN_PROMPT_RESOURCES, PLAN_PROMPT_PERFORMANCE_EVALUATIONS
+from .utils.templates import (
+    PLAN_PROMPT_CONSTRAINTS,
+    PLAN_PROMPT_RESOURCES,
+    PLAN_PROMPT_PERFORMANCE_EVALUATIONS,
+)
 
 
 class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
-
     # DEFAULT_PROMPT_SCRATCHPAD = PromptScratchpad(
     #     tools= {},
     #     constraints= PLAN_PROMPT_CONSTRAINTS,
@@ -51,20 +53,20 @@ class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
     #     best_practices=PLAN_PROMPT_PERFORMANCE_EVALUATIONS,
     # )
     DEFAULT_BODY_TEMPLATE: str = (
-         "## Constraints\n"
-         "You operate within the following constraints:\n"
-         "{constraints}\n"
-         "\n"
-         "## Resources\n"
-         "You can leverage access to the following resources:\n"
-         "{resources}\n"
-         "\n"
+        "## Constraints\n"
+        "You operate within the following constraints:\n"
+        "{constraints}\n"
+        "\n"
+        "## Resources\n"
+        "You can leverage access to the following resources:\n"
+        "{resources}\n"
+        "\n"
         "## Commands\n"
         "You have access to the following commands:\n"
         "{tools}\n"
         "\n"
-         "## Best practices\n"
-         "{best_practices}"
+        "## Best practices\n"
+        "{best_practices}"
     )
 
     DEFAULT_CHOOSE_ACTION_INSTRUCTION: str = (
@@ -100,11 +102,8 @@ class PlanningPromptStrategy(BasePromptStrategy):
         self._prepend_messages: list[ChatMessage] = []
         self._append_messages: list[ChatMessage] = []
 
-
-
         self._model_classification = model_classification
         self._config = self.default_configuration
-
 
     # def construct_base_prompt(
     #     self,
@@ -145,13 +144,14 @@ class PlanningPromptStrategy(BasePromptStrategy):
     #     return messages
 
     # FIXME : Uncompleted migration from AutoGPT Agent
-    def _construct_system_prompt(self, 
-                                 agent: PlannerAgent,
-                                 agent_directives : list ,
-                                 include_os_info : bool,
-                                 tools : list,
-                                 **kwargs
-                                 ) -> str:
+    def _construct_system_prompt(
+        self,
+        agent: PlannerAgent,
+        agent_directives: list,
+        include_os_info: bool,
+        tools: list,
+        **kwargs,
+    ) -> str:
         """Constructs a system prompt containing the most important information for the AI.
 
         Params:
@@ -161,47 +161,53 @@ class PlanningPromptStrategy(BasePromptStrategy):
             str: The constructed system prompt.
         """
         reminder: str = (
-         "## Constraints\n"
-         "You operate within the following constraints:\n"
-         "{constraints}\n"
-         "\n"
-         "## Resources\n"
-         "You can leverage access to the following resources:\n"
-         "{resources}\n"
-         "\n"
-        "## Commands\n"
-        "You have access to the following commands:\n"
-        "{tools}\n"
-        "\n"
-         "## Best practices\n"
-         "{best_practices}"
-    )
-        
+            "## Constraints\n"
+            "You operate within the following constraints:\n"
+            "{constraints}\n"
+            "\n"
+            "## Resources\n"
+            "You can leverage access to the following resources:\n"
+            "{resources}\n"
+            "\n"
+            "## Commands\n"
+            "You have access to the following commands:\n"
+            "{tools}\n"
+            "\n"
+            "## Best practices\n"
+            "{best_practices}"
+        )
+
         from autogpt.core.runner.client_lib.parser import (
             parse_ability_result,
             parse_agent_plan,
             parse_next_ability,
         )
 
-        print(f"""################################################################################################################################################################################################################################
+        print(
+            f"""################################################################################################################################################################################################################################
               DEBUG PLAN : Plan :\n{agent.plan.dump(depth=1)}\n\n
-              """)
-        print(f"""################################################################################################################################################################################################################################
+              """
+        )
+        print(
+            f"""################################################################################################################################################################################################################################
               DEBUG PLAN : Plan :\n{Plan.parse_agent_plan(agent.plan)}\n\n
-              """)
+              """
+        )
 
-        #plan_part =   [f"Plan :\n{agent.plan.dump(depth=1)}\n\n"] if agent.plan is not None else []
-        plan_part =   [f"Plan :\n {self.plan().generate_pitch(task =  self._agent.current_task)}"]
+        # plan_part =   [f"Plan :\n{agent.plan.dump(depth=1)}\n\n"] if agent.plan is not None else []
+        plan_part = [
+            f"Plan :\n {self.plan().generate_pitch(task =  self._agent.current_task)}"
+        ]
 
         system_prompt_parts = (
-            self._generate_intro_prompt(agent,**kwargs)
+            self._generate_intro_prompt(agent, **kwargs)
             + (self._generate_os_info(**kwargs) if include_os_info else [])
             + plan_part
             + [
                 self._config.body_template.format(
                     constraints=to_numbered_list(
                         agent_directives.constraints
-                    #    + self._generate_budget_constraint(agent.api_budget)
+                        #    + self._generate_budget_constraint(agent.api_budget)
                     ),
                     resources=to_numbered_list(agent_directives.resources),
                     tools=self._generate_tools_list(tools),
@@ -255,7 +261,6 @@ class PlanningPromptStrategy(BasePromptStrategy):
         # )
         return [f"The OS you are running on is: {os_info}"]
 
-
     #
     # _generate_tools_list
     #
@@ -275,9 +280,9 @@ class PlanningPromptStrategy(BasePromptStrategy):
             self.logger.warn(f"Formatting tools failed. {tools}")
             raise
 
-    def _generate_intro_prompt(self, 
-                               agent: Union[PlannerAgent, BaseAgent],
-                               **kwargs) -> list[str]:
+    def _generate_intro_prompt(
+        self, agent: Union[PlannerAgent, BaseAgent], **kwargs
+    ) -> list[str]:
         """Generates the introduction part of the prompt.
 
         Returns:
@@ -383,7 +388,6 @@ class PlanningPromptStrategy(BasePromptStrategy):
 
         return []
 
-        
     # FIXME : Implement this to converge to AutoGPT vs Loose "default_function_call functionality" => Move to OpenAPIProvider safer
     # #############
     # # Utilities #

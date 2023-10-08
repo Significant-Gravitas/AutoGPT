@@ -33,17 +33,19 @@ from autogpt.core.agents.base.exceptions import (
 
 if TYPE_CHECKING:
     from autogpt.core.agents.simple import PlannerAgent, PlannerAgentSettings
-    #from autogpt.core.prompting.schema import ChatModelResponse
+
+    # from autogpt.core.prompting.schema import ChatModelResponse
     from autogpt.core.resource.model_providers import ChatMessage, ChatModelResponse
 
 
 # NOTE : This is an example of customization that allow to share part of a project in Github while keeping part not released
-aaas  =  {}
+aaas = {}
 try:
     from autogpt.core.agents.usercontext import (
         UserContextAgent,
         UserContextAgentSettings,
     )
+
     aaas["usercontext"] = True
 except ImportError:
     aaas["usercontext"] = False
@@ -52,6 +54,7 @@ try:
         RoutingAgent,
         RoutingAgentSettings,
     )
+
     aaas["whichway"] = True
 except ImportError:
     aaas["whichway"] = False
@@ -60,8 +63,10 @@ except ImportError:
 aaas["usercontext"] = False
 aaas["whichway"] = False
 
+
 class PlannerLoop(BaseLoop):
-    _agent : PlannerAgent
+    _agent: PlannerAgent
+
     class LoophooksDict(BaseLoop.LoophooksDict):
         after_plan: Dict[BaseLoopHook]
         after_determine_next_ability: Dict[BaseLoopHook]
@@ -111,7 +116,7 @@ class PlannerLoop(BaseLoop):
             user_message_handler=self._user_message_handler,
         )
 
-        if self.plan() is None : 
+        if self.plan() is None:
             ##############################################################
             ### Step 2 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
             ##############################################################
@@ -125,8 +130,8 @@ class PlannerLoop(BaseLoop):
             ##############################################################
             ### Step 3 : Define the approach
             ##############################################################
-            routing_feedbacks = ''
-            description=''
+            routing_feedbacks = ""
+            description = ""
             if aaas["whichway"]:
                 description, routing_feedbacks = await self.run_whichway_agent()
 
@@ -138,7 +143,9 @@ class PlannerLoop(BaseLoop):
             ##############################################################
             ### Step 5 : Make an plan !
             ##############################################################
-            llm_response = await self.build_initial_plan(description = description, routing_feedbacks = routing_feedbacks)
+            llm_response = await self.build_initial_plan(
+                description=description, routing_feedbacks=routing_feedbacks
+            )
             # self._agent.plan = Plan()
             # for task in plan['task_list'] :
             #     self._agent.plan.tasks.append(Task(data = task))
@@ -148,8 +155,7 @@ class PlannerLoop(BaseLoop):
 
             ###
             ### Assign task
-            ### 
-
+            ###
 
         ##############################################################
         # NOTE : Important KPI to log during crashes
@@ -159,7 +165,6 @@ class PlannerLoop(BaseLoop):
 
         # _is_running is important because it avoid having two concurent loop in the same agent (cf : Agent.run())
         while self._is_running:
-
             # if _active is false, then the loop is paused
             # FIXME replace _active by self.remaining_cycles > 0:
             if self._active:
@@ -168,13 +173,16 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 ### Step 5 : select_tool()
                 ##############################################################
-                command_name, command_args, assistant_reply_dict = await self.select_tool() 
+                (
+                    command_name,
+                    command_args,
+                    assistant_reply_dict,
+                ) = await self.select_tool()
 
                 ##############################################################
                 ### Step 6 : execute_tool() #
                 ##############################################################
                 result = await self.execute_tool(command_name, command_args)
-
 
             self.save_plan()
 
@@ -183,7 +191,7 @@ class PlannerLoop(BaseLoop):
         Configures the user context agent based on the current agent settings and executes the user context agent.
         Returns the updated agent goals.
         """
-        
+
         # USER CONTEXT AGENT : Configure the agent to our context
         usercontextagent_configuration = {
             "user_id": self._agent.user_id,
@@ -205,7 +213,7 @@ class PlannerLoop(BaseLoop):
                 user_configuration=usercontextagent_configuration,
             )
         )
-        
+
         # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
         new_user_context_agent = UserContextAgent.create_agent(
             agent_settings=usercontext_settings, logger=self._agent._logger
@@ -222,10 +230,13 @@ class PlannerLoop(BaseLoop):
             user_input_handler=self._user_input_handler,
             user_message_handler=self._user_message_handler,
         )
-        
-        return user_context_return["agent_goal_sentence"], user_context_return["agent_goals"]
 
-    async def run_whichway_agent(): 
+        return (
+            user_context_return["agent_goal_sentence"],
+            user_context_return["agent_goals"],
+        )
+
+    async def run_whichway_agent():
         pass
 
     async def start(
@@ -243,7 +254,7 @@ class PlannerLoop(BaseLoop):
         if not self.remaining_cycles:
             self.remaining_cycles = 1
 
-    async def build_initial_plan(self, description ='', routing_feedbacks = '') -> dict:
+    async def build_initial_plan(self, description="", routing_feedbacks="") -> dict:
         # plan =  self.execute_strategy(
         self.tool_registry().list_tools_descriptions()
         plan = await self.execute_strategy(
@@ -252,8 +263,8 @@ class PlannerLoop(BaseLoop):
             agent_role=self._agent.agent_role,
             agent_goals=self._agent.agent_goals,
             agent_goal_sentence=self._agent.agent_goal_sentence,
-            description = description,
-            routing_feedbacks = routing_feedbacks,
+            description=description,
+            routing_feedbacks=routing_feedbacks,
             tools=self.tool_registry().list_tools_descriptions(),
         )
 
@@ -354,7 +365,7 @@ class PlannerLoop(BaseLoop):
 
     async def select_tool(
         self,
-    ) :
+    ):
         """Runs the agent for one cycle.
 
         Params:
@@ -364,7 +375,7 @@ class PlannerLoop(BaseLoop):
             The command name and arguments, if any, and the agent's thoughts.
         """
         raw_response: ChatModelResponse = await self.execute_strategy(
-            strategy_name= "select_tool",
+            strategy_name="select_tool",
             agent=self._agent,
             tools=self.get_tool_list(),
         )
@@ -380,7 +391,7 @@ class PlannerLoop(BaseLoop):
                 + f"assistant_reply_dict : {str(assistant_reply_dict)}\n\n"
             )
         )
-        return command_name, command_args, assistant_reply_dict 
+        return command_name, command_args, assistant_reply_dict
 
     async def execute_tool(
         self,
@@ -408,8 +419,8 @@ class PlannerLoop(BaseLoop):
             #     command_name, arguments = plugin.pre_command(command_name, command_args)
 
             # NOTE : Test tools individually
-            command_name =  "web_search" 
-            command_args : {'query': 'instructions for building a Pizza oven'}
+            command_name = "web_search"
+            command_args: {"query": "instructions for building a Pizza oven"}
             try:
                 return_value = await execute_command(
                     command_name=command_name,
@@ -489,7 +500,7 @@ def execute_command(
         str: The result of the command
     """
     # Execute a native command with the same name or alias, if it exists
-    if command := agent._tool_registry.get_tool(tool_name = command_name):
+    if command := agent._tool_registry.get_tool(tool_name=command_name):
         try:
             return command(**arguments, agent=agent)
         except AgentException:
@@ -497,6 +508,4 @@ def execute_command(
         except Exception as e:
             raise ToolExecutionError(str(e))
 
-    raise UnknownToolError(
-        f"Cannot execute command '{command_name}': unknown command."
-    )
+    raise UnknownToolError(f"Cannot execute command '{command_name}': unknown command.")

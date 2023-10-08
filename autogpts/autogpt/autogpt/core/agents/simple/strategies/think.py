@@ -12,19 +12,16 @@ from typing import TYPE_CHECKING, Callable, Optional
 import distro
 
 from autogpt.core.agents.base.agent_directives import BaseAgentDirectives
+
 if TYPE_CHECKING:
     from autogpt.core.agents.simple import PlannerAgent
 
 
-
 # prompting
-from autogpt.core.prompting.base import (
-    LanguageModelClassification,
-    RESPONSE_SCHEMA
-)
+from autogpt.core.prompting.base import LanguageModelClassification, RESPONSE_SCHEMA
 from autogpt.core.prompting.planningstrategies import (
     PlanningPromptStrategiesConfiguration,
-    PlanningPromptStrategy
+    PlanningPromptStrategy,
 )
 
 from autogpt.core.resource.model_providers import (
@@ -37,9 +34,15 @@ from autogpt.core.resource.model_providers import (
 
 from autogpt.core.utils.json_schema import JSONSchema
 
-from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list, to_string_list, indent
+from autogpt.core.prompting.utils.utils import (
+    json_loads,
+    to_numbered_list,
+    to_string_list,
+    indent,
+)
 
 from autogpt.core.agents.simple.lib.models.action_history import Episode
+
 
 class ThinkStrategyFunctionNames(str, enum.Enum):
     THINK: str = "select_tool"
@@ -58,7 +61,7 @@ class ThinkStrategyConfiguration(PlanningPromptStrategiesConfiguration):
 ### STRATEGY
 ####
 class ThinkStrategy(PlanningPromptStrategy):
-    default_configuration: ThinkStrategyConfiguration =  ThinkStrategyConfiguration()
+    default_configuration: ThinkStrategyConfiguration = ThinkStrategyConfiguration()
     STRATEGY_NAME = "select_tool"
 
     def __init__(
@@ -68,21 +71,18 @@ class ThinkStrategy(PlanningPromptStrategy):
         **kwargs,
     ):
         super().__init__(
-                        logger = logger, 
-                        model_classification = model_classification,
-                        **kwargs
-                        )
-
+            logger=logger, model_classification=model_classification, **kwargs
+        )
 
     @property
     def model_classification(self) -> LanguageModelClassification:
         return self._model_classification
 
     def build_prompt(
-        self, 
-        agent: "PlannerAgent", 
-        #instruction: str, 
-        **kwargs
+        self,
+        agent: "PlannerAgent",
+        # instruction: str,
+        **kwargs,
     ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
@@ -99,20 +99,19 @@ class ThinkStrategy(PlanningPromptStrategy):
         ###
         ### To Facilitate merge with AutoGPT changes
         ###
-        event_history = False 
+        event_history = False
         include_os_info = True
-        del  kwargs["tools"]
+        del kwargs["tools"]
         tools = self._functions
-        agent_directives =  BaseAgentDirectives.from_file(agent=agent)
+        agent_directives = BaseAgentDirectives.from_file(agent=agent)
         extra_messages: list[ChatMessage] = []
 
-
         system_prompt = self._construct_system_prompt(
-            agent = agent,
-            agent_directives = agent_directives,
-            tools = tools,
-            include_os_info = include_os_info,
-            **kwargs
+            agent=agent,
+            agent_directives=agent_directives,
+            tools=tools,
+            include_os_info=include_os_info,
+            **kwargs,
         )
         # system_prompt_tlength = count_message_tokens(ChatMessage.system(system_prompt))
 
@@ -124,8 +123,6 @@ class ThinkStrategy(PlanningPromptStrategy):
 
         final_instruction_msg = ChatMessage.user(self._config.choose_action_instruction)
         # final_instruction_tlength = count_message_tokens(final_instruction_msg)
-
-
 
         if event_history:
             progress = self.compile_progress(
@@ -143,12 +140,12 @@ class ThinkStrategy(PlanningPromptStrategy):
                 ChatMessage.system(f"## Progress\n\n{progress}"),
             )
             pass
-        
+
         messages = [
-                ChatMessage.system(system_prompt),
-                *extra_messages,
-                final_instruction_msg,
-            ]
+            ChatMessage.system(system_prompt),
+            *extra_messages,
+            final_instruction_msg,
+        ]
         # messages: list[ChatMessage] = agent._loop.on_before_select_tool(
         #     messages=messages,
         # )
@@ -156,36 +153,35 @@ class ThinkStrategy(PlanningPromptStrategy):
         # tools = get_openai_command_specs(
         #         agent._tool_registry.list_available_tools(self)
         #     ) ===== agent._tool_registry.dump_tools()
-        self._function =  agent._tool_registry.dump_tools()
+        self._function = agent._tool_registry.dump_tools()
         prompt = ChatPrompt(
             messages=messages,
-            functions= self._function,
-            function_call='auto',
+            functions=self._function,
+            function_call="auto",
             default_function_call="ask_user",
         )
 
         return prompt
 
-
     #
     # response_format_instruction
     #
-    def response_format_instruction( self, agent: "PlannerAgent",  model_name: str,
-                               **kargs) -> str:  
-        return super().response_format_instruction( agent = agent, model_name = model_name)
+    def response_format_instruction(
+        self, agent: "PlannerAgent", model_name: str, **kargs
+    ) -> str:
+        return super().response_format_instruction(agent=agent, model_name=model_name)
 
     #
     # _generate_intro_prompt
     #
-    def _generate_intro_prompt(self, agent : "PlannerAgent",
-                               **kargs) -> list[str]:
+    def _generate_intro_prompt(self, agent: "PlannerAgent", **kargs) -> list[str]:
         """Generates the introduction part of the prompt.
 
         Returns:
             list[str]: A list of strings forming the introduction part of the prompt.
         """
-        return super()._generate_intro_prompt(agent ,
-                               **kargs)
+        return super()._generate_intro_prompt(agent, **kargs)
+
     #
     # _generate_os_info
     #
@@ -204,34 +200,31 @@ class ThinkStrategy(PlanningPromptStrategy):
     #
     #     def _generate_budget_constraint
     #
-    def _generate_budget_constraint(self, api_budget: float,
-                               **kargs) -> list[str]:
+    def _generate_budget_constraint(self, api_budget: float, **kargs) -> list[str]:
         """Generates the budget information part of the prompt.
 
         Returns:
             list[str]: The budget information part of the prompt, or an empty list.
         """
-        return super()._generate_budget_constraint(api_budget,
-                               **kargs)
+        return super()._generate_budget_constraint(api_budget, **kargs)
 
     #
     # _generate_goals_info
     #
-    def _generate_goals_info(self, goals: list[str],
-                               **kargs) -> list[str]:
+    def _generate_goals_info(self, goals: list[str], **kargs) -> list[str]:
         """Generates the goals information part of the prompt.
 
         Returns:
             str: The goals information part of the prompt.
         """
-        return super()._generate_goals_info(goals,
-                               **kargs)
+        return super()._generate_goals_info(goals, **kargs)
 
     #
     # _generate_tools_list
     #
-    def _generate_tools_list(self, tools: list[CompletionModelFunction],
-                               **kargs) -> str:
+    def _generate_tools_list(
+        self, tools: list[CompletionModelFunction], **kargs
+    ) -> str:
         """Lists the tools available to the agent.
 
         Params:
@@ -240,9 +233,7 @@ class ThinkStrategy(PlanningPromptStrategy):
         Returns:
             str: A string containing a numbered list of tools.
         """
-        return super()._generate_tools_list(tools,
-                               **kargs)
-
+        return super()._generate_tools_list(tools, **kargs)
 
     ###
     ### parse_response_content
@@ -265,22 +256,20 @@ class ThinkStrategy(PlanningPromptStrategy):
         except Exception:
             self._agent._logger.warning(parsed_response)
 
-
         ###
-        ### OLD 
+        ### OLD
         ###
         # parsed_response["name"] = response_content["function_call"]["name"]
         # return parsed_response
 
         ###
-        ### NEW 
+        ### NEW
         ###
         command_name = response_content["function_call"]["name"]
         command_args = parsed_response
-        assistant_reply_dict = response_content['content']
+        assistant_reply_dict = response_content["content"]
 
         return command_name, command_args, assistant_reply_dict
-
 
     # FIXME Move to new format
     # def parse_response_content(
@@ -300,7 +289,7 @@ class ThinkStrategy(PlanningPromptStrategy):
     #         raise InvalidAgentResponseError("Assistant response has no text content")
 
     #     assistant_reply_dict = extract_dict_from_response(response_content["content"])
-        
+
     #     try:
     #         parsed_response = json_loads(response_content["function_call"]["arguments"])
     #     except Exception:
@@ -313,7 +302,7 @@ class ThinkStrategy(PlanningPromptStrategy):
     #         assistant_reply_dict, response, self._config.use_functions_api
     #     )
     #     return command_name, arguments, assistant_reply_dict
-    
+
     #     return parsed_response
 
     def save(self):
@@ -328,17 +317,16 @@ class ThinkStrategy(PlanningPromptStrategy):
         use_openai_functions_api: bool,
     ) -> tuple[str, dict[str, str]]:
         super().extract_command(
-        assistant_reply_json = assistant_reply_json,
-        assistant_reply = assistant_reply,
-        use_openai_functions_api = use_openai_functions_api
-    ) 
-
+            assistant_reply_json=assistant_reply_json,
+            assistant_reply=assistant_reply,
+            use_openai_functions_api=use_openai_functions_api,
+        )
 
     # # NOTE : based on planning_agent.py
     # def construct_base_prompt(
     #     self, agent: "PlannerAgent", **kwargs
     # ) -> list[ChatMessage]:
-        
+
     #     # Add the current plan to the prompt, if any
     #     if agent.plan:
     #         plan_section = [
@@ -369,8 +357,8 @@ class ThinkStrategy(PlanningPromptStrategy):
     #         agent=agent,  **kwargs
     #     )
 
-        # return messages
-    
+    # return messages
+
     def compile_progress(
         self,
         episode_history: list[Episode],

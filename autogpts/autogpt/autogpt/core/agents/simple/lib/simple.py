@@ -7,7 +7,8 @@ from pydantic import validator
 from typing import TYPE_CHECKING
 
 from autogpt.core.agents.base.features.agentmixin import AgentMixin
-if TYPE_CHECKING : 
+
+if TYPE_CHECKING:
     from autogpt.core.agents.base.main import BaseAgent
 
 from autogpt.core.configuration import (
@@ -17,7 +18,7 @@ from autogpt.core.configuration import (
     UserConfigurable,
 )
 
-#from autogpt.core.agents.simple.lib.schema import Task
+# from autogpt.core.agents.simple.lib.schema import Task
 from autogpt.core.prompting.base import (
     BasePromptStrategy,
     AbstractPromptStrategy,
@@ -119,7 +120,7 @@ class SimplePlanner(Configurable, AgentMixin):
         strategies: dict[str, AbstractPromptStrategy],
         workspace: Workspace = None,  # Workspace is not available during bootstrapping.
     ) -> None:
-        super().__init__(settings = settings, logger = logger)
+        super().__init__(settings=settings, logger=logger)
         self._workspace = workspace
 
         self._providers: dict[LanguageModelClassification, BaseChatModelProvider] = {}
@@ -130,14 +131,16 @@ class SimplePlanner(Configurable, AgentMixin):
         for strategy in strategies:
             self._prompt_strategies[strategy.STRATEGY_NAME] = strategy
 
-        logger.debug(f"SimplePlanner created with strategies : {self._prompt_strategies}")
+        logger.debug(
+            f"SimplePlanner created with strategies : {self._prompt_strategies}"
+        )
         # self._prompt_strategies = strategies
 
-    # def set_agent(self,agent : BaseAgent) : 
+    # def set_agent(self,agent : BaseAgent) :
     #     self._agent = agent
     #     for strategy in self._prompt_strategies:
     #         self._prompt_strategies[strategy.STRATEGY_NAME].set_agent(agent)
-    
+
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
         """
         await simple_planner.execute_strategy('name_and_goals', user_objective='Learn Python')
@@ -147,8 +150,8 @@ class SimplePlanner(Configurable, AgentMixin):
         if strategy_name not in self._prompt_strategies:
             raise ValueError(f"Invalid strategy name {strategy_name}")
 
-        prompt_strategy : BasePromptStrategy = self._prompt_strategies[strategy_name]
-        prompt_strategy.set_agent(agent = self._agent)
+        prompt_strategy: BasePromptStrategy = self._prompt_strategies[strategy_name]
+        prompt_strategy.set_agent(agent=self._agent)
 
         kwargs.update(self.get_system_info(prompt_strategy))
 

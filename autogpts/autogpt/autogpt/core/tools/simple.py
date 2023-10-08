@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 from autogpt.core.tools.base import Tool, BaseToolsRegistry, ToolConfiguration
 from autogpt.core.tools.command_decorator import AUTO_GPT_TOOL_IDENTIFIER
 
-#from autogpt.core.tools.builtins import BUILTIN_TOOLS
+# from autogpt.core.tools.builtins import BUILTIN_TOOLS
 from autogpt.core.tools.schema import ToolResult
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 
@@ -32,7 +32,6 @@ from autogpt.core.resource.model_providers import (
 from autogpt.core.workspace.base import Workspace
 
 
-
 class ToolsRegistryConfiguration(SystemConfiguration):
     """
     Configuration for the ToolRegistry subsystem.
@@ -42,7 +41,10 @@ class ToolsRegistryConfiguration(SystemConfiguration):
     """
 
     tools: dict[str, ToolConfiguration]
+
+
 ToolsRegistryConfiguration.update_forward_refs()
+
 
 class ToolsRegistrySettings(SystemSettings):
     """
@@ -69,8 +71,8 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         description="A simple tool registry.",
         configuration=ToolsRegistryConfiguration(
             tools={
-                #tool_name: tool.default_configuration
-                #for tool_name, tool in BUILTIN_TOOLS.items()
+                # tool_name: tool.default_configuration
+                # for tool_name, tool in BUILTIN_TOOLS.items()
             },
         ),
     )
@@ -118,7 +120,7 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         Example:
             registry = SimpleToolRegistry(settings, logger, memory, workspace, model_providers)
         """
-        
+
         # self._memory = memory
         # self._workspace = workspace
         # self._model_providers = model_providers
@@ -152,6 +154,7 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         category: str = None,
     ) -> None:
         return self.register(Tool(tool_configuration))
+
     #     """
     #     Register a new tool with the registry.
 
@@ -201,7 +204,6 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
     #             )
     #         self.categories[category].tools.append(tool_name)
 
-
     def register(self, cmd: Tool) -> None:
         """
         Register a new tool with the registry.
@@ -250,19 +252,19 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         ```
         """
         if tool.name in self.tools:
-                    del self.tools[tool.name]
-                    for alias in tool.aliases:
-                        del self.tool_aliases[alias]
+            del self.tools[tool.name]
+            for alias in tool.aliases:
+                del self.tool_aliases[alias]
         else:
             raise KeyError(f"Tool '{tool.name}' not found in registry.")
 
-    def dump_tools(self, available = None) -> list[CompletionModelFunction]:
-        if (available is not None) : 
+    def dump_tools(self, available=None) -> list[CompletionModelFunction]:
+        if available is not None:
             self._logger.warning("Parameter `available` not implemented")
-        
+
         param_dict = {}
-        function_list :list[CompletionModelFunction] = []
-        
+        function_list: list[CompletionModelFunction] = []
+
         for tool in self.tools.values():
             param_dict = {}  # Reset param_dict for each tool
             for parameter in tool.parameters:
@@ -271,15 +273,17 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
             name = tool.name
             description = tool.description
 
-            function_list.append(CompletionModelFunction(
-                name=name,
-                description=description,
-                parameters=param_dict,
-            ))
+            function_list.append(
+                CompletionModelFunction(
+                    name=name,
+                    description=description,
+                    parameters=param_dict,
+                )
+            )
 
         return function_list
 
-#CompletionModelFunction.parse
+    # CompletionModelFunction.parse
     def reload_tools(self) -> None:
         """
         Reloads all loaded tool plugins.
@@ -349,12 +353,11 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
                 return tool(**kwargs)
 
         raise KeyError(f"Tool '{tool_name}' not found in registry")
-    
+
     def call(self, command_name: str, agent: BaseAgent, **kwargs) -> Any:
         if command := self.get_command(command_name):
             return command(**kwargs, agent=agent)
         raise KeyError(f"Tool '{command_name}' not found in registry")
-
 
     def list_available_tools(self, agent: BaseAgent) -> Iterator[Tool]:
         """Iterates over all registered tools and yields those that are available.
@@ -403,15 +406,16 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         return [tool.name() for tool in self.tools]
 
     def get_tool_list(self) -> list[Tool]:
-        logger.warning("### Warning this function has not being tested, we recommand against using it###")
+        logger.warning(
+            "### Warning this function has not being tested, we recommand against using it###"
+        )
         # return self.tools
         return self.tools.values()
 
-
     @staticmethod
     def with_tool_modules(
-        modules: list[str], 
-        agent : BaseAgent,
+        modules: list[str],
+        agent: BaseAgent,
         logger: logging.Logger,
         memory: Memory,
         workspace: Workspace,
@@ -428,13 +432,13 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         #     model_providers={},
         # )
         new_registry = SimpleToolRegistry(
-            logger= logger,
-            settings= SimpleToolRegistry.default_settings,
-            memory = memory,
-            workspace= workspace, 
-            model_providers= model_providers
+            logger=logger,
+            settings=SimpleToolRegistry.default_settings,
+            memory=memory,
+            workspace=workspace,
+            model_providers=model_providers,
         )
-        SimpleToolRegistry._agent = agent 
+        SimpleToolRegistry._agent = agent
 
         # logger.debug(
         #     f"The following tool categories are disabled: {config.disabled_tool_categories}"
@@ -442,9 +446,7 @@ class SimpleToolRegistry(BaseToolsRegistry, Configurable):
         # enabled_tool_modules = [
         #     x for x in modules if x not in config.disabled_tool_categories
         # ]
-        enabled_tool_modules = [
-            x for x in modules
-        ]
+        enabled_tool_modules = [x for x in modules]
 
         logger.debug(
             f"The following tool categories are enabled: {enabled_tool_modules}"

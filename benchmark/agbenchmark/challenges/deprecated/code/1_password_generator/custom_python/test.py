@@ -18,7 +18,9 @@ class TestPasswordGenerator(unittest.TestCase):
     def test_password_content(self):
         password = password_generator.generate_password()
         self.assertTrue(any(c.isdigit() for c in password))
-        self.assertTrue(any(c in password_generator.string.punctuation for c in password))
+        self.assertTrue(
+            any(c in password_generator.string.punctuation for c in password)
+        )
 
 
 if __name__ == "__main__":

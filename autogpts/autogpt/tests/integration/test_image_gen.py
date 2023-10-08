@@ -7,7 +7,10 @@ import pytest
 from PIL import Image
 
 from autogpt.agents.agent import Agent
-from autogpt.core.tools.builtins.image_gen import generate_image, generate_image_with_sd_webui
+from autogpt.core.tools.builtins.image_gen import (
+    generate_image,
+    generate_image_with_sd_webui,
+)
 
 
 @pytest.fixture(params=[256, 512, 1024])

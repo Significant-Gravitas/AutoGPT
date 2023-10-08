@@ -93,8 +93,9 @@ class PromptStrategiesConfiguration(SystemConfiguration):
     pass
 
 
-
 from autogpt.core.agents.base.features.agentmixin import AgentMixin
+
+
 class AbstractPromptStrategy(AgentMixin, abc.ABC):
     STRATEGY_NAME: str
     default_configuration: SystemConfiguration
@@ -149,17 +150,14 @@ class BasePromptStrategy(AbstractPromptStrategy):
             ['refine_requirements']
         """
         return [item.name for item in self._functions]
-    
 
     # NOTE : based on autogpt agent.py
     # This can be expanded to support multiple types of (inter)actions within an agent
-    def response_format_instruction(
-        self, agent: PlannerAgent,  model_name: str) -> str:
-
+    def response_format_instruction(self, agent: PlannerAgent, model_name: str) -> str:
         use_functions_api = agent._chat_model_provider.has_function_call_api(
             model_name=model_name
         )
-        
+
         response_schema = RESPONSE_SCHEMA.copy(deep=True)
         if (
             use_functions_api
@@ -180,4 +178,3 @@ class BasePromptStrategy(AbstractPromptStrategy):
             "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
             f"{response_format}"
         )
-

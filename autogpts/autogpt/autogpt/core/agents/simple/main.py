@@ -111,26 +111,24 @@ class PlannerAgent(BaseAgent):
         self._planning.set_agent(agent=self)
 
         self._tool_registry = SimpleToolRegistry.with_tool_modules(
-            modules = TOOL_CATEGORIES,
+            modules=TOOL_CATEGORIES,
             agent=self,
             logger=self._logger,
             memory=memory,
             workspace=workspace,
-            model_providers=chat_model_provider
-            )
-        #self._tool_registry.set_agent(agent=self)
-        
+            model_providers=chat_model_provider,
+        )
+        # self._tool_registry.set_agent(agent=self)
 
-
-        self._loop : PlannerLoop = PlannerLoop()
+        self._loop: PlannerLoop = PlannerLoop()
         self._loop.set_agent(agent=self)
 
-        self.prompt_settings= self.load_prompt_settings()
+        self.prompt_settings = self.load_prompt_settings()
         self.plan: Plan = None
 
-        # TODO : Get hook added from configuration files 
+        # TODO : Get hook added from configuration files
         # Exemple :
-        # self.add_hook( hook: BaseLoopHook, uuid: uuid.UUID) 
+        # self.add_hook( hook: BaseLoopHook, uuid: uuid.UUID)
         self.add_hook(
             hook=BaseLoopHook(
                 name="begin_run",
@@ -141,8 +139,6 @@ class PlannerAgent(BaseAgent):
             ),
             uuid=uuid.uuid4(),
         )
-
-
 
     def loophooks(self) -> PlannerLoop.LoophooksDict:
         if not self._loop._loophooks:
@@ -314,7 +310,7 @@ class PlannerAgent(BaseAgent):
 
     @classmethod
     def load_prompt_settings(cls):
-        return super().load_prompt_settings(erase = False, file_path= __file__)
+        return super().load_prompt_settings(erase=False, file_path=__file__)
 
 
 def test_hook(**kwargs):

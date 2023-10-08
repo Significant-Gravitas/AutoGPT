@@ -3,7 +3,7 @@ import functools
 import logging
 import math
 import time
-from typing import Callable, ParamSpec, TypeVar, Dict , Any, Tuple
+from typing import Callable, ParamSpec, TypeVar, Dict, Any, Tuple
 
 import openai
 import tiktoken
@@ -395,57 +395,88 @@ class OpenAIProvider(
             "Why did the chicken cross the road? To get to the other side!"
         """
 
-
         # ##############################################################################
         # ### Step 1: Prepare arguments for API call
         # ##############################################################################
-        completion_kwargs = self._initialize_completion_args(model_name = model_name, functions =functions, function_call =function_call, **kwargs)
+        completion_kwargs = self._initialize_completion_args(
+            model_name=model_name,
+            functions=functions,
+            function_call=function_call,
+            **kwargs,
+        )
 
         # ##############################################################################
         # ### Step 2: Execute main chat completion and extract details
         # ##############################################################################
-        response = await self._get_chat_response(model_prompt =model_prompt, **completion_kwargs)
-        response_message, response_args = self._extract_response_details(response = response, model_name = model_name)
+        response = await self._get_chat_response(
+            model_prompt=model_prompt, **completion_kwargs
+        )
+        response_message, response_args = self._extract_response_details(
+            response=response, model_name=model_name
+        )
 
         # ##############################################################################
         # ### Step 3: Handle missing function call and retry if necessary
         # ##############################################################################
-        if self._should_retry_function_call(functions =functions, response_message = response_message):
-            if self._func_call_fails_count <= self._configuration.maximum_retry :
-                return await self._retry_chat_completion(model_prompt = model_prompt, functions = functions, completion_kwargs =completion_kwargs, model_name = model_name, completion_parser =completion_parser, default_function_call = default_function_call, response = response, response_args =response_args)
+        if self._should_retry_function_call(
+            functions=functions, response_message=response_message
+        ):
+            if self._func_call_fails_count <= self._configuration.maximum_retry:
+                return await self._retry_chat_completion(
+                    model_prompt=model_prompt,
+                    functions=functions,
+                    completion_kwargs=completion_kwargs,
+                    model_name=model_name,
+                    completion_parser=completion_parser,
+                    default_function_call=default_function_call,
+                    response=response,
+                    response_args=response_args,
+                )
 
             # FIXME, TODO, NOTE: Organize application save feedback loop to improve the prompts, as it is not normal that function are not called
             response_message["function_call"] = None
             response.choices[0].message["function_call"] = None
-            #self._handle_failed_retry(response_message)
+            # self._handle_failed_retry(response_message)
 
         # ##############################################################################
         # ### Step 4: Reset failure count and integrate improvements
         # ##############################################################################
         self._func_call_fails_count = 0
 
-
         # ##############################################################################
         # ### Step 5: Self feedback
         # ##############################################################################
-        
 
         # ##############################################################################
         # ### Step 6: Formulate the response
         # ##############################################################################
-        return self._formulate_final_response(response_message = response_message , completion_parser = completion_parser,  response_args= response_args)
+        return self._formulate_final_response(
+            response_message=response_message,
+            completion_parser=completion_parser,
+            response_args=response_args,
+        )
 
-    def _initialize_completion_args(self, model_name: str, functions: list[CompletionModelFunction], function_call: str, **kwargs: Any) -> Dict[str, Any]:
-
+    def _initialize_completion_args(
+        self,
+        model_name: str,
+        functions: list[CompletionModelFunction],
+        function_call: str,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
         completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
         completion_kwargs["function_call"] = function_call
         return completion_kwargs
 
-    async def _get_chat_response(self, model_prompt: list[ChatMessage], **completion_kwargs: Any) -> openai.Completion:
-        return await self._create_chat_completion(messages=model_prompt, **completion_kwargs)
+    async def _get_chat_response(
+        self, model_prompt: list[ChatMessage], **completion_kwargs: Any
+    ) -> openai.Completion:
+        return await self._create_chat_completion(
+            messages=model_prompt, **completion_kwargs
+        )
 
-    def _extract_response_details(self, response: openai.Completion, model_name: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-
+    def _extract_response_details(
+        self, response: openai.Completion, model_name: str
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         response_args = {
             "model_info": OPEN_AI_CHAT_MODELS[model_name],
             "prompt_tokens_used": response.usage.prompt_tokens,
@@ -454,15 +485,31 @@ class OpenAIProvider(
         response_message = response.choices[0].message.to_dict_recursive()
         return response_message, response_args
 
-    def _should_retry_function_call(self, functions: list[CompletionModelFunction], response_message: Dict[str, Any]) -> bool:
-
+    def _should_retry_function_call(
+        self, functions: list[CompletionModelFunction], response_message: Dict[str, Any]
+    ) -> bool:
         if functions is not None and "function_call" not in response_message:
-            self._logger.error(f"Attempt number {self._func_call_fails_count + 1} : Function Call was expected")
+            self._logger.error(
+                f"Attempt number {self._func_call_fails_count + 1} : Function Call was expected"
+            )
             return True
         return False
 
-    async def _retry_chat_completion(self, model_prompt: list[ChatMessage], functions: list[CompletionModelFunction], completion_kwargs: Dict[str, Any], model_name: str, completion_parser: Callable[[AssistantChatMessageDict], _T], default_function_call: str, response: openai.Completion, response_args: Dict[str, Any]) -> ChatModelResponse[_T]:
-        completion_kwargs = self._update_function_call_for_retry(completion_kwargs = completion_kwargs, default_function_call = default_function_call)
+    async def _retry_chat_completion(
+        self,
+        model_prompt: list[ChatMessage],
+        functions: list[CompletionModelFunction],
+        completion_kwargs: Dict[str, Any],
+        model_name: str,
+        completion_parser: Callable[[AssistantChatMessageDict], _T],
+        default_function_call: str,
+        response: openai.Completion,
+        response_args: Dict[str, Any],
+    ) -> ChatModelResponse[_T]:
+        completion_kwargs = self._update_function_call_for_retry(
+            completion_kwargs=completion_kwargs,
+            default_function_call=default_function_call,
+        )
         completion_kwargs["functions"] = functions
         response.update(response_args)
         self._budget.update_usage_and_cost(model_response=response)
@@ -473,21 +520,32 @@ class OpenAIProvider(
             **completion_kwargs,
         )
 
-
-    def _update_function_call_for_retry(self, completion_kwargs: Dict[str, Any], default_function_call: str) -> Dict[str, Any]:
-
-        if self._func_call_fails_count >= self._configuration.maximum_retry_before_default_function:
+    def _update_function_call_for_retry(
+        self, completion_kwargs: Dict[str, Any], default_function_call: str
+    ) -> Dict[str, Any]:
+        if (
+            self._func_call_fails_count
+            >= self._configuration.maximum_retry_before_default_function
+        ):
             completion_kwargs["function_call"] = default_function_call
         else:
-            completion_kwargs["function_call"] = completion_kwargs.get("function_call", "auto")
-        completion_kwargs["default_function_call"] = completion_kwargs.get("default_function_call", default_function_call)
+            completion_kwargs["function_call"] = completion_kwargs.get(
+                "function_call", "auto"
+            )
+        completion_kwargs["default_function_call"] = completion_kwargs.get(
+            "default_function_call", default_function_call
+        )
         self._func_call_fails_count += 1
         return completion_kwargs
 
-    #def _handle_failed_retry(self, response_message: Dict[str, Any], response: openai.Completion) -> None:
+    # def _handle_failed_retry(self, response_message: Dict[str, Any], response: openai.Completion) -> None:
 
-
-    def _formulate_final_response(self, response_message: Dict[str, Any], completion_parser: Callable[[AssistantChatMessageDict], _T], response_args: Dict[str, Any]) -> ChatModelResponse[_T]:
+    def _formulate_final_response(
+        self,
+        response_message: Dict[str, Any],
+        completion_parser: Callable[[AssistantChatMessageDict], _T],
+        response_args: Dict[str, Any],
+    ) -> ChatModelResponse[_T]:
         response = ChatModelResponse(
             response=response_message,
             parsed_result=completion_parser(response_message),

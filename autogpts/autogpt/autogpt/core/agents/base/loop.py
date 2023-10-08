@@ -7,10 +7,12 @@ from typing_extensions import NamedTuple, TypedDict
 
 
 from autogpt.core.agents.base.features.agentmixin import AgentMixin
+
 if TYPE_CHECKING:
     from autogpt.core.agents.base.main import BaseAgent
     from autogpt.core.prompting.schema import ChatModelResponse
     from autogpt.core.tools import BaseToolsRegistry, Tool
+
 
 class BaseLoopMeta(abc.ABCMeta):
     def __call__(cls, *args, **kwargs):
@@ -43,7 +45,7 @@ class UserFeedback(str, enum.Enum):
     TEXT = "TEXT"
 
 
-class BaseLoop(AgentMixin,abc.ABC,  metaclass=BaseLoopMeta):
+class BaseLoop(AgentMixin, abc.ABC, metaclass=BaseLoopMeta):
     class LoophooksDict(TypedDict):
         begin_run: Dict[BaseLoopHook]
         end_run: Dict[BaseLoopHook]
@@ -184,10 +186,12 @@ class BaseLoop(AgentMixin,abc.ABC,  metaclass=BaseLoopMeta):
 
     def __repr__(self):
         return "BaseLoop()"
-    
+
     #
-    # SHORTCUTS ! 
+    # SHORTCUTS !
     #
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
-        return await self._agent._planning.execute_strategy( strategy_name = strategy_name, **kwargs)
+        return await self._agent._planning.execute_strategy(
+            strategy_name=strategy_name, **kwargs
+        )

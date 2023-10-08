@@ -12,14 +12,14 @@ from autogpt.utils import validate_yaml_file
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING : 
+if TYPE_CHECKING:
     from .main import BaseAgent
 
-class BaseAgentPromptSettings(ABC) : 
 
+class BaseAgentPromptSettings(ABC):
     @classmethod
     @abstractmethod
-    def load_prompt_settings(cls, erase = False, file=''):
+    def load_prompt_settings(cls, erase=False, file=""):
         # Get the directory containing the current class file
         base_agent_dir = os.path.dirname(__file__)
         # Construct the path to the YAML file based on __file__
@@ -31,10 +31,12 @@ class BaseAgentPromptSettings(ABC) :
         if os.path.exists(current_settings_path):
             with open(current_settings_path, "r") as file:
                 settings.extend(yaml.safe_load(file))
-        
+
         # Load settings from the specified directory (based on 'file')
         if file:
-            specified_settings_path = os.path.join(os.path.dirname(file), "prompt_settings.yaml")
+            specified_settings_path = os.path.join(
+                os.path.dirname(file), "prompt_settings.yaml"
+            )
 
             if os.path.exists(specified_settings_path):
                 with open(specified_settings_path, "r") as file:
@@ -45,9 +47,9 @@ class BaseAgentPromptSettings(ABC) :
                         else:
                             # If the item already exists, update it with specified_settings
                             settings_item = settings.index(item)
-                            if erase : 
+                            if erase:
                                 settings[settings_item] = specified_settings_path
-                            else : 
+                            else:
                                 settings[settings_item].update(specified_settings[item])
 
         return settings
@@ -69,6 +71,7 @@ class BaseAgentDirectives(BaseModel):
     @staticmethod
     def from_file(agent: BaseAgent) -> BaseAgentDirectives:
         from .main import BaseAgent
+
         config_params = agent.prompt_settings
 
         return BaseAgentDirectives(

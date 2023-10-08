@@ -8,7 +8,7 @@ from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 
 if TYPE_CHECKING:
     from autogpt.core.tools import Tool, BaseToolsRegistry
-    from autogpt.core.memory import Memory
+    from autogpt.core.memory.base import Memory
     from autogpt.core.resource.model_providers import (
         EmbeddingModelProvider,
         BaseChatModelProvider,

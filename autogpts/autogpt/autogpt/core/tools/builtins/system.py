@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 from autogpt.core.agents.base.features.context import get_agent_context
 from autogpt.core.utils.exceptions import InvalidArgumentError
-from autogpt.core.tools.command_decorator  import tool
+from autogpt.core.tools.command_decorator import tool
 from autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)

@@ -5,7 +5,7 @@ from autogpt.core.agents.simple.lib.models.tasks import Task
 from typing import Union, Optional, List
 from logging import Logger
 
-logger = Logger(name = __name__) 
+logger = Logger(name=__name__)
 
 
 class Plan(BaseModel):
@@ -41,7 +41,7 @@ class Plan(BaseModel):
 
         # Recursively process tasks up to the specified depth
         if depth > 0:
-            return_dict["tasks"] = [task.dump(depth = depth - 1) for task in self.tasks]
+            return_dict["tasks"] = [task.dump(depth=depth - 1) for task in self.tasks]
 
         return return_dict
 
@@ -135,7 +135,9 @@ class Plan(BaseModel):
                 clear_predecessors(subtask)
 
         # 2. Remove leaves with status "DONE" if ALL their siblings have this status
-        def should_remove_siblings(task: Task, parent_task: Optional[Task] = None) -> bool:
+        def should_remove_siblings(
+            task: Task, parent_task: Optional[Task] = None
+        ) -> bool:
             # If it's a leaf and has a parent
             if not task.subtasks and parent_task:
                 all_done = all(st.status == "DONE" for st in parent_task.subtasks)
@@ -157,18 +159,22 @@ class Plan(BaseModel):
     def get_ready_leaf_tasks(self) -> List[Task]:
         """
         Get tasks that have status "READY", no subtasks, and no task_predecessor_id.
-        
+
         Returns:
             List[Task]: A list of tasks meeting the specified criteria.
         """
         ready_tasks = []
 
         def check_task(task: Task):
-            if task.status == "READY" and not task.subtasks and not task.task_predecessor_id:
+            if (
+                task.status == "READY"
+                and not task.subtasks
+                and not task.task_predecessor_id
+            ):
                 ready_tasks.append(task)
-            
+
             # Check subtasks recursively
-            for subtask in (task.subtasks or []):
+            for subtask in task.subtasks or []:
                 check_task(subtask)
 
         # Start checking from the root tasks in the plan
@@ -176,23 +182,29 @@ class Plan(BaseModel):
             check_task(task)
 
         return ready_tasks
-            
+
     def get_first_ready_task(self) -> Optional[Task]:
         """
         Get the first task that has status "READY", no subtasks, and no task_predecessor_id.
-        
+
         Returns:
             Task or None: The first task meeting the specified criteria or None if no such task is found.
         """
 
         def check_task(task: Task) -> Optional[Task]:
-            if task.status == "READY" and not task.subtasks and not task.task_predecessor_id:
+            if (
+                task.status == "READY"
+                and not task.subtasks
+                and not task.task_predecessor_id
+            ):
                 return task
-            
+
             # Check subtasks recursively
-            for subtask in (task.subtasks or []):
+            for subtask in task.subtasks or []:
                 found_task = check_task(subtask)
-                if found_task:  # If a task is found in the subtasks, return it immediately
+                if (
+                    found_task
+                ):  # If a task is found in the subtasks, return it immediately
                     return found_task
             return None
 
@@ -204,15 +216,18 @@ class Plan(BaseModel):
 
         return None
 
-    def generate_pitch(self , task = None):
-        
-        if task is None : 
+    def generate_pitch(self, task=None):
+        if task is None:
             task = self.get_first_ready_task()
-        
+
         # Extract the task's siblings and path
-        siblings = [sib for sib in self.tasks if sib.task_parent_id == task.task_parent_id and sib != task]
+        siblings = [
+            sib
+            for sib in self.tasks
+            if sib.task_parent_id == task.task_parent_id and sib != task
+        ]
         path_to_task = task.find_task_path()
-        
+
         # Build the pitch
         pitch = """
         # INSTRUCTION
@@ -226,14 +241,20 @@ class Plan(BaseModel):
         {path_structure}
         """.format(
             task_description=task.description,
-            high_level_plan="\n".join(["{}: {}".format(t.name, t.description) for t in self.tasks if not t.task_parent_id]),
+            high_level_plan="\n".join(
+                [
+                    "{}: {}".format(t.name, t.description)
+                    for t in self.tasks
+                    if not t.task_parent_id
+                ]
+            ),
             task_name=task.name,
-            task_command=task.command, # assuming each task has a 'command' attribute
-            path_structure="\n".join(["->".join(p.name for p in path_to_task)])
+            task_command=task.command,  # assuming each task has a 'command' attribute
+            path_structure="\n".join(["->".join(p.name for p in path_to_task)]),
         )
-        
+
         return pitch
-    
+
     @staticmethod
     def parse_agent_plan(plan: dict) -> str:
         parsed_response = f"Agent Plan:\n"
@@ -251,9 +272,10 @@ class Plan(BaseModel):
             parsed_response += "\n"
 
         return parsed_response
-    
-    async def save() : 
+
+    async def save():
         pass
+
 
 # # 1. Find the first ready task
 # first_ready_task = plan.get_first_ready_task()

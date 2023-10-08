@@ -5,7 +5,11 @@ from googleapiclient.errors import HttpError
 
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import ConfigurationError
-from autogpt.core.tools.builtins.web_search import google, safe_google_results, web_search
+from autogpt.core.tools.builtins.web_search import (
+    google,
+    safe_google_results,
+    web_search,
+)
 
 
 @pytest.mark.parametrize(

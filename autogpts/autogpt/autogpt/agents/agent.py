@@ -112,7 +112,7 @@ class Agent(
         include_os_info: Optional[bool] = None,
         **kwargs,
     ) -> ChatPrompt:
-        if extra_messages is None: 
+        if extra_messages is None:
             extra_messages = []
         # Clock
         extra_messages.append(

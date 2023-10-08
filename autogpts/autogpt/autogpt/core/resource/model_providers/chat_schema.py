@@ -253,6 +253,7 @@ class FunctionParameters(BaseModel):
     properties: Dict[str, Property]
     required: List[str]
 
+
 class AssistantFunctionCall(BaseModel):
     """
     `AssistantFunctionCall` encapsulates a function call made by the assistant within a chat interaction.

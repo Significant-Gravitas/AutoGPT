@@ -9,23 +9,18 @@ from typing import TYPE_CHECKING, Callable, Optional
 import distro
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base  import BaseAgent
+    from autogpt.core.agents.base import BaseAgent
     from autogpt.core.agents.simple.lib.models.action_history import Episode
 
 from autogpt.core.utils.exceptions import InvalidAgentResponseError
 from autogpt.config import AIConfig, BaseAgentDirectives
 
 
-
-
 # prompting
-from autogpt.core.prompting.base import (
-    LanguageModelClassification,
-    RESPONSE_SCHEMA
-)
+from autogpt.core.prompting.base import LanguageModelClassification, RESPONSE_SCHEMA
 from autogpt.core.prompting.planningstrategies import (
     PlanningPromptStrategiesConfiguration,
-    PlanningPromptStrategy
+    PlanningPromptStrategy,
 )
 
 from autogpt.core.resource.model_providers import (
@@ -37,6 +32,7 @@ from autogpt.core.resource.model_providers import (
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.prompts.utils import to_numbered_list, indent
+
 
 ###
 ### CONFIGURATION
@@ -171,7 +167,7 @@ class OneShotAgentPromptStrategy(PlanningPromptStrategy):
             "user assistance. Play to your strengths as an LLM and pursue "
             "simple strategies with no legal complications.",
         ]
-    
+
     #
     # _generate_os_info
     #
@@ -246,7 +242,6 @@ class OneShotAgentPromptStrategy(PlanningPromptStrategy):
         except AttributeError:
             self.logger.warn(f"Formatting commands failed. {commands}")
             raise
-
 
     ###
     ### parse_response_content
@@ -354,4 +349,3 @@ class OneShotAgentPromptStrategy(PlanningPromptStrategy):
         part = slice(0, start)
 
         return "\n\n".join(steps)
-    
