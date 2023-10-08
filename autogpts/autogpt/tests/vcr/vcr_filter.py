@@ -6,6 +6,7 @@ from io import BytesIO
 from typing import Any, Dict, List
 
 from vcr.request import Request
+from urllib.parse import urlparse, urlunparse
 
 PROXY = os.environ.get("PROXY")
 
@@ -97,8 +98,6 @@ def before_record_request(request: Request) -> Request | None:
     filtered_request_without_dynamic_data = freeze_request(filtered_request)
     return filtered_request_without_dynamic_data
 
-
-from urllib.parse import urlparse, urlunparse
 
 
 def replace_request_hostname(

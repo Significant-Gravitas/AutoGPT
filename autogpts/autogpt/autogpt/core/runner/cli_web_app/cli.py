@@ -42,7 +42,7 @@ def server(port: int) -> None:
     default=DEFAULT_SETTINGS_FILE,
 )
 @coroutine
-async def client(settings_file) -> None:
+async def client(settings_file: str) -> None:
     """Run the AutoGPT runner client."""
     settings_file = pathlib.Path(settings_file)
     settings = {}
