@@ -320,28 +320,28 @@ class BaseAgent(Configurable, AbstractAgent):
     # Factory interface for agent bootstrapping and initialization #
     ################################################################
 
-    @classmethod
-    def build_user_configuration(cls) -> dict[str, Any]:
-        """
-        Build and return the user's agent configuration.
+    # @classmethod
+    # def build_user_configuration(cls) -> dict[str, Any]:
+    #     """
+    #     Build and return the user's agent configuration.
 
-        Returns:
-            dict[str, Any]: A dictionary containing the user's agent configuration.
+    #     Returns:
+    #         dict[str, Any]: A dictionary containing the user's agent configuration.
 
-        Example:
-            agent_configuration = YourClass.build_user_configuration()
-            print(agent_configuration)
-        """
-        configuration_dict = {
-            "agent": cls.get_user_config(),
-        }
+    #     Example:
+    #         agent_configuration = YourClass.build_user_configuration()
+    #         print(agent_configuration)
+    #     """
+    #     configuration_dict = {
+    #         "agent": cls.get_user_config(),
+    #     }
 
-        system_locations = configuration_dict["agent"]["configuration"]["systems"]
-        for system_name, system_location in system_locations.items():
-            system_class = SimplePluginService.get_plugin(system_location)
-            configuration_dict[system_name] = system_class.get_user_config()
-        configuration_dict = _prune_empty_dicts(configuration_dict)
-        return configuration_dict
+    #     system_locations = configuration_dict["agent"]["configuration"]["systems"]
+    #     for system_name, system_location in system_locations.items():
+    #         system_class = SimplePluginService.get_plugin(system_location)
+    #         configuration_dict[system_name] = system_class.get_user_config()
+    #     configuration_dict = _prune_empty_dicts(configuration_dict)
+    #     return configuration_dict
 
     @classmethod
     def compile_settings(cls, logger: logging.Logger) -> BaseAgentSettings:
@@ -350,7 +350,6 @@ class BaseAgent(Configurable, AbstractAgent):
 
         Args:
             logger (logging.Logger): Logger to use for the agent.
-            user_configuration (dict): The user's custom agent configuration.
 
         Returns:
             BaseAgentSettings: Combined agent settings.

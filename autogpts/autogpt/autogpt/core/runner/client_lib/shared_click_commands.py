@@ -7,13 +7,13 @@ DEFAULT_SETTINGS_FILE = str(
 )
 
 
-@click.command()
-@click.option(
-    "--settings-file",
-    type=click.Path(),
-    default=DEFAULT_SETTINGS_FILE,
-)
-def make_settings(settings_file: str) -> None:
-    from autogpt.core.runner.client_lib.settings import make_user_configuration
+# @click.command()
+# @click.option(
+#     "--settings-file",
+#     type=click.Path(),
+#     default=DEFAULT_SETTINGS_FILE,
+# )
+# def make_settings(settings_file: str) -> None:
+#     from autogpt.core.runner.client_lib.settings import make_user_configuration
 
-    make_user_configuration(pathlib.Path(settings_file))
+#     make_user_configuration(pathlib.Path(settings_file))

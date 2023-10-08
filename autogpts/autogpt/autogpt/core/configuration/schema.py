@@ -38,6 +38,11 @@ class Configurable(abc.ABC, Generic[S]):
     prefix: str = ""
     default_settings: typing.ClassVar[S]
 
+    # New implementation remove default_settings & nest a Configuration class
+    # class Configuration(SystemConfiguration) : 
+    #    pass
+
+
     def __init__(self, settings: S, logger: logging.Logger):
         self._settings = settings
         self._configuration = settings.configuration
