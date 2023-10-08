@@ -8,6 +8,7 @@ import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_edge.dart';
 import 'package:auto_gpt_flutter_client/models/skill_tree/skill_tree_node.dart';
 import 'package:auto_gpt_flutter_client/models/step.dart';
 import 'package:auto_gpt_flutter_client/models/task.dart';
+import 'package:auto_gpt_flutter_client/models/test_option.dart';
 import 'package:auto_gpt_flutter_client/models/test_suite.dart';
 import 'package:auto_gpt_flutter_client/services/benchmark_service.dart';
 import 'package:auto_gpt_flutter_client/services/leaderboard_service.dart';
@@ -39,8 +40,8 @@ class SkillTreeViewModel extends ChangeNotifier {
   // TODO: Potentially move to task queue view model when we create one
   List<SkillTreeNode>? _selectedNodeHierarchy;
 
-  String _selectedOption = 'Run single test';
-  String get selectedOption => _selectedOption;
+  TestOption _selectedOption = TestOption.runSingleTest;
+  TestOption get selectedOption => _selectedOption;
 
   List<SkillTreeNode> get skillTreeNodes => _skillTreeNodes;
   List<SkillTreeEdge> get skillTreeEdges => _skillTreeEdges;
@@ -110,21 +111,20 @@ class SkillTreeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateSelectedNodeHierarchyBasedOnOption(String selectedOption) {
+  void updateSelectedNodeHierarchyBasedOnOption(TestOption selectedOption) {
     _selectedOption = selectedOption;
     switch (selectedOption) {
-      // TODO: Turn this into enum
-      case 'Run single test':
+      case TestOption.runSingleTest:
         _selectedNodeHierarchy = _selectedNode != null ? [_selectedNode!] : [];
         break;
 
-      case 'Run test suite including selected node and ancestors':
+      case TestOption.runTestSuiteIncludingSelectedNodeAndAncestors:
         if (_selectedNode != null) {
           populateSelectedNodeHierarchy(_selectedNode!.id);
         }
         break;
 
-      case 'Run all tests in category':
+      case TestOption.runAllTestsInCategory:
         if (_selectedNode != null) {
           _getAllNodesInDepthFirstOrderEnsuringParents();
         }
