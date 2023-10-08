@@ -17,7 +17,7 @@ async def handle_user_message(prompt):
     print(prompt)
 
 
-async def run_auto_gpt(user_configuration: dict):
+async def run_auto_gpt():
     """Run the Auto-GPT CLI client."""
 
     DEMO = True
@@ -30,7 +30,6 @@ async def run_auto_gpt(user_configuration: dict):
     # Step 1. Collate the user's settings with the default system settings.
     agent_settings: BaseAgentSettings = PlannerAgent.compile_settings(
         client_logger,
-        user_configuration,
     )
 
     import uuid

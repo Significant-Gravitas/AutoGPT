@@ -40,7 +40,7 @@ async def run(settings_file: str, pdb: bool) -> None:
     if settings_file.exists():
         settings = yaml.safe_load(settings_file.read_text())
     main = handle_exceptions(run_auto_gpt, with_debugger=pdb)
-    await main(settings)
+    await main()
 
 
 if __name__ == "__main__":

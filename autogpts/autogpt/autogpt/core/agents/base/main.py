@@ -25,7 +25,7 @@ from autogpt.core.agents.base.models import (
     BaseAgentSettings,
     BaseAgentSystems,
     BaseAgentSystemSettings,
-    BaseAgentDirectives
+    BaseAgentDirectives,
 )
 from autogpt.core.memory.base import Memory
 from autogpt.core.plugin.simple import SimplePluginService
@@ -100,7 +100,6 @@ class AbstractAgent(ABC):
     # _loophooks: Dict[str, BaseLoop.LoophooksDict] = {}
 
 
-        
 class BaseAgent(Configurable, AbstractAgent):
     def __init__(
         self,
@@ -345,9 +344,7 @@ class BaseAgent(Configurable, AbstractAgent):
         return configuration_dict
 
     @classmethod
-    def compile_settings(
-        cls, logger: logging.Logger, user_configuration: dict
-    ) -> BaseAgentSettings:
+    def compile_settings(cls, logger: logging.Logger) -> BaseAgentSettings:
         """
         Compile the user's configuration settings with the default agent settings.
 
@@ -365,29 +362,21 @@ class BaseAgent(Configurable, AbstractAgent):
         """
         logger.debug("Processing agent system configuration.")
         logger.debug("compile_settings" + str(cls))
-        configuration_dict = user_configuration
-        configuration_dict["agent"] = cls.build_agent_configuration(
-            user_configuration.get("agent", {})
-        ).dict()
-        # configuration_dict = {
-        #     "agent": cls.build_agent_configuration(
-        #         user_configuration.get("agent", {})
-        #     ).dict(),
-        # }
+        configuration_dict = {}
+        configuration_dict["agent"] = cls.get_agent_configuration().dict()
 
         system_locations = configuration_dict["agent"]["configuration"]["systems"]
 
-        # Build up default configuration
+        # # Build up default configuration
         for system_name, system_location in system_locations.items():
             if system_location is not None and not isinstance(
                 system_location, uuid.UUID
             ):
                 logger.debug(f"Compiling configuration for system {system_name}")
                 system_class = SimplePluginService.get_plugin(system_location)
-                system_configuration = user_configuration.get(system_name, {})
                 configuration_dict[
                     system_name
-                ] = system_class.build_agent_configuration(system_configuration).dict()
+                ] = system_class.get_agent_configuration().dict()
             else:
                 configuration_dict[system_name] = system_location
 
@@ -397,8 +386,8 @@ class BaseAgent(Configurable, AbstractAgent):
     # Factory interface for agent bootstrapping and initialization #
     ################################################################
 
-    def check_user_context(self, min_len=250, max_len=300):
-        pass
+    # def check_user_context(self, min_len=250, max_len=300):
+    #     pass
 
     @classmethod
     def create_agent(
@@ -430,15 +419,8 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_id = cls._create_agent_in_memory(
             agent_settings=agent_settings, logger=logger, user_id=agent_settings.user_id
         )
-
-        logger.info(
-            f"################################################################################################################################################################################################################################################################################################################################################################"
-        )
         logger.info(
             f"{cls.__name__} id #{agent_id} created in memory. Now, finalizing creation..."
-        )
-        (
-            f"##################################################################################################################################################################################################"
         )
         # Adding agent_id to the settings
         agent_settings.agent.agent_id = agent_id
@@ -447,10 +429,6 @@ class BaseAgent(Configurable, AbstractAgent):
         # Processing to custom treatments
         cls._create_agent_custom_treatment(agent_settings=agent_settings, logger=logger)
 
-        logger.debug(agent_settings.__dict__)
-        logger.info(
-            f"#################################################################################################################################################################################################################################################################################"
-        )
         logger.info(f"Loaded Agent ({cls}) with ID {agent_id}")
 
         agent = cls.get_agent_from_settings(
@@ -459,6 +437,13 @@ class BaseAgent(Configurable, AbstractAgent):
         )
 
         return agent
+
+    @classmethod
+    @abstractmethod
+    def _create_agent_custom_treatment(
+        cls, agent_settings: BaseAgentSettings, logger: logging.Logger
+    ) -> None:
+        pass
 
     @classmethod
     def _create_agent_in_memory(
@@ -521,10 +506,11 @@ class BaseAgent(Configurable, AbstractAgent):
         )
         return system_instance
 
-
     @classmethod
     @abstractmethod
-    def load_prompt_settings(cls, erase = False, file_path : str ='') -> BaseAgentDirectives:
+    def load_prompt_settings(
+        cls, erase=False, file_path: str = ""
+    ) -> BaseAgentDirectives:
         # Get the directory containing the current class file
         base_agent_dir = os.path.dirname(__file__)
         # Construct the path to the YAML file based on __file__
@@ -535,10 +521,10 @@ class BaseAgent(Configurable, AbstractAgent):
         if os.path.exists(current_settings_path):
             with open(current_settings_path, "r") as file:
                 settings = yaml.load(file, Loader=yaml.FullLoader)
-        else :
+        else:
             raise FileNotFoundError(f"Can't locate file {current_settings_path}")
-        
-        agent_directives =  BaseAgentDirectives(
+
+        agent_directives = BaseAgentDirectives(
             constraints=settings.get("constraints", []),
             resources=settings.get("resources", []),
             best_practices=settings.get("best_practices", []),
@@ -546,20 +532,22 @@ class BaseAgent(Configurable, AbstractAgent):
 
         # Load settings from the specified directory (based on 'file')
         if file_path:
-            specified_settings_path = os.path.join(os.path.dirname(file_path), "prompt_settings.yaml")
+            specified_settings_path = os.path.join(
+                os.path.dirname(file_path), "prompt_settings.yaml"
+            )
 
             if os.path.exists(specified_settings_path):
                 with open(specified_settings_path, "r") as file_path:
                     specified_settings = yaml.safe_load(file_path)
                     for key, items in specified_settings.items():
                         if key not in agent_directives.keys():
-                            agent_directives[key] : list[str] = items
+                            agent_directives[key]: list[str] = items
                         else:
                             # If the item already exists, update it with specified_settings
-                            if erase : 
+                            if erase:
                                 agent_directives[key] = items
-                            else : 
-                                agent_directives[key] +=  items 
+                            else:
+                                agent_directives[key] += items
 
         return agent_directives
 

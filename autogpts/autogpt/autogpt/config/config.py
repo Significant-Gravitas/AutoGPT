@@ -335,7 +335,7 @@ class ConfigBuilder(Configurable[Config]):
             k: v for k, v in config_dict.items() if v is not None
         }
 
-        config = cls.build_agent_configuration(config_dict_without_none_values)
+        config = cls.get_agent_configuration(config_dict_without_none_values)
 
         # Set secondary config variables (that depend on other config variables)
 

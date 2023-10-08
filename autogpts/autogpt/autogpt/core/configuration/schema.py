@@ -12,8 +12,6 @@ def UserConfigurable(*args, **kwargs):
 
 
 class SystemConfiguration(BaseModel):
-    def get_user_config(self) -> dict[str, Any]:
-        return _get_user_config_fields(self)
 
     class Config:
         extra = "forbid"
@@ -50,13 +48,11 @@ class Configurable(abc.ABC, Generic[S]):
         return _get_user_config_fields(cls.default_settings)
 
     @classmethod
-    def build_agent_configuration(cls, configuration: dict) -> S:
+    def get_agent_configuration(cls) -> S:
         """Process the configuration for this object."""
 
         defaults = cls.default_settings.dict()
-        final_configuration = deep_update(defaults, configuration)
-
-        return cls.default_settings.__class__.parse_obj(final_configuration)
+        return cls.default_settings.__class__.parse_obj(defaults)
 
 
 def _get_user_config_fields(instance: BaseModel) -> dict[str, Any]:
@@ -91,24 +87,3 @@ def _get_user_config_fields(instance: BaseModel) -> dict[str, Any]:
     return user_config_fields
 
 
-def deep_update(original_dict: dict, update_dict: dict) -> dict:
-    """
-    Recursively update a dictionary.
-
-    Args:
-        original_dict (dict): The dictionary to be updated.
-        update_dict (dict): The dictionary to update with.
-
-    Returns:
-        dict: The updated dictionary.
-    """
-    for key, value in update_dict.items():
-        if (
-            key in original_dict
-            and isinstance(original_dict[key], dict)
-            and isinstance(value, dict)
-        ):
-            original_dict[key] = deep_update(original_dict[key], value)
-        else:
-            original_dict[key] = value
-    return original_dict
