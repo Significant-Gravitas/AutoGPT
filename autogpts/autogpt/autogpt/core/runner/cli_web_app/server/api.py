@@ -6,7 +6,7 @@ from agent_protocol import StepHandler, StepResult
 from autogpt.agents import Agent
 from autogpt.app.main import UserFeedback
 from autogpt.commands import COMMAND_CATEGORIES
-from autogpt.config import AIConfig, ConfigBuilder
+from autogpt.config import AIProfile, ConfigBuilder
 from autogpt.logs.helpers import user_friendly_output
 from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
@@ -71,7 +71,7 @@ async def interaction_step(
 
     return {
         "config": agent.config,
-        "ai_config": agent.ai_config,
+        "ai_profile": agent.ai_profile,
         "result": result,
         "assistant_reply_dict": assistant_reply_dict,
         "next_step_command_name": next_command_name,
@@ -89,16 +89,15 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
     config.memory_backend = "no_memory"
     config.workspace_path = Workspace.init_workspace_directory(config)
     config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
-    ai_config = AIConfig(
+    ai_profile = AIProfile(
         ai_name="AutoGPT",
         ai_role="a multi-purpose AI assistant.",
         ai_goals=[task],
     )
-    ai_config.command_registry = command_registry
     return Agent(
         memory=get_memory(config),
         command_registry=command_registry,
-        ai_config=ai_config,
+        ai_profile=ai_profile,
         config=config,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
     )

@@ -8,7 +8,7 @@ from jinja2 import Template
 
 from autogpt.app import utils
 from autogpt.config import Config
-from autogpt.config.ai_config import AIConfig
+from autogpt.config.ai_profile import AIProfile
 from autogpt.core.resource.model_providers import ChatMessage, ChatModelProvider
 from autogpt.logs.helpers import user_friendly_output
 from autogpt.prompts.default_prompts import (
@@ -20,19 +20,19 @@ from autogpt.prompts.default_prompts import (
 logger = logging.getLogger(__name__)
 
 
-async def interactive_ai_config_setup(
+async def interactive_ai_profile_setup(
     config: Config,
     llm_provider: ChatModelProvider,
-    ai_config_template: Optional[AIConfig] = None,
-) -> AIConfig:
+    ai_profile_template: Optional[AIProfile] = None,
+) -> AIProfile:
     """Prompt the user for input
 
     Params:
         config (Config): The Config object
-        ai_config_template (AIConfig): The AIConfig object to use as a template
+        ai_profile_template (AIProfile): The AIProfile object to use as a template
 
     Returns:
-        AIConfig: The AIConfig object tailored to the user's input
+        AIProfile: The AIProfile object tailored to the user's input
     """
 
     # Construct the prompt
@@ -42,16 +42,16 @@ async def interactive_ai_config_setup(
         title_color=Fore.GREEN,
     )
 
-    ai_config_template_provided = ai_config_template is not None and any(
+    ai_profile_template_provided = ai_profile_template is not None and any(
         [
-            ai_config_template.ai_goals,
-            ai_config_template.ai_name,
-            ai_config_template.ai_role,
+            ai_profile_template.ai_goals,
+            ai_profile_template.ai_name,
+            ai_profile_template.ai_role,
         ]
     )
 
     user_desire = ""
-    if not ai_config_template_provided:
+    if not ai_profile_template_provided:
         # Get user desire if command line overrides have not been passed in
         user_friendly_output(
             title="Create an AI-Assistant:",
@@ -67,13 +67,13 @@ async def interactive_ai_config_setup(
         user_desire = DEFAULT_USER_DESIRE_PROMPT  # Default prompt
 
     # If user desire contains "--manual" or we have overridden any of the AI configuration
-    if "--manual" in user_desire or ai_config_template_provided:
+    if "--manual" in user_desire or ai_profile_template_provided:
         user_friendly_output(
             "",
             title="Manual Mode Selected",
             title_color=Fore.GREEN,
         )
-        return await generate_aiconfig_manual(config, ai_config_template)
+        return await generate_aiconfig_manual(config, ai_profile_template)
 
     else:
         try:
@@ -84,27 +84,27 @@ async def interactive_ai_config_setup(
                 message="Falling back to manual mode.",
                 title_color=Fore.RED,
             )
-            logger.debug(f"Error during AIConfig generation: {e}")
+            logger.debug(f"Error during AIProfile generation: {e}")
 
             return await generate_aiconfig_manual(config)
 
 
 async def generate_aiconfig_manual(
-    config: Config, ai_config_template: Optional[AIConfig] = None
-) -> AIConfig:
+    config: Config, ai_profile_template: Optional[AIProfile] = None
+) -> AIProfile:
     """
     Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
 
     This function guides the user through a series of prompts to collect the necessary information to create
-    an AIConfig object. The user will be asked to provide a name and role for the AI, as well as up to five
+    an AIProfile object. The user will be asked to provide a name and role for the AI, as well as up to five
     goals. If the user does not provide a value for any of the fields, default values will be used.
 
     Params:
         config (Config): The Config object
-        ai_config_template (AIConfig): The AIConfig object to use as a template
+        ai_profile_template (AIProfile): The AIProfile object to use as a template
 
     Returns:
-        AIConfig: An AIConfig object containing the user-defined or default AI name, role, and goals.
+        AIProfile: An AIProfile object containing the user-defined or default AI name, role, and goals.
     """
 
     # Manual Setup Intro
@@ -115,8 +115,8 @@ async def generate_aiconfig_manual(
         title_color=Fore.GREEN,
     )
 
-    if ai_config_template and ai_config_template.ai_name:
-        ai_name = ai_config_template.ai_name
+    if ai_profile_template and ai_profile_template.ai_name:
+        ai_name = ai_profile_template.ai_name
     else:
         ai_name = ""
         # Get AI Name from User
@@ -135,8 +135,8 @@ async def generate_aiconfig_manual(
         title_color=Fore.LIGHTBLUE_EX,
     )
 
-    if ai_config_template and ai_config_template.ai_role:
-        ai_role = ai_config_template.ai_role
+    if ai_profile_template and ai_profile_template.ai_role:
+        ai_role = ai_profile_template.ai_role
     else:
         # Get AI Role from User
         user_friendly_output(
@@ -150,8 +150,8 @@ async def generate_aiconfig_manual(
         ai_role = "an AI designed to autonomously develop and run businesses with the"
         " sole goal of increasing your net worth."
 
-    if ai_config_template and ai_config_template.ai_goals:
-        ai_goals = ai_config_template.ai_goals
+    if ai_profile_template and ai_profile_template.ai_goals:
+        ai_goals = ai_profile_template.ai_goals
     else:
         # Enter up to 5 goals for the AI
         user_friendly_output(
@@ -200,7 +200,7 @@ async def generate_aiconfig_manual(
             )
             api_budget = 0.0
 
-    return AIConfig(
+    return AIProfile(
         ai_name=ai_name, ai_role=ai_role, ai_goals=ai_goals, api_budget=api_budget
     )
 
@@ -209,15 +209,15 @@ async def generate_aiconfig_automatic(
     user_prompt: str,
     config: Config,
     llm_provider: ChatModelProvider,
-) -> AIConfig:
-    """Generates an AIConfig object from the given string.
+) -> AIProfile:
+    """Generates an AIProfile object from the given string.
 
     Returns:
-    AIConfig: The AIConfig object tailored to the user's input
+    AIProfile: The AIProfile object tailored to the user's input
     """
 
     system_prompt = DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC
-    prompt_ai_config_automatic = Template(
+    prompt_ai_profile_automatic = Template(
         DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC
     ).render(user_prompt=user_prompt)
     # Call LLM with the string as user input
@@ -225,7 +225,7 @@ async def generate_aiconfig_automatic(
         await llm_provider.create_chat_completion(
             [
                 ChatMessage.system(system_prompt),
-                ChatMessage.user(prompt_ai_config_automatic),
+                ChatMessage.user(prompt_ai_profile_automatic),
             ],
             config.smart_llm,
         )
@@ -248,6 +248,6 @@ async def generate_aiconfig_automatic(
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
     api_budget = 0.0  # TODO: parse api budget using a regular expression
 
-    return AIConfig(
+    return AIProfile(
         ai_name=ai_name, ai_role=ai_role, ai_goals=ai_goals, api_budget=api_budget
     )

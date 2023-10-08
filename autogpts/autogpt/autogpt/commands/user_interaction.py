@@ -28,6 +28,6 @@ from autogpt.core.utils.json_schema import JSONSchema
 )
 async def ask_user(question: str, agent: Agent) -> str:
     resp = await clean_input(
-        agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "
+        agent.legacy_config, f"{agent.ai_profile.ai_name} asks: '{question}': "
     )
     return f"The user's answer: '{resp}'"
