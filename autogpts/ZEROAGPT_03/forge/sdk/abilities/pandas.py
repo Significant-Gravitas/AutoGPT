@@ -82,7 +82,7 @@ async def get_amount_rows(
     df = load_csv(agent, task_id, file_name)
     if df:
         try:
-            row_amt = len(df.index)
+            row_amt = df.shape[0]
         except Exception as err:
             logger.error(f"getting row value failed: {err}")
             raise err

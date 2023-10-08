@@ -33,6 +33,7 @@ class ProfileGenerator:
         """
         self.task = task
         self.prompt_engine = prompt_engine
+        self.model = model
 
     async def role_find(self) -> str:
         """
@@ -68,7 +69,7 @@ class ProfileGenerator:
 
         chat_completion_parms = {
             "messages": chat_list,
-            "model": os.getenv("OPENAI_MODEL"),
+            "model": self.model,
             "temperature": 0
         }
 

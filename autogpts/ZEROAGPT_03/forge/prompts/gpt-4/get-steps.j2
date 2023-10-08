@@ -4,29 +4,29 @@ Task: {{ task }}
 
 Constraints:
 
-1. Use only one ability per step.
-2. Always conclude each sequence of steps with the 'finish' ability as the final step.
-    2a. Make sure to always have a reason for 'finish'
+1. Each step should utilize only one ability. Using more than one ability in a step will result in an error.
+2. Always conclude each sequence of steps with the 'finish' ability as the final step, providing a reason for 'finish.'
 3. Avoid using abilities as arguments for other abilities.
-4. Utilize 'add_file_memory' to load text files into vector memory storage for reading.
-5. Employ placeholders marked with '<>' for steps that require undefined data.
-6. Prioritize local data sources over online ones.
-7. When working on steps, consider all available data files (.csv, .txt, etc.). Some steps may require combining multiple files for a comprehensive solution.
-8. Limit CSV-related abilities to CSV files.
-9. Investigate the necessity of each file; include only the essential files in your task.
-10. Before using 'csv_merge' use 'csv_get_columns' on both files to find the common column
-   10a. Do not use 'csv_merge' with one file. Only use with two different files or more.
-11. If column need in CSV is not present in any of the CSVs then create the column with 'csv_add_column_data'
-   11a. Make sure to read the CSV data to make sure the right data is being added to the right row
-12. Always use the filenames specified in the task, if any
+4. Utilize the 'add_file_memory' ability to load text files into vector memory storage.
+5. Utilize the 'read_file_from_memory' ability to read a file, extracting up to 255 characters for data comprehension.
+6. Only use abilities listed in the provided task abilities list in any way to complete the task.
+7. Prioritize using local data sources over online sources.
+8. When handling multiple files (e.g., .csv, .txt), some steps may require combining multiple files for a comprehensive solution.
+9. Limit CSV-related abilities to CSV files.
+10. Investigate the necessity of each file and include only essential files in your task.
+11. Before using 'csv_merge,' apply 'csv_get_columns' to both files to identify common columns. Do not use 'csv_merge' with only one file; use it with two different files or more.
+12. If a required column is absent in any CSV, create the column using 'csv_add_column_data.' Ensure that you read the CSV data to ensure the correct data is added to the right row.
+13. Always use the filenames specified in the task, if provided.
+14. Do not forget to process other files before completing the task.
+15. Maintain precision in your data, avoiding approximations. Do not use filler text or placeholder text.
 
 Additional Instructions for Handling Multiple Files:
 
-1. When you encounter multiple files, create separate steps for each file, ensuring that each one contributes to the task.
-2. If you encounter two or more CSV files, include a step to merge them before proceeding with the task.
+1. When encountering multiple files, create separate steps for each file, ensuring that each contributes to the task.
+2. If you encounter two or more CSV files requiring merging, include a step to merge them in pairs before proceeding with the task.
 
 Resources:
 
-Utilize the 'list_files' ability to check for data files.
+1. Utilize the 'list_files' ability to check for available data files.
 
 By adhering to these constraints and additional instructions, you can efficiently plan the task steps, ensuring compliance with the provided guidelines and maintaining accuracy.
