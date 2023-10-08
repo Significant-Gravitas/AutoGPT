@@ -15,7 +15,7 @@ from autogpt.agents import AgentThoughts, CommandArgs, CommandName
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.app.configurator import apply_overrides_to_config
-from autogpt.app.setup import interactive_ai_config_setup
+from autogpt.app.setup import interactive_ai_profile_setup
 from autogpt.app.spinner import Spinner
 from autogpt.app.utils import (
     clean_input,
@@ -26,7 +26,7 @@ from autogpt.app.utils import (
 )
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import (
-    AIConfig,
+    AIProfile,
     Config,
     ConfigBuilder,
     assert_config_has_openai_api_key,
@@ -137,7 +137,7 @@ async def run_auto_gpt(
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
 
-    ai_config = await construct_main_ai_config(
+    ai_profile = await construct_main_ai_profile(
         config,
         llm_provider=llm_provider,
         name=ai_name,
@@ -151,7 +151,7 @@ async def run_auto_gpt(
     agent_settings = AgentSettings(
         name=Agent.default_settings.name,
         description=Agent.default_settings.description,
-        ai_config=ai_config,
+        ai_profile=ai_profile,
         config=AgentConfiguration(
             fast_llm=config.fast_llm,
             smart_llm=config.smart_llm,
@@ -283,7 +283,7 @@ async def run_interaction_loop(
     """
     # These contain both application config and agent config, so grab them here.
     legacy_config = agent.legacy_config
-    ai_config = agent.ai_config
+    ai_profile = agent.ai_profile
     logger = logging.getLogger(__name__)
 
     cycle_budget = cycles_remaining = _get_cycle_budget(
@@ -350,7 +350,7 @@ async def run_interaction_loop(
         ###############
         # Print the assistant's thoughts and the next command to the user.
         update_user(
-            ai_config,
+            ai_profile,
             command_name,
             command_args,
             assistant_reply_dict,
@@ -363,7 +363,7 @@ async def run_interaction_loop(
         if cycles_remaining == 1:  # Last cycle
             user_feedback, user_input, new_cycles_remaining = await get_user_feedback(
                 legacy_config,
-                ai_config,
+                ai_profile,
             )
 
             if user_feedback == UserFeedback.AUTHORIZE:
@@ -428,7 +428,7 @@ async def run_interaction_loop(
 
 
 def update_user(
-    ai_config: AIConfig,
+    ai_profile: AIProfile,
     command_name: CommandName,
     command_args: CommandArgs,
     assistant_reply_dict: AgentThoughts,
@@ -438,7 +438,7 @@ def update_user(
 
     Args:
         config: The program's configuration.
-        ai_config: The AI's configuration.
+        ai_profile: The AI's personality/profile
         command_name: The name of the command to execute.
         command_args: The arguments for the command.
         assistant_reply_dict: The assistant's reply.
@@ -446,7 +446,7 @@ def update_user(
     logger = logging.getLogger(__name__)
 
     print_assistant_thoughts(
-        ai_name=ai_config.ai_name,
+        ai_name=ai_profile.ai_name,
         assistant_reply_json_valid=assistant_reply_dict,
         speak_mode=speak_mode,
     )
@@ -469,13 +469,13 @@ def update_user(
 
 async def get_user_feedback(
     config: Config,
-    ai_config: AIConfig,
+    ai_profile: AIProfile,
 ) -> tuple[UserFeedback, str, int | None]:
     """Gets the user's feedback on the assistant's reply.
 
     Args:
         config: The program's configuration.
-        ai_config: The AI's configuration.
+        ai_profile: The AI's configuration.
 
     Returns:
         A tuple of the user's feedback, the user's input, and the number of
@@ -490,7 +490,7 @@ async def get_user_feedback(
         f"Enter '{config.authorise_key}' to authorise command, "
         f"'{config.authorise_key} -N' to run N continuous commands, "
         f"'{config.exit_key}' to exit program, or enter feedback for "
-        f"{ai_config.ai_name}..."
+        f"{ai_profile.ai_name}..."
     )
 
     user_feedback = None
@@ -530,13 +530,13 @@ async def get_user_feedback(
     return user_feedback, user_input, new_cycles_remaining
 
 
-async def construct_main_ai_config(
+async def construct_main_ai_profile(
     config: Config,
     llm_provider: ChatModelProvider,
     name: Optional[str] = None,
     role: Optional[str] = None,
     goals: tuple[str] = tuple(),
-) -> AIConfig:
+) -> AIProfile:
     """Construct the prompt for the AI to respond to
 
     Returns:
@@ -544,48 +544,48 @@ async def construct_main_ai_config(
     """
     logger = logging.getLogger(__name__)
 
-    ai_config = AIConfig.load(config.workdir / config.ai_settings_file)
+    ai_profile = AIProfile.load(config.ai_settings_file)
 
     # Apply overrides
     if name:
-        ai_config.ai_name = name
+        ai_profile.ai_name = name
     if role:
-        ai_config.ai_role = role
+        ai_profile.ai_role = role
     if goals:
-        ai_config.ai_goals = list(goals)
+        ai_profile.ai_goals = list(goals)
 
     if (
         all([name, role, goals])
         or config.skip_reprompt
-        and all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals])
+        and all([ai_profile.ai_name, ai_profile.ai_role, ai_profile.ai_goals])
     ):
-        print_attribute("Name :", ai_config.ai_name)
-        print_attribute("Role :", ai_config.ai_role)
-        print_attribute("Goals:", ai_config.ai_goals)
+        print_attribute("Name :", ai_profile.ai_name)
+        print_attribute("Role :", ai_profile.ai_role)
+        print_attribute("Goals:", ai_profile.ai_goals)
         print_attribute(
             "API Budget:",
-            "infinite" if ai_config.api_budget <= 0 else f"${ai_config.api_budget}",
+            "infinite" if ai_profile.api_budget <= 0 else f"${ai_profile.api_budget}",
         )
-    elif all([ai_config.ai_name, ai_config.ai_role, ai_config.ai_goals]):
+    elif all([ai_profile.ai_name, ai_profile.ai_role, ai_profile.ai_goals]):
         logger.info(
             extra={"title": f"{Fore.GREEN}Welcome back!{Fore.RESET}"},
-            msg=f"Would you like me to return to being {ai_config.ai_name}?",
+            msg=f"Would you like me to return to being {ai_profile.ai_name}?",
         )
         should_continue = await clean_input(
             config,
             f"""Continue with the last settings?
-Name:  {ai_config.ai_name}
-Role:  {ai_config.ai_role}
-Goals: {ai_config.ai_goals}
-API Budget: {"infinite" if ai_config.api_budget <= 0 else f"${ai_config.api_budget}"}
+Name:  {ai_profile.ai_name}
+Role:  {ai_profile.ai_role}
+Goals: {ai_profile.ai_goals}
+API Budget: {"infinite" if ai_profile.api_budget <= 0 else f"${ai_profile.api_budget}"}
 Continue ({config.authorise_key}/{config.exit_key}): """,
         )
         if should_continue.lower() == config.exit_key:
-            ai_config = AIConfig()
+            ai_profile = AIProfile()
 
-    if any([not ai_config.ai_name, not ai_config.ai_role, not ai_config.ai_goals]):
-        ai_config = await interactive_ai_config_setup(config, llm_provider)
-        ai_config.save(config.workdir / config.ai_settings_file)
+    if any([not ai_profile.ai_name, not ai_profile.ai_role, not ai_profile.ai_goals]):
+        ai_profile = await interactive_ai_profile_setup(config, llm_provider)
+        ai_profile.save(config.ai_settings_file)
 
     if config.restrict_to_workspace:
         logger.info(
@@ -595,22 +595,22 @@ Continue ({config.authorise_key}/{config.exit_key}): """,
         )
     # set the total api budget
     api_manager = ApiManager()
-    api_manager.set_total_budget(ai_config.api_budget)
+    api_manager.set_total_budget(ai_profile.api_budget)
 
     # Agent Created, print message
     logger.info(
-        f"{Fore.LIGHTBLUE_EX}{ai_config.ai_name}{Fore.RESET} has been created with the following details:",
+        f"{Fore.LIGHTBLUE_EX}{ai_profile.ai_name}{Fore.RESET} has been created with the following details:",
         extra={"preserve_color": True},
     )
 
-    # Print the ai_config details
-    print_attribute("Name :", ai_config.ai_name)
-    print_attribute("Role :", ai_config.ai_role)
+    # Print the ai_profile details
+    print_attribute("Name :", ai_profile.ai_name)
+    print_attribute("Role :", ai_profile.ai_role)
     print_attribute("Goals:", "")
-    for goal in ai_config.ai_goals:
+    for goal in ai_profile.ai_goals:
         logger.info(f"- {goal}")
 
-    return ai_config
+    return ai_profile
 
 
 def print_assistant_thoughts(
