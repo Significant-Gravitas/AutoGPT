@@ -52,8 +52,8 @@ class LanguageModelConfiguration(SystemConfiguration):
     temperature: float = UserConfigurable()
 
 
-class SimplePlannerConfiguration(SystemConfiguration):
-    """Configuration for the SimplePlanner subsystem."""
+class PromptManagerConfiguration(SystemConfiguration):
+    """Configuration for the PromptManager subsystem."""
 
     models: dict[LanguageModelClassification, LanguageModelConfiguration] = {
                 LanguageModelClassification.FAST_MODEL_4K: LanguageModelConfiguration(
@@ -95,23 +95,23 @@ class SimplePlannerConfiguration(SystemConfiguration):
         return models
 
 
-class SimplePlannerSettings(SystemSettings):
-    """Settings for the SimplePlanner subsystem."""
+class PromptManagerSettings(SystemSettings):
+    """Settings for the PromptManager subsystem."""
     name="planner"
     description="Manages the agent's planning and goal-setting by constructing language model prompts."
-    configuration: SimplePlannerConfiguration = SimplePlannerConfiguration()
+    configuration: PromptManagerConfiguration = PromptManagerConfiguration()
 
 
-class SimplePlanner(Configurable, AgentMixin):
+class PromptManager(Configurable, AgentMixin):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
-    #default_settings = SimplePlannerSettings()
-    class Settings(SimplePlannerSettings):
+    #default_settings = PromptManagerSettings()
+    class Settings(PromptManagerSettings):
         pass
 
     def __init__(
         self,
-        settings: SimplePlannerSettings,
+        settings: PromptManagerSettings,
         logger: logging.Logger,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
         strategies: dict[str, AbstractPromptStrategy],
@@ -129,7 +129,7 @@ class SimplePlanner(Configurable, AgentMixin):
             self._prompt_strategies[strategy.STRATEGY_NAME] = strategy
 
         logger.debug(
-            f"SimplePlanner created with strategies : {self._prompt_strategies}"
+            f"PromptManager created with strategies : {self._prompt_strategies}"
         )
         # self._prompt_strategies = strategies
 

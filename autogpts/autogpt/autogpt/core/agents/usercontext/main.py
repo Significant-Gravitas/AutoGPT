@@ -15,7 +15,7 @@ from autogpt.core.agents.usercontext.models import (
 )
 from autogpt.core.configuration import Configurable
 from autogpt.core.memory.base import Memory
-from autogpt.core.agents.simple.lib import SimplePlanner, Task, TaskStatusList
+from autogpt.core.agents.simple.lib import PromptManager, Task, TaskStatusList
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 from autogpt.core.resource.model_providers import OpenAIProvider
 from autogpt.core.workspace.simple import SimpleWorkspace
@@ -53,7 +53,7 @@ class UserContextAgent(BaseAgent):
         memory: Memory,
         chat_model_provider: OpenAIProvider,
         workspace: SimpleWorkspace,
-        planning: SimplePlanner,
+        planning: PromptManager,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
     ):
@@ -196,7 +196,7 @@ class UserContextAgent(BaseAgent):
         )
         logger.debug("Loading agent planner.")
 
-        agent_planner: SimplePlanner = cls._get_system_instance(
+        agent_planner: PromptManager = cls._get_system_instance(
             "planning",
             agent_settings,
             logger=logger,

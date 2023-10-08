@@ -10,7 +10,7 @@ from autogpt.core.agents.base.models import (
     BaseAgentSettings,
     BaseAgentSystems,
 )
-from autogpt.core.agents.simple.lib import SimplePlannerSettings
+from autogpt.core.agents.simple.lib import PromptManagerSettings
 from autogpt.core.plugin.simple import PluginLocation
 from autogpt.core.resource.model_providers import OpenAISettings
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING :
 class PlannerAgentSystems(BaseAgentSystems):
     tool_registry : str ="autogpt.core.tools.SimpleToolRegistry"
     chat_model_provider : str ="autogpt.core.resource.model_providers.OpenAIProvider"
-    planning : str ="autogpt.core.agents.simple.lib.SimplePlanner"
+    planning : str ="autogpt.core.agents.simple.lib.PromptManager"
 
     class Config(BaseAgentSystems.Config):
         pass
@@ -50,7 +50,7 @@ class PlannerAgentSettings(BaseAgentSettings):
     
     chat_model_provider: OpenAISettings = OpenAISettings()
     tool_registry: SimpleToolRegistry.SystemSettings = SimpleToolRegistry.SystemSettings()
-    planning: SimplePlannerSettings = SimplePlannerSettings()
+    planning: PromptManagerSettings = PromptManagerSettings()
     user_id: Optional[uuid.UUID] = Field(default=None)
     agent_id: Optional[uuid.UUID] = Field(default=None)
     agent_name: str = Field(default="New Agent")
