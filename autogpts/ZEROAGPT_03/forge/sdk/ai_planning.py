@@ -61,7 +61,7 @@ class AIPlanning:
             },
             {
                 "role": "system",
-                "content": "You are a professional Project Planner."
+                "content": "You are an expert Planner."
             },
             {
                 "role": "user", 
@@ -76,7 +76,7 @@ class AIPlanning:
         chat_completion_parms = {
             "messages": chat_list,
             "model": self.model,
-            "temperature": 0.8
+            "temperature": 0
         }
         
         response = await chat_completion_request(

@@ -329,7 +329,7 @@ class ForgeAgent(Agent):
             chat_completion_parms = {
                 "messages": self.chat_history[task_id],
                 "model": os.getenv("OPENAI_MODEL"),
-                "temperature": 0.5
+                "temperature": 0.2
             }
 
             chat_response = await chat_completion_request(
@@ -407,29 +407,31 @@ class ForgeAgent(Agent):
                                     content=f"[{timestamp}] Ability {ability['name']} failed to run: {err}"
                                 )
 
-                            if output:
-                                LOG.info(f"🔨 Ability Output\n{output}")
+                            if output == None:
+                                output = ""
 
-                                # change output to string if there is output
-                                if isinstance(output, bytes):
-                                    output = output.decode()
-                                
-                                # add to converstion
-                                # add arguments to function content, if any
-                                if "args" in ability:
-                                    ccontent = f"[Arguments {ability['args']}]: {output} "
-                                else:
-                                    ccontent = output
+                            LOG.info(f"🔨 Ability Output\n{output}")
 
-                                self.add_chat(
-                                    task_id=task_id,
-                                    role="function",
-                                    content=ccontent,
-                                    is_function=True,
-                                    function_name=ability["name"]
-                                )
+                            # change output to string if there is output
+                            if isinstance(output, bytes):
+                                output = output.decode()
+                            
+                            # add to converstion
+                            # add arguments to function content, if any
+                            if "args" in ability:
+                                ccontent = f"[Arguments {ability['args']}]: {output} "
+                            else:
+                                ccontent = output
 
-                                step.status = "completed"
+                            self.add_chat(
+                                task_id=task_id,
+                                role="function",
+                                content=ccontent,
+                                is_function=True,
+                                function_name=ability["name"]
+                            )
+
+                            step.status = "completed"
 
                             if ability["name"] == "finish":
                                 step.is_last = True

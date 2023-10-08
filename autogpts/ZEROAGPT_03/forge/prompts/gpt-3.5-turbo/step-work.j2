@@ -6,7 +6,9 @@ Task:
 Steps: 
 {% for step in steps %}
 - {{ step.step }}
-   {% for ability in step.abilities %}* Ability Name: {{ ability.name }}{% endfor %} 
+   {% for ability in step.abilities %}
+      * Ability Name: {{ ability.name }}
+   {% endfor %} 
 {% endfor %}
 
 Constraints:
