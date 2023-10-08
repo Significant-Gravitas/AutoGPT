@@ -39,3 +39,10 @@ class AIDirectives(BaseModel):
             resources=config_params.get("resources", []),
             best_practices=config_params.get("best_practices", []),
         )
+
+    def __add__(self, other: "AIDirectives") -> "AIDirectives":
+        return AIDirectives(
+            resources=self.resources + other.resources,
+            constraints=self.constraints + other.constraints,
+            best_practices=self.best_practices + other.best_practices,
+        ).copy(deep=True)
