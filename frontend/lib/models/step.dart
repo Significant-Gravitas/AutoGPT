@@ -1,4 +1,6 @@
 // TODO: Refactor this to match which values are required and optional
+import 'package:auto_gpt_flutter_client/models/artifact.dart';
+
 class Step {
   final String input;
   final Map<String, dynamic> additionalInput;
@@ -8,8 +10,7 @@ class Step {
   final String status;
   final String output;
   final Map<String, dynamic> additionalOutput;
-  // TODO: Create an actual artifact object
-  final List<dynamic> artifacts;
+  final List<Artifact> artifacts;
   final bool isLast;
 
   Step({
@@ -42,8 +43,10 @@ class Step {
       additionalOutput: map['additional_output'] != null
           ? Map<String, dynamic>.from(map['additional_output'])
           : {},
-      artifacts:
-          map['artifacts'] != null ? List<dynamic>.from(map['artifacts']) : [],
+      artifacts: (map['artifacts'] as List)
+          .map(
+              (artifact) => Artifact.fromJson(artifact as Map<String, dynamic>))
+          .toList(),
       isLast: map['is_last'] ?? false,
     );
   }
