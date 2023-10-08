@@ -65,4 +65,6 @@ class Command:
             f"{param.name}: {param.spec.type.value if param.spec.required else f'Optional[{param.spec.type.value}]'}"
             for param in self.parameters
         ]
-        return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"
+        return f"{self.name}: \
+            {self.description.rstrip('.')}. \
+            Params: ({', '.join(params)})"

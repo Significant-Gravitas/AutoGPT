@@ -8,7 +8,9 @@ from tests.challenges.utils import get_workspace_path, run_challenge
 CYCLE_COUNT = 3
 OUTPUT_LOCATION = "2010_nobel_prize_winners.txt"
 USER_INPUTS = [
-    "Write to file the winner's name(s), affiliated university, and discovery of the 2010 nobel prize in physics. Write your final answer to 2010_nobel_prize_winners.txt."
+    "Write to file the winner's name(s), affiliated university, "
+    "and discovery of the 2010 nobel prize in physics. Write your final answer to "
+    "2010_nobel_prize_winners.txt."
 ]
 
 
@@ -22,11 +24,13 @@ def test_information_retrieval_challenge_b(
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
-    Test the challenge_b function in a given agent by mocking user inputs and checking the output file content.
+    Test the challenge_b function in a given agent by mocking user inputs and checking
+    the output file content.
 
     :param get_nobel_prize_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
-    :param patched_api_requestor: APIRequestor Patch to override the openai.api_requestor module for testing.
+    :param patched_api_requestor: APIRequestor Patch to override the
+    openai.api_requestor module for testing.
     :param level_to_run: The level to run.
     """
 

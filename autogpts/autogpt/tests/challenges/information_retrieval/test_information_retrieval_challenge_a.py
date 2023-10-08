@@ -10,11 +10,13 @@ CYCLE_COUNT = 3
 EXPECTED_REVENUES = [["81"], ["81"], ["81", "53", "24", "21", "11", "7", "4", "3", "2"]]
 
 OUTPUT_LOCATION = "output.txt"
-USER_INPUTS = [
-    "Write to a file called output.txt containing tesla's revenue in 2022 after searching for 'tesla revenue 2022'.",
-    "Write to a file called output.txt containing tesla's revenue in 2022.",
-    "Write to a file called output.txt containing tesla's revenue every year since its creation.",
-]
+# USER_INPUTS = [
+#     "Write to a file called output.txt containing tesla's revenue in 2022 after "
+#     "searching for 'tesla revenue 2022'.",
+#     "Write to a file called output.txt containing tesla's revenue in 2022.",
+#     "Write to a file called output.txt containing tesla's revenue "
+#     "every year since its creation.",
+# ]
 
 
 @challenge()
@@ -27,7 +29,8 @@ def test_information_retrieval_challenge_a(
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
-    Test the challenge_a function in a given agent by mocking user inputs and checking the output file content.
+    Test the challenge_a function in a given agent by mocking user inputs and checking
+    the output file content.
 
     :param get_company_revenue_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.

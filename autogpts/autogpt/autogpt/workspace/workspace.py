@@ -124,14 +124,16 @@ class Workspace:
 
         logger.debug(f"Resolved root as '{root}'")
 
-        # Allow exception for absolute paths if they are contained in your workspace directory.
+        # Allow exception for absolute paths if they are contained in your workspace
+        # directory.
         if (
             relative_path.is_absolute()
             and restrict_to_root
             and not relative_path.is_relative_to(root)
         ):
             raise ValueError(
-                f"Attempted to access absolute path '{relative_path}' in workspace '{root}'."
+                f"Attempted to access absolute path '{relative_path}'\
+                    in workspace '{root}'."
             )
 
         full_path = root.joinpath(relative_path).resolve()
@@ -140,7 +142,8 @@ class Workspace:
 
         if restrict_to_root and not full_path.is_relative_to(root):
             raise ValueError(
-                f"Attempted to access path '{full_path}' outside of workspace '{root}'."
+                f"Attempted to access path '{full_path}'\
+                    outside of workspace '{root}'."
             )
 
         return full_path
@@ -159,7 +162,7 @@ class Workspace:
     ) -> Path:
         if override_workspace_path is None:
             workspace_path = config.workdir / "auto_gpt_workspace"
-        elif type(override_workspace_path) == str:
+        elif type(override_workspace_path) is str:
             workspace_path = Path(override_workspace_path)
         else:
             workspace_path = override_workspace_path

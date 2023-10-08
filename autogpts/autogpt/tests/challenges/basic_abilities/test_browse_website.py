@@ -6,7 +6,12 @@ from tests.challenges.utils import run_challenge
 
 CYCLE_COUNT = 2
 USER_INPUTS = [
-    "Use the browse_website command to visit http://books.toscrape.com/catalogue/meditations_33/index.html and answer the question 'What is the price of the book?'\nWrite the price of the book to a file named 'browse_website.txt'.'\nUse the task_complete command to complete the task.\nDo not use any other commands."
+    "Use the browse_website command to visit "
+    "http://books.toscrape.com/catalogue/meditations_33/index.html and answer "
+    "the question 'What is the price of the book?'\n"
+    "Write the price of the book to a file named 'browse_website.txt'.'\n"
+    "Use the task_complete command to complete the task.\n"
+    "Do not use any other commands."
 ]
 
 

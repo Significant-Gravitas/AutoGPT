@@ -49,7 +49,7 @@ def pytest_configure(config: Config) -> None:
 
 @pytest.fixture
 def level_to_run(request: FixtureRequest) -> int:
-    ## used for challenges in the goal oriented tests
+    # used for challenges in the goal oriented tests
     return request.config.option.level
 
 

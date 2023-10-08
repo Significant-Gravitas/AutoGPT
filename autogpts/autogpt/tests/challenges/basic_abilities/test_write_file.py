@@ -12,7 +12,8 @@ EXPECTED_OUTPUTS_PER_LEVEL = [
 ]
 USER_INPUTS = [
     "Write 'Hello World' into a file named \"hello_world.txt\".",
-    'Write \'Hello World\' into 2 files named "hello_world_1.txt"and "hello_world_2.txt".',
+    'Write \'Hello World\' into 2 files named "hello_world_1.txt"'
+    'and "hello_world_2.txt".',
 ]
 
 

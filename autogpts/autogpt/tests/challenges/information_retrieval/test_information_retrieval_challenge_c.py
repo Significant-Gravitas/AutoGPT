@@ -10,9 +10,12 @@ COO = [["Luke Lafreniere"], ["Luke Lafreniere"], ["Luke Lafreniere 2017"]]
 
 OUTPUT_LOCATION = "output.txt"
 USER_INPUTS = [
-    "Write to a file called output.txt containing the name and title of the current Chief Operating Officer of Floatplane Media.",
-    "Write to a file called output.txt containing the name and title of the current Chief Operating Officer of https://www.floatplane.com.",
-    "Write to a file called output.txt containing the name and title of the current Chief Operating Officer of https://www.floatplane.com and the year it was formed.",
+    "Write to a file called output.txt containing the name and title of the current "
+    "Chief Operating Officer of Floatplane Media.",
+    "Write to a file called output.txt containing the name and title of the current "
+    "Chief Operating Officer of https://www.floatplane.com.",
+    "Write to a file called output.txt containing the name and title of the current "
+    "Chief Operating Officer of https://www.floatplane.com and the year it was formed.",
 ]
 
 
@@ -26,7 +29,8 @@ def test_information_retrieval_challenge_c(
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
-    Test the challenge_c function in a given agent by mocking user inputs and checking the output file content.
+    Test the challenge_c function in a given agent by mocking user inputs and checking
+    the output file content.
 
     :param get_floatplane_ceo_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.

@@ -71,10 +71,12 @@ def test_execute_python_file_invalid(agent: Agent):
 
 
 def test_execute_python_file_not_found(agent: Agent):
-    with pytest.raises(
-        FileNotFoundError,
-        match=r"python: can't open file '([a-zA-Z]:)?[/\\\-\w]*notexist.py': \[Errno 2\] No such file or directory",
-    ):
+    error = (
+        r"python: can't open file '([a-zA-Z]:)?[/\\\-\w]*notexist.py': "
+        r"\[Errno 2\] No such file or directory"
+    )
+
+    with pytest.raises(FileNotFoundError, match=error):
         sut.execute_python_file("notexist.py", agent)
 
 

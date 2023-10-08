@@ -79,7 +79,8 @@ def fetch_openai_plugins_manifest_and_spec(config: Config) -> dict:
                     manifest = response.json()
                     if manifest["schema_version"] != "v1":
                         logger.warn(
-                            f"Unsupported manifest version: {manifest['schem_version']} for {url}"
+                            f"Unsupported manifest version: \
+                                {manifest['schem_version']} for {url}"
                         )
                         continue
                     if manifest["api"]["type"] != "openapi":
@@ -234,14 +235,16 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
 
         try:
             __import__(qualified_module_name)
-        except:
+        except Exception:
             logger.error(f"Failed to load {qualified_module_name}")
             continue
         plugin = sys.modules[qualified_module_name]
 
         if not plugins_config.is_enabled(plugin_module_name):
             logger.warn(
-                f"Plugin folder {plugin_module_name} found but not configured. If this is a legitimate plugin, please add it to plugins_config.yaml (key: {plugin_module_name})."
+                f"Plugin folder {plugin_module_name} found but not configured. \
+                    If this is a legitimate plugin, please add it to \
+                    plugins_config.yaml (key: {plugin_module_name})."
             )
             continue
 
@@ -262,7 +265,7 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                 zipped_package = zipimporter(str(plugin))
                 try:
                     zipped_module = zipped_package.load_module(str(module.parent))
-                except:
+                except Exception:
                     logger.error(f"Failed to load {str(module.parent)}")
 
                 for key in dir(zipped_module):
@@ -283,24 +286,30 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
 
                         if plugin_configured and plugin_enabled:
                             logger.debug(
-                                f"Loading plugin {plugin_name}. Enabled in plugins_config.yaml."
+                                f"Loading plugin {plugin_name}. \
+                                    Enabled in plugins_config.yaml."
                             )
                             loaded_plugins.append(a_module())
                         elif plugin_configured and not plugin_enabled:
                             logger.debug(
-                                f"Not loading plugin {plugin_name}. Disabled in plugins_config.yaml."
+                                f"Not loading plugin {plugin_name}. \
+                                    Disabled in plugins_config.yaml."
                             )
                         elif not plugin_configured:
                             logger.warn(
-                                f"Not loading plugin {plugin_name}. Key '{plugin_name}' was not found in plugins_config.yaml. "
-                                f"Zipped plugins should use the class name ({plugin_name}) as the key."
+                                f"Not loading plugin {plugin_name}. \
+                                    Key '{plugin_name}' was not found in \
+                                    plugins_config.yaml. "
+                                f"Zipped plugins should use the \
+                                    class name ({plugin_name}) as the key."
                             )
                     else:
                         if (
                             module_name := getattr(a_module, "__name__", str(a_module))
                         ) != "AutoGPTPluginTemplate":
                             logger.debug(
-                                f"Skipping '{module_name}' because it doesn't subclass AutoGPTPluginTemplate."
+                                f"Skipping '{module_name}' because it \
+                                    doesn't subclass AutoGPTPluginTemplate."
                             )
 
     # OpenAI plugins

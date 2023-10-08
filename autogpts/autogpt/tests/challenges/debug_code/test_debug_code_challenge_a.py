@@ -19,8 +19,15 @@ DIRECTORY_PATH = Path(__file__).parent / "data"
 CODE_FILE_PATH = "code.py"
 TEST_FILE_PATH = "test.py"
 USER_INPUTS = [
-    "1- Run test.py using the execute_python_file command.\n2- Read code.py using the read_file command.\n3- Modify code.py using the write_to_file command.\nRepeat step 1, 2 and 3 until test.py runs without errors. Do not modify the test.py file.",
-    "1- Run test.py.\n2- Read code.py.\n3- Modify code.py.\nRepeat step 1, 2 and 3 until test.py runs without errors.\n",
+    "1- Run test.py using the execute_python_file command.\n"
+    "2- Read code.py using the read_file command.\n"
+    "3- Modify code.py using the write_to_file command.\n"
+    "Repeat step 1, 2 and 3 until test.py runs without errors. "
+    "Do not modify the test.py file.",
+    "1- Run test.py.\n"
+    "2- Read code.py.\n"
+    "3- Modify code.py.\n"
+    "Repeat step 1, 2 and 3 until test.py runs without errors.\n",
     "Make test.py run without errors.",
 ]
 
@@ -65,4 +72,5 @@ def test_debug_code_challenge_a(
     for expected_value in EXPECTED_VALUES:
         assert (
             expected_value in output
-        ), f"Expected output to contain {expected_value}, but it was not found in {output}!"
+        ), f"Expected output to contain {expected_value},\
+            but it was not found in {output}!"

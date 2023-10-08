@@ -37,7 +37,8 @@ class TextToSpeechProvider:
             thread.start()
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(enabled={self._config.speak_mode}, provider={self._voice_engine.__class__.__name__})"
+        return f"{self.__class__.__name__}(enabled={self._config.speak_mode},\
+            provider={self._voice_engine.__class__.__name__})"
 
     @staticmethod
     def _get_voice_engine(config: Config) -> tuple[VoiceBase, VoiceBase]:

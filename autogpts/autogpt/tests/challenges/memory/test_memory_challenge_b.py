@@ -7,7 +7,10 @@ from tests.challenges.utils import generate_noise, get_workspace_path, run_chall
 
 NOISE = 1000
 OUTPUT_LOCATION = "output.txt"
-USER_INPUT = "Use the command read_file to read the instructions_1.txt file\nFollow the instructions in the instructions_1.txt file"
+USER_INPUT = (
+    "Use the command read_file to read the instructions_1.txt file\n"
+    "Follow the instructions in the instructions_1.txt file"
+)
 
 
 @challenge()
@@ -20,7 +23,8 @@ def test_memory_challenge_b(
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
-    The agent reads a series of files, each containing a task_id and noise. After reading 'n' files,
+    The agent reads a series of files, each containing a task_id and noise.
+    After reading 'n' files,
     the agent must write all the task_ids into a new file, filtering out the noise.
 
     Args:
@@ -81,6 +85,14 @@ def generate_content(index: int, task_ids: list, base_filename: str, level: int)
     noise = generate_noise(NOISE)
     if index != level:
         if level == 1:
-            return f"{noise}\nThe current task_id is {task_id}.\n{noise}\nWrite all the task_ids into the file output.txt. The file has not been created yet. After that, use the task_complete command."
-        return f"{noise}\nThe current task_id is {task_id}.\n{noise}\nRead the file {base_filename}{index + 1}.txt using the read_file command."
-    return f"{noise}\nThis task_id is {task_id}\n{noise}\nWrite all the task_ids into the file output.txt. The file has not been created yet. After that, use the task_complete command.\n"
+            return f"{noise}\nThe current task_id is {task_id}.\n{noise}\n\
+                Write all the task_ids into the file output.txt.\
+                The file has not been created yet. After that,\
+                use the task_complete command."
+        return f"{noise}\nThe current task_id is {task_id}.\n\
+            {noise}\nRead the file {base_filename}{index + 1}.txt\
+            using the read_file command."
+    return f"{noise}\nThis task_id is {task_id}\n{noise}\n\
+        Write all the task_ids into the file output.txt.\
+        The file has not been created yet.\
+        After that, use the task_complete command.\n"

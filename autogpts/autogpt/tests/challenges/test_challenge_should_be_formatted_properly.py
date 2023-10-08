@@ -47,7 +47,8 @@ def assert_single_test_function(functions_list: List, test_file: str) -> None:
     assert len(functions_list) == 1, f"{test_file} should contain only one function"
     assert (
         functions_list[0][0][5:] == os.path.basename(test_file)[5:-3]
-    ), f"The function in {test_file} should have the same name as the file without 'test_' prefix"
+    ), f"The function in {test_file} should have the same name as the "
+    "file without 'test_' prefix"
 
 
 def test_method_name_and_count() -> None:

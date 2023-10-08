@@ -29,7 +29,10 @@ def test_dalle(agent: Agent, workspace, image_size, patched_api_requestor):
 
 
 @pytest.mark.xfail(
-    reason="The image is too big to be put in a cassette for a CI pipeline. We're looking into a solution."
+    reason=(
+        "The image is too big to be put in a cassette for a CI pipeline. We're looking"
+        "into a solution."
+    )
 )
 @pytest.mark.requires_huggingface_api_key
 @pytest.mark.parametrize(
@@ -108,7 +111,8 @@ def generate_and_validate(
 @pytest.mark.parametrize(
     "return_text",
     [
-        '{"error":"Model [model] is currently loading","estimated_time": [delay]}',  # Delay
+        '{"error":"Model [model] is currently loading",\
+            "estimated_time": [delay]}',  # Delay
         '{"error":"Model [model] is currently loading"}',  # No delay
         '{"error:}',  # Bad JSON
         "",  # Bad Image
@@ -154,27 +158,28 @@ def test_huggingface_fail_request_with_delay(
                 mock_sleep.assert_not_called()
 
 
-def test_huggingface_fail_request_with_delay(mocker, agent: Agent):
-    agent.legacy_config.huggingface_api_token = "1"
+# def test_huggingface_fail_request_with_delay(mocker, agent: Agent):
+#     agent.legacy_config.huggingface_api_token = "1"
 
-    # Mock requests.post
-    mock_post = mocker.patch("requests.post")
-    mock_post.return_value.status_code = 500
-    mock_post.return_value.ok = False
-    mock_post.return_value.text = '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading","estimated_time":0}'
+#     # Mock requests.post
+#     mock_post = mocker.patch("requests.post")
+#     mock_post.return_value.status_code = 500
+#     mock_post.return_value.ok = False
+#     mock_post.return_value.text = '{"error":"Model CompVis/stable-diffusion-v1-4\
+#                                       is currently loading","estimated_time":0}'
 
-    # Mock time.sleep
-    mock_sleep = mocker.patch("time.sleep")
+#     # Mock time.sleep
+#     mock_sleep = mocker.patch("time.sleep")
 
-    agent.legacy_config.image_provider = "huggingface"
-    agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+#     agent.legacy_config.image_provider = "huggingface"
+#     agent.legacy_config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
-    result = generate_image("astronaut riding a horse", agent, 512)
+#     result = generate_image("astronaut riding a horse", agent, 512)
 
-    assert result == "Error creating image."
+#     assert result == "Error creating image."
 
-    # Verify retry was called with delay.
-    mock_sleep.assert_called_with(0)
+#     # Verify retry was called with delay.
+#     mock_sleep.assert_called_with(0)
 
 
 def test_huggingface_fail_request_no_delay(mocker, agent: Agent):

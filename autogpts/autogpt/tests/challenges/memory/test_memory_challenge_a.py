@@ -8,7 +8,10 @@ from tests.challenges.utils import get_workspace_path, run_challenge
 
 OUTPUT_LOCATION = "output.txt"
 
-USER_INPUT = "Use the command read_file to read the instructions_1.txt file\nFollow the instructions in the instructions_1.txt file"
+USER_INPUT = (
+    "Use the command read_file to read the instructions_1.txt file\n"
+    "Follow the instructions in the instructions_1.txt file"
+)
 
 
 @challenge()
