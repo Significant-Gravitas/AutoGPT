@@ -19,10 +19,11 @@ from autogpt.app.setup import interactive_ai_profile_setup
 from autogpt.app.spinner import Spinner
 from autogpt.app.utils import (
     clean_input,
-    get_current_git_branch,
-    get_latest_bulletin,
     get_legal_warning,
     markdown_to_ansi_style,
+    print_git_branch_info,
+    print_motd,
+    print_python_version_info,
 )
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import (
@@ -171,47 +172,6 @@ async def run_auto_gpt(
         )
 
     await run_interaction_loop(agent)
-
-
-def print_motd(config: Config, logger: logging.Logger):
-    motd, is_new_motd = get_latest_bulletin()
-    if motd:
-        motd = markdown_to_ansi_style(motd)
-        for motd_line in motd.split("\n"):
-            logger.info(
-                extra={
-                    "title": "NEWS:",
-                    "title_color": Fore.GREEN,
-                    "preserve_color": True,
-                },
-                msg=motd_line,
-            )
-        if is_new_motd and not config.chat_messages_enabled:
-            input(
-                Fore.MAGENTA
-                + Style.BRIGHT
-                + "NEWS: Bulletin was updated! Press Enter to continue..."
-                + Style.RESET_ALL
-            )
-
-
-def print_git_branch_info(logger: logging.Logger):
-    git_branch = get_current_git_branch()
-    if git_branch and git_branch != "stable":
-        logger.warn(
-            f"You are running on `{git_branch}` branch"
-            " - this is not a supported branch."
-        )
-
-
-def print_python_version_info(logger: logging.Logger):
-    if sys.version_info < (3, 10):
-        logger.error(
-            "WARNING: You are running on an older version of Python. "
-            "Some people have observed problems with certain "
-            "parts of AutoGPT with this version. "
-            "Please consider upgrading to Python 3.10 or higher.",
-        )
 
 
 def _configure_openai_provider(config: Config) -> OpenAIProvider:
