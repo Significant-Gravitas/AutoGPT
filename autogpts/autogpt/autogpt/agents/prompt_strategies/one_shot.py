@@ -193,6 +193,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
     def build_prompt(
         self,
         *,
+        task: str,
         ai_profile: AIProfile,
         ai_directives: AIDirectives,
         commands: list[CompletionModelFunction],
@@ -223,6 +224,9 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         )
         system_prompt_tlength = count_message_tokens(ChatMessage.system(system_prompt))
 
+        user_task = f'"""{task}"""'
+        user_task_tlength = count_message_tokens(ChatMessage.user(user_task))
+
         response_format_instr = self.response_format_instruction(
             self.config.use_functions_api
         )
@@ -238,6 +242,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 max_tokens=(
                     max_prompt_tokens
                     - system_prompt_tlength
+                    - user_task_tlength
                     - final_instruction_tlength
                     - count_message_tokens(extra_messages)
                 ),
@@ -250,6 +255,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         prompt = ChatPrompt(
             messages=[
                 ChatMessage.system(system_prompt),
+                ChatMessage.user(user_task),
                 *extra_messages,
                 final_instruction_msg,
             ],
@@ -278,7 +284,12 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                     best_practices=format_numbered_list(ai_directives.best_practices),
                 )
             ]
-            + self._generate_goals_info(ai_profile.ai_goals)
+            + [
+                "## Your Task\n"
+                "The user will specify a task for you to execute, in triple quotes,"
+                " in the next message. Your job is to complete the task while following"
+                " your directives as given above, and terminate when your task is done."
+            ]
         )
 
         # Join non-empty parts together into paragraph format
@@ -392,24 +403,6 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             return [
                 f"It takes money to let you run. "
                 f"Your API budget is ${api_budget:.3f}"
-            ]
-        return []
-
-    def _generate_goals_info(self, goals: list[str]) -> list[str]:
-        """Generates the goals information part of the prompt.
-
-        Returns:
-            str: The goals information part of the prompt.
-        """
-        if goals:
-            return [
-                "\n".join(
-                    [
-                        "## Goals",
-                        "For your task, you must fulfill the following goals:",
-                        *[f"{i+1}. {goal}" for i, goal in enumerate(goals)],
-                    ]
-                )
             ]
         return []
 

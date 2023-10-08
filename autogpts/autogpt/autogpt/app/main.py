@@ -6,16 +6,24 @@ import signal
 import sys
 from pathlib import Path
 from types import FrameType
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
 from pydantic import SecretStr
 
+if TYPE_CHECKING:
+    from autogpt.agents.agent import Agent
+
+from autogpt.agent_factory.configurators import create_agent
+from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
+from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
-from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
 from autogpt.app.configurator import apply_overrides_to_config
-from autogpt.app.setup import interactive_ai_profile_setup
+from autogpt.app.setup import (
+    apply_overrides_to_ai_settings,
+    interactively_revise_ai_settings,
+)
 from autogpt.app.spinner import Spinner
 from autogpt.app.utils import (
     clean_input,
@@ -25,7 +33,6 @@ from autogpt.app.utils import (
     print_motd,
     print_python_version_info,
 )
-from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import (
     AIDirectives,
     AIProfile,
@@ -33,16 +40,11 @@ from autogpt.config import (
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
-from autogpt.core.resource.model_providers import (
-    ChatModelProvider,
-    ModelProviderCredentials,
-)
+from autogpt.core.resource.model_providers import ModelProviderCredentials
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
-from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
-from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
 from scripts.install_plugin_deps import install_plugin_dependencies
 
@@ -62,11 +64,14 @@ async def run_auto_gpt(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
-    workspace_directory: str | Path,
+    workspace_directory: Path,
     install_plugin_deps: bool,
-    ai_name: Optional[str] = None,
-    ai_role: Optional[str] = None,
-    ai_goals: tuple[str] = tuple(),
+    override_ai_name: str = "",
+    override_ai_role: str = "",
+    resources: Optional[list[str]] = None,
+    constraints: Optional[list[str]] = None,
+    best_practices: Optional[list[str]] = None,
+    override_directives: bool = False,
 ):
     config = ConfigBuilder.build_config_from_env()
 
@@ -123,44 +128,58 @@ async def run_auto_gpt(
     config.plugins = scan_plugins(config, config.debug_mode)
     configure_chat_plugins(config)
 
-    # Create a CommandRegistry instance and scan default folder
-    command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
-
-    ai_profile = await construct_main_ai_profile(
+    ######################
+    # Set up a new Agent #
+    ######################
+    task = await clean_input(
         config,
-        llm_provider=llm_provider,
-        name=ai_name,
-        role=ai_role,
-        goals=ai_goals,
+        "Enter the task that you want AutoGPT to execute,"
+        " with as much detail as possible:",
     )
-    ai_directives = AIDirectives.from_file(config.prompt_settings_file)
+    base_ai_directives = AIDirectives.from_file(config.prompt_settings_file)
 
-    agent_prompt_config = Agent.default_settings.prompt_config.copy(deep=True)
-    agent_prompt_config.use_functions_api = config.openai_functions
-
-    agent_settings = AgentSettings(
-        name=Agent.default_settings.name,
-        description=Agent.default_settings.description,
+    ai_profile, task_oriented_ai_directives = await generate_agent_profile_for_task(
+        task,
+        app_config=config,
+        llm_provider=llm_provider,
+    )
+    ai_directives = base_ai_directives + task_oriented_ai_directives
+    apply_overrides_to_ai_settings(
         ai_profile=ai_profile,
         directives=ai_directives,
-        config=AgentConfiguration(
-            fast_llm=config.fast_llm,
-            smart_llm=config.smart_llm,
-            allow_fs_access=not config.restrict_to_workspace,
-            use_functions_api=config.openai_functions,
-            plugins=config.plugins,
-        ),
-        prompt_config=agent_prompt_config,
-        history=Agent.default_settings.history.copy(deep=True),
+        override_name=override_ai_name,
+        override_role=override_ai_role,
+        resources=resources,
+        constraints=constraints,
+        best_practices=best_practices,
+        replace_directives=override_directives,
     )
 
-    print_attribute("Configured Browser", config.selenium_web_browser)
+    # If any of these are specified as arguments,
+    #  assume the user doesn't want to revise them
+    if not any(
+        [
+            override_ai_name,
+            override_ai_role,
+            resources,
+            constraints,
+            best_practices,
+        ]
+    ):
+        ai_profile, ai_directives = await interactively_revise_ai_settings(
+            ai_profile=ai_profile,
+            directives=ai_directives,
+            app_config=config,
+        )
+    else:
+        logger.info("AI config overrides specified through CLI; skipping revision")
 
-    agent = Agent(
-        settings=agent_settings,
+    agent = create_agent(
+        task=task,
+        ai_profile=ai_profile,
+        directives=ai_directives,
+        app_config=config,
         llm_provider=llm_provider,
-        command_registry=command_registry,
-        legacy_config=config,
     )
     agent.attach_fs(config.app_data_dir / "agents" / "AutoGPT")  # HACK
 
@@ -223,7 +242,7 @@ class UserFeedback(str, enum.Enum):
 
 
 async def run_interaction_loop(
-    agent: Agent,
+    agent: "Agent",
 ) -> None:
     """Run the main interaction loop for the agent.
 
@@ -480,83 +499,6 @@ async def get_user_feedback(
             user_input = console_input
 
     return user_feedback, user_input, new_cycles_remaining
-
-
-async def construct_main_ai_profile(
-    config: Config,
-    llm_provider: ChatModelProvider,
-    name: Optional[str] = None,
-    role: Optional[str] = None,
-    goals: tuple[str] = tuple(),
-) -> AIProfile:
-    """Construct the prompt for the AI to respond to
-
-    Returns:
-        str: The prompt string
-    """
-    logger = logging.getLogger(__name__)
-
-    ai_profile = AIProfile.load(config.ai_settings_file)
-
-    # Apply overrides
-    if name:
-        ai_profile.ai_name = name
-    if role:
-        ai_profile.ai_role = role
-    if goals:
-        ai_profile.ai_goals = list(goals)
-
-    if (
-        all([name, role, goals])
-        or config.skip_reprompt
-        and all([ai_profile.ai_name, ai_profile.ai_role, ai_profile.ai_goals])
-    ):
-        print_attribute("Name :", ai_profile.ai_name)
-        print_attribute("Role :", ai_profile.ai_role)
-        print_attribute("Goals:", ai_profile.ai_goals)
-        print_attribute(
-            "API Budget:",
-            "infinite" if ai_profile.api_budget <= 0 else f"${ai_profile.api_budget}",
-        )
-    elif all([ai_profile.ai_name, ai_profile.ai_role, ai_profile.ai_goals]):
-        logger.info(
-            extra={"title": f"{Fore.GREEN}Welcome back!{Fore.RESET}"},
-            msg=f"Would you like me to return to being {ai_profile.ai_name}?",
-        )
-        should_continue = await clean_input(
-            config,
-            f"""Continue with the last settings?
-Name:  {ai_profile.ai_name}
-Role:  {ai_profile.ai_role}
-Goals: {ai_profile.ai_goals}
-API Budget: {"infinite" if ai_profile.api_budget <= 0 else f"${ai_profile.api_budget}"}
-Continue ({config.authorise_key}/{config.exit_key}): """,
-        )
-        if should_continue.lower() == config.exit_key:
-            ai_profile = AIProfile()
-
-    if any([not ai_profile.ai_name, not ai_profile.ai_role, not ai_profile.ai_goals]):
-        ai_profile = await interactive_ai_profile_setup(config, llm_provider)
-        ai_profile.save(config.ai_settings_file)
-
-    # set the total api budget
-    api_manager = ApiManager()
-    api_manager.set_total_budget(ai_profile.api_budget)
-
-    # Agent Created, print message
-    logger.info(
-        f"{Fore.LIGHTBLUE_EX}{ai_profile.ai_name}{Fore.RESET} has been created with the following details:",
-        extra={"preserve_color": True},
-    )
-
-    # Print the ai_profile details
-    print_attribute("Name :", ai_profile.ai_name)
-    print_attribute("Role :", ai_profile.ai_role)
-    print_attribute("Goals:", "")
-    for goal in ai_profile.ai_goals:
-        logger.info(f"- {goal}")
-
-    return ai_profile
 
 
 def print_assistant_thoughts(
