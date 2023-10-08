@@ -26,7 +26,8 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, agent: Agent):
 
     assert clone_result == expected_output
     mock_clone_from.assert_called_once_with(
-        url=f"{scheme}{agent.legacy_config.github_username}:{agent.legacy_config.github_api_key}@{repo}",
+        url=f"{scheme}{agent.legacy_config.github_username}:\
+            {agent.legacy_config.github_api_key}@{repo}",
         to_path=clone_path,
     )
 

@@ -61,7 +61,11 @@ def test_retry_open_api_passing(
     retry_count: int,
     failure: bool,
 ):
-    """Tests the retry with simulated errors [RateLimitError, ServiceUnavailableError, APIError], but should ulimately pass"""
+    """
+    Tests the retry with simulated errors
+    [RateLimitError, ServiceUnavailableError, APIError],
+    but should ulimately pass
+    """
 
     # Add capture handler to non-propagating logger
     logging.getLogger(USER_FRIENDLY_OUTPUT_LOGGER).addHandler(caplog.handler)
@@ -81,10 +85,10 @@ def test_retry_open_api_passing(
     output = caplog.text
 
     if error_count and retry_count:
-        if type(error) == RateLimitError:
+        if type(error) is RateLimitError:
             assert "Reached rate limit" in output
             assert "Please double check" in output
-        if type(error) == ServiceUnavailableError:
+        if type(error) is ServiceUnavailableError:
             assert "The OpenAI API engine is currently overloaded" in output
             assert "Please double check" in output
     else:

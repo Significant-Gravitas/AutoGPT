@@ -18,9 +18,9 @@ def test_initial_values(config: Config) -> None:
     """
     Test if the initial values of the config class attributes are set correctly.
     """
-    assert config.debug_mode == False
-    assert config.continuous_mode == False
-    assert config.speak_mode == False
+    assert config.debug_mode is False
+    assert config.continuous_mode is False
+    assert config.speak_mode is False
     assert config.fast_llm == "gpt-3.5-turbo-16k"
     assert config.smart_llm == "gpt-4-0314"
 
@@ -33,7 +33,7 @@ def test_set_continuous_mode(config: Config) -> None:
     continuous_mode = config.continuous_mode
 
     config.continuous_mode = True
-    assert config.continuous_mode == True
+    assert config.continuous_mode is True
 
     # Reset continuous mode
     config.continuous_mode = continuous_mode
@@ -47,7 +47,7 @@ def test_set_speak_mode(config: Config) -> None:
     speak_mode = config.speak_mode
 
     config.speak_mode = True
-    assert config.speak_mode == True
+    assert config.speak_mode is True
 
     # Reset speak mode
     config.speak_mode = speak_mode
@@ -89,7 +89,7 @@ def test_set_debug_mode(config: Config) -> None:
     debug_mode = config.debug_mode
 
     config.debug_mode = True
-    assert config.debug_mode == True
+    assert config.debug_mode is True
 
     # Reset debug mode
     config.debug_mode = debug_mode
@@ -149,7 +149,7 @@ def test_missing_azure_config(workspace: Workspace) -> None:
 
 def test_azure_config(config: Config, workspace: Workspace) -> None:
     config_file = workspace.get_path("azure_config.yaml")
-    yaml_content = f"""
+    yaml_content = """
 azure_api_type: azure
 azure_api_base: https://dummy.openai.azure.com
 azure_api_version: 2023-06-01-preview

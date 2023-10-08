@@ -1,5 +1,6 @@
 """
-This set of unit tests is designed to test the file operations that autoGPT has access to.
+This set of unit tests is designed to test the file operations that autoGPT
+has access to.
 """
 
 import hashlib
@@ -169,9 +170,10 @@ def test_is_duplicate_operation(agent: Agent, mocker: MockerFixture):
 # Test logging a file operation
 def test_log_operation(agent: Agent):
     file_ops.log_operation("log_test", "path/to/test", agent=agent)
+    expected_path = "path/to/test"
     with open(agent.legacy_config.file_logger_path, "r", encoding="utf-8") as f:
         content = f.read()
-    assert f"log_test: path/to/test\n" in content
+    assert f"log_test: {expected_path}\n" in content
 
 
 def test_text_checksum(file_content: str):
@@ -183,9 +185,10 @@ def test_text_checksum(file_content: str):
 
 def test_log_operation_with_checksum(agent: Agent):
     file_ops.log_operation("log_test", "path/to/test", agent=agent, checksum="ABCDEF")
+    expected_path = "path/to/test"
     with open(agent.legacy_config.file_logger_path, "r", encoding="utf-8") as f:
         content = f.read()
-    assert f"log_test: path/to/test #ABCDEF\n" in content
+    assert f"log_test: {expected_path} #ABCDEF\n" in content
 
 
 def test_read_file(

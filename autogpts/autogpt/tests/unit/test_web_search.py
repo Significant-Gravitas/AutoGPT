@@ -29,7 +29,14 @@ def test_safe_google_results_invalid_input():
         (
             "test",
             1,
-            '[\n    {\n        "title": "Result 1",\n        "link": "https://example.com/result1"\n    }\n]',
+            (
+                '[\n'
+                '    {\n'
+                '        "title": "Result 1",\n'
+                '        "link": "https://example.com/result1"\n'
+                '    }\n'
+                ']'
+            ),
             [{"title": "Result 1", "link": "https://example.com/result1"}],
         ),
         ("", 1, "[]", []),

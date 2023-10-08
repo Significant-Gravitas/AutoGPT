@@ -50,7 +50,7 @@ def freeze_request_body(json_body: str | bytes) -> bytes:
     try:
         body = json.loads(json_body)
     except ValueError:
-        return json_body if type(json_body) == bytes else json_body.encode()
+        return json_body if isinstance(json_body, bytes) else json_body.encode()
 
     if "messages" not in body:
         return json.dumps(body, sort_keys=True).encode()
@@ -97,7 +97,6 @@ def before_record_request(request: Request) -> Request | None:
 
     filtered_request_without_dynamic_data = freeze_request(filtered_request)
     return filtered_request_without_dynamic_data
-
 
 
 def replace_request_hostname(
