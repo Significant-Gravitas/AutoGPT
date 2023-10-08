@@ -62,15 +62,15 @@ def operations_from_log(
 def file_operations_state(log_path: str | Path) -> dict[str, str]:
     """Iterates over the operations log and returns the expected state.
 
-    Parses a log file at config.file_logger_path to construct a dictionary that maps
-    each file path written or appended to its checksum. Deleted files are removed
-    from the dictionary.
+    Parses a log file at file_manager.file_ops_log_path to construct a dictionary
+    that maps each file path written or appended to its checksum. Deleted files are
+    removed from the dictionary.
 
     Returns:
         A dictionary mapping file paths to their checksums.
 
     Raises:
-        FileNotFoundError: If config.file_logger_path is not found.
+        FileNotFoundError: If file_manager.file_ops_log_path is not found.
         ValueError: If the log file content is not in the expected format.
     """
     state = {}
@@ -101,7 +101,7 @@ def is_duplicate_operation(
     with contextlib.suppress(ValueError):
         file_path = file_path.relative_to(agent.workspace.root)
 
-    state = file_operations_state(agent.legacy_config.file_logger_path)
+    state = file_operations_state(agent.file_manager.file_ops_log_path)
     if operation == "delete" and str(file_path) not in state:
         return True
     if operation == "write" and state.get(str(file_path)) == checksum:
@@ -129,7 +129,7 @@ def log_operation(
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
     append_to_file(
-        agent.legacy_config.file_logger_path, f"{log_entry}\n", agent, should_log=False
+        agent.file_manager.file_ops_log_path, f"{log_entry}\n", agent, should_log=False
     )
 
 
@@ -280,7 +280,7 @@ def list_folder(folder: Path, agent: Agent) -> list[str]:
             if file.startswith("."):
                 continue
             relative_path = os.path.relpath(
-                os.path.join(root, file), agent.legacy_config.workspace_path
+                os.path.join(root, file), agent.workspace.root
             )
             found_files.append(relative_path)
 

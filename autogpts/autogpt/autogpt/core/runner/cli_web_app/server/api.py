@@ -8,10 +8,8 @@ from autogpt.app.main import UserFeedback
 from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIProfile, ConfigBuilder
 from autogpt.logs.helpers import user_friendly_output
-from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
-from autogpt.workspace import Workspace
 
 
 async def task_handler(task_input) -> StepHandler:
@@ -87,15 +85,12 @@ def bootstrap_agent(task, continuous_mode) -> Agent:
     config.plain_output = True
     command_registry = CommandRegistry.with_command_modules(COMMAND_CATEGORIES, config)
     config.memory_backend = "no_memory"
-    config.workspace_path = Workspace.init_workspace_directory(config)
-    config.file_logger_path = Workspace.build_file_logger_path(config.workspace_path)
     ai_profile = AIProfile(
         ai_name="AutoGPT",
         ai_role="a multi-purpose AI assistant.",
         ai_goals=[task],
     )
     return Agent(
-        memory=get_memory(config),
         command_registry=command_registry,
         ai_profile=ai_profile,
         config=config,
