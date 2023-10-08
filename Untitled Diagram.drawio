@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2023-10-08T22:08:54.569Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15" etag="OfTIUxnQ5G_rfUEZlxfY" version="22.0.4" type="github">
+<mxfile host="app.diagrams.net" modified="2023-10-08T22:11:39.231Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15" etag="LNAHJ4wvp_O7Rpc27xhb" version="22.0.4" type="github">
   <diagram name="Page-1" id="kvVddJow024RuchNI2nA">
     <mxGraphModel dx="794" dy="547" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
@@ -13,7 +13,7 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-6" value="Pro" style="swimlane;childLayout=stackLayout;resizeParent=1;resizeParentMax=0;startSize=20;html=1;" vertex="1" parent="1">
-          <mxGeometry x="110.00000000000045" y="20" width="363.99999999999955" height="480" as="geometry" />
+          <mxGeometry x="110.00000000000045" y="20" width="563.9999999999995" height="480" as="geometry" />
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-7" value="Lane 1" style="swimlane;startSize=20;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-6">
           <mxGeometry y="20" width="120" height="460" as="geometry" />
@@ -39,12 +39,21 @@
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-16" value="PromptManager .chat_with_model()" style="whiteSpace=wrap;html=1;fillColor=#ffffc0;strokeColor=#ff0000;fontColor=#000000;rounded=1;arcSize=40;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-9">
           <mxGeometry x="3.9999999999995453" y="191" width="120" height="60" as="geometry" />
         </mxCell>
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-18" value="Lane 3" style="swimlane;startSize=20;html=1;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-6">
+          <mxGeometry x="363.99999999999955" y="20" width="200" height="460" as="geometry" />
+        </mxCell>
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-23" value="PromptStrategy." style="whiteSpace=wrap;html=1;fillColor=#ffffc0;strokeColor=#ff0000;fontColor=#000000;rounded=1;arcSize=40;" vertex="1" parent="TOSoZfk68G_ceMJ3JVFy-18">
+          <mxGeometry x="26" y="190" width="120" height="60" as="geometry" />
+        </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-5" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;verticalAlign=bottom;endArrow=open;endSize=8;strokeColor=#ff0000;rounded=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="TOSoZfk68G_ceMJ3JVFy-4" parent="TOSoZfk68G_ceMJ3JVFy-6" target="TOSoZfk68G_ceMJ3JVFy-10">
           <mxGeometry relative="1" as="geometry">
             <mxPoint x="169.99999999999955" y="110" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="TOSoZfk68G_ceMJ3JVFy-15" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="TOSoZfk68G_ceMJ3JVFy-6" source="TOSoZfk68G_ceMJ3JVFy-10" target="TOSoZfk68G_ceMJ3JVFy-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="TOSoZfk68G_ceMJ3JVFy-24" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="TOSoZfk68G_ceMJ3JVFy-6" source="TOSoZfk68G_ceMJ3JVFy-16" target="TOSoZfk68G_ceMJ3JVFy-23">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
