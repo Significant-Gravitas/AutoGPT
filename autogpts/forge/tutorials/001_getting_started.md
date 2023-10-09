@@ -17,7 +17,7 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
 
 To begin, you need to fork the [repository](https://github.com/Significant-Gravitas/AutoGPT) by navigating to the main page of the repository and clicking **Fork** in the top-right corner. 
 
-![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)![img.png](img.png)
+![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
 
 Follow the on-screen instructions to complete the process. 
 
@@ -60,7 +60,7 @@ Create your agent template using the command:
 ![Create an Agent](../../../docs/content/imgs/quickstart/007_create_agent.png)
 
 ### Entering the Arena 
-The Arena is a collection of all AutoGPT agents. It's early days so show us what you've got!
+The Arena is a collection of all AutoGPT agents ranked by performance on our benchmark. It's early days, so show us what you've got!
 
 Officially enter the Arena by executing the command:
 
@@ -82,7 +82,7 @@ This will initiate the agent on `http://localhost:8000/`.
 ![Start the Agent](../../../docs/content/imgs/quickstart/009_start_agent.png)
 
 ### Logging in and Sending Tasks to Your Agent
-Access the frontend at `http://localhost:8000/` and log in using a Google or GitHub account. You can then send tasks to your agent through the interface.
+Access the frontend at `http://localhost:8000/` and log in using a Google or GitHub account. Once you're logged you'll see the agent tasking interface! However... the agent won't do anything yet. We'll implement the logic for our agent to run tasks in the upcoming tutorial chapters. 
 
 ![Login](../../../docs/content/imgs/quickstart/010_login.png)
 ![Home](../../../docs/content/imgs/quickstart/011_home.png)
@@ -94,12 +94,16 @@ When needed, use Ctrl+C to end the session or use the stop command:
 ``` 
 This command forcefully stops the agent. You can also restart it using the start command.
 
-## Conclusion
-
-In our exploration today, we’ve covered the essentials of working with AutoGPT projects. We began by laying out the groundwork, ensuring you have all the right tools in place. From there, we delved into the specifics of building an effective AutoGPT agent. Trust me, with the right steps, it becomes a straightforward process.
-
+## To Recap
+- We've forked the AutoGPT repo and cloned it locally on your machine.
+- we connected the library with our personal github access token as part of the setup.
+- We've created and named our first agent, and entered it into the arena!
+- We've run the agent and it's tasking server successfully without an error.
+- We've logged into the server site at localhost:8000 using our github account.
+- 
+Make sure you've completed every step successfully before moving on :). 
 ### Next Steps: Building and Enhancing Your Agent
-With the foundation set, you are now ready to build and enhance your agent, exploring various functionalities and improving its performance. The next tutorial will look into the anatomy of an agent and how to add some basic functionality.
+With our foundation set, you are now ready to build and enhance your agent! The next tutorial will look into the anatomy of an agent and how to add basic functionality.
 
 ## Additional Resources
 
