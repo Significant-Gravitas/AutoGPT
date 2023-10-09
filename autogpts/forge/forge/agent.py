@@ -136,10 +136,17 @@ class ForgeAgent(Agent):
             messages = await self.db.get_chat_history(task_id)
         except Exception as e:
             LOG.error(f"Unable to get chat history: {e}")
+        
+        actions = None
+        try:
+            actions = await self.db.get_action_history(task_id)
+        except Exception as e:
+            LOG.error(f"Unable to get chat history: {e}")
+
+        prompt_engine = PromptEngine("gpt-3.5-turbo")
 
         if not messages:
             # Initialize the PromptEngine with the "gpt-3.5-turbo" model
-            prompt_engine = PromptEngine("gpt-3.5-turbo")
 
             # Load the system and task prompts
             system_prompt = prompt_engine.load_prompt("system-format")
@@ -162,7 +169,17 @@ class ForgeAgent(Agent):
             msgs = await self.db.add_chat_history(task_id, messages)
 
         else:
-            messages.append({"role": "user", "content": step_request.input})
+            # Define the task parameters
+            task_kwargs = {
+                "task": step_request.input,
+                "abilities": self.abilities.list_abilities_for_prompt(),
+            }
+
+            if actions:
+                task_kwargs['previous_actions'] = actions
+            # Load the task prompt with the defined task parameters
+            step_prompt = prompt_engine.load_prompt("task-step", **task_kwargs)
+            messages.append({"role": "user", "content": step_prompt})
             msg = await self.db.add_chat_message(task_id, "user", step_request.input)
 
         try:
@@ -175,6 +192,7 @@ class ForgeAgent(Agent):
             chat_response = await chat_completion_request(**chat_completion_kwargs)
             answer = json.loads(chat_response["choices"][0]["message"]["content"])
 
+
             # Log the answer for debugging purposes
             LOG.info(pprint.pformat(answer))
 
@@ -186,17 +204,23 @@ class ForgeAgent(Agent):
             LOG.error(f"Unable to generate chat response: {e}")
         
         if answer.get('ability', {}).get('name', '') in self.abilities.list_abilities():
-            # Extract the ability from the answer
-            ability = answer["ability"]
+            try:
+                # Extract the ability from the answer
+                ability = answer["ability"]
 
-            # Run the ability and get the output
-            # We don't actually use the output in this example
-            await self.abilities.run_ability(
-                task_id, ability["name"], **ability["args"]
-            )
+                # Run the ability and get the output
+                # We don't actually use the output in this example
+                ouput = await self.abilities.run_ability(
+                    task_id, ability["name"], **ability["args"]
+                )
+                await self.db.create_action( task_id, ability["name"], ability["args"])
+            except Exception as e:
+                # Handle any exceptions
+                LOG.error(f"Unable to run ability: {e}")
 
         # Set the step output to the "speak" part of the answer
         step.output = answer["thoughts"]["speak"]
+        msg = await self.db.add_chat_message(task_id, "assistant", answer["thoughts"]["speak"])
 
         # Return the completed step
         return step

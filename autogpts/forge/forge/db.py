@@ -1,16 +1,11 @@
 from .sdk import AgentDB, ForgeLogger, NotFoundError, Base
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import DeclarativeBase, joinedload, relationship, sessionmaker
 
 import datetime
 from sqlalchemy import (
-    JSON,
-    Boolean,
     Column,
     DateTime,
-    ForeignKey,
     String,
-    create_engine,
 )
 import uuid
 
@@ -22,6 +17,17 @@ class ChatModel(Base):
     task_id = Column(String)
     role = Column(String)
     content = Column(String)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    modified_at = Column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    )
+
+class ActionModel(Base):
+    __tablename__ = "action"
+    action_id = Column(String, primary_key=True, index=True)
+    task_id = Column(String)
+    name = Column(String)
+    args = Column(String)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     modified_at = Column(
         DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
@@ -85,4 +91,55 @@ class ForgeDatabase(AgentDB):
             raise
         except Exception as e:
             LOG.error(f"Unexpected error while getting chat history: {e}")
+            raise
+    
+    async def create_action(self, task_id, name, args):
+        try:
+            with self.Session() as session:
+                new_action = ActionModel(
+                    action_id=str(uuid.uuid4()),
+                    task_id=task_id,
+                    name=name,
+                    args=str(args),
+                )
+                session.add(new_action)
+                session.commit()
+                session.refresh(new_action)
+                if self.debug_enabled:
+                    LOG.debug(f"Created new Action with task_id: {new_action.action_id}")
+                return new_action
+        except SQLAlchemyError as e:
+            LOG.error(f"SQLAlchemy error while creating action: {e}")
+            raise
+        except NotFoundError as e:
+            raise
+        except Exception as e:
+            LOG.error(f"Unexpected error while creating action: {e}")
+            raise
+
+    async def get_action_history(self, task_id):
+        if self.debug_enabled:
+            LOG.debug(f"Getting action history with task_id: {task_id}")
+        try:
+            with self.Session() as session:
+                if actions := (
+                    session.query(ActionModel)
+                    .filter(ActionModel.task_id == task_id)
+                    .order_by(ActionModel.created_at)
+                    .all()
+                ):
+                    return [{"name": a.name, "args": a.args} for a in actions]
+
+                else:
+                    LOG.error(
+                        f"Action history not found with task_id: {task_id}"
+                    )
+                    raise NotFoundError("Action history not found")
+        except SQLAlchemyError as e:
+            LOG.error(f"SQLAlchemy error while getting action history: {e}")
+            raise
+        except NotFoundError as e:
+            raise
+        except Exception as e:
+            LOG.error(f"Unexpected error while getting action history: {e}")
             raise
