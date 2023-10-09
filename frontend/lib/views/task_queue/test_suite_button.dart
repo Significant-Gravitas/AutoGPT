@@ -1,17 +1,18 @@
 import 'package:auto_gpt_flutter_client/constants/app_colors.dart';
+import 'package:auto_gpt_flutter_client/models/test_option.dart';
 import 'package:flutter/material.dart';
 
 class TestSuiteButton extends StatefulWidget {
   final bool isDisabled;
   final Function(String) onOptionSelected;
   final Function(String) onPlayPressed;
-  String selectedOption;
+  String selectedOptionString;
 
   TestSuiteButton({
     this.isDisabled = false,
     required this.onOptionSelected,
     required this.onPlayPressed,
-    required this.selectedOption,
+    required this.selectedOptionString,
   });
 
   @override
@@ -30,24 +31,27 @@ class _TestSuiteButtonState extends State<TestSuiteButton> {
             enabled: !widget.isDisabled,
             onSelected: (value) {
               setState(() {
-                widget.selectedOption = value;
+                widget.selectedOptionString = value;
               });
-              widget.onOptionSelected(widget.selectedOption);
+              widget.onOptionSelected(widget.selectedOptionString);
             },
             itemBuilder: (BuildContext context) {
               return [
-                const PopupMenuItem(
-                  value: 'Run single test',
-                  child: Text('Run single test'),
+                PopupMenuItem(
+                  value: TestOption.runSingleTest.description,
+                  child: Text(TestOption.runSingleTest.description),
                 ),
-                const PopupMenuItem(
-                  value: 'Run test suite including selected node and ancestors',
-                  child: Text(
-                      'Run test suite including selected node and ancestors'),
+                PopupMenuItem(
+                  value: TestOption
+                      .runTestSuiteIncludingSelectedNodeAndAncestors
+                      .description,
+                  child: Text(TestOption
+                      .runTestSuiteIncludingSelectedNodeAndAncestors
+                      .description),
                 ),
-                const PopupMenuItem(
-                  value: 'Run all tests in category',
-                  child: Text('Run all tests in category'),
+                PopupMenuItem(
+                  value: TestOption.runAllTestsInCategory.description,
+                  child: Text(TestOption.runAllTestsInCategory.description),
                 ),
               ];
             },
@@ -63,7 +67,7 @@ class _TestSuiteButtonState extends State<TestSuiteButton> {
                 children: [
                   Flexible(
                     child: Text(
-                      widget.selectedOption,
+                      widget.selectedOptionString,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12.50,
@@ -100,7 +104,7 @@ class _TestSuiteButtonState extends State<TestSuiteButton> {
             onPressed: widget.isDisabled
                 ? null
                 : () {
-                    widget.onPlayPressed(widget.selectedOption);
+                    widget.onPlayPressed(widget.selectedOptionString);
                   },
             child: const Icon(
               Icons.play_arrow,

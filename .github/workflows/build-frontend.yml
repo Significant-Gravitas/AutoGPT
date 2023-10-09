@@ -1,10 +1,13 @@
 name: Build and Commit Frontend
+
 on:
   push:
     branches:
       - master
+      - 'ci-test*' # This will match any branch that starts with "ci-test"
     paths:
       - 'frontend/**'
+
 jobs:
   build:
     permissions:
