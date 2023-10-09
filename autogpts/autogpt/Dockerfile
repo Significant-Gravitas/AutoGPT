@@ -23,5 +23,3 @@ ADD ./benchmark /
 RUN poetry add /opt/ai-ticket
 RUN poetry install
 
-ENTRYPOINT ["poetry", "run", "autogpt", "--install-plugin-deps"]
-CMD []
