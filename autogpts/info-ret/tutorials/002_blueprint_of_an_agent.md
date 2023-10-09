@@ -49,10 +49,21 @@ Memory, for an agent, is more than just storage — it’s the bedrock of its id
 The Long-Term Memory is akin to the agent’s foundational knowledge, a vast reservoir that encompasses data and interactions spanning extended periods. It’s the agent’s historical archive, guiding its core behaviors and understanding.  
 On the other hand, the Short-Term (or Working) Memory focuses on the immediate, handling transient memories much like our recollection of recent events. While essential for real-time tasks, not all short-term memories make it to the agent’s long-term storage.  
 An emerging concept in this realm is Memory Reflection. Here, the agent doesn’t just store memories but actively revisits them. This introspection allows the agent to reassess, prioritize, or even discard information, akin to a human reminiscing and learning from past experiences.  
+
 3. **Planning**  
-Planning is the agent’s roadmap to problem-solving. When faced with a complex challenge, humans instinctively break it down into bite-sized, manageable tasks — a strategy mirrored in LLM-based agents. This methodical approach enables agents to navigate problems with a structured mindset, ensuring comprehensive and systematic solutions.  
-There are two dominant strategies in the agent’s planning toolkit. The first, Planning with Feedback, is an adaptive approach. Here, the agent refines its strategy based on outcomes, much like iterating through versions of a design based on user feedback.  
-The second, Planning without Feedback, sees the agent as a strategist, relying solely on its pre-existing knowledge and foresight. It’s a game of chess, with the agent anticipating challenges and preparing several moves in advance.  
+Planning is essential for agents to systematically tackle challenges, mirroring how humans break down complex problems into smaller tasks.
+#### **1. What is Planning?**
+
+- **Concept:** It's the agent's strategy for problem-solving, ensuring solutions are both comprehensive and systematic.
+- **Human Analogy:** Just like humans split challenges into smaller, more manageable tasks, agents adopt a similar methodical approach.
+
+#### **2. Key Planning Strategies**
+
+| **Strategy**               | **Description**                                                                                           |
+|----------------------------|----------------------------------------------------------------------------------------------------------|
+| **Planning with Feedback** | An adaptive approach where agents refine their strategy based on outcomes, similar to iterative design processes.|
+| **Planning without Feedback** | The agent acts as a strategist, using only its existing knowledge. It's like playing chess, anticipating challenges and planning several moves ahead. |
+
 4. **Action**  
 After the introspection of memory and the strategizing of planning, comes the finale: Action. This is where the agent’s cognitive processes manifest into tangible outcomes using the agents Abilities. Every decision, every thought, culminates in the action phase, translating abstract concepts into definitive results.  
 Whether it’s penning a response, saving a file, or initiating a new process, the action component is the culmination of the agent’s decision-making journey. It’s the bridge between digital cognition and real-world impact, turning the agent’s electronic impulses into meaningful and purposeful outcomes.  

@@ -1,4 +1,4 @@
-## [AutoGPT Forge: A Comprehensive Guide to Your First Steps](https://aiedge.medium.com/autogpt-forge-a-comprehensive-guide-to-your-first-steps-a1dfdf46e3b4)
+## [AutoGPT Forge Part 1: A Comprehensive Guide to Your First Steps](https://aiedge.medium.com/autogpt-forge-a-comprehensive-guide-to-your-first-steps-a1dfdf46e3b4)
 
 ![Header](../../../docs/content/imgs/quickstart/000_header_img.png)
 
