@@ -2,6 +2,7 @@
 import enum
 import logging
 import math
+import re
 import signal
 import sys
 from pathlib import Path
@@ -14,11 +15,14 @@ from pydantic import SecretStr
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
-from autogpt.agent_factory.configurators import create_agent
+from autogpt.agent_factory.configurators import (
+    configure_agent_with_state,
+    create_agent,
+)
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
-from autogpt.agents.utils.exceptions import InvalidAgentResponseError
+from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
 from autogpt.app.configurator import apply_overrides_to_config
 from autogpt.app.setup import (
     apply_overrides_to_ai_settings,
@@ -79,20 +83,20 @@ async def run_auto_gpt(
     assert_config_has_openai_api_key(config)
 
     apply_overrides_to_config(
-        config,
-        continuous,
-        continuous_limit,
-        ai_settings,
-        prompt_settings,
-        skip_reprompt,
-        speak,
-        debug,
-        gpt3only,
-        gpt4only,
-        memory_type,
-        browser_name,
-        allow_downloads,
-        skip_news,
+        config=config,
+        continuous=continuous,
+        continuous_limit=continuous_limit,
+        ai_settings_file=ai_settings,
+        prompt_settings_file=prompt_settings,
+        skip_reprompt=skip_reprompt,
+        speak=speak,
+        debug=debug,
+        gpt3only=gpt3only,
+        gpt4only=gpt4only,
+        memory_type=memory_type,
+        browser_name=browser_name,
+        allow_downloads=allow_downloads,
+        skip_news=skip_news,
     )
 
     # Set up logging module
@@ -128,69 +132,168 @@ async def run_auto_gpt(
     config.plugins = scan_plugins(config, config.debug_mode)
     configure_chat_plugins(config)
 
+    # Let user choose an existing agent to run
+    agent_manager = AgentManager(config.app_data_dir)
+    existing_agents = agent_manager.list_agents()
+    load_existing_agent = ""
+    if existing_agents:
+        print(
+            "Existing agents\n---------------\n"
+            + "\n".join(f"{i} - {id}" for i, id in enumerate(existing_agents, 1))
+        )
+        load_existing_agent = await clean_input(
+            config,
+            "Enter the number or name of the agent to run, or hit enter to create a new one:",
+        )
+        if re.match(r"^\d+$", load_existing_agent):
+            load_existing_agent = existing_agents[int(load_existing_agent) - 1]
+        elif load_existing_agent and load_existing_agent not in existing_agents:
+            raise ValueError(f"Unknown agent '{load_existing_agent}'")
+
+    # Either load existing or set up new agent state
+    agent = None
+    agent_state = None
+
+    ############################
+    # Resume an Existing Agent #
+    ############################
+    if load_existing_agent:
+        agent_state = agent_manager.retrieve_state(load_existing_agent)
+        while True:
+            answer = await clean_input(config, "Resume? [Y/n]")
+            if answer.lower() == "y":
+                break
+            elif answer.lower() == "n":
+                agent_state = None
+                break
+            else:
+                print("Please respond with 'y' or 'n'")
+
+    if agent_state:
+        agent = configure_agent_with_state(
+            state=agent_state,
+            app_config=config,
+            llm_provider=llm_provider,
+        )
+        apply_overrides_to_ai_settings(
+            ai_profile=agent.state.ai_profile,
+            directives=agent.state.directives,
+            override_name=override_ai_name,
+            override_role=override_ai_role,
+            resources=resources,
+            constraints=constraints,
+            best_practices=best_practices,
+            replace_directives=override_directives,
+        )
+
+        # If any of these are specified as arguments,
+        #  assume the user doesn't want to revise them
+        if not any(
+            [
+                override_ai_name,
+                override_ai_role,
+                resources,
+                constraints,
+                best_practices,
+            ]
+        ):
+            ai_profile, ai_directives = await interactively_revise_ai_settings(
+                ai_profile=agent.state.ai_profile,
+                directives=agent.state.directives,
+                app_config=config,
+            )
+        else:
+            logger.info("AI config overrides specified through CLI; skipping revision")
+
     ######################
     # Set up a new Agent #
     ######################
-    task = await clean_input(
-        config,
-        "Enter the task that you want AutoGPT to execute,"
-        " with as much detail as possible:",
-    )
-    base_ai_directives = AIDirectives.from_file(config.prompt_settings_file)
+    if not agent:
+        task = await clean_input(
+            config,
+            "Enter the task that you want AutoGPT to execute,"
+            " with as much detail as possible:",
+        )
+        base_ai_directives = AIDirectives.from_file(config.prompt_settings_file)
 
-    ai_profile, task_oriented_ai_directives = await generate_agent_profile_for_task(
-        task,
-        app_config=config,
-        llm_provider=llm_provider,
-    )
-    ai_directives = base_ai_directives + task_oriented_ai_directives
-    apply_overrides_to_ai_settings(
-        ai_profile=ai_profile,
-        directives=ai_directives,
-        override_name=override_ai_name,
-        override_role=override_ai_role,
-        resources=resources,
-        constraints=constraints,
-        best_practices=best_practices,
-        replace_directives=override_directives,
-    )
+        ai_profile, task_oriented_ai_directives = await generate_agent_profile_for_task(
+            task,
+            app_config=config,
+            llm_provider=llm_provider,
+        )
+        ai_directives = base_ai_directives + task_oriented_ai_directives
+        apply_overrides_to_ai_settings(
+            ai_profile=ai_profile,
+            directives=ai_directives,
+            override_name=override_ai_name,
+            override_role=override_ai_role,
+            resources=resources,
+            constraints=constraints,
+            best_practices=best_practices,
+            replace_directives=override_directives,
+        )
 
-    # If any of these are specified as arguments,
-    #  assume the user doesn't want to revise them
-    if not any(
-        [
-            override_ai_name,
-            override_ai_role,
-            resources,
-            constraints,
-            best_practices,
-        ]
-    ):
-        ai_profile, ai_directives = await interactively_revise_ai_settings(
+        # If any of these are specified as arguments,
+        #  assume the user doesn't want to revise them
+        if not any(
+            [
+                override_ai_name,
+                override_ai_role,
+                resources,
+                constraints,
+                best_practices,
+            ]
+        ):
+            ai_profile, ai_directives = await interactively_revise_ai_settings(
+                ai_profile=ai_profile,
+                directives=ai_directives,
+                app_config=config,
+            )
+        else:
+            logger.info("AI config overrides specified through CLI; skipping revision")
+
+        agent = create_agent(
+            task=task,
             ai_profile=ai_profile,
             directives=ai_directives,
             app_config=config,
+            llm_provider=llm_provider,
         )
-    else:
-        logger.info("AI config overrides specified through CLI; skipping revision")
+        agent.attach_fs(agent_manager.get_agent_dir(agent.state.agent_id))
 
-    agent = create_agent(
-        task=task,
-        ai_profile=ai_profile,
-        directives=ai_directives,
-        app_config=config,
-        llm_provider=llm_provider,
-    )
-    agent.attach_fs(config.app_data_dir / "agents" / "AutoGPT")  # HACK
+        if not agent.config.allow_fs_access:
+            logger.info(
+                f"{Fore.YELLOW}NOTE: All files/directories created by this agent"
+                f" can be found inside its workspace at:{Fore.RESET} {agent.workspace.root}",
+                extra={"preserve_color": True},
+            )
 
-    if not agent.config.allow_fs_access:
-        logger.info(
-            f"{Fore.YELLOW}NOTE: All files/directories created by this agent"
-            f" can be found inside its workspace at:{Fore.RESET} {agent.workspace.root}",
-            extra={"preserve_color": True},
+    #################
+    # Run the Agent #
+    #################
+    try:
+        await run_interaction_loop(agent)
+    except AgentTerminated:
+        agent_id = agent.state.agent_id
+        logger.info(f"Saving state of {agent_id}...")
+
+        # Allow user to Save As other ID
+        save_as_id = (
+            await clean_input(
+                config,
+                f"Press enter to save as '{agent_id}', or enter a different ID to save to:",
+            )
+            or agent_id
         )
+        if save_as_id and save_as_id != agent_id:
+            agent.set_id(
+                new_id=save_as_id,
+                new_agent_dir=agent_manager.get_agent_dir(save_as_id),
+            )
+            # TODO: clone workspace if user wants that
+            # TODO: ... OR allow many-to-one relations of agents and workspaces
 
-    await run_interaction_loop(agent)
+        agent.state.save_to_json_file(agent.file_manager.state_file_path)
 
 
 def _configure_openai_provider(config: Config) -> OpenAIProvider:
@@ -261,23 +364,34 @@ async def run_interaction_loop(
         legacy_config.continuous_mode, legacy_config.continuous_limit
     )
     spinner = Spinner("Thinking...", plain_output=legacy_config.plain_output)
+    stop_reason = None
 
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
-        nonlocal cycle_budget, cycles_remaining, spinner
-        if cycles_remaining in [0, 1]:
-            logger.error("Interrupt signal received. Stopping AutoGPT immediately.")
+        nonlocal cycle_budget, cycles_remaining, spinner, stop_reason
+        if stop_reason:
+            logger.error("Quitting immediately...")
             sys.exit()
+        if cycles_remaining in [0, 1]:
+            logger.warning("Interrupt signal received: shutting down gracefully.")
+            logger.warning(
+                "Press Ctrl+C again if you want to stop AutoGPT immediately."
+            )
+            stop_reason = AgentTerminated("Interrupt signal received")
         else:
             restart_spinner = spinner.running
             if spinner.running:
                 spinner.stop()
 
             logger.error(
-                "Interrupt signal received. Stopping continuous command execution."
+                "Interrupt signal received: stopping continuous command execution."
             )
             cycles_remaining = 1
             if restart_spinner:
                 spinner.start()
+
+    def handle_stop_signal() -> None:
+        if stop_reason:
+            raise stop_reason
 
     # Set up an interrupt signal for the agent.
     signal.signal(signal.SIGINT, graceful_agent_interrupt)
@@ -295,6 +409,7 @@ async def run_interaction_loop(
         ########
         # Plan #
         ########
+        handle_stop_signal()
         # Have the agent determine the next action to take.
         with spinner:
             try:
@@ -308,10 +423,13 @@ async def run_interaction_loop(
                 consecutive_failures += 1
                 if consecutive_failures >= 3:
                     logger.error(
-                        f"The agent failed to output valid thoughts {consecutive_failures} "
-                        "times in a row. Terminating..."
+                        "The agent failed to output valid thoughts"
+                        f" {consecutive_failures} times in a row. Terminating..."
                     )
-                    sys.exit()
+                    raise AgentTerminated(
+                        "The agent failed to output valid thoughts"
+                        f" {consecutive_failures} times in a row."
+                    )
                 continue
 
         consecutive_failures = 0
@@ -331,6 +449,7 @@ async def run_interaction_loop(
         ##################
         # Get user input #
         ##################
+        handle_stop_signal()
         if cycles_remaining == 1:  # Last cycle
             user_feedback, user_input, new_cycles_remaining = await get_user_feedback(
                 legacy_config,
@@ -387,6 +506,8 @@ async def run_interaction_loop(
 
         if not command_name:
             continue
+
+        handle_stop_signal()
 
         result = await agent.execute(command_name, command_args, user_input)
 
