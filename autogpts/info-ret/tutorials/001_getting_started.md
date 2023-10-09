@@ -7,7 +7,10 @@ Welcome to the getting started Tutorial! This tutorial is designed to walk you t
 
 ## Section 1: Understanding the Forge
 
-The Forge serves as a comprehensive template for building your own AutoGPT agent. It not only provides the setting for setting up, creating, and running your agent, but also includes the benchmarking system and the frontend for testing it. We'll touch more on those later! For now just think of the forge as a way to easily generate your boilerplate in a standardized way.
+The Forge serves as a comprehensive template for building your own AutoGPT agent. It not only provides the setting for setting up, creating, and running your agent, but also includes the benchmarking system and the frontend. These integrated components facilitate the development and performance evaluation of your agent.
+It plays a pivotal role in the AutoGPT ecosystem, functioning as the stem from which an agent is created. It is designed to be integrated with the agent protocol, the benchmark system, and the AutoGPT frontend, thereby forming a cohesive and robust environment for agent development.
+
+This harmonization ensures that developers adhere to a standardized framework, which significantly streamlines the development process. Consequently, it eliminates the need to construct boilerplate code, allowing developers to channel their efforts and creativity directly into crafting the “brains” of the agent. By focusing on enhancing the agent’s intelligence and functionalities, developers can truly leverage the potential of AutoGPT, creating agents that are not only efficient but also innovative and advanced. The Forge, therefore, stands as a beacon of innovation and efficiency, propelling the development of AutoGPT agents to new heights.
 
 ### System Requirements
 
@@ -15,21 +18,20 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
 
 ## Section 2: Setting up the Forge Environment
 
-To begin, you need to fork the [repository](https://github.com/Significant-Gravitas/AutoGPT) by navigating to the main page of the repository and clicking **Fork** in the top-right corner. 
+To begin, you need to fork the [repository](https://github.com/Significant-Gravitas/AutoGPT) by navigating to the main page of the repository and clicking "Fork" in the top-right corner. 
 
-![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)![img.png](img.png)
+![The Github repository](../../../docs/content/imgs/quickstart/001_repo.png)
 
 Follow the on-screen instructions to complete the process. 
 
 ![Create Fork Page](../../../docs/content/imgs/quickstart/002_fork.png)
 
 ### Cloning the Repository
-Next, clone your newly forked repository to your local system. Ensure you have Git installed to proceed with this step. You can download Git from [here](https://git-scm.com/downloads). Then clone the repo using the following command and the url for your repo. You can find the correct url by clicking on the green Code button on your repos main page.
-![img_1.png](img_1.png)
+Next, clone the repository to your local system. Ensure you have Git installed to proceed with this step. You can download Git from [here](https://git-scm.com/downloads). Then clone the repo using the following command and the url for your repo. You can find the corect url by clicking on the green Code button on your repos main page.
 
 ```bash
 # replace the url with the one for your forked repo
-git clone https://github.com/<YOUR REPO PATH HERE>
+git clone https://github.com/Significant-Gravitas/AutoGPT.git
 ```
 
 ![Clone the Repository](../../../docs/content/imgs/quickstart/003_clone.png)
