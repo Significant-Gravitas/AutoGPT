@@ -8,7 +8,8 @@ from forge.sdk import (
     TaskRequestBody,
     Workspace,
     PromptEngine,
-    chat_completion_request
+    chat_completion_request,
+    ChromaMemStore
 )
 import json
 import pprint
@@ -77,6 +78,7 @@ class ForgeAgent(Agent):
         Feel free to create subclasses of the database and workspace to implement your own storage
         """
         super().__init__(database, workspace)
+        self.memstore = ChromaMemStore("agbenchmark_config/workspace/memory")
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """

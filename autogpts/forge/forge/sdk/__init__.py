@@ -23,3 +23,5 @@ from .schema import (
 )
 from .workspace import LocalWorkspace, Workspace
 from .errors import *
+from .memory.chroma_memstore import ChromaMemStore
+from .memory.memstore import MemStore
