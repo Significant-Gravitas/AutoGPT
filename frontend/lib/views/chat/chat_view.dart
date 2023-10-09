@@ -1,6 +1,5 @@
 import 'package:auto_gpt_flutter_client/models/message_type.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
-import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_queue_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/chat/agent_message_tile.dart';
