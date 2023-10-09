@@ -71,6 +71,8 @@ Want to build your own groundbreaking agent using AutoGPT? 🛠️ There are thr
 
 To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose). Please ensure someone else hasn’t created an issue for the same topic.
 
+This is an active project and many things are in the works! Find out what's _todo_ and _in progress_ by [checking the roadmap](https://github.com/orgs/Significant-Gravitas/projects/2) or [making a contribution](./CONTRIBUTING.md).
+
 <p align="center">
   <a href="https://star-history.com/#Significant-Gravitas/AutoGPT&Date">
     <img src="https://api.star-history.com/svg?repos=Significant-Gravitas/AutoGPT&type=Date" alt="Star History Chart">
