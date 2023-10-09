@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Optional
@@ -89,9 +90,8 @@ class BaseAgentConfiguration(SystemConfiguration):
     defaults to 75% of `llm.max_tokens`.
     """
 
-    summary_max_tlength: Optional[
-        int
-    ] = None  # TODO: move to ActionHistoryConfiguration
+    summary_max_tlength: Optional[int] = None
+    # TODO: move to ActionHistoryConfiguration
 
     plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
 
@@ -125,6 +125,7 @@ class BaseAgentConfiguration(SystemConfiguration):
 
 
 class BaseAgentSettings(SystemSettings):
+    agent_id: Optional[str] = None
     agent_data_dir: Optional[Path] = None
 
     ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
@@ -145,6 +146,17 @@ class BaseAgentSettings(SystemSettings):
 
     history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
     """(STATE) The action history of the agent."""
+
+    def save_to_json_file(self, file_path: Path) -> None:
+        with file_path.open("w") as f:
+            json.dump(self.dict(), f)
+
+    @classmethod
+    def load_from_json_file(cls, file_path: Path):
+        with file_path.open("r") as f:
+            agent_settings = json.load(f)
+
+        return cls.parse_obj(agent_settings)
 
 
 class BaseAgent(Configurable[BaseAgentSettings], ABC):
@@ -193,6 +205,15 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         super(BaseAgent, self).__init__()
 
         logger.debug(f"Created {__class__} '{self.ai_profile.ai_name}'")
+
+    def set_id(self, new_id: str, new_agent_dir: Optional[Path] = None):
+        self.state.agent_id = new_id
+        if self.state.agent_data_dir:
+            if not new_agent_dir:
+                raise ValueError(
+                    "new_agent_dir must be specified if one is currently configured"
+                )
+            self.attach_fs(new_agent_dir)
 
     def attach_fs(self, agent_dir: Path) -> AgentFileManager:
         self.file_manager = AgentFileManager(agent_dir)
