@@ -9,10 +9,6 @@ Welcome to the getting started Tutorial! This tutorial is designed to walk you t
 
 The Forge serves as a comprehensive template for building your own AutoGPT agent. It not only provides the setting for setting up, creating, and running your agent, but also includes the benchmarking system and the frontend for testing it. We'll touch more on those later! For now just think of the forge as a way to easily generate your boilerplate in a standardized way.
 
-### System Requirements
-
-This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux (WSL). If you are using a Windows system, you will need to install WSL. You can find the installation instructions for WSL [here](https://learn.microsoft.com/en-us/windows/wsl/).
-
 ## Section 2: Setting up the Forge Environment
 
 To begin, you need to fork the [repository](https://github.com/Significant-Gravitas/AutoGPT) by navigating to the main page of the repository and clicking **Fork** in the top-right corner. 
@@ -117,6 +113,7 @@ With our foundation set, you are now ready to build and enhance your agent! The 
 - Ensure Git is correctly installed before cloning the repository.
 - Follow the setup instructions carefully to avoid issues during project setup.
 - If encountering issues during agent creation, refer to the guide for naming conventions.
+- make sure your github token has the `repo` scopes toggled. 
 
 ### Glossary of Terms
 - **Repository**: A storage space where your project resides.
@@ -128,3 +125,6 @@ With our foundation set, you are now ready to build and enhance your agent! The 
 - **Frontend**: The user interface where you can log in, send tasks to your agent, and view the task history.
 
 
+### System Requirements
+
+This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux (WSL). If you are using a Windows system, you will need to install WSL. You can find the installation instructions for WSL [here](https://learn.microsoft.com/en-us/windows/wsl/).
