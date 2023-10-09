@@ -14,6 +14,7 @@ class TaskViewModel with ChangeNotifier {
   List<Task> _tasks = [];
   List<TestSuite> _testSuites = [];
   List<dynamic> combinedDataSource = [];
+  List<Task> tasksDataSource = [];
 
   Task? _selectedTask;
   TestSuite? _selectedTestSuite;
@@ -149,6 +150,7 @@ class TaskViewModel with ChangeNotifier {
 
     // Clear the existing combined data source to start fresh.
     combinedDataSource.clear();
+    tasksDataSource.clear();
 
     // Iterate through each task to check if it's contained in any of the test suites.
     for (var task in _tasks) {
@@ -188,6 +190,7 @@ class TaskViewModel with ChangeNotifier {
       // If the task was not found in any test suite, add it to the combined data source.
       if (!found) {
         combinedDataSource.add(task);
+        tasksDataSource.add(task);
       }
     }
 
