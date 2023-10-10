@@ -4,6 +4,7 @@ Searching with googleapi
 from typing import List
 
 import os
+import json
 import googleapiclient.discovery
 
 from forge.sdk.memory.memstore_tools import add_ability_memory
@@ -24,14 +25,14 @@ logger = ForgeLogger(__name__)
             "required": True,
         }
     ],
-    output_type="list[str]",
+    output_type="str",
 )
-async def google_search(agent, task_id: str, query: str) -> List[str]:
+async def google_search(agent, task_id: str, query: str) -> str:
     """
     Return list of snippets from google search
     """
 
-    response_snippets = []
+    resp_message = "No results found"
 
     try:
         service = googleapiclient.discovery.build(
@@ -45,15 +46,30 @@ async def google_search(agent, task_id: str, query: str) -> List[str]:
             cx=os.getenv("GOOGLE_CSE_ID")
         ).execute()
 
-        for result in response["items"]:
-            response_snippets.append({
-                "url": result["formattedUrl"],
-                "snippet": result["snippet"]
-            })
+        results = response["items"]
 
-        add_ability_memory(task_id, str(response_snippets), "google_search")
+        # adding safe message code from latest forge sdk
+        try:
+            mem_message = json.dumps(
+                [result.encode("utf-8", "ignore").decode("utf-8") for result in results]
+            )
+        except Exception as err:
+            logger.error("error making safe_message json, using dict and str instead: {err}")
+
+            resp_list = []
+            for result in response["items"]:
+                resp_list.append({
+                    "url": result["formattedUrl"],
+                    "snippet": result["snippet"]
+                })
+
+            mem_message = str(resp_list)
+
+        add_ability_memory(task_id, mem_message, "google_search")
+
+        resp_message = f"{len(response['items'])} Results from query '{query}' stored in memory"
     except Exception as err:
         logger.error(f"google_search failed: {err}")
         raise err
 
-    return response_snippets
+    return resp_message

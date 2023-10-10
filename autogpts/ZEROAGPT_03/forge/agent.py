@@ -348,7 +348,7 @@ class ForgeAgent(Agent):
             chat_completion_parms = {
                 "messages": self.chat_history[task_id],
                 "model": os.getenv("OPENAI_MODEL"),
-                "temperature": 0.4
+                "temperature": 0.7
             }
 
             chat_response = await chat_completion_request(
