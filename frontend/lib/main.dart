@@ -102,8 +102,12 @@ class MyApp extends StatelessWidget {
                     create: (context) => ChatViewModel(
                         Provider.of<ChatService>(context, listen: false))),
                 ChangeNotifierProvider(
-                    create: (context) => TaskViewModel(
-                        Provider.of<TaskService>(context, listen: false))),
+                  create: (context) => TaskViewModel(
+                    Provider.of<TaskService>(context, listen: false),
+                    Provider.of<SharedPreferencesService>(context,
+                        listen: false),
+                  ),
+                ),
                 ChangeNotifierProvider(
                     create: (context) => SkillTreeViewModel()),
                 ChangeNotifierProvider(
