@@ -1,5 +1,5 @@
 import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
-import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_queue_viewmodel.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -22,8 +22,8 @@ class SideBarView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // TODO: should we pass this in as a dependency?
-    final skillTreeViewModel =
-        Provider.of<SkillTreeViewModel>(context, listen: true);
+    final taskQueueViewModel =
+        Provider.of<TaskQueueViewModel>(context, listen: true);
     return Material(
       child: ValueListenableBuilder(
           valueListenable: selectedViewNotifier,
@@ -40,7 +40,7 @@ class SideBarView extends StatelessWidget {
                             ? Colors.blue
                             : Colors.black,
                         icon: const Icon(Icons.chat),
-                        onPressed: skillTreeViewModel.isBenchmarkRunning
+                        onPressed: taskQueueViewModel.isBenchmarkRunning
                             ? null
                             : () => selectedViewNotifier.value = 'TaskView',
                       ),
@@ -52,7 +52,7 @@ class SideBarView extends StatelessWidget {
                               ? Colors.blue
                               : Colors.black,
                           icon: const Icon(Icons.emoji_events),
-                          onPressed: skillTreeViewModel.isBenchmarkRunning
+                          onPressed: taskQueueViewModel.isBenchmarkRunning
                               ? null
                               : () =>
                                   selectedViewNotifier.value = 'SkillTreeView',
@@ -74,9 +74,10 @@ class SideBarView extends StatelessWidget {
                       IconButton(
                         splashRadius: 0.1,
                         iconSize: 25,
-                        icon: Icon(Icons.book, color: Color.fromRGBO(50, 120, 123, 1)),
-                        onPressed: () =>
-                            _launchURL('https://aiedge.medium.com/autogpt-forge-e3de53cc58ec'),
+                        icon: Icon(Icons.book,
+                            color: Color.fromRGBO(50, 120, 123, 1)),
+                        onPressed: () => _launchURL(
+                            'https://aiedge.medium.com/autogpt-forge-e3de53cc58ec'),
                         tooltip: 'Learn how to build your own Agent',
                       ),
                       IconButton(
