@@ -47,9 +47,9 @@ void main() async {
           update: (context, restApiUtility, chatService) =>
               ChatService(restApiUtility),
         ),
-        ProxyProvider<RestApiUtility, TaskService>(
-          update: (context, restApiUtility, taskService) =>
-              TaskService(restApiUtility),
+        ProxyProvider2<RestApiUtility, SharedPreferencesService, TaskService>(
+          update: (context, restApiUtility, prefsService, taskService) =>
+              TaskService(restApiUtility, prefsService),
         ),
         ProxyProvider<RestApiUtility, BenchmarkService>(
           update: (context, restApiUtility, benchmarkService) =>
