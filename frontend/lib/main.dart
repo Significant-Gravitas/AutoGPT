@@ -59,11 +59,14 @@ void main() async {
           update: (context, restApiUtility, leaderboardService) =>
               LeaderboardService(restApiUtility),
         ),
-        ChangeNotifierProxyProvider<RestApiUtility, SettingsViewModel>(
+        ChangeNotifierProxyProvider2<RestApiUtility, SharedPreferencesService,
+            SettingsViewModel>(
           create: (context) => SettingsViewModel(
-              Provider.of<RestApiUtility>(context, listen: false)),
-          update: (context, restApiUtility, settingsViewModel) =>
-              SettingsViewModel(restApiUtility),
+            Provider.of<RestApiUtility>(context, listen: false),
+            Provider.of<SharedPreferencesService>(context, listen: false),
+          ),
+          update: (context, restApiUtility, prefsService, settingsViewModel) =>
+              SettingsViewModel(restApiUtility, prefsService),
         ),
       ],
       child: MyApp(),
