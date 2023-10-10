@@ -1,4 +1,5 @@
 import 'package:auto_gpt_flutter_client/services/leaderboard_service.dart';
+import 'package:auto_gpt_flutter_client/services/shared_preferences_service.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_queue_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/auth/firebase_auth_view.dart';
@@ -38,6 +39,9 @@ void main() async {
       providers: [
         Provider(
           create: (context) => RestApiUtility("http://127.0.0.1:8000/ap/v1"),
+        ),
+        Provider(
+          create: (context) => SharedPreferencesService.instance,
         ),
         ProxyProvider<RestApiUtility, ChatService>(
           update: (context, restApiUtility, chatService) =>
