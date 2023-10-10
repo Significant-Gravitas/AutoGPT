@@ -49,12 +49,12 @@ class ProfileGenerator:
             {
                 "role": "system",
                 "content": """
-                Reply only in JSON exactly in the following format:
+                Respond in JSON format:
                 {
                     "name": "the expert's name",
                     "expertise": "specify the area in which the expert specializes"
                 }
-                                    
+                Only return the JSON object          
                 """
             },
             {
@@ -70,7 +70,7 @@ class ProfileGenerator:
         chat_completion_parms = {
             "messages": chat_list,
             "model": self.model,
-            "temperature": 0
+            "temperature": 0.6
         }
 
         response = await chat_completion_request(

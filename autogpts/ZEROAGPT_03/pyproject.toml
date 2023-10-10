@@ -23,6 +23,7 @@ jinja2 = "^3.1.2"
 bs4 = "^0.0.1"
 google-api-python-client = "^2.101.0"
 yfinance = "^0.2.30"
+google-generativeai = "^0.2.1"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"

@@ -169,39 +169,39 @@ async def write_file(agent, task_id: str, file_name: str, data: bytes) -> None:
     
 #     return read_file
 
-# @ability(
-#     name="search_in_file",
-#     description="Search the contents of a file using regex",
-#     parameters=[
-#         {
-#             "name": "regex",
-#             "description": "Regular expression",
-#             "type": "string",
-#             "required": True
-#         },
-#         {
-#             "name": "file_name",
-#             "description": "Name of file",
-#             "type": "string",
-#             "required": True,
-#         }
-#     ],
-#     output_type="list"
-# )
-# async def search_in_file(agent, task_id: str, file_name: str, regex: str) -> List:
-#     """
-#     Search file using regex
-#     """
-#     search_rgx = []
+@ability(
+    name="search_in_file",
+    description="Search the contents of a file using regex",
+    parameters=[
+        {
+            "name": "regex",
+            "description": "Regular expression",
+            "type": "string",
+            "required": True
+        },
+        {
+            "name": "file_name",
+            "description": "Name of file",
+            "type": "string",
+            "required": True,
+        }
+    ],
+    output_type="list"
+)
+async def search_in_file(agent, task_id: str, file_name: str, regex: str) -> List:
+    """
+    Search file using regex
+    """
+    search_rgx = []
 
-#     try:
-#         open_file = agent.workspace.read(task_id=task_id, path=file_name)
-#         search_rgx = re.findall(rf"{regex}", open_file.decode())
-#     except Exception as err:
-#         logger.error(f"search_file failed: {err}")
-#         raise err
+    try:
+        open_file = agent.workspace.read(task_id=task_id, path=file_name)
+        search_rgx = re.findall(rf"{regex}", open_file.decode())
+    except Exception as err:
+        logger.error(f"search_file failed: {err}")
+        raise err
 
-#     return search_rgx
+    return search_rgx
 
 # @ability(
 #     name="get_cwd",

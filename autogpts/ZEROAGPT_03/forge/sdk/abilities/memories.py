@@ -14,8 +14,9 @@ from ..ai_memory import AIMemory
 logger = ForgeLogger(__name__)
 
 @ability(
-    name="add_file_memory",
-    description="Add content of file to your memory",
+    name="add_file_to_memory",
+    description="Add content of file to your memory. " \
+        "This should be ran before using 'read_file_from_memory' or 'mem_qna",
     parameters=[
         {
             "name": "file_name",
@@ -24,9 +25,9 @@ logger = ForgeLogger(__name__)
             "required": True,
         }
     ],
-    output_type="None",
+    output_type="str",
 )
-async def add_file_memory(agent, task_id: str, file_name: str) -> None:
+async def add_file_to_memory(agent, task_id: str, file_name: str) -> str:
     logger.info(f"🧠 Adding {file_name} to memory for task {task_id}")
     try:
         cwd = agent.workspace.get_cwd_path(task_id)
@@ -43,6 +44,9 @@ async def add_file_memory(agent, task_id: str, file_name: str) -> None:
         )
     except Exception as err:
         logger.error(f"add_file_memory failed: {err}")
+        return f"Error adding {file_name} to memory: {err}"
+    
+    return f"{file_name} added to memory"
 
 @ability(
     name="read_file_from_memory",
@@ -58,8 +62,6 @@ async def add_file_memory(agent, task_id: str, file_name: str) -> None:
     output_type="str",
 )
 async def read_file_from_memory(agent, task_id: str, file_name: str) -> str:
-    mem_doc = f"{file_name} not found in database"
-
     try:
         # find doc in chromadb
         cwd = agent.workspace.get_cwd_path(task_id)
@@ -74,6 +76,21 @@ async def read_file_from_memory(agent, task_id: str, file_name: str) -> str:
         # get the most relevant document and shrink to 255
         if len(memory_resp["documents"][0]) > 0:
             mem_doc = memory_resp["documents"][0][0][:255]
+        else:
+            # add file to memory
+            # this was added due to AI always trying to read before adding
+            logger.info(f"Could not find file {file_name} - Adding to memory")
+            add_file = await add_file_to_memory(agent, task_id, file_name)
+            if "Error" not in add_file:
+                memory_resp = memory.query(
+                    task_id=task_id,
+                    query=file_name
+                )
+
+                if len(memory_resp["documents"][0]) > 0:
+                    mem_doc = memory_resp["documents"][0][0][:255]
+                else:
+                    mem_doc = "Error when adding file, use ability 'add_file_memory'"
     except Exception as err:
         logger.error(f"mem_search failed: {err}")
         raise err
@@ -118,37 +135,38 @@ async def mem_search(agent, task_id: str, query: str) -> str:
 
 @ability(
     name="mem_qna",
-    description="Query for a relevant document in your memory question it",
+    description="Query for a relevant document in your memory and ask questions about the document",
     parameters=[
         {
-            "name": "doc_query",
+            "name": "doc_search_query",
             "description": "query or keyword to find document in database",
             "type": "string",
             "required": True,
         },
         {
-            "name": "doc_question",
-            "description": "question about document",
+            "name": "doc_content_question",
+            "description": "question about content of document",
             "type": "string",
             "required": True,
         }
     ],
     output_type="str",
 )
-async def mem_qna(agent, task_id: str, doc_query: str, doc_question: str):
+async def mem_qna(agent, task_id: str, doc_search_query: str, doc_content_question: str):
     mem_doc = "No documents found"
     try:
         aimem = AIMemory(
             agent.workspace,
             task_id,
-            doc_query,
-            doc_question,
+            doc_search_query,
+            doc_content_question,
             "gpt-3.5-turbo-16k"
         )
 
         aimem.get_doc()
-        
-        mem_doc = await aimem.query_doc_ai()
+
+        if aimem.relevant_doc:
+            mem_doc = await aimem.query_doc_ai()
     except Exception as err:
         logger.error(f"mem_qna failed: {err}")
         raise err

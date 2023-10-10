@@ -1,12 +1,12 @@
-Unnamed: 0,Item,Color
-0,Banana,
-9,Daisy,
-10,Fern,
-4,Grass,
-5,Jeans,
-1,Leaf,
-6,Lemon,
-8,Ocean,
-2,Sky,
-3,Sunflower,
-7,Tree,
+Item,Color
+Banana,blue
+Daisy,yellow
+Fern,green
+Grass,green
+Jeans,blue
+Leaf,green
+Lemon,yellow
+Ocean,blue
+Sky,yellow
+Sunflower,blue
+Tree,green

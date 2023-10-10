@@ -65,7 +65,7 @@ async def csv_get_columns(
     return df.columns.to_list()
 
 @ability(
-    name="get_amount_rows",
+    name="csv_get_amount_rows",
     description="Get the amount of rows",
     parameters=[
         {
@@ -77,7 +77,7 @@ async def csv_get_columns(
     ],
     output_type="int"
 )
-async def get_amount_rows(
+async def csv_get_amount_rows(
     agent,
     task_id: str,
     file_name: str) -> int:
@@ -99,8 +99,10 @@ async def get_amount_rows(
     return row_amt
 
 @ability(
-    name="get_column_value",
-    description="Get the value of a column at a certain row",
+    name="csv_get_column_value",
+    description="""Get the value of a column at a certain row in a CSV.
+    Get a comma separated list of all the values in a column in a CSV.
+    When not using row_id, set it to -1""",
     parameters=[
         {
             "name": "file_name",
@@ -118,26 +120,29 @@ async def get_amount_rows(
             "name": "row_idx",
             "description": "Row number starting from 0",
             "type": "int",
-            "required": True
+            "required": False
         }
     ],
     output_type="Any"
 )
-async def get_column_value(
+async def csv_get_column_value(
     agent,
     task_id: str,
     file_name: str,
     column: str,
-    row_idx: str
+    row_idx: int = -1
 ) -> Any:
-    file_readlines = agent.workspace.readlines(task_id=task_id, path=file_name)
-    file_sep = get_sep(file_readlines)
-
-    gcwd = agent.workspace.get_cwd_path(task_id)
-    df = pandas.read_csv(f"{gcwd}/{file_name}", sep=file_sep)
-    
     try:
-        row_val = df.iloc[row_idx][column]
+        file_readlines = agent.workspace.readlines(task_id=task_id, path=file_name)
+        file_sep = get_sep(file_readlines)
+
+        gcwd = agent.workspace.get_cwd_path(task_id)
+        df = pandas.read_csv(f"{gcwd}/{file_name}", sep=file_sep)
+        
+        if row_idx == -1:
+            row_val = df[column].to_list()
+        else:
+            row_val = df.iloc[row_idx][column]
     except Exception as err:
         logger.error(f"getting row value failed: {err}")
         raise err
@@ -187,50 +192,50 @@ async def csv_group_by_sum(
 
     return cat_sum.to_string()
 
-@ability(
-    name="csv_check_column",
-    description=f"Boolean check to see if known CSV column has row value",
-    parameters=[
-        {
-            "name": "file_name",
-            "description": "Name of the file",
-            "type": "string",
-            "required": True
-        },
-        {
-            "name": "column",
-            "description": "Primary column",
-            "type": "string",
-            "required": True
-        },
-        {
-            "name": "row_value",
-            "description": "Row value to check",
-            "type": "string",
-            "required": True
-        }
-    ],
-    output_type="bool"
-)
-async def csv_check_column(
-    agent, 
-    task_id: str, 
-    file_name: str, 
-    column: str, 
-    row_value: str) -> bool:
+# @ability(
+#     name="csv_check_column",
+#     description=f"Boolean check to see if known CSV column has row value",
+#     parameters=[
+#         {
+#             "name": "file_name",
+#             "description": "Name of the file",
+#             "type": "string",
+#             "required": True
+#         },
+#         {
+#             "name": "column",
+#             "description": "Primary column",
+#             "type": "string",
+#             "required": True
+#         },
+#         {
+#             "name": "row_value",
+#             "description": "Row value to check",
+#             "type": "string",
+#             "required": True
+#         }
+#     ],
+#     output_type="bool"
+# )
+# async def csv_check_column(
+#     agent, 
+#     task_id: str, 
+#     file_name: str, 
+#     column: str, 
+#     row_value: str) -> bool:
     
-    file_readlines = agent.workspace.readlines(task_id=task_id, path=file_name)
-    file_sep = get_sep(file_readlines)
+#     file_readlines = agent.workspace.readlines(task_id=task_id, path=file_name)
+#     file_sep = get_sep(file_readlines)
 
-    gcwd = agent.workspace.get_cwd_path(task_id)
-    df = pandas.read_csv(f"{gcwd}/{file_name}", sep=file_sep)
+#     gcwd = agent.workspace.get_cwd_path(task_id)
+#     df = pandas.read_csv(f"{gcwd}/{file_name}", sep=file_sep)
 
-    if column in df.columns:
-        df.loc[df[column] == row_value]
-        if not df.empty:
-            return True
+#     if column in df.columns:
+#         df.loc[df[column] == row_value]
+#         if not df.empty:
+#             return True
         
-    return False
+#     return False
 
 @ability(
     name="csv_merge",
@@ -352,7 +357,11 @@ async def csv_sort_by_column(
 
 @ability(
     name="csv_add_column_data",
-    description="Add data to column or creates column in CSV and adds data",
+    description="""Add a value at a certain row and column in a CSV.
+    Add a list of comma separated values to a column in a CSV.
+    Add a new column in a CSV.
+    row_index is not required but if not being used set it to -1.
+    This ability can also be used to add a new column with a blank value""",
     parameters=[
         {
             "name": "input_file",
@@ -374,7 +383,7 @@ async def csv_sort_by_column(
         },
         {
             "name": "value",
-            "description": "Value to add to column",
+            "description": "Value or a list of comma separated values to add to column",
             "type": "Any",
             "required": True
         },
@@ -382,7 +391,7 @@ async def csv_sort_by_column(
             "name": "row_index",
             "description": "the index in the column to add the value",
             "type": "int",
-            "required": True
+            "required": False
         }
     ],
     output_type="bool"
@@ -394,7 +403,7 @@ async def csv_add_column_data(
     output_file: str, 
     column: str,
     value: Any,
-    row_index: int) -> bool:
+    row_index: int = -1) -> bool:
 
     try:
         gcwd = agent.workspace.get_cwd_path(task_id)
@@ -408,7 +417,23 @@ async def csv_add_column_data(
             sep=file_sep
         )
 
-        df.loc[row_index, column] = value
+        
+        if row_index == -1:
+            # handle if string
+            if isinstance(value, str):
+                # check if its a list of comma separated values
+                if "[" in value or "," in value:
+                    value_list = value.strip("][").replace("'", "").split(",")
+
+                    for ridx in range(len(value_list)):
+                        df.loc[ridx, column] = value_list[ridx]
+                else:
+                    df.loc[0, column] = value
+            elif isinstance(value, list):
+                for ridx in range(len(value)):
+                    df.loc[ridx, column] = value[ridx]
+        else:
+            df.loc[row_index, column] = value
         df.to_csv(f"{gcwd}/{output_file}", index=False)
     except Exception as err:
         logger.error(f"csv_add_column_data failed: {err}")

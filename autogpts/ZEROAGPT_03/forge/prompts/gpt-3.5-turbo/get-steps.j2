@@ -1,27 +1,46 @@
-Please create a series of steps to accomplish the task below. Do adhere to these Constraints and Best Practices, you can efficiently plan the task steps, ensuring compliance with the provided guidelines and maintaining accuracy.
+Generate a series of steps to accomplish the following task in a short and concise manner:
 
-Task: {{ task }}
+{{ task }}
 
 Constraints:
-- Always conclude each sequence of steps with the 'finish' ability as the final step, providing a reason for 'finish.'
-- Avoid using abilities as arguments for other abilities.
-- Only use abilities listed in the provided task abilities list in any way to complete the task.
-- Prioritize using local data sources over online sources.
-- When handling multiple files (e.g., .csv, .txt), some steps may require combining multiple files for a comprehensive solution.
-- Limit CSV-related abilities to CSV files.
-- Investigate the necessity of each file and include only essential files in your task.
-- Maintain precision in your data, avoiding approximations. Do not use filler text or placeholder text.
+
+Always conclude each sequence of steps with the finish ability as the final step, providing a reason for finish.
+Avoid using abilities as arguments for other abilities.
+Only use abilities listed in the provided task abilities list in any way to complete the task.
+Prioritize using local data sources over online sources.
+When handling multiple files (e.g., .csv, .txt), some steps may require combining multiple files for a comprehensive solution.
+Limit CSV-related abilities to CSV files.
+Investigate the necessity of each file and include only essential files in your task.
+Maintain precision in your data, avoiding approximations. Do not use filler text or placeholder text.
 
 Best Practices:
-- When encountering multiple files, create separate steps for each file, ensuring that each contributes to the task.
-- If you encounter two or more CSV files requiring merging, include a step to merge them in pairs before proceeding with the task.
-- If a required column is absent in any CSV, create the column using 'csv_add_column_data.' Ensure that you read the CSV data to ensure the correct data is added to the right row.
-- Make sure to gather information about the CSV and its contents before adding a new column data with 'csv_add_column_data'
-- Before using 'csv_merge,' apply 'csv_get_columns' to both files to identify common columns. Do not use 'csv_merge' with only one file; use it with two different files or more.
-- Always use the filenames specified in the task, if provided.
-- Do not forget to process other files before completing the task.
-- Utilize the 'read_file_from_memory' ability to read a file, extracting up to 255 characters for data comprehension.
-- Utilize the 'add_file_memory' ability to load text files into vector memory storage.
-- Utilize the 'list_files' ability to check for available data files.
+List file should mostly list files at "." or "./" unless defined otherwise in the task instructions
+When encountering multiple files, create separate steps for each file, ensuring that each contributes to the task.
+Always use the filenames specified in the task, if provided.
+Do not forget to process other files before completing the task.
+Utilize the read_file_from_memory ability to read a file, extracting up to 255 characters for data comprehension.
+Utilize the add_file_memory ability to load text files into vector memory storage.
+Utilize the list_files ability to check for available data files.
+Utilize the mem_qna to pull up a document added by add_file_memory and ask questions about it. Remember the file you are looking for goes into the doc_query attribute and the question goes into the doc_question attribute. This will help if you have to categorize or clarify data in a file.
+If the required column in a CSV or tabulated data is not present, create the column with 'csv_add_column_data,' starting at the 0th row.
+If adding columns to a CSV or tabulated data, read the CSV first and analyze the structure and data beofre adding values with 'csv_add_column_data'
+To categorize a CSV or tabulated data, read over present column data with 'csv_get_column_value,' analyze the data, and add the categorization to the proper column and row with 'csv_add_column_data.'
+Before using 'csv_merge,' use 'csv_get_columns' on both files to find the common column. Do not use 'csv_merge' with one file. Only use it with two different files.
+For categorization with CSVs, please do not loop through each value in a set but use 'csv_get_column_value' with row_idx = -1 to get a list of values and analyze that
+   For Example:
+      Get column list to select the right column to get values from
+         csv_get_columns(task_id, file_name) -> column_list
+      Get column values for column in column_list
+         csv_got_column_value(task_id, file_name, column, -1) -> List
+      Analyze list to create a categorized list, this is generated by you and placed in the 'csv_add_column_data' in the next step.
+      Add categorized list to new CSV with old list
+         csv_add_column_data(task_id, input_file, output_file, column, categorized_list, -1) -> Add categorized_list and output to output_file
+
+Additional Recommendations:
+
+Structure your steps logically and efficiently. Group related steps together and make sure that each step is necessary to complete the task.
+Use clear and concise language. Avoid using jargon or technical terms that the AI may not understand.
+Provide specific instructions. Don't leave any room for interpretation.
+Test your steps thoroughly. Try to complete the task using your own steps to make sure that they work as expected.
 
 

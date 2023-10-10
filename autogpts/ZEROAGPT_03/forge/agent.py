@@ -48,6 +48,9 @@ class ForgeAgent(Agent):
         # instruction messages
         self.instruction_msgs = {}
 
+        # keep number of steps per task
+        self.task_steps_amount = {}
+
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         # set instruction amount to 0
         self.instruct_amt = 0
@@ -99,6 +102,8 @@ class ForgeAgent(Agent):
         self.instruction_msgs[task.task_id] = []
         await self.set_instruction_messages(task.task_id, task.input)
 
+        self.task_steps_amount[task.task_id] = 0
+
         return task
     
     def add_chat(self, 
@@ -125,8 +130,12 @@ class ForgeAgent(Agent):
             if chat_struct not in self.chat_history[task_id]:
                 self.chat_history[task_id].append(chat_struct)
             else:
+                # resend the instructions to continue AI on its goal
+                # usually the instructions are the last messages of the
+                # self.instruction_msgs but change if not
                 chat_struct["role"] = "user"
-                chat_struct["content"] = "You are repeating yourself. Please think upon the state of the task and create the correct next move or move on to the next step."
+                timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+                chat_struct["content"] = f"[{timestamp}] You have gone off course and repeating the same step. Remember the instructions you are supposed to be working through and move on\n\n{self.instruction_msgs[-1]}"
                 self.chat_history[task_id].append(chat_struct)
 
         except KeyError:
@@ -148,9 +157,9 @@ class ForgeAgent(Agent):
         a token error
         """
 
-        # get last two most recent messages if not system messages
-        print(f"len of chat history @ {task_id}: {len(self.chat_history[task_id])}")
-        print(f"len of instruction msgs @ {task_id}: {len(self.instruction_msgs[task_id])}")
+        LOG.info(f"CHAT DUMP\n\n{self.chat_history[task_id]}\n\n")
+        LOG.info(f"len of chat history @ {task_id}: {len(self.chat_history[task_id])}")
+        LOG.info(f"len of instruction msgs @ {task_id}: {len(self.instruction_msgs[task_id])}")
 
         if len(self.chat_history[task_id]) > len(self.instruction_msgs[task_id]):
             # get last two assistant messages to add back in chat after refresh
@@ -266,20 +275,19 @@ class ForgeAgent(Agent):
             "gpt-3.5-turbo"
         )
 
-        plan_steps_prompt = None
+        # plan_steps = None
         # while plan_steps_prompt is None:
         LOG.info("💡 Generating step plans...")
-        plan_steps_reply = await self.ai_plan.create_steps()
         try:
-            plan_steps_prompt = json.loads(plan_steps_reply)
+            plan_steps = await self.ai_plan.create_steps()
         except Exception as err:
             # pass
             LOG.error(f"plan_steps_prompt failed\n{err}")
         
-        LOG.info(f"🖥️ planned steps\n{plan_steps_prompt}")
+        LOG.info(f"🖥️ planned steps\n{plan_steps}")
         
         ctoa_prompt_params = {
-            "steps": plan_steps_prompt["steps"],
+            "plan": plan_steps,
             "task": task_input
         }
 
@@ -308,7 +316,7 @@ class ForgeAgent(Agent):
                     shutil.copy(file_path, tmp)
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
-        task = await self.db.get_task(task_id)
+        # task = await self.db.get_task(task_id)
 
         # Create a new step in the database
         # have AI determine last step
@@ -321,6 +329,17 @@ class ForgeAgent(Agent):
 
         step.status = "running"
 
+        self.task_steps_amount[task_id] += 1
+
+        # check if it is an even step and if it is send AI messages to take a breath
+        print(f"Step {self.task_steps_amount[task_id]}")
+        # if (self.task_steps_amount[task_id] % 2) == 0:
+        #     self.add_chat(
+        #         task_id,
+        #         "user",
+        #         "Step back and take a breath before continuing on"
+        #     )
+
         # used in some chat messages
         timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
         
@@ -329,7 +348,7 @@ class ForgeAgent(Agent):
             chat_completion_parms = {
                 "messages": self.chat_history[task_id],
                 "model": os.getenv("OPENAI_MODEL"),
-                "temperature": 0.2
+                "temperature": 0.4
             }
 
             chat_response = await chat_completion_request(
@@ -341,6 +360,7 @@ class ForgeAgent(Agent):
             step.status = "completed"
         else:
             # add response to chat log
+            # LOG.info(f"⚙️ chat_response\n{chat_response}")
             self.add_chat(
                 task_id,
                 "assistant",
@@ -357,11 +377,15 @@ class ForgeAgent(Agent):
                 if ("ability" not in answer 
                         or "thoughts" not in answer):
                     system_prompt = self.prompt_engine.load_prompt("system-reformat")
+                    
                     self.add_chat(
                         task_id,
                         "system",
-                        f"[{timestamp}] Your reply was not in the given JSON format.\n{system_prompt}")
-                    step.status = "completed"
+                        f"Your reply was not in the given JSON format.\n{system_prompt}")
+                    
+                    LOG.info(f"chat[-1]: {self.chat_history[task_id][-1]}")
+                    LOG.info(f"⚙️ chat_response\n{chat_response}")
+
                 else:
                     # Set the step output and is_last from AI
                     if "speak" in answer["thoughts"]:
@@ -396,46 +420,45 @@ class ForgeAgent(Agent):
                                     output = await self.abilities.run_ability(
                                         task_id,
                                         ability["name"]
-                                    )
-
-                                    
+                                    )   
                             except Exception as err:
                                 LOG.error(f"Ability run failed: {err}")
+                                output = None
                                 self.add_chat(
                                     task_id=task_id,
                                     role="system",
                                     content=f"[{timestamp}] Ability {ability['name']} failed to run: {err}"
                                 )
-
-                            if output == None:
-                                output = ""
-
-                            LOG.info(f"🔨 Ability Output\n{output}")
-
-                            # change output to string if there is output
-                            if isinstance(output, bytes):
-                                output = output.decode()
-                            
-                            # add to converstion
-                            # add arguments to function content, if any
-                            if "args" in ability:
-                                ccontent = f"[Arguments {ability['args']}]: {output} "
                             else:
-                                ccontent = output
+                                if output == None:
+                                    output = ""
 
-                            self.add_chat(
-                                task_id=task_id,
-                                role="function",
-                                content=ccontent,
-                                is_function=True,
-                                function_name=ability["name"]
-                            )
+                                LOG.info(f"🔨 Ability Output\n{output}")
 
-                            step.status = "completed"
+                                # change output to string if there is output
+                                if isinstance(output, bytes):
+                                    output = output.decode()
+                                
+                                # add to converstion
+                                # add arguments to function content, if any
+                                if "args" in ability:
+                                    ccontent = f"[Arguments {ability['args']}]: {output} "
+                                else:
+                                    ccontent = output
 
-                            if ability["name"] == "finish":
-                                step.is_last = True
-                                self.copy_to_temp(task_id)
+                                self.add_chat(
+                                    task_id=task_id,
+                                    role="function",
+                                    content=ccontent,
+                                    is_function=True,
+                                    function_name=ability["name"]
+                                )
+
+                                step.status = "completed"
+
+                                if ability["name"] == "finish":
+                                    step.is_last = True
+                                    self.copy_to_temp(task_id)
 
                     
 
@@ -450,7 +473,7 @@ class ForgeAgent(Agent):
                 self.add_chat(
                     task_id,
                     "system",
-                    f"[{timestamp}] Your reply was not JSON formatted.\n{system_prompt}")
+                    f"Your reply was not JSON formatted.\n{system_prompt}")
             except Exception as e:
                 # Handle other exceptions
                 LOG.error(f"execute_step error: {e}")
@@ -461,7 +484,7 @@ class ForgeAgent(Agent):
                 self.add_chat(
                     task_id,
                     "system",
-                    f"[{timestamp}] Something went wrong with processing on our end. Please reformat your reply and try again.\n{e}")
+                    f"Something went wrong with processing on our end. Please reformat your reply and try again.\n{e}")
 
         # dump whole chat log at last step
         if step.is_last and task_id in self.chat_history:

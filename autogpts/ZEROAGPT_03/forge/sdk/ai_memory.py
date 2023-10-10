@@ -50,7 +50,8 @@ class AIMemory:
                 query=self.query
             )
 
-            self.relevant_doc = memory_resp["documents"][0][0]
+            if len(memory_resp["documents"][0]) > 0:
+                self.relevant_doc = memory_resp["documents"][0][0]
         except Exception as err:
             logger.error(f"get_doc failed: {err}")
             raise err
@@ -82,7 +83,7 @@ class AIMemory:
                 chat_completion_parms = {
                     "messages": self.chat,
                     "model": self.model,
-                    "temperature": 0
+                    "temperature": 0.7
                 }
 
                 response = await chat_completion_request(
