@@ -152,6 +152,7 @@ class _ChatViewState extends State<ChatView> {
                     !widget.viewModel.isContinuousMode;
               },
               isContinuousMode: widget.viewModel.isContinuousMode,
+              viewModel: widget.viewModel,
             ),
           ),
         ],

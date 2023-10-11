@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart';
 import 'package:auto_gpt_flutter_client/services/task_service.dart';
 import 'package:auto_gpt_flutter_client/models/task_request_body.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 // TODO: How will all these functions work with test suites?
 class TaskViewModel with ChangeNotifier {
