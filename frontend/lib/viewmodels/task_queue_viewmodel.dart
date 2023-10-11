@@ -10,6 +10,7 @@ import 'package:auto_gpt_flutter_client/models/test_option.dart';
 import 'package:auto_gpt_flutter_client/models/test_suite.dart';
 import 'package:auto_gpt_flutter_client/services/benchmark_service.dart';
 import 'package:auto_gpt_flutter_client/services/leaderboard_service.dart';
+import 'package:auto_gpt_flutter_client/services/shared_preferences_service.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:collection/collection.dart';
@@ -20,6 +21,7 @@ import 'package:auto_gpt_flutter_client/utils/stack.dart';
 class TaskQueueViewModel extends ChangeNotifier {
   final BenchmarkService benchmarkService;
   final LeaderboardService leaderboardService;
+  final SharedPreferencesService prefsService;
   bool isBenchmarkRunning = false;
   Map<SkillTreeNode, BenchmarkTaskStatus> benchmarkStatusMap = {};
   List<BenchmarkRun> currentBenchmarkRuns = [];
@@ -29,7 +31,8 @@ class TaskQueueViewModel extends ChangeNotifier {
   TestOption get selectedOption => _selectedOption;
   List<SkillTreeNode>? get selectedNodeHierarchy => _selectedNodeHierarchy;
 
-  TaskQueueViewModel(this.benchmarkService, this.leaderboardService);
+  TaskQueueViewModel(
+      this.benchmarkService, this.leaderboardService, this.prefsService);
 
   void updateSelectedNodeHierarchyBasedOnOption(
       TestOption selectedOption,

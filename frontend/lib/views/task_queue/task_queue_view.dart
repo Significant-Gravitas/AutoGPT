@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 class TaskQueueView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    // TODO: This should be injected instead
     final viewModel = Provider.of<TaskQueueViewModel>(context);
 
     // Node hierarchy
@@ -135,6 +136,7 @@ class TaskQueueView extends StatelessWidget {
                                 viewModel.submitToLeaderboard(
                                     teamName, repoUrl, commitSha);
                               },
+                              viewModel: viewModel,
                             ),
                           );
                         },
