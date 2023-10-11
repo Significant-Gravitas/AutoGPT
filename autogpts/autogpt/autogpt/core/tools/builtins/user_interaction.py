@@ -32,4 +32,7 @@ async def user_interaction(question: str, agent: BaseAgent) -> str:
     #     agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "
     # )
     # TODO : MAke user-proxy here
-    return agent._user_input_handler(question)
+    # TODO : Save Agent output
+    user_response = agent._user_input_handler(question)
+    # TODO : Save User Input
+    return user_response 
