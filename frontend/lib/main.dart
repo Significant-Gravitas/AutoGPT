@@ -116,8 +116,11 @@ class MyApp extends StatelessWidget {
                     create: (context) => SkillTreeViewModel()),
                 ChangeNotifierProvider(
                   create: (context) => TaskQueueViewModel(
-                      Provider.of<BenchmarkService>(context, listen: false),
-                      Provider.of<LeaderboardService>(context, listen: false)),
+                    Provider.of<BenchmarkService>(context, listen: false),
+                    Provider.of<LeaderboardService>(context, listen: false),
+                    Provider.of<SharedPreferencesService>(context,
+                        listen: false),
+                  ),
                 ),
               ],
               child: MainLayout(),
