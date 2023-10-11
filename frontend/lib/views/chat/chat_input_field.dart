@@ -1,3 +1,4 @@
+import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/chat/continuous_mode_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,12 +8,15 @@ class ChatInputField extends StatefulWidget {
   final Function(String) onSendPressed;
   final Function() onContinuousModePressed;
   final bool isContinuousMode;
+  // TODO: Create a view model for this class and remove the ChatViewModel
+  final ChatViewModel viewModel;
 
   const ChatInputField({
     Key? key,
     required this.onSendPressed,
     required this.onContinuousModePressed,
     this.isContinuousMode = false,
+    required this.viewModel,
   }) : super(key: key);
 
   @override
@@ -42,9 +46,10 @@ class _ChatInputFieldState extends State<ChatInputField> {
   }
 
   Future<void> _presentContinuousModeDialogIfNeeded() async {
-    final prefs = await SharedPreferences.getInstance();
-    final showContinuousModeDialog =
-        prefs.getBool('showContinuousModeDialog') ?? true;
+    final showContinuousModeDialog = await widget.viewModel.prefsService
+            .getBool('showContinuousModeDialog') ??
+        true;
+
     FocusScope.of(context).requestFocus(_throwawayFocusNode);
     if (showContinuousModeDialog) {
       showDialog(
@@ -56,7 +61,8 @@ class _ChatInputFieldState extends State<ChatInputField> {
               _executeContinuousMode();
             },
             onCheckboxChanged: (bool value) async {
-              await prefs.setBool('showContinuousModeDialog', !value);
+              await widget.viewModel.prefsService
+                  .setBool('showContinuousModeDialog', !value);
             },
           );
         },
