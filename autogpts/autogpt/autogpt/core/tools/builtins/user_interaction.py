@@ -13,7 +13,7 @@ from autogpt.core.utils.json_schema import JSONSchema
 
 
 @tool(
-    "ask_user",
+    "user_interaction",
     (
         "If you need more details or information regarding the given goals,"
         " you can ask the user for input"
@@ -27,8 +27,9 @@ from autogpt.core.utils.json_schema import JSONSchema
     },
     enabled=lambda config: not config.noninteractive_mode,
 )
-async def ask_user(question: str, agent: BaseAgent) -> str:
+async def user_interaction(question: str, agent: BaseAgent) -> str:
     # resp = await clean_input(
     #     agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "
     # )
+    # TODO : MAke user-proxy here
     return agent._user_input_handler(question)
