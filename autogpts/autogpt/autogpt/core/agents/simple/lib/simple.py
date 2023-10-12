@@ -150,7 +150,7 @@ class PromptManager(Configurable, AgentMixin):
             raise ValueError(f"Invalid strategy name {strategy_name}")
 
         prompt_strategy: BasePromptStrategy = self._prompt_strategies[strategy_name]
-        if hasattr(prompt_strategy, '_agent') and prompt_strategy._agent is not None :
+        if not hasattr(prompt_strategy, '_agent') or prompt_strategy._agent is None :
             prompt_strategy.set_agent(agent=self._agent)
 
         kwargs.update(self.get_system_info(prompt_strategy))

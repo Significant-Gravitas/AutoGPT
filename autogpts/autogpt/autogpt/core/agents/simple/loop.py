@@ -60,7 +60,8 @@ except :
 
 # FIXME: Deactivated for as long as we don't have the UI to support it
 aaas['usercontext'] = False
-            
+aaas['whichway'] = False
+
 class PlannerLoop(BaseLoop):
     _agent: PlannerAgent
 
@@ -74,8 +75,6 @@ class PlannerLoop(BaseLoop):
 
         self._active = False
         self.remaining_cycles = 1
-
-
 
     def add_initial_tasks(self) : 
 
@@ -130,6 +129,9 @@ class PlannerLoop(BaseLoop):
         else :
             self._agent.agent_goals = [self._agent.agent_goal_sentence]
 
+
+        self._current_task_routing_description = ''
+        self._current_task_routing_feedbacks = ''
         self.plan().add_tasks(task= initial_task_list)
 
 
