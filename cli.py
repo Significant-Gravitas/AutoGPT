@@ -109,9 +109,9 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         )
         install_error = True
     print_access_token_instructions = False
-    # Check for the existence of the .github_access_token file
-    if os.path.exists(".github_access_token"):
-        with open(".github_access_token", "r") as file:
+    # Check for the existence of the ..github_access_token file
+    if os.path.exists("..github_access_token"):
+        with open("..github_access_token", "r") as file:
             github_access_token = file.read().strip()
             if github_access_token:
                 click.echo(
@@ -159,8 +159,8 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
                 )
                 print_access_token_instructions = True
     else:
-        # Create the .github_access_token file if it doesn't exist
-        with open(".github_access_token", "w") as file:
+        # Create the ..github_access_token file if it doesn't exist
+        with open("..github_access_token", "w") as file:
             file.write("")
         install_error = True
         print_access_token_instructions = True
@@ -188,7 +188,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         )
         click.echo(
             click.style(
-                "\t6. Open the '.github_access_token' file in the same directory as this script and paste the token into this file.",
+                "\t6. Open the '..github_access_token' file in the same directory as this script and paste the token into this file.",
                 fg="red",
             )
         )
