@@ -137,7 +137,7 @@ Commands:
   list     List benchmark tests command
 ```
 
-The benchmark has been split into different categories of skills you and test your agent on. You can see what categories are available with
+The benchmark has been split into different categories of skills you can test your agent on. You can see what categories are available with
 ```bash
 ./run benchmark categories list
 # And what tests are available with
