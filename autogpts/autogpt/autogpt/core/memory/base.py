@@ -66,7 +66,7 @@ class MemoryConfig(SystemConfiguration):
 #             extra = "allow"
 
 
-class Memory(Configurable, abc.ABC):
+class AbstractMemory(Configurable, abc.ABC):
 
     class SystemSettings(Configurable.SystemSettings) :
         configuration: MemoryConfig = MemoryConfig()
@@ -109,18 +109,18 @@ class Memory(Configurable, abc.ABC):
     @abc.abstractmethod
     def __init__(
         self,
-        settings: Memory.SystemSettings,
+        settings: AbstractMemory.SystemSettings,
         logger: Logger,
     ):
-        Memory._instances = {}
+        AbstractMemory._instances = {}
         super().__init__(settings, logger)
         # self._configuration = settings.configuration
         # self._logger = logger
 
     @classmethod
     def get_adapter(
-        cls, memory_settings: Memory.SystemSettings, logger=Logger, *args, **kwargs
-    ) -> "Memory":
+        cls, memory_settings: AbstractMemory.SystemSettings, logger=Logger, *args, **kwargs
+    ) -> "AbstractMemory":
         """
         Get an instance of a memory adapter based on the provided configuration.
 
@@ -145,8 +145,8 @@ class Memory(Configurable, abc.ABC):
             json.dumps(memory_settings.configuration.dict()).encode()
         ).decode()
 
-        if config_key in Memory._instances:
-            return Memory._instances[config_key]
+        if config_key in AbstractMemory._instances:
+            return AbstractMemory._instances[config_key]
 
         if adapter_type == MemoryAdapterType.NOSQL_JSON_FILE:
             from autogpt.core.memory.nosql.jsonfile import JSONFileMemory
@@ -168,11 +168,10 @@ class Memory(Configurable, abc.ABC):
         else:
             raise ValueError("Invalid memory_adapter type")
 
-        Memory._instances[config_key] = instance  # Store the newly created instance
+        AbstractMemory._instances[config_key] = instance  # Store the newly created instance
         return instance
 
     abc.abstractmethod
-
     def get_table(self, table_name: str) -> BaseTable:
         """
         Get an instance of the table with the specified table_name.
@@ -193,7 +192,7 @@ class Memory(Configurable, abc.ABC):
             users_table = memory.get_table("users")
         """
 
-        if self.__class__ == Memory:
+        if self.__class__ == AbstractMemory:
             raise TypeError(
                 "get_table method cannot be called on Memory class directly"
             )

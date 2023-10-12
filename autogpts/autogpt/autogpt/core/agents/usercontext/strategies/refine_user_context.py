@@ -20,7 +20,7 @@ Examples:
 To initialize and use the `RefineUserContextStrategy`:
 
 >>> strategy = RefineUserContextStrategy(logger, model_classification=LanguageModelClassification.FAST_MODEL_4K, default_function_call=RefineUserContextFunctionNames.REFINE_REQUIREMENTS, strategy_name="refine_user_context", context_min_tokens=250, context_max_tokens=300)
->>> prompt = strategy.build_prompt(exit_refinement_process=False, user_objective="Build a web app")
+>>> prompt = strategy.build_prompt(interupt_refinement_process=False, user_objective="Build a web app")
 """
 from logging import Logger
 import uuid
@@ -110,7 +110,7 @@ class RefineUserContextStrategy(BasePromptStrategy):
 
     Methods:
     --------
-    build_prompt(exit_refinement_process: bool, user_objective: str, **kwargs) -> ChatPrompt:
+    build_prompt(interupt_refinement_process: bool, user_objective: str, **kwargs) -> ChatPrompt:
         Build a chat prompt based on the user's objective and whether the refinement process should exit.
     """
     default_configuration = RefineUserContextConfiguration()
@@ -324,14 +324,14 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         ]
 
     def build_prompt(
-        self, exit_refinement_process: bool, user_objective: str = "", **kwargs
+        self, interupt_refinement_process: bool, user_objective: str = "", **kwargs
     ) -> ChatPrompt:
         """
         Build a chat prompt based on the user's objective and whether the refinement process should exit.
 
         Parameters:
         -----------
-        exit_refinement_process: bool
+        interupt_refinement_process: bool
             Flag indicating whether to exit the refinement process.
         user_objective: str, optional
             Objective provided by the user.
@@ -339,7 +339,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         Example:
             >>> strategy = RefineUserContextStrategy(...)
             >>> user_input = "I need a system that can monitor temperatures."
-            >>> prompt = strategy.build_prompt(exit_refinement_process=False, user_objective=user_input)
+            >>> prompt = strategy.build_prompt(interupt_refinement_process=False, user_objective=user_input)
             >>> print(prompt.messages[0].content)
 
         Returns:
@@ -456,7 +456,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
 2. You have prepared 5 relevant questions based on the user's requirements."""
                 )
             )
-        elif exit_refinement_process == True:
+        elif interupt_refinement_process == True:
             function_call = RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS
 
         #

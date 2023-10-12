@@ -14,14 +14,11 @@ from autogpt.core.agents.usercontext.models import (
     UserContextAgentSystems,
 )
 from autogpt.core.configuration import Configurable
-from autogpt.core.memory.base import Memory
+from autogpt.core.memory.base import AbstractMemory
 from autogpt.core.agents.simple.lib import PromptManager, Task, TaskStatusList
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 from autogpt.core.resource.model_providers import OpenAIProvider
 from autogpt.core.workspace.simple import SimpleWorkspace
-
-if TYPE_CHECKING:
-    from autogpt.core.agents.base.loop import BaseLoopHook
 
 from autogpt.core.agents.base.loop import BaseLoopHook
 
@@ -50,10 +47,10 @@ class UserContextAgent(BaseAgent):
         self,
         settings: UserContextAgent.SystemSettings,
         logger: logging.Logger,
-        memory: Memory,
+        memory: AbstractMemory,
         chat_model_provider: OpenAIProvider,
         workspace: SimpleWorkspace,
-        planning: PromptManager,
+        prompt_manager: PromptManager,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
     ):
@@ -66,11 +63,25 @@ class UserContextAgent(BaseAgent):
             agent_id=agent_id,
         )
 
-        # These are specific
+        # 
+        # Step 1 : Set the chat model provider
+        #
         self._chat_model_provider = chat_model_provider
-        self._planning = planning
+        # self._chat_model_provider.set_agent(agent=self)
 
-        self._loop = UserContextLoop(agent=self)
+        # 
+        # Step 2 : Load prompt_settings.yaml (configuration)
+        #
+        self.prompt_settings = self.load_prompt_settings()
+
+        # 
+        # Step 3 : Set the chat model provider
+        #
+        self._prompt_manager = prompt_manager
+        self._prompt_manager.set_agent(agent=self)
+
+        self._loop = UserContextLoop()
+        self._loop.set_agent(agent=self)
 
     def loophooks(self) -> UserContextLoop.LoophooksDict:
         if not self._loop._loophooks:
@@ -138,8 +149,8 @@ class UserContextAgent(BaseAgent):
         )
 
         user_context_strategies = StrategiesSet.get_strategies(logger=logger)
-        agent_args["planning"] = cls._get_system_instance(
-            "planning",
+        agent_args["prompt_manager"] = cls._get_system_instance(
+            "prompt_manager",
             agent_settings,
             logger,
             model_providers={"openai": agent_args["chat_model_provider"]},
@@ -163,8 +174,8 @@ class UserContextAgent(BaseAgent):
             agent_settings,
             logger,
         )
-        agent_args["planning"] = cls._get_system_instance(
-            "planning",
+        agent_args["prompt_manager"] = cls._get_system_instance(
+            "prompt_manager",
             agent_settings,
             logger,
             model_providers={"openai": agent_args["chat_model_provider"]},
@@ -197,7 +208,7 @@ class UserContextAgent(BaseAgent):
         logger.debug("Loading agent planner.")
 
         agent_planner: PromptManager = cls._get_system_instance(
-            "planning",
+            "prompt_manager",
             agent_settings,
             logger=logger,
             model_providers={"openai": provider},
@@ -208,6 +219,10 @@ class UserContextAgent(BaseAgent):
         )
 
         return model_response.content
+    
+    def load_prompt_settings(self) :
+        self._logger.warning("TODO : load prompts via a jinja file")
+
 
     def __repr__(self):
         return "UserContextAgent()"

@@ -7,12 +7,12 @@ from pydantic import Field
 
 from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
-    BaseAgentSettings,
     BaseAgentSystems,
 )
-from autogpt.core.agents.simple.lib import PromptManagerSettings
+from autogpt.core.agents.simple.lib import PromptManager
 from autogpt.core.plugin.simple import PluginLocation
 from autogpt.core.resource.model_providers import OpenAISettings
+from autogpt.core.agents.base import BaseAgent
 
 if TYPE_CHECKING:
     pass
@@ -22,7 +22,7 @@ class UserContextAgentSystems(BaseAgentSystems):
 
     ability_registry : str  ="autogpt.core.ability.SimpleToolRegistry"
     chat_model_provider : str  = "autogpt.core.resource.model_providers.OpenAIProvider"
-    planning : str ="autogpt.core.agents.simple.lib.PromptManager"
+    prompt_manager : str ="autogpt.core.agents.simple.lib.PromptManager"
     
     class Config(BaseAgentSystems.Config):
         pass
@@ -47,16 +47,17 @@ class UserContextAgentConfiguration(BaseAgentConfiguration):
 #         pass
 
 
-class UserContextAgentSettings(BaseAgentSettings):
-    # agent: UserContextAgentSystemSettings = UserContextAgentSystemSettings()
-    chat_model_provider: OpenAISettings = OpenAISettings()
-    planning: PromptManagerSettings =PromptManagerSettings()
-    user_id: Optional[uuid.UUID] = Field(default=None)
-    agent_id: Optional[uuid.UUID] = Field(default=None)
-    agent_name: str = Field(default="New Agent")
-    parent_agent_id: uuid.UUID = Field(default=None)
-    agent_class: str = Field(default="UserContextAgent")
-    _type_: str = "autogpt.core.agents.usercontext.agent.UserContextAgent"
+class UserContextAgentSettings(BaseAgent.SystemSettings):
 
-    class Config(BaseAgentSettings.Config):
+    chat_model_provider: OpenAISettings
+    prompt_manager: PromptManager.SystemSettings
+
+    user_id: uuid.UUID 
+    parent_agent_id: str 
+
+    agent_name: str = Field(default="UserHelperAgent")
+    agent_class: str = Field(default="UserContextAgent")
+    _type_: str = "autogpt.core.agents.usercontext.main.UserContextAgent"
+
+    class Config(BaseAgent.SystemSettings.Config):
         pass

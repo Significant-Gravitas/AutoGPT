@@ -33,7 +33,7 @@ from autogpt.core.resource.model_providers import (
     OpenAIModelName,
     OpenAIProvider,
 )
-from autogpt.core.workspace import Workspace
+from autogpt.core.workspace import AbstractWorkspace
 
 
 # FIXME : Find somewhere more appropriate
@@ -95,27 +95,29 @@ class PromptManagerConfiguration(SystemConfiguration):
         return models
 
 
-class PromptManagerSettings(SystemSettings):
-    """Settings for the PromptManager subsystem."""
-    name="planner"
-    description="Manages the agent's planning and goal-setting by constructing language model prompts."
-    configuration: PromptManagerConfiguration = PromptManagerConfiguration()
+# class PromptManager.SystemSettings(SystemSettings):
+#     """Settings for the PromptManager subsystem."""
+#     name="prompt_manager"
+#     description="Manages the agent's planning and goal-setting by constructing language model prompts."
+#     configuration: PromptManagerConfiguration = PromptManagerConfiguration()
 
 
 class PromptManager(Configurable, AgentMixin):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
-    #default_settings = PromptManagerSettings()
-    class Settings(PromptManagerSettings):
-        pass
+    #default_settings = PromptManager.SystemSettings()
+    class SystemSettings(SystemSettings):
+        configuration: PromptManagerConfiguration = PromptManagerConfiguration()
+        name="prompt_manager"
+        description="Manages the agent's planning and goal-setting by constructing language model prompts."
 
     def __init__(
         self,
-        settings: PromptManagerSettings,
+        settings: PromptManager.SystemSettings,
         logger: logging.Logger,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
         strategies: dict[str, AbstractPromptStrategy],
-        workspace: Workspace = None,  # Workspace is not available during bootstrapping.
+        workspace: AbstractWorkspace = None,  # Workspace is not available during bootstrapping.
     ) -> None:
         super().__init__(settings=settings, logger=logger)
         self._workspace = workspace
@@ -148,7 +150,8 @@ class PromptManager(Configurable, AgentMixin):
             raise ValueError(f"Invalid strategy name {strategy_name}")
 
         prompt_strategy: BasePromptStrategy = self._prompt_strategies[strategy_name]
-        prompt_strategy.set_agent(agent=self._agent)
+        if hasattr(prompt_strategy, '_agent') and prompt_strategy._agent is not None :
+            prompt_strategy.set_agent(agent=self._agent)
 
         kwargs.update(self.get_system_info(prompt_strategy))
 

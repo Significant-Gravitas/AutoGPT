@@ -5,10 +5,10 @@ import uuid
 from logging import Logger
 from pathlib import Path
 
-from autogpt.core.memory.base import Memory
+from autogpt.core.memory.base import AbstractMemory
 
 
-class SQLLikeJSONFileMemory(Memory):
+class SQLLikeJSONFileMemory(AbstractMemory):
     def __init__(self, config: dict, logger: Logger):
         raise NotImplementedError("SQLLikeJSONFileMemory")
         self._json_file_path = config.json_file_path

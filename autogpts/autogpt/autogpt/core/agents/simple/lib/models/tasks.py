@@ -4,14 +4,16 @@ import enum
 import uuid
 import string
 import random
+import importlib
+import pkgutil
 from typing import Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from autogpt.core.tools.schema import ToolResult
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base.main import BaseAgent
-
+    from autogpt.core.agents import BaseAgent
+    from autogpt.core.agents.simple.lib.models.plan import Plan
 
 class TaskType(str, enum.Enum):
     """
@@ -178,24 +180,48 @@ class Task(BaseModel):
         "Write a report"
     """
 
-    task_id: str = Field(default_factory=lambda: "T" + str(uuid.uuid4()))
-    # task_id: str = Task.generate_short_id()
+    ###
+    ### GENERAL properties
+    ###
+
+    
+    task_id: str = Field(default_factory=lambda: "T" + str(uuid.uuid4())) # task_id: str = Task.generate_short_id()
     parent_task: Optional[Task]
     task_parent_id: Optional[str]
     task_predecessor_id: Optional[str]
     responsible_agent_id: Optional[str] = Field(default="")
-    name: str
-    description: str
 
+    short_description: str
+    long_decription : Optional[str]
+    state :  Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
+
+    ###
+    ### Optional : Task execution properties 
+    ### Suggestion : for each new task always look it it can be divided in smaller tasks
+    # ###
+    # if aaas : 
+    #     command : Optional[str] = Field(default="afaas_whichway")
+    # else :
+    #     command : Optional[str] = Field(default="afaas_make_initial_plan")
+    command : Optional[str] = Field(default="afaas_make_initial_plan")
+
+    arguments : Optional[list] = Field(default={})
+
+    ###
+    ### Task Management properties
+    ###
     acceptance_criteria: Optional[list[str]]
-    context: TaskContext = Field(default_factory=TaskContext)
     subtasks: Optional[list[Task]]
+    #context: TaskContext = Field(default_factory=TaskContext)
 
-    type: Optional[
-        str
-    ]  # TaskType  FIXME: gpt does not obey the enum parameter in its schema
-    priority: Optional[int]
-    ready_criteria: Optional[list[str]]
+    # type: Optional[
+    #     str
+    # ]  # TaskType  FIXME: gpt does not obey the enum parameter in its schema
+    # priority: Optional[int]
+    # ready_criteria: Optional[list[str]]
+
+    class Config:
+        arbitrary_types_allowed = True
 
     def dump(self, depth=0) -> dict:
         if depth < 0:
@@ -273,5 +299,6 @@ class Task(BaseModel):
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
 Task.update_forward_refs()
+
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
 TaskContext.update_forward_refs()

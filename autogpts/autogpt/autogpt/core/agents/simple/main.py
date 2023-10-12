@@ -2,30 +2,32 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple
+from pydantic import Field
+from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple, Optional
 
 from autogpt.core.tools import ToolResult, SimpleToolRegistry, TOOL_CATEGORIES
-from autogpt.core.agents.base.main import BaseAgent
-from autogpt.core.agents.simple.loop import PlannerLoop
 from autogpt.core.agents.simple.models import (
     PlannerAgentConfiguration,
-    PlannerAgentSettings,
     PlannerAgentSystems,
     # PlannerAgentSystemSettings,
 )
 from autogpt.core.configuration import Configurable
-from autogpt.core.memory.base import Memory
+from autogpt.core.memory.base import AbstractMemory
 from autogpt.core.agents.simple.lib import PromptManager
 from autogpt.core.agents.simple.lib.models.tasks import TaskStatusList
 from autogpt.core.agents.simple.lib.models.plan import Plan, Task
 from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 from autogpt.core.resource.model_providers import OpenAIProvider
-from autogpt.core.workspace.simple import SimpleWorkspace
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base.loop import BaseLoopHook
+    from autogpt.core.workspace.simple import SimpleWorkspace
 
+from autogpt.core.agents.base.main import BaseAgent
 from autogpt.core.agents.base.loop import BaseLoopHook
+from autogpt.core.agents.simple.loop import PlannerLoop
+
+from autogpt.core.resource.model_providers.openai.openai import  OpenAISettings
+from autogpt.core.agents.simple.lib import PromptManager
 
 
 class PlannerAgent(BaseAgent):
@@ -34,13 +36,24 @@ class PlannerAgent(BaseAgent):
     ################################################################################
 
     CLASS_CONFIGURATION = PlannerAgentConfiguration
-    CLASS_SETTINGS = PlannerAgentSettings
     CLASS_SYSTEMS = PlannerAgentSystems # PlannerAgentSystems() = cls.SystemSettings().configuration.systems
 
     class SystemSettings(BaseAgent.SystemSettings):
         name: str ="simple_agent"
         description: str ="A simple agent."
         configuration : PlannerAgentConfiguration = PlannerAgentConfiguration()
+
+        chat_model_provider: OpenAISettings = OpenAISettings()
+        tool_registry: SimpleToolRegistry.SystemSettings = SimpleToolRegistry.SystemSettings()
+        prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
+
+        user_id: Optional[str]
+
+        agent_name: str = Field(default="New Agent")
+        agent_role: Optional[str] = Field(default=None)
+        agent_goals: Optional[list] 
+        agent_goal_sentence: Optional[list] 
+        agent_class: str = Field(default="autogpt.core.agents.simple.main.PlannerAgent")
 
         class Config(BaseAgent.SystemSettings.Config):
             pass
@@ -50,11 +63,10 @@ class PlannerAgent(BaseAgent):
         self,
         settings: PlannerAgent.SystemSettings,
         logger: logging.Logger,
-        tool_registry: SimpleToolRegistry,
-        memory: Memory,
+        memory: AbstractMemory,
         chat_model_provider: OpenAIProvider,
         workspace: SimpleWorkspace,
-        planning: PromptManager,
+        prompt_manager: PromptManager,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
     ):
@@ -66,13 +78,32 @@ class PlannerAgent(BaseAgent):
             user_id=user_id,
             agent_id=agent_id,
         )
+        self.agent_id = settings.agent_id
+        self.user_id = settings.user_id
+        self.agent_name = settings.agent_name
+        self.agent_goals = settings.agent_goals
+        self.agent_goal_sentence = settings.agent_goal_sentence
 
-        # These are specific
+        # 
+        # Step 1 : Set the chat model provider
+        #
         self._chat_model_provider = chat_model_provider
+        # self._chat_model_provider.set_agent(agent=self)
 
-        self._planning = planning
-        self._planning.set_agent(agent=self)
+        # 
+        # Step 2 : Load prompt_settings.yaml (configuration)
+        #
+        self.prompt_settings = self.load_prompt_settings()
 
+        # 
+        # Step 3 : Set the chat model provider
+        #
+        self._prompt_manager = prompt_manager
+        self._prompt_manager.set_agent(agent=self)
+
+        # 
+        # Step 4 : Set the ToolRegistry
+        #
         self._tool_registry = SimpleToolRegistry.with_tool_modules(
             modules=TOOL_CATEGORIES,
             agent=self,
@@ -83,12 +114,31 @@ class PlannerAgent(BaseAgent):
         )
         # self._tool_registry.set_agent(agent=self)
 
+        ### 
+        ### Step 5 : Create the Loop
+        ###
         self._loop: PlannerLoop = PlannerLoop()
         self._loop.set_agent(agent=self)
+        
+        ### 
+        ### Step 5a : Create the plan
+        ###
+        self.plan: Plan = Plan()
 
-        self.prompt_settings = self.load_prompt_settings()
-        self.plan: Plan = None
+        # TODO: Move out of __init__, may be in PlannerAgent.run()
+        ### 
+        ### Step 5b : Set plan with tasks the plan
+        ###
+            ### FIXME: Retrive the plan if it exists
 
+
+            ### FIXME: Only when the agent is created 
+        self._loop.add_initial_tasks()
+
+
+        ### 
+        ### Step 6 : add hooks/pluggins to the loop
+        ###
         # TODO : Get hook added from configuration files
         # Exemple :
         # self.add_hook( hook: BaseLoopHook, uuid: uuid.UUID)
@@ -147,14 +197,14 @@ class PlannerAgent(BaseAgent):
 
     @classmethod
     def _create_agent_custom_treatment(
-        cls, agent_settings: PlannerAgentSettings, logger: logging.Logger
+        cls, agent_settings: PlannerAgent.SystemSettings, logger: logging.Logger
     ) -> None:
         return cls._create_workspace(agent_settings=agent_settings, logger=logger)
 
     @classmethod
     def _create_workspace(
         cls,
-        agent_settings: PlannerAgentSettings,
+        agent_settings: PlannerAgent.SystemSettings,
         logger: logging.Logger,
     ):
         from autogpt.core.workspace import SimpleWorkspace
@@ -169,10 +219,10 @@ class PlannerAgent(BaseAgent):
     @classmethod
     def _get_agent_from_settings(
         cls,
-        agent_settings: PlannerAgentSettings,
+        agent_settings: PlannerAgent.SystemSettings,
         agent_args: list,
         logger: logging.Logger,
-    ) -> Tuple[PlannerAgentSettings, list]:
+    ) -> Tuple[PlannerAgent.SystemSettings, list]:
         agent_args["chat_model_provider"] = cls._get_system_instance(
             "chat_model_provider",
             agent_settings,
@@ -190,7 +240,7 @@ class PlannerAgent(BaseAgent):
         #         name_and_goals=strategies.NameAndGoals.default_configuration,
         #         initial_plan=strategies.InitialPlan.default_configuration,
         #         next_ability=strategies.NextTool.default_configuration,)
-        # #agent_settings.planning.configuration.prompt_strategies = strategies_config
+        # #agent_settings.prompt_manager.configuration.prompt_strategies = strategies_config
 
         # #
         # # Dynamicaly load all strategies
@@ -214,8 +264,8 @@ class PlannerAgent(BaseAgent):
 
         simple_strategies = Strategies.get_strategies(logger=logger)
         # NOTE : Can't be moved to super() because require agent_args["chat_model_provider"]
-        agent_args["planning"] = cls._get_system_instance(
-            "planning",
+        agent_args["prompt_manager"] = cls._get_system_instance(
+            "prompt_manager",
             agent_settings,
             logger,
             model_providers={"openai": agent_args["chat_model_provider"]},
@@ -223,14 +273,14 @@ class PlannerAgent(BaseAgent):
         )
 
         # NOTE : Can't be moved to super() because require agent_args["chat_model_provider"]
-        agent_args["tool_registry"] = cls._get_system_instance(
-            "tool_registry",
-            agent_settings,
-            logger,
-            workspace=agent_args["workspace"],
-            memory=agent_args["memory"],
-            model_providers={"openai": agent_args["chat_model_provider"]},
-        )
+        # agent_args["tool_registry"] = cls._get_system_instance(
+        #     "tool_registry",
+        #     agent_settings,
+        #     logger,
+        #     workspace=agent_args["workspace"],
+        #     memory=agent_args["memory"],
+        #     model_providers={"openai": agent_args["chat_model_provider"]},
+        # )
 
         # agent = cls(**agent_args)
 
@@ -245,7 +295,7 @@ class PlannerAgent(BaseAgent):
     async def determine_agent_name_and_goals(
         cls,
         user_objective: str,
-        agent_settings: PlannerAgentSettings,
+        agent_settings: PlannerAgent.SystemSettings,
         logger: logging.Logger,
     ) -> dict:
         logger.debug("Loading OpenAI provider.")
@@ -256,7 +306,7 @@ class PlannerAgent(BaseAgent):
         )
         logger.debug("Loading agent planner.")
         agent_planner: PromptManager = cls._get_system_instance(
-            "planning",
+            "prompt_manager",
             agent_settings,
             logger=logger,
             model_providers={"openai": provider},

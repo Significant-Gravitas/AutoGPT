@@ -9,7 +9,7 @@ if typing.TYPE_CHECKING:
     from autogpt.core.configuration import AgentConfiguration
 
 
-class Workspace(abc.ABC):
+class AbstractWorkspace(abc.ABC):
     """The workspace is the root directory for all generated files.
 
     The workspace is responsible for creating the root directory and

@@ -19,7 +19,7 @@ from typing import (
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from autogpt.core.memory.base import Memory
+    from autogpt.core.memory.base import AbstractMemory
 
 
 class BaseTable(abc.ABC):
@@ -48,10 +48,10 @@ class BaseTable(abc.ABC):
         pass
 
     table_name: str
-    memory: Memory
+    memory: AbstractMemory
     primary_key: str
 
-    def __init__(self, memory: Memory) -> None:
+    def __init__(self, memory: AbstractMemory) -> None:
         self.memory = memory
 
     @abc.abstractmethod
@@ -155,7 +155,7 @@ class BaseNoSQLTable(BaseTable):
                 for attr, attr_value in curr_obj.__dict__.items():
                     if not (
                         attr.startswith("_")
-                        or attr in value.__class__.CLASS_SETTINGS.Config.default_exclude
+                        or attr in value.__class__.SystemSettings.Config.default_exclude
                     ):
                         stack.append((attr_value, new_dict, attr))
                 serialized_value = new_dict
@@ -174,14 +174,13 @@ class BaseNoSQLTable(BaseTable):
 
         return parent_dict
 
-    def add(self, value: dict) -> uuid.UUID:
+    def add(self, value: dict, id : str = str(uuid.uuid4())) -> uuid.UUID:
         # Serialize non-serializable objects
         if isinstance(value, BaseModel):
             value = value.dict()
         value = self.__class__.serialize_value(value)
 
         # Assigning primary key
-        id = uuid.uuid4()
         key = {"primary_key": str(id)}
         value[self.primary_key] = str(id)
 
@@ -336,8 +335,8 @@ class AgentsTable(BaseNoSQLTable):
     if TYPE_CHECKING:
         from autogpt.core.agents import AbstractAgent
 
-    def add(self, value: dict) -> uuid.UUID:
-        return super().add(value)
+    def add(self, value: dict , id : str = "A" + str(uuid.uuid4() )) -> str:
+        return super().add(value, id)
 
     # NOTE : overwrite parent update
     # Perform any custom logic needed for updating an agent

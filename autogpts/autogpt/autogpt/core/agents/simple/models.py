@@ -7,10 +7,9 @@ from pydantic import Field
 from autogpt.core.tools import SimpleToolRegistry
 from autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
-    BaseAgentSettings,
     BaseAgentSystems,
 )
-from autogpt.core.agents.simple.lib import PromptManagerSettings
+from autogpt.core.agents.simple.lib import PromptManager
 from autogpt.core.plugin.simple import PluginLocation
 from autogpt.core.resource.model_providers import OpenAISettings
 
@@ -21,7 +20,7 @@ if TYPE_CHECKING :
 class PlannerAgentSystems(BaseAgentSystems):
     tool_registry : str ="autogpt.core.tools.SimpleToolRegistry"
     chat_model_provider : str ="autogpt.core.resource.model_providers.OpenAIProvider"
-    planning : str ="autogpt.core.agents.simple.lib.PromptManager"
+    prompt_manager : str ="autogpt.core.agents.simple.lib.PromptManager"
 
     class Config(BaseAgentSystems.Config):
         pass
@@ -43,20 +42,19 @@ class PlannerAgentConfiguration(BaseAgentConfiguration):
         pass
 
 
-class PlannerAgentSettings(BaseAgentSettings):
+# class PlannerAgent.SystemSettings(BaseAgent.SystemSettings):
 
-    #agent: PlannerAgent.SystemSettings =  PlannerAgent.SystemSettings()
-    agent_class: str = Field(default="autogpt.core.agents.simple.main.PlannerAgent")
-    
-    chat_model_provider: OpenAISettings = OpenAISettings()
-    tool_registry: SimpleToolRegistry.SystemSettings = SimpleToolRegistry.SystemSettings()
-    planning: PromptManagerSettings = PromptManagerSettings()
-    user_id: Optional[uuid.UUID] = Field(default=None)
-    agent_id: Optional[uuid.UUID] = Field(default=None)
-    agent_name: str = Field(default="New Agent")
-    agent_role: Optional[str] = Field(default=None)
-    agent_goals: Optional[list] = Field(default=None)
-    agent_goal_sentence: Optional[list] = Field(default=None)
+#     chat_model_provider: OpenAISettings = OpenAISettings()
+#     tool_registry: SimpleToolRegistry.SystemSettings = SimpleToolRegistry.SystemSettings()
+#     prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
 
-    class Config(BaseAgentSettings.Config):
-        pass
+#     user_id: Optional[str]
+
+#     agent_name: str = Field(default="New Agent")
+#     agent_role: Optional[str] = Field(default=None)
+#     agent_goals: Optional[list] 
+#     agent_goal_sentence: Optional[list] 
+#     agent_class: str = Field(default="autogpt.core.agents.simple.main.PlannerAgent")
+
+#     class Config(BaseAgent.SystemSettings.Config):
+#         pass

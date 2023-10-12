@@ -21,7 +21,7 @@ from autogpt.core.tools.command_decorator import AUTO_GPT_TOOL_IDENTIFIER
 from autogpt.core.tools.schema import ToolResult
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 
-from autogpt.core.memory.base import Memory
+from autogpt.core.memory.base import AbstractMemory
 from autogpt.core.plugin.simple import SimplePluginService
 from autogpt.core.resource.model_providers import (
     BaseChatModelProvider,
@@ -29,7 +29,7 @@ from autogpt.core.resource.model_providers import (
     ModelProviderName,
 )
 
-from autogpt.core.workspace.base import Workspace
+from autogpt.core.workspace.base import AbstractWorkspace
 
 
 class ToolsRegistryConfiguration(SystemConfiguration):
@@ -92,8 +92,8 @@ class SimpleToolRegistry(Configurable,BaseToolsRegistry):
         self,
         settings: SimpleToolRegistry.SystemSettings,
         logger: logging.Logger,
-        memory: Memory,
-        workspace: Workspace,
+        memory: AbstractMemory,
+        workspace: AbstractWorkspace,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
     ):
         """
@@ -406,8 +406,8 @@ class SimpleToolRegistry(Configurable,BaseToolsRegistry):
         modules: list[str],
         agent: BaseAgent,
         logger: logging.Logger,
-        memory: Memory,
-        workspace: Workspace,
+        memory: AbstractMemory,
+        workspace: AbstractWorkspace,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
     ) -> "SimpleToolRegistry":
         """

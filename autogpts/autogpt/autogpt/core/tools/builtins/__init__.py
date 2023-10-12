@@ -9,4 +9,5 @@ TOOL_CATEGORIES = [
     "autogpt.core.tools.builtins.web_selenium",
     "autogpt.core.tools.builtins.system",
     "autogpt.core.tools.builtins.image_gen",
+    "autogpt.core.tools.builtins.afaas_refine_user_context",
 ]

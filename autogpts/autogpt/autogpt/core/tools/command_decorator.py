@@ -19,11 +19,12 @@ AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
 def tool(
     name: str,
     description: str,
-    parameters: dict[str, JSONSchema],
+    parameters: dict[str, JSONSchema] = {},
     enabled: Literal[True] | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
     available: Literal[True] | Callable[[BaseAgent], bool] = True,
+    hide = False
 ) -> Callable[..., ToolOutput]:
     """The command decorator is used to create Tool objects from ordinary functions."""
 
@@ -44,6 +45,7 @@ def tool(
             disabled_reason=disabled_reason,
             aliases=aliases,
             available=available,
+            hide = hide
         )
 
         if inspect.iscoroutinefunction(func):

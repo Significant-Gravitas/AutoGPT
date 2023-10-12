@@ -17,7 +17,7 @@ from autogpt.core.agents.base import BaseAgent
 from autogpt.core.utils.exceptions import DuplicateOperationError
 from autogpt.core.tools.command_decorator import tool
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.memory.base import Memory
+from autogpt.core.memory.base import AbstractMemory
 
 from .decorators import sanitize_path_arg
 from .file_context import open_file, open_folder  # NOQA
@@ -166,7 +166,7 @@ def read_file(filename: Path, agent: BaseAgent) -> str:
 
 def ingest_file(
     filename: str,
-    memory: Memory,
+    memory: AbstractMemory,
 ) -> None:
     raise NotImplementedError("Not Implemented")
     # """

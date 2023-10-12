@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pydantic import Field
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Dict, Optional
 from typing_extensions import TypedDict
 
@@ -17,7 +18,6 @@ from autogpt.core.agents.simple.lib.models.plan import Plan
 from autogpt.core.agents.simple.lib.models.tasks import Task, TaskStatusList
 
 from autogpt.core.tools import ToolResult
-from autogpt.core.agents.base import BaseLoop, BaseLoopHook, UserFeedback
 from autogpt.core.runner.client_lib.parser import (
     parse_ability_result,
     parse_agent_plan,
@@ -32,38 +32,35 @@ from autogpt.core.agents.base.exceptions import (
 
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.simple import PlannerAgent, PlannerAgentSettings
-
+    from autogpt.core.agents.simple import PlannerAgent
     # from autogpt.core.prompting.schema import ChatModelResponse
     from autogpt.core.resource.model_providers import ChatMessage, ChatModelResponse
 
 
-# NOTE : This is an example of customization that allow to share part of a project in Github while keeping part not released
+from autogpt.core.agents.base import BaseLoop, BaseLoopHook, UserFeedback
+
 aaas = {}
+try:
+    from autogpt.core.agents.whichway import (
+        RoutingAgent,
+    )
+    Task.command : Optional[str] = Field(default="afaas_whichway")
+    aaas['whichway'] = True
+except :
+    aaas['whichway'] = False
+
 try:
     from autogpt.core.agents.usercontext import (
         UserContextAgent,
         UserContextAgentSettings,
-    )
+        )
+    aaas['usercontext'] = True
+except :
+    aaas['usercontext'] = False
 
-    aaas["usercontext"] = True
-except ImportError:
-    aaas["usercontext"] = False
-try:
-    from autogpt.core.agents.whichway import (
-        RoutingAgent,
-        RoutingAgentSettings,
-    )
-
-    aaas["whichway"] = True
-except ImportError:
-    aaas["whichway"] = False
-
-
-aaas["usercontext"] = False
-aaas["whichway"] = False
-
-
+# FIXME: Deactivated for as long as we don't have the UI to support it
+aaas['usercontext'] = False
+            
 class PlannerLoop(BaseLoop):
     _agent: PlannerAgent
 
@@ -78,8 +75,64 @@ class PlannerLoop(BaseLoop):
         self._active = False
         self.remaining_cycles = 1
 
-        self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
-        """Timestamp the agent was created; only used for structured debug logging."""
+
+
+    def add_initial_tasks(self) : 
+
+        ###
+        ### Step 1 : add whichway to the tasks
+        ###
+        if aaas['whichway'] : 
+            initial_task = Task(
+                #parent_task = self.plan() ,
+                task_parent_id = None,
+                task_predecessor_id = None,
+                responsible_agent_id = None,
+                name = 'afaas_whichway',
+                short_description = 'Define an agent approach to tackle a tasks',
+                command = 'afaas_whichway',
+                arguments = None,
+                state=TaskStatusList.READY
+                )
+        else : 
+            initial_task = Task(
+                #parent_task = self.plan() ,
+                task_parent_id = None,
+                task_predecessor_id = None,
+                responsible_agent_id = None,
+                name = 'afaas_make_initial_plan',
+                short_description = 'Make a plan to tacke a tasks',
+                command = 'afaas_make_initial_plan',
+                # arguments = None,
+                state=TaskStatusList.READY
+                )
+            
+        self._current_task = initial_task #.task_id
+        initial_task_list = [initial_task]
+
+        ###
+        ### Step 2 : Prepend usercontext
+        ###
+        if aaas['usercontext'] : 
+            refine_user_context_task =    Task(
+                    #parent_task = self.plan() ,
+                    task_parent_id = None,
+                    task_predecessor_id = None,
+                    responsible_agent_id = None,
+                    name = 'afaas_refine_user_context',
+                    short_description = 'Refine a user requirements for better exploitation by Agents',
+                    command = 'afaas_refine_user_context',
+                    # arguments = None,
+                    state=TaskStatusList.READY
+                    ) 
+            initial_task_list = [refine_user_context_task] + initial_task_list
+            self._current_task = refine_user_context_task #.task_id
+        else :
+            self._agent.agent_goals = [self._agent.agent_goal_sentence]
+
+        self.plan().add_tasks(task= initial_task_list)
+
+
 
     async def run(
         self,
@@ -116,7 +169,7 @@ class PlannerLoop(BaseLoop):
             user_message_handler=self._user_message_handler,
         )
 
-        if self.plan() is None:
+        if self.plan() is None and False:
             ##############################################################
             ### Step 2 : USER CONTEXT AGENT : IF USER CONTEXT AGENT EXIST
             ##############################################################
@@ -169,15 +222,17 @@ class PlannerLoop(BaseLoop):
             # FIXME replace _active by self.remaining_cycles > 0:
             if self._active:
                 self._loop_count += 1
-
+                
                 ##############################################################
                 ### Step 5 : select_tool()
-                ##############################################################
-                (
-                    command_name,
-                    command_args,
-                    assistant_reply_dict,
-                ) = await self.select_tool()
+                ##############################################################               
+                if self._current_task.command is not None : 
+                    command_name = self._current_task.command 
+                    command_args = self._current_task.arguments
+                    assistant_reply_dict = self._current_task.long_decription
+                else :
+
+                    command_name, command_args, assistant_reply_dict, = await self.select_tool()
 
                 ##############################################################
                 ### Step 6 : execute_tool() #
@@ -327,7 +382,7 @@ class PlannerLoop(BaseLoop):
     #         # Don't ask the LLM, just set the next action as "breakdown_task" with an appropriate reason
     #         raise NotImplementedError
     #     else:
-    #         next_ability = await self._agent._planning.determine_next_ability(
+    #         next_ability = await self._agent._prompt_manager.determine_next_ability(
     #             task, ability_schema
     #         )
     #         return next_ability
@@ -409,8 +464,9 @@ class PlannerLoop(BaseLoop):
             #     command_name, arguments = plugin.pre_command(command_name, command_args)
 
             # NOTE : Test tools individually
-            command_name = "web_search"
-            command_args: {"query": "instructions for building a Pizza oven"}
+            # command_name = "web_search"
+            # command_args: {"query": "instructions for building a Pizza oven"}
+            
             try:
                 return_value = await execute_command(
                     command_name=command_name,

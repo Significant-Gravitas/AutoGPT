@@ -192,6 +192,6 @@ class BaseLoop(AgentMixin, abc.ABC, metaclass=BaseLoopMeta):
     #
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
-        return await self._agent._planning.execute_strategy(
+        return await self._agent._prompt_manager.execute_strategy(
             strategy_name=strategy_name, **kwargs
         )

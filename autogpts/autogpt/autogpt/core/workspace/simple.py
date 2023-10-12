@@ -1,6 +1,6 @@
 import json
 import logging
-import typing
+from  typing import TYPE_CHECKING
 import uuid
 from pathlib import Path
 
@@ -10,11 +10,11 @@ from autogpt.core.configuration import (
     SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.workspace.base import Workspace
+from autogpt.core.workspace.base import AbstractWorkspace
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     # Cyclic import
-    from autogpt.core.agents.simple.models import BaseAgentSettings
+    from autogpt.core.agents import BaseAgent
 
 
 class WorkspaceConfiguration(SystemConfiguration):
@@ -23,7 +23,7 @@ class WorkspaceConfiguration(SystemConfiguration):
     restrict_to_workspace: bool = UserConfigurable(default =True)
 
     
-class SimpleWorkspace(Configurable, Workspace):
+class SimpleWorkspace(Configurable, AbstractWorkspace):
     
     class SystemSettings(Configurable.SystemSettings):
         name = "workspace"
@@ -151,10 +151,10 @@ class SimpleWorkspace(Configurable, Workspace):
         cls,
         user_id: uuid.UUID,
         agent_id: uuid.UUID,
-        settings: "BaseAgentSettings",
+        settings,
         logger: logging.Logger,
     ) -> Path:
-        workspace_parent = settings.workspace.configuration.parent
+        workspace_parent = cls.SystemSettings().parent
         workspace_parent = Path(workspace_parent).expanduser().resolve()
         workspace_parent.mkdir(parents=True, exist_ok=True)
 
@@ -172,12 +172,10 @@ class SimpleWorkspace(Configurable, Workspace):
 
         return workspace_root
 
-    @staticmethod
-    def load_agent_settings(workspace_root: Path) -> "BaseAgentSettings":
-        # Cyclic import
-        from autogpt.core.agents.simple import AgentSettings
+    # @staticmethod
+    # def load_agent_settings(workspace_root: Path) -> PlannerAgent.SystemSettings:
 
-        with (workspace_root / "agent_settings.json").open("r") as f:
-            agent_settings = json.load(f)
+    #     with (workspace_root / "agent_settings.json").open("r") as f:
+    #         agent_settings = json.load(f)
 
-        return AgentSettings.parse_obj(agent_settings)
+    #     return PlannerAgent.SystemSettings.parse_obj(agent_settings)

@@ -47,8 +47,8 @@ class UserContextLoop(BaseLoop):
     class LoophooksDict(BaseLoop.LoophooksDict):
         pass
 
-    def __init__(self, agent: BaseAgent) -> None:
-        super().__init__(agent)
+    def __init__(self) -> None:
+        super().__init__()
         self._active = False
 
     async def run(
@@ -108,7 +108,7 @@ class UserContextLoop(BaseLoop):
 
                 model_response : ChatModelResponse = await self.execute_strategy(
                     strategy_name="refine_user_context",
-                    force_quite=interupt_refinement_process,
+                    interupt_refinement_process=interupt_refinement_process,
                     user_objective=user_objectives,
                 )
 

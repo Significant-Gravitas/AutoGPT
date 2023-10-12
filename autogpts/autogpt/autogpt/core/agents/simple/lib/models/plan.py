@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pydantic import BaseModel
-from autogpt.core.agents.simple.lib.models.tasks import Task
-from typing import Union, Optional, List
+from typing import Union, Optional, List , TYPE_CHECKING
 from logging import Logger
+
+from autogpt.core.agents.simple.lib.models.tasks import Task
 
 logger = Logger(name=__name__)
 
@@ -14,6 +15,20 @@ class Plan(BaseModel):
     """
 
     tasks: list[Task] = []
+
+    def add_tasks(self , task = list[Task], position : int = None) : 
+        if position is not None :
+            for task in task : 
+                self.tasks.insert(task, position)
+        else: 
+            for task in task : 
+                self.tasks.append(task)
+
+    # def add_task(self , task = list[Task], position : int = None) : 
+    #     if position is not None :
+    #         self.tasks.insert(task, position)
+    #     else : 
+    #         self.tasks.append(task)
 
     def dump(self, depth=0) -> dict:
         """

@@ -32,6 +32,7 @@ class Tool:
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
         available: Literal[True] | Callable[[BaseAgent], bool] = True,
+        hide = False
     ):
         self.name = name
         self.description = description
@@ -41,6 +42,7 @@ class Tool:
         self.disabled_reason = disabled_reason
         self.aliases = aliases
         self.available = available
+        self.hide = hide
 
     @property
     def is_async(self) -> bool:
