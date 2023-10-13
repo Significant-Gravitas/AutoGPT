@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Query, Request, Response, UploadFile, Depends
 from fastapi.responses import FileResponse
-
+from .dependencies.agents import get_agent
 from app.sdk.errors import *
 from app.sdk.forge_log import ForgeLogger
 from app.sdk.schema import *
@@ -48,16 +48,6 @@ from autogpts.autogpt.autogpt.core.agents import PlannerAgent
 afaas_agent_router = APIRouter()
 agent_router = APIRouter()
 
-def get_agent(request: Request, agent_id: str) -> PlannerAgent:
-            agent : PlannerAgent = PlannerAgent.get_agent_from_memory(
-            agent_id=agent_id,
-            user_id=request.state.user_id,
-            logger=LOG,
-        )
-            if agent is None : 
-                raise NotFoundError
-            else : 
-                return agent
             
 
 @afaas_agent_router.get("/agent/{agent_id}", tags=["agent"], response_model=Agent)
@@ -146,6 +136,7 @@ async def list_agent_tasks(
     agent_id: str,
     page: Optional[int] = Query(1, ge=1),
     page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
+    agent : PlannerAgent= Depends(get_agent)
 ) -> AgentTasksListResponse:
     """
     Retrieves a paginated list of stask associated with a specific task.
@@ -208,7 +199,7 @@ async def list_agent_tasks(
 @afaas_agent_router.post("/agent/{agent_id}/tasks", tags=["agent"], response_model=Task)
 @agent_router.post("/agent/tasks/{agent_id}/steps", tags=["agent"], response_model=Task)
 async def execute_agent_task(
-    request: Request, agent_id: str, step: Optional[TaskRequestBody] = None
+    request: Request, agent_id: str, step: Optional[TaskRequestBody] = None, agent : PlannerAgent= Depends(get_agent)
 ) -> Task:
     """
     Executes the next step for a specified task based on the current task status and returns the
@@ -282,7 +273,7 @@ async def execute_agent_task(
 @agent_router.get(
     "/agent/tasks/{agent_id}/steps/{task_id}", tags=["agent"], response_model=Task
 )
-async def get_agent_task_step(request: Request, agent_id: str, task_id: str) -> Task:
+async def get_agent_task(request: Request, agent_id: str, task_id: str, agent : PlannerAgent= Depends(get_agent)) -> Task:
     """
     Retrieves the details of a specific step for a given task.
 

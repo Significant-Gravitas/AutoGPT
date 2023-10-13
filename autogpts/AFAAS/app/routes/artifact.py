@@ -6,7 +6,7 @@ from io import BytesIO
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Query, Request, Response, UploadFile, Depends
 from fastapi.responses import FileResponse
 
 from app.sdk.errors import *
@@ -14,6 +14,9 @@ from app.sdk.forge_log import ForgeLogger
 from app.sdk.schema import *
 
 from fastapi.responses import RedirectResponse, StreamingResponse
+from .dependencies.agents import get_agent
+
+from autogpts.autogpt.autogpt.core.agents import PlannerAgent
 
 afaas_artifact_router = APIRouter()
 artifact_router = APIRouter()
@@ -30,11 +33,11 @@ LOG = ForgeLogger(__name__)
     tags=["agent"],
     response_model=AgentArtifactsListResponse,
 )
-async def list_agent_task_artifacts(
+async def list_agent_artifacts(
     request: Request,
     agent_id: str,
     page: Optional[int] = Query(1, ge=1),
-    page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
+    page_size: Optional[int] = Query(10, ge=1, alias="pageSize"), agent : PlannerAgent= Depends(get_agent)
 ) -> AgentArtifactsListResponse:
     """
     Retrieves a paginated list of artifacts associated with a specific task.
@@ -94,8 +97,8 @@ async def list_agent_task_artifacts(
 @artifact_router.post(
     "/agent/tasks/{agent_id}/artifacts", tags=["agent"], response_model=Artifact
 )
-async def upload_agent_task_artifacts(
-    request: Request, agent_id: str, file: UploadFile, relative_path: Optional[str] = ""
+async def upload_agentartifacts(
+    request: Request, agent_id: str, file: UploadFile, relative_path: Optional[str] = "", agent : PlannerAgent= Depends(get_agent)
 ) -> Artifact:
     """
     This endpoint is used to upload an artifact associated with a specific task. The artifact is provided as a file.
@@ -154,8 +157,8 @@ async def upload_agent_task_artifacts(
 @artifact_router.get(
     "/agent/tasks/{agent_id}/artifacts/{artifact_id}", tags=["agent"], response_model=str
 )
-async def download_agent_task_artifact(
-    request: Request, agent_id: str, artifact_id: str
+async def download_agent_artifact(
+    request: Request, agent_id: str, artifact_id: str,  agent : PlannerAgent= Depends(get_agent)
 ) -> FileResponse:
     """
     Downloads an artifact associated with a specific task.
