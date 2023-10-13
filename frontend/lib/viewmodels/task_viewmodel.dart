@@ -1,24 +1,26 @@
 import 'dart:convert';
 import 'package:auto_gpt_flutter_client/models/task.dart';
 import 'package:auto_gpt_flutter_client/models/test_suite.dart';
+import 'package:auto_gpt_flutter_client/services/shared_preferences_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart';
 import 'package:auto_gpt_flutter_client/services/task_service.dart';
 import 'package:auto_gpt_flutter_client/models/task_request_body.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 // TODO: How will all these functions work with test suites?
 class TaskViewModel with ChangeNotifier {
   final TaskService _taskService;
+  final SharedPreferencesService _prefsService;
 
   List<Task> _tasks = [];
   List<TestSuite> _testSuites = [];
   List<dynamic> combinedDataSource = [];
+  List<Task> tasksDataSource = [];
 
   Task? _selectedTask;
   TestSuite? _selectedTestSuite;
 
-  TaskViewModel(this._taskService);
+  TaskViewModel(this._taskService, this._prefsService);
 
   /// Returns the currently selected task.
   Task? get selectedTask => _selectedTask;
@@ -106,10 +108,9 @@ class TaskViewModel with ChangeNotifier {
 
   // Helper method to save test suites to SharedPreferences
   Future<void> _saveTestSuitesToPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
     final testSuitesToStore =
         _testSuites.map((testSuite) => jsonEncode(testSuite.toJson())).toList();
-    prefs.setStringList('testSuites', testSuitesToStore);
+    await _prefsService.setStringList('testSuites', testSuitesToStore);
   }
 
   // Adds a new test suite and saves it to SharedPreferences
@@ -122,8 +123,8 @@ class TaskViewModel with ChangeNotifier {
 
   // Fetch test suites from SharedPreferences
   Future<void> fetchTestSuites() async {
-    final prefs = await SharedPreferences.getInstance();
-    final storedTestSuites = prefs.getStringList('testSuites') ?? [];
+    final storedTestSuites =
+        await _prefsService.getStringList('testSuites') ?? [];
     _testSuites = storedTestSuites
         .map((testSuiteMap) => TestSuite.fromJson(jsonDecode(testSuiteMap)))
         .toList();
@@ -149,6 +150,7 @@ class TaskViewModel with ChangeNotifier {
 
     // Clear the existing combined data source to start fresh.
     combinedDataSource.clear();
+    tasksDataSource.clear();
 
     // Iterate through each task to check if it's contained in any of the test suites.
     for (var task in _tasks) {
@@ -188,6 +190,7 @@ class TaskViewModel with ChangeNotifier {
       // If the task was not found in any test suite, add it to the combined data source.
       if (!found) {
         combinedDataSource.add(task);
+        tasksDataSource.add(task);
       }
     }
 
