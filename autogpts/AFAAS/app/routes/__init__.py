@@ -10,4 +10,4 @@ from .agent_middleware import AgentMiddleware
 from .agent import agent_router, afaas_agent_router
 from .artifact import artifact_router, afaas_artifact_router
 
-from dependencies.agents import get_agent
+from .dependencies.agents import get_agent

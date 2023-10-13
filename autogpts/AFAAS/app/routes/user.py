@@ -72,7 +72,7 @@ async def list_agents(
             user_id=request.state.user_id
         ) # (page, page_size)
         return Response(
-            content=BaseModel(agents).json(),
+            content=BaseModel(data = agents).json(),
             status_code=200,
             media_type="application/json",
         )
