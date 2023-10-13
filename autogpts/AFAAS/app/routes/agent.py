@@ -2,14 +2,14 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Query, Request, Response, UploadFile, Depends
 from fastapi.responses import FileResponse
 
 from app.sdk.errors import *
 from app.sdk.forge_log import ForgeLogger
 from app.sdk.schema import *
 
-agent_router = APIRouter()
+
 
 LOG = ForgeLogger(__name__)
 
@@ -41,160 +41,28 @@ import yaml
 from fastapi import APIRouter, FastAPI, Request
 
 
-from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.schema import PlannerAgentMessageRequestBody
-from autogpts.autogpt.autogpt.core.runner.client_lib.workspacebuilder import (
-    workspace_loader,
-    get_settings_from_file,
-    get_logger_and_workspace,
-)
+from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.schema import AgentMessageRequestBody
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
-from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
-    parse_agent_name_and_goals,
-    parse_ability_result,
-    parse_agent_plan,
-    parse_next_ability,
-)
 
 
-router = APIRouter()
-user_id = uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b")
+afaas_agent_router = APIRouter()
+agent_router = APIRouter()
 
-
-
-@agent_router.get("/agents", tags=["agent"], response_model=TaskListResponse)
-@agent_router.get("/agent/tasks", tags=["agent"], response_model=TaskListResponse)
-async def list_agent_tasks(
-    request: Request,
-    page: Optional[int] = Query(1, ge=1),
-    page_size: Optional[int] = Query(10, ge=1),
-) -> TaskListResponse:
-    """
-    Retrieves a paginated list of all tasks.
-
-    Args:
-        request (Request): FastAPI request object.
-        page (int, optional): The page number for pagination. Defaults to 1.
-        page_size (int, optional): The number of tasks per page for pagination. Defaults to 10.
-
-    Returns:
-        TaskListResponse: A response object containing a list of tasks and pagination details.
-
-    Example:
-        Request:
-            GET /agent/tasks?page=1&pageSize=10
-
-        Response (TaskListResponse defined in schema.py):
-            {
-                "items": [
-                    {
-                        "input": "Write the word 'Washington' to a .txt file",
-                        "additional_input": null,
-                        "task_id": "50da533e-3904-4401-8a07-c49adf88b5eb",
-                        "artifacts": [],
-                        "steps": []
-                    },
-                    ...
-                ],
-                "pagination": {
-                    "total": 100,
-                    "pages": 10,
-                    "current": 1,
-                    "pageSize": 10
-                }
-            }
-    """
-
-    from autogpts.autogpt.autogpt.core.agents import PlannerAgent
-    LOG.info("Getting agent settings")
-
-    # Step 1. Collate the user's settings with the default system settings.
-    agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings()
-
-
-    #
-    # We support multiple users however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b
-    #
-    agent_settings.user_id = user_id
-
-    # NOTE : Real world scenario, this user_id will be passed as an argument
-    agent_dict_list = PlannerAgent.get_agentsetting_list_from_memory(
-        user_id=user_id, logger=LOG
-    )
-
-    agent = request["agent"]
-    try:
-        tasks = await agent.list_tasks(page, page_size)
-        return Response(
-            content=tasks.json(),
-            status_code=200,
-            media_type="application/json",
+def get_agent(request: Request, agent_id: str) -> PlannerAgent:
+            agent : PlannerAgent = PlannerAgent.get_agent_from_memory(
+            agent_id=agent_id,
+            user_id=request.state.user_id,
+            logger=LOG,
         )
-    except NotFoundError:
-        LOG.exception("Error whilst trying to list tasks")
-        return Response(
-            content=json.dumps({"error": "Tasks not found"}),
-            status_code=404,
-            media_type="application/json",
-        )
-    except Exception:
-        LOG.exception("Error whilst trying to list tasks")
-        return Response(
-            content=json.dumps({"error": "Internal server error"}),
-            status_code=500,
-            media_type="application/json",
-        )
+            if agent is None : 
+                raise NotFoundError
+            else : 
+                return agent
+            
 
-
-@agent_router.post("/agent", tags=["agent"], response_model=Task)
-@agent_router.post("/agent/tasks", tags=["agent"], response_model=Task)
-async def create_agent_task(request: Request, task_request: TaskRequestBody) -> Task:
-    """
-    Creates a new task using the provided TaskRequestBody and returns a Task.
-
-    Args:
-        request (Request): FastAPI request object.
-        task (TaskRequestBody): The task request containing input and additional input data.
-
-    Returns:
-        Task: A new task with task_id, input, additional_input, and empty lists for artifacts and steps.
-
-    Example:
-        Request (TaskRequestBody defined in schema.py):
-            {
-                "input": "Write the words you receive to the file 'output.txt'.",
-                "additional_input": "python/code"
-            }
-
-        Response (Task defined in schema.py):
-            {
-                "task_id": "50da533e-3904-4401-8a07-c49adf88b5eb",
-                "input": "Write the word 'Washington' to a .txt file",
-                "additional_input": "python/code",
-                "artifacts": [],
-            }
-    """
-    agent = request["agent"]
-
-    try:
-        task_request = await agent.create_task(task_request)
-        return Response(
-            content=task_request.json(),
-            status_code=200,
-            media_type="application/json",
-        )
-    except Exception:
-        LOG.exception(f"Error whilst trying to create a task: {task_request}")
-        return Response(
-            content=json.dumps({"error": "Internal server error"}),
-            status_code=500,
-            media_type="application/json",
-        )
-
-
-
-@agent_router.get("/agent/{agent_id}", tags=["agent"], response_model=Task)
-@agent_router.get("/agent/tasks/{agent_id}", tags=["agent"], response_model=Task)
-async def get_agent_task(request: Request, agent_id: str) -> Task:
+@afaas_agent_router.get("/agent/{agent_id}", tags=["agent"], response_model=Agent)
+@agent_router.get("/agent/tasks/{agent_id}", tags=["agent"], response_model=Agent)
+async def get_agent(request: Request, agent_id: str, agent : PlannerAgent= Depends(get_agent)) -> Agent:
     """
     Gets the details of a task by ID.
 
@@ -203,13 +71,13 @@ async def get_agent_task(request: Request, agent_id: str) -> Task:
         task_id (str): The ID of the task.
 
     Returns:
-        Task: The task with the given ID.
+        Agent: The task with the given ID.
 
     Example:
         Request:
             GET /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb
 
-        Response (Task defined in schema.py):
+        Response (Agent defined in schema.py):
             {
                 "input": "Write the word 'Washington' to a .txt file",
                 "additional_input": null,
@@ -256,7 +124,7 @@ async def get_agent_task(request: Request, agent_id: str) -> Task:
     except NotFoundError:
         LOG.exception(f"Error whilst trying to get task: {agent_id}")
         return Response(
-            content=json.dumps({"error": "Task not found"}),
+            content=json.dumps({"error": "Agent not found"}),
             status_code=404,
             media_type="application/json",
         )
@@ -271,31 +139,31 @@ async def get_agent_task(request: Request, agent_id: str) -> Task:
 
 
 
-@agent_router.get("/agent/{agent_id}/tasks", tags=["agent"], response_model=TaskStepsListResponse)
-@agent_router.get("/agent/tasks/{agent_id}/steps", tags=["agent"], response_model=TaskStepsListResponse)
-async def list_agent_task_steps(
+@afaas_agent_router.get("/agent/{agent_id}/tasks", tags=["agent"], response_model=AgentTasksListResponse)
+@agent_router.get("/agent/tasks/{agent_id}/steps", tags=["agent"], response_model=AgentTasksListResponse)
+async def list_agent_tasks(
     request: Request,
     agent_id: str,
     page: Optional[int] = Query(1, ge=1),
     page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
-) -> TaskStepsListResponse:
+) -> AgentTasksListResponse:
     """
-    Retrieves a paginated list of steps associated with a specific task.
+    Retrieves a paginated list of stask associated with a specific task.
 
     Args:
         request (Request): FastAPI request object.
         task_id (str): The ID of the task.
         page (int, optional): The page number for pagination. Defaults to 1.
-        page_size (int, optional): The number of steps per page for pagination. Defaults to 10.
+        page_size (int, optional): The number of stask per page for pagination. Defaults to 10.
 
     Returns:
-        TaskStepsListResponse: A response object containing a list of steps and pagination details.
+        AgentTasksListResponse: A response object containing a list of stask and pagination details.
 
     Example:
         Request:
             GET /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/steps?page=1&pageSize=10
 
-        Response (TaskStepsListResponse defined in schema.py):
+        Response (AgentTasksListResponse defined in schema.py):
             {
                 "items": [
                     {
@@ -315,21 +183,21 @@ async def list_agent_task_steps(
     """
     agent = request["agent"]
     try:
-        steps = await agent.list_steps(agent_id, page, page_size)
+        stask = await agent.list_stask(agent_id, page, page_size)
         return Response(
-            content=steps.json(),
+            content=stask.json(),
             status_code=200,
             media_type="application/json",
         )
     except NotFoundError:
-        LOG.exception("Error whilst trying to list steps")
+        LOG.exception("Error whilst trying to list stask")
         return Response(
-            content=json.dumps({"error": "Steps not found"}),
+            content=json.dumps({"error": "Tasks not found"}),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
-        LOG.exception("Error whilst trying to list steps")
+        LOG.exception("Error whilst trying to list stask")
         return Response(
             content=json.dumps({"error": "Internal server error"}),
             status_code=500,
@@ -337,18 +205,18 @@ async def list_agent_task_steps(
         )
 
 
-@agent_router.post("/agent/{agent_id}/tasks", tags=["agent"], response_model=Step)
-@agent_router.post("/agent/tasks/{agent_id}/steps", tags=["agent"], response_model=Step)
-async def execute_agent_task_step(
-    request: Request, agent_id: str, step: Optional[StepRequestBody] = None
-) -> Step:
+@afaas_agent_router.post("/agent/{agent_id}/tasks", tags=["agent"], response_model=Task)
+@agent_router.post("/agent/tasks/{agent_id}/steps", tags=["agent"], response_model=Task)
+async def execute_agent_task(
+    request: Request, agent_id: str, step: Optional[TaskRequestBody] = None
+) -> Task:
     """
     Executes the next step for a specified task based on the current task status and returns the
     executed step with additional feedback fields.
 
     Depending on the current state of the task, the following scenarios are supported:
 
-    1. No steps exist for the task.
+    1. No stask exist for the task.
     2. There is at least one step already for the task, and the task does not have a completed step marked as `last_step`.
     3. There is a completed step marked as `last_step` already on the task.
 
@@ -359,16 +227,16 @@ async def execute_agent_task_step(
     Args:
         request (Request): FastAPI request object.
         task_id (str): The ID of the task.
-        step (StepRequestBody): The details for executing the step.
+        step (TaskRequestBody): The details for executing the step.
 
     Returns:
-        Step: Details of the executed step with additional feedback.
+        Task: Details of the executed step with additional feedback.
 
     Example:
         Request:
             POST /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/steps
             {
-                "input": "Step input details...",
+                "input": "Task input details...",
                 ...
             }
 
@@ -385,7 +253,7 @@ async def execute_agent_task_step(
     try:
         # An empty step request represents a yes to continue command
         if not step:
-            step = StepRequestBody(input="y")
+            step = TaskRequestBody(input="y")
 
         step = await agent.execute_step(agent_id, step)
         return Response(
@@ -396,7 +264,7 @@ async def execute_agent_task_step(
     except NotFoundError:
         LOG.exception(f"Error whilst trying to execute a task step: {agent_id}")
         return Response(
-            content=json.dumps({"error": f"Task not found {agent_id}"}),
+            content=json.dumps({"error": f"Agent not found {agent_id}"}),
             status_code=404,
             media_type="application/json",
         )
@@ -408,13 +276,13 @@ async def execute_agent_task_step(
             media_type="application/json",
         )
 
-@agent_router.get(
-    "/agent/{agent_id}/tasks/{task_id}", tags=["agent"], response_model=Step
+@afaas_agent_router.get(
+    "/agent/{agent_id}/tasks/{task_id}", tags=["agent"], response_model=Task
 )
 @agent_router.get(
-    "/agent/tasks/{agent_id}/steps/{task_id}", tags=["agent"], response_model=Step
+    "/agent/tasks/{agent_id}/steps/{task_id}", tags=["agent"], response_model=Task
 )
-async def get_agent_task_step(request: Request, agent_id: str, task_id: str) -> Step:
+async def get_agent_task_step(request: Request, agent_id: str, task_id: str) -> Task:
     """
     Retrieves the details of a specific step for a given task.
 
@@ -424,7 +292,7 @@ async def get_agent_task_step(request: Request, agent_id: str, task_id: str) -> 
         step_id (str): The ID of the step.
 
     Returns:
-        Step: Details of the specific step.
+        Task: Details of the specific step.
 
     Example:
         Request:
@@ -444,7 +312,7 @@ async def get_agent_task_step(request: Request, agent_id: str, task_id: str) -> 
     except NotFoundError:
         LOG.exception(f"Error whilst trying to get step: {task_id}")
         return Response(
-            content=json.dumps({"error": "Step not found"}),
+            content=json.dumps({"error": "Task not found"}),
             status_code=404,
             media_type="application/json",
         )
@@ -467,35 +335,35 @@ async def start_simple_agent_main_loop(request: Request, agent_id: str):
     """
 
     # Get the logger and the workspace movec to a function
-    # Because almost every API end-point will excecute this piece of code
-    user_configuration = get_settings_from_file()
-    LOG, agent_workspace = get_logger_and_workspace(user_configuration)
+    # # Because almost every API end-point will excecute this piece of code
+    # user_configuration = get_settings_from_file()
+    # LOG, agent_workspace = get_logger_and_workspace(user_configuration)
 
     # Get the logger and the workspace moved to a function
     # Because API end-point will treat this as an error & break
-    if not agent_workspace:
-        raise BaseException
+    # if not agent_workspace:
+    #     raise BaseException
 
-    # launch agent interaction loop
-    agent = PlannerAgent.from_workspace(
-        agent_workspace,
-        LOG,
-    )
+    # # launch agent interaction loop
+    # agent = PlannerAgent.from_workspace(
+    #     agent_workspace,
+    #     LOG,
+    # )
 
-    plan = await agent.build_initial_plan()
+    # plan = await agent.build_initial_plan()
 
-    current_task, next_ability = await agent.determine_next_ability(plan)
+    # current_task, next_ability = await agent.determine_next_ability(plan)
 
     return {
-        "plan": plan.__dict__,
-        "current_task": current_task.__dict__,
-        "next_ability": next_ability.__dict__,
+        # "plan": plan.__dict__,
+        # "current_task": current_task.__dict__,
+        # "next_ability": next_ability.__dict__,
     }
 
 
 @agent_router.post("/agent/{agent_id}/message")
 async def message_simple_agent(
-    request: Request, agent_id: str, body: PlannerAgentMessageRequestBody
+    request: Request, agent_id: str, body: AgentMessageRequestBody
 ):
     """
     Description: Sends a message to the agent.
@@ -503,39 +371,39 @@ async def message_simple_agent(
     - Required body.message  (str): The message sent from the client
     - Optional body.start (bool): Start a new loop
     Comment: Only works if the agent is inactive. Works for both client-facing = true and false, enabling sub-agents.
-    """
-    user_configuration = get_settings_from_file()
-    # Get the logger and the workspace movec to a function
-    # Because almost every API end-point will excecute this piece of code
-    LOG, agent_workspace = get_logger_and_workspace(user_configuration)
+    # """
+    # user_configuration = get_settings_from_file()
+    # # Get the logger and the workspace movec to a function
+    # # Because almost every API end-point will excecute this piece of code
+    # LOG, agent_workspace = get_logger_and_workspace(user_configuration)
 
     # Get the logger and the workspace moved to a function
     # Because API end-point will treat this as an error & break
-    if not agent_workspace:
-        print(f"request.body: {request.body}")
-        print(f"agent_id: {agent_id}")
-        print(f"body: {body}")
-        raise BaseException
+    # if not agent_workspace:
+    #     print(f"request.body: {request.body}")
+    #     print(f"agent_id: {agent_id}")
+    #     print(f"body: {body}")
+    #     raise BaseException
 
-    # launch agent interaction loop
-    agent = PlannerAgent.from_workspace(
-        agent_workspace,
-        LOG,
-    )
+    # # launch agent interaction loop
+    # agent = PlannerAgent.from_workspace(
+    #     agent_workspace,
+    #     LOG,
+    # )
 
-    plan = await agent.build_initial_plan()
+    # plan = await agent.build_initial_plan()
 
-    current_task, next_ability = await agent.determine_next_ability(plan)
+    # current_task, next_ability = await agent.determine_next_ability(plan)
 
     result = {}
-    ability_result = await agent.execute_next_ability(body.message)
-    result["ability_result"] = ability_result.__dict__
+    # ability_result = await agent.execute_next_ability(body.message)
+    # result["ability_result"] = ability_result.__dict__
 
-    if body.start == True:
-        (
-            result["current_task"],
-            result["next_ability"],
-        ) = await agent.determine_next_ability(plan)
+    # if body.start == True:
+    #     (
+    #         result["current_task"],
+    #         result["next_ability"],
+    #     ) = await agent.determine_next_ability(plan)
 
     return result
 

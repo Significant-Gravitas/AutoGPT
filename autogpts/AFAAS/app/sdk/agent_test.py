@@ -2,7 +2,7 @@ import pytest
 
 from .agent import Agent
 from .db import AgentDB
-from .schema import StepRequestBody, Task, TaskListResponse, TaskRequestBody
+from .schema import TaskRequestBody, Agent, AgentListResponse, AgentRequestBody
 from .workspace import LocalWorkspace
 
 
@@ -16,28 +16,28 @@ def agent():
 @pytest.mark.skip
 @pytest.mark.asyncio
 async def test_create_task(agent):
-    task_request = TaskRequestBody(
+    task_request = AgentRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
-    task: Task = await agent.create_task(task_request)
+    task: Agent = await agent.create_task(task_request)
     assert task.input == "test_input"
 
 
 @pytest.mark.skip
 @pytest.mark.asyncio
 async def test_list_tasks(agent):
-    task_request = TaskRequestBody(
+    task_request = AgentRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
     task = await agent.create_task(task_request)
     tasks = await agent.list_tasks()
-    assert isinstance(tasks, TaskListResponse)
+    assert isinstance(tasks, AgentListResponse)
 
 
 @pytest.mark.skip
 @pytest.mark.asyncio
 async def test_get_task(agent):
-    task_request = TaskRequestBody(
+    task_request = AgentRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
     task = await agent.create_task(task_request)
@@ -48,11 +48,11 @@ async def test_get_task(agent):
 @pytest.mark.skip
 @pytest.mark.asyncio
 async def test_create_and_execute_step(agent):
-    task_request = TaskRequestBody(
+    task_request = AgentRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
     task = await agent.create_task(task_request)
-    step_request = StepRequestBody(
+    step_request = TaskRequestBody(
         input="step_input", additional_input={"input": "additional_test_input"}
     )
     step = await agent.create_and_execute_step(task.task_id, step_request)
@@ -63,11 +63,11 @@ async def test_create_and_execute_step(agent):
 @pytest.mark.skip
 @pytest.mark.asyncio
 async def test_get_step(agent):
-    task_request = TaskRequestBody(
+    task_request = AgentRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
     task = await agent.create_task(task_request)
-    step_request = StepRequestBody(
+    step_request = TaskRequestBody(
         input="step_input", additional_input={"input": "additional_test_input"}
     )
     step = await agent.create_and_execute_step(task.task_id, step_request)
@@ -85,7 +85,7 @@ async def test_list_artifacts(agent):
 @pytest.mark.skip
 @pytest.mark.asyncio
 async def test_create_artifact(agent):
-    task_request = TaskRequestBody(
+    task_request = AgentRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
     task = await agent.create_task(task_request)
@@ -97,7 +97,7 @@ async def test_create_artifact(agent):
 @pytest.mark.skip
 @pytest.mark.asyncio
 async def test_get_artifact(agent):
-    task_request = TaskRequestBody(
+    task_request = AgentRequestBody(
         input="test_input", additional_input={"input": "additional_test_input"}
     )
     task = await agent.create_task(task_request)

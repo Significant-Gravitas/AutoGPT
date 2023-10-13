@@ -1,6 +1,10 @@
 
 import json
+import os
+import pathlib
+from io import BytesIO
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
@@ -9,38 +13,46 @@ from app.sdk.errors import *
 from app.sdk.forge_log import ForgeLogger
 from app.sdk.schema import *
 
+from fastapi.responses import RedirectResponse, StreamingResponse
+
+afaas_artifact_router = APIRouter()
 artifact_router = APIRouter()
 
 LOG = ForgeLogger(__name__)
 
-@artifact_router.get(
-    "/agent/tasks/{task_id}/artifacts",
+@afaas_artifact_router.get(
+    "/agent/{agent_id}/artifacts", 
     tags=["agent"],
-    response_model=TaskArtifactsListResponse,
+    response_model=AgentArtifactsListResponse,
+)
+@artifact_router.get(
+    "/agent/tasks/{agent_id}/artifacts",
+    tags=["agent"],
+    response_model=AgentArtifactsListResponse,
 )
 async def list_agent_task_artifacts(
     request: Request,
-    task_id: str,
+    agent_id: str,
     page: Optional[int] = Query(1, ge=1),
     page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
-) -> TaskArtifactsListResponse:
+) -> AgentArtifactsListResponse:
     """
     Retrieves a paginated list of artifacts associated with a specific task.
 
     Args:
         request (Request): FastAPI request object.
-        task_id (str): The ID of the task.
+        agent_id (str): The ID of the task.
         page (int, optional): The page number for pagination. Defaults to 1.
         page_size (int, optional): The number of items per page for pagination. Defaults to 10.
 
     Returns:
-        TaskArtifactsListResponse: A response object containing a list of artifacts and pagination details.
+        AgentArtifactsListResponse: A response object containing a list of artifacts and pagination details.
 
     Example:
         Request:
             GET /agent/tasks/50da533e-3904-4401-8a07-c49adf88b5eb/artifacts?page=1&pageSize=10
 
-        Response (TaskArtifactsListResponse defined in schema.py):
+        Response (AgentArtifactsListResponse defined in schema.py):
             {
                 "items": [
                     {"artifact_id": "artifact1_id", ...},
@@ -57,14 +69,14 @@ async def list_agent_task_artifacts(
     """
     agent = request["agent"]
     try:
-        artifacts: TaskArtifactsListResponse = await agent.list_artifacts(
-            task_id, page, page_size
+        artifacts: AgentArtifactsListResponse = await list_artifacts(
+            agent_id, page, page_size
         )
         return artifacts
     except NotFoundError:
         LOG.exception("Error whilst trying to list artifacts")
         return Response(
-            content=json.dumps({"error": "Artifacts not found for task_id"}),
+            content=json.dumps({"error": "Artifacts not found for agent_id"}),
             status_code=404,
             media_type="application/json",
         )
@@ -76,19 +88,21 @@ async def list_agent_task_artifacts(
             media_type="application/json",
         )
 
-
+@afaas_artifact_router.post(
+    "/agent/{agent_id}/artifacts", tags=["agent"], response_model=Artifact,
+)
 @artifact_router.post(
-    "/agent/tasks/{task_id}/artifacts", tags=["agent"], response_model=Artifact
+    "/agent/tasks/{agent_id}/artifacts", tags=["agent"], response_model=Artifact
 )
 async def upload_agent_task_artifacts(
-    request: Request, task_id: str, file: UploadFile, relative_path: Optional[str] = ""
+    request: Request, agent_id: str, file: UploadFile, relative_path: Optional[str] = ""
 ) -> Artifact:
     """
     This endpoint is used to upload an artifact associated with a specific task. The artifact is provided as a file.
 
     Args:
         request (Request): The FastAPI request object.
-        task_id (str): The unique identifier of the task for which the artifact is being uploaded.
+        agent_id (str): The unique identifier of the task for which the artifact is being uploaded.
         file (UploadFile): The file being uploaded as an artifact.
         relative_path (str): The relative path for the file. This is a query parameter.
 
@@ -119,14 +133,14 @@ async def upload_agent_task_artifacts(
             media_type="application/json",
         )
     try:
-        artifact = await agent.create_artifact(task_id, file, relative_path)
+        artifact = await create_artifact(agent_id, file, relative_path)
         return Response(
             content=artifact.json(),
             status_code=200,
             media_type="application/json",
         )
     except Exception:
-        LOG.exception(f"Error whilst trying to upload artifact: {task_id}")
+        LOG.exception(f"Error whilst trying to upload artifact: {agent_id}")
         return Response(
             content=json.dumps({"error": "Internal server error"}),
             status_code=500,
@@ -134,18 +148,21 @@ async def upload_agent_task_artifacts(
         )
 
 
+@afaas_artifact_router.post(
+    "/agent/{agent_id}/artifacts/{artifact_id}", tags=["agent"], response_model=str,
+)
 @artifact_router.get(
-    "/agent/tasks/{task_id}/artifacts/{artifact_id}", tags=["agent"], response_model=str
+    "/agent/tasks/{agent_id}/artifacts/{artifact_id}", tags=["agent"], response_model=str
 )
 async def download_agent_task_artifact(
-    request: Request, task_id: str, artifact_id: str
+    request: Request, agent_id: str, artifact_id: str
 ) -> FileResponse:
     """
     Downloads an artifact associated with a specific task.
 
     Args:
         request (Request): FastAPI request object.
-        task_id (str): The ID of the task.
+        agent_id (str): The ID of the task.
         artifact_id (str): The ID of the artifact.
 
     Returns:
@@ -160,26 +177,99 @@ async def download_agent_task_artifact(
     """
     agent = request["agent"]
     try:
-        return await agent.get_artifact(task_id, artifact_id)
+        return await get_artifact(agent_id, artifact_id)
     except NotFoundError:
-        LOG.exception(f"Error whilst trying to download artifact: {task_id}")
+        LOG.exception(f"Error whilst trying to download artifact: {agent_id}")
         return Response(
             content=json.dumps(
                 {
-                    "error": f"Artifact not found - task_id: {task_id}, artifact_id: {artifact_id}"
+                    "error": f"Artifact not found - agent_id: {agent_id}, artifact_id: {artifact_id}"
                 }
             ),
             status_code=404,
             media_type="application/json",
         )
     except Exception:
-        LOG.exception(f"Error whilst trying to download artifact: {task_id}")
+        LOG.exception(f"Error whilst trying to download artifact: {agent_id}")
         return Response(
             content=json.dumps(
                 {
-                    "error": f"Internal server error - task_id: {task_id}, artifact_id: {artifact_id}"
+                    "error": f"Internal server error - agent_id: {agent_id}, artifact_id: {artifact_id}"
                 }
             ),
             status_code=500,
             media_type="application/json",
         )
+
+
+
+async def list_artifacts(
+    agent, agent_id: str, page: int = 1, pageSize: int = 10
+) -> AgentArtifactsListResponse:
+    """
+    List the artifacts that the task has created.
+    """
+    try:
+        artifacts, pagination = await agent.memory.list_artifacts(
+            agent_id, page, pageSize
+        )
+        return AgentArtifactsListResponse(artifacts=artifacts, pagination=pagination)
+
+    except Exception as e:
+        raise
+
+async def create_artifact(
+    agent, agent_id: str, file: UploadFile, relative_path: str
+) -> Artifact:
+    """
+    Create an artifact for the task.
+    """
+    data = None
+    file_name = file.filename or str(uuid4())
+    try:
+        data = b""
+        while contents := file.file.read(1024 * 1024):
+            data += contents
+        # Check if relative path ends with filename
+        if relative_path.endswith(file_name):
+            file_path = relative_path
+        else:
+            file_path = os.path.join(relative_path, file_name)
+
+        agent.workspace.write(agent_id, file_path, data)
+
+        artifact = await agent.memory.create_artifact(
+            agent_id=agent_id,
+            file_name=file_name,
+            relative_path=relative_path,
+            agent_created=False,
+        )
+    except Exception as e:
+        raise
+    return artifact
+
+async def get_artifact(agent, agent_id: str, artifact_id: str) -> Artifact:
+    """
+    Get an artifact by ID.
+    """
+    try:
+        artifact = await agent.memory.get_artifact(artifact_id)
+        if artifact.file_name not in artifact.relative_path:
+            file_path = os.path.join(artifact.relative_path, artifact.file_name)
+        else:
+            file_path = artifact.relative_path
+        retrieved_artifact = agent.workspace.read(agent_id=agent_id, path=file_path)
+    except NotFoundError as e:
+        raise
+    except FileNotFoundError as e:
+        raise
+    except Exception as e:
+        raise
+
+    return StreamingResponse(
+        BytesIO(retrieved_artifact),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f"attachment; filename={artifact.file_name}"
+        },
+    )

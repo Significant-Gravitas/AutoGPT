@@ -651,7 +651,7 @@ class BaseAgent(Configurable, AbstractAgent):
 
     @classmethod
     def get_agentsetting_list_from_memory(
-        self, user_id: uuid.UUID, logger: logging.Logger
+        self, user_id: uuid.UUID, logger: logging.Logger = logging.Logger(__name__)
     ) -> list[BaseAgent.SystemSettings]:
         """
         Fetch a list of agent settings from memory based on the user ID.

@@ -4,6 +4,19 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+        
+        {
+            "name": "Mac API-server",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/autogpts/AFAAS/app",
+            "args": ["run"],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${workspaceFolder}/autogpts/AFAAS/:${env:PYTHONPATH}"
+            }
+            
+        },
         {
             "name": "Mac Cli",
             "type": "python",

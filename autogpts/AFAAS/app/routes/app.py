@@ -7,7 +7,6 @@ from fastapi import APIRouter,  Response
 app_router = APIRouter()
 
 
-
 @app_router.get("/", tags=["root"])
 async def root():
     """

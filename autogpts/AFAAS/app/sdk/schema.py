@@ -62,11 +62,11 @@ class Artifact(BaseModel):
     )
 
 
-class StepOutput(BaseModel):
+class TaskOutput(BaseModel):
     pass
 
 
-class TaskRequestBody(BaseModel):
+class AgentRequestBody(BaseModel):
     input: str = Field(
         ...,
         min_length=1,
@@ -76,7 +76,7 @@ class TaskRequestBody(BaseModel):
     additional_input: Optional[dict] = {}
 
 
-class Task(TaskRequestBody):
+class Agent(AgentRequestBody):
     created_at: datetime = Field(
         ...,
         description="The creation datetime of the task.",
@@ -104,7 +104,7 @@ class Task(TaskRequestBody):
     )
 
 
-class StepRequestBody(BaseModel):
+class TaskRequestBody(BaseModel):
     name: Optional[str] = Field(
         None, description="The name of the task step.", example="Write to file"
     )
@@ -122,7 +122,7 @@ class Status(Enum):
     completed = "completed"
 
 
-class Step(StepRequestBody):
+class Task(TaskRequestBody):
     created_at: datetime = Field(
         ...,
         description="The creation datetime of the task.",
@@ -156,7 +156,7 @@ class Step(StepRequestBody):
         description="Output of the task step.",
         example="I am going to use the write_to_file command and write Washington to a file called output.txt <write_to_file('output.txt', 'Washington')",
     )
-    additional_output: Optional[StepOutput] = {}
+    additional_output: Optional[TaskOutput] = {}
     artifacts: Optional[List[Artifact]] = Field(
         [], description="A list of artifacts that the step has produced."
     )
@@ -165,16 +165,16 @@ class Step(StepRequestBody):
     )
 
 
-class TaskListResponse(BaseModel):
-    tasks: Optional[List[Task]] = None
+class AgentListResponse(BaseModel):
+    tasks: Optional[List[Agent]] = None
     pagination: Optional[Pagination] = None
 
 
-class TaskStepsListResponse(BaseModel):
-    steps: Optional[List[Step]] = None
+class AgentTasksListResponse(BaseModel):
+    steps: Optional[List[Task]] = None
     pagination: Optional[Pagination] = None
 
 
-class TaskArtifactsListResponse(BaseModel):
+class AgentArtifactsListResponse(BaseModel):
     artifacts: Optional[List[Artifact]] = None
     pagination: Optional[Pagination] = None
