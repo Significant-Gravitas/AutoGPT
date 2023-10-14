@@ -1,7 +1,7 @@
 # poetry install
 # poetry shell
 
-# cp .env .env
+# cp .env.example .env
 # fill out OpenAI Key
 # git submodule update --init --remote --recursive
 
