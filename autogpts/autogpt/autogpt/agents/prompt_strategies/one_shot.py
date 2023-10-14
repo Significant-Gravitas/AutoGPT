@@ -30,56 +30,6 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.prompts.utils import format_numbered_list, indent
 
-RESPONSE_SCHEMA = JSONSchema(
-    type=JSONSchema.Type.OBJECT,
-    properties={
-        "thoughts": JSONSchema(
-            type=JSONSchema.Type.OBJECT,
-            required=True,
-            properties={
-                "text": JSONSchema(
-                    description="Thoughts",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "reasoning": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "plan": JSONSchema(
-                    description="Short markdown-style bullet list that conveys the long-term plan",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "criticism": JSONSchema(
-                    description="Constructive self-criticism",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "speak": JSONSchema(
-                    description="Summary of thoughts, to say to user",
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-            },
-        ),
-        "command": JSONSchema(
-            type=JSONSchema.Type.OBJECT,
-            required=True,
-            properties={
-                "name": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "args": JSONSchema(
-                    type=JSONSchema.Type.OBJECT,
-                    required=True,
-                ),
-            },
-        ),
-    },
-)
-
 
 class OneShotAgentPromptConfiguration(SystemConfiguration):
     DEFAULT_BODY_TEMPLATE: str = (
@@ -342,7 +292,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         return "\n\n".join(steps)
 
     def response_format_instruction(self, use_functions_api: bool) -> str:
-        response_schema = RESPONSE_SCHEMA.copy(deep=True)
+        response_schema = self.response_schema.copy(deep=True)
         if (
             use_functions_api
             and response_schema.properties
@@ -430,7 +380,10 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
         assistant_reply_dict = extract_dict_from_response(response["content"])
 
-        _, errors = RESPONSE_SCHEMA.validate_object(assistant_reply_dict, self.logger)
+        _, errors = self.response_schema.validate_object(
+            object=assistant_reply_dict,
+            logger=self.logger,
+        )
         if errors:
             raise InvalidAgentResponseError(
                 "Validation of response failed:\n  "
