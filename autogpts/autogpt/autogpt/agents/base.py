@@ -256,9 +256,9 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         Params:
             cycle_instruction: The final instruction for a thinking cycle
         """
-        if extra_commands is None:
+        if not extra_commands:
             extra_commands = []
-        if extra_messages is None:
+        if not extra_messages:
             extra_messages = []
 
         # Apply additions from plugins

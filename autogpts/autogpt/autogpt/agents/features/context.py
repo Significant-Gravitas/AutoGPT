@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from autogpt.core.prompting import ChatPrompt
@@ -49,9 +49,12 @@ class ContextMixin:
     def build_prompt(
         self,
         *args: Any,
-        extra_messages: list[ChatMessage] = [],
+        extra_messages: Optional[list[ChatMessage]] = None,
         **kwargs: Any,
     ) -> ChatPrompt:
+        if not extra_messages:
+            extra_messages = []
+
         # Add context section to prompt
         if self.context:
             extra_messages.insert(
