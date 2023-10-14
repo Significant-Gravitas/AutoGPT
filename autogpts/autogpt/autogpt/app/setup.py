@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 
 from autogpt.app.utils import clean_input
-from autogpt.config import AIProfile, AIDirectives, Config
+from autogpt.config import AIDirectives, AIProfile, Config
 from autogpt.logs.helpers import print_attribute
 
 logger = logging.getLogger(__name__)

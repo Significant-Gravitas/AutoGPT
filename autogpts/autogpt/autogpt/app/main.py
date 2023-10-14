@@ -15,10 +15,7 @@ from pydantic import SecretStr
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
 
-from autogpt.agent_factory.configurators import (
-    configure_agent_with_state,
-    create_agent,
-)
+from autogpt.agent_factory.configurators import configure_agent_with_state, create_agent
 from autogpt.agent_factory.profile_generator import generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
