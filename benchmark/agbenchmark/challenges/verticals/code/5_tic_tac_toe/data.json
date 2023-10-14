@@ -14,7 +14,7 @@
             "type": "python"
         },
         "files": [
-            "test4.py"
+            "test.py"
         ],
         "should_contain": [],
         "should_not_contain": []

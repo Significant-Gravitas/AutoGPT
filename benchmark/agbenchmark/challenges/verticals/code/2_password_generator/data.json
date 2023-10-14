@@ -13,7 +13,7 @@
             "type": "python"
         },
         "files": [
-            "test2.py"
+            "test.py"
         ],
         "should_contain": [],
         "should_not_contain": []

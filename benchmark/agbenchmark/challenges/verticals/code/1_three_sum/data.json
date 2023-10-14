@@ -14,7 +14,7 @@
             "type": "python"
         },
         "files": [
-            "test1.py"
+            "test.py"
         ],
         "should_contain": [
             "[0, 1, 2]",
