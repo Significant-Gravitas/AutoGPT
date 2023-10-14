@@ -462,20 +462,41 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 
 
 [2023-09-27 15:39:07,832] [forge.sdk.agent] [INFO]      📝  Agent server starting on http://localhost:8000
+
 ```
+1. **Get Started**
+   - Click the link to access the AutoGPT Agent UI.
 
-A simple click on that link will unveil the AutoGPT Agent UI. But wait, there’s a tiny pit-stop first! Log in with your Gmail or Github credentials. Now, spot that trophy icon on the left? Click it to waltz into the benchmarking arena. Opt for the ‘WriteFile’ test and hit ‘Initiate test suite’ to set the wheels in motion.
+2. **Login**
+   - Log in using your Gmail or Github credentials.
 
-![Benchmarking page of the AutoGPT UI](../../../docs/content/imgs/quickstart/t3_04.png)
+3. **Navigate to Benchmarking**
+   - Look to the left, and you'll spot a trophy icon. Click it to enter the benchmarking arena.
 
-Your eyes will be glued to the right panel as it spews out real-time output. And, if you sneak a peek at your console, these celebratory messages hint that your task reached its grand finale:
+4. **Select the 'WriteFile' Test**
+   - Choose the 'WriteFile' test from the available options.
 
+5. **Initiate the Test Suite**
+   - Hit 'Initiate test suite' to start the benchmarking process.
+
+6. **Monitor in Real-Time**
+   - Keep your eyes on the right panel as it displays real-time output.
+
+7. **Check the Console**
+   - For additional information, you can also monitor your console for progress updates and messages.
 ```bash
 📝  📦 Task created: 70518b75-0104-49b0-923e-f607719d042b input: Write the word 'Washington' to a .txt fi...
 📝      ✅ Final Step completed: a736c45f-65a5-4c44-a697-f1d6dcd94d5c input: y
 ```
+If you see this, you've done it!
+8. **Troubleshooting**
+   - If you encounter any issues or see cryptic error messages, don't worry. Just hit the retry button. Remember, LLMs are powerful but may occasionally need some guidance.
 
-Oops! Hit a snag or saw some cryptic error messages? No sweat. Hit retry. Remember, while LLMs pack a punch as an agent’s intellect, they’re a bit like wizards — incredibly potent, but occasionally need a gentle nudge to stay on track!
+## Wrap Up
+- Stay tuned for our next tutorial, where we'll enhance the agent's capabilities by adding memory!
+
+## Keep Exploring
+- Keep experimenting and pushing the boundaries of AI. Happy coding! 🚀
 
 ## Wrap Up
 In our next tutorial, we’ll further refine this process, enhancing the agent’s capabilities, through the addition of memory!
