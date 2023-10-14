@@ -17,9 +17,8 @@ from forge.sdk import (
 
 LOG = ForgeLogger(__name__)
 
-MODEL_NAME = "gpt-4"  # gpt-3.5-turbo
+MODEL_NAME = "gpt-4"  # gpt-3.5-turbo, gpt-4
 
-planning_mode = False
 class ForgeAgent(Agent):
     """
     The goal of the Forge is to take care of the boilerplate code so you can focus on
@@ -102,24 +101,25 @@ class ForgeAgent(Agent):
         LOG.info("📦 Executing step")
         task = await self.db.get_task(task_id)
 
-        ability = await self.select_ability(task)
-
-        step = await self.db.create_step(
-            task_id=task_id,
-            input=step_request,
-            is_last=ability["name"] == "finish",
-            additional_input={"ability": ability}
-        )
+        step, ability = await self.create_step(task, step_request)
 
         LOG.info(f"Run ability {ability['name']} with arguments {ability['args']}")
-        is_last, output = await self.abilities.run_ability(
+
+        output = await self.abilities.run_ability(
             task_id, ability["name"], **ability["args"]
         )
+
+        # FIXME: Just to speed up the agent
+        if ability["name"] in ["write_code", "fix_code"]:
+            success, output = output
+            if success:
+                LOG.debug(f"Will set is_last because tests passed")
+                step.is_last = True
 
         step.output = str(output)
         LOG.debug(f"Executed step [{step.name}] output:\n{step.output}")
 
-        await self.db.update_step(task.task_id, step.step_id, "completed", output=step.output)
+        await self.db.update_step(task.task_id, step.step_id, "completed", output=step.output, is_last=step.is_last)
         LOG.info(f"Step completed: {step.step_id} input: {step.input[:19]}")
 
         if step.is_last:
@@ -127,52 +127,146 @@ class ForgeAgent(Agent):
 
         return step
 
-    async def select_ability(self, task: Task):
-        previous_steps, page = await self.db.list_steps(task, per_page=100)
+    async def create_step(self, task: Task, step_request: StepRequestBody):
+        #prompt_engine = PromptEngine("create-step")
+        prompt_engine = PromptEngine("create-step-with-reasoning")
+
+        previous_steps, page = await self.db.list_steps(task.task_id, per_page=100)
+        if len(previous_steps) > 15:
+            ability = {
+                "name": "finish",
+                "args": {
+                    "reason": "Giving up after 15 steps."
+                }
+            }
+            step_request.name = "Giving up"
+            step_request.input = "Giving up"
+            step = await self.db.create_step(
+                task_id=task.task_id,
+                input=step_request,
+                is_last=False,
+                additional_input={"ability": ability}
+            )
+            return step, ability
         if previous_steps:
             last_step = previous_steps[-1]
+            LOG.info(f"Found {len(previous_steps)} previously executed steps. Last executed step was: {last_step.name}.")
+
+            LOG.info(f"Last step add info: {last_step.additional_input}")
+            # FIXME: Just to speed up the agent
+            if ("ability" in last_step.additional_input and
+                    last_step.additional_input["ability"]["name"] in ["write_code", "fix_code"]):
+
+                last_ability = last_step.additional_input["ability"]
+                step_request.name = "Fix code"
+                step_request.input = last_step.output
+                ability = {
+                    "name": "fix_code",
+                    "args": {
+                        "instructions": last_step.output,
+                        "file": last_ability["args"]["file"],
+                        "test_file": last_ability["args"]["test_file"]
+                    }
+                }
+                step = await self.db.create_step(
+                    task_id=task.task_id,
+                    input=step_request,
+                    is_last=False,
+                    additional_input={"ability": ability}
+                )
+
+                return step, ability
+
+            previous_steps = previous_steps[:-1]
         else:
+            LOG.info(f"No previous steps found.")
             last_step = None
 
-        prompt_engine = PromptEngine("select-ability")
         task_kwargs = {
             "abilities": self.abilities.list_abilities_for_prompt()
         }
-        system_prompt = prompt_engine.load_prompt("system-prompt",  **task_kwargs)
+
+        system_prompt = prompt_engine.load_prompt("system-prompt", **task_kwargs)
+        system_format = prompt_engine.load_prompt("step-format")
         messages = [
-            {"role": "system", "content": system_prompt}
+            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": system_format},
         ]
 
         task_kwargs = {
             "task": task.input,
-            "last_step": last_step,
+            "step": last_step,
             "previous_steps": previous_steps
         }
 
-        task_prompt = prompt_engine.load_prompt("user-prompt",  **task_kwargs)
+        task_prompt = prompt_engine.load_prompt("user-prompt", **task_kwargs)
         messages.append({"role": "user", "content": task_prompt})
 
+        answer = await self.do_steps_request(messages)
+
+        step_request.name = answer["step"]["name"]
+
+        if "thoughts" in answer and "speak" in answer["thoughts"]:
+            step_request.input = answer["thoughts"]["speak"]
+
+        step = await self.db.create_step(
+            task_id=task.task_id,
+            input=step_request,
+            is_last=answer["step"]["ability"]["name"] == "finish",
+            additional_input={"ability": answer["step"]["ability"]}
+        )
+
+        return step, answer["step"]["ability"]
+
+    async def do_steps_request(self, messages: List[dict], retry: int = 0):
         chat_completion_kwargs = {
             "messages": messages,
             "model": MODEL_NAME,
         }
 
+        async def do_retry(retry_messages: List[dict]):
+            if retry < 2:
+                messages.extend(retry_messages)
+                return await self.do_steps_request(messages, retry=retry + 1)
+            else:
+                LOG.info(f"Retry limit reached, aborting")
+                raise Exception("Failed to create steps")
+
         try:
-            LOG.debug(pprint.pformat(messages))
+            #LOG.info(pprint.pformat(messages))
             chat_response = await chat_completion_request(**chat_completion_kwargs)
-            LOG.debug(pprint.pformat(chat_response["choices"][0]["message"]["content"]))
-
-            ability = json.loads(chat_response["choices"][0]["message"]["content"])
-            ability_names = [a.name for a in self.abilities.list_abilities().values()]
-            if not isinstance(ability, dict) and not ability["name"] in ability_names:
-                LOG.warning(f"Invalid ability: {ability}")
-
+            response = chat_response["choices"][0]["message"]["content"]
+            answer = json.loads(chat_response["choices"][0]["message"]["content"])
+            LOG.info(pprint.pformat(answer))
         except json.JSONDecodeError as e:
-            LOG.warning(f"Unable to parse chat response: {chat_response}. Error: {e}.")
+            LOG.warning(f"Unable to parse chat response: {response}. Got exception {e}")
+            return await do_retry([{"role": "user", "content": f"Invalid response. {e}. Please try again."}])
         except Exception as e:
             LOG.error(f"Unable to generate chat response: {e}")
+            raise e
 
-        return ability
+        if "step" not in answer and not answer["step"] and not isinstance(answer["step"], dict):
+            LOG.info(f"No step provided, retry {retry}")
+            return await do_retry([{"role": "user", "content": "You must provide a step."}])
+
+        invalid_abilities = self.validate_ability(answer["step"])
+        if invalid_abilities:
+            return await do_retry(messages)
+
+        if "thoughts" in answer and answer["thoughts"]:
+            LOG.debug(f"Thoughts:")
+            if "reasoning" in answer["thoughts"]:
+                LOG.debug(f"\tReasoning: {answer['thoughts']['reasoning']}")
+            if "criticism" in answer["thoughts"]:
+                LOG.debug(f"\tCriticism: {answer['thoughts']['criticism']}")
+            if "text" in answer["thoughts"]:
+                LOG.debug(f"\tText: {answer['thoughts']['text']}")
+            if "speak" in answer["thoughts"]:
+                LOG.debug(f"\tSpeak: {answer['thoughts']['speak']}")
+        else:
+            LOG.info(f"No thoughts provided")
+
+        return answer
 
     def validate_ability(self, step: dict):
         ability_names = [a.name for a in self.abilities.list_abilities().values()]

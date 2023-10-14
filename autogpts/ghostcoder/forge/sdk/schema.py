@@ -120,7 +120,6 @@ class Status(Enum):
     created = "created"
     running = "running"
     completed = "completed"
-    skipped = "skipped"
 
 
 class Step(StepRequestBody):

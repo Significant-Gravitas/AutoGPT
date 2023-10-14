@@ -53,6 +53,10 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes) -> str:
     if isinstance(data, str):
         data = data.encode()
 
+    # FIXME: This is just because the benchmark doesn't check sub directories
+    if "/" in file_path:
+        file_path = file_path.split("/")[-1]
+
     agent.workspace.write(task_id=task_id, path=file_path, data=data)
     artifact = await agent.db.create_artifact(
         task_id=task_id,

@@ -6,6 +6,10 @@ from typing import Any, Callable, List
 
 import pydantic
 
+from ..forge_log import ForgeLogger
+
+LOG = ForgeLogger(__name__)
+
 
 class AbilityParameter(pydantic.BaseModel):
     """
@@ -115,10 +119,12 @@ class AbilityRegister:
                 ability = os.path.relpath(
                     ability_path, os.path.dirname(__file__)
                 ).replace("/", ".")
+                LOG.info(f"Registering ability: {ability}")
                 try:
                     module = importlib.import_module(
                         f".{ability[:-3]}", package="forge.sdk.abilities"
                     )
+
                     for attr in dir(module):
                         func = getattr(module, attr)
                         if hasattr(func, "ability"):

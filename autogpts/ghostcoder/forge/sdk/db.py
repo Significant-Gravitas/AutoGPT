@@ -322,7 +322,8 @@ class AgentDB:
         step_id: str,
         status: str,
         output: Optional[str] = None,
-        additional_input: Optional[Dict[str, Any]] = {}
+        additional_input: Optional[Dict[str, Any]] = {},
+        is_last: bool = False,
     ) -> Step:
         if self.debug_enabled:
             LOG.debug(f"Updating step with task_id: {task_id} and step_id: {step_id}")
@@ -334,8 +335,10 @@ class AgentDB:
                     .first()
                 ):
                     step.status = status
-                    step.additional_input = additional_input
+                    if additional_input:
+                        step.additional_input = additional_input
                     step.output = output
+                    step.is_last = is_last
                     session.commit()
                     return await self.get_step(task_id, step_id)
                 else:

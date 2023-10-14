@@ -189,7 +189,7 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
                         "artifact_id": "7a49f31c-f9c6-4346-a22c-e32bc5af4d8e",
                         "file_name": "output.txt",
                         "agent_created": true,
-                        "uri": "file://50da533e-3904-4401-8a07-c49adf88b5eb/output.txt"
+                        "relative_path": "file://50da533e-3904-4401-8a07-c49adf88b5eb/output.txt"
                     }
                 ],
                 "steps": [
@@ -207,7 +207,7 @@ async def get_agent_task(request: Request, task_id: str) -> Task:
                                 "artifact_id": "7a49f31c-f9c6-4346-a22c-e32bc5af4d8e",
                                 "file_name": "output.txt",
                                 "agent_created": true,
-                                "uri": "file://50da533e-3904-4401-8a07-c49adf88b5eb/output.txt"
+                                "relative_path": "file://50da533e-3904-4401-8a07-c49adf88b5eb/output.txt"
                             }
                         ],
                         "is_last": true
@@ -354,6 +354,7 @@ async def execute_agent_task_step(
         # An empty step request represents a yes to continue command
         if not step:
             step = StepRequestBody(input="y")
+
         step = await agent.execute_step(task_id, step)
         return Response(
             content=step.json(),

@@ -15,13 +15,17 @@ sqlalchemy = "^2.0.19"
 aiohttp = "^3.8.5"
 colorlog = "^6.7.0"
 chromadb = "^0.4.10"
-hypercorn = "^0.14.4"
+agbenchmark = { path = "../../benchmark" }
 python-multipart = "^0.0.6"
 toml = "^0.10.2"
 jinja2 = "^3.1.2"
-ghostcoder = { path = "../../../ghostcoder", develop = true }
-
-agbenchmark = {path = "../../benchmark", develop = true}
+uvicorn = "^0.23.2"
+litellm = "^0.1.821"
+duckduckgo-search = "^3.9.3"
+selenium = "^4.13.0"
+pydantic = "^1.10.9"
+bs4 = "^0.0.1"
+ghostcoder = "^0.0.8"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"

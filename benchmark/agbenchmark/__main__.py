@@ -111,7 +111,7 @@ def run_benchmark(
     for key, value in vars(agent_benchmark_config).items():
         print(f"{key}: {value}")
 
-    pytest_args = ["-vs"]
+    pytest_args = ["-vs", "--disable-warnings"]
     if keep_answers:
         pytest_args.append("--keep-answers")
 
