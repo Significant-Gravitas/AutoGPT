@@ -80,6 +80,8 @@ Planning is essential for agents to systematically tackle challenges, mirroring 
 After the introspection of memory and the strategizing of planning, comes the finale: Action. This is where the agent’s cognitive processes manifest into tangible outcomes using the agents Abilities. Every decision, every thought, culminates in the action phase, translating abstract concepts into definitive results.  
 Whether it’s penning a response, saving a file, or initiating a new process, the action component is the culmination of the agent’s decision-making journey. It’s the bridge between digital cognition and real-world impact, turning the agent’s electronic impulses into meaningful and purposeful outcomes.  
 
+![t2_agent_flow.png](..%2F..%2F..%2Fdocs%2Fcontent%2Fimgs%2Fquickstart%2Ft2_agent_flow.png)
+An example of how a basic agent works
 ## The Agent Protocol: The Linguistics of AI Communication
 
 After diving deep into the anatomy of an agent, understanding its core components, there emerges a pivotal question: How do we effectively communicate with these diverse, intricately-designed agents? The answer lies in the Agent Protocol.  
@@ -92,7 +94,7 @@ In an ecosystem where every developer might have their unique approach to crafti
 
 ## AutoGPT Forge: A Peek Inside the LLM Agent Template
 
-Now we understand the architecture of an agent lets look inside the Forge. It’s a well-organized template, meticulously architected to cater to the needs of agent developers. Let
+Now we understand the architecture of an agent lets look inside the Forge. It’s a well-organized template, meticulously architected to cater to the needs of agent developers.
 
 ![The Github repository](../../../docs/content/imgs/quickstart/t2_04.png)
 

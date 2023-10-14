@@ -41,16 +41,16 @@ Diving deep into the core of an LLM-based AI agent, we find it’s structured mu
 ![The Github repository](../../../docs/content/imgs/quickstart/t2_03.png)
 Anatomy of an Agent from the Agent Landscape Survey  
 
-1. **Profile**  
+### 1. **Profile**  
 When we humans focus on various tasks, we condition ourselves for those tasks. Whether we’re writing, chopping vegetables, driving, or playing sports, we concentrate and even adopt different mindsets. This adaptability is what the concept of profile alludes to when discussing agents. Research has shown that simply informing an agent that it is an expert in a specific task can enhance its performance.  
 The profiling module has potential applications beyond just prompt engineering. It could be used to adjust an agent’s memory functions, available actions, or even the underlying large language model (LLM) that drives the agent.  
-2. **Memory**  
+### 2. **Memory**  
 Memory, for an agent, is more than just storage — it’s the bedrock of its identity, capabilities and fundamental for it to learn. Just as our memories inform our decisions, reactions, and even our very personalities, an agent’s memory serves as its cumulative record of past interactions, learnings, and feedback. Two primary types of memories shape an agent’s cognition: long-term and short-term.  
 The Long-Term Memory is akin to the agent’s foundational knowledge, a vast reservoir that encompasses data and interactions spanning extended periods. It’s the agent’s historical archive, guiding its core behaviors and understanding.  
 On the other hand, the Short-Term (or Working) Memory focuses on the immediate, handling transient memories much like our recollection of recent events. While essential for real-time tasks, not all short-term memories make it to the agent’s long-term storage.  
 An emerging concept in this realm is Memory Reflection. Here, the agent doesn’t just store memories but actively revisits them. This introspection allows the agent to reassess, prioritize, or even discard information, akin to a human reminiscing and learning from past experiences.  
 
-3. **Planning**  
+### 3. **Planning**  
 Planning is essential for agents to systematically tackle challenges, mirroring how humans break down complex problems into smaller tasks.
 #### **1. What is Planning?**
 
@@ -64,9 +64,10 @@ Planning is essential for agents to systematically tackle challenges, mirroring 
 | **Planning with Feedback** | An adaptive approach where agents refine their strategy based on outcomes, similar to iterative design processes.|
 | **Planning without Feedback** | The agent acts as a strategist, using only its existing knowledge. It's like playing chess, anticipating challenges and planning several moves ahead. |
 
-4. **Action**  
+### 4. **Action**  
 After the introspection of memory and the strategizing of planning, comes the finale: Action. This is where the agent’s cognitive processes manifest into tangible outcomes using the agents Abilities. Every decision, every thought, culminates in the action phase, translating abstract concepts into definitive results.  
 Whether it’s penning a response, saving a file, or initiating a new process, the action component is the culmination of the agent’s decision-making journey. It’s the bridge between digital cognition and real-world impact, turning the agent’s electronic impulses into meaningful and purposeful outcomes.  
+
 
 ## The Agent Protocol: The Linguistics of AI Communication
 
