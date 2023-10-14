@@ -1,6 +1,7 @@
 # report on the jc output
 import click
 import json
+from collections import Counter
 import pandas as pd
 
 @click.command()
@@ -19,6 +20,33 @@ def main(infile):
                     if "arena/" in filen:
                         user_repo2[commit["author_email"]] = filen
                         filen = "<ARENA>"
+                    if "benchmark/" in filen:
+                        filen = "<benchmark>"
+                    if ".png" in filen:
+                        filen = "<image>"
+                    if ".jpg" in filen:
+                        filen = "<image>"
+                    if ".md" in filen:
+                        filen = "<markdown>"
+                    if "/reports/" in filen:
+                        filen = "<reports>"
+                    if ".json" in filen:
+                        filen = "<reports>"
+                    if ".log" in filen:
+                        filen = "<reports>"
+                    for name in ["challenges/",""]:
+                        if "challenges/" in filen:
+                            filen = "<challenge>"
+                    
+                    for name in [".env",
+                                 "pyproject.toml",
+                                 "poetry.lock",
+                                 "requirements.txt",
+                                 "Docker",".gitmodules","docker-compose.yml"]:
+                        if name in filen:
+                            filen = "<infra>"
+                    if "/combined_charts/" in filen:
+                        filen = "<charts>"
                     #print (filen,commit["author_email"])
                     user_files.append(dict(filename=filen,name=commit["author_email"]))
     ud = pd.DataFrame(user_files)
@@ -43,13 +71,21 @@ def main(infile):
     
     #filtered_result2.rename("0").name='name'
 
-
     
     filtered_result2.insert(0,"name",filtered_result2.pop("name"))
     filtered_result2.to_csv("filtered_result2.csv")    
     #for row in df:
     #    print(row)
-    
-    
+    # now for each file lets rank them
+    filtered_result2["tokens"] = filtered_result2["edited_files"].str.split("\|")
+
+    all_tokens = [token for sublist in filtered_result2['tokens'] for token in sublist]
+    token_counts = Counter(all_tokens)
+    file_counts = pd.DataFrame(token_counts.most_common())
+
+    file_counts.rename({'index':'word',0:'file'},axis='columns',inplace=True)
+    file_counts.rename({'index':'word',1:'count'},axis='columns',inplace=True)
+    file_counts[file_counts["count"]>1].to_csv("TokenCounts.csv")
+        
 if __name__ =="__main__":
     main()
