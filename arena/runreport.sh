@@ -1,1 +1,2 @@
-python report.py ./all.json |sort |uniq -c |sort -n > file_author.txt
+jc git log --all --stat | jq > all.json
+python report.py ./all.json 
