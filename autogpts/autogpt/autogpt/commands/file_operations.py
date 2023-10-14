@@ -155,6 +155,7 @@ def read_file(filename: Path, agent: Agent) -> str:
         str: The contents of the file
     """
     content = read_textual_file(filename, logger)
+    # TODO: content = agent.workspace.read_file(filename)
 
     # # TODO: invalidate/update memory when file is edited
     # file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
@@ -224,8 +225,7 @@ def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
 
     directory = os.path.dirname(filename)
     os.makedirs(directory, exist_ok=True)
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(contents)
+    agent.workspace.write_file(filename, contents)
     log_operation("write", filename, agent, checksum)
     return f"File {filename.name} has been written successfully."
 
@@ -243,11 +243,11 @@ def append_to_file(
     """
     directory = os.path.dirname(filename)
     os.makedirs(directory, exist_ok=True)
-    with open(filename, "a", encoding="utf-8") as f:
+    with agent.workspace.open_file(filename, "a") as f:
         f.write(text)
 
     if should_log:
-        with open(filename, "r", encoding="utf-8") as f:
+        with agent.workspace.open_file(filename, "r") as f:
             checksum = text_checksum(f.read())
         log_operation("append", filename, agent, checksum=checksum)
 
