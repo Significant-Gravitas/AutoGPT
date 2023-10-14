@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from autogpt.models.action_history import Episode
 
 from autogpt.agents.utils.exceptions import InvalidAgentResponseError
-from autogpt.config import AIProfile, AIDirectives
+from autogpt.config import AIDirectives, AIProfile
 from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
 from autogpt.core.prompting import (
     ChatPrompt,

@@ -3,7 +3,7 @@ from typing import Optional
 from autogpt.agent_manager import AgentManager
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.commands import COMMAND_CATEGORIES
-from autogpt.config import AIProfile, AIDirectives, Config
+from autogpt.config import AIDirectives, AIProfile, Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.logs.config import configure_chat_plugins
 from autogpt.logs.helpers import print_attribute
