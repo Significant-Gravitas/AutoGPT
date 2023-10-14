@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 
 from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
 from autogpt.config import ConfigBuilder
-from autogpt.config.ai_profile import AIProfile
 from autogpt.config.ai_directives import AIDirectives
+from autogpt.config.ai_profile import AIProfile
 from autogpt.core.configuration import (
     Configurable,
     SystemConfiguration,
