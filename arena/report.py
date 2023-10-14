@@ -32,7 +32,7 @@ def main(infile):
     #ixsmport pdb
     #opdb.set_trace()
 # Filter users with only one contribution
-    filtered_result = ud2[ (ud2["edited_files"].str.count("\|") >1) & (ud2["edited_files"].str.contains("ARENA")) ] 
+    filtered_result = ud2[ (ud2["edited_files"].str.count("\|") >0) & (ud2["edited_files"].str.contains("ARENA")) ] 
     df2 = pd.DataFrame.from_dict(user_repo2,orient="index")
     #import pdb
     #pdb.set_trace()
