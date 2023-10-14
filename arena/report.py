@@ -26,7 +26,7 @@ def main(infile):
     #pdb.set_trace()
     ud2= ud.groupby(["name"])["filename"].unique().apply('|'.join).reset_index(name="edited_files")
     #print("DEBUG",ud2)
-    ud2.to_csv("user_files.csv")
+    #ud2.to_csv("user_files.csv")
 
     #result = df.groupby('username')['filename'].unique().apply(', '.join).reset_index(name='edited_files')
     #ixsmport pdb
@@ -38,9 +38,15 @@ def main(infile):
     #pdb.set_trace()
     df2.index.name='name'
     filtered_result2 =pd.merge(filtered_result,df2,on="name",how="inner").drop(columns=["name"])
+    #filtered_result2.rename(columns={'' : "name" })
+    filtered_result2.rename({'index':'word',0:'name'},axis='columns',inplace=True)
     
-    filtered_result2.to_csv("filtered_result2.csv")
+    #filtered_result2.rename("0").name='name'
+
+
     
+    filtered_result2.insert(0,"name",filtered_result2.pop("name"))
+    filtered_result2.to_csv("filtered_result2.csv")    
     #for row in df:
     #    print(row)
     
