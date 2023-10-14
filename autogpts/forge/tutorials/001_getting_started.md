@@ -2,6 +2,8 @@
 
 ![Header](../../../docs/content/imgs/quickstart/000_header_img.png)
 
+**Written by Craig Swift & [Ryan Brandt](https://github.com/paperMoose)**
+
 
 Welcome to the getting started Tutorial! This tutorial is designed to walk you through the process of setting up and running your own AutoGPT agent in the Forge environment. Whether you are a seasoned AI developer or just starting out, this guide will equip you with the necessary steps to jumpstart your journey in the world of AI development with AutoGPT.
 
@@ -96,7 +98,7 @@ This command forcefully stops the agent. You can also restart it using the start
 - We've created and named our first agent, and entered it into the arena!
 - We've run the agent and it's tasking server successfully without an error.
 - We've logged into the server site at localhost:8000 using our github account.
-- 
+
 Make sure you've completed every step successfully before moving on :). 
 ### Next Steps: Building and Enhancing Your Agent
 With our foundation set, you are now ready to build and enhance your agent! The next tutorial will look into the anatomy of an agent and how to add basic functionality.

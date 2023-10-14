@@ -1,10 +1,9 @@
 # AutoGPT Forge Part 2: The Blueprint of an AI Agent
 
-**Craig Swift**  
-Craig Swift  
+**Written by Craig Swift & [Ryan Brandt](https://github.com/paperMoose)**
+
 *8 min read*  
-·  
-*Just now*  
+
 
 ---
 
@@ -96,25 +95,25 @@ In an ecosystem where every developer might have their unique approach to crafti
 
 Now we understand the architecture of an agent lets look inside the Forge. It’s a well-organized template, meticulously architected to cater to the needs of agent developers.
 
-![The Github repository](../../../docs/content/imgs/quickstart/t2_04.png)
-
 #### Forge’s Project Structure: A Bird’s-Eye View
+![t2_diagram.png](..%2F..%2F..%2Fdocs%2Fcontent%2Fimgs%2Fquickstart%2Ft2_diagram.png)
 
-The Forge’s directory structure can be likened to a well-organized library, where every book (file or directory) has its designated place:  
-- **agent.py**: The heart of the Forge, where the agent's logic resides.  
-- **prompts**: A treasure trove of predefined templates, instrumental for guiding the LLM's responses.  
-- **sdk**: The boilerplate code and the foundational bedrock of the Forge.  
+The Forge's agent directory structure consists of three parts:
+- **agent.py**: The heart of the Forge, where the agent's actual business logic is.  
+- **prompts**: A directory of prompts used in agent.py's LLM logic.  
+- **sdk**: The boilerplate code and the lower level APIs of the Forge.  
 
-Let’s examine these core sections.  
+Let’s break them down.
 
-#### Unraveling the SDK
+#### Understanding the SDK
 
-The sdk directory is the Forge's control center. Think of it as the engine room of a ship, containing the gears and mechanisms that drive the entire vessel. Here's what it encapsulates:  
-- **Core Components**: The SDK hosts the integral parts of the Forge, like Memory, Abilities, and Planning. These components are fundamental to an agent’s cognition and actions.  
-- **Agent Protocol Routes**: Within the routes sub-directory, you'll find the implementation of our previously discussed Agent Protocol. It's here that the standard communication interface is brought to life.  
-- **Database (db.py)**: The agent's memory bank. It's where experiences, learnings, and other crucial data get stored.  
-- **Prompting Engine (prompting.py)**: This engine utilizes the templates from the prompts directory to formulate queries for the LLM, ensuring consistent and apt interactions.  
-- **Agent Class**: Acts as a bridge, connecting the agent’s logic with the Agent Protocol routes.  
+The SDK is the main directory for the Forge. Here's a breakdown:
+
+- **Core Components**: These are key parts of the Forge including Memory, Abilities, and Planning. They help the agent think and act.
+- **Agent Protocol Routes**: In the routes sub-directory, you'll see the Agent Protocol. This is how the agent communicates.
+- **Database (db.py)**: This is where the agent stores its data like experiences and learnings.
+- **Prompting Engine (prompting.py)**: This tool uses templates to ask questions to the LLM for consistent interactions.
+- **Agent Class**: This connects the agent's actions with the Agent Protocol routes.
 
 #### Configurations and Environment
 
@@ -125,9 +124,24 @@ Configuration is key to ensuring our agent runs seamlessly. The .env.example fil
 - **Port**: `PORT` specifies the listening port for the agent's server.  
 - **Workspace**: `AGENT_WORKSPACE` points to the agent's working directory.  
 
-## Wrapping Up: From Blueprint to Reality
+## To Recap
 
-At the end of this tutorial, we've learned: 
-- What an agent is, and how it works theoretically 
+- **LLM-Based AI Agents**: 
+  - LLMs are machine learning models with vast knowledge. When equipped with tools to utilize their outputs, they evolve into LLM-based AI agents, enabling human-like decision-making.
+
+- **Anatomy of an Agent**: 
+  - **Profile**: Sets an agent's personality and specialization.
+  - **Memory**: Encompasses the agent's long-term and short-term memory, storing both historical data and recent interactions.
+  - **Planning**: The strategy the agent employs to tackle problems.
+  - **Action**: The stage where the agent's decisions translate to tangible results.
+  
+- **Agent Protocol**: 
+  - A uniform communication interface ensuring smooth interactions between agents and their developers.
+
+- **AutoGPT Forge**: 
+  - A foundational template for creating agents. Components include:
+    - **agent.py**: Houses the agent's core logic.
+    - **prompts**: Directory of templates aiding LLM logic.
+    - **sdk**: Boilerplate code and essential APIs.
 
 Let's put this blueprint into practice in part 3!

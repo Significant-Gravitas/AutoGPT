@@ -1,6 +1,7 @@
 # AutoGPT Forge: Crafting Intelligent Agent Logic
 
 ![Header](../../../docs/content/imgs/quickstart/t3_01.png)
+**Written by Craig Swift & [Ryan Brandt](https://github.com/paperMoose)**
 
 Greetings, AI enthusiasts! Today, we're about to embark on an enlightening journey of crafting intelligent agent logic. This is part 3 in a tutorial series on using the AutoGPT Forge, you can find the earlier parts here:
 
@@ -8,6 +9,7 @@ Part 1: AutoGPT Forge: A Comprehensive Guide to Your First Step
 Part 2: AutoGPT Forge: The Blueprint of an AI Agent
 
 Alright, folks, let's dive right into the fun part: coding! We're about to set up a nifty system that showcases how to use an LLM as the brainpower behind our agent. The mission? To tackle the simple task of jotting down the capital of the United States into a txt file. The coolest part? We won't spoon-feed our agent the steps. Instead, we'll just hand over the task: "Write the word 'Washington' to a .txt file," and watch in awe as it figures out the 'how-to' all by itself, then swiftly executes the necessary commands. How cool is that?
+
 
 ---
 ## Setting Up Your Smart Agent Project
