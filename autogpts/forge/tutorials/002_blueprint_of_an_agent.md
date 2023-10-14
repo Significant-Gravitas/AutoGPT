@@ -127,10 +127,7 @@ Configuration is key to ensuring our agent runs seamlessly. The .env.example fil
 
 ## Wrapping Up: From Blueprint to Reality
 
-And there we have it — a comprehensive dive into the world of AutoGPTs. We’ve traversed the intricate pathways of agent anatomy, understood how the Agent Protocol fits in, and peeked under the hood of the Forge, understanding its core components and structure.  
+At the end of this tutorial, we've learned: 
+- What an agent is, and how it works theoretically 
 
-If this tutorial was a journey, think of it as a hike up a mountain. We started at the base, with a broad view of LLM-based AI agents, understanding their significance and potential. As we climbed, the trail led us to the anatomy of these agents, dissecting their structure and functionality. Nearing the summit, we delved into the Agent Protocol, understanding its pivotal role in standardizing communication. And finally, standing at the peak, we had a bird’s-eye view of the Forge, observing its organized layout and appreciating its design intricacies.  
-
-But remember, every mountain peak is the bottom of another adventure. Having grasped the theoretical aspects, it’s time to transition from blueprint to reality.Now the foundations have laid, our next steps involve breathing life into these concepts, turning lines of code into intelligent, responsive agents.  
-
-To all the budding agent developers out there, gear up for the next phase of our expedition — the hands-on time! Until then, keep the AI flame burning bright and never stop exploring.  
+Let's put this blueprint into practice in part 3!
