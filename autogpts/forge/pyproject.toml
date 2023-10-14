@@ -5,6 +5,7 @@ description = ""
 authors = ["Craig Swift <craigswift13@gmail.com>"]
 license = "MIT"
 readme = "README.md"
+packages = [{ include = "forge" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
