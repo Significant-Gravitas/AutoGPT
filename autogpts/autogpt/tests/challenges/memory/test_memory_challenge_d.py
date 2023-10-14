@@ -5,7 +5,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from autogpt.commands.file_operations import read_file
-from autogpt.workspace import Workspace
+from autogpt.file_workspace import FileWorkspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_challenge
 
@@ -21,7 +21,7 @@ def test_memory_challenge_d(
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
     challenge_name: str,
-    workspace: Workspace,
+    workspace: FileWorkspace,
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
@@ -173,7 +173,7 @@ def extract_beliefs(content: str) -> Dict[str, Dict[str, str]]:
 
 
 def create_instructions_files(
-    workspace: Workspace,
+    workspace: FileWorkspace,
     level: int,
     test_phrases: list,
     base_filename: str = "instructions_",

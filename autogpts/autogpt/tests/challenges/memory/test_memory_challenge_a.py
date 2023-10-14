@@ -2,7 +2,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from autogpt.config import Config
-from autogpt.workspace import Workspace
+from autogpt.file_workspace import FileWorkspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_challenge
 
@@ -18,7 +18,7 @@ def test_memory_challenge_a(
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
     challenge_name: str,
-    workspace: Workspace,
+    workspace: FileWorkspace,
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """
@@ -44,7 +44,7 @@ def test_memory_challenge_a(
 
 
 def create_instructions_files(
-    workspace: Workspace,
+    workspace: FileWorkspace,
     num_files: int,
     task_id: str,
     base_filename: str = "instructions_",

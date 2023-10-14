@@ -11,7 +11,7 @@ import pytest
 
 from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
 from autogpt.config import Config, ConfigBuilder
-from autogpt.workspace.workspace import Workspace
+from autogpt.file_workspace import FileWorkspace
 
 
 def test_initial_values(config: Config) -> None:
@@ -122,7 +122,7 @@ def test_smart_and_fast_llms_set_to_gpt4(mock_list_models: Any, config: Config) 
     config.smart_llm = smart_llm
 
 
-def test_missing_azure_config(workspace: Workspace) -> None:
+def test_missing_azure_config(workspace: FileWorkspace) -> None:
     config_file = workspace.get_path("azure_config.yaml")
     with pytest.raises(FileNotFoundError):
         ConfigBuilder.load_azure_config(config_file)
@@ -136,7 +136,7 @@ def test_missing_azure_config(workspace: Workspace) -> None:
     assert azure_config["azure_model_to_deployment_id_map"] == {}
 
 
-def test_azure_config(config: Config, workspace: Workspace) -> None:
+def test_azure_config(config: Config, workspace: FileWorkspace) -> None:
     config_file = workspace.get_path("azure_config.yaml")
     yaml_content = """
 azure_api_type: azure

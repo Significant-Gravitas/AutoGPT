@@ -32,12 +32,12 @@ from autogpt.models.context_item import ContextItem
 from .agent import execute_command, extract_command
 from .base import BaseAgent
 from .features.context import ContextMixin
-from .features.workspace import WorkspaceMixin
+from .features.file_workspace import FileWorkspaceMixin
 
 logger = logging.getLogger(__name__)
 
 
-class PlanningAgent(ContextMixin, WorkspaceMixin, BaseAgent):
+class PlanningAgent(ContextMixin, FileWorkspaceMixin, BaseAgent):
     """Agent class for interacting with AutoGPT."""
 
     ThoughtProcessID = Literal["plan", "action", "evaluate"]

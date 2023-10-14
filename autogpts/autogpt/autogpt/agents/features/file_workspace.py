@@ -7,20 +7,20 @@ if TYPE_CHECKING:
 
     from ..base import BaseAgent
 
-from autogpt.workspace import Workspace
+from autogpt.file_workspace import FileWorkspace
 
 from ..base import AgentFileManager, BaseAgentConfiguration
 
 
-class WorkspaceMixin:
+class FileWorkspaceMixin:
     """Mixin that adds workspace support to a class"""
 
-    workspace: Workspace | None
+    workspace: FileWorkspace = None
     """Workspace that the agent has access to, e.g. for reading/writing files."""
 
     def __init__(self, **kwargs):
         # Initialize other bases first, because we need the config from BaseAgent
-        super(WorkspaceMixin, self).__init__(**kwargs)
+        super(FileWorkspaceMixin, self).__init__(**kwargs)
 
         config: BaseAgentConfiguration = getattr(self, "config")
         if not isinstance(config, BaseAgentConfiguration):
@@ -34,7 +34,7 @@ class WorkspaceMixin:
         self.workspace = _setup_workspace(file_manager, config)
 
     def attach_fs(self, agent_dir: Path):
-        res = super(WorkspaceMixin, self).attach_fs(agent_dir)
+        res = super(FileWorkspaceMixin, self).attach_fs(agent_dir)
 
         self.workspace = _setup_workspace(self.file_manager, self.config)
 
@@ -42,16 +42,16 @@ class WorkspaceMixin:
 
 
 def _setup_workspace(file_manager: AgentFileManager, config: BaseAgentConfiguration):
-    workspace = Workspace(
+    workspace = FileWorkspace(
         file_manager.root / "workspace",
-        restrict_to_workspace=not config.allow_fs_access,
+        restrict_to_root=not config.allow_fs_access,
     )
     workspace.initialize()
     return workspace
 
 
-def get_agent_workspace(agent: BaseAgent) -> Workspace | None:
-    if isinstance(agent, WorkspaceMixin):
+def get_agent_workspace(agent: BaseAgent) -> FileWorkspace | None:
+    if isinstance(agent, FileWorkspaceMixin):
         return agent.workspace
 
     return None
