@@ -69,7 +69,7 @@ In an ecosystem where every developer might have their unique approach to crafti
 
 ## AutoGPT Forge: A Peek Inside the LLM Agent Template
 
-Now we understand the architecture of an agent lets look inside the Forge. It’s a well-organized template, meticulously architected to cater to the needs of agent developers. Let
+Now we understand the architecture of an agent lets look inside the Forge. It’s a well-organized template, meticulously architected to cater to the needs of agent developers.
 
 ![The Github repository](../../../docs/content/imgs/quickstart/t2_04.png)
 
