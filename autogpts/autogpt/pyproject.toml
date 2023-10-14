@@ -29,12 +29,14 @@ distro = "^1.8.0"
 docker = "*"
 duckduckgo-search = "^3.0.2"
 en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl"}
+autogpt-forge = { path = "../forge" }
 ftfy = "^6.1.1"
 google-api-python-client = "*"
 gTTS = "^2.3.1"
 inflection = "*"
 jsonschema = "*"
 markdown = "*"
+numpy = "*"
 openai = "^0.27.10"
 orjson = "^3.8.10"
 Pillow = "*"
@@ -60,7 +62,7 @@ fastapi = "*"
 uvicorn = "*"
 
 # OpenAI and Generic plugins import
-openapi-python-client = "^0.13.4"
+openapi-python-client = "^0.14.0"
 
 [tool.poetry.group.dev.dependencies]
 auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
@@ -70,7 +72,6 @@ flake8 = "*"
 gitpython = "^3.1.32"
 isort = "*"
 mypy = "*"
-numpy = "*"
 pre-commit = "*"
 types-beautifulsoup4 = "*"
 types-colorama = "*"
