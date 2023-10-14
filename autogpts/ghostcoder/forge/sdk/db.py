@@ -322,7 +322,7 @@ class AgentDB:
         step_id: str,
         status: str,
         output: Optional[str] = None,
-        additional_input: Optional[Dict[str, Any]] = {},
+        additional_input: Optional[Dict[str, Any]] = {}
     ) -> Step:
         if self.debug_enabled:
             LOG.debug(f"Updating step with task_id: {task_id} and step_id: {step_id}")

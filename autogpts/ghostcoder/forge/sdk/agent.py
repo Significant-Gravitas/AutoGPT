@@ -22,7 +22,6 @@ from .workspace import Workspace
 
 LOG = ForgeLogger(__name__)
 
-
 class Agent:
     def __init__(self, database: AgentDB, workspace: Workspace):
         self.db = database
