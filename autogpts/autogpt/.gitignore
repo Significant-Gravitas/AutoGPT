@@ -17,6 +17,7 @@ log-ingestion.txt
 *.mp3
 mem.sqlite3
 venvAutoGPT
+data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
