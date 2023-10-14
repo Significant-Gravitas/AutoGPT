@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pytest_mock import MockerFixture
 
-from autogpt.workspace import Workspace
+from autogpt.file_workspace import FileWorkspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import get_workspace_path, run_challenge
 
@@ -19,7 +19,7 @@ def test_kubernetes_template_challenge_a(
     patched_api_requestor: MockerFixture,
     level_to_run: int,
     challenge_name: str,
-    workspace: Workspace,
+    workspace: FileWorkspace,
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """

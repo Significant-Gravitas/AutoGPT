@@ -38,8 +38,8 @@ from autogpt.models.context_item import ContextItem
 
 from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from .features.context import ContextMixin
+from .features.file_workspace import FileWorkspaceMixin
 from .features.watchdog import WatchdogMixin
-from .features.workspace import WorkspaceMixin
 from .prompt_strategies.one_shot import (
     OneShotAgentPromptConfiguration,
     OneShotAgentPromptStrategy,
@@ -64,7 +64,7 @@ class AgentSettings(BaseAgentSettings):
 
 class Agent(
     ContextMixin,
-    WorkspaceMixin,
+    FileWorkspaceMixin,
     WatchdogMixin,
     BaseAgent,
     Configurable[AgentSettings],

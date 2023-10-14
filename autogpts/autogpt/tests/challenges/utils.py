@@ -7,8 +7,8 @@ from typing import Any, AsyncIterator
 import pytest
 
 from agbenchmark_config.benchmarks import run_specific_agent
+from autogpt.file_workspace import FileWorkspace
 from autogpt.logs import LogCycleHandler
-from autogpt.workspace import Workspace
 from tests.challenges.schema import Task
 
 
@@ -55,12 +55,12 @@ def setup_mock_log_cycle_agent_name(
     )
 
 
-def get_workspace_path(workspace: Workspace, file_name: str) -> str:
+def get_workspace_path(workspace: FileWorkspace, file_name: str) -> str:
     return str(workspace.get_path(file_name))
 
 
 def copy_file_into_workspace(
-    workspace: Workspace, directory_path: Path, file_path: str
+    workspace: FileWorkspace, directory_path: Path, file_path: str
 ) -> None:
     workspace_code_file_path = get_workspace_path(workspace, file_path)
     code_file_path = directory_path / file_path

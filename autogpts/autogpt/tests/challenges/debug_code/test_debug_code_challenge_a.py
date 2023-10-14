@@ -5,7 +5,7 @@ from pytest_mock import MockerFixture
 
 from autogpt.agents import Agent
 from autogpt.commands.execute_code import execute_python_file
-from autogpt.workspace import Workspace
+from autogpt.file_workspace import FileWorkspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import (
     copy_file_into_workspace,
@@ -32,7 +32,7 @@ def test_debug_code_challenge_a(
     patched_api_requestor: MockerFixture,
     level_to_run: int,
     challenge_name: str,
-    workspace: Workspace,
+    workspace: FileWorkspace,
     patched_make_workspace: pytest.fixture,
 ) -> None:
     """

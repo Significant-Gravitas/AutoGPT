@@ -1,6 +1,6 @@
 import pytest
 
-from autogpt.workspace import Workspace
+from autogpt.file_workspace import FileWorkspace
 from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import run_challenge
 
@@ -16,7 +16,7 @@ def test_browse_website(
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
     challenge_name: str,
-    workspace: Workspace,
+    workspace: FileWorkspace,
     patched_make_workspace: pytest.fixture,
 ) -> None:
     run_challenge(

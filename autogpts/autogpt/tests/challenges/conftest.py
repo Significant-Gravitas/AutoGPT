@@ -6,7 +6,7 @@ from _pytest.config.argparsing import Parser
 from _pytest.fixtures import FixtureRequest
 from pytest_mock import MockerFixture
 
-from autogpt.workspace import Workspace
+from autogpt.file_workspace import FileWorkspace
 from tests.challenges.challenge_decorator.challenge import Challenge
 from tests.vcr import before_record_response
 
@@ -64,12 +64,14 @@ def check_beat_challenges(request: FixtureRequest) -> None:
 
 
 @pytest.fixture
-def patched_make_workspace(mocker: MockerFixture, workspace: Workspace) -> Generator:
+def patched_make_workspace(
+    mocker: MockerFixture, workspace: FileWorkspace
+) -> Generator:
     def patched_make_workspace(*args: Any, **kwargs: Any) -> str:
         return workspace.root
 
     mocker.patch.object(
-        Workspace,
+        FileWorkspace,
         "make_workspace",
         new=patched_make_workspace,
     )
