@@ -97,7 +97,7 @@ class ForgeAgent(Agent):
 
         return task
 
-    async def execute_step(self, task_id: str, step_request: StepRequestBody, is_retry: bool = False) -> Step:
+    async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
         LOG.info("📦 Executing step")
         task = await self.db.get_task(task_id)
 
@@ -105,9 +105,15 @@ class ForgeAgent(Agent):
 
         LOG.info(f"Run ability {ability['name']} with arguments {ability['args']}")
 
-        output = await self.abilities.run_ability(
-            task_id, ability["name"], **ability["args"]
-        )
+        try:
+            output = await self.abilities.run_ability(
+                task_id, ability["name"], **ability["args"]
+            )
+        except Exception as e:
+            failure = f"Failed to run ability {ability['name']} with arguments {ability['args']}: {str(e)}"
+            LOG.warning(f"Step failed: {step.step_id}. {failure}")
+            await self.db.update_step(task.task_id, step.step_id, "completed", output=failure)
+            return step
 
         # FIXME: Just to speed up the agent
         if ability["name"] in ["write_code", "fix_code"]:
@@ -132,11 +138,11 @@ class ForgeAgent(Agent):
         prompt_engine = PromptEngine("create-step-with-reasoning")
 
         previous_steps, page = await self.db.list_steps(task.task_id, per_page=100)
-        if len(previous_steps) > 15:
+        if len(previous_steps) > 5:  # FIXME: To not end up in infinite test improvement loop
             ability = {
                 "name": "finish",
                 "args": {
-                    "reason": "Giving up after 15 steps."
+                    "reason": "Giving up..."
                 }
             }
             step_request.name = "Giving up"
@@ -144,7 +150,7 @@ class ForgeAgent(Agent):
             step = await self.db.create_step(
                 task_id=task.task_id,
                 input=step_request,
-                is_last=False,
+                is_last=True,
                 additional_input={"ability": ability}
             )
             return step, ability
@@ -152,7 +158,6 @@ class ForgeAgent(Agent):
             last_step = previous_steps[-1]
             LOG.info(f"Found {len(previous_steps)} previously executed steps. Last executed step was: {last_step.name}.")
 
-            LOG.info(f"Last step add info: {last_step.additional_input}")
             # FIXME: Just to speed up the agent
             if ("ability" in last_step.additional_input and
                     last_step.additional_input["ability"]["name"] in ["write_code", "fix_code"]):
@@ -201,6 +206,8 @@ class ForgeAgent(Agent):
 
         task_prompt = prompt_engine.load_prompt("user-prompt", **task_kwargs)
         messages.append({"role": "user", "content": task_prompt})
+
+        LOG.info("User: " + task_prompt)
 
         answer = await self.do_steps_request(messages)
 

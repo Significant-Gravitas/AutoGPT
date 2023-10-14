@@ -120,6 +120,10 @@ async def _write_code(
                              allow_hallucinated_files=True,
                              auto_mode=True)
 
+    # FIXME: Allow null or retry
+    if not test_file:
+        test_file = "test_" + file
+
     test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern=test_file)
     test_file_item = FileItem(file_path=test_file, content=repository.get_file_content(test_file))
     file_item = FileItem(file_path=file, content=repository.get_file_content(file))
@@ -146,17 +150,22 @@ async def _write_code(
         agent_created=True,
     )
 
-    await agent.db.create_artifact(
-        task_id=task_id,
-        file_name=test_file,
-        relative_path="",
-        agent_created=True,
-    )
+    # FIXME: Not adding the test file to artifacts to avoid test failures not in the actual benchmark
+    # await agent.db.create_artifact(
+    #     task_id=task_id,
+    #     file_name=test_file,
+    #     relative_path="",
+    #     agent_created=True,
+    # )
 
     verification_result = test_tool.run_tests()
 
+    text_items = outgoing_messages[-1].find_items_by_type("text")
+
+    output = "\n\n".join([item.text for item in text_items])
+
     if not verification_result.success:
-        output = "\n\n".join([item.to_prompt() for item in verification_result.failures])
+        output += "\n\n".join([item.to_prompt() for item in verification_result.failures])
         output += "\n\nThe tests failed!"
     else:
         output = "\n\nThe files was implemented and the tests passed!"
