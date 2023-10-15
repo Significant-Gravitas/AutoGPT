@@ -14,8 +14,6 @@ from autogpt.core.utils.exceptions import InvalidArgumentError
 from autogpt.core.tools.command_decorator import tool
 from autogpt.core.utils.json_schema import JSONSchema
 
-from autogpt.core.agents.simple.lib.models.plan import Plan
-from autogpt.core.agents.simple.lib.models.tasks import Task, TaskStatusList
 
 logger = logging.getLogger(__name__)
 
