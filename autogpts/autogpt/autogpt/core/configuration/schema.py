@@ -1,6 +1,5 @@
 import abc
 import uuid
-import typing
 from typing import Any, Callable, Generic, Optional, TypeVar, Union
 import logging
 import datetime
@@ -71,6 +70,11 @@ class SystemSettings(BaseModel):
             "name",
             "description"
         }
+    
+    # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
+    created_at : datetime.datetime  =  datetime.datetime.now()
+    modified_at : datetime.datetime  = datetime.datetime.now()
+
 
     def json(self,**dumps_kwargs: Any) -> str:
         logging.Logger(__name__).warning(f'{__qualname__}.json()')

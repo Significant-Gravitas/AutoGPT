@@ -4,12 +4,17 @@ LOG = app.sdk.forge_log.ForgeLogger(__name__)
 
 
 logo = """\n\n
-    A      FFFFF   A     A       SSSSSS 
-   A A     F      A A   A A     S     
-  A   A    FFFF  A   A A   A    SSSSS  
- AAAAAAA   F    AAAAAAAAAAAAA        S 
-A       A  F   A     AA      ASSSSSSSS 
-\n\n"""
+          AAA         FFFFFFFFFFFF      AAA              AAA           SSSSSSSSSSSSSSSSSSSSSSS 
+         AAAAA        FFFFFFFFFF       AAAAA            AAAAA        SSSSSSSSSSSSSSSSSSSSSSSS     
+        AA   AA       FF              AA   AA          AA   AA      SSS   
+       AA     AA      FF             AA     AA        AA     AA      SSSS 
+      AA       AA     FF            AA       AA      AA       AA      SSSSSSSSSSSSSSS 
+     AAAAAAAAAAAAA    FFFFFF       AAAAAAAAAAAAA    AAAAAAAAAAAAA         SSSSSSSSSSSSS
+    AAAAAAAAAAAAAAA   FF          AAAAAAAAAAAAAAA  AAAAAAAAAAAAAAA                  SSSS
+   AA             AA  FF         AA             AAAA             AA                 SSSS
+  AA               AA FF        AA               AAA              AA  SSSSSSSSSSSSSSSSS
+ AA                 AAFF       AA                AAA               AASSSSSSSSSSSSSSSS
+  \n\n"""
 
 
 

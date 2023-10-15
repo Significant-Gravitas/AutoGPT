@@ -6,11 +6,11 @@ from autogpt.core.configuration import Configurable
 from autogpt.core.memory.base import AbstractMemory
 
 if TYPE_CHECKING:
-    from autogpt.core.memory.table.base import BaseTable
+    from autogpt.core.memory.table.base import AbstractTable
 
 
 class NoSQLMemory(AbstractMemory):
-    def get_table(self, table_name: str) -> BaseTable:
+    def get_table(self, table_name: str) -> AbstractTable:
         if self.__class__ == NoSQLMemory:
             raise TypeError(
                 "get_table method cannot be called on NoSQLMemory class directly"

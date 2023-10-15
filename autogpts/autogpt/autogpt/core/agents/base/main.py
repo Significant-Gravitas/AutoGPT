@@ -5,7 +5,7 @@ import uuid
 from abc import ABC, abstractmethod
 import os
 import yaml
-from datetime import datetime
+import datetime 
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Dict, Tuple, Optional
 from pydantic import Field
 
@@ -44,9 +44,9 @@ class AbstractAgent(ABC):
         agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
         agent_class: str
         # TODO: #22 https://github.com/ph-ausseil/afaas/issues/22
-        modified_at : datetime = datetime.now()
+        modified_at : datetime.datetime  =  datetime.datetime.now()
         # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
-        created_at : datetime = datetime.now() 
+        created_at : datetime.datetime  =  datetime.datetime.now()
         
         @property
         def _type_(self):
@@ -126,10 +126,7 @@ class BaseAgent(Configurable, AbstractAgent):
         user_id: str
         agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
         agent_class: str
-        # TODO: #22 https://github.com/ph-ausseil/afaas/issues/22
-        modified_at : datetime = datetime.now()
-        # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
-        created_at : datetime = datetime.now() 
+        
         agent_setting_module : Optional[str]
         agent_setting_class : Optional[str]
         
@@ -198,10 +195,10 @@ class BaseAgent(Configurable, AbstractAgent):
             )
             self.agent_setting_class = self.__class__.__name__
 
-        def update_agent_name_and_goals(self, agent_goals: dict) -> None:
-            for key, value in agent_goals.items():
-                # if key != 'agent' and key != 'workspace'  :
-                setattr(self, key, value)
+        # def update_agent_name_and_goals(self, agent_goals: dict) -> None:
+        #     for key, value in agent_goals.items():
+        #         # if key != 'agent' and key != 'workspace'  :
+        #         setattr(self, key, value)
 
 
     def __init__(
@@ -689,23 +686,23 @@ class BaseAgent(Configurable, AbstractAgent):
             MemoryConfig,
             AbstractMemory,
         )
-        from autogpt.core.memory.table.base import AgentsTable, BaseTable
+        from autogpt.core.memory.table import AgentsTable, AbstractTable
 
         memory_settings = AbstractMemory.SystemSettings()
 
         memory = AbstractMemory.get_adapter(memory_settings=memory_settings, logger=logger)
         agent_table: AgentsTable = memory.get_table("agents")
 
-        filter = BaseTable.FilterDict(
+        filter = AbstractTable.FilterDict(
             {
                 "user_id": [
-                    BaseTable.FilterItem(
-                        value=str(user_id), operator=BaseTable.Operators.EQUAL_TO
+                    AbstractTable.FilterItem(
+                        value=str(user_id), operator=AbstractTable.Operators.EQUAL_TO
                     )
                 ],
                 "agent_class": [
-                    BaseTable.FilterItem(
-                        value=str(cls.__name__), operator=BaseTable.Operators.EQUAL_TO
+                    AbstractTable.FilterItem(
+                        value=str(cls.__name__), operator=AbstractTable.Operators.EQUAL_TO
                     )
                 ],
             }
@@ -731,7 +728,7 @@ class BaseAgent(Configurable, AbstractAgent):
         from autogpt.core.memory.base import (
             AbstractMemory,
         )
-        from autogpt.core.memory.table.base import AgentsTable
+        from autogpt.core.memory.table import AgentsTable
 
         # memory_settings = Memory.SystemSettings(configuration=agent_settings.memory)
         memory_settings = agent_settings.memory

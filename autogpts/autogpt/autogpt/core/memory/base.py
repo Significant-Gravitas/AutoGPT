@@ -15,7 +15,7 @@ from pydantic import Field
 from autogpt.core.configuration import SystemConfiguration, SystemSettings
 
 if TYPE_CHECKING:
-    from autogpt.core.memory.table.base import BaseTable
+    from autogpt.core.memory.table.base import AbstractTable
 
 
 class MemoryAdapterType(Enum):
@@ -172,7 +172,7 @@ class AbstractMemory(Configurable, abc.ABC):
         return instance
 
     abc.abstractmethod
-    def get_table(self, table_name: str) -> BaseTable:
+    def get_table(self, table_name: str) -> AbstractTable:
         """
         Get an instance of the table with the specified table_name.
 
@@ -198,17 +198,20 @@ class AbstractMemory(Configurable, abc.ABC):
             )
 
         if table_name == "agents":
-            from autogpt.core.memory.table.base import AgentsTable
-
+            from autogpt.core.memory.table import AgentsTable
             returnvalue = AgentsTable(memory=self)
             return returnvalue
-        elif table_name == "messages_history":
-            from autogpt.core.memory.table.base import MessagesTable
-
-            return MessagesTable(memory=self)
+        elif table_name == "message_agent_agent":
+            from autogpt.core.memory.table import MessagesAgentAgentTable
+            return MessagesAgentAgentTable(memory=self)
+        elif table_name == "message_agent_llm":
+            from autogpt.core.memory.table import MessagesAgentLLMTable
+            return MessagesAgentLLMTable(memory=self)
+        elif table_name == "message_user_agent":
+            from autogpt.core.memory.table import MessagesUserAgentTable
+            return MessagesUserAgentTable (memory=self)
         elif table_name == "users_informations":
-            from autogpt.core.memory.table.base import UsersInformationsTable
-
+            from autogpt.core.memory.table  import UsersInformationsTable
             return UsersInformationsTable(memory=self)
         else:
             raise ValueError(f"Unknown table: {table_name}")

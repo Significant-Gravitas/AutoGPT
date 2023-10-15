@@ -1,1 +1,3 @@
-from autogpt.core.memory.table.base import BaseTable
+from .base import AbstractTable
+from .nosql import *
+from .sql import *

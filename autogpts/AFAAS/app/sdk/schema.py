@@ -95,7 +95,9 @@ class AgentRequestBody(BaseModel):
     # chat_model_provider: OpenAISettings =OpenAISettings()
     # tool_registry: SimpleToolRegistry.SystemSettings = SimpleToolRegistry.SystemSettings()
     # prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
-    # additional_input: Optional[AbstractAgent.SystemSettings]
+
+    #additional_input: = Any ?
+    #additional_input: Optional[AbstractAgent.SystemSettings]
 
 
     def json(self, *args, **kwargs):
@@ -103,6 +105,7 @@ class AgentRequestBody(BaseModel):
 
 
 class Agent(AgentRequestBody):
+    #additional_input: Optional[AbstractAgent.SystemSettings]
     created_at: datetime = Field(
         ...,
         description="The creation datetime of the task.",

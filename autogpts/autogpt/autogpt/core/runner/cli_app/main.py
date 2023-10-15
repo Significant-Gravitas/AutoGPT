@@ -38,7 +38,7 @@ async def run_auto_gpt():
     agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings(user_id= user_id)
 
     # NOTE : Real world scenario, this user_id will be passed as an argument
-    agent_dict_list = PlannerAgent.get_agentsetting_list_from_memory(
+    agent_dict_list  : list[PlannerAgent.SystemSettings] = PlannerAgent.get_agentsetting_list_from_memory(
         user_id=user_id, logger=client_logger
     )
 
@@ -48,19 +48,19 @@ async def run_auto_gpt():
     # In our demonstration we will instanciate the first agent of a given user if it exists
     if agent_dict_list:
         client_logger.info(f"User {user_id} has {len(agent_dict_list)} agents.")
-        agent_id = agent_dict_list[0]["agent_id"]
+        agent_id = agent_dict_list[0].agent_id
 
         client_logger.info(
             f"Loading agent {agent_id} from get_agentsetting_list_from_memory"
         )
-        agent_settings.update_agent_name_and_goals(agent_dict_list[0])
-        agent_from_list = PlannerAgent.get_agent_from_settings(
+        # agent_settings.update_agent_name_and_goals(agent_dict_list[0])
+        agent_from_list : PlannerAgent = PlannerAgent.get_agent_from_settings(
             agent_settings=agent_settings,
             logger=client_logger,
         )
 
         client_logger.info(f"Loading agent {agent_id} from get_agent_from_memory")
-        agent_from_memory = PlannerAgent.get_agent_from_memory(
+        agent_from_memory : PlannerAgent = PlannerAgent.get_agent_from_memory(
             agent_settings=agent_settings,
             agent_id=agent_id,
             user_id=user_id,
