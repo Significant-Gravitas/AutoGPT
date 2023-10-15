@@ -132,7 +132,7 @@ class PlannerLoop(BaseLoop):
 
         self._current_task_routing_description = ''
         self._current_task_routing_feedbacks = ''
-        self.plan().add_tasks(task= initial_task_list)
+        self.plan().add_tasks(tasks= initial_task_list)
 
 
 

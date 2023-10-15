@@ -36,8 +36,7 @@ async def afaas_refine_user_context(agent: BaseAgent) -> None:
     """
     try : 
         # USER CONTEXT AGENT : Create Agent Settings
-        usercontext_settings: UserContextAgentSettings = UserContextAgentSettings()
-        usercontext_settings.user_id= agent.user_id
+        usercontext_settings: UserContextAgentSettings = UserContextAgentSettings(user_id= agent.user_id)
         usercontext_settings.parent_agent_id=  agent.agent_id
         usercontext_settings.agent_goals=  agent.agent_goals
         usercontext_settings.agent_goal_sentence=  agent.agent_goal_sentence

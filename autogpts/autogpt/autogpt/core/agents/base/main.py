@@ -125,7 +125,7 @@ class BaseAgent(Configurable, AbstractAgent):
         
         user_id: str
         agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
-        agent_class: str
+        agent_class: Optional[str]
         
         agent_setting_module : Optional[str]
         agent_setting_class : Optional[str]

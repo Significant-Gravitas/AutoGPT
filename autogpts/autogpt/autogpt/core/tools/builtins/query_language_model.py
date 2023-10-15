@@ -1,72 +1,53 @@
-import logging
+from __future__ import annotations
 
-from typing import ClassVar
-from autogpt.core.tools.base import Tool, ToolConfiguration
-from autogpt.core.tools.schema import ToolResult
-from autogpt.core.agents.simple.lib.simple import LanguageModelConfiguration
-from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
-from autogpt.core.resource.model_providers import (
-    ChatMessage,
-    BaseChatModelProvider,
-    ModelProviderName,
-    OpenAIModelName,
-)
+TOOL_CATEGORY = "framework"
+TOOL_CATEGORY_TITLE = "Framework"
+
+import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from autogpt.core.agents.base import BaseAgent
+
+from autogpt.core.agents.base.features.context import get_agent_context
+from autogpt.core.utils.exceptions import InvalidArgumentError
+from autogpt.core.tools.command_decorator import tool
 from autogpt.core.utils.json_schema import JSONSchema
 
+from autogpt.core.agents.simple.lib.models.plan import Plan
+from autogpt.core.agents.simple.lib.models.tasks import Task, TaskStatusList
 
-class QueryLanguageModel(Tool):
-    default_configuration = ToolConfiguration(
-        location=PluginLocation(
-            storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-            storage_route="autogpt.core.tools.builtins.QueryLanguageModel",
-        ),
-        language_model_required=LanguageModelConfiguration(
-            model_name=OpenAIModelName.GPT3,
-            provider_name=ModelProviderName.OPENAI,
-            temperature=0.9,
-        ),
-    )
+logger = logging.getLogger(__name__)
 
-    def __init__(
-        self,
-        logger: logging.Logger,
-        configuration: ToolConfiguration,
-        language_model_provider: BaseChatModelProvider,
-    ):
-        self._logger = logger
-        self._configuration = configuration
-        self._language_model_provider = language_model_provider
 
-    description: ClassVar[str] = (
-        "Query a language model."
-        " A query should be a question and any relevant context."
-    )
-
-    parameters: ClassVar[dict[str, JSONSchema]] = {
+@tool(
+    name = "query_language_model",
+    description = (
+        "Search the web and with the capacity of returning steerable & structured result. Not very good at retriving data published over the last 2 years."
+    ),
+    parameters = {
         "query": JSONSchema(
             type=JSONSchema.Type.STRING,
             description="A query for a language model. A query should contain a question and any relevant context.",
+            required=True
+        ),
+        "format": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="Describe the format (plan, length,...) of the expected answer.",
+        ),
+        "answer_as": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="Describe person with his profession, mindeset, personnality ect... You would like to get an answer from.",
         )
     }
+)
+async def query_language_model(agent: BaseAgent) -> None:
+   # plan =  self.execute_strategy(
+    agent._loop.tool_registry().list_tools_descriptions()
+    plan = await agent._loop.execute_strategy(
+        strategy_name="make_initial_plan",
+        agent=agent
+    )
 
-    async def __call__(self, query: str) -> ToolResult:
-        messages = [
-            ChatMessage.user(
-                content=query,
-            ),
-        ]
-        model_response = await self._language_model_provider.create_chat_completion(
-            model_prompt=messages,
-            functions=[],
-            model_name=self._configuration.language_model_required.model_name,
-        )
-        return ToolResult(
-            ability_name=self.name(),
-            ability_args={"query": query},
-            success=True,
-            message=model_response.response["content"],
-        )
+    return plan
 
-    @staticmethod
-    def _parse_response(response_content: dict) -> dict:
-        return {"content": response_content["content"]}

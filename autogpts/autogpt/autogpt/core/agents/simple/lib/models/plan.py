@@ -16,13 +16,13 @@ class Plan(BaseModel):
 
     tasks: list[Task] = []
 
-    def add_tasks(self , task = list[Task], position : int = None) : 
+    def add_tasks(self , tasks = list[Task], position : int = None) : 
         if position is not None :
-            for task in task : 
-                self.tasks.insert(task, position)
+            for tasks in tasks : 
+                self.tasks.insert(tasks, position)
         else: 
-            for task in task : 
-                self.tasks.append(task)
+            for tasks in tasks : 
+                self.tasks.append(tasks)
 
     # def add_task(self , task = list[Task], position : int = None) : 
     #     if position is not None :
