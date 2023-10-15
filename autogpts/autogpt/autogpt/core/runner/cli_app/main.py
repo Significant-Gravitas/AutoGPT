@@ -27,16 +27,15 @@ async def run_auto_gpt():
     client_logger = get_client_logger(logger_level=logging.DEBUG)
     client_logger.info("Getting agent settings")
 
-    # Step 1. Collate the user's settings with the default system settings.
-    agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings()
 
     import uuid
 
     #
     # We support multiple users however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b
     #
-    user_id = uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b")
-    agent_settings.user_id = user_id
+    user_id : str = "A"+ str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
+    # Step 1. Collate the user's settings with the default system settings.
+    agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings(user_id= user_id)
 
     # NOTE : Real world scenario, this user_id will be passed as an argument
     agent_dict_list = PlannerAgent.get_agentsetting_list_from_memory(
@@ -138,7 +137,7 @@ async def run_auto_gpt():
         # agent_settings.load_root_values()
 
         # Step 3. Create the agent.
-        agent = PlannerAgent.create_agent(
+        agent : PlannerAgent = PlannerAgent.create_agent(
             agent_settings=agent_settings,
             logger=client_logger,
         )
