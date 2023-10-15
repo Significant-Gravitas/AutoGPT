@@ -24,7 +24,7 @@ async def run_api_agent(
 ) -> None:
     host_value = None
 
-    configuration = Configuration(host=config["AgentBenchmarkConfig"].host + "/ap/v1")
+    configuration = Configuration(host=config["AgentBenchmarkConfig"].host + "/ap/v1", connection_pool_maxsize=1)
     async with ApiClient(configuration) as api_client:
         api_instance = AgentApi(api_client)
         task_request_body = TaskRequestBody(input=task.task)
