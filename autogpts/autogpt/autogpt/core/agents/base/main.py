@@ -37,6 +37,23 @@ from autogpt.core.configuration import Configurable
 
 class AbstractAgent(ABC):
 
+    class SystemSettings(SystemSettings):
+        configuration: BaseAgentConfiguration = BaseAgentConfiguration()
+        
+        user_id: str
+        agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
+        agent_class: str
+        # TODO: #22 https://github.com/ph-ausseil/afaas/issues/22
+        modified_at : datetime = datetime.now()
+        # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
+        created_at : datetime = datetime.now() 
+        
+        @property
+        def _type_(self):
+            # Nested Class
+            return self.__module__ + "." + ".".join(self.__class__.__qualname__.split('.')[:-1])
+            #__module__ + "." + ".".join(__name__)
+
     @classmethod
     def get_agent_class(cls) -> BaseAgent:
         """
@@ -103,31 +120,33 @@ class BaseAgent(Configurable, AbstractAgent):
     CLASS_CONFIGURATION = BaseAgentConfiguration
     CLASS_SYSTEMS = BaseAgentSystems # BaseAgentSystems() = cls.SystemSettings().configuration.systems
 
-
     class SystemSettings(SystemSettings):
         configuration: BaseAgentConfiguration = BaseAgentConfiguration()
         
-        # user_id: Optional[uuid.UUID] = Field(default=None)
+        user_id: str
         agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
         agent_class: str
+        # TODO: #22 https://github.com/ph-ausseil/afaas/issues/22
+        modified_at : datetime = datetime.now()
+        # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
+        created_at : datetime = datetime.now() 
+        agent_setting_module : Optional[str]
+        agent_setting_class : Optional[str]
+        
+        @property
+        def _type_(self):
+            # Nested Class
+            return self.__module__ + "." + ".".join(self.__class__.__qualname__.split('.')[:-1])
+            #__module__ + "." + ".".join(__name__)
 
         memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
         workspace: SystemSettings = SimpleWorkspace.SystemSettings()
 
-        class Config(SystemSettings.Config):
-            # This is a list of Field to Exclude during serialization
-            json_encoders = {uuid.UUID: lambda v: str(v)}  # Custom encoder for UUID4
-            extra = "allow"
-            default_exclude = {
-                "agent",
-                "workspace",
-                "prompt_manager",
-                "chat_model_provider",
-                "memory",
-                "tool_registry",
-            }
 
-        def dict(self, remove_technical_values=True, *args, **kwargs):
+        class Config(SystemSettings.Config):     
+            pass
+
+        def dict(self, *args, **kwargs):
             """
             Serialize the object to a dictionary representation.
 
@@ -141,16 +160,11 @@ class BaseAgent(Configurable, AbstractAgent):
                 dict: A dictionary representation of the object.
             """
             self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
-
-            kwargs["exclude"] = kwargs.get("exclude", set())  # Get the exclude_arg
-            if remove_technical_values:
-                # Add the default technical fields to exclude_arg
-                kwargs["exclude"] |= self.__class__.Config.default_exclude
-
+            kwargs["exclude"] = self.Config.default_exclude
             # Call the .dict() method with the updated exclude_arg
             return super().dict(*args, **kwargs)
 
-        def json(self, remove_technical_values=True, *args, **kwargs):
+        def json(self, *args, **kwargs):
             """
             Serialize the object to a dictionary representation.
 
@@ -163,13 +177,10 @@ class BaseAgent(Configurable, AbstractAgent):
             Returns:
                 dict: A dictionary representation of the object.
             """
+            logging.Logger(__name__).warning('Warning : Recomended use json_api() or json_memory()')
+            logging.Logger(__name__).warning('BaseAgent.SystemSettings.json()')
             self.prepare_values_before_serialization()  # Call the custom treatment before .json()
-
-            kwargs["exclude"] = kwargs.get("exclude", set())  # Get the exclude_arg
-            if remove_technical_values:
-                # Add the default technical fields to exclude_arg
-                kwargs["exclude"] |= self.__class__.Config.default_exclude
-
+            kwargs["exclude"] = self.Config.default_exclude
             return super().json(*args, **kwargs)
 
         # NOTE : To be implemented in the future
@@ -651,7 +662,11 @@ class BaseAgent(Configurable, AbstractAgent):
 
     @classmethod
     def get_agentsetting_list_from_memory(
-        self, user_id: uuid.UUID, logger: logging.Logger = logging.Logger(__name__)
+        cls, 
+        user_id: uuid.UUID, 
+        logger: logging.Logger = logging.Logger(__name__),
+        page : int = 1,
+        page_size : int = 10
     ) -> list[BaseAgent.SystemSettings]:
         """
         Fetch a list of agent settings from memory based on the user ID.
@@ -676,13 +691,6 @@ class BaseAgent(Configurable, AbstractAgent):
         )
         from autogpt.core.memory.table.base import AgentsTable, BaseTable
 
-        """Warning !!!
-        Returns a list of agent settings not a list of agent
-
-        Returns:
-            /
-        """
-
         memory_settings = AbstractMemory.SystemSettings()
 
         memory = AbstractMemory.get_adapter(memory_settings=memory_settings, logger=logger)
@@ -697,13 +705,20 @@ class BaseAgent(Configurable, AbstractAgent):
                 ],
                 "agent_class": [
                     BaseTable.FilterItem(
-                        value=str(self.__name__), operator=BaseTable.Operators.EQUAL_TO
+                        value=str(cls.__name__), operator=BaseTable.Operators.EQUAL_TO
                     )
                 ],
             }
         )
-        agent_list = agent_table.list(filter=filter)
-        return agent_list
+
+        agent_list : list[dict]= agent_table.list(filter=filter)
+        agent_settings_list : list[cls.SystemSettings] = []
+
+        # TODO : Move to Table
+        for agent in agent_list :
+            agent_settings_list.append(cls.SystemSettings(**agent ))
+
+        return agent_settings_list
 
     @classmethod
     def get_agent_from_memory(

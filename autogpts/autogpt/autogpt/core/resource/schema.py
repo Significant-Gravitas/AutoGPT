@@ -39,7 +39,7 @@ class BaseProviderBudget(SystemConfiguration):
 class BaseProviderCredentials(SystemConfiguration):
     """Struct for credentials."""
 
-    class Config:
+    class Config(SystemConfiguration.Config):
         json_encoders = {
             SecretStr: lambda v: v.get_secret_value() if v else None,
             SecretBytes: lambda v: v.get_secret_value() if v else None,

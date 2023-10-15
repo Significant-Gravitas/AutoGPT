@@ -1,27 +1,42 @@
-
+from __future__ import annotations
 import json
-from typing import Optional
+import uuid
+from pathlib import Path
+import yaml
+from typing import Optional, TYPE_CHECKING
 
-from fastapi import APIRouter, Query, Request, Response, UploadFile
+from fastapi import APIRouter, FastAPI, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from app.sdk.errors import *
 from app.sdk.forge_log import ForgeLogger
-from app.sdk.schema import *
+
+from app.sdk.schema import * 
 
 
 LOG = ForgeLogger(__name__)
-
-import uuid
-from pathlib import Path
-import yaml
-from fastapi import APIRouter, FastAPI, Request
 
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
 
 
 afaas_user_router = APIRouter()
 user_router = APIRouter()
+
+# # async def afaas_list_agents(
+# # 
+# #     request: Request,
+# #     page: Optional[int] = Query(1, ge=1),
+# #     page_size: Optional[int] = Query(10, ge=1),
+# # ) -> AgentListResponse:
+# #     return await list_agents(request=request , page= page,page_size=page_size)
+    
+
+
+
+
+
+
+
 
 @afaas_user_router.get("/agents", tags=["agent"], response_model=AgentListResponse)
 @user_router.get("/agent/tasks", tags=["agent"], response_model=AgentListResponse)
@@ -68,11 +83,25 @@ async def list_agents(
     LOG.info("Getting agent settings")
 
     try:
-        agents : list[PlannerAgent]= PlannerAgent.get_agentsetting_list_from_memory(
-            user_id=request.state.user_id
-        ) # (page, page_size)
+        agents : list[PlannerAgent.SystemSettings]= PlannerAgent.get_agentsetting_list_from_memory(
+            user_id=request.state.user_id,
+            page = page,
+            page_size = page_size
+        ) 
+
+        agents_list_response : AgentListResponse = AgentListResponse.from_afaas(agent_list=agents)
+
+        total_items = len(agents)
+
+        agents_list_response.pagination : Pagination = Pagination.create_pagination(
+            total_items = total_items,
+            current_page = page,
+            page_size = page_size,
+        )
+
         return Response(
-            content=BaseModel(data = agents).json(),
+            #content=[item.json() for item in agents_list_response],
+            content=agents_list_response.json(),
             status_code=200,
             media_type="application/json",
         )
@@ -94,7 +123,8 @@ async def list_agents(
 
 @afaas_user_router.post("/agent", tags=["agent"], response_model=Agent)
 @user_router.post("/agent/tasks", tags=["agent"], response_model=Agent)
-async def create_agent(request: Request, task_request: AgentRequestBody) -> Agent:
+async def create_agent(request: Request #, task_request: AgentRequestBody
+                       ) -> Agent:
     """
     Creates a new task using the provided AgentRequestBody and returns a Agent.
 
@@ -120,12 +150,20 @@ async def create_agent(request: Request, task_request: AgentRequestBody) -> Agen
                 "artifacts": [],
             }
     """
-    agent = request["agent"]
-
+    body =  await request.json()
+    task_request = AgentRequestBody(**body)
     try:
-        task_request = await agent.create_task(task_request)
+        agent_settings = PlannerAgent.SystemSettings(user_id=request.state.user_id,
+                                                     agent_goal_sentence = task_request.input)
+
+        agent =  PlannerAgent.create_agent(
+                agent_settings=agent_settings,
+                logger=LOG,
+            )
+        api_agent = Agent.from_afaas(agent=agent_settings)
+        LOG.info(api_agent.json())
         return Response(
-            content=task_request.json(),
+            content = api_agent.json(),
             status_code=200,
             media_type="application/json",
         )

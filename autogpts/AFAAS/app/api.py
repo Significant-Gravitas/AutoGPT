@@ -5,7 +5,7 @@ from io import BytesIO
 from uuid import uuid4
 from dotenv import load_dotenv
 
-from fastapi import APIRouter, FastAPI, UploadFile
+from fastapi import APIRouter, FastAPI, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -47,27 +47,20 @@ api.add_middleware(
     allow_headers=["*"],
 )
 
-# user_app = FastAPI()
-# user_app.add_middleware(UserIDMiddleware)
-# user_app.include_router(user_router, prefix="/ap/v1")
-# api.mount("/", user_app)
-
-# agent_app = FastAPI()
-# agent_app.add_middleware(AgentMiddleware)
-# agent_app.include_router(agent_router, prefix="/ap/v1")
-# agent_app.include_router(app_router, prefix="/ap/v1")
-# agent_app.include_router(artifact_router, prefix="/ap/v1")
-# api.mount("/", user_app)
-
-
-api.include_router(app_router, prefix="/ap/v1")
 
 api.add_middleware(UserIDMiddleware)
+api.include_router(app_router)
 api.include_router(user_router, prefix="/ap/v1")
+api.include_router(afaas_user_router, prefix="/afaas/v1")
+
 
 # api.add_middleware(AgentMiddleware)
 api.include_router(agent_router, prefix="/ap/v1")
+api.include_router(afaas_agent_router, prefix="/afaas/v1")
+
 api.include_router(artifact_router, prefix="/ap/v1")
+api.include_router(afaas_artifact_router, prefix="/afaas/v1")
+
 
 
 script_dir = os.path.dirname(os.path.realpath(__file__))

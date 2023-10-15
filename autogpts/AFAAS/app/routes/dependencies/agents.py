@@ -5,13 +5,8 @@ from app.sdk.errors import *
 from app.sdk.forge_log import ForgeLogger
 from app.sdk.schema import *
 
-
-
 LOG = ForgeLogger(__name__)
-
-
 from fastapi import APIRouter, FastAPI, Request
-
 
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
 

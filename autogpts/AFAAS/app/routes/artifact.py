@@ -6,7 +6,7 @@ from io import BytesIO
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Query, Request, Response, UploadFile, Depends
+from fastapi import APIRouter, Query, Request, Response, UploadFile, Depends, Body
 from fastapi.responses import FileResponse
 
 from app.sdk.errors import *
@@ -25,12 +25,12 @@ LOG = ForgeLogger(__name__)
 
 @afaas_artifact_router.get(
     "/agent/{agent_id}/artifacts", 
-    tags=["agent"],
+    tags=["artifacts"],
     response_model=AgentArtifactsListResponse,
 )
 @artifact_router.get(
     "/agent/tasks/{agent_id}/artifacts",
-    tags=["agent"],
+    tags=["artifacts"],
     response_model=AgentArtifactsListResponse,
 )
 async def list_agent_artifacts(
@@ -92,13 +92,13 @@ async def list_agent_artifacts(
         )
 
 @afaas_artifact_router.post(
-    "/agent/{agent_id}/artifacts", tags=["agent"], response_model=Artifact,
+    "/agent/{agent_id}/artifacts", tags=["artifacts"], response_model=Artifact,
 )
 @artifact_router.post(
-    "/agent/tasks/{agent_id}/artifacts", tags=["agent"], response_model=Artifact
+    "/agent/tasks/{agent_id}/artifacts", tags=["artifacts"], response_model=Artifact
 )
 async def upload_agentartifacts(
-    request: Request, agent_id: str, file: UploadFile, relative_path: Optional[str] = "", agent : PlannerAgent= Depends(get_agent)
+    request: Request, agent_id: str, file: UploadFile = Body(...), relative_path: Optional[str] = "", agent : PlannerAgent= Depends(get_agent)
 ) -> Artifact:
     """
     This endpoint is used to upload an artifact associated with a specific task. The artifact is provided as a file.
@@ -152,10 +152,10 @@ async def upload_agentartifacts(
 
 
 @afaas_artifact_router.post(
-    "/agent/{agent_id}/artifacts/{artifact_id}", tags=["agent"], response_model=str,
+    "/agent/{agent_id}/artifacts/{artifact_id}", tags=["artifacts"], response_model=str,
 )
 @artifact_router.get(
-    "/agent/tasks/{agent_id}/artifacts/{artifact_id}", tags=["agent"], response_model=str
+    "/agent/tasks/{agent_id}/artifacts/{artifact_id}", tags=["artifacts"], response_model=str
 )
 async def download_agent_artifact(
     request: Request, agent_id: str, artifact_id: str,  agent : PlannerAgent= Depends(get_agent)

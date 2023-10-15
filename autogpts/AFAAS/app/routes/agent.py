@@ -52,7 +52,8 @@ agent_router = APIRouter()
 
 @afaas_agent_router.get("/agent/{agent_id}", tags=["agent"], response_model=Agent)
 @agent_router.get("/agent/tasks/{agent_id}", tags=["agent"], response_model=Agent)
-async def get_agent(request: Request, agent_id: str, agent : PlannerAgent= Depends(get_agent)) -> Agent:
+async def get_agent(request: Request, agent_id: str, agent : PlannerAgent= Depends(get_agent)
+    ) -> Agent:
     """
     Gets the details of a task by ID.
 
@@ -126,11 +127,8 @@ async def get_agent(request: Request, agent_id: str, agent : PlannerAgent= Depen
             media_type="application/json",
         )
 
-
-
-
-@afaas_agent_router.get("/agent/{agent_id}/tasks", tags=["agent"], response_model=AgentTasksListResponse)
-@agent_router.get("/agent/tasks/{agent_id}/steps", tags=["agent"], response_model=AgentTasksListResponse)
+@afaas_agent_router.get("/agent/{agent_id}/tasks", tags=["task"], response_model=AgentTasksListResponse)
+@agent_router.get("/agent/tasks/{agent_id}/steps", tags=["task"], response_model=AgentTasksListResponse)
 async def list_agent_tasks(
     request: Request,
     agent_id: str,
@@ -196,8 +194,8 @@ async def list_agent_tasks(
         )
 
 
-@afaas_agent_router.post("/agent/{agent_id}/tasks", tags=["agent"], response_model=Task)
-@agent_router.post("/agent/tasks/{agent_id}/steps", tags=["agent"], response_model=Task)
+@afaas_agent_router.post("/agent/{agent_id}/tasks", tags=["task"], response_model=Task)
+@agent_router.post("/agent/tasks/{agent_id}/steps", tags=["task"], response_model=Task)
 async def execute_agent_task(
     request: Request, agent_id: str, step: Optional[TaskRequestBody] = None, agent : PlannerAgent= Depends(get_agent)
 ) -> Task:
@@ -268,10 +266,10 @@ async def execute_agent_task(
         )
 
 @afaas_agent_router.get(
-    "/agent/{agent_id}/tasks/{task_id}", tags=["agent"], response_model=Task
+    "/agent/{agent_id}/tasks/{task_id}", tags=["task"], response_model=Task
 )
 @agent_router.get(
-    "/agent/tasks/{agent_id}/steps/{task_id}", tags=["agent"], response_model=Task
+    "/agent/tasks/{agent_id}/steps/{task_id}", tags=["task"], response_model=Task
 )
 async def get_agent_task(request: Request, agent_id: str, task_id: str, agent : PlannerAgent= Depends(get_agent)) -> Task:
     """
@@ -319,7 +317,7 @@ async def get_agent_task(request: Request, agent_id: str, task_id: str, agent : 
 ### afaas
 ###
 
-@agent_router.post("/agent/{agent_id}/start")
+@afaas_agent_router.post("/agent/{agent_id}/start", tags=["afaas"])
 async def start_simple_agent_main_loop(request: Request, agent_id: str):
     """
     Senf a message to an agent
@@ -352,7 +350,7 @@ async def start_simple_agent_main_loop(request: Request, agent_id: str):
     }
 
 
-@agent_router.post("/agent/{agent_id}/message")
+@afaas_agent_router.post("/agent/{agent_id}/message", tags=["afaas"])
 async def message_simple_agent(
     request: Request, agent_id: str, body: AgentMessageRequestBody
 ):
@@ -399,13 +397,13 @@ async def message_simple_agent(
     return result
 
 
-@agent_router.get("/agent/{agent_id}/messagehistory")
+@afaas_agent_router.get("/agent/{agent_id}/messagehistory", tags=["afaas"])
 def get_message_history(request: Request, agent_id: str):
     # TODO : Define structure of the list
     return {"messages": ["message 1", "message 2", "message 3", "message 4"]}
 
 
-@agent_router.get("/agent/{agent_id}/lastmessage")
+@afaas_agent_router.get("/agent/{agent_id}/lastmessage", tags=["afaas"])
 def get_last_message(request: Request, agent_id: str):
     return {"message": "my last message"}
 
