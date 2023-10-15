@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import uuid
+import datetime
 from pathlib import Path
 from enum import Enum
 from typing import (
@@ -204,6 +205,7 @@ class BaseNoSQLTable(BaseTable):
         if isinstance(value, BaseModel):
             value = value.dict()
 
+        value["modified_at"] = datetime.now()
         value = self.__class__.serialize_value(value)
 
         # key = {"primary_key": id}
