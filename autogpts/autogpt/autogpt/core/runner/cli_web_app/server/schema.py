@@ -28,7 +28,7 @@ class AgentConfiguration(BaseModel):
             raise ValueError("Must specify either objective or name, role, and goals")
 
 
-class PlannerAgentMessageRequestBody(BaseModel):
+class AgentMessageRequestBody(BaseModel):
     message: str = Field(..., min_length=1)
     start: bool = Field(default=False)
 

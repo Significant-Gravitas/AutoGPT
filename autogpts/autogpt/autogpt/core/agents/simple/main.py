@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from pydantic import Field
+import datetime
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple, Optional
 
 from autogpt.core.tools import ToolResult, SimpleToolRegistry, TOOL_CATEGORIES
@@ -43,20 +44,24 @@ class PlannerAgent(BaseAgent):
         description: str ="A simple agent."
         configuration : PlannerAgentConfiguration = PlannerAgentConfiguration()
 
-        chat_model_provider: OpenAISettings = OpenAISettings()
+        # chat_model_provider: OpenAISettings = Field(default=OpenAISettings(), exclude=True)
+        chat_model_provider: OpenAISettings =OpenAISettings()
         tool_registry: SimpleToolRegistry.SystemSettings = SimpleToolRegistry.SystemSettings()
         prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
-
-        user_id: Optional[str]
 
         agent_name: str = Field(default="New Agent")
         agent_role: Optional[str] = Field(default=None)
         agent_goals: Optional[list] 
-        agent_goal_sentence: Optional[list] 
+        agent_goal_sentence: Optional[str] 
         agent_class: str = Field(default="autogpt.core.agents.simple.main.PlannerAgent")
 
-        class Config(BaseAgent.SystemSettings.Config):
+        class Config(BaseAgent.SystemSettings.Config):            
             pass
+
+        def json(self, *args, **kwargs):
+            self.prepare_values_before_serialization()  # Call the custom treatment before .json()
+            kwargs["exclude"] = self.Config.default_exclude
+            return super().json(*args, **kwargs)
 
 
     def __init__(

@@ -154,7 +154,7 @@ class SimpleWorkspace(Configurable, AbstractWorkspace):
         settings,
         logger: logging.Logger,
     ) -> Path:
-        workspace_parent = cls.SystemSettings().parent
+        workspace_parent = cls.SystemSettings().configuration.parent
         workspace_parent = Path(workspace_parent).expanduser().resolve()
         workspace_parent.mkdir(parents=True, exist_ok=True)
 

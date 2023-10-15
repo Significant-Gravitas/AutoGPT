@@ -29,7 +29,7 @@ from autogpt.core.runner.client_lib.shared_click_commands import (
     make_settings,
 )
 
-from autogpt.core.runner.cli_web_app.server.schema import PlannerAgentMessageRequestBody
+from autogpt.core.runner.cli_web_app.server.schema import AgentMessageRequestBody
 from autogpt.core.runner.client_lib.workspacebuilder import (
     workspace_loader,
     get_settings_from_file,
@@ -161,7 +161,7 @@ async def start_simple_agent_main_loop(request: Request, agent_id: str):
 
 @router.post("/agent/{agent_id}/message")
 async def message_simple_agent(
-    request: Request, agent_id: str, body: PlannerAgentMessageRequestBody
+    request: Request, agent_id: str, body: AgentMessageRequestBody
 ):
     """
     Description: Sends a message to the agent.

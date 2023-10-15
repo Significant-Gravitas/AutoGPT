@@ -35,7 +35,7 @@ class PlannerAgentConfiguration(BaseAgentConfiguration):
     agent_goal_sentence: Optional[str] = Field(default=None)
     cycle_count : int =0 
     max_task_cycle_count : int =3
-    creation_time : str=""
+
     systems=PlannerAgentSystems()
 
     class Config(BaseAgentConfiguration.Config):
