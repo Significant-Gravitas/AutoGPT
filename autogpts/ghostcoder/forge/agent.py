@@ -135,10 +135,14 @@ class ForgeAgent(Agent):
         LOG.debug(f"Executed step [{step.name}] output:\n{step.output}")
 
         await self.db.update_step(task.task_id, step.step_id, "completed", output=step.output, is_last=step.is_last, additional_input=step.additional_input)
-        LOG.info(f"Step completed: {step.step_id} input: {step.input[:19]}")
+
+        input = ""
+        if step.input:
+            input = f"input: {step.input[:19]}"
+        LOG.info(f"Step completed: {step.step_id} {input}")
 
         if step.is_last:
-            LOG.info(f"Task completed: {task.task_id} input: {task.input[:19]}")
+            LOG.info(f"Task completed: {task.task_id} {input}")
 
         return step
 
@@ -149,7 +153,7 @@ class ForgeAgent(Agent):
             prompt_engine = PromptEngine("create-step")
 
         previous_steps, page = await self.db.list_steps(task.task_id, per_page=100)
-        if len(previous_steps) > 20:  # FIXME: To not end up in infinite test improvement loop
+        if len(previous_steps) > 5:  # FIXME: To not end up in infinite test improvement loop
             ability = {
                 "name": "finish",
                 "args": {
@@ -174,7 +178,7 @@ class ForgeAgent(Agent):
                      last_step.additional_input["ability"]["name"] in ["write_code", "fix_code"])):
 
                 if ("success" in last_step.additional_input and not last_step.additional_input["success"]
-                        and len(previous_steps) < 10):  # To not end up in infinite test improvement loop:
+                        and len(previous_steps) < 5):  # To not end up in infinite test improvement loop:
                     last_ability = last_step.additional_input["ability"]
                     step_request.name = "Fix code"
                     step_request.input = last_step.output
@@ -182,8 +186,7 @@ class ForgeAgent(Agent):
                         "name": "fix_code",
                         "args": {
                             "instructions": last_step.output,
-                            "file": last_ability["args"]["file"],
-                            "test_file": last_ability["args"]["test_file"]
+                            "file": last_ability["args"]["file"]
                         }
                     }
                     step = await self.db.create_step(

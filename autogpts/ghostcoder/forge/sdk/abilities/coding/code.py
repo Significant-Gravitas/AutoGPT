@@ -1,5 +1,8 @@
+import asyncio
 import logging
+import os
 import re
+from pathlib import Path
 from typing import Tuple, Optional
 
 from forge.sdk import ForgeLogger
@@ -114,15 +117,22 @@ async def _write_code_external(
                              allow_hallucinated_files=True,
                              auto_mode=True)
 
+    other_files = code_writer.repository.get_source_files(language="python", include_test_files=True)
+    has_tests = any("test" in f.file_path for f in other_files)
+
+    file_item = FileItem(file_path=file, content=repository.get_file_content(file))
+    file_items = [file_item]
+
     test_file = "test_" + file
 
-    test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern="*.py")
-    test_file_item = FileItem(file_path=test_file, content=repository.get_file_content(test_file))
-    file_item = FileItem(file_path=file, content=repository.get_file_content(file))
+    if has_tests:
+        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern="*.py")
+    else:
+        test_file_item = FileItem(file_path=test_file, content=repository.get_file_content(test_file))
+        file_items.append(test_file_item)
+        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern=test_file)
 
-    file_items = [file_item, test_file_item]
-
-    for other_file in code_writer.repository.get_source_files(language="python", include_test_files=True):
+    for other_file in other_files:
         if not other_file.content:
             logger.info(f"Skipping file {other_file.file_path} because it is empty")
             continue
@@ -152,7 +162,9 @@ async def _write_code_external(
                 content = other_file.content
 
             other_file.content = content
-            other_file.readonly = True
+
+            if test_file not in other_file.file_path:
+                other_file.readonly = True
             file_items.append(other_file)
         else:
             logger.info(f"Skipping file {other_file.file_path}")
@@ -196,10 +208,9 @@ async def _write_code_external(
         output += "\n\n".join([item.to_prompt() for item in verification_result.failures])
         output += f"\n\nThe file {file} was implemented, but {len(verification_result.failures)} out of {verification_result.verification_count} tests failed!"
     elif verification_result.verification_count > 0:
-        output = f"\n\nThe file {file} was implemented and {verification_result.verification_count} tests in {test_file} passed!"
+        output = f"\n\nThe file {file} was implemented and {verification_result.verification_count} tests passed!"
 
     return verification_result.success, output
-
 
 def trim(content: str):
     parser = create_parser(language="python")
