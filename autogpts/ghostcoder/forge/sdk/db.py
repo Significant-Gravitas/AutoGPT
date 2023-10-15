@@ -108,6 +108,8 @@ def convert_to_step(step_model: StepModel, debug_enabled: bool = False) -> Step:
         status = Status.completed
     elif step_model.status == "skipped":
         status = Status.skipped
+    elif step_model.status == "failed":
+        status = Status.failed
     else:
         status = Status.created
 
@@ -339,6 +341,7 @@ class AgentDB:
                         step.additional_input = additional_input
                     step.output = output
                     step.is_last = is_last
+                    step.artifacts = []
                     session.commit()
                     return await self.get_step(task_id, step_id)
                 else:

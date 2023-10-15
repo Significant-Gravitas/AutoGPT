@@ -19,6 +19,8 @@ LOG = ForgeLogger(__name__)
 
 MODEL_NAME = "gpt-4"  # gpt-3.5-turbo, gpt-4
 
+
+
 class ForgeAgent(Agent):
     """
     The goal of the Forge is to take care of the boilerplate code so you can focus on
@@ -80,6 +82,10 @@ class ForgeAgent(Agent):
         Feel free to create subclasses of the database and workspace to implement your own storage
         """
         super().__init__(database, workspace)
+        self.use_external_coder = True
+        self.speedy_mode = True
+        self.do_reasoning = False
+        self.model_name = "gpt-4"  # gpt-3.5-turbo-16k, gpt-4
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """
@@ -112,20 +118,23 @@ class ForgeAgent(Agent):
         except Exception as e:
             failure = f"Failed to run ability {ability['name']} with arguments {ability['args']}: {str(e)}"
             LOG.warning(f"Step failed: {step.step_id}. {failure}")
-            await self.db.update_step(task.task_id, step.step_id, "completed", output=failure)
+            await self.db.update_step(task.task_id, step.step_id, "failed", output=failure)
             return step
 
-        # FIXME: Just to speed up the agent
-        if ability["name"] in ["write_code", "fix_code"]:
+        success = False
+        if isinstance(output, tuple):
             success, output = output
-            if success:
-                LOG.debug(f"Will set is_last because tests passed")
-                step.is_last = True
+            step.additional_input["success"] = success
+
+        if success and self.speedy_mode:
+            LOG.debug(f"Will set is_last because tests passed")
+            step.is_last = True
 
         step.output = str(output)
+
         LOG.debug(f"Executed step [{step.name}] output:\n{step.output}")
 
-        await self.db.update_step(task.task_id, step.step_id, "completed", output=step.output, is_last=step.is_last)
+        await self.db.update_step(task.task_id, step.step_id, "completed", output=step.output, is_last=step.is_last, additional_input=step.additional_input)
         LOG.info(f"Step completed: {step.step_id} input: {step.input[:19]}")
 
         if step.is_last:
@@ -134,11 +143,13 @@ class ForgeAgent(Agent):
         return step
 
     async def create_step(self, task: Task, step_request: StepRequestBody):
-        #prompt_engine = PromptEngine("create-step")
-        prompt_engine = PromptEngine("create-step-with-reasoning")
+        if self.do_reasoning:
+            prompt_engine = PromptEngine("create-step-with-reasoning")
+        else:
+            prompt_engine = PromptEngine("create-step")
 
         previous_steps, page = await self.db.list_steps(task.task_id, per_page=100)
-        if len(previous_steps) > 5:  # FIXME: To not end up in infinite test improvement loop
+        if len(previous_steps) > 20:  # FIXME: To not end up in infinite test improvement loop
             ability = {
                 "name": "finish",
                 "args": {
@@ -158,29 +169,31 @@ class ForgeAgent(Agent):
             last_step = previous_steps[-1]
             LOG.info(f"Found {len(previous_steps)} previously executed steps. Last executed step was: {last_step.name}.")
 
-            # FIXME: Just to speed up the agent
-            if ("ability" in last_step.additional_input and
-                    last_step.additional_input["ability"]["name"] in ["write_code", "fix_code"]):
+            if (self.use_external_coder and
+                    ("ability" in last_step.additional_input and
+                     last_step.additional_input["ability"]["name"] in ["write_code", "fix_code"])):
 
-                last_ability = last_step.additional_input["ability"]
-                step_request.name = "Fix code"
-                step_request.input = last_step.output
-                ability = {
-                    "name": "fix_code",
-                    "args": {
-                        "instructions": last_step.output,
-                        "file": last_ability["args"]["file"],
-                        "test_file": last_ability["args"]["test_file"]
+                if ("success" in last_step.additional_input and not last_step.additional_input["success"]
+                        and len(previous_steps) < 10):  # To not end up in infinite test improvement loop:
+                    last_ability = last_step.additional_input["ability"]
+                    step_request.name = "Fix code"
+                    step_request.input = last_step.output
+                    ability = {
+                        "name": "fix_code",
+                        "args": {
+                            "instructions": last_step.output,
+                            "file": last_ability["args"]["file"],
+                            "test_file": last_ability["args"]["test_file"]
+                        }
                     }
-                }
-                step = await self.db.create_step(
-                    task_id=task.task_id,
-                    input=step_request,
-                    is_last=False,
-                    additional_input={"ability": ability}
-                )
+                    step = await self.db.create_step(
+                        task_id=task.task_id,
+                        input=step_request,
+                        is_last=False,
+                        additional_input={"ability": ability}
+                    )
 
-                return step, ability
+                    return step, ability
 
             previous_steps = previous_steps[:-1]
         else:
@@ -198,9 +211,23 @@ class ForgeAgent(Agent):
             {"role": "system", "content": system_format},
         ]
 
+        artifacts, paging = await self.db.list_artifacts(task.task_id)
+
+        files = []
+        for artifact in artifacts:
+            data =  self.workspace.read(task.task_id, artifact.file_name)
+            if isinstance(data, bytes):
+                data = data.decode("utf-8")
+
+            files.append({
+                "file_path": artifact.file_name,
+                "content": data
+            })
+
         task_kwargs = {
             "task": task.input,
             "step": last_step,
+            "files": files,
             "previous_steps": previous_steps
         }
 
@@ -228,7 +255,7 @@ class ForgeAgent(Agent):
     async def do_steps_request(self, messages: List[dict], retry: int = 0):
         chat_completion_kwargs = {
             "messages": messages,
-            "model": MODEL_NAME,
+            "model": self.model_name,
         }
 
         async def do_retry(retry_messages: List[dict]):

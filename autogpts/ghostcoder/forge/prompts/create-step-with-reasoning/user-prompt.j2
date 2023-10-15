@@ -6,6 +6,16 @@ The last executed step was "{{ step.name }}" with the following output:
 {{ step.output }}
 {% endif %}
 
+{% if files %}
+## Files
+{% for file in files %}
+{{file.file_path}}
+```
+{{file.content}}
+```
+{% endfor %}
+{% endif %}
+
 {% if previous_steps %}
 ## Previous steps
 The following steps have already been executed.

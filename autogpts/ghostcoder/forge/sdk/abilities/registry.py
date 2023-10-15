@@ -45,6 +45,7 @@ class Ability(pydantic.BaseModel):
     method: Callable
     parameters: List[AbilityParameter]
     output_type: str
+    disabled: bool = False
     category: str | None = None
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
@@ -76,7 +77,7 @@ class Ability(pydantic.BaseModel):
 
 
 def ability(
-    name: str, description: str, parameters: List[AbilityParameter], output_type: str
+    name: str, description: str, parameters: List[AbilityParameter], output_type: str, disabled: bool = False
 ):
     def decorator(func):
         func_params = inspect.signature(func).parameters
@@ -96,6 +97,7 @@ def ability(
             parameters=parameters,
             method=func,
             output_type=output_type,
+            disabled=disabled
         )
         return func
 
@@ -119,7 +121,7 @@ class AbilityRegister:
                 ability = os.path.relpath(
                     ability_path, os.path.dirname(__file__)
                 ).replace("/", ".")
-                LOG.info(f"Registering ability: {ability}")
+                LOG.debug(f"Registering abilities from: {ability}")
                 try:
                     module = importlib.import_module(
                         f".{ability[:-3]}", package="forge.sdk.abilities"
@@ -129,6 +131,9 @@ class AbilityRegister:
                         func = getattr(module, attr)
                         if hasattr(func, "ability"):
                             ab = func.ability
+                            if ab.disabled:
+                                LOG.debug(f"Ability {ab.name} is disabled. Skipping...")
+                                continue
 
                             ab.category = (
                                 ability.split(".")[0].lower().replace("_", " ")
@@ -139,8 +144,13 @@ class AbilityRegister:
                 except Exception as e:
                     print(f"Error occurred while registering abilities: {str(e)}")
 
-    def list_abilities(self) -> List[Ability]:
+        LOG.info(f"Registered abilities: {self.ability_names()}")
+
+    def list_abilities(self) -> List[str]:
         return self.abilities
+
+    def ability_names(self) -> List[str]:
+        return [a.name for a in self.abilities.values()]
 
     def list_abilities_for_prompt(self) -> List[str]:
         return [str(ability) for ability in self.abilities.values()]

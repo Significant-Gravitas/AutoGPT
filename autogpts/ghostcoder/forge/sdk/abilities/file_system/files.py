@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 from ..registry import ability
 from ... import ForgeLogger
@@ -46,7 +46,7 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
     ],
     output_type="string",
 )
-async def write_file(agent, task_id: str, file_path: str, data: bytes) -> str:
+async def write_file(agent, task_id: str, file_path: str, data: bytes) -> Tuple[bool, str]:
     """
     Write data to a file
     """
@@ -67,7 +67,7 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes) -> str:
 
     LOG.debug(f"Wrote data to file {file_path} and created artifact {artifact.artifact_id}")
 
-    return f"{file_path}:\n```\n{data.decode('utf-8')}\n```\n"
+    return True, f"{file_path}:\n```\n{data.decode('utf-8')}\n```\n"
 
 
 @ability(
