@@ -121,9 +121,9 @@ async def list_agents(
         )
 
 
-@afaas_user_router.post("/agent", tags=["agent"], response_model=Agent)
+#@afaas_user_router.post("/agent", tags=["agent"], response_model=Agent)
 @user_router.post("/agent/tasks", tags=["agent"], response_model=Agent)
-async def create_agent(request: Request #, task_request: AgentRequestBody
+async def create_agent(request: Request , task_request: AgentRequestBody
                        ) -> Agent:
     """
     Creates a new task using the provided AgentRequestBody and returns a Agent.

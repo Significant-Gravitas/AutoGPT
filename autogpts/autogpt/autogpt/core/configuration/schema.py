@@ -32,7 +32,9 @@ class SystemConfiguration(BaseModel):
             "tool_registry",
             "prompt_settings",
             "systems",
-            "configuration"
+            "configuration",
+            "name",
+            "description"
         }
         allow_inf_nan = False
 
@@ -65,7 +67,9 @@ class SystemSettings(BaseModel):
             "systems",
             "configuration",
             "agent_setting_module",
-            "agent_setting_class"
+            "agent_setting_class",
+            "name",
+            "description"
         }
 
     def json(self,**dumps_kwargs: Any) -> str:
