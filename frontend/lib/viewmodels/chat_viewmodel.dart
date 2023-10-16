@@ -1,5 +1,6 @@
 import 'package:auto_gpt_flutter_client/models/step.dart';
 import 'package:auto_gpt_flutter_client/models/step_request_body.dart';
+import 'package:auto_gpt_flutter_client/services/shared_preferences_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:auto_gpt_flutter_client/services/chat_service.dart';
 import 'package:auto_gpt_flutter_client/models/chat.dart';
@@ -9,10 +10,12 @@ class ChatViewModel with ChangeNotifier {
   final ChatService _chatService;
   List<Chat> _chats = [];
   String? _currentTaskId;
+  final SharedPreferencesService _prefsService;
 
   bool _isWaitingForAgentResponse = false;
 
   bool get isWaitingForAgentResponse => _isWaitingForAgentResponse;
+  SharedPreferencesService get prefsService => _prefsService;
 
   bool _isContinuousMode = false;
 
@@ -22,7 +25,7 @@ class ChatViewModel with ChangeNotifier {
     notifyListeners();
   }
 
-  ChatViewModel(this._chatService);
+  ChatViewModel(this._chatService, this._prefsService);
 
   /// Returns the current list of chats.
   List<Chat> get chats => _chats;
