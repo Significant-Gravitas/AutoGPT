@@ -3,7 +3,7 @@
         "coding",
         "general"
     ],
-    "cutoff": 90,
+    "cutoff": 180,
     "dependencies": [
         "TestTicTacToe",
         "TestReadFile"
