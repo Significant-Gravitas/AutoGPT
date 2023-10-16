@@ -1,6 +1,6 @@
 from typing import List
 
-from ....sdk.abilities.registry import ability
+from ..registry import ability
 
 @ability(
     name="list_files",

@@ -43,7 +43,7 @@ class ForgeDatabase(AgentDB):
 
     async def add_chat_message(self, task_id, role, content):
         if self.debug_enabled:
-            LOG.debug(f"Creating new chat message for task {task_id}")
+            LOG.debug("Creating new task")
         try:
             with self.Session() as session:
                 mew_msg = ChatModel(
