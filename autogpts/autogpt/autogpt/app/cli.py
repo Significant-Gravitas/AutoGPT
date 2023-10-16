@@ -5,7 +5,7 @@ from typing import Optional
 import click
 
 
-@click.group(invoke_without_subcommand=True)
+@click.group(invoke_without_command=True)
 @click.pass_context
 def cli(ctx: click.Context):
     # Invoke `run` by default
@@ -126,9 +126,7 @@ def cli(ctx: click.Context):
         " the AI's directives instead of being appended to them"
     ),
 )
-@click.pass_context
 def run(
-    ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
     ai_settings: Optional[Path],
@@ -158,30 +156,29 @@ def run(
     # Put imports inside function to avoid importing everything when starting the CLI
     from autogpt.app.main import run_auto_gpt
 
-    if ctx.invoked_subcommand is None:
-        run_auto_gpt(
-            continuous=continuous,
-            continuous_limit=continuous_limit,
-            ai_settings=ai_settings,
-            prompt_settings=prompt_settings,
-            skip_reprompt=skip_reprompt,
-            speak=speak,
-            debug=debug,
-            gpt3only=gpt3only,
-            gpt4only=gpt4only,
-            memory_type=memory_type,
-            browser_name=browser_name,
-            allow_downloads=allow_downloads,
-            skip_news=skip_news,
-            workspace_directory=workspace_directory,
-            install_plugin_deps=install_plugin_deps,
-            override_ai_name=ai_name,
-            override_ai_role=ai_role,
-            resources=list(resource),
-            constraints=list(constraint),
-            best_practices=list(best_practice),
-            override_directives=override_directives,
-        )
+    run_auto_gpt(
+        continuous=continuous,
+        continuous_limit=continuous_limit,
+        ai_settings=ai_settings,
+        prompt_settings=prompt_settings,
+        skip_reprompt=skip_reprompt,
+        speak=speak,
+        debug=debug,
+        gpt3only=gpt3only,
+        gpt4only=gpt4only,
+        memory_type=memory_type,
+        browser_name=browser_name,
+        allow_downloads=allow_downloads,
+        skip_news=skip_news,
+        workspace_directory=workspace_directory,
+        install_plugin_deps=install_plugin_deps,
+        override_ai_name=ai_name,
+        override_ai_role=ai_role,
+        resources=list(resource),
+        constraints=list(constraint),
+        best_practices=list(best_practice),
+        override_directives=override_directives,
+    )
 
 
 @cli.command()
@@ -216,9 +213,7 @@ def run(
     is_flag=True,
     help="Installs external dependencies for 3rd party plugins.",
 )
-@click.pass_context
 def serve(
-    ctx: click.Context,
     prompt_settings: Optional[Path],
     debug: bool,
     gpt3only: bool,
@@ -235,17 +230,16 @@ def serve(
     # Put imports inside function to avoid importing everything when starting the CLI
     from autogpt.app.main import run_auto_gpt_server
 
-    if ctx.invoked_subcommand is None:
-        run_auto_gpt_server(
-            prompt_settings=prompt_settings,
-            debug=debug,
-            gpt3only=gpt3only,
-            gpt4only=gpt4only,
-            memory_type=memory_type,
-            browser_name=browser_name,
-            allow_downloads=allow_downloads,
-            install_plugin_deps=install_plugin_deps,
-        )
+    run_auto_gpt_server(
+        prompt_settings=prompt_settings,
+        debug=debug,
+        gpt3only=gpt3only,
+        gpt4only=gpt4only,
+        memory_type=memory_type,
+        browser_name=browser_name,
+        allow_downloads=allow_downloads,
+        install_plugin_deps=install_plugin_deps,
+    )
 
 
 if __name__ == "__main__":
