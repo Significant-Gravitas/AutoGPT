@@ -24,7 +24,7 @@ ERROR_LOG_FILE = "error.log"
 
 SIMPLE_LOG_FORMAT = "%(asctime)s %(levelname)s  %(title)s%(message)s"
 DEBUG_LOG_FORMAT = (
-    "%(asctime)s.%(msecs)03d %(levelname)s %(filename)s:%(lineno)d"
+    "%(asctime)s %(levelname)s %(filename)s:%(lineno)d"
     "  %(title)s%(message)s"
 )
 
