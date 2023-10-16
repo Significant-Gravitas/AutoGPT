@@ -1,7 +1,7 @@
 import 'package:auto_gpt_flutter_client/services/auth_service.dart';
+import 'package:auto_gpt_flutter_client/services/shared_preferences_service.dart';
 import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// [SettingsViewModel] is responsible for managing the state and logic
 /// for the [SettingsView]. It extends [ChangeNotifier] to provide
@@ -13,6 +13,7 @@ class SettingsViewModel extends ChangeNotifier {
   int _continuousModeSteps = 1; // State for Continuous Mode Steps
 
   final RestApiUtility _restApiUtility;
+  final SharedPreferencesService _prefsService;
 
   // Getters to access the private state variables
   bool get isDarkModeEnabled => _isDarkModeEnabled;
@@ -22,76 +23,61 @@ class SettingsViewModel extends ChangeNotifier {
 
   final AuthService _authService = AuthService();
 
-  SettingsViewModel(this._restApiUtility) {
+  SettingsViewModel(this._restApiUtility, this._prefsService) {
     _loadPreferences();
   }
 
   // Method to load stored preferences
   Future<void> _loadPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    _isDarkModeEnabled = prefs.getBool('isDarkModeEnabled') ?? false;
-    // TODO: We should make this disable test suites
-    _isDeveloperModeEnabled = prefs.getBool('isDeveloperModeEnabled') ?? true;
-    _baseURL = prefs.getString('baseURL') ?? 'http://127.0.0.1:8000/ap/v1';
+    _isDarkModeEnabled =
+        await _prefsService.getBool('isDarkModeEnabled') ?? false;
+    _isDeveloperModeEnabled =
+        await _prefsService.getBool('isDeveloperModeEnabled') ?? true;
+    _baseURL = await _prefsService.getString('baseURL') ??
+        'http://127.0.0.1:8000/ap/v1';
     _restApiUtility.updateBaseURL(_baseURL);
-    _continuousModeSteps = prefs.getInt('continuousModeSteps') ?? 10;
+    _continuousModeSteps =
+        await _prefsService.getInt('continuousModeSteps') ?? 10;
     notifyListeners();
   }
 
   /// Toggles the state of Dark Mode and notifies listeners.
-  void toggleDarkMode(bool value) {
+  Future<void> toggleDarkMode(bool value) async {
     _isDarkModeEnabled = value;
     notifyListeners();
-    _saveBoolPreference('isDarkModeEnabled', value);
+    await _prefsService.setBool('isDarkModeEnabled', value);
   }
 
   /// Toggles the state of Developer Mode and notifies listeners.
-  void toggleDeveloperMode(bool value) {
+  Future<void> toggleDeveloperMode(bool value) async {
     _isDeveloperModeEnabled = value;
     notifyListeners();
-    _saveBoolPreference('isDeveloperModeEnabled', value);
+    await _prefsService.setBool('isDeveloperModeEnabled', value);
   }
 
   /// Updates the state of Base URL, notifies listeners, and updates the RestApiUtility baseURL.
-  void updateBaseURL(String value) {
+  Future<void> updateBaseURL(String value) async {
     _baseURL = value;
     notifyListeners();
-    _saveStringPreference('baseURL', value);
+    await _prefsService.setString('baseURL', value);
     _restApiUtility.updateBaseURL(value);
   }
 
   /// Increments the number of Continuous Mode Steps and notifies listeners.
-  void incrementContinuousModeSteps() {
+  Future<void> incrementContinuousModeSteps() async {
     _continuousModeSteps += 1;
     notifyListeners();
-    _saveIntPreference('continuousModeSteps', _continuousModeSteps);
+    await _prefsService.setInt('continuousModeSteps', _continuousModeSteps);
   }
 
   /// Decrements the number of Continuous Mode Steps and notifies listeners.
-  void decrementContinuousModeSteps() {
+  Future<void> decrementContinuousModeSteps() async {
     if (_continuousModeSteps > 1) {
       // Ensure that the number of steps is at least 1
       _continuousModeSteps -= 1;
       notifyListeners();
-      _saveIntPreference('continuousModeSteps', _continuousModeSteps);
+      await _prefsService.setInt('continuousModeSteps', _continuousModeSteps);
     }
-  }
-
-  // TODO: Create a service for interacting with shared preferences
-  // Helper methods to save preferences
-  Future<void> _saveBoolPreference(String key, bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    prefs.setBool(key, value);
-  }
-
-  Future<void> _saveStringPreference(String key, String value) async {
-    final prefs = await SharedPreferences.getInstance();
-    prefs.setString(key, value);
-  }
-
-  Future<void> _saveIntPreference(String key, int value) async {
-    final prefs = await SharedPreferences.getInstance();
-    prefs.setInt(key, value);
   }
 
   // Method to sign out

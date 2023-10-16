@@ -41,7 +41,7 @@ Want to build your own groundbreaking agent using AutoGPT? 🛠️ There are thr
 
 ### 🏗️ the Forge
 
-**Forge your future!** The `forge` is your innovation lab. All the boilerplate code is already handled, letting you channel all your creativity into building a revolutionary agent. It's more than a starting point, it's a launchpad for your ideas. All tutorials are located [here](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/forge/tutorials).
+**Forge your future!** The `forge` is your innovation lab. All the boilerplate code is already handled, letting you channel all your creativity into building a revolutionary agent. It's more than a starting point, it's a launchpad for your ideas. All tutorials are located [here](https://medium.com/@aiedge/autogpt-forge-e3de53cc58ec).
 
 📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/forge)
 
@@ -66,6 +66,8 @@ Want to build your own groundbreaking agent using AutoGPT? 🛠️ There are thr
 ### 🤔 Questions? Problems? Suggestions?
 
 #### Get help - [Discord 💬](https://discord.gg/autogpt)
+
+[![Join us on Discord](https://invidget.switchblade.xyz/autogpt)](https://discord.gg/autogpt)
 
 To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose). Please ensure someone else hasn’t created an issue for the same topic.
 
