@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import json
 import logging
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from pydantic import Field, validator
 
 if TYPE_CHECKING:
-    from pathlib import Path
 
     from autogpt.config import Config
     from autogpt.core.prompting.base import PromptStrategy
@@ -122,6 +121,7 @@ class BaseAgentConfiguration(SystemConfiguration):
                 f"Model {smart_llm} does not support OpenAI Functions. "
                 "Please disable OPENAI_FUNCTIONS or choose a suitable model."
             )
+        return v
 
 
 class BaseAgentSettings(SystemSettings):
@@ -149,14 +149,11 @@ class BaseAgentSettings(SystemSettings):
 
     def save_to_json_file(self, file_path: Path) -> None:
         with file_path.open("w") as f:
-            json.dump(self.dict(), f)
+            f.write(self.json())
 
     @classmethod
     def load_from_json_file(cls, file_path: Path):
-        with file_path.open("r") as f:
-            agent_settings = json.load(f)
-
-        return cls.parse_obj(agent_settings)
+        return cls.parse_file(file_path)
 
 
 class BaseAgent(Configurable[BaseAgentSettings], ABC):

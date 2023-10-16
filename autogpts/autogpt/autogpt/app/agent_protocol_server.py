@@ -117,6 +117,7 @@ class AgentProtocolServer:
         )
         agent_id = task_agent.state.agent_id = task_agent_id(task.task_id)
         task_agent.attach_fs(self.app_config.app_data_dir / "agents" / agent_id)
+        task_agent.state.save_to_json_file(task_agent.file_manager.state_file_path)
         return task
 
     async def list_tasks(self, page: int = 1, pageSize: int = 10) -> TaskListResponse:
