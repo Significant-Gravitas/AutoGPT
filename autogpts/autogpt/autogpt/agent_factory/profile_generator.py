@@ -170,12 +170,12 @@ class AgentProfileGenerator(PromptStrategy):
         try:
             arguments = json_loads(response_content["function_call"]["arguments"])
             ai_profile = AIProfile(
-                ai_name=arguments["name"],
-                ai_role=arguments["description"],
+                ai_name=arguments.get("name"),
+                ai_role=arguments.get("description"),
             )
             ai_directives = AIDirectives(
-                best_practices=arguments["directives"]["best_practices"],
-                constraints=arguments["directives"]["constraints"],
+                best_practices=arguments["directives"].get("best_practices"),
+                constraints=arguments["directives"].get("constraints"),
                 resources=[],
             )
         except KeyError:
