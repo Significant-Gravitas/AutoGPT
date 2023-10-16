@@ -284,7 +284,7 @@ class AgentDB:
             LOG.error(f"Unexpected error while getting task: {e}")
             raise
 
-    async def get_step(self, task_id: int, step_id: int) -> Step:
+    async def get_step(self, task_id: str, step_id: str) -> Step:
         if self.debug_enabled:
             LOG.debug(f"Getting step with task_id: {task_id} and step_id: {step_id}")
         try:
