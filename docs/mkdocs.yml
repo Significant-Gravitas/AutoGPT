@@ -6,12 +6,12 @@ nav:
   - Home: index.md
 
   - AutoGPT Agent:
-    - Agent Setup: AutoGPT/setup.md
+    - Agent-Setup: AutoGPT/setup.md
     - Usage: AutoGPT/usage.md
     - Plugins: AutoGPT/plugins.md
 
   - AutoGPT-Forge:
-    - Forge Setup: forge/get-started.md
+    - Forge-Setup: forge/get-started.md
 
   - Configuration:
       - Options: configuration/options.md
