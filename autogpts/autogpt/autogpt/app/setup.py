@@ -60,7 +60,7 @@ async def interactive_ai_config_setup(
         )
 
         user_desire = await utils.clean_input(
-            config, f"{Fore.LIGHTBLUE_EX}I want AutoGPT to{Style.RESET_ALL}: "
+            config, f"{Fore.LIGHTBLUE_EX}I want AutoGPT to{Style.RESET_ALL}:"
         )
 
     if user_desire.strip() == "":
@@ -125,7 +125,7 @@ async def generate_aiconfig_manual(
             message="For example, 'Entrepreneur-GPT'",
             title_color=Fore.GREEN,
         )
-        ai_name = await utils.clean_input(config, "AI Name: ")
+        ai_name = await utils.clean_input(config, "AI Name:")
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
@@ -145,7 +145,7 @@ async def generate_aiconfig_manual(
             " the sole goal of increasing your net worth.'",
             title_color=Fore.GREEN,
         )
-        ai_role = await utils.clean_input(config, f"{ai_name} is: ")
+        ai_role = await utils.clean_input(config, f"{ai_name} is:")
     if ai_role == "":
         ai_role = "an AI designed to autonomously develop and run businesses with the"
         " sole goal of increasing your net worth."
@@ -164,7 +164,7 @@ async def generate_aiconfig_manual(
         ai_goals = []
         for i in range(5):
             ai_goal = await utils.clean_input(
-                config, f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: "
+                config, f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}:"
             )
             if ai_goal == "":
                 break
@@ -184,7 +184,7 @@ async def generate_aiconfig_manual(
     )
     logger.info("Enter nothing to let the AI run without monetary limit")
     api_budget_input = await utils.clean_input(
-        config, f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
+        config, f"{Fore.LIGHTBLUE_EX}Budget ($){Style.RESET_ALL}:"
     )
     if api_budget_input == "":
         api_budget = 0.0

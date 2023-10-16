@@ -476,7 +476,7 @@ async def get_user_feedback(
             console_input = await clean_input(config, "Waiting for your response...")
         else:
             console_input = await clean_input(
-                config, Fore.MAGENTA + "Input: " + Style.RESET_ALL
+                config, Fore.MAGENTA + "Input:" + Style.RESET_ALL
             )
 
         # Parse user input
@@ -551,7 +551,7 @@ Name:  {ai_config.ai_name}
 Role:  {ai_config.ai_role}
 Goals: {ai_config.ai_goals}
 API Budget: {"infinite" if ai_config.api_budget <= 0 else f"${ai_config.api_budget}"}
-Continue ({config.authorise_key}/{config.exit_key}): """,
+Continue ({config.authorise_key}/{config.exit_key}):""",
         )
         if should_continue.lower() == config.exit_key:
             ai_config = AIConfig()

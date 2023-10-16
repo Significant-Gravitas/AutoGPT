@@ -50,7 +50,7 @@ async def clean_input(config: Config, prompt: str = ""):
         # handle_sigint must be set to False, so the signal handler in the
         # autogpt/main.py could be employed properly. This referes to
         # https://github.com/Significant-Gravitas/AutoGPT/pull/4799/files/3966cdfd694c2a80c0333823c3bc3da090f85ed3#r1264278776
-        answer = await session.prompt_async(ANSI(prompt), handle_sigint=False)
+        answer = await session.prompt_async(ANSI(prompt + " "), handle_sigint=False)
         return answer
     except KeyboardInterrupt:
         logger.info("You interrupted AutoGPT")
