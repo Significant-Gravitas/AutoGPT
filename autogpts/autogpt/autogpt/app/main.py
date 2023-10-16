@@ -644,7 +644,7 @@ async def get_user_feedback(
             console_input = await clean_input(config, "Waiting for your response...")
         else:
             console_input = await clean_input(
-                config, Fore.MAGENTA + "Input: " + Style.RESET_ALL
+                config, Fore.MAGENTA + "Input:" + Style.RESET_ALL
             )
 
         # Parse user input
