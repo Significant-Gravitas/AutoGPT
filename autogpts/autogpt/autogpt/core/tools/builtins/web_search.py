@@ -20,12 +20,12 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 
 @tool(
-    "web_search",
-    "Searches the web",
-    {
+    name = "web_search",
+    description="Searches the web",
+    parameters={
         "query": JSONSchema(
             type=JSONSchema.Type.STRING,
-            description="The search query",
+            description="Search the web for recent information.",
             required=True,
         )
     },
@@ -41,6 +41,11 @@ def web_search(query: str, agent: BaseAgent, num_results: int = 8) -> str:
     Returns:
         str: The results of the search.
     """
+    print("""TODO : Merge with query language model in a 4 steps tools : 
+        1. query_llm
+        2. check llm retult sanity
+        3. if not sane search_web
+        4. send results to LLM to formal with original extra arguments""")
     search_results = []
     attempts = 0
 
@@ -87,6 +92,11 @@ def google(query: str, agent: BaseAgent, num_results: int = 8) -> str | list[str
         str: The results of the search.
     """
 
+    print("""TODO : Merge with query language model in a 4 steps tools : 
+        1. query_llm
+        2. check llm retult sanity
+        3. if not sane search_web
+        4. send results to LLM to formal with original extra arguments""")
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
 
@@ -141,6 +151,12 @@ def safe_google_results(results: str | list) -> str:
     Returns:
         str: The results of the search.
     """
+
+    print("""TODO : Merge with query language model in a 4 steps tools : 
+        1. query_llm
+        2. check llm retult sanity
+        3. if not sane search_web
+        4. send results to LLM to formal with original extra arguments""")
     if isinstance(results, list):
         safe_message = json.dumps(
             [result.encode("utf-8", "ignore").decode("utf-8") for result in results]
