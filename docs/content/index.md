@@ -3,7 +3,8 @@
 Welcome to the AutoGPT Docs. Please follow the [Installation](/setup/) guide to get started.
 
 The AutoGPT project is now split into 4 sections
-AutoGPT: The Original Agent That Started It All
+
+AutoGPT Agent: The Original Agent That Started It All, (Setup Guide Here)[docs/content/AutoGPT/setup.md]
 
 AutoGPT-Benchmarks: The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 

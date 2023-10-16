@@ -4,9 +4,15 @@ repo_url: https://github.com/Significant-Gravitas/AutoGPT
 docs_dir: content
 nav:
   - Home: index.md
-  - Setup: setup.md
-  - Usage: usage.md
-  - Plugins: plugins.md
+
+  - AutoGPT Agent:
+    - Agent Setup: AutoGPT/setup.md
+    - Usage: AutoGPT/usage.md
+    - Plugins: AutoGPT/plugins.md
+
+  - AutoGPT-Forge:
+    - Forge Setup: forge/get-started.md
+
   - Configuration:
       - Options: configuration/options.md
       - Search: configuration/search.md
