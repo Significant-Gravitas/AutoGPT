@@ -1,11 +1,16 @@
 # AutoGPT docs
 
-Welcome to AutoGPT. Please follow the [Installation](/setup/) guide to get started.
+Welcome to the AutoGPT Docs. Please follow the [Installation](/setup/) guide to get started.
 
-!!! note
-    It is recommended to use a virtual machine/container (docker) for tasks that require high security measures to prevent any potential harm to the main computer's system and data. If you are considering to use AutoGPT outside a virtualized/containerized environment, you are *strongly* advised to use a separate user account just for running AutoGPT. This is even more important if you are going to allow AutoGPT to write/execute scripts and run shell commands!
+The AutoGPT project is now split into 4 sections
+AutoGPT: The Original Agent That Started It All
 
-It is for these reasons that executing python scripts is explicitly disabled when running outside a container environment.
+AutoGPT-Benchmarks: The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
+
+AutoGPT-Forge: (The forge)[docs/content/forge/readme.md] is your innovation lab. All the boilerplate code is already handled, letting you channel all your creativity into building a revolutionary agent. It's more than a starting point, it's a launchpad for your ideas. All tutorials are located (here)[https://aiedge.medium.com/autogpt-forge-e3de53cc58ec].
+
+Frontend: The frontend is your personal command center. It gives you a user-friendly interface to control and monitor your agents, making it easier to bring your ideas to life.
+
 
 ### Glossary of Terms
 - **Repository**: A storage space where your project resides.
