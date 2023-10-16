@@ -148,6 +148,8 @@ class JSONSchema(BaseModel):
             if not self.properties:
                 return "Record<string, any>"
             return self.to_typescript_object_interface()
+        elif self.enum:
+            return " | ".join(repr(v) for v in self.enum)
         else:
             raise NotImplementedError(
                 f"JSONSchema.typescript_type does not support Type.{self.type.name} yet"

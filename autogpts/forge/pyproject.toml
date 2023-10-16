@@ -21,6 +21,9 @@ toml = "^0.10.2"
 jinja2 = "^3.1.2"
 uvicorn = "^0.23.2"
 litellm = "^0.1.821"
+duckduckgo-search = "^3.9.3"
+selenium = "^4.13.0"
+bs4 = "^0.0.1"
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"

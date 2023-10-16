@@ -1,14 +1,18 @@
 import 'package:auto_gpt_flutter_client/constants/app_colors.dart';
 import 'package:auto_gpt_flutter_client/utils/uri_utility.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_queue_viewmodel.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LeaderboardSubmissionDialog extends StatefulWidget {
   final Function(String, String, String)? onSubmit;
+  // TODO: Create a view model for this class and remove the TaskQueueViewModel
+  final TaskQueueViewModel viewModel;
 
   const LeaderboardSubmissionDialog({
     Key? key,
     this.onSubmit,
+    required this.viewModel,
   }) : super(key: key);
 
   @override
@@ -26,9 +30,6 @@ class _LeaderboardSubmissionDialogState
   String? _repoUrlError;
   String? _commitShaError;
 
-// TODO: Do we want this dialog to have the responsibiltiy of managing shared preferences?
-  SharedPreferences? _prefs;
-
   @override
   void initState() {
     super.initState();
@@ -36,12 +37,13 @@ class _LeaderboardSubmissionDialogState
   }
 
   Future<void> _initSharedPreferences() async {
-    _prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _teamNameController.text = _prefs!.getString('teamName') ?? '';
-      _repoUrlController.text = _prefs!.getString('repoUrl') ?? '';
-      _commitShaController.text = _prefs!.getString('commitSha') ?? '';
-    });
+    // Using the SharedPreferencesService from the viewModel to get stored values
+    _teamNameController.text =
+        await widget.viewModel.prefsService.getString('teamName') ?? '';
+    _repoUrlController.text =
+        await widget.viewModel.prefsService.getString('repoUrl') ?? '';
+    _commitShaController.text =
+        await widget.viewModel.prefsService.getString('commitSha') ?? '';
   }
 
   void _validateAndSubmit() async {
@@ -87,9 +89,13 @@ class _LeaderboardSubmissionDialogState
   }
 
   Future<void> _saveToSharedPreferences() async {
-    await _prefs!.setString('teamName', _teamNameController.text);
-    await _prefs!.setString('repoUrl', _repoUrlController.text);
-    await _prefs!.setString('commitSha', _commitShaController.text);
+    // Using the prefsService to save the values
+    await widget.viewModel.prefsService
+        .setString('teamName', _teamNameController.text);
+    await widget.viewModel.prefsService
+        .setString('repoUrl', _repoUrlController.text);
+    await widget.viewModel.prefsService
+        .setString('commitSha', _commitShaController.text);
   }
 
   @override
