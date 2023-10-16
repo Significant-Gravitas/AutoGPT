@@ -104,7 +104,7 @@ class AgentProtocolServer:
         config.loglevel = "ERROR"
         config.bind = [f"0.0.0.0:{port}"]
 
-        logger.info(f"Agent server starting on http://localhost:{port}")
+        logger.info(f"AutoGPT server starting on http://localhost:{port}")
         await hypercorn_serve(app, config)
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
