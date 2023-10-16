@@ -1,14 +1,14 @@
 # AutoGPT docs
 
-Welcome to the AutoGPT Docs. Please follow the [Installation](/setup/) guide to get started.
+Welcome to the AutoGPT Docs.
 
-The AutoGPT project is now split into 4 sections
+The AutoGPT project is now split into 4 sections.
 
 AutoGPT Agent: The Original Agent That Started It All, [Setup Guide Here](/docs/content/AutoGPT/setup.md)
 
 AutoGPT-Benchmarks: The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 
-AutoGPT-Forge: [The forge](/docs/content/forge/readme.md) is your innovation lab. All the boilerplate code is already handled, letting you channel all your creativity into building a revolutionary agent. It's more than a starting point, it's a launchpad for your ideas. All tutorials are located [here](https://aiedge.medium.com/autogpt-forge-e3de53cc58ec).
+AutoGPT-Forge: [The forge](/docs/content/forge/get-started.md) is your innovation lab. All the boilerplate code is already handled, letting you channel all your creativity into building a revolutionary agent. It's more than a starting point, it's a launchpad for your ideas. All tutorials are located [here](https://aiedge.medium.com/autogpt-forge-e3de53cc58ec).
 
 Frontend: The frontend is your personal command center. It gives you a user-friendly interface to control and monitor your agents, making it easier to bring your ideas to life.
 
