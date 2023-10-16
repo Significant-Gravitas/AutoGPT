@@ -57,6 +57,11 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
         time.sleep(1)
         attempts += 1
 
+    search_results = [
+        {"title": r["title"], "url": r["href"], "description": r["body"]}
+        for r in search_results
+    ]
+
     results = json.dumps(search_results, ensure_ascii=False, indent=4)
     return safe_google_results(results)
 
