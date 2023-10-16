@@ -65,7 +65,7 @@ async def interaction_step(
             )
             return
 
-    next_command_name, next_command_args, assistant_reply_dict = agent.think()
+    next_command_name, next_command_args, assistant_reply_dict = agent.propose_action()
 
     return {
         "config": agent.config,

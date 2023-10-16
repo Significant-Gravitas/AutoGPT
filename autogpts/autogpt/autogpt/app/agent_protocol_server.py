@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 import pathlib
@@ -11,6 +10,7 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from forge.sdk.db import AgentDB
 from forge.sdk.errors import NotFoundError
+from forge.sdk.middlewares import AgentMiddleware
 from forge.sdk.routes.agent_protocol import base_router
 from forge.sdk.schema import (
     Artifact,
@@ -47,8 +47,9 @@ class AgentProtocolServer:
         self.llm_provider = llm_provider
         self.agent_manager = AgentManager(app_data_dir=app_config.app_data_dir)
 
-    def start(self, port: int = 8000, router: APIRouter = base_router):
+    async def start(self, port: int = 8000, router: APIRouter = base_router):
         """Start the agent server."""
+        logger.debug("Starting the agent server...")
         config = HypercornConfig()
         config.bind = [f"localhost:{port}"]
         app = FastAPI(
@@ -96,11 +97,14 @@ class AgentProtocolServer:
                 f"Frontend not found. {frontend_path} does not exist. The frontend will not be available."
             )
 
+        # Used to access the methods on this class from API route handlers
+        app.add_middleware(AgentMiddleware, agent=self)
+
         config.loglevel = "ERROR"
         config.bind = [f"0.0.0.0:{port}"]
 
         logger.info(f"Agent server starting on http://localhost:{port}")
-        asyncio.run(hypercorn_serve(app, config))
+        await hypercorn_serve(app, config)
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """
