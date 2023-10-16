@@ -36,7 +36,7 @@ CMD []
 
 # dev build -> include everything
 FROM autogpt-base as autogpt-dev
-RUN poetry install --no-root --without benchmark
+RUN poetry install --no-root #--without benchmark
 ONBUILD COPY . ./
 
 # release build -> include bare minimum
@@ -50,4 +50,8 @@ ONBUILD COPY README.md ./README.md
 ONBUILD RUN mkdir ./data
 
 FROM autogpt-${BUILD_TYPE} AS autogpt
-RUN poetry install --only-root
+
+#RUN poetry add python-dotenv
+#xRUN poetry lock
+RUN poetry install #--only-root
+RUN poetry run pip install python-dotenv
