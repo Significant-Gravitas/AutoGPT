@@ -1,2 +1,3 @@
 frontend/build/* linguist-generated
-frontend/build/* linguist-vendored
+
+**/poetry.lock linguist-generated
