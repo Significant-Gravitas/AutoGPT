@@ -16,7 +16,9 @@ packages = [{ include = "autogpt" }]
 
 
 [tool.poetry.scripts]
-autogpt = "autogpt.app.cli:main"
+autogpt = "autogpt.app.cli:run"
+run = "autogpt.app.cli:run"
+serve = "autogpt.app.cli:serve"
 
 
 [tool.poetry.dependencies]
