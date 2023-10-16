@@ -5,7 +5,15 @@ from typing import Optional
 import click
 
 
-@click.group(invoke_without_command=True)
+@click.group(invoke_without_subcommand=True)
+@click.pass_context
+def cli(ctx: click.Context):
+    # Invoke `run` by default
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(run)
+
+
+@cli.command()
 @click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
 @click.option(
     "--skip-reprompt",
@@ -119,7 +127,7 @@ import click
     ),
 )
 @click.pass_context
-def main(
+def run(
     ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
@@ -144,9 +152,8 @@ def main(
     override_directives: bool,
 ) -> None:
     """
-    Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
-
-    Start an AutoGPT assistant.
+    Sets up and runs an agent, based on the task specified by the user, or resumes an
+    existing agent.
     """
     # Put imports inside function to avoid importing everything when starting the CLI
     from autogpt.app.main import run_auto_gpt
@@ -177,5 +184,69 @@ def main(
         )
 
 
+@cli.command()
+@click.option(
+    "--prompt-settings",
+    "-P",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Specifies which prompt_settings.yaml file to use.",
+)
+@click.option("--debug", is_flag=True, help="Enable Debug Mode")
+@click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
+@click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
+@click.option(
+    "--use-memory",
+    "-m",
+    "memory_type",
+    type=str,
+    help="Defines which Memory backend to use",
+)
+@click.option(
+    "-b",
+    "--browser-name",
+    help="Specifies which web-browser to use when using selenium to scrape the web.",
+)
+@click.option(
+    "--allow-downloads",
+    is_flag=True,
+    help="Dangerous: Allows AutoGPT to download files natively.",
+)
+@click.option(
+    "--install-plugin-deps",
+    is_flag=True,
+    help="Installs external dependencies for 3rd party plugins.",
+)
+@click.pass_context
+def serve(
+    ctx: click.Context,
+    prompt_settings: Optional[Path],
+    debug: bool,
+    gpt3only: bool,
+    gpt4only: bool,
+    memory_type: str,
+    browser_name: str,
+    allow_downloads: bool,
+    install_plugin_deps: bool,
+) -> None:
+    """
+    Starts an Agent Protocol compliant AutoGPT server, which creates a custom agent for
+    every task.
+    """
+    # Put imports inside function to avoid importing everything when starting the CLI
+    from autogpt.app.main import run_auto_gpt_server
+
+    if ctx.invoked_subcommand is None:
+        run_auto_gpt_server(
+            prompt_settings=prompt_settings,
+            debug=debug,
+            gpt3only=gpt3only,
+            gpt4only=gpt4only,
+            memory_type=memory_type,
+            browser_name=browser_name,
+            allow_downloads=allow_downloads,
+            install_plugin_deps=install_plugin_deps,
+        )
+
+
 if __name__ == "__main__":
-    main()
+    cli()

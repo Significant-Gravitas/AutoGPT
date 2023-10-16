@@ -10,6 +10,7 @@ from types import FrameType
 from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
+from forge.sdk.db import AgentDB
 from pydantic import SecretStr
 
 if TYPE_CHECKING:
@@ -20,20 +21,6 @@ from autogpt.agent_factory.profile_generator import generate_agent_profile_for_t
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
 from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
-from autogpt.app.configurator import apply_overrides_to_config
-from autogpt.app.setup import (
-    apply_overrides_to_ai_settings,
-    interactively_revise_ai_settings,
-)
-from autogpt.app.spinner import Spinner
-from autogpt.app.utils import (
-    clean_input,
-    get_legal_warning,
-    markdown_to_ansi_style,
-    print_git_branch_info,
-    print_motd,
-    print_python_version_info,
-)
 from autogpt.config import (
     AIDirectives,
     AIProfile,
@@ -48,6 +35,22 @@ from autogpt.logs.config import configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
 from autogpt.plugins import scan_plugins
 from scripts.install_plugin_deps import install_plugin_dependencies
+
+from .agent_protocol_server import AgentProtocolServer
+from .configurator import apply_overrides_to_config
+from .setup import (
+    apply_overrides_to_ai_settings,
+    interactively_revise_ai_settings,
+)
+from .spinner import Spinner
+from .utils import (
+    clean_input,
+    get_legal_warning,
+    markdown_to_ansi_style,
+    print_git_branch_info,
+    print_motd,
+    print_python_version_info,
+)
 
 
 @coroutine
@@ -291,6 +294,55 @@ async def run_auto_gpt(
             # TODO: ... OR allow many-to-one relations of agents and workspaces
 
         agent.state.save_to_json_file(agent.file_manager.state_file_path)
+
+
+@coroutine
+async def run_auto_gpt_server(
+    prompt_settings: Optional[Path],
+    debug: bool,
+    gpt3only: bool,
+    gpt4only: bool,
+    memory_type: str,
+    browser_name: str,
+    allow_downloads: bool,
+    install_plugin_deps: bool,
+):
+    config = ConfigBuilder.build_config_from_env()
+
+    # TODO: fill in llm values here
+    assert_config_has_openai_api_key(config)
+
+    apply_overrides_to_config(
+        config=config,
+        prompt_settings_file=prompt_settings,
+        debug=debug,
+        gpt3only=gpt3only,
+        gpt4only=gpt4only,
+        memory_type=memory_type,
+        browser_name=browser_name,
+        allow_downloads=allow_downloads,
+    )
+
+    # Set up logging module
+    configure_logging(
+        debug_mode=debug,
+        plain_output=config.plain_output,
+        tts_config=config.tts_config,
+    )
+
+    llm_provider = _configure_openai_provider(config)
+
+    if install_plugin_deps:
+        install_plugin_dependencies()
+
+    config.plugins = scan_plugins(config, config.debug_mode)
+
+    # Set up & start server
+    database = AgentDB("sqlite:///data/ap_server.db", debug_enabled=False)
+    server = AgentProtocolServer(
+        app_config=config, database=database, llm_provider=llm_provider
+    )
+    await server.start()
 
 
 def _configure_openai_provider(config: Config) -> OpenAIProvider:

@@ -2,8 +2,10 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
-    from autogpt.config import AIDirectives, Config
+    from autogpt.config import Config
     from autogpt.core.resource.model_providers.schema import ChatModelProvider
+
+from autogpt.config.ai_directives import AIDirectives
 
 from .configurators import _configure_agent
 from .profile_generator import generate_agent_profile_for_task
