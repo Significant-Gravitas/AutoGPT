@@ -28,6 +28,7 @@ class ActionModel(Base):
     task_id = Column(String)
     name = Column(String)
     args = Column(String)
+    output = Column(String)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     modified_at = Column(
         DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
@@ -42,7 +43,7 @@ class ForgeDatabase(AgentDB):
 
     async def add_chat_message(self, task_id, role, content):
         if self.debug_enabled:
-            LOG.debug("Creating new task")
+            LOG.debug(f"Creating new chat message for task {task_id}")
         try:
             with self.Session() as session:
                 mew_msg = ChatModel(
@@ -55,7 +56,7 @@ class ForgeDatabase(AgentDB):
                 session.commit()
                 session.refresh(mew_msg)
                 if self.debug_enabled:
-                    LOG.debug(f"Created new Chat message with task_id: {mew_msg.msg_id}")
+                    LOG.debug(f"Created new Chat message with for task {task_id}: {mew_msg.msg_id}")
                 return mew_msg
         except SQLAlchemyError as e:
             LOG.error(f"SQLAlchemy error while creating task: {e}")
@@ -93,7 +94,9 @@ class ForgeDatabase(AgentDB):
             LOG.error(f"Unexpected error while getting chat history: {e}")
             raise
     
-    async def create_action(self, task_id, name, args):
+    async def create_action(self, task_id, name, args, output):
+        if self.debug_enabled:
+            LOG.debug(f"Creating new action for task {task_id}")
         try:
             with self.Session() as session:
                 new_action = ActionModel(
@@ -101,12 +104,13 @@ class ForgeDatabase(AgentDB):
                     task_id=task_id,
                     name=name,
                     args=str(args),
+                    output=output,
                 )
                 session.add(new_action)
                 session.commit()
                 session.refresh(new_action)
                 if self.debug_enabled:
-                    LOG.debug(f"Created new Action with task_id: {new_action.action_id}")
+                    LOG.debug(f"Created new Action for task {task_id}: {new_action.action_id}")
                 return new_action
         except SQLAlchemyError as e:
             LOG.error(f"SQLAlchemy error while creating action: {e}")
@@ -128,7 +132,7 @@ class ForgeDatabase(AgentDB):
                     .order_by(ActionModel.created_at)
                     .all()
                 ):
-                    return [{"name": a.name, "args": a.args} for a in actions]
+                    return [{"name": a.name, "args": a.args, "output": a.output} for a in actions]
 
                 else:
                     LOG.error(
