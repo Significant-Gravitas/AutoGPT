@@ -117,9 +117,9 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
     #########
     # State #
     #########
-    progress_summaries: dict[tuple[int, int], str] = Field(
-        default_factory=lambda: {(0, 0): ""}
-    )
+    # progress_summaries: dict[tuple[int, int], str] = Field(
+    #     default_factory=lambda: {(0, 0): ""}
+    # )
 
 
 class OneShotAgentPromptStrategy(PromptStrategy):
