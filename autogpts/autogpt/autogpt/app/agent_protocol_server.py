@@ -31,6 +31,7 @@ from autogpt.agent_manager import AgentManager
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.file_workspace import FileWorkspace
+from autogpt.models.action_history import ActionSuccessResult
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,7 @@ class AgentProtocolServer:
         """
         Create a task for the agent.
         """
+        logger.debug(f"Creating agent for task: '{task_request.input}'")
         task_agent = await generate_agent_for_task(
             task=task_request.input,
             app_config=self.app_config,
@@ -120,6 +122,7 @@ class AgentProtocolServer:
             additional_input=task_request.additional_input,
         )
         agent_id = task_agent.state.agent_id = task_agent_id(task.task_id)
+        logger.debug(f"New agent ID: {agent_id}")
         task_agent.attach_fs(self.app_config.app_data_dir / "agents" / agent_id)
         task_agent.state.save_to_json_file(task_agent.file_manager.state_file_path)
         return task
@@ -128,6 +131,7 @@ class AgentProtocolServer:
         """
         List all tasks that the agent has created.
         """
+        logger.debug("Listing all tasks...")
         tasks, pagination = await self.db.list_tasks(page, pageSize)
         response = TaskListResponse(tasks=tasks, pagination=pagination)
         return response
@@ -136,6 +140,7 @@ class AgentProtocolServer:
         """
         Get a task by ID.
         """
+        logger.debug(f"Getting task with ID: {task_id}...")
         task = await self.db.get_task(task_id)
         return task
 
@@ -145,20 +150,22 @@ class AgentProtocolServer:
         """
         List the IDs of all steps that the task has created.
         """
+        logger.debug(f"Listing all steps created by task with ID: {task_id}...")
         steps, pagination = await self.db.list_steps(task_id, page, pageSize)
         response = TaskStepsListResponse(steps=steps, pagination=pagination)
         return response
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
-        """
-        Create a step for the task.
-        """
+        """Create a step for the task."""
+        logger.debug(f"Creating a step for task with ID: {task_id}...")
+
+        # Restore Agent instance
         agent = configure_agent_with_state(
             state=self.agent_manager.retrieve_state(task_agent_id(task_id)),
             app_config=self.app_config,
             llm_provider=self.llm_provider,
         )
-        agent.workspace.on_write_file = lambda path: await self.db.create_artifact(
+        agent.workspace.on_write_file = lambda path: self.db.create_artifact(
             task_id=task_id,
             file_name=path.parts[-1],
             relative_path=str(path),
@@ -172,14 +179,20 @@ class AgentProtocolServer:
         # To prevent this from interfering with the agent's process, we ignore the input
         #  of this first step request, and just generate the first step proposal.
         is_init_step = not bool(agent.event_history)
-        execute_result = None
+        execute_command, execute_command_args, execute_result = None, None, None
         if is_init_step:
             step_request.input = ""
         elif (
             agent.event_history.current_episode
             and not agent.event_history.current_episode.result
         ):
-            if not step_request.input:
+            execute_command = agent.event_history.current_episode.action.name
+            execute_command_args = agent.event_history.current_episode.action.args
+
+            if agent.event_history.current_episode.action.name == "ask_user":  # HACK
+                execute_result = ActionSuccessResult(outputs=step_request.input)
+                agent.event_history.register_result(execute_result)
+            elif not step_request.input:
                 step = await self.db.update_step(
                     task_id=task_id,
                     step_id=step.step_id,
@@ -187,8 +200,8 @@ class AgentProtocolServer:
                 )
                 # Execute previously proposed action
                 execute_result = await agent.execute(
-                    command_name=agent.event_history.current_episode.action.name,
-                    command_args=agent.event_history.current_episode.action.args,
+                    command_name=execute_command,
+                    command_args=execute_command_args,
                 )
             else:
                 execute_result = await agent.execute(
@@ -198,23 +211,56 @@ class AgentProtocolServer:
                 )
 
         # Propose next action
-        thought_process_output = await agent.propose_action(
-            additional_input=step_request.input or ""
-        )
+        next_command, next_command_args, raw_thoughts = await agent.propose_action()
         step = await self.db.update_step(
             task_id=task_id,
             step_id=step.step_id,
             status="completed",
-            additional_input=(
+        )
+        step.additional_output = {
+            **(
                 {
-                    "action_result": execute_result,
+                    "last_action": {
+                        "name": execute_command,
+                        "args": execute_command_args,
+                        "result": execute_result,
+                    },
                 }
                 if not is_init_step
                 else {}
-            ).update(
-                thought_process_output[2]
-            ),  # HACK
+            ),
+            **raw_thoughts,
+        }
+
+        def fmt_kwargs(kwargs: dict) -> str:
+            return ", ".join(
+                f"{n}={repr(v)}" for n, v in kwargs.items()
+            )
+
+        # Format step output
+        step.output = (
+            f"Command `{execute_command}({fmt_kwargs(execute_command_args)})` returned:"
+            f" {execute_result}\n\n"
+        ) if execute_command_args and execute_command != "ask_user" else ""
+
+        thoughts = raw_thoughts["thoughts"]
+        # formatted_thoughts = "\n".join(
+        #     f"{key}: {value}" for key, value in raw_thoughts["thoughts"].items()
+        # )
+        # step.output += f"Agent Thoughts:\n{formatted_thoughts}\n\n"
+        # step.output += (
+        #     f"{thoughts['text']}\n"
+        #     f"Reasoning: {thoughts['reasoning']}"
+        # )
+        step.output += f"{thoughts['speak']}\n\n"
+
+        step.output += (
+            f"Next Command: {next_command}({fmt_kwargs(next_command_args)})"
+            if next_command != "ask_user"
+            else next_command_args["question"]
         )
+
+        agent.state.save_to_json_file(agent.file_manager.state_file_path)
         return step
 
     async def get_step(self, task_id: str, step_id: str) -> Step:
