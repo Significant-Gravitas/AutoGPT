@@ -36,7 +36,6 @@ from autogpt.logs.helpers import print_attribute, speak
 from autogpt.plugins import scan_plugins
 from scripts.install_plugin_deps import install_plugin_dependencies
 
-from .agent_protocol_server import AgentProtocolServer
 from .configurator import apply_overrides_to_config
 from .setup import (
     apply_overrides_to_ai_settings,
@@ -307,6 +306,8 @@ async def run_auto_gpt_server(
     allow_downloads: bool,
     install_plugin_deps: bool,
 ):
+    from .agent_protocol_server import AgentProtocolServer
+
     config = ConfigBuilder.build_config_from_env()
 
     # TODO: fill in llm values here
