@@ -164,6 +164,7 @@ CURRENT_BULLETIN.md
 
 # AgBenchmark
 agbenchmark_config/reports/
+agbenchmark_config/workspace/
 
 # Nodejs
 package-lock.json
