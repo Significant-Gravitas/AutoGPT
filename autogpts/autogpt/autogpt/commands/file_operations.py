@@ -242,11 +242,11 @@ def append_to_file(
     """
     directory = os.path.dirname(filename)
     os.makedirs(directory, exist_ok=True)
-    with agent.workspace.open_file(filename, "a") as f:
+    with open(filename, "a") as f:
         f.write(text)
 
     if should_log:
-        with agent.workspace.open_file(filename, "r") as f:
+        with open(filename, "r") as f:
             checksum = text_checksum(f.read())
         log_operation("append", filename, agent, checksum=checksum)
 
