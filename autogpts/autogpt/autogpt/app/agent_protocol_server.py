@@ -334,7 +334,7 @@ class AgentProtocolServer:
             else:
                 file_path = artifact.relative_path
             workspace = get_task_agent_file_workspace(task_id, self.agent_manager)
-            retrieved_artifact = workspace.read_file(file_path)
+            retrieved_artifact = workspace.read_file(file_path, binary=True)
         except NotFoundError as e:
             raise
         except FileNotFoundError as e:

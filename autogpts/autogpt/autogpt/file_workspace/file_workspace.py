@@ -60,9 +60,9 @@ class FileWorkspace:
         full_path = self.get_path(path)
         return open(full_path, mode)
 
-    def read_file(self, path: str | Path):
+    def read_file(self, path: str | Path, binary: bool = False):
         """Read a file in the workspace."""
-        with self.open_file(path, "r") as file:
+        with self.open_file(path, "rb" if binary else "r") as file:
             return file.read()
 
     def write_file(self, path: str | Path, content: str | bytes):
