@@ -58,7 +58,11 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
             ' "Proactively take the lead in guiding you and offering suggestions when'
             " faced with unclear information or uncertainty to ensure your marketing"
             ' strategy remains on track."'
-            "]"  # best_practices
+            "],"  # best_practices
+            ' "constraints": ['
+            '"Do not suggest illegal or unethical plans or strategies.",'
+            ' "Take reasonable budgetary limits into account."'
+            "]"  # constraints
             "}"  # directives
             "}"  # arguments
             "}\n"
