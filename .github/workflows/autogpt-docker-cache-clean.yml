@@ -25,6 +25,7 @@ jobs:
       name: Build image
       uses: docker/build-push-action@v3
       with:
+        context: autogpts/autogpt
         build-args: BUILD_TYPE=${{ matrix.build-type }}
         load: true    # save to docker images
         # use GHA cache as read-only
