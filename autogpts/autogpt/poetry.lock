@@ -276,8 +276,11 @@ toml = "^0.10.2"
 uvicorn = "^0.23.2"
 
 [package.source]
-type = "directory"
-url = "../forge"
+type = "git"
+url = "https://github.com/Significant-Gravitas/AutoGPT.git"
+reference = "autogpt/agent-protocol"
+resolved_reference = "abb77fc5b15c949e5b5a8aedce79c14768cba14b"
+subdirectory = "autogpts/forge"
 
 [[package]]
 name = "backoff"
@@ -5215,4 +5218,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "df48d3e1a843958bbd46023d70f9486ac4caa2af86f43995ab6e4633f90ea0f6"
+content-hash = "186f82f849f87f1ddd97817da12e6899c7b68be3a625dc56d30551fc987f5596"
