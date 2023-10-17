@@ -230,7 +230,6 @@ def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
     return f"File {filename.name} has been written successfully."
 
 
-@sanitize_path_arg("filename")
 def append_to_file(
     filename: Path, text: str, agent: Agent, should_log: bool = True
 ) -> None:
