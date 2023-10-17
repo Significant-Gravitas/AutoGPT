@@ -29,7 +29,7 @@ class AIDirectives(BaseModel):
         if not validated:
             logger.error(message, extra={"title": "FAILED FILE VALIDATION"})
             request_user_double_check()
-            exit(1)
+            raise RuntimeError(f"File validation failed: {message}")
 
         with open(prompt_settings_file, encoding="utf-8") as file:
             config_params = yaml.load(file, Loader=yaml.FullLoader)
