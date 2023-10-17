@@ -211,53 +211,41 @@ class AgentProtocolServer:
                 )
 
         # Propose next action
-        next_command, next_command_args, raw_thoughts = await agent.propose_action()
-        step = await self.db.update_step(
-            task_id=task_id,
-            step_id=step.step_id,
-            status="completed",
+        next_command, next_command_args, raw_output = await agent.propose_action()
+
+        # Format step output
+        output = (
+            f"Command `{execute_command}({fmt_kwargs(execute_command_args)})` returned:"
+            f" {execute_result}\n\n"
+        ) if execute_command_args and execute_command != "ask_user" else ""
+        output += f"{raw_output['thoughts']['speak']}\n\n"
+        output += (
+            f"Next Command: {next_command}({fmt_kwargs(next_command_args)})"
+            if next_command != "ask_user"
+            else next_command_args["question"]
         )
-        step.additional_output = {
+
+        additional_output = {
             **(
                 {
                     "last_action": {
                         "name": execute_command,
                         "args": execute_command_args,
-                        "result": execute_result,
+                        "result": execute_result.dict(),
                     },
                 }
                 if not is_init_step
                 else {}
             ),
-            **raw_thoughts,
+            **raw_output,
         }
 
-        def fmt_kwargs(kwargs: dict) -> str:
-            return ", ".join(
-                f"{n}={repr(v)}" for n, v in kwargs.items()
-            )
-
-        # Format step output
-        step.output = (
-            f"Command `{execute_command}({fmt_kwargs(execute_command_args)})` returned:"
-            f" {execute_result}\n\n"
-        ) if execute_command_args and execute_command != "ask_user" else ""
-
-        thoughts = raw_thoughts["thoughts"]
-        # formatted_thoughts = "\n".join(
-        #     f"{key}: {value}" for key, value in raw_thoughts["thoughts"].items()
-        # )
-        # step.output += f"Agent Thoughts:\n{formatted_thoughts}\n\n"
-        # step.output += (
-        #     f"{thoughts['text']}\n"
-        #     f"Reasoning: {thoughts['reasoning']}"
-        # )
-        step.output += f"{thoughts['speak']}\n\n"
-
-        step.output += (
-            f"Next Command: {next_command}({fmt_kwargs(next_command_args)})"
-            if next_command != "ask_user"
-            else next_command_args["question"]
+        step = await self.db.update_step(
+            task_id=task_id,
+            step_id=step.step_id,
+            status="completed",
+            output=output,
+            additional_output=additional_output
         )
 
         agent.state.save_to_json_file(agent.file_manager.state_file_path)
@@ -347,4 +335,10 @@ def get_task_agent_file_workspace(
             must_exist=True,
         ),
         restrict_to_root=True,
+    )
+
+
+def fmt_kwargs(kwargs: dict) -> str:
+    return ", ".join(
+        f"{n}={repr(v)}" for n, v in kwargs.items()
     )
