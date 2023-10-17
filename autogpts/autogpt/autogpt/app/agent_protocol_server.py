@@ -28,9 +28,9 @@ from hypercorn.config import Config as HypercornConfig
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
-from autogpt.config import Config
 from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
+from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.file_workspace import FileWorkspace
 from autogpt.models.action_history import ActionSuccessResult
@@ -243,9 +243,13 @@ class AgentProtocolServer:
 
         # Format step output
         output = (
-            f"Command `{execute_command}({fmt_kwargs(execute_command_args)})` returned:"
-            f" {execute_result}\n\n"
-        ) if execute_command_args and execute_command != "ask_user" else ""
+            (
+                f"Command `{execute_command}({fmt_kwargs(execute_command_args)})` returned:"
+                f" {execute_result}\n\n"
+            )
+            if execute_command_args and execute_command != "ask_user"
+            else ""
+        )
         output += f"{raw_output['thoughts']['speak']}\n\n"
         output += (
             f"Next Command: {next_command}({fmt_kwargs(next_command_args)})"
@@ -273,7 +277,7 @@ class AgentProtocolServer:
             step_id=step.step_id,
             status="completed",
             output=output,
-            additional_output=additional_output
+            additional_output=additional_output,
         )
 
         agent.state.save_to_json_file(agent.file_manager.state_file_path)
@@ -367,6 +371,4 @@ def get_task_agent_file_workspace(
 
 
 def fmt_kwargs(kwargs: dict) -> str:
-    return ", ".join(
-        f"{n}={repr(v)}" for n, v in kwargs.items()
-    )
+    return ", ".join(f"{n}={repr(v)}" for n, v in kwargs.items())

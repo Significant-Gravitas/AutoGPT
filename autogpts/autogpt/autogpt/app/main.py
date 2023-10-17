@@ -37,10 +37,7 @@ from autogpt.plugins import scan_plugins
 from scripts.install_plugin_deps import install_plugin_dependencies
 
 from .configurator import apply_overrides_to_config
-from .setup import (
-    apply_overrides_to_ai_settings,
-    interactively_revise_ai_settings,
-)
+from .setup import apply_overrides_to_ai_settings, interactively_revise_ai_settings
 from .spinner import Spinner
 from .utils import (
     clean_input,
