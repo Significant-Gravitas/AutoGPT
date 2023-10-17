@@ -24,6 +24,10 @@ litellm = "^0.1.821"
 duckduckgo-search = "^3.8.0"
 selenium = "^4.13.0"
 bs4 = "^0.0.1"
+agbenchmark = { path = "../../benchmark", optional = true }
+
+[tool.poetry.extras]
+benchmark = ["agbenchmark"]
 
 [tool.poetry.group.dev.dependencies]
 isort = "^5.12.0"
@@ -38,9 +42,6 @@ watchdog = "^3.0.0"
 mock = "^5.1.0"
 autoflake = "^2.2.0"
 pydevd-pycharm = "^233.6745.319"
-
-[tool.poetry.group.benchmark.dependencies]
-agbenchmark = { path = "../../benchmark" }
 
 
 [build-system]
