@@ -30,4 +30,4 @@ def format_hyperlinks(hyperlinks: list[tuple[str, str]]) -> list[str]:
     Returns:
         List[str]: The formatted hyperlinks
     """
-    return [f"{link_text} ({link_url})" for link_text, link_url in hyperlinks]
+    return [f"{link_text.strip()} ({link_url})" for link_text, link_url in hyperlinks]
