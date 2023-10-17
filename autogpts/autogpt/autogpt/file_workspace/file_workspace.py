@@ -67,7 +67,7 @@ class FileWorkspace:
 
     def write_file(self, path: str | Path, content: str | bytes):
         """Write to a file in the workspace."""
-        with self.open_file(path, "w") as file:
+        with self.open_file(path, "wb" if type(content) is bytes else "w") as file:
             file.write(content)
 
         if self.on_write_file:
