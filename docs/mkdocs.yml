@@ -14,7 +14,7 @@ nav:
     - Forge-Setup: forge/get-started.md
 
   - The UI:
-    - Flutter-Setup: the-ui/get-started.md
+    - Flutter-Setup: front-end/the-ui.md
 
   - Configuration:
       - Options: configuration/options.md
