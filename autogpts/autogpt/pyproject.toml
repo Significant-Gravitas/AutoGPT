@@ -31,8 +31,8 @@ distro = "^1.8.0"
 docker = "*"
 duckduckgo-search = "^3.0.2"
 en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl"}
-autogpt-forge = { path = "../forge" }
-# autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge", rev = "autogpt/agent-protocol"}
+# autogpt-forge = { path = "../forge" }
+autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge", rev = "autogpt/agent-protocol"}
 ftfy = "^6.1.1"
 google-api-python-client = "*"
 gTTS = "^2.3.1"
