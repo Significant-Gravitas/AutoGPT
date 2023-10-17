@@ -7,4 +7,4 @@ if [ ! -f .env ]; then
   echo "Please add your api keys to the .env file." >&2
   # exit 1
 fi
-poetry run serve
+poetry run serve --debug
