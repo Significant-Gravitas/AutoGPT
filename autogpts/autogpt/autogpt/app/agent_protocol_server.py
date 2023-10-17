@@ -192,7 +192,7 @@ class AgentProtocolServer:
             if agent.event_history.current_episode.action.name == "ask_user":  # HACK
                 execute_result = ActionSuccessResult(outputs=step_request.input)
                 agent.event_history.register_result(execute_result)
-            elif not step_request.input:
+            elif not step_request.input or step_request.input == "y":
                 step = await self.db.update_step(
                     task_id=task_id,
                     step_id=step.step_id,
