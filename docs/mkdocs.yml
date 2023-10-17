@@ -13,6 +13,9 @@ nav:
   - AutoGPT-Forge:
     - Forge-Setup: forge/get-started.md
 
+  - The UI:
+    - Flutter-Setup: the-ui/get-started.md
+
   - Configuration:
       - Options: configuration/options.md
       - Search: configuration/search.md
