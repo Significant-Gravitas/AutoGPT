@@ -156,7 +156,7 @@ class Step(StepRequestBody):
         description="Output of the task step.",
         example="I am going to use the write_to_file command and write Washington to a file called output.txt <write_to_file('output.txt', 'Washington')",
     )
-    additional_output: Optional[StepOutput] = {}
+    additional_output: Optional[StepOutput] = Field(default_factory=dict)
     artifacts: Optional[List[Artifact]] = Field(
         [], description="A list of artifacts that the step has produced."
     )

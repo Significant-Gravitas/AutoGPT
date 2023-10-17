@@ -278,8 +278,8 @@ uvicorn = "^0.23.2"
 [package.source]
 type = "git"
 url = "https://github.com/Significant-Gravitas/AutoGPT.git"
-reference = "autogpt/agent-protocol"
-resolved_reference = "3ae376c58475a576e6fcb30fc4c01d006ec9ad64"
+reference = "10aecec"
+resolved_reference = "10aececc6a732878dd037e2deb2f6a4962e19e20"
 subdirectory = "autogpts/forge"
 
 [[package]]
@@ -4770,16 +4770,15 @@ test = ["Cython (>=0.29.36,<0.30.0)", "aiohttp (==3.9.0b0)", "aiohttp (>=3.8.1)"
 
 [[package]]
 name = "vcrpy"
-version = "4.2.1"
+version = "5.1.0"
 description = "Automatically mock your HTTP interactions to simplify and speed up testing"
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.8"
 files = []
 develop = false
 
 [package.dependencies]
 PyYAML = "*"
-six = ">=1.5"
 wrapt = "*"
 yarl = "*"
 
@@ -5249,4 +5248,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "667077f0e5845e92cab8e1ff64f4022cacefaae9bebb75fd4a8fe83a031c6870"
+content-hash = "29f98b32990d83fb4b50be183c5fdb95a7e2257061f00e108b725a94df3de967"

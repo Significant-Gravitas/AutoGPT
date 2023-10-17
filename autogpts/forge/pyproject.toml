@@ -42,6 +42,7 @@ pydevd-pycharm = "^233.6745.319"
 [tool.poetry.group.benchmark.dependencies]
 agbenchmark = { path = "../../benchmark" }
 
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
