@@ -16,9 +16,9 @@ nav:
         - Voice: AutoGPT/configuration/voice.md
         - Image Generation: AutoGPT/configuration/imagegen.md
     - Help us improve AutoGPT:
-        - Share your debug logs with us: share-your-logs.md
+        - Share your debug logs with us: AutoGPT/share-your-logs.md
         - Contribution guide: contributing.md
-        - Running tests: testing.md
+        - Running tests: AutoGPT/testing.md
         - Code of Conduct: code-of-conduct.md
 
   - AutoGPT-Forge:
