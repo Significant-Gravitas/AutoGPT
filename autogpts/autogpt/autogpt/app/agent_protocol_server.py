@@ -29,6 +29,8 @@ from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.config import Config
+from autogpt.commands.system import finish
+from autogpt.commands.user_interaction import ask_user
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.file_workspace import FileWorkspace
 from autogpt.models.action_history import ActionSuccessResult
@@ -171,15 +173,13 @@ class AgentProtocolServer:
             relative_path=str(path),
         )
 
-        # Save step request
-        step = await self.db.create_step(task_id=task_id, input=step_request)
-
         # According to the Agent Protocol spec, the first execute_step request contains
         #  the same task input as the parent create_task request.
         # To prevent this from interfering with the agent's process, we ignore the input
         #  of this first step request, and just generate the first step proposal.
         is_init_step = not bool(agent.event_history)
         execute_command, execute_command_args, execute_result = None, None, None
+        execute_approved = False
         if is_init_step:
             step_request.input = ""
         elif (
@@ -188,11 +188,38 @@ class AgentProtocolServer:
         ):
             execute_command = agent.event_history.current_episode.action.name
             execute_command_args = agent.event_history.current_episode.action.args
+            execute_approved = not step_request.input or step_request.input == "y"
 
-            if agent.event_history.current_episode.action.name == "ask_user":  # HACK
+            logger.debug(
+                f"Agent proposed command"
+                f" {execute_command}({fmt_kwargs(execute_command_args)})."
+                f" User input/feedback: {repr(step_request.input)}"
+            )
+
+        # Save step request
+        step = await self.db.create_step(
+            task_id=task_id,
+            input=step_request,
+            is_last=execute_command == finish.__name__ and execute_approved,
+        )
+
+        # Execute previously proposed action
+        if execute_command:
+            assert execute_command_args is not None
+
+            if step.is_last and execute_command == finish.__name__:
+                assert execute_command_args
+                step = await self.db.update_step(
+                    task_id=task_id,
+                    step_id=step.step_id,
+                    output=execute_command_args["reason"],
+                )
+                return step
+
+            if execute_command == ask_user.__name__:  # HACK
                 execute_result = ActionSuccessResult(outputs=step_request.input)
                 agent.event_history.register_result(execute_result)
-            elif not step_request.input or step_request.input == "y":
+            elif execute_approved:
                 step = await self.db.update_step(
                     task_id=task_id,
                     step_id=step.step_id,
@@ -204,6 +231,7 @@ class AgentProtocolServer:
                     command_args=execute_command_args,
                 )
             else:
+                assert step_request.input
                 execute_result = await agent.execute(
                     command_name="human_feedback",  # HACK
                     command_args={},
