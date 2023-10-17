@@ -16,7 +16,7 @@ async def generate_agent_for_task(
     app_config: "Config",
     llm_provider: "ChatModelProvider",
 ) -> "Agent":
-    base_directives = AIDirectives.from_file(app_config.ai_settings_file)
+    base_directives = AIDirectives.from_file(app_config.prompt_settings_file)
     ai_profile, task_directives = await generate_agent_profile_for_task(
         task=task,
         app_config=app_config,
