@@ -9,7 +9,6 @@ from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from pydantic import Field, validator
 
 if TYPE_CHECKING:
-
     from autogpt.config import Config
     from autogpt.core.prompting.base import PromptStrategy
     from autogpt.core.resource.model_providers.schema import (
@@ -183,11 +182,11 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         self.legacy_config = legacy_config
         """LEGACY: Monolithic application configuration."""
 
-        self.file_manager = (
+        self.file_manager: AgentFileManager = (
             AgentFileManager(settings.agent_data_dir)
             if settings.agent_data_dir
             else None
-        )
+        )  # type: ignore
 
         self.llm_provider = llm_provider
 
@@ -239,6 +238,10 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
+        assert self.file_manager, (
+            f"Agent has no FileManager: call {__class__.__name__}.attach_fs()"
+            " before trying to run the agent."
+        )
 
         # Scratchpad as surrogate PromptGenerator for plugin hooks
         self._prompt_scratchpad = PromptScratchpad()
