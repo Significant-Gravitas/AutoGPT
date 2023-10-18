@@ -341,11 +341,14 @@ tenacity = "^8.2.2"
 toml = "^0.10.2"
 uvicorn = "^0.23.2"
 
+[package.extras]
+benchmark = ["agbenchmark @ file:///home/reinier/code/agpt/Auto-GPT/autogpts/autogpt/.venv/src/AutoGPT/benchmark"]
+
 [package.source]
 type = "git"
 url = "https://github.com/Significant-Gravitas/AutoGPT.git"
-reference = "bceb66f"
-resolved_reference = "bceb66f\n"
+reference = "HEAD"
+resolved_reference = "62df429ffa7179ef761a65160950d9ce4bf87171"
 subdirectory = "autogpts/forge"
 
 [[package]]
@@ -6207,4 +6210,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "75e2afabd8c8208d6b0a0affbdc27fcedef028722a366421e031f2665f04aa4a"
+content-hash = "2664832063d913a9b5146db9bb1c4e05f436c6b884acbfa5f5fa46b0daa537e4"
