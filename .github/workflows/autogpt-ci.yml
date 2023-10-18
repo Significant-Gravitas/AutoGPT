@@ -6,19 +6,16 @@ on:
     paths:
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
-      - '!autogpts/autogpt/tests/challenges/current_score.json'
   pull_request:
     branches: [ stable, master, release-* ]
     paths:
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
-      - '!autogpts/autogpt/tests/challenges/current_score.json'
   pull_request_target:
     branches: [ master, release-*, ci-test* ]
     paths:
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
-      - '!autogpts/autogpt/tests/challenges/current_score.json'
 
 concurrency:
   group: ${{ format('autogpt-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -169,8 +166,7 @@ jobs:
           poetry run pytest -vv \
             --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
             --numprocesses=logical --durations=10 \
-            tests/unit tests/integration tests/challenges
-          poetry run python tests/challenges/utils/build_current_score.py
+            tests/unit tests/integration
         env:
           CI: true
           PROXY: ${{ github.event_name == 'pull_request_target' && secrets.PROXY || '' }}
@@ -198,19 +194,6 @@ jobs:
             "Authorization: Basic $base64_pat"
 
           echo "config_key=$config_key" >> $GITHUB_OUTPUT
-
-      - name: Push updated challenge scores
-        if: github.event_name == 'push'
-        run: |
-          score_file="tests/challenges/current_score.json"
-
-          if ! git diff --quiet $score_file; then
-            git add $score_file
-            git commit -m "Update challenge scores"
-            git push origin HEAD:${{ github.ref_name }}
-          else
-            echo "The challenge scores didn't change."
-          fi
 
       - id: push_cassettes
         name: Push updated cassettes
