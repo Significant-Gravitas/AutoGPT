@@ -47,7 +47,7 @@ async def test_interactively_revise_ai_settings(config: Config):
     )
 
     user_inputs = [
-        "y",
+        "n",
         "New AI",
         "New Role",
         "NewConstraint",
@@ -56,8 +56,9 @@ async def test_interactively_revise_ai_settings(config: Config):
         "",
         "NewBestPractice",
         "",
+        "y",
     ]
-    with patch("autogpt.app.utils.clean_input", side_effect=user_inputs):
+    with patch("autogpt.app.setup.clean_input", side_effect=user_inputs):
         ai_profile, directives = await interactively_revise_ai_settings(
             ai_profile, directives, config
         )
