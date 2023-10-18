@@ -3,6 +3,7 @@ The FileWorkspace class provides an interface for interacting with a file worksp
 """
 from __future__ import annotations
 
+import inspect
 import logging
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -65,7 +66,7 @@ class FileWorkspace:
         with self.open_file(path, "rb" if binary else "r") as file:
             return file.read()
 
-    def write_file(self, path: str | Path, content: str | bytes):
+    async def write_file(self, path: str | Path, content: str | bytes):
         """Write to a file in the workspace."""
         with self.open_file(path, "wb" if type(content) is bytes else "w") as file:
             file.write(content)
@@ -74,7 +75,9 @@ class FileWorkspace:
             path = Path(path)
             if path.is_absolute():
                 path = path.relative_to(self.root)
-            self.on_write_file(path)
+            res = self.on_write_file(path)
+            if inspect.isawaitable(res):
+                await res
 
     def list_files(self, path: str | Path = "."):
         """List all files in a directory in the workspace."""

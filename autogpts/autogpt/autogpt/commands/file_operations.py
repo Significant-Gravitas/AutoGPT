@@ -209,7 +209,7 @@ def ingest_file(
     aliases=["create_file"],
 )
 @sanitize_path_arg("filename")
-def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
+async def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
     """Write contents to a file
 
     Args:
@@ -225,7 +225,7 @@ def write_to_file(filename: Path, contents: str, agent: Agent) -> str:
 
     directory = os.path.dirname(filename)
     os.makedirs(directory, exist_ok=True)
-    agent.workspace.write_file(filename, contents)
+    await agent.workspace.write_file(filename, contents)
     log_operation("write", filename, agent, checksum)
     return f"File {filename.name} has been written successfully."
 
