@@ -10,6 +10,7 @@ Hey there! Ready for part 3 of our AutoGPT Forge tutorial series? If you missed 
 
 Now, let's get hands-on! We'll use an LLM to power our agent and complete a task. The challenge? Making the agent write "Washington" to a .txt file. We won't give it step-by-step instructions—just the task. Let's see our agent in action and watch it figure out the steps on its own!
 
+
 ## Get Your Smart Agent Project Ready
 
 Make sure you've set up your project and created an agent as described in our initial guide. If you skipped that part, [click here](#) to get started. Once you're done, come back, and we'll move forward.
@@ -22,9 +23,9 @@ In the image below, you'll see my "SmartAgent" and the agent.py file inside the 
 
 ## The Task Lifecycle
 
-The agent protocol guides a task from start to finish. Here's the breakdown: a task begins, follows its steps, and ends when done.
+The lifecycle of a task, from its creation to execution, is outlined in the agent protocol. In simple terms: a task is initiated, its steps are systematically executed, and it concludes once completed.
 
-To make your agent act, use a create_task request. This step is like sending a prompt to ChatGPT: you provide task details in the input. Using the UI? It'll manage API calls for you.
+Want your agent to perform an action? Start by dispatching a create_task request. This crucial step involves specifying the task details, much like how you'd send a prompt to ChatGPT, using the input field. If you're giving this a shot on your own, the UI is your best friend; it effortlessly handles all the API calls on your behalf.
 
 When the agent gets this, it runs the create_task function. The code `super().create_task(task_request)` takes care of protocol steps. It then logs the task's start. For this guide, you don't need to change this function.
 
@@ -73,15 +74,15 @@ async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Ste
 
 Here's the breakdown of the 'write file' process in four steps:
 
-1. **Database Step Creation**: We start by creating a step in the database. Notice the `is_last=True` flag? It tells the agent protocol there's no more steps left. For this guide, we assume tasks have only one step. But stay tuned, we'll explore multi-step tasks in future guides.
+1. **Database Step Creation**: The first stage is all about creating a step within the database, an essential aspect of the agent protocol. You'll observe that while setting up this step, we've flagged it with `is_last=True`. This signals to the agent protocol that no more steps are pending. For the purpose of this guide, let's work under the assumption that our agent will only tackle single-step tasks. However, hang tight for future tutorials, where we'll level up and let the agent determine its completion point.
 
-2. **File Writing**: We write "Washington D.C." using `workspace.write`.
+2. **File Writing**: Next, we pen down "Washington D.C." using the workspace.write function.
 
 3. **Artifact Database Update**: After writing, we record the file in the agent's artifact database.
 
 4. **Step Output & Logging**: Finally, we set the step output to match the file content, log the executed step, and use the step object.
 
-With the 'write file' process clear, let's make our agent smarter and more autonomous. Excited?
+With the 'write file' process clear, let's make our agent smarter and more autonomous. Ready to dive in?
 
 ---
 
@@ -142,13 +143,13 @@ In your `execute_step` function, set up the engine for the `gpt-3.5-turbo` LLM:
 prompt_engine = PromptEngine("gpt-3.5-turbo")
 ```
 
-To load a prompt, like the `system-format` that sets the LLM's response format:
+Loading a prompt is straightforward. For instance, loading the `system-format` prompt, which dictates the response format from the LLM, is as easy as:
 
 ```python
 system_prompt = prompt_engine.load_prompt("system-format")
 ```
 
-For more complex prompts, like `task-step` that needs parameters:
+For intricate use cases, like the `task-step` prompt which requires parameters, employ the following method:
 
 ```python
 # Define the task parameters
@@ -173,21 +174,26 @@ Your task is:
 
 {{ task }}
 
-Respond in the given format. Make decisions on your own using your LLM, and keep it simple without legal issues.
-
+Ensure to respond in the given format. Always make autonomous decisions, devoid of user guidance. Harness the power of your LLM, opting for straightforward tactics sans any legal entanglements.
 {% if constraints %}
 ## Constraints
-Follow these rules:
+Operate under these confines:
 {% for constraint in constraints %}
 - {{ constraint }}
 {% endfor %}
 {% endif %}
-
 {% if resources %}
 ## Resources
-Use these resources:
+Utilize these resources:
 {% for resource in resources %}
 - {{ resource }}
+{% endfor %}
+{% endif %}
+{% if abilities %}
+## Abilities
+Summon these abilities:
+{% for ability in abilities %}
+- {{ ability }}
 {% endfor %}
 {% endif %}
 
@@ -210,11 +216,11 @@ Use these abilities:
 
 This template is modular. It uses the `extends` directive to build on the `expert.j2` template. The different sections like constraints, resources, abilities, and best practices make the prompt dynamic. It guides the LLM in understanding the task and using resources and abilities.
 
-The PromptEngine lets us talk to large language models easily. By using templates, our agent can adapt without changing the code. Remember this as we move forward—it's key to our agent's smarts.
+The PromptEngine equips us with a potent tool to converse seamlessly with large language models. By externalizing prompts and using templates, we can ensure that our agent remains agile, adapting to new challenges without a code overhaul. As we march forward, keep this foundation in mind—it's the bedrock of our agent's intelligence.
 
 ---
 
-## Engaging with LLM
+## Engaging with your LLM
 
 To make the most of the LLM, you'll send a series of organized instructions, not just one prompt. Structure your prompts as a list of messages for the LLM. Using the `system_prompt` and `task_prompt` from before, create the `messages` list:
 
@@ -225,7 +231,7 @@ messages = [
 ]
 ```
 
-With the prompt set, send it to the LLM. This step involves foundational code, focusing on the `chat_completion_request`. This function gets the LLM's output. The other code sets up our request and interprets the feedback:
+With the prompt set, send it to the LLM. This step involves foundational code, focusing on the `chat_completion_request`. This function gives the LLM your prompt, and then gets the LLM's output. The other code sets up our request and interprets the feedback:
 
 ```python
 try:
@@ -249,14 +255,14 @@ except Exception as e:
     LOG.error(f"Can't get chat response: {e}")
 ```
 
-Extracting clear messages from LLM outputs can be complex. Our method is simple and works with GPT-3.5 and GPT-4. Future guides will show more ways to interpret LLM outputs. The goal? To go beyond JSON, as some LLMs work best with other response types. More to come!
+Extracting clear messages from LLM outputs can be complex. Our method is simple and works with GPT-3.5 and GPT-4. Future guides will show more ways to interpret LLM outputs. The goal? To go beyond JSON, as some LLMs work best with other response types. Stay tuned!
 
 ---
 
 
 ## Using and Creating Abilities
 
-Abilities are tools that help agents manage tasks. Let's explore how these work and how you can create your own.
+Abilities are the gears and levers that enable the agent to interact with tasks at hand. Let's unpack the mechanisms behind these abilities and how you can harness, and even extend, them.
 
 In the SDK, there's a `abilities` folder containing `registry.py`, `finish.py`, and a `file_system` subfolder. You can also add your own abilities here. `registry.py` is the main file for abilities. It contains the `@ability` decorator and the `AbilityRegister` class. This class actively tracks abilities and outlines their function. The base Agent class includes a default ability register available via `self.abilities`. It looks like this:
 
@@ -290,7 +296,7 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes) -> None:
     pass
 ```
 
-The `@ability` decorator defines the ability's details, like its name, function, and parameters.
+The `@ability` decorator defines the ability's details, like its identity (name), functionality (description), and operational parameters.
 
 ## Example of a Custom Ability: Webpage Fetcher
 
@@ -315,7 +321,7 @@ async def fetch_webpage(agent, task_id: str, url: str) -> str:
   return response.text
 ```
 
-This custom ability, "fetch_webpage", gets a webpage's content. Custom abilities let you add more features to your agent. They can integrate other tools and libraries to enhance its functions. To make a custom ability, you need to understand the structure and add technical details. With abilities like "fetch_webpage", your agent can handle complex tasks efficiently.
+This ability, `fetch_webpage`, accepts a URL as input and returns the HTML content of the webpage as a string. Custom abilities let you add more features to your agent. They can integrate other tools and libraries to enhance its functions. To make a custom ability, you need to understand the structure and add technical details. With abilities like "fetch_webpage", your agent can handle complex tasks efficiently.
 
 ## Running an Ability
 
@@ -338,7 +344,7 @@ output = await self.abilities.run_ability(
 )
 ```
 
-Here, we use the given ability. The `task_id` keeps track, `ability['name']` finds the function, and the arguments (`ability["args"]`) give context.
+Here, we’re invoking the specified ability. The task_id ensures continuity, ability['name'] pinpoints the exact function, and the arguments (ability["args"]) provide necessary context.
 
 Finally, we make the step's output show the agent's thinking:
 
@@ -350,7 +356,7 @@ step.output = answer["thoughts"]["speak"]
 return step
 ```
 
-And that's it! Your first Smart Agent is ready. It's time to see it in action!
+And there you have it! Your first Smart Agent, sculpted with precision and purpose, stands ready to take on challenges. The stage is set. It’s showtime!
 
 Here is what your function should look like:
 
@@ -472,6 +478,8 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 
 3. **Navigate to Benchmarking**
    - Look to the left, and you'll spot a trophy icon. Click it to enter the benchmarking arena.
+  
+![Benchmarking page of the AutoGPT UI](../../../docs/content/imgs/quickstart/t3_04.png)
 
 4. **Select the 'WriteFile' Test**
    - Choose the 'WriteFile' test from the available options.
@@ -489,6 +497,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 📝      ✅ Final Step completed: a736c45f-65a5-4c44-a697-f1d6dcd94d5c input: y
 ```
 If you see this, you've done it!
+
 8. **Troubleshooting**
    - If you encounter any issues or see cryptic error messages, don't worry. Just hit the retry button. Remember, LLMs are powerful but may occasionally need some guidance.
 
