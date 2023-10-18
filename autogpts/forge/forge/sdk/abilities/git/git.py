@@ -3,7 +3,9 @@ from ..registry import ability
 import os
 import git
 from git import Repo
+from pathlib import Path
 
+from ...agent import Agent
 
 @ability(
     name="clone_repo",
@@ -14,7 +16,8 @@ from git import Repo
     ],
     output_type="string",
 )
-async def clone_repo(agent, task_id: str, step_id: str, repo_url: str, dest_path: str) -> str:
+async def clone_repo(agent: Agent, task_id: str, repo_url: str, dest_path: str) -> str:
+    
     try:
         # Retrieve the GitHub token from an environment variable
         token = os.getenv("GITHUB_TOKEN")
@@ -25,7 +28,11 @@ async def clone_repo(agent, task_id: str, step_id: str, repo_url: str, dest_path
         repo_url_with_token = repo_url.replace("https://", f"https://{token}@")
 
         # Clone the repository
-        Repo.clone_from(repo_url_with_token, dest_path)
+
+        # set the path to download the repo to to be the dest_path inside of os.getenv("AGENT_WORKSPACE")
+        dest = Path(os.getenv("AGENT_WORKSPACE")) / dest_path
+
+        Repo.clone_from(repo_url_with_token, dest)
 
         return f"Successfully cloned repository to {dest_path}."
     except git.GitCommandError as e:
@@ -39,12 +46,18 @@ async def clone_repo(agent, task_id: str, step_id: str, repo_url: str, dest_path
     parameters=[
         {"name": "branch_name", "description": "Name of the new branch", "type": "string", "required": True},
         {"name": "base_branch", "description": "Base branch for the new branch", "type": "string", "required": False, "default": "main"},
+        {"name": "repo_path", "description": "Path to the local repository", "type": "string", "required": True}
     ],
     output_type="string",
 )
-async def create_branch(agent, task_id: str, step_id: str, branch_name: str, base_branch: str = 'main') -> str:
-    # Again, this would involve Git commands or a library
-    return "Successfully created branch."
+async def create_branch(agent, task_id: str, repo_path: str,  branch_name: str, base_branch: str = 'main') -> str:
+    # Load the repository
+    repo = Repo(repo_path)
+
+    # Create the new branch
+    repo.git.branch(branch_name, base_branch)
+
+    return f"Successfully created branch {branch_name} from {base_branch}."
 
 
 @ability(
@@ -52,10 +65,11 @@ async def create_branch(agent, task_id: str, step_id: str, branch_name: str, bas
     description="Commits changes made in the current branch.",
     parameters=[
         {"name": "commit_message", "description": "Message for the commit", "type": "string", "required": True},
+        {"name": "repo_path", "description": "Path to the local repository", "type": "string", "required": True}
     ],
     output_type="string",
 )
-async def commit_changes(agent, task_id: str, step_id: str, commit_message: str, repo_path: str) -> str:
+async def commit_changes(agent, task_id: str, commit_message: str, repo_path: str) -> str:
     try:
         # Load the repository
         repo = Repo(repo_path)
@@ -84,7 +98,7 @@ async def commit_changes(agent, task_id: str, step_id: str, commit_message: str,
     ],
     output_type="string",
 )
-async def push_branch(agent, task_id: str, step_id: str, branch_name: str, remote_name: str = 'origin') -> str:
+async def push_branch(agent, task_id: str, branch_name: str, remote_name: str = 'origin') -> str:
     # Logic for pushing branch goes here
     return "Successfully pushed branch."
 
@@ -100,7 +114,7 @@ async def push_branch(agent, task_id: str, step_id: str, branch_name: str, remot
     ],
     output_type="string",
 )
-async def create_pull_request(agent, task_id: str, step_id: str, title: str, body: str, base_branch: str, head_branch: str) -> str:
+async def create_pull_request(agent, task_id: str, title: str, body: str, base_branch: str, head_branch: str) -> str:
     # Logic for creating a pull request goes here
     return "Successfully created pull request."
 
@@ -116,7 +130,7 @@ async def create_pull_request(agent, task_id: str, step_id: str, title: str, bod
     ],
     output_type="list",
 )
-async def fetch_issues(agent, task_id: str, step_id: str, repo_name: str, owner: str, labels: list = None, state: str = 'open') -> list:
+async def fetch_issues(agent, task_id: str, repo_name: str, owner: str, labels: list = None, state: str = 'open') -> list:
     # Logic to fetch issues from GitHub goes here
     return []
 
@@ -132,6 +146,6 @@ async def fetch_issues(agent, task_id: str, step_id: str, repo_name: str, owner:
     ],
     output_type="string",
 )
-async def add_comment(agent, task_id: str, step_id: str, repo_name: str, owner: str, issue_number: int, comment_body: str) -> str:
+async def add_comment(agent, task_id: str, repo_name: str, owner: str, issue_number: int, comment_body: str) -> str:
     # Logic to add a comment to a GitHub issue goes here
     return "Successfully added comment to issue."

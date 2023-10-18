@@ -16,7 +16,7 @@ import pprint
 
 LOG = ForgeLogger(__name__)
 
-debug = False
+debug = True
 
 class ForgeAgent(Agent):
     """
