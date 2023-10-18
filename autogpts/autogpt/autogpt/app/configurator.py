@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from pathlib import Path
+from typing import Literal, Optional
 
 import click
 from colorama import Back, Fore, Style
@@ -17,29 +18,29 @@ from autogpt.memory.vector import get_supported_memory_backends
 logger = logging.getLogger(__name__)
 
 
-def create_config(
+def apply_overrides_to_config(
     config: Config,
-    continuous: bool,
-    continuous_limit: int,
-    ai_settings_file: str,
-    prompt_settings_file: str,
-    skip_reprompt: bool,
-    speak: bool,
-    debug: bool,
-    gpt3only: bool,
-    gpt4only: bool,
-    memory_type: str,
-    browser_name: str,
-    allow_downloads: bool,
-    skip_news: bool,
+    continuous: bool = False,
+    continuous_limit: Optional[int] = None,
+    ai_settings_file: Optional[Path] = None,
+    prompt_settings_file: Optional[Path] = None,
+    skip_reprompt: bool = False,
+    speak: bool = False,
+    debug: bool = False,
+    gpt3only: bool = False,
+    gpt4only: bool = False,
+    memory_type: str = "",
+    browser_name: str = "",
+    allow_downloads: bool = False,
+    skip_news: bool = False,
 ) -> None:
     """Updates the config object with the given arguments.
 
     Args:
         continuous (bool): Whether to run in continuous mode
         continuous_limit (int): The number of times to run in continuous mode
-        ai_settings_file (str): The path to the ai_settings.yaml file
-        prompt_settings_file (str): The path to the prompt_settings.yaml file
+        ai_settings_file (Path): The path to the ai_settings.yaml file
+        prompt_settings_file (Path): The path to the prompt_settings.yaml file
         skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
         speak (bool): Whether to enable speak mode
         debug (bool): Whether to enable debug mode
@@ -52,7 +53,7 @@ def create_config(
     """
     config.debug_mode = False
     config.continuous_mode = False
-    config.speak_mode = False
+    config.tts_config.speak_mode = False
 
     if debug:
         print_attribute("Debug mode", "ENABLED")
@@ -77,7 +78,7 @@ def create_config(
 
     if speak:
         print_attribute("Speak Mode", "ENABLED")
-        config.speak_mode = True
+        config.tts_config.speak_mode = True
 
     # Set the default LLM models
     if gpt3only:
@@ -130,7 +131,7 @@ def create_config(
             exit(1)
 
         print_attribute("Using AI Settings File", file)
-        config.ai_settings_file = file
+        config.ai_settings_file = config.project_root / file
         config.skip_reprompt = True
 
     if prompt_settings_file:
@@ -144,7 +145,7 @@ def create_config(
             exit(1)
 
         print_attribute("Using Prompt Settings File", file)
-        config.prompt_settings_file = file
+        config.prompt_settings_file = config.project_root / file
 
     if browser_name:
         config.selenium_web_browser = browser_name

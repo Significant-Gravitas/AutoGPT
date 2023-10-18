@@ -1,1 +1,8 @@
-{"workspace": {"input": "auto_gpt_workspace", "output":"auto_gpt_workspace"  }, "entry_path": "agbenchmark.benchmarks"}
+{
+  "workspace": {
+    "input": "agbenchmark_config/workspace",
+    "output": "agbenchmark_config/workspace"
+  },
+  "entry_path": "agbenchmark.benchmarks",
+  "host": "http://localhost:8000"
+}

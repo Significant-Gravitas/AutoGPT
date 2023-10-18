@@ -1,0 +1,4 @@
+#!/bin/sh
+
+poetry install --no-interaction --extras benchmark
+echo "Setup completed successfully."
