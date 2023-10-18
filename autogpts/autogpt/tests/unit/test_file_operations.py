@@ -15,9 +15,9 @@ import autogpt.commands.file_operations as file_ops
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.config import Config
+from autogpt.file_workspace import FileWorkspace
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
-from autogpt.workspace import Workspace
 
 
 @pytest.fixture()
@@ -50,7 +50,7 @@ def test_file_name():
 
 
 @pytest.fixture
-def test_file_path(test_file_name: Path, workspace: Workspace):
+def test_file_path(test_file_name: Path, workspace: FileWorkspace):
     return workspace.get_path(test_file_name)
 
 
@@ -73,12 +73,12 @@ def test_file_with_content_path(test_file: TextIOWrapper, file_content, agent: A
 
 
 @pytest.fixture()
-def test_directory(workspace: Workspace):
+def test_directory(workspace: FileWorkspace):
     return workspace.get_path("test_directory")
 
 
 @pytest.fixture()
-def test_nested_file(workspace: Workspace):
+def test_nested_file(workspace: FileWorkspace):
     return workspace.get_path("nested/test_file.txt")
 
 
@@ -169,7 +169,7 @@ def test_is_duplicate_operation(agent: Agent, mocker: MockerFixture):
 # Test logging a file operation
 def test_log_operation(agent: Agent):
     file_ops.log_operation("log_test", "path/to/test", agent=agent)
-    with open(agent.legacy_config.file_logger_path, "r", encoding="utf-8") as f:
+    with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
         content = f.read()
     assert f"log_test: path/to/test\n" in content
 
@@ -183,7 +183,7 @@ def test_text_checksum(file_content: str):
 
 def test_log_operation_with_checksum(agent: Agent):
     file_ops.log_operation("log_test", "path/to/test", agent=agent, checksum="ABCDEF")
-    with open(agent.legacy_config.file_logger_path, "r", encoding="utf-8") as f:
+    with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
         content = f.read()
     assert f"log_test: path/to/test #ABCDEF\n" in content
 
@@ -224,7 +224,7 @@ def test_write_file_logs_checksum(test_file_name: Path, agent: Agent):
     new_content = "This is new content.\n"
     new_checksum = file_ops.text_checksum(new_content)
     file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
-    with open(agent.legacy_config.file_logger_path, "r", encoding="utf-8") as f:
+    with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
         log_entry = f.read()
     assert log_entry == f"write: {test_file_name} #{new_checksum}\n"
 
@@ -264,9 +264,17 @@ def test_append_to_file_uses_checksum_from_appended_file(
     test_file_name: Path, agent: Agent
 ):
     append_text = "This is appended text.\n"
-    file_ops.append_to_file(test_file_name, append_text, agent=agent)
-    file_ops.append_to_file(test_file_name, append_text, agent=agent)
-    with open(agent.legacy_config.file_logger_path, "r", encoding="utf-8") as f:
+    file_ops.append_to_file(
+        agent.workspace.get_path(test_file_name),
+        append_text,
+        agent=agent,
+    )
+    file_ops.append_to_file(
+        agent.workspace.get_path(test_file_name),
+        append_text,
+        agent=agent,
+    )
+    with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
         log_contents = f.read()
 
     digest = hashlib.md5()
@@ -280,7 +288,7 @@ def test_append_to_file_uses_checksum_from_appended_file(
     )
 
 
-def test_list_files(workspace: Workspace, test_directory: Path, agent: Agent):
+def test_list_files(workspace: FileWorkspace, test_directory: Path, agent: Agent):
     # Case 1: Create files A and B, search for A, and ensure we don't return A and B
     file_a = workspace.get_path("file_a.txt")
     file_b = workspace.get_path("file_b.txt")

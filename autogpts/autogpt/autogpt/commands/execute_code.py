@@ -102,7 +102,7 @@ def execute_python_file(
         str: The output of the file
     """
     logger.info(
-        f"Executing python file '{filename}' in working directory '{agent.legacy_config.workspace_path}'"
+        f"Executing python file '{filename}' in working directory '{agent.workspace.root}'"
     )
 
     if isinstance(args, str):
