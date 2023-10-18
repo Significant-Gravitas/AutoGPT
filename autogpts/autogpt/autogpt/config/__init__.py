@@ -1,13 +1,13 @@
 """
 This module contains the configuration classes for AutoGPT.
 """
-from .ai_config import AIConfig
 from .ai_directives import AIDirectives
-from .config import Config, ConfigBuilder, check_openai_api_key
+from .ai_profile import AIProfile
+from .config import Config, ConfigBuilder, assert_config_has_openai_api_key
 
 __all__ = [
-    "check_openai_api_key",
-    "AIConfig",
+    "assert_config_has_openai_api_key",
+    "AIProfile",
     "AIDirectives",
     "Config",
     "ConfigBuilder",

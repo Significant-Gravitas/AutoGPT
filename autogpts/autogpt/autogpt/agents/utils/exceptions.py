@@ -14,6 +14,10 @@ class AgentException(Exception):
         super().__init__(message, *args)
 
 
+class AgentTerminated(AgentException):
+    """The agent terminated or was terminated"""
+
+
 class ConfigurationError(AgentException):
     """Error caused by invalid, incompatible or otherwise incorrect configuration"""
 
