@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from forge.sdk.db import AgentDB
 from forge.sdk.errors import NotFoundError
@@ -317,7 +317,7 @@ class AgentProtocolServer:
             file_path = os.path.join(relative_path, file_name)
 
         workspace = get_task_agent_file_workspace(task_id, self.agent_manager)
-        workspace.write_file(file_path, data)
+        await workspace.write_file(file_path, data)
 
         artifact = await self.db.create_artifact(
             task_id=task_id,
@@ -365,7 +365,8 @@ def get_task_agent_file_workspace(
         root=agent_manager.get_agent_dir(
             agent_id=task_agent_id(task_id),
             must_exist=True,
-        ),
+        )
+        / "workspace",
         restrict_to_root=True,
     )
 

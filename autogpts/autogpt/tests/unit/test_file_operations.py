@@ -204,53 +204,59 @@ def test_read_file_not_found(agent: Agent):
         file_ops.read_file(filename, agent=agent)
 
 
-def test_write_to_file_relative_path(test_file_name: Path, agent: Agent):
+@pytest.mark.asyncio
+async def test_write_to_file_relative_path(test_file_name: Path, agent: Agent):
     new_content = "This is new content.\n"
-    file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
+    await file_ops.write_to_file(test_file_name, new_content, agent=agent)
     with open(agent.workspace.get_path(test_file_name), "r", encoding="utf-8") as f:
         content = f.read()
     assert content == new_content
 
 
-def test_write_to_file_absolute_path(test_file_path: Path, agent: Agent):
+@pytest.mark.asyncio
+async def test_write_to_file_absolute_path(test_file_path: Path, agent: Agent):
     new_content = "This is new content.\n"
-    file_ops.write_to_file(str(test_file_path), new_content, agent=agent)
+    await file_ops.write_to_file(test_file_path, new_content, agent=agent)
     with open(test_file_path, "r", encoding="utf-8") as f:
         content = f.read()
     assert content == new_content
 
 
-def test_write_file_logs_checksum(test_file_name: Path, agent: Agent):
+@pytest.mark.asyncio
+async def test_write_file_logs_checksum(test_file_name: Path, agent: Agent):
     new_content = "This is new content.\n"
     new_checksum = file_ops.text_checksum(new_content)
-    file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
+    await file_ops.write_to_file(test_file_name, new_content, agent=agent)
     with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
         log_entry = f.read()
     assert log_entry == f"write: {test_file_name} #{new_checksum}\n"
 
 
-def test_write_file_fails_if_content_exists(test_file_name: Path, agent: Agent):
+@pytest.mark.asyncio
+async def test_write_file_fails_if_content_exists(test_file_name: Path, agent: Agent):
     new_content = "This is new content.\n"
     file_ops.log_operation(
         "write",
-        str(test_file_name),
+        test_file_name,
         agent=agent,
         checksum=file_ops.text_checksum(new_content),
     )
     with pytest.raises(DuplicateOperationError):
-        file_ops.write_to_file(str(test_file_name), new_content, agent=agent)
+        await file_ops.write_to_file(test_file_name, new_content, agent=agent)
 
 
-def test_write_file_succeeds_if_content_different(
+@pytest.mark.asyncio
+async def test_write_file_succeeds_if_content_different(
     test_file_with_content_path: Path, agent: Agent
 ):
     new_content = "This is different content.\n"
-    file_ops.write_to_file(str(test_file_with_content_path), new_content, agent=agent)
+    await file_ops.write_to_file(test_file_with_content_path, new_content, agent=agent)
 
 
-def test_append_to_file(test_nested_file: Path, agent: Agent):
+@pytest.mark.asyncio
+async def test_append_to_file(test_nested_file: Path, agent: Agent):
     append_text = "This is appended text.\n"
-    file_ops.write_to_file(test_nested_file, append_text, agent=agent)
+    await file_ops.write_to_file(test_nested_file, append_text, agent=agent)
 
     file_ops.append_to_file(test_nested_file, append_text, agent=agent)
 
