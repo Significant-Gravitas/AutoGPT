@@ -308,8 +308,8 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         )
 
         return (
-            f"Respond strictly with JSON{', and also specify a command to use through a function_call' if use_functions_api else ''}. "
-            "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
+            f"Respond strictly with a JSON object{' containing your thoughts, and a function_call specifying the next command to use' if use_functions_api else ''}. "
+            "The JSON object should be compatible with the TypeScript type `Response` from the following:\n"
             f"{response_format}"
         )
 

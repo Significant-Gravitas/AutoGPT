@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 @command(
     "finish",
-    "Use this to shut down once you have accomplished all of your goals,"
+    "Use this to shut down once you have completed your task,"
     " or when there are insurmountable problems that make it impossible"
     " for you to finish your task.",
     {
