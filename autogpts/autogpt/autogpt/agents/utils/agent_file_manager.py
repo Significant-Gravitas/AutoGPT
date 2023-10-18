@@ -33,5 +33,5 @@ class AgentFileManager:
     def init_file_ops_log(file_logger_path: Path) -> Path:
         if not file_logger_path.exists():
             with file_logger_path.open(mode="w", encoding="utf-8") as f:
-                f.write("File Operation Logger ")
+                f.write("")
         return file_logger_path

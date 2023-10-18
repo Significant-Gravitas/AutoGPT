@@ -264,8 +264,16 @@ def test_append_to_file_uses_checksum_from_appended_file(
     test_file_name: Path, agent: Agent
 ):
     append_text = "This is appended text.\n"
-    file_ops.append_to_file(test_file_name, append_text, agent=agent)
-    file_ops.append_to_file(test_file_name, append_text, agent=agent)
+    file_ops.append_to_file(
+        agent.workspace.get_path(test_file_name),
+        append_text,
+        agent=agent,
+    )
+    file_ops.append_to_file(
+        agent.workspace.get_path(test_file_name),
+        append_text,
+        agent=agent,
+    )
     with open(agent.file_manager.file_ops_log_path, "r", encoding="utf-8") as f:
         log_contents = f.read()
 
