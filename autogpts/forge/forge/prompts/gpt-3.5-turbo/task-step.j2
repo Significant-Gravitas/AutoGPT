@@ -8,7 +8,7 @@ Your task is:
 Answer in the provided format.
 
 Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and
-pursue simple strategies with no legal complications.
+pursue simple strategies with no legal complications.  When the task is complete based on the Steps already taken, return the finish ability.
 
 {% if constraints %}
 ## Constraints
@@ -42,9 +42,11 @@ You have access to the following abilities you can call:
 {% endif %}
 
 {% if previous_actions %}
-## History of Abilities Used
+## Steps already taken
 {% for action in previous_actions %}
-- {{ action }}
+- ability: {{ action.name }}
+  args: {{ action.args }}
+  output: {{ action.output }}
 {% endfor %}
 {% endif %}
 {% endblock %}

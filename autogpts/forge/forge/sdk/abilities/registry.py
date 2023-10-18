@@ -180,8 +180,8 @@ class AbilityRegister:
         try:
             ability = self.abilities[ability_name]
             return await ability(self.agent, task_id, *args, **kwds)
-        except Exception:
-            raise
+        except Exception as inner_ex:
+            raise inner_ex
 
 
 if __name__ == "__main__":

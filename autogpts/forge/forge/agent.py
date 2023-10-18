@@ -16,6 +16,7 @@ import pprint
 
 LOG = ForgeLogger(__name__)
 
+debug = True
 
 class ForgeAgent(Agent):
     """
@@ -78,6 +79,7 @@ class ForgeAgent(Agent):
         Feel free to create subclasses of the database and workspace to implement your own storage
         """
         super().__init__(database, workspace)
+        self.memstore = ChromaMemStore("agbenchmark_config/workspace/memory")
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """
@@ -122,26 +124,183 @@ class ForgeAgent(Agent):
         multiple steps. Returning a request to continue in the step output, the user can then decide
         if they want the agent to continue or not.
         """
-        # An example that
+        # Firstly we get the task this step is for so we can access the task input
+        task = await self.db.get_task(task_id)
+        step_request.input = task.input
+        LOG.debug(f"Running Step for Task { task.task_id }")
+
+        messages = None
+        try:
+            messages = await self.db.get_chat_history(task_id)
+            if debug:
+                LOG.info(f"Previous Messages {messages}")
+        except Exception as e:
+            LOG.error(f"Unable to get chat history: {e}")
+        
+        actions = None
+        try:
+            actions = await self.db.get_action_history(task_id)
+            if debug:
+                LOG.debug(f"Previous actions FOUND!!!{actions}")
+        except Exception as e:
+            LOG.error(f"Unable to get actions history: {e}")
+
+        prompt_engine = PromptEngine("gpt-3.5-turbo")
+
+        if not messages:
+            # Initialize the PromptEngine with the "gpt-3.5-turbo" model
+
+            # Load the system and task prompts
+            system_prompt = prompt_engine.load_prompt("system-format")
+
+            # Initialize the messages list with the system prompt
+            messages = [
+                {"role": "system", "content": system_prompt},
+            ]
+            # Define the task parameters
+            task_kwargs = {
+                "task": task.input,
+                "abilities": self.abilities.list_abilities_for_prompt(),
+                "expert": "agent",
+            }
+            if actions:
+                task_kwargs['previous_actions'] = actions
+
+            # Load the task prompt with the defined task parameters
+            task_prompt = prompt_engine.load_prompt("task-step", **task_kwargs)
+            if debug:
+                LOG.debug(f"TASK PROMPT:\n\n{task_prompt}")
+            # Append the task prompt to the messages list
+            messages.append({"role": "user", "content": task_prompt})
+            msgs = await self.db.add_chat_history(task_id, messages)
+            if debug:
+                LOG.info(f"\t self.db.add_chat_history:  { msgs } ")
+
+        else:
+            # Define the task parameters
+            task_kwargs = {
+                "task": task.input,
+                "abilities": self.abilities.list_abilities_for_prompt(),
+            }
+
+            if actions:
+                task_kwargs['previous_actions'] = actions
+            # Load the task prompt with the defined task parameters
+            task_prompt = prompt_engine.load_prompt("task-step", **task_kwargs)
+            if debug:
+                LOG.debug(f"TASK PROMPT:\n\n{task_prompt}")
+            messages.append({"role": "user", "content": task_prompt})
+            msg = await self.db.add_chat_message(task_id, "user", task.input)
+
+        # Define the parameters for the chat completion request
+        # while True:
+        try:
+            chat_completion_kwargs = {
+                "messages": messages,
+                "model": "gpt-3.5-turbo",
+            }
+
+            # Make the chat completion request and parse the response
+            if debug:
+                LOG.info(pprint.pformat("Prompt being sent to gpt-3.5"))
+                LOG.info(pprint.pformat(chat_completion_kwargs))
+            chat_response = await chat_completion_request(**chat_completion_kwargs)
+            if debug:
+                LOG.info(pprint.pformat("response from gpt-3.5"))
+                LOG.info(pprint.pformat(chat_response))
+            answer = json.loads(chat_response["choices"][0]["message"]["content"])
+
+
+            # Log the answer for debugging purposes
+            if debug:
+                LOG.info(pprint.pformat(answer))
+
+        except json.JSONDecodeError as e:
+            # Handle JSON decoding errors
+            LOG.error(f"Unable to decode chat response: {chat_response}")
+        except Exception as e:
+            # Handle other exceptions
+            LOG.error(f"Unable to generate chat response: {e}")
+        
+        if answer.get('ability', {}).get('name', '') == 'finish':
+            LOG.info(f"Chat thinks the task is complete.  Returning")
+            # Set the step output to the "speak" part of the answer
+            step = await self.db.create_step(
+                task_id=task_id, 
+                input=step_request, 
+                is_last=True,
+            )
+            step.name = 'finish'
+
+            # Log the message
+            if debug:
+                LOG.info(f"\t✅ Final Step completed: {step.step_id} input: {task.input[:19]}")
+            step.output = answer["thoughts"]["speak"]
+            # msg = await self.db.add_chat_message(task_id, "assistant", answer["thoughts"]["speak"])
+            # self.db.update_step(task_id=tas)
+            # Return the completed step
+            return step
+        if debug:
+            LOG.debug(f" Requested Ability: {answer.get('ability', {}).get('name', '') }")
+        if answer.get('ability', {}).get('name', '') in self.abilities.list_abilities():
+            try:
+                # Extract the ability from the answer
+                ability = answer["ability"]
+                if debug:
+                    LOG.info(f"Chat Engine is suggesting to do the following action: { ability['name']} with paratmers { ability['args']}")
+                    
+                step = await self.db.create_step(
+                    task_id=task_id, input=step_request,                    
+                )
+                step.output = answer["thoughts"]["speak"]
+                step.input = task.input
+                step.name = ability['name']
+                
+                # Run the ability and get the output
+                # We don't actually use the output in this example
+                if debug:
+                    LOG.info(pprint.pformat(f"Running ability {ability['name']} with args { ability['args']}"))
+                # if ability['name'] == "finish":
+                #     self.db.update_step(task_id=task_id, step_id=step.step_id, status=)
+                output = await self.abilities.run_ability(
+                    task_id, ability["name"], **ability["args"]
+                )
+                action = await self.db.create_action( task_id,
+                                                      ability["name"], 
+                                                      ability["args"], 
+                                                      output=f"{output}")
+                LOG.info(f"\t✅ Created Action { action.action_id} for step {step.step_id } under task {task.task_id}")
+                
+                if debug:
+                    LOG.debug(f"Output of task: { output } ")
+                step.name = ability["name"]
+                step.input = task.input
+                step.output = f"{output}"
+
+                # Log the message
+                if debug:
+                    LOG.info(f"\t✅ Intermediate Step completed: {step.step_id} input: {step.input[:19]}")
+                return step
+            except Exception as e:
+                # Handle any exceptions
+                LOG.error(f"Unable to run ability: {e}")
+                step = await self.db.create_step(
+                    task_id=task_id, input=step_request
+                )
+                step.output = "Asked for bad action"
+                action = await self.db.create_action( task_id,
+                                                      ability["name"], 
+                                                      ability["args"], 
+                                                      output=f"{ e }")
+                LOG.info(f"\t✅ Created Action { action.action_id} for step {step.step_id } under task {task.task_id}")
+                
+                return step
+        LOG.error(f"asking for an action that didn't exist {answer.get('ability', {}).get('name', '')}.  Lets return and try this again")
         step = await self.db.create_step(
-            task_id=task_id, input=step_request, is_last=True
-        )
-
-        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
-
-        await self.db.create_artifact(
-            task_id=task_id,
-            step_id=step.step_id,
-            file_name="output.txt",
-            relative_path="",
-            agent_created=True,
-        )
-
-        step.output = "Washington D.C"
-
-        LOG.info(f"\t✅ Final Step completed: {step.step_id}. \n" +
-                 f"Output should be placeholder text Washington D.C. You'll need to \n" +
-                 f"modify execute_step to include LLM behavior. Follow the tutorial " +
-                 f"if confused. ")
-
+                    task_id=task_id, input=step_request,
+                )
+        step.output = "Asked for bad action"
+        step.input = task.input
+        step.name = "error"
         return step
+       

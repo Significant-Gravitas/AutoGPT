@@ -237,7 +237,7 @@ class AgentDB:
                 new_artifact = ArtifactModel(
                     artifact_id=str(uuid.uuid4()),
                     task_id=task_id,
-                    step_id=step_id,
+                    # step_id=step_id,
                     agent_created=agent_created,
                     file_name=file_name,
                     relative_path=relative_path,
