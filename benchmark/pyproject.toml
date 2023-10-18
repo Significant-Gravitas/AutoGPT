@@ -31,7 +31,7 @@ fastapi = "^0.99.0"
 python-multipart = "^0.0.6"
 toml = "^0.10.2"
 helicone = "^1.0.9"
-httpx = "^0.25.0"
+httpx = "^0.24.0"
 
 [tool.poetry.group.dev.dependencies]
 flake8 = "^3.9.2"

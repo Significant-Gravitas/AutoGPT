@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from pydantic import Field, validator
@@ -18,8 +19,9 @@ if TYPE_CHECKING:
     from autogpt.models.command_registry import CommandRegistry
 
 from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
-from autogpt.config.ai_config import AIConfig
+from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
+from autogpt.config.ai_profile import AIProfile
 from autogpt.core.configuration import (
     Configurable,
     SystemConfiguration,
@@ -40,6 +42,8 @@ from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
+from .utils.agent_file_manager import AgentFileManager
+
 logger = logging.getLogger(__name__)
 
 CommandName = str
@@ -48,6 +52,8 @@ AgentThoughts = dict[str, Any]
 
 
 class BaseAgentConfiguration(SystemConfiguration):
+    allow_fs_access: bool = UserConfigurable(default=False)
+
     fast_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
     smart_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT4)
     use_functions_api: bool = UserConfigurable(default=False)
@@ -82,9 +88,8 @@ class BaseAgentConfiguration(SystemConfiguration):
     defaults to 75% of `llm.max_tokens`.
     """
 
-    summary_max_tlength: Optional[
-        int
-    ] = None  # TODO: move to ActionHistoryConfiguration
+    summary_max_tlength: Optional[int] = None
+    # TODO: move to ActionHistoryConfiguration
 
     plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
 
@@ -115,31 +120,49 @@ class BaseAgentConfiguration(SystemConfiguration):
                 f"Model {smart_llm} does not support OpenAI Functions. "
                 "Please disable OPENAI_FUNCTIONS or choose a suitable model."
             )
+        return v
 
 
 class BaseAgentSettings(SystemSettings):
-    ai_config: AIConfig
-    """The AIConfig or "personality" object associated with this agent."""
+    agent_id: Optional[str] = None
+    agent_data_dir: Optional[Path] = None
 
-    config: BaseAgentConfiguration
+    ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
+    """The AI profile or "personality" of the agent."""
+
+    directives: AIDirectives = Field(
+        default_factory=lambda: AIDirectives.from_file(
+            ConfigBuilder.default_settings.prompt_settings_file
+        )
+    )
+    """Directives (general instructional guidelines) for the agent."""
+
+    task: str = "Terminate immediately"  # FIXME: placeholder for forge.sdk.schema.Task
+    """The user-given task that the agent is working on."""
+
+    config: BaseAgentConfiguration = Field(default_factory=BaseAgentConfiguration)
     """The configuration for this BaseAgent subsystem instance."""
 
-    history: EpisodicActionHistory
+    history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
     """(STATE) The action history of the agent."""
+
+    def save_to_json_file(self, file_path: Path) -> None:
+        with file_path.open("w") as f:
+            f.write(self.json())
+
+    @classmethod
+    def load_from_json_file(cls, file_path: Path):
+        return cls.parse_file(file_path)
 
 
 class BaseAgent(Configurable[BaseAgentSettings], ABC):
     """Base class for all AutoGPT agent classes."""
 
-    ThoughtProcessID = Literal["one-shot"]
     ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
 
     default_settings = BaseAgentSettings(
         name="BaseAgent",
         description=__doc__,
-        ai_config=AIConfig(),
-        config=BaseAgentConfiguration(),
-        history=EpisodicActionHistory(),
     )
 
     def __init__(
@@ -150,8 +173,20 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         command_registry: CommandRegistry,
         legacy_config: Config,
     ):
-        self.ai_config = settings.ai_config
-        self.ai_directives = AIDirectives.from_file(legacy_config.prompt_settings_file)
+        self.state = settings
+        self.config = settings.config
+        self.ai_profile = settings.ai_profile
+        self.directives = settings.directives
+        self.event_history = settings.history
+
+        self.legacy_config = legacy_config
+        """LEGACY: Monolithic application configuration."""
+
+        self.file_manager: AgentFileManager = (
+            AgentFileManager(settings.agent_data_dir)
+            if settings.agent_data_dir
+            else None
+        )  # type: ignore
 
         self.llm_provider = llm_provider
 
@@ -160,20 +195,27 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         self.command_registry = command_registry
         """The registry containing all commands available to the agent."""
 
-        self.llm_provider = llm_provider
-
-        self.legacy_config = legacy_config
-        self.config = settings.config
-        """The applicable application configuration."""
-
-        self.event_history = settings.history
-
         self._prompt_scratchpad: PromptScratchpad | None = None
 
         # Support multi-inheritance and mixins for subclasses
         super(BaseAgent, self).__init__()
 
-        logger.debug(f"Created {__class__} '{self.ai_config.ai_name}'")
+        logger.debug(f"Created {__class__} '{self.ai_profile.ai_name}'")
+
+    def set_id(self, new_id: str, new_agent_dir: Optional[Path] = None):
+        self.state.agent_id = new_id
+        if self.state.agent_data_dir:
+            if not new_agent_dir:
+                raise ValueError(
+                    "new_agent_dir must be specified if one is currently configured"
+                )
+            self.attach_fs(new_agent_dir)
+
+    def attach_fs(self, agent_dir: Path) -> AgentFileManager:
+        self.file_manager = AgentFileManager(agent_dir)
+        self.file_manager.initialize()
+        self.state.agent_data_dir = agent_dir
+        return self.file_manager
 
     @property
     def llm(self) -> ChatModelInfo:
@@ -196,6 +238,10 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
+        assert self.file_manager, (
+            f"Agent has no FileManager: call {__class__.__name__}.attach_fs()"
+            " before trying to run the agent."
+        )
 
         # Scratchpad as surrogate PromptGenerator for plugin hooks
         self._prompt_scratchpad = PromptScratchpad()
@@ -266,14 +312,15 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
             if not plugin.can_handle_post_prompt():
                 continue
             plugin.post_prompt(scratchpad)
-        ai_directives = self.ai_directives.copy(deep=True)
+        ai_directives = self.directives.copy(deep=True)
         ai_directives.resources += scratchpad.resources
         ai_directives.constraints += scratchpad.constraints
         ai_directives.best_practices += scratchpad.best_practices
         extra_commands += list(scratchpad.commands.values())
 
         prompt = self.prompt_strategy.build_prompt(
-            ai_config=self.ai_config,
+            task=self.state.task,
+            ai_profile=self.ai_profile,
             ai_directives=ai_directives,
             commands=get_openai_command_specs(
                 self.command_registry.list_available_commands(self)
