@@ -344,8 +344,8 @@ uvicorn = "^0.23.2"
 [package.source]
 type = "git"
 url = "https://github.com/Significant-Gravitas/AutoGPT.git"
-reference = "10aecec"
-resolved_reference = "10aececc6a732878dd037e2deb2f6a4962e19e20"
+reference = "bceb66f"
+resolved_reference = "bceb66f\n"
 subdirectory = "autogpts/forge"
 
 [[package]]
@@ -3296,13 +3296,13 @@ files = [
 
 [[package]]
 name = "outcome"
-version = "1.2.0"
+version = "1.3.0"
 description = "Capture the outcome of Python function calls."
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "outcome-1.2.0-py2.py3-none-any.whl", hash = "sha256:c4ab89a56575d6d38a05aa16daeaa333109c1f96167aba8901ab18b6b5e0f7f5"},
-    {file = "outcome-1.2.0.tar.gz", hash = "sha256:6f82bd3de45da303cf1f771ecafa1633750a358436a8bb60e06a1ceb745d2672"},
+    {file = "outcome-1.3.0-py2.py3-none-any.whl", hash = "sha256:7b688fd82db72f4b0bc9e883a00359d4d4179cd97d27f09c9644d0c842ba7786"},
+    {file = "outcome-1.3.0.tar.gz", hash = "sha256:588ef4dc10b64e8df160d8d1310c44e1927129a66d6d2ef86845cef512c5f24c"},
 ]
 
 [package.dependencies]
@@ -6207,4 +6207,4 @@ benchmark = ["agbenchmark"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "f6045904ba92bfb92c55fcb8b4e9294899ead53d49aa4e6ae88a0ca2ae0ec454"
+content-hash = "75e2afabd8c8208d6b0a0affbdc27fcedef028722a366421e031f2665f04aa4a"
