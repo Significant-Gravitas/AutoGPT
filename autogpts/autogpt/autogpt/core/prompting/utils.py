@@ -18,7 +18,7 @@ def json_loads(json_str: str):
     #   Can hopefully just replace with a call to ast.literal_eval (the function api still
     #   sometimes returns json strings with minor issues like trailing commas).
     try:
-        json_str = json_str[json_str.index("{"):json_str.rindex("}")+1]
+        json_str = json_str[json_str.index("{") : json_str.rindex("}") + 1]
         return ast.literal_eval(json_str)
     except json.decoder.JSONDecodeError as e:
         try:
