@@ -16,11 +16,15 @@ packages = [{ include = "autogpt" }]
 
 
 [tool.poetry.scripts]
-autogpt = "autogpt.app.cli:main"
+autogpt = "autogpt.app.cli:run"
+run = "autogpt.app.cli:run"
+serve = "autogpt.app.cli:serve"
 
 
 [tool.poetry.dependencies]
 python = "^3.10"
+# autogpt-forge = { path = "../forge" }
+autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge", rev = "10aecec"}
 beautifulsoup4 = "^4.12.2"
 charset-normalizer = "^3.1.0"
 click = "*"
@@ -29,9 +33,11 @@ distro = "^1.8.0"
 docker = "*"
 duckduckgo-search = "^3.0.2"
 en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl"}
+fastapi = "*"
 ftfy = "^6.1.1"
 google-api-python-client = "*"
 gTTS = "^2.3.1"
+hypercorn = "^0.14.4"
 inflection = "*"
 jsonschema = "*"
 markdown = "*"
@@ -56,17 +62,18 @@ spacy = "^3.0.0"
 tiktoken = "^0.5.0"
 webdriver-manager = "*"
 
-# web server
-fastapi = "*"
-uvicorn = "*"
-
 # OpenAI and Generic plugins import
 openapi-python-client = "^0.14.0"
+
+# Benchmarking
+agbenchmark = { path = "../../benchmark", optional = true }
+
+[tool.poetry.extras]
+benchmark = ["agbenchmark"]
 
 [tool.poetry.group.dev.dependencies]
 auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
 black = "*"
-coverage = "*"
 flake8 = "*"
 gitpython = "^3.1.32"
 isort = "*"
@@ -77,8 +84,9 @@ types-colorama = "*"
 types-Markdown = "*"
 types-Pillow = "*"
 
-# Testing dependencies
+# Testing
 asynctest = "*"
+coverage = "*"
 pytest = "*"
 pytest-asyncio = "*"
 pytest-benchmark = "*"
@@ -88,9 +96,6 @@ pytest-mock = "*"
 pytest-recording = "*"
 pytest-xdist = "*"
 vcrpy = {git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master"}
-
-[tool.poetry.group.benchmark.dependencies]
-agbenchmark = { path = "../../benchmark" }
 
 
 [build-system]

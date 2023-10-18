@@ -333,7 +333,7 @@ class ChatModelProvider(ModelProvider):
         model_prompt: list[ChatMessage],
         model_name: str,
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
-        functions: list[CompletionModelFunction] = [],
+        functions: Optional[list[CompletionModelFunction]] = None,
         **kwargs,
     ) -> ChatModelResponse[_T]:
         ...
