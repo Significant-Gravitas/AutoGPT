@@ -4,6 +4,7 @@ import pathlib
 from io import BytesIO
 from uuid import uuid4
 
+import orjson
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -33,7 +34,7 @@ from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.file_workspace import FileWorkspace
-from autogpt.models.action_history import ActionSuccessResult
+from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +240,17 @@ class AgentProtocolServer:
                 )
 
         # Propose next action
-        next_command, next_command_args, raw_output = await agent.propose_action()
+        try:
+            next_command, next_command_args, raw_output = await agent.propose_action()
+            logger.debug(f"AI output: {raw_output}")
+        except Exception as e:
+            step = await self.db.update_step(
+                task_id=task_id,
+                step_id=step.step_id,
+                status="completed",
+                output=f"An error occurred while proposing the next action: {e}",
+            )
+            return step
 
         # Format step output
         output = (
@@ -263,7 +274,14 @@ class AgentProtocolServer:
                     "last_action": {
                         "name": execute_command,
                         "args": execute_command_args,
-                        "result": execute_result.dict(),
+                        "result": (
+                            orjson.loads(execute_result.json())
+                            if not isinstance(execute_result, ActionErrorResult)
+                            else {
+                                "error": str(execute_result.error),
+                                "reason": execute_result.reason,
+                            }
+                        ),
                     },
                 }
                 if not is_init_step
