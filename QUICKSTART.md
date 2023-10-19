@@ -44,6 +44,39 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
 
     
     ![Setup the Project](docs/content/imgs/quickstart/005_setup.png)
+
+### For Windows Users
+
+If you're a Windows user and experience issues after installing WSL, follow the steps below to resolve them. 
+
+#### Update WSL 
+Run the following command in Powershell or Command Prompt to:
+1. Enable the optional WSL and Virtual Machine Platform components.
+2. Download and install the latest Linux kernel.
+3. Set WSL 2 as the default.
+4. Download and install the Ubuntu Linux distribution (a reboot may be required).
+
+```shell
+wsl --install
+```
+
+For more detailed information and additional steps, refer to [Microsoft's WSL Setup Environment Documentation](https://learn.microsoft.com/en-us/windows/wsl/setup/environment).
+
+#### Resolve FileNotFoundError or "No such file or directory" Errors
+When you run `./run setup`, if you encounter errors like `No such file or directory` or `FileNotFoundError`, it might be because Windows-style line endings (CRLF - Carriage Return Line Feed) are not compatible with Unix/Linux style line endings (LF - Line Feed).
+
+To resolve this, you can use the `dos2unix` utility to convert the line endings in your script from CRLF to LF. Here’s how to install and run `dos2unix` on the script:
+
+```shell
+sudo apt update
+sudo apt install dos2unix
+dos2unix ./run
+```
+
+After executing the above commands, running `./run setup` should work successfully. 
+
+#### Store Project Files within the WSL File System
+If you continue to experience issues, consider storing your project files within the WSL file system instead of the Windows file system. This method avoids issues related to path translations and permissions and provides a more consistent development environment.
     
     You can keep running the command to get feedback on where you are up to with your setup. 
     When setup has been completed, the command will return an output like this:
