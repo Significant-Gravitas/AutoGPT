@@ -21,6 +21,9 @@ nav:
         - Running tests: AutoGPT/testing.md
         - Code of Conduct: code-of-conduct.md
 
+  - AutoGPT-Benchmarks:
+    - Benchmarks: benchmarks/benchmark.md
+
   - AutoGPT-Forge:
     - Forge-Setup: forge/get-started.md
 
