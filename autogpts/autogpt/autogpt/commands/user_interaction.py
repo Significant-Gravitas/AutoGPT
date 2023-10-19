@@ -27,7 +27,6 @@ from autogpt.core.utils.json_schema import JSONSchema
     enabled=lambda config: not config.noninteractive_mode,
 )
 async def ask_user(question: str, agent: Agent) -> str:
-    resp = await clean_input(
-        agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "
-    )
+    print(f"\nQ: {question}")
+    resp = await clean_input(agent.legacy_config, "A:")
     return f"The user's answer: '{resp}'"

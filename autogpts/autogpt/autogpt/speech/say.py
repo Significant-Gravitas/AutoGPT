@@ -3,24 +3,32 @@ from __future__ import annotations
 
 import threading
 from threading import Semaphore
-from typing import TYPE_CHECKING
+from typing import Literal, Optional
 
-if TYPE_CHECKING:
-    from autogpt.config import Config
+from autogpt.core.configuration.schema import SystemConfiguration, UserConfigurable
 
 from .base import VoiceBase
-from .eleven_labs import ElevenLabsSpeech
+from .eleven_labs import ElevenLabsConfig, ElevenLabsSpeech
 from .gtts import GTTSVoice
 from .macos_tts import MacOSTTS
-from .stream_elements_speech import StreamElementsSpeech
+from .stream_elements_speech import StreamElementsConfig, StreamElementsSpeech
 
 _QUEUE_SEMAPHORE = Semaphore(
     1
 )  # The amount of sounds to queue before blocking the main thread
 
 
+class TTSConfig(SystemConfiguration):
+    speak_mode: bool = False
+    provider: Literal[
+        "elevenlabs", "gtts", "macos", "streamelements"
+    ] = UserConfigurable(default="gtts")
+    elevenlabs: Optional[ElevenLabsConfig] = None
+    streamelements: Optional[StreamElementsConfig] = None
+
+
 class TextToSpeechProvider:
-    def __init__(self, config: Config):
+    def __init__(self, config: TTSConfig):
         self._config = config
         self._default_voice_engine, self._voice_engine = self._get_voice_engine(config)
 
@@ -37,19 +45,19 @@ class TextToSpeechProvider:
             thread.start()
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(enabled={self._config.speak_mode}, provider={self._voice_engine.__class__.__name__})"
+        return f"{self.__class__.__name__}(provider={self._voice_engine.__class__.__name__})"
 
     @staticmethod
-    def _get_voice_engine(config: Config) -> tuple[VoiceBase, VoiceBase]:
+    def _get_voice_engine(config: TTSConfig) -> tuple[VoiceBase, VoiceBase]:
         """Get the voice engine to use for the given configuration"""
-        tts_provider = config.text_to_speech_provider
+        tts_provider = config.provider
         if tts_provider == "elevenlabs":
-            voice_engine = ElevenLabsSpeech(config)
+            voice_engine = ElevenLabsSpeech(config.elevenlabs)
         elif tts_provider == "macos":
-            voice_engine = MacOSTTS(config)
+            voice_engine = MacOSTTS()
         elif tts_provider == "streamelements":
-            voice_engine = StreamElementsSpeech(config)
+            voice_engine = StreamElementsSpeech(config.streamelements)
         else:
-            voice_engine = GTTSVoice(config)
+            voice_engine = GTTSVoice()
 
-        return GTTSVoice(config), voice_engine
+        return GTTSVoice(), voice_engine
