@@ -58,7 +58,11 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
         attempts += 1
 
     search_results = [
-        {"title": r["title"], "url": r["href"], "description": r["body"]}
+        {
+            "title": r["title"],
+            "url": r["href"],
+            **({"description": r["body"]} if r.get("body") else {}),
+        }
         for r in search_results
     ]
 

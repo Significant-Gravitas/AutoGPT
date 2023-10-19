@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Iterator, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from autogpt.prompts.utils import format_numbered_list, indent
 
@@ -60,14 +60,8 @@ class Episode(BaseModel):
 class EpisodicActionHistory(BaseModel):
     """Utility container for an action history"""
 
-    cursor: int
-    episodes: list[Episode]
-
-    def __init__(self, episodes: list[Episode] = []):
-        super().__init__(
-            episodes=episodes,
-            cursor=len(episodes),
-        )
+    episodes: list[Episode] = Field(default_factory=list)
+    cursor: int = 0
 
     @property
     def current_episode(self) -> Episode | None:
