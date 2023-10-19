@@ -50,6 +50,7 @@ nav:
 
 theme:
   name: material
+  custom_dir: overrides
   icon:
     logo: material/book-open-variant
   favicon: favicon.png
