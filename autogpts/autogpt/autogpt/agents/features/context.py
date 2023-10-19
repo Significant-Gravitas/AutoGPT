@@ -14,8 +14,8 @@ from autogpt.core.resource.model_providers import ChatMessage
 class AgentContext:
     items: list[ContextItem]
 
-    def __init__(self, items: list[ContextItem] = []):
-        self.items = items
+    def __init__(self, items: Optional[list[ContextItem]] = None):
+        self.items = items or []
 
     def __bool__(self) -> bool:
         return len(self.items) > 0
