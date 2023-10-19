@@ -27,7 +27,7 @@ nav:
   - AutoGPT-Forge:
     - Forge-Setup: forge/get-started.md
 
-  - The UI:
+  - Frontend:
     - Flutter-Setup: front-end/the-ui.md
 
   - Challenges:
