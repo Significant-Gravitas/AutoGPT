@@ -4,22 +4,24 @@ Welcome to the AutoGPT Docs.
 
 The AutoGPT project is now split into 4 sections.
 ---
-<div style="border: 2px solid black; padding: 10px; margin-bottom: 10px;">
+<div style="border: 1px solid black; padding: 10px; margin-bottom: 10px;">
 <a href="AutoGPT/setup.md">AutoGPT Agent</a>: The original agent that started it all! This autonomous AI agent utilizes OpenAI's GPT-3.5 and GPT-4 APIs, autonomously generating prompts to execute tasks.
 </div>
 
-<div style="border: 2px solid black; padding: 10px; margin-bottom: 10px;">
+<div style="border: 1px solid black; padding: 10px; margin-bottom: 10px;">
 <a href="benchmarks/benchmark.md">AutoGPT-Benchmarks</a>: The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 </div>
 
-<div style="border: 2px solid black; padding: 10px; margin-bottom: 10px;">
+<div style="border: 1px solid black; padding: 10px; margin-bottom: 10px;">
 <a href="forge/get-started.md">AutoGPT-Forge</a>: The forge is your innovation lab. All the boilerplate code is already handled, letting you channel all your creativity into building a revolutionary agent. It's more than a starting point, it's a launchpad for your ideas. All tutorials are located 
 <a href="(https://aiedge.medium.com/autogpt-forge-e3de53cc58ec">Here</a>
 </div>
 
-<div style="border: 2px solid black; padding: 10px; margin-bottom: 10px;">
+<div style="border: 1px solid black; padding: 10px; margin-bottom: 10px;">
 <a href="front-end/the-ui.md">Frontend</a>: The frontend is your personal command center. It gives you a user-friendly interface to control and monitor your agents, making it easier to bring your ideas to life.
 </div>
+
+[If you have any questions please join the AutoGPT discord server](discord.gg/autogpt)
 
 ---
 ### Glossary of Terms
