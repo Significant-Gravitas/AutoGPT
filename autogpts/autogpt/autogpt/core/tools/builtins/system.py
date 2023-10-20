@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from autogpt.core.agents.base import BaseAgent
 
 from autogpt.core.agents.base.features.context import get_agent_context
+# from autogpt.core.utils.exceptions import AgentTerminated, InvalidArgumentError
 from autogpt.core.utils.exceptions import InvalidArgumentError
 from autogpt.core.tools.command_decorator import tool
 from autogpt.core.utils.json_schema import JSONSchema
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 @tool(
     "finish",
-    "Use this to shut down once you have accomplished all of your goals,"
+    "Use this to shut down once you have completed your task,"
     " or when there are insurmountable problems that make it impossible"
     " for you to finish your task.",
     {
@@ -42,8 +43,8 @@ def finish(reason: str, agent: BaseAgent) -> None:
         A result string from create chat completion. A list of suggestions to
             improve the code.
     """
-    logger.info(reason, extra={"title": "Shutting down...\n"})
-    quit()
+    raise NotImplementedError
+    raise AgentTerminated(reason)
 
 
 @tool(

@@ -7,6 +7,7 @@ from logging import Logger
 from typing import TYPE_CHECKING, Callable, Optional
 
 import distro
+from pydantic import Field
 
 if TYPE_CHECKING:
     from autogpt.core.agents.base import BaseAgent
@@ -65,15 +66,16 @@ class OneShotAgentPromptStrategy(PlanningPromptStrategy):
     def build_prompt(
         self,
         *,
-        ai_config: AIConfig,
-        ai_directives: BaseAgentDirectives,
+        task: str,
+        ai_profile: AIProfile,
+        ai_directives: AIDirectives,
         commands: list[CompletionModelFunction],
         event_history: list[Episode],
         include_os_info: bool,
         max_prompt_tokens: int,
         count_tokens: Callable[[str], int],
         count_message_tokens: Callable[[ChatMessage | list[ChatMessage]], int],
-        extra_messages: list[ChatMessage] = [],
+        extra_messages: Optional[list[ChatMessage]] = None,
         **extras,
     ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
@@ -84,14 +86,19 @@ class OneShotAgentPromptStrategy(PlanningPromptStrategy):
         Params:
             cycle_instruction: The final instruction for a thinking cycle
         """
+        if not extra_messages:
+            extra_messages = []
 
         system_prompt = self.build_system_prompt(
-            ai_config,
-            ai_directives,
-            commands,
-            include_os_info,
+            ai_profile=ai_profile,
+            ai_directives=ai_directives,
+            commands=commands,
+            include_os_info=include_os_info,
         )
         system_prompt_tlength = count_message_tokens(ChatMessage.system(system_prompt))
+
+        user_task = f'"""{task}"""'
+        user_task_tlength = count_message_tokens(ChatMessage.user(user_task))
 
         response_format_instr = self.response_format_instruction(
             self._config.use_functions_api
@@ -108,6 +115,7 @@ class OneShotAgentPromptStrategy(PlanningPromptStrategy):
                 max_tokens=(
                     max_prompt_tokens
                     - system_prompt_tlength
+                    - user_task_tlength
                     - final_instruction_tlength
                     - count_message_tokens(extra_messages)
                 ),
@@ -120,6 +128,7 @@ class OneShotAgentPromptStrategy(PlanningPromptStrategy):
         prompt = ChatPrompt(
             messages=[
                 ChatMessage.system(system_prompt),
+                ChatMessage.user(user_task),
                 *extra_messages,
                 final_instruction_msg,
             ],
@@ -279,26 +288,31 @@ class OneShotAgentPromptStrategy(PlanningPromptStrategy):
 
     def build_system_prompt(
         self,
-        ai_config: AIConfig,
+        ai_profile: AIProfile,
         ai_directives: BaseAgentDirectives,
         commands: list[CompletionModelFunction],
         include_os_info: bool,
     ) -> str:
         system_prompt_parts = (
-            self._generate_intro_prompt(ai_config)
+            self._generate_intro_prompt(ai_profile)
             + (self._generate_os_info() if include_os_info else [])
             + [
                 self._config.body_template.format(
                     constraints=to_numbered_list(
                         ai_directives.constraints
-                        + self._generate_budget_constraint(ai_config.api_budget)
+                        + self._generate_budget_constraint(ai_profile.api_budget)
                     ),
                     resources=to_numbered_list(ai_directives.resources),
                     commands=self._generate_commands_list(commands),
                     best_practices=to_numbered_list(ai_directives.best_practices),
                 )
             ]
-            + self._generate_goals_info(ai_config.ai_goals)
+            + [
+                "## Your Task\n"
+                "The user will specify a task for you to execute, in triple quotes,"
+                " in the next message. Your job is to complete the task while following"
+                " your directives as given above, and terminate when your task is done."
+            ]
         )
 
         # Join non-empty parts together into paragraph format

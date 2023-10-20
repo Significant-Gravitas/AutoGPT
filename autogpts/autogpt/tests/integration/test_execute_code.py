@@ -11,7 +11,6 @@ from autogpt.agents.utils.exceptions import (
     InvalidArgumentError,
     OperationNotAllowedError,
 )
-from autogpt.config import Config
 
 
 @pytest.fixture
@@ -20,8 +19,8 @@ def random_code(random_string) -> str:
 
 
 @pytest.fixture
-def python_test_file(config: Config, random_code: str):
-    temp_file = tempfile.NamedTemporaryFile(dir=config.workspace_path, suffix=".py")
+def python_test_file(agent: Agent, random_code: str):
+    temp_file = tempfile.NamedTemporaryFile(dir=agent.workspace.root, suffix=".py")
     temp_file.write(str.encode(random_code))
     temp_file.flush()
 
@@ -30,8 +29,8 @@ def python_test_file(config: Config, random_code: str):
 
 
 @pytest.fixture
-def python_test_args_file(config: Config):
-    temp_file = tempfile.NamedTemporaryFile(dir=config.workspace_path, suffix=".py")
+def python_test_args_file(agent: Agent):
+    temp_file = tempfile.NamedTemporaryFile(dir=agent.workspace.root, suffix=".py")
     temp_file.write(str.encode("import sys\nprint(sys.argv[1], sys.argv[2])"))
     temp_file.flush()
 

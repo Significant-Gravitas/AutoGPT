@@ -260,8 +260,8 @@ def create(agent_name):
 
 @agent.command()
 @click.argument("agent_name")
-@click.option("--setup", is_flag=True, help="Rebuilds your poetry env")
-def start(agent_name, setup):
+@click.option("--no-setup", is_flag=True, help="Rebuilds your poetry env")
+def start(agent_name, no_setup):
     """Start agent command"""
     import os
     import subprocess
@@ -276,7 +276,7 @@ def start(agent_name, setup):
         and os.path.isfile(run_bench_command)
     ):
         os.chdir(agent_dir)
-        if setup:
+        if not no_setup:
             setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
             setup_process.wait()
         subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
@@ -307,14 +307,22 @@ def stop():
     import subprocess
 
     try:
-        pid = int(subprocess.check_output(["lsof", "-t", "-i", ":8000"]))
-        os.kill(pid, signal.SIGTERM)
+        pids = subprocess.check_output(["lsof", "-t", "-i", ":8000"]).split()
+        if isinstance(pids, int):
+            os.kill(int(pids), signal.SIGTERM)
+        else:
+            for pid in pids:
+                os.kill(int(pid), signal.SIGTERM)
     except subprocess.CalledProcessError:
         click.echo("No process is running on port 8000")
 
     try:
-        pid = int(subprocess.check_output(["lsof", "-t", "-i", ":8080"]))
-        os.kill(pid, signal.SIGTERM)
+        pids = int(subprocess.check_output(["lsof", "-t", "-i", ":8080"]))
+        if isinstance(pids, int):
+            os.kill(int(pids), signal.SIGTERM)
+        else:
+            for pid in pids:
+                os.kill(int(pid), signal.SIGTERM)
     except subprocess.CalledProcessError:
         click.echo("No process is running on port 8080")
 

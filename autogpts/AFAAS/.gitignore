@@ -17,6 +17,7 @@ logs
 *.mp3
 mem.sqlite3
 venvAutoGPT
+data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -175,3 +176,9 @@ agent.db
 agbenchmark_config/updates.json
 agbenchmark_config/challenges_already_beaten.json
 agbenchmark_config/temp_folder/*
+# Nodejs
+package-lock.json
+package.json
+
+# Keep
+!.keep
