@@ -157,7 +157,7 @@ class ChatViewModel with ChangeNotifier {
       // Notify UI of the new chats
       notifyListeners();
 
-      if (_isContinuousMode) {
+      if (_isContinuousMode && !executedStep.isLast) {
         print("Continuous Mode: Step $currentStep of $continuousModeSteps");
         if (currentStep < continuousModeSteps) {
           sendChatMessage(null,
