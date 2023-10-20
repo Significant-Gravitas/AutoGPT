@@ -10,6 +10,7 @@
     "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
     "ground": {
         "answer": "Toran is from Scotland https://uk.linkedin.com/in/toran-richards.",
+        "case_sensitive": true,
         "eval": {
             "type": "file"
         },
@@ -17,7 +18,7 @@
             "output.txt"
         ],
         "should_contain": [
-            "cotland"
+            "Scotland"
         ],
         "should_not_contain": []
     },
