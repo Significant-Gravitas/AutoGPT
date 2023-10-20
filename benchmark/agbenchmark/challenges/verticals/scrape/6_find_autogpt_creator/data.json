@@ -17,8 +17,7 @@
             "output.txt"
         ],
         "should_contain": [
-            "Scotland",
-            "scotland"
+            "cotland"
         ],
         "should_not_contain": []
     },
