@@ -11,6 +11,7 @@
     "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
     "ground": {
         "answer": "Get to https://www.forbes.com/special-report/2012/30-under-30/30-under-30_games.html, then https://www.linkedin.com/in/brianjcho/details/experience/ is the first 27 year old, then find his longest working job on Linkedin which is Riot Games.",
+        "case_sensitive": true,
         "eval": {
             "type": "file"
         },

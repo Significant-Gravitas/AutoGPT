@@ -11,6 +11,7 @@
     "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
     "ground": {
         "answer": "https://www.amazon.com/gp/bestsellers/2021/books, second book, the answer is Reed",
+        "case_sensitive": true,
         "eval": {
             "type": "file"
         },
