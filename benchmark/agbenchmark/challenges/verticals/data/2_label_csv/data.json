@@ -27,5 +27,5 @@
         ]
     },
     "name": "LabelCsv",
-    "task": "The csv 'input.csv' has many items. create a 'Color' column for these items and classify them as either 'blue', 'green', or 'yellow' depending on what the most likely color is. Preserve the order of the rows. The color column should be the second column. Write the output in output.csv"
+    "task": "The csv 'input.csv' has many items. Create a 'Color' column for these items and classify them as either 'blue', 'green', or 'yellow' depending on what the most likely color is. Use lowercase letters to classify and preserve the order of the rows. The color column should be the second column. Write the output in output.csv"
 }

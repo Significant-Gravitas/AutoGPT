@@ -9,7 +9,7 @@
     ],
     "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
     "ground": {
-        "answer": "The twitter handles of the two hosts of Latent Space.",
+        "answer": "Toran is from Scotland https://uk.linkedin.com/in/toran-richards.",
         "eval": {
             "type": "file"
         },
@@ -17,18 +17,18 @@
             "output.txt"
         ],
         "should_contain": [
-            "swyx",
-            "FanaHOVA"
+            "Scotland",
+            "scotland"
         ],
         "should_not_contain": []
     },
     "info": {
-        "description": "Tests if the agent can retrieve twitter handles given a vague description.",
+        "description": "Tests if the agent can do multi step retrieval (1. who is the CEO of AutoGPT 2. find Toran is from)",
         "difficulty": "intermediate",
         "side_effects": [
             ""
         ]
     },
-    "name": "TestGetInformation",
-    "task": "Write the twitter handle of the two hosts of Latent Space to a file called output.txt"
+    "name": "TestAutoGPTCountry",
+    "task": "Write the country the the inventor/creator of AutoGPT is from to a file called output.txt"
 }
