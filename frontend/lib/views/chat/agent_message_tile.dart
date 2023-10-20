@@ -28,14 +28,13 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
     int artifactsCount = widget.chat.artifacts.length;
 
     bool containsMarkdown(String text) {
-      // Regular expression to detect Markdown patterns including code blocks.
+      // Regular expression to detect Markdown patterns like headers, bold, links, etc.
       final RegExp markdownPattern = RegExp(
         r'(?:\*\*|__).*?(?:\*\*|__)|' + // Bold
             r'(?:\*|_).*?(?:\*|_)|' + // Italic
             r'\[.*?\]\(.*?\)|' + // Links
             r'!\[.*?\]\(.*?\)|' + // Images
-            r'#{1,6}.*|' + // Headers
-            r'`.*?`', // Inline Code Blocks
+            r'#{1,6}.*', // Headers
         multiLine: true,
         caseSensitive: false,
       );
@@ -81,9 +80,10 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.fromLTRB(0, 10, 20, 10),
-                          child: hasMarkdown
+                          child: false
                               ? Markdown(data: widget.chat.message)
-                              : Text(widget.chat.message, maxLines: null),
+                              : SelectableText(widget.chat.message,
+                                  maxLines: null),
                         ),
                       ),
                       ElevatedButton(
