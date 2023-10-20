@@ -28,13 +28,14 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
     int artifactsCount = widget.chat.artifacts.length;
 
     bool containsMarkdown(String text) {
-      // Regular expression to detect Markdown patterns like headers, bold, links, etc.
+      // Regular expression to detect Markdown patterns including code blocks.
       final RegExp markdownPattern = RegExp(
         r'(?:\*\*|__).*?(?:\*\*|__)|' + // Bold
             r'(?:\*|_).*?(?:\*|_)|' + // Italic
             r'\[.*?\]\(.*?\)|' + // Links
             r'!\[.*?\]\(.*?\)|' + // Images
-            r'#{1,6}.*', // Headers
+            r'#{1,6}.*|' + // Headers
+            r'`.*?`', // Inline Code Blocks
         multiLine: true,
         caseSensitive: false,
       );
