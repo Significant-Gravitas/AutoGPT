@@ -1,0 +1,34 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "general"
+    ],
+    "cutoff": 60,
+    "dependencies": [
+        "TestAutoGPTCountry",
+        "TestGetInformation"
+    ],
+    "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
+    "ground": {
+        "answer": "Get to https://www.forbes.com/special-report/2012/30-under-30/30-under-30_games.html, then https://www.linkedin.com/in/brianjcho/details/experience/ is the first 27 year old, then find his longest working job on Linkedin which is Riot Games.",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.txt"
+        ],
+        "should_contain": [
+            "Head of Ventures, M&A, and Business Development"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can navigate the web through trials and tribulations.",
+        "difficulty": "intermediate",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "TestAmazonBestseller",
+    "task": "Find the Forbes 30 under 30 list for 2012. For the Games category, find the company that the first 27 year old on the list spend the longest amount of time working at according to Linkedin. What was his role at this company?"
+}
