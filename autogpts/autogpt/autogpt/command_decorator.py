@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec, TypeVar
 
 if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
@@ -14,6 +14,9 @@ from autogpt.models.command import Command, CommandOutput, CommandParameter
 # Unique identifier for AutoGPT commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 
+P = ParamSpec("P")
+CO = TypeVar("CO", bound=CommandOutput)
+
 
 def command(
     name: str,
@@ -23,10 +26,10 @@ def command(
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
     available: Literal[True] | Callable[[BaseAgent], bool] = True,
-) -> Callable[..., CommandOutput]:
+) -> Callable[[Callable[P, CO]], Callable[P, CO]]:
     """The command decorator is used to create Command objects from ordinary functions."""
 
-    def decorator(func: Callable[..., CommandOutput]):
+    def decorator(func: Callable[P, CO]) -> Callable[P, CO]:
         typed_parameters = [
             CommandParameter(
                 name=param_name,
@@ -48,13 +51,13 @@ def command(
         if inspect.iscoroutinefunction(func):
 
             @functools.wraps(func)
-            async def wrapper(*args, **kwargs) -> Any:
+            async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 return await func(*args, **kwargs)
 
         else:
 
             @functools.wraps(func)
-            def wrapper(*args, **kwargs) -> Any:
+            def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
                 return func(*args, **kwargs)
 
         setattr(wrapper, "command", cmd)

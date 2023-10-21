@@ -214,7 +214,7 @@ def agent():
 @agent.command()
 @click.argument("agent_name")
 def create(agent_name):
-    """Create's a new agent with the agent name provieded"""
+    """Create's a new agent with the agent name provided"""
     import os
     import re
     import shutil
