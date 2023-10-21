@@ -153,7 +153,7 @@ class ForgeAgent(Agent):
             prompt_engine = PromptEngine("create-step")
 
         previous_steps, page = await self.db.list_steps(task.task_id, per_page=100)
-        if len(previous_steps) > 5:  # FIXME: To not end up in infinite test improvement loop
+        if len(previous_steps) > 4:  # FIXME: To not end up in infinite test improvement loop
             ability = {
                 "name": "finish",
                 "args": {
@@ -178,7 +178,7 @@ class ForgeAgent(Agent):
                      last_step.additional_input["ability"]["name"] in ["write_code", "fix_code"])):
 
                 if ("success" in last_step.additional_input and not last_step.additional_input["success"]
-                        and len(previous_steps) < 5):  # To not end up in infinite test improvement loop:
+                        and len(previous_steps) < 4):  # To not end up in infinite test improvement loop:
                     last_ability = last_step.additional_input["ability"]
                     step_request.name = "Fix code"
                     step_request.input = last_step.output
