@@ -1,5 +1,7 @@
 import json
+import logging
 import pprint
+import traceback
 from typing import List
 
 from forge.sdk import (
@@ -19,6 +21,11 @@ LOG = ForgeLogger(__name__)
 
 MODEL_NAME = "gpt-4"  # gpt-3.5-turbo, gpt-4
 
+
+logging.basicConfig(level=logging.INFO)
+logging.getLogger('openai').setLevel(logging.INFO)
+logging.getLogger('urllib3').setLevel(logging.INFO)
+logging.getLogger('multipart').setLevel(logging.INFO)
 
 
 class ForgeAgent(Agent):
@@ -116,7 +123,8 @@ class ForgeAgent(Agent):
                 task_id, ability["name"], **ability["args"]
             )
         except Exception as e:
-            failure = f"Failed to run ability {ability['name']} with arguments {ability['args']}: {str(e)}"
+            stack_trace = traceback.format_exc()
+            failure = f"Failed to run ability {ability['name']} with arguments {ability['args']}: {stack_trace}"
             LOG.warning(f"Step failed: {step.step_id}. {failure}")
             await self.db.update_step(task.task_id, step.step_id, "failed", output=failure)
             return step
@@ -124,6 +132,8 @@ class ForgeAgent(Agent):
         success = False
         if isinstance(output, tuple):
             success, output = output
+
+            LOG.debug(f"Ability {ability['name']} returned success: {success}")
             step.additional_input["success"] = success
 
         if success and self.speedy_mode:
@@ -154,6 +164,7 @@ class ForgeAgent(Agent):
 
         previous_steps, page = await self.db.list_steps(task.task_id, per_page=100)
         if len(previous_steps) > 4:  # FIXME: To not end up in infinite test improvement loop
+            LOG.info(f"Found {len(previous_steps)} previously executed steps. Giving up...")
             ability = {
                 "name": "finish",
                 "args": {
@@ -169,34 +180,33 @@ class ForgeAgent(Agent):
                 additional_input={"ability": ability}
             )
             return step, ability
+
         if previous_steps:
             last_step = previous_steps[-1]
             LOG.info(f"Found {len(previous_steps)} previously executed steps. Last executed step was: {last_step.name}.")
 
             if (self.use_external_coder and
                     ("ability" in last_step.additional_input and
-                     last_step.additional_input["ability"]["name"] in ["write_code", "fix_code"])):
-
-                if ("success" in last_step.additional_input and not last_step.additional_input["success"]
-                        and len(previous_steps) < 4):  # To not end up in infinite test improvement loop:
-                    last_ability = last_step.additional_input["ability"]
-                    step_request.name = "Fix code"
-                    step_request.input = last_step.output
-                    ability = {
-                        "name": "fix_code",
-                        "args": {
-                            "instructions": last_step.output,
-                            "file": last_ability["args"]["file"]
-                        }
+                     last_step.additional_input["ability"].get("name", "") in ["write_code", "fix_code"]) and
+                    not last_step.additional_input.get("success", False)):
+                last_ability = last_step.additional_input["ability"]
+                step_request.name = "Fix code"
+                step_request.input = last_step.output
+                ability = {
+                    "name": "fix_code",
+                    "args": {
+                        "instructions": last_step.output,
+                        "file": last_ability["args"]["file"]
                     }
-                    step = await self.db.create_step(
-                        task_id=task.task_id,
-                        input=step_request,
-                        is_last=False,
-                        additional_input={"ability": ability}
-                    )
+                }
+                step = await self.db.create_step(
+                    task_id=task.task_id,
+                    input=step_request,
+                    is_last=False,
+                    additional_input={"ability": ability}
+                )
 
-                    return step, ability
+                return step, ability
 
             previous_steps = previous_steps[:-1]
         else:

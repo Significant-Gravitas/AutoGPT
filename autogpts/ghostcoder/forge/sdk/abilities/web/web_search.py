@@ -14,6 +14,7 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 @ability(
     name="web_search",
+    disabled=True,
     description="Searches the web",
     parameters=[
         {

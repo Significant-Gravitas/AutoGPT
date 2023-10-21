@@ -1,8 +1,3 @@
-import asyncio
-import logging
-import os
-import re
-from pathlib import Path
 from typing import Tuple, Optional
 
 from forge.sdk import ForgeLogger
@@ -10,20 +5,16 @@ from forge.sdk.abilities.registry import ability
 from ghostcoder.codeblocks import create_parser, CodeBlockType
 from ghostcoder.filerepository import FileRepository
 from ghostcoder.actions import CodeWriter
-from ghostcoder.actions.write_code.base import OutputFormat
 from ghostcoder.benchmark.utils import create_openai_client
 from ghostcoder.schema import Message, TextItem, FileItem, CodeItem
 from ghostcoder.test_tools.verify_python_pytest import PythonPytestTestTool
 
 logger = ForgeLogger(__name__)
 
+use_pytest_parser = True
+
 smart_llm_name = "gpt-4"
 basic_llm_name = "gpt-3.5-turbo"
-
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger('openai').setLevel(logging.INFO)
-logging.getLogger('urllib3').setLevel(logging.INFO)
-logging.getLogger('multipart').setLevel(logging.INFO)
 
 DEFAULT_PROMPT = """You're tasked to write an implementation based on the provided task. 
 You should also write tests for the implementation. Make sure to write tests for all requirements.
@@ -43,7 +34,7 @@ FILE_FORMAT = """All files should be presented in the following format:
 
 @ability(
     name="fix_code",
-    disabled=True,
+    disabled=False,
     description="Use this to fix failing tests. Provide a file that failed.",
     parameters=[
         {
@@ -71,7 +62,7 @@ async def fix_code(
 
 @ability(
     name="write_code",
-    disabled=True,
+    disabled=False,
     description="Use this to write code and tests. Provide the name of the file that should be implemented.",
     parameters=[
         {
@@ -126,13 +117,14 @@ async def _write_code(
     file_items = [file_item]
 
     test_file = "test_" + file
+    test_file_item = None
 
     if has_tests:
-        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern="*.py")
+        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern="*.py", parse_test_results=use_pytest_parser)
     else:
         test_file_item = FileItem(file_path=test_file, content=repository.get_file_content(test_file))
         file_items.append(test_file_item)
-        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern=test_file)
+        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern=test_file, parse_test_results=use_pytest_parser)
 
     for other_file in other_files:
         if not other_file.content:
@@ -142,11 +134,13 @@ async def _write_code(
             continue
 
         is_test = "test" in other_file.file_path
-        low_prio_file = (fix_code_instructions and not is_test) or (not fix_code_instructions and is_test)
+        low_prio_file = fix_code_instructions and not is_test
 
         trim_file = False
         skip_file = False
 
+        #if low_prio_file:  # TODO: Check context length first
+        #    trim_file = True
         if retry == 1 and low_prio_file:
             trim_file = True
         elif retry == 2 and low_prio_file:
@@ -172,6 +166,9 @@ async def _write_code(
             logger.info(f"Skipping file {other_file.file_path}")
 
     if fix_code_instructions:
+        if not test_file_item:
+            fix_code_instructions += "\n\nThe tests are correct, you must adjust the code to make the tests pass."
+
         messages = [
             Message(sender="Human", items=[TextItem(text=task.input)]),
             Message(sender="AI", items=file_items),

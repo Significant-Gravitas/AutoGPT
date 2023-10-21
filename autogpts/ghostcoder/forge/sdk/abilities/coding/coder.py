@@ -17,30 +17,6 @@ from ghostcoder.test_tools.verify_python_pytest import PythonPytestTestTool
 
 logger = ForgeLogger(__name__)
 
-smart_llm_name = "gpt-4"
-basic_llm_name = "gpt-3.5-turbo"
-
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger('openai').setLevel(logging.INFO)
-logging.getLogger('urllib3').setLevel(logging.INFO)
-logging.getLogger('multipart').setLevel(logging.INFO)
-
-DEFAULT_PROMPT = """You're tasked to write an implementation based on the provided task. 
-You should also write tests for the implementation. Make sure to write tests for all requirements.
-"""
-
-FIX_TESTS_PROMPT = """You are reviewing a solution written by an inexperienced programmer. 
-The tests failed and you need to help the programmer to fix the code.
-"""
-
-FILE_FORMAT = """All files should be presented in the following format:
-
-/file.py
-```python
-# ... code  
-```
-"""
-
 @ability(
     name="verify_code",
     disabled=True,

@@ -4,10 +4,13 @@ import os
 import re
 import shutil
 import time
+import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from pathlib import Path
 from typing import Tuple, Optional, List
+
+import tiktoken
 
 from forge.sdk import ForgeLogger
 from forge.sdk.abilities.registry import ability
@@ -26,58 +29,99 @@ basic_llm_name = "gpt-3.5-turbo-16k"
 
 default_llm_name = smart_llm_name
 
-_job_specs = [
-    {
-        "id": "1-" + basic_llm_name + "-0.0",
-        "model": basic_llm_name,
-        "temperature": 0.0,
-    },
-    {
-        "id": "2-" + basic_llm_name + "-0.1",
-        "model": basic_llm_name,
-        "temperature": 0.1,
-    },
-    {
-        "id": "3-" + basic_llm_name + "-0.4",
-        "model": basic_llm_name,
-        "temperature": 0.4,
-    },
-    {
-        "id": "4-" + basic_llm_name + "-0.0",
-        "model": basic_llm_name,
-        "temperature": 0.0,
-    },
-    {
-        "id": "5-" + basic_llm_name + "-0.1",
-        "model": default_llm_name,
-        "temperature": 0.4,
-    },
-{
-        "id": "6-" + basic_llm_name + "-0.0",
-        "model": basic_llm_name,
-        "temperature": 0.0,
-    },
-    {
-        "id": "7-" + basic_llm_name + "-0.8",
-        "model": basic_llm_name,
-        "temperature": 0.1,
-    },
-    {
-        "id": "8-" + basic_llm_name + "-1.0",
-        "model": basic_llm_name,
-        "temperature": 0.4,
-    },
-    {
-        "id": "9-" + basic_llm_name + "-1.0",
-        "model": basic_llm_name,
-        "temperature": 0.0,
-    }
-]
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logging.getLogger('openai').setLevel(logging.INFO)
 logging.getLogger('urllib3').setLevel(logging.INFO)
 logging.getLogger('multipart').setLevel(logging.INFO)
+
+_basic_specs = [
+    {
+        "id": "01-" + basic_llm_name + "-0.00",
+        "model": basic_llm_name,
+        "temperature": 0.00,
+    },
+    {
+        "id": "02-" + basic_llm_name + "-0.01",
+        "model": basic_llm_name,
+        "temperature": 0.01,
+    },
+    {
+        "id": "03-" + basic_llm_name + "-0.02",
+        "model": basic_llm_name,
+        "temperature": 0.02,
+    },
+    {
+        "id": "04-" + basic_llm_name + "-0.03",
+        "model": basic_llm_name,
+        "temperature": 0.03,
+    },
+    {
+        "id": "05-" + basic_llm_name + "-0.04",
+        "model": basic_llm_name,
+        "temperature": 0.04,
+    },
+{
+        "id": "06-" + basic_llm_name + "-0.05",
+        "model": basic_llm_name,
+        "temperature": 0.05,
+    },
+    {
+        "id": "07-" + basic_llm_name + "-0.10",
+        "model": basic_llm_name,
+        "temperature": 0.10,
+    },
+    {
+        "id": "08-" + basic_llm_name + "-0.20",
+        "model": basic_llm_name,
+        "temperature": 0.20,
+    },
+    {
+        "id": "09-" + basic_llm_name + "-0.30",
+        "model": basic_llm_name,
+        "temperature": 0.30
+    },
+    {
+        "id": "10-" + basic_llm_name + "-0.40",
+        "model": basic_llm_name,
+        "temperature": 0.40,
+    }
+]
+
+_expensive_specs = [
+    {
+        "id": "01-" + smart_llm_name + "-0.0",
+        "model": smart_llm_name,
+        "temperature": 0.00,
+    },
+    {
+        "id": "02-" + smart_llm_name + "-0.0",
+        "model": smart_llm_name,
+        "temperature": 0.01,
+    },
+    {
+        "id": "03-" + smart_llm_name + "-0.1",
+        "model": smart_llm_name,
+        "temperature": 0.02,
+    },
+    {
+        "id": "04-" + smart_llm_name + "-0.2",
+        "model": smart_llm_name,
+        "temperature": 0.03,
+    },
+    {
+        "id": "05-" + smart_llm_name + "-0.4",
+        "model": smart_llm_name,
+        "temperature": 0.04,
+    }
+]
+
+_job_specs = _basic_specs
+
+timeout = 90
+
+upgrade_to_smart_model = False
+use_pytest_parser = True
 
 DEFAULT_PROMPT = """You're tasked to write an implementation based on the provided task. 
 You should also write tests for the implementation. Make sure to write tests for all requirements.
@@ -97,7 +141,7 @@ FILE_FORMAT = """All files should be presented in the following format:
 
 @ability(
     name="write_code",
-    disabled=False,
+    disabled=True,
     description="Use this to write code and tests. Provide the name of the file that should be implemented.",
     parameters=[
         {
@@ -116,48 +160,85 @@ async def write_code_external(
     return await _write_code(agent, task_id, file, job_specs=_job_specs)
 
 
-def process_runner(job_spec, task_input, repo_dir_base, file_name):
-    logger.info(f"Starting process runner for spec {job_spec} in {repo_dir_base}")
+def process_runner(job_spec, task_input, repo_dir_base, file_name, is_retry) -> Tuple[dict, Optional[VerificationResult]]:
+    logger.info(f"Starting process runner for spec {job_spec['id']} in {repo_dir_base}")
 
-    result = _write_code_job(input=task_input, repo_dir=repo_dir_base, file=file_name, job_spec=job_spec)
-    return result
+    if is_retry and upgrade_to_smart_model:
+        job_spec["model"] = smart_llm_name
+
+    try:
+        return _write_code_job(input=task_input, repo_dir=repo_dir_base, file=file_name, job_spec=job_spec)
+    except Exception as e:
+        stack_trace = traceback.format_exc()
+        logger.error(f"Job {job_spec['id']} failed with exception:\n{stack_trace}")
+        return job_spec, VerificationResult(success=False, error=True, verification_count=0, failed_tests_count=0, message=str(e))
 
 
-async def _write_code(agent, task_id, file_name, job_specs: list = None, retry=0) -> Tuple[bool, str]:
+async def _write_code(agent, task_id, file_name, job_specs: list[dict] = None, retry=0) -> Tuple[bool, str]:
     logger.info(f"Run parallel coder for task {task_id} with {len(job_specs)} jobs.")
     task = await agent.db.get_task(task_id)
-    repo_dir = agent.workspace.base_path / task_id
+    repo_dir: Path = agent.workspace.base_path / task_id
     if not repo_dir.exists():
         logger.debug(f"Creating directory {repo_dir}")
         repo_dir.mkdir()
 
+    common_args = [task.input, agent.workspace.base_path / task_id, file_name, retry > 0]
+
     with ProcessPoolExecutor() as executor:
-        results = list(executor.map(process_runner, job_specs, [task.input]*len(job_specs), [agent.workspace.base_path / task_id]*len(job_specs), [file_name]*len(job_specs)))
+        futures = [executor.submit(process_runner, job_spec, *common_args) for job_spec in job_specs]
+
+        results = []
+        for i, future in enumerate(futures):
+            try:
+                async_future = asyncio.wrap_future(future)
+                result = await asyncio.wait_for(async_future, timeout)
+                if result[1]:
+                    results.append(result)
+                else:
+                    logger.warning(f"Job {job_specs[i]['id']} has no verification results. Skipping this.")
+            except TimeoutError:
+                logger.warning(f"Job {job_specs[i]['id']} exceeded the timeout limit of {timeout} seconds. Skipping this.")
+            except Exception as e:
+                logger.error(f"Job {job_specs[i]['id']} failed with an unexpected error: {e}. Skipping this.", exc_info=True)
 
     successful_results = [result for result in results
                           if result[1] and result[1].success and result[1].verification_count > 0]
 
-    if retry < 3 and not successful_results:
+    if successful_results:
+        sorted_results = sorted(successful_results, key=sort_successful_verification_results)
+    else:
         sorted_results = sorted(results, key=sort_failed_verification_results)
 
+    if retry < 6 and not successful_results:
         retry_specs = []
         contents = set()
 
         for result in sorted_results:
-            if len(retry_specs) > 3:
+            if len(retry_specs) > 5:
                 continue
 
             job_spec, verification_result = result
 
-            # TODO: Make a better check for which implementations to select. Like:
+            # TODO: Make a better check for which implementations to select.
             updated_file = repo_dir / job_spec["id"] / file_name
-            if updated_file in contents:
+            updated_contents = updated_file.read_text().strip()
+
+            if updated_contents in contents:
                 logger.info(
                     f"The file {file_name} in {job_spec['id']} was already implemented by another job. Skipping this")
                 continue
-            contents.add(updated_file)
+            else:
+                logging.info(f"New contents {updated_contents}")
 
-            top_job, verification_result = result
+            if verification_result.verification_count > 1 and "last_result" in job_spec and job_spec["last_result"] <= verification_result.failed_tests_count:
+                logger.info(f"The job {job_spec['id']} has more failures ({verification_result.failed_tests_count}) "
+                            f"than previous run {job_spec['last_result']}. Skipping this.")
+                continue
+
+            job_spec["last_result"] = verification_result.failed_tests_count
+
+            contents.add(updated_contents)
+
             logger.info(
                 f"Retrying with {job_spec['id']} with {verification_result.verification_count} verifications and "
                 f"{verification_result.failed_tests_count} failed tests.")
@@ -165,14 +246,17 @@ async def _write_code(agent, task_id, file_name, job_specs: list = None, retry=0
             fix_instructions = ("\n\n".join([item.to_prompt() for item in verification_result.failures])
                                 + f"\n\nThe file {file_name} was implemented, but {verification_result.failed_tests_count} "
                                   f"out of {verification_result.verification_count} tests failed!")
-            top_job["fix_instructions"] = fix_instructions
-            retry_specs.append(top_job)
+            job_spec["fix_instructions"] = fix_instructions
+            retry_specs.append(job_spec)
 
-        return await _write_code(agent=agent, task_id=task_id, file_name=file_name, job_specs=retry_specs, retry=retry+1)
+        if retry_specs:
+            return await _write_code(agent=agent, task_id=task_id, file_name=file_name, job_specs=retry_specs, retry=retry+1)
+        else:
+            logger.info(f"No jobs to retry.")
 
-    logger.info(f"Finished all jobs for task {task_id} with {len(successful_results)} jobs with successful results.")
+    job_ids = [result[0]["id"] for result in successful_results]
+    logger.info(f"Finished all jobs for task {task_id} with {len(successful_results)} jobs ({job_ids}) with successful results. ")
 
-    sorted_results = sorted(successful_results, key=sort_successful_verification_results)
     best_spec, verification_result = sorted_results[0]
     logger.info(
         f"Best result {best_spec['id']} using model {best_spec['model']} with {verification_result.verification_count} "
@@ -193,7 +277,8 @@ async def _write_code(agent, task_id, file_name, job_specs: list = None, retry=0
     output = ""
     if not verification_result.success:
         output += "\n\n".join([item.to_prompt() for item in verification_result.failures])
-        output += f"\n\nThe file {file_name} was implemented, but {verification_result.failed_tests_count} out of {verification_result.verification_count} tests failed!"
+        output += (f"\n\nThe file {file_name} was implemented, but {verification_result.failed_tests_count} out of"
+                   f" {verification_result.verification_count} tests failed!")
     elif verification_result.verification_count > 0:
         output = f"\n\nThe file {file_name} was implemented and {verification_result.verification_count} tests passed!"
 
@@ -210,7 +295,6 @@ def sort_failed_verification_results(job: Tuple[dict, VerificationResult]) -> tu
     return (
         error_priority,  # Items with error come last
         verification_priority,  # Items with count > 0 come before those with count 0
-        not item.success,  # Successful verifications first
         -(item.verification_count >= 2),  # Items with count at least 2 come before others
         item.failed_tests_count if item.verification_count >= 2 else float('inf'),  # Fewest failures first, but only for counts >= 2
         -item.verification_count,  # Higher verification counts come before lower counts
@@ -235,7 +319,7 @@ def _write_code_job(
         job_spec: dict,
         retry: int = 0
 ) -> Tuple[dict, Optional[VerificationResult]]:
-    logger.info(f"Generate code for {file} in {repo_dir}. Using job_spec {job_spec}.")
+    logger.info(f"Generate code for {file} in {repo_dir}. Using job_spec {job_spec['id']}. Retry {retry}.")
     starttime = time.time()
 
     job_dir = repo_dir / job_spec["id"]
@@ -265,7 +349,7 @@ def _write_code_job(
                              repository=repository,
                              sys_prompt=system_prompt,
                              allow_hallucinated_files=True,
-                             auto_mode=True)
+                             auto_mode=False)
 
     other_files = repository.get_source_files(language="python", include_test_files=True)
     has_tests = any("test" in f.file_path for f in other_files)
@@ -276,11 +360,11 @@ def _write_code_job(
     test_file = "test_" + file
 
     if has_tests:
-        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern="*.py")
+        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern="*.py", parse_test_results=use_pytest_parser)
     else:
         test_file_item = FileItem(file_path=test_file, content=repository.get_file_content(test_file))
         file_items.append(test_file_item)
-        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern=test_file)
+        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern=test_file, parse_test_results=use_pytest_parser)
 
     for other_file in other_files:
         if not other_file.content:
@@ -290,12 +374,13 @@ def _write_code_job(
             continue
 
         is_test = "test" in other_file.file_path
-        low_prio_file = (fix_code_instructions and not is_test) or (not fix_code_instructions and is_test)
+        low_prio_file = fix_code_instructions and not is_test
 
         trim_file = False
         skip_file = False
 
-        if retry == 1 and low_prio_file:
+        # Skip test files pytest parser isn't used as the code of all failing tests will be provided anyway
+        if low_prio_file:  # TODO: Check context length first
             trim_file = True
         elif retry == 2 and low_prio_file:
             skip_file = True
@@ -330,14 +415,26 @@ def _write_code_job(
     else:
         messages = [Message(sender="Human", items=[TextItem(text=input)] + file_items)]
     try:
+        msg_str = "\n\n".join([msg.to_prompt() for msg in messages])
+        enc = tiktoken.encoding_for_model(job_spec['model'])
+        tokens = enc.encode(msg_str)
+        logger.info(f"Prompt length: {len(tokens)}")
+
         outgoing_messages = code_writer.execute(incoming_messages=messages)
     except Exception as e:
         # TODO: Ugly hack that only expects max token errors...
         if retry < 3:
+            logger.info(f"Retry job {job_spec['id']} as it failed with exception: {e}")
             return _write_code_job(input=input, repo_dir=repo_dir, file=file, job_spec=job_spec, retry=retry + 1)
         else:
             logger.info(f"Job {job_spec['id']} failed to finish.")
             return job_spec, None
+
+    if not outgoing_messages[0].find_items_by_type("updated_file"):
+        logger.warning(f"Job {job_spec['id']} didn't update any files.")
+        return job_spec, None
+
+    logger.info(f"Verifying job {job_spec['id']}...")
 
     results = test_tool.run_tests()
 
