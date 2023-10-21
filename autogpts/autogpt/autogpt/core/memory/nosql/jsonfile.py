@@ -5,8 +5,8 @@ from logging import Logger
 from pathlib import Path
 from typing import List
 
-from autogpt.core.memory.base import AbstractMemory
-from autogpt.core.memory.nosqlmemory import NoSQLMemory
+from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
+from autogpts.autogpt.autogpt.core.memory.nosqlmemory import NoSQLMemory
 
 
 class JSONFileMemory(NoSQLMemory):

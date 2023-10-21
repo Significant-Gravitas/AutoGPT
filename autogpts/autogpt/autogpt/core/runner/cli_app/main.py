@@ -1,8 +1,8 @@
 import click
 import logging
 
-from autogpt.core.agents import PlannerAgent
-from autogpt.core.runner.client_lib.logging import get_client_logger
+from autogpts.autogpt.autogpt.core.agents import PlannerAgent
+from autogpts.autogpt.autogpt.core.runner.client_lib.logging import get_client_logger
 
 
 async def handle_user_input_request(prompt):

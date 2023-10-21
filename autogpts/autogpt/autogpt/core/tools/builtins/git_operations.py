@@ -7,11 +7,11 @@ from pathlib import Path
 
 from git.repo import Repo
 
-from autogpt.core.agents.base import BaseAgent
-from autogpt.core.utils.exceptions import ToolExecutionError
-from autogpt.core.tools.command_decorator import tool
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.utils.url.validators import validate_url
+from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
+from autogpts.autogpt.autogpt.core.utils.exceptions import ToolExecutionError
+from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.utils.url.validators import validate_url
 
 from .decorators import sanitize_path_arg
 

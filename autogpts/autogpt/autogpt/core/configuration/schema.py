@@ -110,7 +110,7 @@ class Configurable(abc.ABC, Generic[S]):
         self._configuration = settings.configuration
         self._logger = logger
 
-class AFAASMessageType(enum.Enum, str) :
+class AFAASMessageType(str, enum.Enum) :
     AGENT_LLM = 'agent_llm'
     AGENT_AGENT = 'agent_agent'
     AGENT_USER = 'agent_user'

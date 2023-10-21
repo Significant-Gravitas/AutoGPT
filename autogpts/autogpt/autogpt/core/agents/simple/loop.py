@@ -5,25 +5,25 @@ from pydantic import Field
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Dict, Optional
 from typing_extensions import TypedDict
 
-from autogpt.core.agents.simple.lib.models.action import (
+from autogpts.AFAAS.app.lib.action import (
     ActionHistory,
     ActionResult,
     ActionInterruptedByHuman,
     ActionSuccessResult,
     ActionErrorResult,
 )
-from autogpt.core.agents.simple.lib.models.context_items import ContextItem
-from autogpt.core.tools import ToolOutput
-from autogpt.core.agents.simple.lib.models.plan import Plan
-from autogpt.core.agents.simple.lib.models.tasks import Task, TaskStatusList
+from autogpts.AFAAS.app.lib.context_items import ContextItem
+from autogpts.autogpt.autogpt.core.tools import ToolOutput
+from autogpts.AFAAS.app.lib.plan import Plan
+from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
 
-from autogpt.core.tools import ToolResult
-from autogpt.core.runner.client_lib.parser import (
+from autogpts.autogpt.autogpt.core.tools import ToolResult
+from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
     parse_ability_result,
     parse_agent_plan,
     parse_next_tool,
 )
-from autogpt.core.agents.base.exceptions import (
+from autogpts.autogpt.autogpt.core.agents.base.exceptions import (
     AgentException,
     ToolExecutionError,
     InvalidAgentResponseError,
@@ -32,16 +32,16 @@ from autogpt.core.agents.base.exceptions import (
 
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.simple import PlannerAgent
-    # from autogpt.core.prompting.schema import ChatModelResponse
-    from autogpt.core.resource.model_providers import ChatMessage, ChatModelResponse
+    from autogpts.autogpt.autogpt.core.agents.simple import PlannerAgent
+    # from autogpts.autogpt.autogpt.core.prompting.schema import ChatModelResponse
+    from autogpts.autogpt.autogpt.core.resource.model_providers import ChatMessage, ChatModelResponse
 
 
-from autogpt.core.agents.base import BaseLoop, BaseLoopHook, UserFeedback
+from autogpts.autogpt.autogpt.core.agents.base import BaseLoop, BaseLoopHook, UserFeedback
 
 aaas = {}
 try:
-    from autogpt.core.agents.whichway import (
+    from autogpts.autogpt.autogpt.core.agents.whichway import (
         RoutingAgent,
     )
     Task.command : Optional[str] = Field(default="afaas_whichway")
@@ -50,7 +50,7 @@ except :
     aaas['whichway'] = False
 
 try:
-    from autogpt.core.agents.usercontext import (
+    from autogpts.autogpt.autogpt.core.agents.usercontext import (
         UserContextAgent,
         UserContextAgentSettings,
         )
@@ -60,6 +60,7 @@ except :
 
 # FIXME: Deactivated for as long as we don't have the UI to support it
 aaas['usercontext'] = False
+# aaas['whichway'] = False
 
 class PlannerLoop(BaseLoop):
     _agent: PlannerAgent
@@ -86,10 +87,10 @@ class PlannerLoop(BaseLoop):
                 task_parent_id = None,
                 task_predecessor_id = None,
                 responsible_agent_id = None,
-                name = 'afaas_whichway',
-                short_description = 'Define an agent approach to tackle a tasks',
+                task_goal = 'Define an agent approach to tackle a tasks',
                 command = 'afaas_whichway',
-                arguments = None,
+                arguments= None,
+                acceptance_criteria=["A plan has been made to achieve the specific task"],
                 state=TaskStatusList.READY
                 )
         else : 
@@ -98,10 +99,10 @@ class PlannerLoop(BaseLoop):
                 task_parent_id = None,
                 task_predecessor_id = None,
                 responsible_agent_id = None,
-                name = 'afaas_make_initial_plan',
-                short_description = 'Make a plan to tacke a tasks',
+                task_goal = 'Make a plan to tacke a tasks',
                 command = 'afaas_make_initial_plan',
-                # arguments = None,
+                arguments= None,
+                acceptance_criteria=["Contextual information related to the task has been provided"],
                 state=TaskStatusList.READY
                 )
             
@@ -118,7 +119,7 @@ class PlannerLoop(BaseLoop):
                     task_predecessor_id = None,
                     responsible_agent_id = None,
                     name = 'afaas_refine_user_context',
-                    short_description = 'Refine a user requirements for better exploitation by Agents',
+                    task_goal = 'Refine a user requirements for better exploitation by Agents',
                     command = 'afaas_refine_user_context',
                     # arguments = None,
                     state=TaskStatusList.READY
@@ -339,7 +340,7 @@ class PlannerLoop(BaseLoop):
     ToolArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[ToolName, ToolArgs, AgentThoughts]
-    from autogpt.core.resource.model_providers.chat_schema import (
+    from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import (
         ChatMessage,
         ChatPrompt,
     )

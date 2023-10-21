@@ -6,18 +6,16 @@ from typing import Any, ClassVar, TYPE_CHECKING
 
 import inflection
 from pydantic import Field
-
-from autogpt.core.tools.schema import ToolResult
-from autogpt.core.configuration import SystemConfiguration
-from autogpt.core.resource.model_providers import CompletionModelFunction
-from autogpt.core.utils.json_schema import JSONSchema
-
-from autogpt.core.agents.simple.lib.simple import LanguageModelConfiguration
 from .schema import ToolResult
 
 
-from autogpt.core.agents.base.features.agentmixin import AgentMixin
-from autogpt.core.plugin.base import PluginLocation
+from ..tools.schema import ToolResult
+from ..configuration import SystemConfiguration
+from ..agents.base.features.agentmixin import AgentMixin
+from ..agents.base.prompt_manager import LanguageModelConfiguration
+from ..resource.model_providers import CompletionModelFunction
+from ..utils.json_schema import JSONSchema
+from ..plugin.base import PluginLocation
 
 
 class ToolConfiguration(SystemConfiguration):

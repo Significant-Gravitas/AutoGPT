@@ -1,4 +1,4 @@
-from autogpt.core.resource.model_providers.openai.openai import (
+from autogpts.autogpt.autogpt.core.resource.model_providers.openai.openai import (
     OPEN_AI_CHAT_MODELS,
     OPEN_AI_EMBEDDING_MODELS,
     OPEN_AI_MODELS,
@@ -6,7 +6,7 @@ from autogpt.core.resource.model_providers.openai.openai import (
     OpenAIProvider,
     OpenAISettings,
 )
-from autogpt.core.resource.model_providers.schema import (
+from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
     Embedding,
     EmbeddingModelInfo,
     EmbeddingModelProvider,
@@ -22,7 +22,7 @@ from autogpt.core.resource.model_providers.schema import (
     BaseModelResponse,
     ModelTokenizer,
 )
-from autogpt.core.resource.model_providers.chat_schema import (
+from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import (
     AssistantChatMessage,
     AssistantChatMessageDict,
     AssistantFunctionCall,

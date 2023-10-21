@@ -5,11 +5,11 @@ from typing import Union, Optional, List , TYPE_CHECKING
 from logging import Logger
 import uuid
 
-from autogpt.core.agents.simple.lib.models.tasks import Task
+from .tasks import Task
 
 logger = Logger(name=__name__)
 
-from autogpt.core.configuration import SystemSettings
+from autogpts.autogpt.autogpt.core.configuration import SystemSettings
 
 class Plan(SystemSettings):
     """

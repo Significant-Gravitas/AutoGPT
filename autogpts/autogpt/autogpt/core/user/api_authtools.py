@@ -1,8 +1,8 @@
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI, BackgroundTasks
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
-from autogpt.core.user.middleware_jwt import JWTAuthenticationMiddleware
-from autogpt.core.user.user import UserLogin
+from autogpts.autogpt.autogpt.core.user.middleware_jwt import JWTAuthenticationMiddleware
+from autogpts.autogpt.autogpt.core.user.user import UserLogin
 from firebase_admin import auth
 
 

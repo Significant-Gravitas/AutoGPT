@@ -4,20 +4,20 @@ from typing import TYPE_CHECKING, Awaitable, Callable, List, Dict
 
 from typing_extensions import TypedDict
 
-from autogpt.core.ability import ToolResult
-from autogpt.core.agents.base import BaseLoop, BaseLoopHook
-from autogpt.core.agents.simple.lib import Task, TaskStatusList
-from autogpt.core.runner.client_lib.parser import (
+from autogpts.autogpt.autogpt.core.ability import ToolResult
+from ..base import BaseLoop, BaseLoopHook
+from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
     parse_ability_result,
     parse_agent_plan,
     parse_next_tool,
 )
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base import BaseAgent
-    from autogpt.core.resource.model_providers import ChatModelResponse
+    from ..base import BaseAgent
+    from autogpts.autogpt.autogpt.core.resource.model_providers import ChatModelResponse
 
-from autogpt.core.agents.usercontext.strategies import RefineUserContextFunctionNames
+from .strategies import RefineUserContextFunctionNames
+from autogpts.AFAAS.app.lib.tasks import  Task, TaskStatusList
 
 
 class UserContextLoop(BaseLoop):

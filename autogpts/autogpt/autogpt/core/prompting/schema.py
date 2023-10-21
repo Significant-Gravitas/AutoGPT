@@ -2,8 +2,8 @@ import enum
 
 # from pydantic import BaseModel, Field
 
-# from autogpt.core.tools.schema import ToolResult
-# from autogpt.core.resource.model_providers.chat_schema import (
+# from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
+# from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import (
 #     ChatMessage,
 #     ChatMessageDict,
 #     ChatModelResponse,

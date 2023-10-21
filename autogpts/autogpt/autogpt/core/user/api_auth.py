@@ -3,10 +3,10 @@ from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, SecretStr
 from jose import jwt, JWTError
-from autogpt.core.user.user import User, UserCreate, UserLogin, UserResponse
+from autogpts.autogpt.autogpt.core.user.user import User, UserCreate, UserLogin, UserResponse
 
 # TODO : Code using USE_DICTIONARY , users_db , auth to be moved to User
-from autogpt.core.user.user import User, USE_DICTIONARY, users_db
+from autogpts.autogpt.autogpt.core.user.user import User, USE_DICTIONARY, users_db
 from firebase_admin import auth
 
 

@@ -1,9 +1,9 @@
-import autogpt.core.agents.simple.strategies
+from . import strategies
 
 from .main import PlannerAgent
 from .loop import PlannerLoop , aaas
 from .models import (
     PlannerAgentConfiguration,
     PlannerAgentSystems,
-    # PlannerAgentSystemSettings,
 )
+

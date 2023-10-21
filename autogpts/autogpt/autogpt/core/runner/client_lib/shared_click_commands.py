@@ -14,6 +14,6 @@ DEFAULT_SETTINGS_FILE = str(
 #     default=DEFAULT_SETTINGS_FILE,
 # )
 # def make_settings(settings_file: str) -> None:
-#     from autogpt.core.runner.client_lib.settings import make_user_configuration
+#     from autogpts.autogpt.autogpt.core.runner.client_lib.settings import make_user_configuration
 
 #     make_user_configuration(pathlib.Path(settings_file))

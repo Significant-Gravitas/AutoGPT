@@ -5,8 +5,8 @@ from typing import Iterator, Optional, TypeVar
 
 import spacy
 
-from autogpt.core.resource.model_providers.chat_schema import ChatPrompt
-from autogpt.core.resource.model_providers import (
+from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import ChatPrompt
+from autogpts.autogpt.autogpt.core.resource.model_providers import (
     ChatMessage,
     BaseChatModelProvider,
     ModelTokenizer,

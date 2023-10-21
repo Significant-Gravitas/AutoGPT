@@ -8,14 +8,14 @@ from enum import Enum
 from logging import Logger
 from pathlib import Path
 from typing import TYPE_CHECKING
-from autogpt.core.configuration import Configurable
+from autogpts.autogpt.autogpt.core.configuration import Configurable
 
 from pydantic import Field
 
-from autogpt.core.configuration import SystemConfiguration, SystemSettings
+from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration, SystemSettings
 
 if TYPE_CHECKING:
-    from autogpt.core.memory.table.base import AbstractTable
+    from autogpts.autogpt.autogpt.core.memory.table.base import AbstractTable
 
 
 class MemoryAdapterType(Enum):
@@ -149,7 +149,7 @@ class AbstractMemory(Configurable, abc.ABC):
             return AbstractMemory._instances[config_key]
 
         if adapter_type == MemoryAdapterType.NOSQL_JSON_FILE:
-            from autogpt.core.memory.nosql.jsonfile import JSONFileMemory
+            from autogpts.autogpt.autogpt.core.memory.nosql.jsonfile import JSONFileMemory
 
             instance = JSONFileMemory(settings=memory_settings, logger=logger)
 
@@ -198,20 +198,20 @@ class AbstractMemory(Configurable, abc.ABC):
             )
 
         if table_name == "agents":
-            from autogpt.core.memory.table import AgentsTable
+            from autogpts.autogpt.autogpt.core.memory.table import AgentsTable
             returnvalue = AgentsTable(memory=self)
             return returnvalue
         elif table_name == "message_agent_agent":
-            from autogpt.core.memory.table import MessagesAgentAgentTable
+            from autogpts.autogpt.autogpt.core.memory.table import MessagesAgentAgentTable
             return MessagesAgentAgentTable(memory=self)
         elif table_name == "message_agent_llm":
-            from autogpt.core.memory.table import MessagesAgentLLMTable
+            from autogpts.autogpt.autogpt.core.memory.table import MessagesAgentLLMTable
             return MessagesAgentLLMTable(memory=self)
         elif table_name == "message_user_agent":
-            from autogpt.core.memory.table import MessagesUserAgentTable
+            from autogpts.autogpt.autogpt.core.memory.table import MessagesUserAgentTable
             return MessagesUserAgentTable (memory=self)
         elif table_name == "users_informations":
-            from autogpt.core.memory.table  import UsersInformationsTable
+            from autogpts.autogpt.autogpt.core.memory.table  import UsersInformationsTable
             return UsersInformationsTable(memory=self)
         else:
             raise ValueError(f"Unknown table: {table_name}")

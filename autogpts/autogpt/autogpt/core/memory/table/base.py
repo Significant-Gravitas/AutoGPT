@@ -20,7 +20,7 @@ from typing import (
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from autogpt.core.memory.base import AbstractMemory
+    from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 
 
 class AbstractTable(abc.ABC):

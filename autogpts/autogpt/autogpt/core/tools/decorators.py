@@ -7,9 +7,9 @@
 # AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
 
 # if TYPE_CHECKING:
-#     from autogpt.core.agents.simple.lib.models.command import ToolOutput, ToolParameter
-#     from autogpt.core.tools.base import Tool, ToolResult, ToolConfiguration
-#     from autogpt.core.agents.base import BaseAgent
+#     from autogpts.AFAAS.app.lib.command import ToolOutput, ToolParameter
+#     from autogpts.autogpt.autogpt.core.tools.base import Tool, ToolResult, ToolConfiguration
+#     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
 
 # class ToolParameterSpec(TypedDict):

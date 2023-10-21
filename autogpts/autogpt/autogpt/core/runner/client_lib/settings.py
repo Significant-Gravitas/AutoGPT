@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-from autogpt.core.agents import PlannerAgent
+from autogpts.autogpt.autogpt.core.agents import PlannerAgent
 
 
 # def make_user_configuration(settings_file_path: Path):

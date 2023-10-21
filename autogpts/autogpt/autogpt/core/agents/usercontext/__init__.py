@@ -1,8 +1,8 @@
-import autogpt.core.agents.usercontext.strategies
+from . import strategies
 
-from autogpt.core.agents.usercontext.main import UserContextAgent
-from autogpt.core.agents.usercontext.loop import UserContextLoop
-from autogpt.core.agents.usercontext.models import (
+from .main import UserContextAgent
+from .loop import UserContextLoop
+from .models import (
     UserContextAgentConfiguration,
     UserContextAgentSettings,
     UserContextAgentSystems,

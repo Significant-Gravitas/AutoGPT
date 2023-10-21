@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, List
 from azure.cosmos import CosmosClient
 
 if TYPE_CHECKING:
-    from autogpt.core.memory.base import AbstractMemory
+    from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 
-from autogpt.core.memory.nosqlmemory import NoSQLMemory
+from autogpts.autogpt.autogpt.core.memory.nosqlmemory import NoSQLMemory
 
 
 class CosmosDBMemory(NoSQLMemory):

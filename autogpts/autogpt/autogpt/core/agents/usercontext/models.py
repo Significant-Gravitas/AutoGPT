@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import Field
 
-from autogpt.core.agents.base.models import (
+from autogpts.autogpt.autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSystems,
 )
-from autogpt.core.agents.simple.lib import PromptManager
-from autogpt.core.plugin.simple import PluginLocation
-from autogpt.core.resource.model_providers import OpenAISettings
-from autogpt.core.agents.base import BaseAgent
+from ..base import PromptManager
+from autogpts.autogpt.autogpt.core.plugin.simple import PluginLocation
+from autogpts.autogpt.autogpt.core.resource.model_providers import OpenAISettings
+from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
 if TYPE_CHECKING:
     pass

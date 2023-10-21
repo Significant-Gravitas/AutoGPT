@@ -1,4 +1,4 @@
-from autogpt.core.tools.builtins.create_new_tool import CreateNewTool
+from autogpts.autogpt.autogpt.core.tools.builtins.create_new_tool import CreateNewTool
 
 TOOL_CATEGORIES = [
     "autogpt.core.tools.builtins.execute_code",

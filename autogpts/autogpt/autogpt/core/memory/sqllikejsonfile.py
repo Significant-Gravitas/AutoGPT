@@ -5,7 +5,7 @@ import uuid
 from logging import Logger
 from pathlib import Path
 
-from autogpt.core.memory.base import AbstractMemory
+from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 
 
 class SQLLikeJSONFileMemory(AbstractMemory):

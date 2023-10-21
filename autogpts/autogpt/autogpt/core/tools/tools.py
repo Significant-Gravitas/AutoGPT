@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
     from autogpt.config import Any
     from .tool_parameters import ToolParameter
-from autogpt.core.agents.simple.lib.models.context_items import ContextItem
+from autogpts.AFAAS.app.lib.context_items import ContextItem
 
 ToolReturnValue = Any
 ToolOutput = ToolReturnValue | tuple[ToolReturnValue, ContextItem]

@@ -27,8 +27,8 @@ Module Usage:
     This module is used to define and structure the various elements involved in a chat interaction within the AutoGPT framework. It is imported and utilized in constructing and processing prompts, messages, and function calls within the chat-based interaction model.
 
 Examples:
-    >>> from autogpt.core.utils.json_schema import JSONSchema
-    >>> from autogpt.core.agents.exampleagent.strategies.mystrategy import MyStrategy
+    >>> from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
+    >>> from autogpts.autogpt.autogpt.core.agents.exampleagent.strategies.mystrategy import MyStrategy
 
     >>> # Defining a function specification
     >>> func_spec = {
@@ -64,8 +64,8 @@ from typing import (
     Callable,
 )
 
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.resource.model_providers.schema import (
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
     BaseModelResponse,
     AbstractModelProvider,
     ModelProviderService,

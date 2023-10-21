@@ -4,17 +4,17 @@ from  typing import TYPE_CHECKING
 import uuid
 from pathlib import Path
 
-from autogpt.core.configuration import (
+from autogpts.autogpt.autogpt.core.configuration import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.workspace.base import AbstractWorkspace
+from autogpts.autogpt.autogpt.core.workspace.base import AbstractWorkspace
 
 if TYPE_CHECKING:
     # Cyclic import
-    from autogpt.core.agents import BaseAgent
+    from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
 
 class WorkspaceConfiguration(SystemConfiguration):

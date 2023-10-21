@@ -5,10 +5,10 @@ import logging
 from importlib import import_module
 from pydantic import BaseModel, Field
 
-from autogpt.core.configuration import SystemConfiguration, SystemSettings
-from autogpt.core.memory.base import AbstractMemory
-from autogpt.core.plugin.simple import PluginLocation
-#from autogpt.core.workspace.simple import SimpleWorkspace
+from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration, SystemSettings
+from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
+from autogpts.autogpt.autogpt.core.plugin.simple import PluginLocation
+#from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
 
 
 class BaseAgentSystems(SystemConfiguration):

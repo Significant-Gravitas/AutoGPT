@@ -1,6 +1,6 @@
 import dataclasses
 
-from autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
 @dataclasses.dataclass

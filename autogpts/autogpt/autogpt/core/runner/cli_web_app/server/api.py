@@ -24,19 +24,19 @@ import uuid
 from pathlib import Path
 import yaml
 from fastapi import APIRouter, FastAPI, Request
-from autogpt.core.runner.client_lib.shared_click_commands import (
+from autogpts.autogpt.autogpt.core.runner.client_lib.shared_click_commands import (
     DEFAULT_SETTINGS_FILE,
     make_settings,
 )
 
-from autogpt.core.runner.cli_web_app.server.schema import AgentMessageRequestBody
-from autogpt.core.runner.client_lib.workspacebuilder import (
+from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.schema import AgentMessageRequestBody
+from autogpts.autogpt.autogpt.core.runner.client_lib.workspacebuilder import (
     workspace_loader,
     get_settings_from_file,
     get_logger_and_workspace,
 )
-from autogpt.core.agents import AgentSettings, PlannerAgent
-from autogpt.core.runner.client_lib.parser import (
+from autogpts.autogpt.autogpt.core.agents import AgentSettings, PlannerAgent
+from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
     parse_agent_name_and_goals,
     parse_ability_result,
     parse_agent_plan,

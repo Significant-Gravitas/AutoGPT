@@ -12,32 +12,28 @@ from pydantic import Field
 
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base.loop import (  # Import only where it's needed
-        BaseLoop,
-        BaseLoopHook,
-    )
-    from autogpt.core.tools.base import BaseToolsRegistry
+    from autogpts.autogpt.autogpt.core.tools.base import BaseToolsRegistry
+    from autogpts.AFAAS.app.lib.message_agent_user import MessageAgentUser
+    from autogpts.AFAAS.app.lib.message_agent_agent import MessageAgentAgent
+    from autogpts.AFAAS.app.lib.message_agent_llm import MessageAgentLLM
 
-from autogpt.core.configuration import SystemConfiguration , SystemSettings
+from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration , SystemSettings
 
-from autogpt.core.agents.base.loop import (
+from autogpts.autogpt.autogpt.core.agents.base.loop import (  # Import only where it's needed
+    BaseLoop,
     BaseLoopHook,
 )
 
-
-from autogpt.core.agents.base.models import (
+from autogpts.autogpt.autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSystems,
     BaseAgentDirectives,
 )
-from autogpt.core.memory.base import AbstractMemory
-# from autogpt.core.workspace import AbstractWorkspace
-from autogpt.core.workspace.simple import SimpleWorkspace
-from autogpt.core.configuration import Configurable
+from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
+# from autogpts.autogpt.autogpt.core.workspace import AbstractWorkspace
+from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
+from autogpts.autogpt.autogpt.core.configuration import Configurable
 
-from autogpts.autogpt.autogpt.core.agents.simple.lib.models.message_agent_user import MessageAgentUser
-from autogpt.core.agents.simple.lib.models.message_agent_agent import MessageAgentAgent
-from autogpt.core.agents.simple.lib.models.message_agent_llm import MessageAgentLLM
 
 class AbstractAgent(ABC):
 
@@ -589,7 +585,7 @@ class BaseAgent(Configurable, AbstractAgent):
         BaseAgentSystems.user_id: uuid.UUID
         agent_settings.user_id = str(user_id)
 
-        from autogpt.core.memory.base import AbstractMemory
+        from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 
         memory_settings = agent_settings.memory
 
@@ -702,12 +698,12 @@ class BaseAgent(Configurable, AbstractAgent):
             agent_settings_list = YourClass.get_agentsetting_list_from_memory(user_id, logger)
             print(agent_settings_list)
         """
-        from autogpt.core.memory.base import (
+        from autogpts.autogpt.autogpt.core.memory.base import (
             AbstractMemory,
             MemoryConfig,
             AbstractMemory,
         )
-        from autogpt.core.memory.table import AgentsTable, AbstractTable
+        from autogpts.autogpt.autogpt.core.memory.table import AgentsTable, AbstractTable
 
         memory_settings = AbstractMemory.SystemSettings()
 
@@ -746,10 +742,10 @@ class BaseAgent(Configurable, AbstractAgent):
         user_id: uuid.UUID,
         logger: logging.Logger,
     ) -> BaseAgent:
-        from autogpt.core.memory.base import (
+        from autogpts.autogpt.autogpt.core.memory.base import (
             AbstractMemory,
         )
-        from autogpt.core.memory.table import AgentsTable
+        from autogpts.autogpt.autogpt.core.memory.table import AgentsTable
 
         # memory_settings = Memory.SystemSettings(configuration=agent_settings.memory)
         memory_settings = agent_settings.memory

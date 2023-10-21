@@ -5,11 +5,11 @@ from __future__ import annotations
 TOOL_CATEGORY = "user_interaction"
 TOOL_CATEGORY_TITLE = "User Interaction"
 
-from autogpt.core.agents.base import BaseAgent
+from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-# from autogpt.core.utils.app import clean_input
-from autogpt.core.tools.command_decorator import tool
-from autogpt.core.utils.json_schema import JSONSchema
+# from autogpts.autogpt.autogpt.core.utils.app import clean_input
+from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
 @tool(
@@ -29,7 +29,7 @@ from autogpt.core.utils.json_schema import JSONSchema
 )
 async def user_interaction(question: str, agent: BaseAgent) -> str:
 
-    from autogpts.autogpt.autogpt.core.agents.simple.lib.models.message_agent_user import Questions, MessageAgentUser
+    from autogpts.AFAAS.app.lib.message_agent_user import Questions, MessageAgentUser
     # resp = await clean_input(
     #     agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "
     # )

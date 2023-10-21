@@ -15,7 +15,7 @@ class AgentsTable(BaseNoSQLTable):
     third_key = "agent_type"
 
     if TYPE_CHECKING:
-        from autogpt.core.agents import AbstractAgent
+        from autogpts.autogpt.autogpt.core.agents import AbstractAgent
 
     def add(self, value: dict , id : str = "A" + str(uuid.uuid4() )) -> str:
         return super().add(value, id)

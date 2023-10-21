@@ -7,9 +7,9 @@ import boto3
 from botocore.exceptions import NoCredentialsError
 
 if TYPE_CHECKING:
-    from autogpt.core.memory.base import AbstractMemory
+    from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 
-from autogpt.core.memory.nosqlmemory import NoSQLMemory
+from autogpts.autogpt.autogpt.core.memory.nosqlmemory import NoSQLMemory
 
 
 class DynamoDBMemory(NoSQLMemory):

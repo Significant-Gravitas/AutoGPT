@@ -1,9 +1,9 @@
 # import json
 # import logging
 
-# from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
-# from autogpt.core.memory.base import Memory
-# from autogpt.core.workspace import Workspace
+# from autogpts.autogpt.autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
+# from autogpts.autogpt.autogpt.core.memory.base import Memory
+# from autogpts.autogpt.autogpt.core.workspace import Workspace
 
 
 # class MemoryConfiguration(SystemConfiguration):

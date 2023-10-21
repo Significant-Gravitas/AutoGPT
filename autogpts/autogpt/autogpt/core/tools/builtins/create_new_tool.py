@@ -3,9 +3,9 @@ import logging
 
 # from typing import TYPE_CHECKING
 # if TYPE_CHECKING:
-from autogpt.core.tools.base import Tool, ToolConfiguration
-from autogpt.core.tools.schema import ToolResult
-from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
+from autogpts.autogpt.autogpt.core.tools.base import Tool, ToolConfiguration
+from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
+from autogpts.autogpt.autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 
 
 class CreateNewTool(Tool):

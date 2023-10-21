@@ -5,22 +5,24 @@ import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple, Optional
 from pydantic import Field
 
-from autogpt.core.tools import ToolResult, SimpleToolRegistry
-from autogpt.core.agents.base.main import BaseAgent
-from autogpt.core.agents.usercontext.loop import UserContextLoop
-from autogpt.core.agents.usercontext.models import (
+from autogpts.autogpt.autogpt.core.tools import ToolResult, SimpleToolRegistry
+
+from ..base import BaseAgent, PromptManager , BaseLoopHook
+from .loop import UserContextLoop
+from .models import (
     UserContextAgentConfiguration,
     UserContextAgentSettings,
     UserContextAgentSystems,
 )
-from autogpt.core.configuration import Configurable
-from autogpt.core.memory.base import AbstractMemory
-from autogpt.core.agents.simple.lib import PromptManager, Task, TaskStatusList
-from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
-from autogpt.core.resource.model_providers import OpenAIProvider
-from autogpt.core.workspace.simple import SimpleWorkspace
 
-from autogpt.core.agents.base.loop import BaseLoopHook
+from autogpts.autogpt.autogpt.core.configuration import Configurable
+from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
+from autogpts.autogpt.autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
+from autogpts.autogpt.autogpt.core.resource.model_providers import OpenAIProvider
+from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
+
+
+from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
 
 
 class UserContextAgent(BaseAgent):
@@ -143,7 +145,7 @@ class UserContextAgent(BaseAgent):
             agent_settings,
             logger,
         )
-        from autogpt.core.agents.usercontext.strategies import (
+        from autogpts.autogpt.autogpt.core.agents.usercontext.strategies import (
             StrategiesSet,
             StrategiesSetConfiguration,
         )

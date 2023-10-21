@@ -2,8 +2,8 @@ import enum
 import uuid
 from pydantic import BaseModel
 from typing import Optional
-from autogpt.core.configuration.schema import SystemSettings, AFAASMessageType
-from autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.configuration.schema import SystemSettings, AFAASMessageType
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
 class MessageAgentLLM(SystemSettings) :

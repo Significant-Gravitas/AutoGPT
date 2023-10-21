@@ -9,12 +9,12 @@ import openai
 import tiktoken
 from openai.error import APIError, RateLimitError
 
-from autogpt.core.configuration import (
+from autogpts.autogpt.autogpt.core.configuration import (
     Configurable,
     SystemConfiguration,
     UserConfigurable,
 )
-from autogpt.core.resource.model_providers.schema import (
+from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
     Embedding,
     EmbeddingModelInfo,
     EmbeddingModelProvider,
@@ -29,7 +29,7 @@ from autogpt.core.resource.model_providers.schema import (
     
 )
 
-from autogpt.core.resource.model_providers.chat_schema import (
+from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import (
     AssistantChatMessageDict,
     ChatMessage,
     ChatModelInfo,
@@ -43,7 +43,7 @@ from autogpt.core.resource.model_providers.chat_schema import (
     ChatModelResponse,
     AssistantFunctionCallDict
 )
-from autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

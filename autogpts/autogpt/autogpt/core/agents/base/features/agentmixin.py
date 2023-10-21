@@ -5,13 +5,13 @@ from logging import Logger
 
 if TYPE_CHECKING:
     from ..main import BaseAgent
-    from autogpt.core.tools.base import BaseToolsRegistry
+    from autogpts.autogpt.autogpt.core.tools.base import BaseToolsRegistry
 
-    from autogpt.core.tools.tools import Tool
-    from autogpt.core.agents.simple.lib.models.plan import Plan
+    from autogpts.autogpt.autogpt.core.tools.tools import Tool
+    from autogpts.AFAAS.app.lib.plan import Plan
 
-    from autogpt.core.resource.model_providers import CompletionModelFunction
-    from autogpt.core.memory.table import AbstractTable
+    from autogpts.autogpt.autogpt.core.resource.model_providers import CompletionModelFunction
+    from autogpts.autogpt.autogpt.core.memory.table import AbstractTable
 
 
 class AgentMixin:

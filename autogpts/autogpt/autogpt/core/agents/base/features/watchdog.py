@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..base import BaseAgentConfiguration
 
-from autogpt.core.agents.simple.lib.models.action_history import EpisodicActionHistory
+from autogpts.AFAAS.app.lib.action_history import EpisodicActionHistory
 
 from ..base import BaseAgent
 

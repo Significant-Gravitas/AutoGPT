@@ -3,7 +3,7 @@ import enum
 
 from pydantic import SecretBytes, SecretField, SecretStr
 
-from autogpt.core.configuration import (
+from autogpts.autogpt.autogpt.core.configuration import (
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,

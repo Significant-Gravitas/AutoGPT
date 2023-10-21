@@ -13,8 +13,8 @@ from colorama import Fore
 from pydantic import Field, validator
 
 import autogpt
-from autogpt.core.configuration.schema import Configurable, SystemSettings
-from autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS
+from autogpts.autogpt.autogpt.core.configuration.schema import Configurable, SystemSettings
+from autogpts.autogpt.autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
 

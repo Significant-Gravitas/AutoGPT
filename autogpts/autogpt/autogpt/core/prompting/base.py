@@ -4,25 +4,25 @@ import abc
 from pydantic import validator
 import re
 from typing import TYPE_CHECKING, Union, Optional
-from autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.simple.main import PlannerAgent
-    from autogpt.core.agents.base.main import BaseAgent
+    from autogpts.autogpt.autogpt.core.agents.simple.main import PlannerAgent
+    from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
 
-from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
-from autogpt.core.configuration import SystemConfiguration
-from autogpt.core.prompting.schema import LanguageModelClassification
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
+from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration
+from autogpts.autogpt.autogpt.core.prompting.schema import LanguageModelClassification
 
 
-from autogpt.core.configuration import (
+from autogpts.autogpt.autogpt.core.configuration import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,
 )
 
-from autogpt.core.resource.model_providers import (
+from autogpts.autogpt.autogpt.core.resource.model_providers import (
     BaseChatModelProvider,
     ModelProviderName,
     OpenAIModelName,
@@ -98,7 +98,7 @@ class PromptStrategiesConfiguration(SystemConfiguration):
     presence_penalty : Optional[float] = None # Avoid certain subjects
 
 
-from autogpt.core.agents.base.features.agentmixin import AgentMixin
+from autogpts.autogpt.autogpt.core.agents.base.features.agentmixin import AgentMixin
 
 
 class AbstractPromptStrategy(AgentMixin, abc.ABC):

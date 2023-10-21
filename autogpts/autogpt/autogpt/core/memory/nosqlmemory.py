@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from autogpt.core.configuration import Configurable
-from autogpt.core.memory.base import AbstractMemory
+from autogpts.autogpt.autogpt.core.configuration import Configurable
+from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 
 if TYPE_CHECKING:
-    from autogpt.core.memory.table.base import AbstractTable
+    from autogpts.autogpt.autogpt.core.memory.table.base import AbstractTable
 
 
 class NoSQLMemory(AbstractMemory):

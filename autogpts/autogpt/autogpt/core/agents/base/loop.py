@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Optional, Dict
 from typing_extensions import NamedTuple, TypedDict
 
 
-from autogpt.core.agents.base.features.agentmixin import AgentMixin
+from autogpts.autogpt.autogpt.core.agents.base.features.agentmixin import AgentMixin
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base.main import BaseAgent
-    from autogpt.core.prompting.schema import ChatModelResponse
-    from autogpt.core.tools import BaseToolsRegistry, Tool
+    from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
+    from autogpts.autogpt.autogpt.core.prompting.schema import ChatModelResponse
+    from autogpts.autogpt.autogpt.core.tools import BaseToolsRegistry, Tool
 
 
 class BaseLoopMeta(abc.ABCMeta):

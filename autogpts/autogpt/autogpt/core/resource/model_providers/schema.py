@@ -27,8 +27,8 @@ from typing import (
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
-from autogpt.core.configuration import UserConfigurable
-from autogpt.core.resource.schema import (
+from autogpts.autogpt.autogpt.core.configuration import UserConfigurable
+from autogpts.autogpt.autogpt.core.resource.schema import (
     Embedding,
     BaseProviderBudget,
     BaseProviderCredentials,
@@ -36,7 +36,7 @@ from autogpt.core.resource.schema import (
     BaseProviderUsage,
     ResourceType,
 )
-from autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
 class ModelProviderService(str, enum.Enum):

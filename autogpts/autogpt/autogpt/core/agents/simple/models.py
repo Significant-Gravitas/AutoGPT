@@ -4,23 +4,25 @@ import uuid
 from typing import TYPE_CHECKING, Optional
 from pydantic import Field
 
-from autogpt.core.tools import SimpleToolRegistry
-from autogpt.core.agents.base.models import (
+
+if TYPE_CHECKING :
+    from . import PlannerAgent
+
+from ..base import PromptManager
+
+from autogpts.autogpt.autogpt.core.tools import SimpleToolRegistry
+from autogpts.autogpt.autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSystems,
 )
-from autogpt.core.agents.simple.lib import PromptManager
-from autogpt.core.plugin.simple import PluginLocation
-from autogpt.core.resource.model_providers import OpenAISettings
+from autogpts.autogpt.autogpt.core.plugin.simple import PluginLocation
+from autogpts.autogpt.autogpt.core.resource.model_providers import OpenAISettings
 
-
-if TYPE_CHECKING :
-    from autogpt.core.agents.simple import PlannerAgent
 
 class PlannerAgentSystems(BaseAgentSystems):
     tool_registry : str ="autogpt.core.tools.SimpleToolRegistry"
     chat_model_provider : str ="autogpt.core.resource.model_providers.OpenAIProvider"
-    prompt_manager : str ="autogpt.core.agents.simple.lib.PromptManager"
+    prompt_manager : str ="autogpt.core.agents.base.PromptManager"
 
     class Config(BaseAgentSystems.Config):
         pass

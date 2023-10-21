@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from jose import JWTError
-from autogpt.core.user.user import User
+from autogpts.autogpt.autogpt.core.user.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/user/login")
 

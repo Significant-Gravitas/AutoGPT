@@ -9,15 +9,15 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base import BaseAgent
+    from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpt.core.agents.base.features.context import get_agent_context
-from autogpt.core.utils.exceptions import InvalidArgumentError
-from autogpt.core.tools.command_decorator import tool
-from autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.agents.base.features.context import get_agent_context
+from autogpts.autogpt.autogpt.core.utils.exceptions import InvalidArgumentError
+from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
-from autogpt.core.agents.simple.lib.models.plan import Plan
-from autogpt.core.agents.simple.lib.models.tasks import Task, TaskStatusList
+from autogpts.AFAAS.app.lib.plan import Plan
+from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
 
 logger = logging.getLogger(__name__)
 

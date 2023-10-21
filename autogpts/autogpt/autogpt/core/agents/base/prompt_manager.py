@@ -6,26 +6,26 @@ import time
 from pydantic import validator
 from typing import TYPE_CHECKING
 
-from autogpt.core.agents.base.features.agentmixin import AgentMixin
+from autogpts.autogpt.autogpt.core.agents.base.features.agentmixin import AgentMixin
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base.main import BaseAgent
+    from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
 
-from autogpt.core.configuration import (
+from autogpts.autogpt.autogpt.core.configuration import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,
 )
 
-# from autogpt.core.agents.simple.lib.schema import Task
-from autogpt.core.prompting.base import (
+# from autogpts.autogpt.autogpt.core.agents.simple.lib.schema import Task
+from autogpts.autogpt.autogpt.core.prompting.base import (
     BasePromptStrategy,
     AbstractPromptStrategy,
     PromptStrategiesConfiguration,
 )
-from autogpt.core.prompting.schema import LanguageModelClassification
-from autogpt.core.resource.model_providers import (
+from autogpts.autogpt.autogpt.core.prompting.schema import LanguageModelClassification
+from autogpts.autogpt.autogpt.core.resource.model_providers import (
     BaseChatModelProvider,
     ChatModelResponse,
     CompletionModelFunction,
@@ -33,7 +33,7 @@ from autogpt.core.resource.model_providers import (
     OpenAIModelName,
     OpenAIProvider,
 )
-from autogpt.core.workspace import AbstractWorkspace
+from autogpts.autogpt.autogpt.core.workspace import AbstractWorkspace
 
 
 # FIXME : Find somewhere more appropriate

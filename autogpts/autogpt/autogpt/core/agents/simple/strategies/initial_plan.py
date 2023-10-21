@@ -4,29 +4,30 @@ import enum
 from typing import Optional
 from pydantic import BaseModel
 
-from autogpt.core.configuration import SystemConfiguration, UserConfigurable
+from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration, UserConfigurable
 
-from autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
-from autogpt.core.prompting.utils.utils import (
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
     json_loads,
     to_numbered_list,
     to_string_list,
 )
-from autogpt.core.prompting.base import (
+from autogpts.autogpt.autogpt.core.prompting.base import (
     BasePromptStrategy,
     PromptStrategiesConfiguration,
 )
-from autogpt.core.prompting.base import LanguageModelClassification, RESPONSE_SCHEMA
+from autogpts.autogpt.autogpt.core.prompting.base import LanguageModelClassification, RESPONSE_SCHEMA
 
-from autogpt.core.resource.model_providers import (
+from autogpts.autogpt.autogpt.core.resource.model_providers import (
     CompletionModelFunction,
     ChatMessage,
     AssistantChatMessageDict,
     ChatPrompt,
 )
 
-from autogpt.core.agents.simple.lib.schema import (
+
+from autogpts.AFAAS.app.lib import (
     Task,
     TaskType,
 )
@@ -65,8 +66,6 @@ class InitialPlanStrategy(BasePromptStrategy):
 
     DEFAULT_SYSTEM_INFO = [
         "The OS you are running on is: {os_info}",
-        # "It takes money to let you run. Your API budget is ${api_budget:.3f}",
-        # "The current time and date is {current_time}",
     ]
 
     DEFAULT_USER_PROMPT_TEMPLATE = (
@@ -86,41 +85,23 @@ class InitialPlanStrategy(BasePromptStrategy):
                 items=JSONSchema(
                     type=JSONSchema.Type.OBJECT,
                     properties={
-                        "name": JSONSchema(
+                        "task_goal": JSONSchema(
                             type=JSONSchema.Type.STRING,
-                            description="The name of the task",
+                            description="The main goal or purpose of the task.",
+                            ),
+                        "long_description": JSONSchema(
+                            type=JSONSchema.Type.STRING,
+                            description="A detailed description of the task.",
                         ),
-                        "description": JSONSchema(
+                        "task_context": JSONSchema(
                             type=JSONSchema.Type.STRING,
-                            description="An short description in the from `As a <type of user>, I want <some goal> so that <some reason>`",
-                        ),
-                        "objective": JSONSchema(
-                            type=JSONSchema.Type.STRING,
-                            description="An imperative verb phrase that succinctly describes the task.",
-                        ),
-                        "type": JSONSchema(
-                            type=JSONSchema.Type.STRING,
-                            description="A categorization for the task.",
-                            enum=[t.value for t in TaskType],
+                            description="Additional context or information about the task.",
                         ),
                         "acceptance_criteria": JSONSchema(
                             type=JSONSchema.Type.ARRAY,
                             items=JSONSchema(
                                 type=JSONSchema.Type.STRING,
                                 description="A list of measurable and testable criteria that must be met for the task to be considered complete.",
-                            ),
-                        ),
-                        "priority": JSONSchema(
-                            type=JSONSchema.Type.INTEGER,
-                            description="A number between 1 and 10 indicating the priority of the task relative to other generated tasks.",
-                            minimum=1,
-                            maximum=10,
-                        ),
-                        "ready_criteria": JSONSchema(
-                            type=JSONSchema.Type.ARRAY,
-                            items=JSONSchema(
-                                type=JSONSchema.Type.STRING,
-                                description="A list of measurable and testable criteria that must be met before the task can be started.",
                             ),
                         ),
                     },
@@ -134,6 +115,11 @@ class InitialPlanStrategy(BasePromptStrategy):
         logger: Logger,
         model_classification: LanguageModelClassification,
         default_function_call: InitialPlanFunctionNames,
+        temperature : float , #if coding 0.05
+        top_p: Optional[float] ,
+        max_tokens : Optional[int] ,
+        frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
+        presence_penalty : Optional[float], # Avoid certain subjects
     ):
         self._logger = logger
         self._model_classification = model_classification

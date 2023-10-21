@@ -10,15 +10,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base import BaseAgent
+    from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpt.core.utils.exceptions import (
+from autogpts.autogpt.autogpt.core.utils.exceptions import (
     ToolExecutionError,
     DuplicateOperationError,
 )
-from autogpt.core.tools.command_decorator import tool
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.agents.simple.lib.models.context_items import (
+from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
+from autogpts.AFAAS.app.lib.context_items import (
     FileContextItem,
     FolderContextItem,
 )

@@ -1,12 +1,12 @@
 from logging import Logger
-from autogpt.core.prompting.base import PromptStrategiesConfiguration
+from autogpts.autogpt.autogpt.core.prompting.base import PromptStrategiesConfiguration
 
-from autogpt.core.agents.simple.strategies.initial_plan import (
+from autogpts.autogpt.autogpt.core.agents.simple.strategies.initial_plan import (
     InitialPlanStrategy,
     InitialPlanStrategyConfiguration,
 )
 
-from autogpt.core.agents.simple.strategies.select_tool import (
+from autogpts.autogpt.autogpt.core.agents.simple.strategies.select_tool import (
     SelectToolStrategy,
     SelectToolStrategyConfiguration,
 )
@@ -18,7 +18,7 @@ class StrategiesConfiguration(PromptStrategiesConfiguration):
 
 
 class Strategies:
-    from autogpt.core.prompting.base import BasePromptStrategy, AbstractPromptStrategy
+    from autogpts.autogpt.autogpt.core.prompting.base import BasePromptStrategy, AbstractPromptStrategy
 
     @staticmethod
     def get_strategies(logger: Logger) -> list[AbstractPromptStrategy]:

@@ -5,12 +5,12 @@ import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base import BaseAgent
+    from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
     from autogpt.config import Config
 
-from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.core.tools.tools import Tool, ToolOutput
-from autogpt.core.tools.tool_parameters import ToolParameter
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.tools.tools import Tool, ToolOutput
+from autogpts.autogpt.autogpt.core.tools.tool_parameters import ToolParameter
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"

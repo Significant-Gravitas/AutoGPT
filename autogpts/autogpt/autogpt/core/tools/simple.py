@@ -12,24 +12,24 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.base import BaseAgent
+    from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpt.core.tools.base import Tool, BaseToolsRegistry, ToolConfiguration
-from autogpt.core.tools.command_decorator import AUTO_GPT_TOOL_IDENTIFIER
+from autogpts.autogpt.autogpt.core.tools.base import Tool, BaseToolsRegistry, ToolConfiguration
+from autogpts.autogpt.autogpt.core.tools.command_decorator import AUTO_GPT_TOOL_IDENTIFIER
 
-# from autogpt.core.tools.builtins import BUILTIN_TOOLS
-from autogpt.core.tools.schema import ToolResult
-from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
+# from autogpts.autogpt.autogpt.core.tools.builtins import BUILTIN_TOOLS
+from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
+from autogpts.autogpt.autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 
-from autogpt.core.memory.base import AbstractMemory
-from autogpt.core.plugin.simple import SimplePluginService
-from autogpt.core.resource.model_providers import (
+from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
+from autogpts.autogpt.autogpt.core.plugin.simple import SimplePluginService
+from autogpts.autogpt.autogpt.core.resource.model_providers import (
     BaseChatModelProvider,
     CompletionModelFunction,
     ModelProviderName,
 )
 
-from autogpt.core.workspace.base import AbstractWorkspace
+from autogpts.autogpt.autogpt.core.workspace.base import AbstractWorkspace
 
 
 class ToolsRegistryConfiguration(SystemConfiguration):

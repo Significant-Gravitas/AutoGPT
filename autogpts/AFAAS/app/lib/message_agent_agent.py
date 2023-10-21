@@ -2,7 +2,7 @@ import enum
 import uuid
 from pydantic import BaseModel
 from typing import Optional
-from autogpt.core.configuration.schema import SystemSettings, AFAASMessageType
+from autogpts.autogpt.autogpt.core.configuration.schema import SystemSettings, AFAASMessageType
 
 
 class MessageAgentAgent(SystemSettings) :

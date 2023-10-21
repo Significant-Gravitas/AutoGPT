@@ -6,29 +6,25 @@ from pydantic import Field
 import datetime
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple, Optional
 
-from autogpt.core.tools import ToolResult, SimpleToolRegistry, TOOL_CATEGORIES
-from autogpt.core.agents.simple.models import (
+from ..base import PromptManager,  BaseAgent, BaseLoopHook
+from .loop import PlannerLoop
+from .models import (
     PlannerAgentConfiguration,
     PlannerAgentSystems,
     # PlannerAgentSystemSettings,
 )
-from autogpt.core.configuration import Configurable
-from autogpt.core.memory.base import AbstractMemory
-from autogpt.core.agents.simple.lib import PromptManager
-from autogpt.core.agents.simple.lib.models.tasks import TaskStatusList
-from autogpt.core.agents.simple.lib.models.plan import Plan, Task
-from autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
-from autogpt.core.resource.model_providers import OpenAIProvider
+from autogpts.autogpt.autogpt.core.configuration import Configurable
+from autogpts.autogpt.autogpt.core.tools import ToolResult, SimpleToolRegistry, TOOL_CATEGORIES
+from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
+from autogpts.AFAAS.app.lib.tasks import TaskStatusList
+from autogpts.AFAAS.app.lib.plan import Plan, Task
+from autogpts.autogpt.autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
+from autogpts.autogpt.autogpt.core.resource.model_providers import OpenAIProvider,   OpenAISettings
 
 if TYPE_CHECKING:
-    from autogpt.core.workspace.simple import SimpleWorkspace
+    from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
 
-from autogpt.core.agents.base.main import BaseAgent
-from autogpt.core.agents.base.loop import BaseLoopHook
-from autogpt.core.agents.simple.loop import PlannerLoop
 
-from autogpt.core.resource.model_providers.openai.openai import  OpenAISettings
-from autogpt.core.agents.simple.lib import PromptManager
 
 
 class PlannerAgent(BaseAgent):
@@ -212,7 +208,7 @@ class PlannerAgent(BaseAgent):
         agent_settings: PlannerAgent.SystemSettings,
         logger: logging.Logger,
     ):
-        from autogpt.core.workspace import SimpleWorkspace
+        from autogpts.autogpt.autogpt.core.workspace import SimpleWorkspace
 
         return SimpleWorkspace.create_workspace(
             user_id=agent_settings.user_id,
@@ -235,8 +231,8 @@ class PlannerAgent(BaseAgent):
         )
 
         # TODO : Continue refactorization => move to loop ?
-        from autogpt.core.agents.simple import strategies
-        from autogpt.core.agents.simple.strategies import (
+        from autogpts.autogpt.autogpt.core.agents.simple import strategies
+        from autogpts.autogpt.autogpt.core.agents.simple.strategies import (
             Strategies,
             StrategiesConfiguration,
         )

@@ -6,7 +6,7 @@ import typing
 from pathlib import Path
 
 if typing.TYPE_CHECKING:
-    from autogpt.core.configuration import AgentConfiguration
+    from autogpts.autogpt.autogpt.core.configuration import AgentConfiguration
 
 
 class AbstractWorkspace(abc.ABC):

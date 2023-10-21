@@ -9,11 +9,11 @@ import pkgutil
 from typing import Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
-from autogpt.core.tools.schema import ToolResult
+from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
 
 if TYPE_CHECKING:
-    from autogpt.core.agents import BaseAgent
-    from autogpt.core.agents.simple.lib.models.plan import Plan
+    from autogpts.autogpt.autogpt.core.agents import BaseAgent
+    from .plan import Plan
 
 class TaskType(str, enum.Enum):
     """
@@ -183,17 +183,23 @@ class Task(BaseModel):
     ###
     ### GENERAL properties
     ###
-
-    
     task_id: str = Field(default_factory=lambda: "T" + str(uuid.uuid4())) # task_id: str = Task.generate_short_id()
     parent_task: Optional[Task]
     task_parent_id: Optional[str]
     task_predecessor_id: Optional[str]
-    responsible_agent_id: Optional[str] = Field(default="")
+    #responsible_agent_id: Optional[str] = Field(default="")
+    state :  Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG.value)
 
-    short_description: str
+    task_goal: str
     long_decription : Optional[str]
-    state :  Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
+    task_context : Optional[str]
+
+    ###
+    ### Task Management properties
+    ###
+    task_history: Optional[list[dict]]
+    subtasks: Optional[list[Task]]
+    acceptance_criteria: list[str]
 
     ###
     ### Optional : Task execution properties 
@@ -204,22 +210,8 @@ class Task(BaseModel):
     # else :
     #     command : Optional[str] = Field(default="afaas_make_initial_plan")
     command : Optional[str] = Field(default="afaas_make_initial_plan")
-
     arguments : Optional[list] = Field(default={})
-
-    ###
-    ### Task Management properties
-    ###
-    acceptance_criteria: Optional[list[str]]
-    subtasks: Optional[list[Task]]
-    #context: TaskContext = Field(default_factory=TaskContext)
-
-    # type: Optional[
-    #     str
-    # ]  # TaskType  FIXME: gpt does not obey the enum parameter in its schema
-    # priority: Optional[int]
-    # ready_criteria: Optional[list[str]]
-
+    
     class Config:
         arbitrary_types_allowed = True
 

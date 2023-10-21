@@ -1,13 +1,13 @@
 from __future__ import annotations
-
+from pydantic import BaseModel
+from dataclasses import dataclass
 from typing import Any, Iterator, Literal, Optional
 
-from pydantic import BaseModel, Field
-
-from autogpt.core.prompting.utils.utils import to_numbered_list, indent
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import to_numbered_list, indent
 
 
-class Action(BaseModel):
+@dataclass
+class Action:
     name: str
     args: dict[str, Any]
     reasoning: str
@@ -16,7 +16,8 @@ class Action(BaseModel):
         return f"{self.name}({', '.join([f'{a}={repr(v)}' for a, v in self.args.items()])})"
 
 
-class ActionSuccessResult(BaseModel):
+@dataclass
+class ActionSuccessResult:
     outputs: Any
     status: Literal["success"] = "success"
 
@@ -26,8 +27,8 @@ class ActionSuccessResult(BaseModel):
         return f"```\n{self.outputs}\n```" if multiline else str(self.outputs)
 
 
-# FIXME: implement validators instead of allowing arbitrary types
-class ActionErrorResult(BaseModel, arbitrary_types_allowed=True):
+@dataclass
+class ActionErrorResult:
     reason: str
     error: Optional[Exception] = None
     status: Literal["error"] = "error"
@@ -36,7 +37,8 @@ class ActionErrorResult(BaseModel, arbitrary_types_allowed=True):
         return f"Action failed: '{self.reason}'"
 
 
-class ActionInterruptedByHuman(BaseModel):
+@dataclass
+class ActionInterruptedByHuman:
     feedback: str
     status: Literal["interrupted_by_human"] = "interrupted_by_human"
 
@@ -47,57 +49,61 @@ class ActionInterruptedByHuman(BaseModel):
 ActionResult = ActionSuccessResult | ActionErrorResult | ActionInterruptedByHuman
 
 
-class Episode(BaseModel):
-    action: Action
-    result: ActionResult | None
-
-    def __str__(self) -> str:
-        executed_action = f"Executed `{self.action.format_call()}`"
-        action_result = f": {self.result}" if self.result else "."
-        return executed_action + action_result
-
-
-class EpisodicActionHistory(BaseModel):
+class ActionHistory:
     """Utility container for an action history"""
 
-    episodes: list[Episode] = Field(default_factory=list)
-    cursor: int = 0
+    @dataclass
+    class CycleRecord:
+        action: Action
+        result: ActionResult | None
+
+        def __str__(self) -> str:
+            executed_action = f"Executed `{self.action.format_call()}`"
+            action_result = f": {self.result}" if self.result else "."
+            return executed_action + action_result
+
+    cursor: int
+    cycles: list[CycleRecord]
+
+    def __init__(self, cycles: list[CycleRecord] = []):
+        self.cycles = cycles
+        self.cursor = len(self.cycles)
 
     @property
-    def current_episode(self) -> Episode | None:
+    def current_record(self) -> CycleRecord | None:
         if self.cursor == len(self):
             return None
         return self[self.cursor]
 
-    def __getitem__(self, key: int) -> Episode:
-        return self.episodes[key]
+    def __getitem__(self, key: int) -> CycleRecord:
+        return self.cycles[key]
 
-    def __iter__(self) -> Iterator[Episode]:
-        return iter(self.episodes)
+    def __iter__(self) -> Iterator[CycleRecord]:
+        return iter(self.cycles)
 
     def __len__(self) -> int:
-        return len(self.episodes)
+        return len(self.cycles)
 
     def __bool__(self) -> bool:
-        return len(self.episodes) > 0
+        return len(self.cycles) > 0
 
     def register_action(self, action: Action) -> None:
-        if not self.current_episode:
-            self.episodes.append(Episode(action=action, result=None))
-            assert self.current_episode
-        elif self.current_episode.action:
+        if not self.current_record:
+            self.cycles.append(self.CycleRecord(action, None))
+            assert self.current_record
+        elif self.current_record.action:
             raise ValueError("Action for current cycle already set")
 
     def register_result(self, result: ActionResult) -> None:
-        if not self.current_episode:
+        if not self.current_record:
             raise RuntimeError("Cannot register result for cycle without action")
-        elif self.current_episode.result:
+        elif self.current_record.result:
             raise ValueError("Result for current cycle already set")
 
-        self.current_episode.result = result
-        self.cursor = len(self.episodes)
+        self.current_record.result = result
+        self.cursor = len(self.cycles)
 
-    def rewind(self, number_of_episodes: int = 0) -> None:
+    def rewind(self, number_of_cycles: int = 0) -> None:
         """Resets the history to an earlier state.
 
         Params:
@@ -105,22 +111,22 @@ class EpisodicActionHistory(BaseModel):
                 When set to 0, it will only reset the current cycle.
         """
         # Remove partial record of current cycle
-        if self.current_episode:
-            if self.current_episode.action and not self.current_episode.result:
-                self.episodes.pop(self.cursor)
+        if self.current_record:
+            if self.current_record.action and not self.current_record.result:
+                self.cycles.pop(self.cursor)
 
         # Rewind the specified number of cycles
-        if number_of_episodes > 0:
-            self.episodes = self.episodes[:-number_of_episodes]
-            self.cursor = len(self.episodes)
+        if number_of_cycles > 0:
+            self.cycles = self.cycles[:-number_of_cycles]
+            self.cursor = len(self.cycles)
 
     def fmt_list(self) -> str:
-        return to_numbered_list(self.episodes)
+        return to_numbered_list(self.cycles)
 
     def fmt_paragraph(self) -> str:
         steps: list[str] = []
 
-        for i, c in enumerate(self.episodes, 1):
+        for i, c in enumerate(self.cycles, 1):
             step = f"### Step {i}: Executed `{c.action.format_call()}`\n"
             step += f'- **Reasoning:** "{c.action.reasoning}"\n'
             step += (

@@ -1,7 +1,7 @@
 from importlib import import_module
 from typing import TYPE_CHECKING
 
-from autogpt.core.plugin.base import (
+from autogpts.autogpt.autogpt.core.plugin.base import (
     PluginLocation,
     PluginService,
     PluginStorageFormat,
@@ -9,7 +9,7 @@ from autogpt.core.plugin.base import (
 )
 
 if TYPE_CHECKING:
-    from autogpt.core.plugin.base import PluginType
+    from autogpts.autogpt.autogpt.core.plugin.base import PluginType
 
 
 class SimplePluginService(PluginService):

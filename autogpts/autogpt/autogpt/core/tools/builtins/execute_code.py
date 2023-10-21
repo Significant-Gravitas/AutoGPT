@@ -13,16 +13,16 @@ import docker
 from docker.errors import DockerException, ImageNotFound
 from docker.models.containers import Container as DockerContainer
 
-from autogpt.core.agents.base import BaseAgent
-from autogpt.core.utils.exceptions import (
+from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
+from autogpts.autogpt.autogpt.core.utils.exceptions import (
     CodeExecutionError,
     ToolExecutionError,
     InvalidArgumentError,
     OperationNotAllowedError,
 )
-from autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 
-from autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 

@@ -4,29 +4,29 @@ import copy
 import re
 from logging import Logger
 from pydantic import validator
-from typing import TYPE_CHECKING, Union
-from autogpt.core.utils.json_schema import JSONSchema
+from typing import TYPE_CHECKING, Union, Optional
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.simple.main import PlannerAgent
+    from autogpts.autogpt.autogpt.core.agents.simple.main import PlannerAgent
 
-    from autogpt.core.agents.base.main import BaseAgent
+    from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
 
-from autogpt.core.agents.simple.lib.models.plan import Plan
-from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
-from autogpt.core.configuration import SystemConfiguration
-from autogpt.core.prompting.schema import (
+from autogpts.AFAAS.app.lib.plan import Plan
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
+from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration
+from autogpts.autogpt.autogpt.core.prompting.schema import (
     LanguageModelClassification,
 )
 
-from autogpt.core.configuration import (
+from autogpts.autogpt.autogpt.core.configuration import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,
 )
 
-from autogpt.core.resource.model_providers import (
+from autogpts.autogpt.autogpt.core.resource.model_providers import (
     BaseChatModelProvider,
     ModelProviderName,
     OpenAIModelName,
@@ -96,6 +96,11 @@ class PlanningPromptStrategy(BasePromptStrategy):
         self,
         logger: Logger,
         model_classification: LanguageModelClassification,
+        temperature : float , #if coding 0.05
+        top_p: Optional[float] ,
+        max_tokens : Optional[int] ,
+        frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
+        presence_penalty : Optional[float], # Avoid certain subjects
         **kwargs,
     ):
         super().__init__()
@@ -177,7 +182,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
             "{best_practices}"
         )
 
-        from autogpt.core.runner.client_lib.parser import (
+        from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
             parse_ability_result,
             parse_agent_plan,
             parse_next_tool,
@@ -225,7 +230,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         #     plugin.post_prompt(self)
 
         # Construct full prompt
-        from autogpt.core.agents.simple.lib.simple import get_os_info
+        from autogpts.AFAAS.app.lib import get_os_info
 
         full_prompt_parts: list[str] = (
             self._generate_intro_prompt(agent=agent)

@@ -1,6 +1,8 @@
-from autogpt.core.agents.base.main import BaseAgent, AbstractAgent
-from autogpt.core.agents.base.loop import BaseLoop, BaseLoopHook, UserFeedback
-from autogpt.core.agents.base.models import (
+from .main import BaseAgent, AbstractAgent
+from .loop import BaseLoop, BaseLoopHook, UserFeedback
+from .models import (
     BaseAgentConfiguration,
     BaseAgentSystems,
 )
+from . import features
+from .prompt_manager import *

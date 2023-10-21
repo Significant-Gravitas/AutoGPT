@@ -28,27 +28,27 @@ import enum
 from typing import Optional
 from pydantic import BaseModel
 
-from autogpt.core.configuration import SystemConfiguration, UserConfigurable
+from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration, UserConfigurable
 
-from autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
-from autogpt.core.prompting.utils.utils import json_loads, to_numbered_list, to_string_list
-from autogpt.core.prompting.base import (
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import json_loads, to_numbered_list, to_string_list
+from autogpts.autogpt.autogpt.core.prompting.base import (
     BasePromptStrategy,
     PromptStrategiesConfiguration,
 )
-from autogpt.core.prompting.schema import (
+from autogpts.autogpt.autogpt.core.prompting.schema import (
     LanguageModelClassification,
 )
 
-from autogpt.core.resource.model_providers import (
+from autogpts.autogpt.autogpt.core.resource.model_providers import (
     CompletionModelFunction,
     ChatMessage,
     AssistantChatMessageDict,
     ChatPrompt,
 )
 
-from autogpts.autogpt.autogpt.core.agents.simple.lib.models.message_agent_user import Questions, MessageAgentUser
+from autogpts.AFAAS.app.lib.message_agent_user import Questions, MessageAgentUser
 
 
 class RefineUserContextFunctionNames(str, enum.Enum):

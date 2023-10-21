@@ -11,20 +11,20 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 import distro
 
-from autogpt.core.agents.base.agent_directives import BaseAgentDirectives
+from autogpts.autogpt.autogpt.core.agents.base.agent_directives import BaseAgentDirectives
 
 if TYPE_CHECKING:
-    from autogpt.core.agents.simple import PlannerAgent
+    from autogpts.autogpt.autogpt.core.agents.simple import PlannerAgent
 
 
 # prompting
-from autogpt.core.prompting.base import LanguageModelClassification, RESPONSE_SCHEMA
-from autogpt.core.prompting.planningstrategies import (
+from autogpts.autogpt.autogpt.core.prompting.base import LanguageModelClassification, RESPONSE_SCHEMA
+from autogpts.autogpt.autogpt.core.prompting.planningstrategies import (
     PlanningPromptStrategiesConfiguration,
     PlanningPromptStrategy,
 )
 
-from autogpt.core.resource.model_providers import (
+from autogpts.autogpt.autogpt.core.resource.model_providers import (
     AssistantChatMessageDict,
     ChatMessage,
     CompletionModelFunction,
@@ -32,16 +32,16 @@ from autogpt.core.resource.model_providers import (
     ChatPrompt,
 )
 
-from autogpt.core.utils.json_schema import JSONSchema
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
-from autogpt.core.prompting.utils.utils import (
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
     json_loads,
     to_numbered_list,
     to_string_list,
     indent,
 )
 
-from autogpt.core.agents.simple.lib.models.action_history import Episode
+from autogpts.AFAAS.app.lib.action_history import Episode
 
 
 class ThinkStrategyFunctionNames(str, enum.Enum):

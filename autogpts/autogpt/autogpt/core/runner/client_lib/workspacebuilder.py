@@ -4,11 +4,11 @@ import yaml
 import click
 from pathlib import Path
 from logging import Logger
-from autogpt.core.agents import (
+from autogpts.autogpt.autogpt.core.agents import (
     PlannerAgent,
 )  ### TODO should work for every Agent
-from autogpt.core.runner.client_lib.logging import get_client_logger
-from autogpt.core.runner.client_lib.parser import (
+from autogpts.autogpt.autogpt.core.runner.client_lib.logging import get_client_logger
+from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
     parse_agent_name_and_goals,
     parse_ability_result,
     parse_agent_plan,
