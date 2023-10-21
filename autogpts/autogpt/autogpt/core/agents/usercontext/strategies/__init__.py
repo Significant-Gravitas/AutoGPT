@@ -5,12 +5,12 @@ from autogpt.core.prompting.base import (
 )
 from autogpt.core.agents.usercontext.strategies.refine_user_context import (
     RefineUserContextStrategy,
-    RefineUserContextConfiguration,
+    RefineUserContextStrategyConfiguration,
     RefineUserContextFunctionNames,
 )
 
 class StrategiesSetConfiguration(PromptStrategiesConfiguration):
-    refine_user_context: RefineUserContextConfiguration
+    refine_user_context: RefineUserContextStrategyConfiguration
 
 
 class StrategiesSet:

@@ -60,7 +60,6 @@ except :
 
 # FIXME: Deactivated for as long as we don't have the UI to support it
 aaas['usercontext'] = False
-aaas['whichway'] = False
 
 class PlannerLoop(BaseLoop):
     _agent: PlannerAgent

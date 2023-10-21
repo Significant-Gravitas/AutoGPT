@@ -183,3 +183,35 @@ class BasePromptStrategy(AbstractPromptStrategy):
             "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
             f"{response_format}"
         )
+    
+
+    ###
+    ### parse_response_content
+    ###
+    def default_parse_response_content(
+        self,
+        response_content: AssistantChatMessageDict,
+    ) -> dict:
+        """Parse the actual text response from the objective model.
+
+        Args:
+            response_content: The raw response content from the objective model.
+
+        Returns:
+            The parsed response.
+
+        """
+        try:
+            parsed_response = json_loads(response_content["function_call"]["arguments"])
+        except Exception:
+            self._agent._logger.warning(parsed_response)
+
+        ###
+        ### NEW
+        ###
+        command_name = response_content["function_call"]["name"]
+        command_args = parsed_response
+        assistant_reply_dict = response_content["content"]
+
+        return command_name, command_args, assistant_reply_dict
+

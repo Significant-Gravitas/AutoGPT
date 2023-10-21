@@ -29,7 +29,7 @@ from autogpt.core.utils.json_schema import JSONSchema
 )
 async def user_interaction(question: str, agent: BaseAgent) -> str:
 
-    from autogpt.core.agents.simple.lib.models.user_response import Questions, AgentUserResponse
+    from autogpts.autogpt.autogpt.core.agents.simple.lib.models.message_agent_user import Questions, MessageAgentUser
     # resp = await clean_input(
     #     agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "
     # )

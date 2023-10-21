@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import os
 import yaml
 import datetime 
+import enum
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Dict, Tuple, Optional
 from pydantic import Field
 
@@ -34,6 +35,9 @@ from autogpt.core.memory.base import AbstractMemory
 from autogpt.core.workspace.simple import SimpleWorkspace
 from autogpt.core.configuration import Configurable
 
+from autogpts.autogpt.autogpt.core.agents.simple.lib.models.message_agent_user import MessageAgentUser
+from autogpt.core.agents.simple.lib.models.message_agent_agent import MessageAgentAgent
+from autogpt.core.agents.simple.lib.models.message_agent_llm import MessageAgentLLM
 
 class AbstractAgent(ABC):
 
@@ -47,6 +51,23 @@ class AbstractAgent(ABC):
         modified_at : datetime.datetime  =  datetime.datetime.now()
         # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
         created_at : datetime.datetime  =  datetime.datetime.now()
+
+        def _get_message_agent_user(self):
+            return []
+            return MessageAgentUser.get_from_db(self.agent_id)
+        
+        def _get_message_agent_agent(self):
+            return []
+            return MessageAgentAgent.get_from_db(self.agent_id)
+        
+        def _get_message_agent_llm(self):
+            return []
+            return MessageAgentLLM.get_from_db(self.agent_id)
+
+        # Now use the default_factory argument to set the default values of the fields.
+        message_agent_user: list[MessageAgentUser] = Field(default_factory=_get_message_agent_user)
+        message_agent_agent: list[MessageAgentAgent] = Field(default_factory=_get_message_agent_agent)
+        message_agent_llm: list[MessageAgentLLM] = Field(default_factory=_get_message_agent_llm)
         
         @property
         def _type_(self):

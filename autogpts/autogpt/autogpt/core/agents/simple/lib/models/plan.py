@@ -1,19 +1,24 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Union, Optional, List , TYPE_CHECKING
 from logging import Logger
+import uuid
 
 from autogpt.core.agents.simple.lib.models.tasks import Task
 
 logger = Logger(name=__name__)
 
+from autogpt.core.configuration import SystemSettings
 
-class Plan(BaseModel):
+class Plan(SystemSettings):
     """
     Represents a plan consisting of a list of tasks.
     """
-
+    plan_id : str = 'PL' + str(uuid.uuid4())
+    # def _get_tasks_from_db(self):
+    #     return Task.get_from_db(self.plan_id)
+    # tasks: list[Task] =  Field(default_factory=_get_tasks_from_db)
     tasks: list[Task] = []
 
     def add_tasks(self , tasks = list[Task], position : int = None) : 

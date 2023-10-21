@@ -126,7 +126,7 @@ class JSONSchema(BaseModel):
                 # if property.description:
                 #     attributes.append(f"// {property.description}")
                 # attributes.append(f"{name}: {property.typescript_type};")
-                attributes.append(f"{name}: {property.typescript_type}; // {property.description}")
+                attributes.append(f"{name}: {property.typescript_type}; // " +  str(property.description).replace('\n', ' '))
             attributes_string = "\n".join(attributes)
         else:
             attributes_string = "[key: string]: any"

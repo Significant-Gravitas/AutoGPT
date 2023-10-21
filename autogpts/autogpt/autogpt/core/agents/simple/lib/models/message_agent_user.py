@@ -2,10 +2,7 @@ import enum
 import uuid
 from pydantic import BaseModel
 from typing import Optional
-
-
-class AgentUserResponse(BaseModel):
-    pass
+from autogpt.core.configuration.schema import SystemSettings, AFAASMessageType
 
 
 class QuestionTypes(str, enum.Enum):
@@ -35,33 +32,24 @@ class QuestionItems(dict):
     value: str
     label: str
 
-
-class Questions(AgentUserResponse):
-    id: str
+class Questions(SystemSettings):
+    question_id: str = "Q" + str(uuid.uuid4())
     message: str
     type: Optional[QuestionTypes]
     state: Optional[QuestionStates]
     items: Optional[
         list[QuestionItems]
-    ]  # labeled values of enum, boolean , open list // or value / label
+    ]
 
-    def generate_new_id() -> str:
-        return "Q" + str(uuid.uuid4())
+class emiter(enum.Enum) :
+    USER = "USER"
+    AGENT = "AGENT"
 
-
-class QuestionItems(dict):
-    value: str
-    label: str
-
-
-class Questions(AgentUserResponse):
-    id: str
-    message: str
-    type: Optional[QuestionTypes]
-    state: Optional[QuestionStates]
-    items: Optional[
-        list[QuestionItems]
-    ]  # labeled values of enum, boolean , open list // or value / label
-
-    def generate_new_id() -> str:
-        return "Q" + str(uuid.uuid4())
+class MessageAgentUser(SystemSettings) :
+    message_id : str = 'MUA'+str(uuid.uuid4())
+    message_type : str = AFAASMessageType.AGENT_USER.value
+    emitter : emiter
+    user_id : str
+    agent_id : str # Always PlannerAgent not ProxyAgent
+    message : str
+    question : Questions

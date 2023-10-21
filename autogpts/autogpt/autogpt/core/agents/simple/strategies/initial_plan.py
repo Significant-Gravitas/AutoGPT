@@ -43,8 +43,6 @@ class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
     default_function_call: InitialPlanFunctionNames = (
         InitialPlanFunctionNames.INITIAL_PLAN
     )
-    strategy_name: str = "make_initial_plan"
-
 
 class InitialPlanStrategy(BasePromptStrategy):
     default_configuration = InitialPlanStrategyConfiguration()
@@ -136,7 +134,6 @@ class InitialPlanStrategy(BasePromptStrategy):
         logger: Logger,
         model_classification: LanguageModelClassification,
         default_function_call: InitialPlanFunctionNames,
-        strategy_name: str,
     ):
         self._logger = logger
         self._model_classification = model_classification

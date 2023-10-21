@@ -48,7 +48,7 @@ from autogpt.core.resource.model_providers import (
     ChatPrompt,
 )
 
-from autogpt.core.agents.simple.lib.models.user_response import Questions, AgentUserResponse
+from autogpts.autogpt.autogpt.core.agents.simple.lib.models.message_agent_user import Questions, MessageAgentUser
 
 
 class RefineUserContextFunctionNames(str, enum.Enum):
@@ -69,7 +69,7 @@ class RefineUserContextFunctionNames(str, enum.Enum):
     VALIDATE_REQUIREMENTS: str = "validate_requirements"
 
 
-class RefineUserContextConfiguration(PromptStrategiesConfiguration):
+class RefineUserContextStrategyConfiguration(PromptStrategiesConfiguration):
     """
     A Pydantic model that represents the default configurations for the refine user context strategy.
     """
@@ -79,7 +79,6 @@ class RefineUserContextConfiguration(PromptStrategiesConfiguration):
     default_function_call: RefineUserContextFunctionNames = (
         RefineUserContextFunctionNames.REFINE_REQUIREMENTS
     )
-    strategy_name: str = "refine_user_context"
     context_min_tokens: int = 250
     context_max_tokens: int = 500
     use_message: bool = False
@@ -113,7 +112,7 @@ class RefineUserContextStrategy(BasePromptStrategy):
     build_prompt(interupt_refinement_process: bool, user_objective: str, **kwargs) -> ChatPrompt:
         Build a chat prompt based on the user's objective and whether the refinement process should exit.
     """
-    default_configuration = RefineUserContextConfiguration()
+    default_configuration = RefineUserContextStrategyConfiguration()
     STRATEGY_NAME = "refine_user_context"
     CONTEXT_MIN_TOKENS = 250
     CONTEXT_MAX_TOKENS = 300
@@ -262,7 +261,6 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         logger: Logger,
         model_classification: LanguageModelClassification,
         default_function_call: RefineUserContextFunctionNames,
-        strategy_name: str,
         context_min_tokens: int,
         context_max_tokens: int,
         count=0,
@@ -281,8 +279,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             Classification of the language model.
         default_function_call: RefineUserContextFunctionNames
             Default function call for the strategy.
-        strategy_name: str
-            Name of the strategy.
+
         context_min_tokens: int
             Minimum number of tokens in the context.
         context_max_tokens: int
@@ -298,7 +295,13 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         """
         self._logger = logger
         self._model_classification = model_classification
+
         # NOTE : Make a list of Questions ?
+        self.context_min_tokens : int = context_min_tokens
+        self.context_max_tokens : int = context_max_tokens
+        self.use_message : bool = use_message
+
+
         self.question_history_full: list[Questions] = []
         self.question_history_label_full: list[str] = []
         self._last_questions: list[Questions] = []
@@ -311,15 +314,15 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         function_refine_user_context = (
             RefineUserContextStrategy.FUNCTION_REFINE_USER_CONTEXT
         )
-        # function_request_second_confirmation= CompletionModelFunction(
-        #     **RefineUserContextStrategy.FUNCTION_REQUEST_SECOND_CONFIRMATION,
-        # )
+        function_request_second_confirmation= CompletionModelFunction(
+            **RefineUserContextStrategy.FUNCTION_REQUEST_SECOND_CONFIRMATION,
+        )
         function_validate_requirements = (
             RefineUserContextStrategy.FUNCTION_VALIDATE_GOAL
         )
         self._functions = [
             function_refine_user_context,
-            # function_request_second_confirmation ,
+            function_request_second_confirmation ,
             function_validate_requirements,
         ]
 
@@ -523,7 +526,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             for q_text in parsed_response["questions"]:
                 question_id = Questions.generate_new_id()
                 question = Questions(
-                    id=question_id, message=q_text, type=None, state=None, items=[]
+                    question_id=question_id, message=q_text, type=None, state=None, items=[]
                 )
             questions_with_uuid.append(question)
             save_questions = True
@@ -539,7 +542,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             question_id = Questions.generate_new_id()
             question_text = parsed_response["questions"]
             question = Questions(
-                id=question_id, message=question_text, type=None, state=None, items=[]
+                question_id=question_id, message=question_text, type=None, state=None, items=[]
             )
             questions_with_uuid.append(question)
             save_questions = True

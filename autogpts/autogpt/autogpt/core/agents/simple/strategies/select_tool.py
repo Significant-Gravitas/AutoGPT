@@ -235,75 +235,11 @@ class SelectToolStrategy(PlanningPromptStrategy):
         """
         return super()._generate_tools_list(tools, **kargs)
 
-    ###
-    ### parse_response_content
-    ###
     def parse_response_content(
         self,
         response_content: AssistantChatMessageDict,
-    ) -> dict:
-        """Parse the actual text response from the objective model.
-
-        Args:
-            response_content: The raw response content from the objective model.
-
-        Returns:
-            The parsed response.
-
-        """
-        try:
-            parsed_response = json_loads(response_content["function_call"]["arguments"])
-        except Exception:
-            self._agent._logger.warning(parsed_response)
-
-        ###
-        ### OLD
-        ###
-        # parsed_response["name"] = response_content["function_call"]["name"]
-        # return parsed_response
-
-        ###
-        ### NEW
-        ###
-        command_name = response_content["function_call"]["name"]
-        command_args = parsed_response
-        assistant_reply_dict = response_content["content"]
-
-        return command_name, command_args, assistant_reply_dict
-
-    # FIXME Move to new format
-    # def parse_response_content(
-    #     self,
-    #     response_content: AssistantChatMessageDict,
-    # ) -> dict:
-    #     """Parse the actual text response from the objective model.
-
-    #     Args:
-    #         response_content: The raw response content from the objective model.
-
-    #     Returns:
-    #         The parsed response.
-
-    #     """
-    #     if "content" not in response_content:
-    #         raise InvalidAgentResponseError("Assistant response has no text content")
-
-    #     assistant_reply_dict = extract_dict_from_response(response_content["content"])
-
-    #     try:
-    #         parsed_response = json_loads(response_content["function_call"]["arguments"])
-    #     except Exception:
-    #         self._agent._logger.warning(parsed_response)
-
-    #     parsed_response["name"] = response_content["function_call"]["name"]
-
-    #     # Get command name and arguments
-    #     command_name, arguments = self.extract_command(
-    #         assistant_reply_dict, response, self._config.use_functions_api
-    #     )
-    #     return command_name, arguments, assistant_reply_dict
-
-    #     return parsed_response
+    )   -> dict:
+        return self.default_parse_response_content(response_content )
 
     def save(self):
         pass
