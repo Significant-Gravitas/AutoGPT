@@ -56,7 +56,7 @@ class PlannerAgentConfiguration(BaseAgentConfiguration):
 #     agent_role: Optional[str] = Field(default=None)
 #     agent_goals: Optional[list] 
 #     agent_goal_sentence: Optional[list] 
-#     agent_class: str = Field(default="autogpt.core.agents.simple.main.PlannerAgent")
+#     agent_class: str = Field(default="autogpt.core.agents.planner.main.PlannerAgent")
 
 #     class Config(BaseAgent.SystemSettings.Config):
 #         pass

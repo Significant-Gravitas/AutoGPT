@@ -210,7 +210,7 @@ class Task(BaseModel):
     # else :
     #     command : Optional[str] = Field(default="afaas_make_initial_plan")
     command : Optional[str] = Field(default="afaas_make_initial_plan")
-    arguments : Optional[list] = Field(default={})
+    arguments : Optional[dict] = Field(default={})
     
     class Config:
         arbitrary_types_allowed = True

@@ -14,7 +14,7 @@ import distro
 from autogpts.autogpt.autogpt.core.agents.base.agent_directives import BaseAgentDirectives
 
 if TYPE_CHECKING:
-    from autogpts.autogpt.autogpt.core.agents.simple import PlannerAgent
+    from autogpts.autogpt.autogpt.core.agents.planner import PlannerAgent
 
 
 # prompting

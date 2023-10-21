@@ -12,7 +12,7 @@ from .schema import ToolResult
 from ..tools.schema import ToolResult
 from ..configuration import SystemConfiguration
 from ..agents.base.features.agentmixin import AgentMixin
-from ..agents.base.prompt_manager import LanguageModelConfiguration
+from ..agents.base.assistants  import LanguageModelConfiguration, ToolExecutor
 from ..resource.model_providers import CompletionModelFunction
 from ..utils.json_schema import JSONSchema
 from ..plugin.base import PluginLocation

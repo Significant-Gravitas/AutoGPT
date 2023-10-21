@@ -82,7 +82,7 @@ class UserContextAgent(BaseAgent):
         self._prompt_manager = prompt_manager
         self._prompt_manager.set_agent(agent=self)
 
-        self._loop = UserContextLoop()
+        self._loop : UserContextLoop = UserContextLoop()
         self._loop.set_agent(agent=self)
 
     def loophooks(self) -> UserContextLoop.LoophooksDict:

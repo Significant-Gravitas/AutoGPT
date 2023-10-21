@@ -32,7 +32,7 @@ from autogpts.autogpt.autogpt.core.agents.base.exceptions import (
 
 
 if TYPE_CHECKING:
-    from autogpts.autogpt.autogpt.core.agents.simple import PlannerAgent
+    from autogpts.autogpt.autogpt.core.agents.planner import PlannerAgent
     # from autogpts.autogpt.autogpt.core.prompting.schema import ChatModelResponse
     from autogpts.autogpt.autogpt.core.resource.model_providers import ChatMessage, ChatModelResponse
 
@@ -89,7 +89,7 @@ class PlannerLoop(BaseLoop):
                 responsible_agent_id = None,
                 task_goal = 'Define an agent approach to tackle a tasks',
                 command = 'afaas_whichway',
-                arguments= None,
+                arguments= {},
                 acceptance_criteria=["A plan has been made to achieve the specific task"],
                 state=TaskStatusList.READY
                 )
@@ -101,7 +101,7 @@ class PlannerLoop(BaseLoop):
                 responsible_agent_id = None,
                 task_goal = 'Make a plan to tacke a tasks',
                 command = 'afaas_make_initial_plan',
-                arguments= None,
+                arguments= {},
                 acceptance_criteria=["Contextual information related to the task has been provided"],
                 state=TaskStatusList.READY
                 )

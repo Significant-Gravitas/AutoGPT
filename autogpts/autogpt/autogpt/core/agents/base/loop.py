@@ -2,15 +2,14 @@ from __future__ import annotations
 import enum
 import abc
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Optional, Dict
-
 from typing_extensions import NamedTuple, TypedDict
 
 
-from autogpts.autogpt.autogpt.core.agents.base.features.agentmixin import AgentMixin
+from .features.agentmixin import AgentMixin
 
 if TYPE_CHECKING:
-    from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
-    from autogpts.autogpt.autogpt.core.prompting.schema import ChatModelResponse
+    from . import BaseAgent
+    from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import ChatModelResponse
     from autogpts.autogpt.autogpt.core.tools import BaseToolsRegistry, Tool
 
 
@@ -70,6 +69,7 @@ class BaseLoop(AgentMixin, abc.ABC, metaclass=BaseLoopMeta):
         self._user_input_handler: Optional[Callable[[str], Awaitable[str]]] = None
         self._user_message_handler: Optional[Callable[[str], Awaitable[str]]] = None
 
+        
     @abc.abstractmethod
     async def run(
         self,

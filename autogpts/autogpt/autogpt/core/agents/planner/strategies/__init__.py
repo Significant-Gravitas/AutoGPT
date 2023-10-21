@@ -1,12 +1,12 @@
 from logging import Logger
 from autogpts.autogpt.autogpt.core.prompting.base import PromptStrategiesConfiguration
 
-from autogpts.autogpt.autogpt.core.agents.simple.strategies.initial_plan import (
+from autogpts.autogpt.autogpt.core.agents.planner.strategies.initial_plan import (
     InitialPlanStrategy,
     InitialPlanStrategyConfiguration,
 )
 
-from autogpts.autogpt.autogpt.core.agents.simple.strategies.select_tool import (
+from autogpts.autogpt.autogpt.core.agents.planner.strategies.select_tool import (
     SelectToolStrategy,
     SelectToolStrategyConfiguration,
 )

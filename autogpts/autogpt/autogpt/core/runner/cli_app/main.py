@@ -133,7 +133,7 @@ async def run_auto_gpt():
         agent_settings.agent_goal_sentence = user_objective
 
         agent_settings.agent_class = "PlannerAgent"
-        agent_settings._type_ = "autogpt.core.agents.simple.main.PlannerAgent"
+        agent_settings._type_ = "autogpt.core.agents.planner.main.PlannerAgent"
         # agent_settings.load_root_values()
 
         # Step 3. Create the agent.

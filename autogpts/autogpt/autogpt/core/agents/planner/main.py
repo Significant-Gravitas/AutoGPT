@@ -6,7 +6,8 @@ from pydantic import Field
 import datetime
 from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple, Optional
 
-from ..base import PromptManager,  BaseAgent, BaseLoopHook
+
+from ..base import PromptManager,  BaseAgent, BaseLoopHook, ToolExecutor, LanguageModelConfiguration
 from .loop import PlannerLoop
 from .models import (
     PlannerAgentConfiguration,
@@ -49,7 +50,7 @@ class PlannerAgent(BaseAgent):
         agent_role: Optional[str] = Field(default=None)
         agent_goals: Optional[list] 
         agent_goal_sentence: Optional[str] 
-        agent_class: str = Field(default="autogpt.core.agents.simple.main.PlannerAgent")
+        agent_class: str = Field(default="autogpt.core.agents.planner.main.PlannerAgent")
 
         class Config(BaseAgent.SystemSettings.Config):            
             pass
@@ -120,6 +121,10 @@ class PlannerAgent(BaseAgent):
         ###
         self._loop: PlannerLoop = PlannerLoop()
         self._loop.set_agent(agent=self)
+
+        # Set tool Executor 
+        self._tool_executor = ToolExecutor()
+        self._tool_executor.set_agent(agent = self)
         
         ### 
         ### Step 5a : Create the plan
@@ -231,8 +236,8 @@ class PlannerAgent(BaseAgent):
         )
 
         # TODO : Continue refactorization => move to loop ?
-        from autogpts.autogpt.autogpt.core.agents.simple import strategies
-        from autogpts.autogpt.autogpt.core.agents.simple.strategies import (
+        from autogpts.autogpt.autogpt.core.agents.planner import strategies
+        from autogpts.autogpt.autogpt.core.agents.planner.strategies import (
             Strategies,
             StrategiesConfiguration,
         )

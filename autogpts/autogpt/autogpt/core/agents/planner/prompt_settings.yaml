@@ -25,5 +25,5 @@ tools : [
     "autogpt.core.tools.builtins.image_gen",
 ]
 agents : [
-    "autogpt.core.agents.simple",
+    "autogpt.core.agents.planner",
 ]

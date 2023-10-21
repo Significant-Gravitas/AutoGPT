@@ -6,7 +6,7 @@ from .message_agent_user  import *
 from .tasks import Task,TaskStatusList, TaskType
 from .plan  import  Plan
 
-from ....autogpt.autogpt.core.agents.base.prompt_manager import PromptManager, PromptManager
+from ....autogpt.autogpt.core.agents.base.assistants.prompt_manager import PromptManager, PromptManager
 
 # from autogpts.autogpt.autogpt.core.agents.simple.lib.models.action import Action, ActionErrorResult, ActionHistory, ActionInterruptedByHuman, ActionResult, ActionSuccessResult
 # from autogpts.autogpt.autogpt.core.agents.simple.lib.models.context_items import ContextItem , FileContextItem, FolderContextItem, StaticContextItem

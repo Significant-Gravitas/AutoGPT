@@ -6,8 +6,8 @@ from autogpts.autogpt.autogpt.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSystems,
 )
-from autogpts.autogpt.autogpt.core.agents.simple import PlannerAgent, aaas
-from autogpts.autogpt.autogpt.core.agents.simple.models import (
+from autogpts.autogpt.autogpt.core.agents.planner import PlannerAgent, aaas
+from autogpts.autogpt.autogpt.core.agents.planner.models import (
     PlannerAgentConfiguration,
     PlannerAgentSystems,
     # PlannerAgentSystemSettings,

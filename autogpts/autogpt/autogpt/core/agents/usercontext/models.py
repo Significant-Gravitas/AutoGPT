@@ -22,7 +22,7 @@ class UserContextAgentSystems(BaseAgentSystems):
 
     ability_registry : str  ="autogpt.core.ability.SimpleToolRegistry"
     chat_model_provider : str  = "autogpt.core.resource.model_providers.OpenAIProvider"
-    prompt_manager : str ="autogpt.core.agents.simple.lib.PromptManager"
+    prompt_manager : str ="autogpt.core.agents.base.PromptManager"
     
     class Config(BaseAgentSystems.Config):
         pass
