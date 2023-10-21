@@ -1,5 +1,4 @@
 from autogpt.core.tools.builtins.create_new_tool import CreateNewTool
-from autogpt.core.tools.builtins.query_language_model import QueryLanguageModel
 
 TOOL_CATEGORIES = [
     "autogpt.core.tools.builtins.execute_code",
@@ -14,3 +13,5 @@ TOOL_CATEGORIES = [
     "autogpt.core.tools.builtins.afaas_whichway",
     "autogpt.core.tools.builtins.query_language_model",
 ]
+
+# note 

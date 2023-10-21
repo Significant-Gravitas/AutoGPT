@@ -44,6 +44,7 @@ def json_loads(json_str: str):
     #   sometimes returns json strings with minor issues like trailing commas).
 
     try:
+        json_str = json_str[json_str.index("{") : json_str.rindex("}") + 1]
         return ast.literal_eval(json_str)
     except ValueError as ve:
         print(f"First attempt failed: {ve}. Trying JSON.loads()")

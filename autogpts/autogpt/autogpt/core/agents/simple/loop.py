@@ -243,48 +243,48 @@ class PlannerLoop(BaseLoop):
 
             self.save_plan()
 
-    async def run_user_context_agent(self):
-        """
-        Configures the user context agent based on the current agent settings and executes the user context agent.
-        Returns the updated agent goals.
-        """
+    # async def run_user_context_agent(self):
+    #     """
+    #     Configures the user context agent based on the current agent settings and executes the user context agent.
+    #     Returns the updated agent goals.
+    #     """
 
 
-        # USER CONTEXT AGENT : Create Agent Settings
-        usercontext_settings: UserContextAgentSettings = UserContextAgentSettings()
-        usercontext_settings["user_id"]= self._agent.user_id,
-        usercontext_settings["parent_agent_id"]=  self._agent.agent_id,
-        usercontext_settings["agent_goals"]=  self._agent.agent_goals,
-        usercontext_settings["agent_goal_sentence"]=  self._agent.agent_goal_sentence,
-        usercontext_settings["memory"]=  self._agent._memory._settings.dict(),
-        usercontext_settings["workspace"]=  self._agent._workspace._settings.dict(),
-        usercontext_settings["chat_model_provider"]=  self._agent._chat_model_provider._settings.dict()
+    #     # USER CONTEXT AGENT : Create Agent Settings
+    #     usercontext_settings: UserContextAgentSettings = UserContextAgentSettings()
+    #     usercontext_settings["user_id"]= self._agent.user_id,
+    #     usercontext_settings["parent_agent_id"]=  self._agent.agent_id,
+    #     usercontext_settings["agent_goals"]=  self._agent.agent_goals,
+    #     usercontext_settings["agent_goal_sentence"]=  self._agent.agent_goal_sentence,
+    #     usercontext_settings["memory"]=  self._agent._memory._settings.dict(),
+    #     usercontext_settings["workspace"]=  self._agent._workspace._settings.dict(),
+    #     usercontext_settings["chat_model_provider"]=  self._agent._chat_model_provider._settings.dict()
 
 
-        # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
-        new_user_context_agent = UserContextAgent.create_agent(
-            agent_settings=usercontext_settings, logger=self._agent._logger
-        )
+    #     # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
+    #     new_user_context_agent = UserContextAgent.create_agent(
+    #         agent_settings=usercontext_settings, logger=self._agent._logger
+    #     )
 
-        # USER CONTEXT AGENT : Get UserContextAgent from DB (for POW / POC)
-        usercontext_settings.agent_id = new_user_context_agent.agent_id
-        user_context_agent = UserContextAgent.get_agent_from_settings(
-            agent_settings=usercontext_settings,
-            logger=self._agent._logger,
-        )
+    #     # USER CONTEXT AGENT : Get UserContextAgent from DB (for POW / POC)
+    #     usercontext_settings.agent_id = new_user_context_agent.agent_id
+    #     user_context_agent = UserContextAgent.get_agent_from_settings(
+    #         agent_settings=usercontext_settings,
+    #         logger=self._agent._logger,
+    #     )
 
-        user_context_return: dict = await user_context_agent.run(
-            user_input_handler=self._user_input_handler,
-            user_message_handler=self._user_message_handler,
-        )
+    #     user_context_return: dict = await user_context_agent.run(
+    #         user_input_handler=self._user_input_handler,
+    #         user_message_handler=self._user_message_handler,
+    #     )
 
-        return (
-            user_context_return["agent_goal_sentence"],
-            user_context_return["agent_goals"],
-        )
+    #     return (
+    #         user_context_return["agent_goal_sentence"],
+    #         user_context_return["agent_goals"],
+    #     )
 
-    async def run_whichway_agent():
-        pass
+    # async def run_whichway_agent():
+    #     pass
 
     async def start(
         self,
@@ -301,100 +301,32 @@ class PlannerLoop(BaseLoop):
         if not self.remaining_cycles:
             self.remaining_cycles = 1
 
-    async def build_initial_plan(self, description="", routing_feedbacks="") -> dict:
-        # plan =  self.execute_strategy(
-        self.tool_registry().list_tools_descriptions()
-        plan = await self.execute_strategy(
-            strategy_name="make_initial_plan",
-            agent_name=self._agent.agent_name,
-            agent_role=self._agent.agent_role,
-            agent_goals=self._agent.agent_goals,
-            agent_goal_sentence=self._agent.agent_goal_sentence,
-            description=description,
-            routing_feedbacks=routing_feedbacks,
-            tools=self.tool_registry().list_tools_descriptions(),
-        )
+    # async def build_initial_plan(self, description="", routing_feedbacks="") -> dict:
+    #     # plan =  self.execute_strategy(
+    #     self.tool_registry().list_tools_descriptions()
+    #     plan = await self.execute_strategy(
+    #         strategy_name="make_initial_plan",
+    #         agent_name=self._agent.agent_name,
+    #         agent_role=self._agent.agent_role,
+    #         agent_goals=self._agent.agent_goals,
+    #         agent_goal_sentence=self._agent.agent_goal_sentence,
+    #         description=description,
+    #         routing_feedbacks=routing_feedbacks,
+    #         tools=self.tool_registry().list_tools_descriptions(),
+    #     )
 
-        # TODO: Should probably do a step to evaluate the quality of the generated tasks,
-        #  and ensure that they have actionable ready and acceptance criteria
+    #     # TODO: Should probably do a step to evaluate the quality of the generated tasks,
+    #     #  and ensure that they have actionable ready and acceptance criteria
 
-        self._agent.plan = Plan(
-            tasks=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
-        )
-        self._agent.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
-        self._agent.current_task = self._agent.plan[-1]
-        self._agent.current_task.context.status = TaskStatusList.READY
-        return plan
+    #     self._agent.plan = Plan(
+    #         tasks=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
+    #     )
+    #     self._agent.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
+    #     self._agent.current_task = self._agent.plan[-1]
+    #     self._agent.current_task.context.status = TaskStatusList.READY
+    #     return plan
 
-    async def determine_next_ability(self, *args, **kwargs):
-        if not self._task_queue:
-            return {"response": "I don't have any tasks to work on right now."}
-
-        self._agent._configuration.cycle_count += 1
-        task = self._task_queue.pop()
-        self._agent._logger.info(f"Working on task: {task}")
-
-        task = await self._evaluate_task_and_add_context(task)
-        next_ability = await self._choose_next_ability(
-            task,
-            self.tool_registry().dump_tools(),
-        )
-        self._current_task = task
-        self._next_ability = next_ability.content
-        return self._current_task, self._next_ability
-
-    async def execute_next_ability(self, user_input: str, *args, **kwargs):
-        if user_input == "y":
-            ability = self.tool_registry().get_tool(self._next_ability["next_ability"])
-            ability_response = await ability(**self._next_ability["ability_arguments"])
-            await self._update_tasks_and_memory(ability_response)
-            if self._current_task.context.status == TaskStatusList.DONE:
-                self._completed_tasks.append(self._current_task)
-            else:
-                self._task_queue.append(self._current_task)
-            self._current_task = None
-            self._next_ability = None
-
-            return ability_response.dict()
-        else:
-            raise NotImplementedError
-
-    # async def _evaluate_task_and_add_context(self, task: Task) -> Task:
-    #     """Evaluate the task and add context to it."""
-    #     if task.context.status == TaskStatusList.IN_PROGRESS:
-    #         # Nothing to do here
-    #         return task
-    #     else:
-    #         self._agent._logger.debug(
-    #             f"Evaluating task {task} and adding relevant context."
-    #         )
-    #         # TODO: Look up relevant memories (need working memory system)
-    #         # TODO: Evaluate whether there is enough information to start the task (language model call).
-    #         task.context.enough_info = True
-    #         task.context.status = TaskStatusList.IN_PROGRESS
-    #         return task
-
-    # async def _choose_next_ability(self, task: Task, ability_schema: list[dict]):
-    #     """Choose the next ability to use for the task."""
-    #     self._agent._logger.debug(f"Choosing next ability for task {task}.")
-    #     if task.context.cycle_count > self._agent._configuration.max_task_cycle_count:
-    #         # Don't hit the LLM, just set the next action as "breakdown_task" with an appropriate reason
-    #         raise NotImplementedError
-    #     elif not task.context.enough_info:
-    #         # Don't ask the LLM, just set the next action as "breakdown_task" with an appropriate reason
-    #         raise NotImplementedError
-    #     else:
-    #         next_ability = await self._agent._prompt_manager.determine_next_ability(
-    #             task, ability_schema
-    #         )
-    #         return next_ability
-
-    # async def _update_tasks_and_memory(self, ability_result: ToolResult):
-    #     self._current_task.context.cycle_count += 1
-    #     self._current_task.context.prior_actions.append(ability_result)
-    #     # TODO: Summarize new knowledge
-    #     # TODO: store knowledge and summaries in memory and in relevant tasks
-    #     # TODO: evaluate whether the task is complete
+    
 
     def __repr__(self):
         return "SimpleLoop()"
