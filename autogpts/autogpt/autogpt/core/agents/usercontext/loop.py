@@ -10,7 +10,7 @@ from autogpt.core.agents.simple.lib import Task, TaskStatusList
 from autogpt.core.runner.client_lib.parser import (
     parse_ability_result,
     parse_agent_plan,
-    parse_next_ability,
+    parse_next_tool,
 )
 
 if TYPE_CHECKING:

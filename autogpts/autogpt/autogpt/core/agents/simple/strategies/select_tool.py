@@ -51,7 +51,7 @@ class ThinkStrategyFunctionNames(str, enum.Enum):
 ###
 ### CONFIGURATION
 ####
-class ThinkStrategyConfiguration(PlanningPromptStrategiesConfiguration):
+class SelectToolStrategyConfiguration(PlanningPromptStrategiesConfiguration):
     model_classification: LanguageModelClassification = (
         LanguageModelClassification.FAST_MODEL_16K
     )
@@ -60,8 +60,8 @@ class ThinkStrategyConfiguration(PlanningPromptStrategiesConfiguration):
 ###
 ### STRATEGY
 ####
-class ThinkStrategy(PlanningPromptStrategy):
-    default_configuration: ThinkStrategyConfiguration = ThinkStrategyConfiguration()
+class SelectToolStrategy(PlanningPromptStrategy):
+    default_configuration: SelectToolStrategyConfiguration = SelectToolStrategyConfiguration()
     STRATEGY_NAME = "select_tool"
 
     def __init__(

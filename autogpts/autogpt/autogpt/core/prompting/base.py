@@ -3,7 +3,7 @@ import abc
 
 from pydantic import validator
 import re
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Union, Optional
 from autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
@@ -41,31 +41,32 @@ RESPONSE_SCHEMA = JSONSchema(
             required=True,
             properties={
                 "limits": JSONSchema(
-                    description="Briefly express your limitations as an Agent that is hosted on a server and interact with a LLM, which has specific limitations (Context Limitation, Token Limitation, Cognitive Limitation)",
+                    description="Express your limitations (Context Limitation, Token Limitation, Cognitive Limitation) if you were an autonomous program hosted on a server and relying on a Large Language Model to take decision",
                     type=JSONSchema.Type.STRING,
                     required=True,
                 ),
-                "text": JSONSchema(
-                    description="Thoughts",
+                "overcome_limit": JSONSchema(
+                    description="How you woud overcome this limit (if any)",
                     type=JSONSchema.Type.STRING,
                     required=True,
                 ),
                 "reasoning": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    required=True,
-                ),
-                "plan": JSONSchema(
-                    description="Short markdown-style bullet list that conveys the long-term plan",
+                    description="Your process of thoughts",
                     type=JSONSchema.Type.STRING,
                     required=True,
                 ),
                 "criticism": JSONSchema(
-                    description="Constructive self-criticism",
+                    description="Constructive self-criticism of your process of thoughts",
                     type=JSONSchema.Type.STRING,
                     required=True,
                 ),
-                "speak": JSONSchema(
-                    description="Summary of thoughts, to say to user",
+                "plan": JSONSchema(
+                    description="Short markdown-style bullet list that conveys your plan",
+                    type=JSONSchema.Type.STRING,
+                    required=True,
+                ),
+                "self_feedback": JSONSchema(
+                    description="if you were to do it again what would you told yourself",
                     type=JSONSchema.Type.STRING,
                     required=True,
                 ),
@@ -90,7 +91,11 @@ RESPONSE_SCHEMA = JSONSchema(
 
 
 class PromptStrategiesConfiguration(SystemConfiguration):
-    pass
+    temperature : float = 0.9 #if coding 0.05
+    top_p: Optional[float] = None,
+    max_tokens : Optional[int] = None,
+    frequency_penalty: Optional[float] = None # Avoid repeting oneselfif coding 0.3
+    presence_penalty : Optional[float] = None # Avoid certain subjects
 
 
 from autogpt.core.agents.base.features.agentmixin import AgentMixin
@@ -98,7 +103,7 @@ from autogpt.core.agents.base.features.agentmixin import AgentMixin
 
 class AbstractPromptStrategy(AgentMixin, abc.ABC):
     STRATEGY_NAME: str
-    default_configuration: SystemConfiguration
+    default_configuration: PromptStrategiesConfiguration
 
     @property
     @abc.abstractmethod

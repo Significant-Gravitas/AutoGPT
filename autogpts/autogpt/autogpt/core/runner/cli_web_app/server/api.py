@@ -40,7 +40,7 @@ from autogpt.core.runner.client_lib.parser import (
     parse_agent_name_and_goals,
     parse_ability_result,
     parse_agent_plan,
-    parse_next_ability,
+    parse_next_tool,
 )
 
 

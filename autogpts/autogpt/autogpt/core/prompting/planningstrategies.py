@@ -180,7 +180,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         from autogpt.core.runner.client_lib.parser import (
             parse_ability_result,
             parse_agent_plan,
-            parse_next_ability,
+            parse_next_tool,
         )
 
         print(

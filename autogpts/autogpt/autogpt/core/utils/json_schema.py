@@ -123,9 +123,10 @@ class JSONSchema(BaseModel):
         if self.properties:
             attributes: list[str] = []
             for name, property in self.properties.items():
-                if property.description:
-                    attributes.append(f"// {property.description}")
-                attributes.append(f"{name}: {property.typescript_type};")
+                # if property.description:
+                #     attributes.append(f"// {property.description}")
+                # attributes.append(f"{name}: {property.typescript_type};")
+                attributes.append(f"{name}: {property.typescript_type}; // {property.description}")
             attributes_string = "\n".join(attributes)
         else:
             attributes_string = "[key: string]: any"

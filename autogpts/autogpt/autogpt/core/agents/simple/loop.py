@@ -21,7 +21,7 @@ from autogpt.core.tools import ToolResult
 from autogpt.core.runner.client_lib.parser import (
     parse_ability_result,
     parse_agent_plan,
-    parse_next_ability,
+    parse_next_tool,
 )
 from autogpt.core.agents.base.exceptions import (
     AgentException,
@@ -239,7 +239,10 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 ### Step 6 : execute_tool() #
                 ##############################################################
-                result = await self.execute_tool(command_name, command_args)
+                result = await self.execute_tool(command_name = command_name, 
+                                                 command_args = command_args,
+                                                 #user_input = assistant_reply_dict
+                                                 )
 
             self.save_plan()
 
@@ -380,79 +383,66 @@ class PlannerLoop(BaseLoop):
     ) -> ActionResult:
         result: ActionResult
 
-        if command_name == "humand_feedback":
-            result = ActionInterruptedByHuman(user_input)
-
-            # self.log_cycle_handler.log_cycle(
-            #     self._agent.agent_name,
-            #     self._agent.created_at,
-            #     self.cycle_count,
-            #     user_input,
-            #     USER_INPUT_FILE_NAME,
-            # )
-
-        else:
-            # for plugin in self.config.plugins:
-            #     if not plugin.can_handle_pre_command():
-            #         continue
-            #     command_name, arguments = plugin.pre_command(command_name, command_args)
-
-            # NOTE : Test tools individually
-            # command_name = "web_search"
-            # command_args: {"query": "instructions for building a Pizza oven"}
-            
-            try:
-                return_value = await execute_command(
-                    command_name=command_name,
-                    arguments=command_args,
-                    agent=self._agent,
-                )
-
-                # Intercept ContextItem if one is returned by the command
-                if type(return_value) == tuple and isinstance(
-                    return_value[1], ContextItem
-                ):
-                    context_item = return_value[1]
-                    return_value = return_value[0]
-                    self._agent._logger.debug(
-                        f"Tool {command_name} returned a ContextItem: {context_item}"
-                    )
-                    self.context.add(context_item)
-
-                result = ActionSuccessResult(outputs=return_value)
-            except AgentException as e:
-                result = ActionErrorResult(reason=e.message, error=e)
-
-            # for plugin in self.config.plugins:
-            #     if not plugin.can_handle_post_command():
-            #         continue
-            #     if result.status == "success":
-            #         result.outputs = plugin.post_command(command_name, result.outputs)
-            #     elif result.status == "error":
-            #         result.reason = plugin.post_command(command_name, result.reason)
-
-        # Check if there's a result from the command append it to the message
-        if result.status == "success":
-            self._agent.message_history.add(
-                "system",
-                f"Tool {command_name} returned: {result.outputs}",
-                "action_result",
+        # NOTE : Test tools individually
+        # command_name = "web_search"
+        # command_args: {"query": "instructions for building a Pizza oven"}
+        
+        try:
+            return_value = await execute_command(
+                command_name=command_name,
+                arguments=command_args,
+                agent=self._agent,
             )
-        elif result.status == "error":
-            message = f"Tool {command_name} failed: {result.reason}"
 
-            # Append hint to the error message if the exception has a hint
-            if (
-                result.error
-                and isinstance(result.error, AgentException)
-                and result.error.hint
+            # Intercept ContextItem if one is returned by the command
+            if type(return_value) == tuple and isinstance(
+                return_value[1], ContextItem
             ):
-                message = message.rstrip(".") + f". {result.error.hint}"
+                context_item = return_value[1]
+                return_value = return_value[0]
+                self._agent._logger.debug(
+                    f"Tool {command_name} returned a ContextItem: {context_item}"
+                )
+                self.context.add(context_item)
 
-            self._agent.message_history.add("system", message, "action_result")
+            result = ActionSuccessResult(outputs=return_value)
+        except AgentException as e:
+            result = ActionErrorResult(reason=e.message, error=e)
 
-        # Update action history
-        self._agent.event_history.register_result(result)
+
+        ###
+        ### TODO : Low priority : Save results of tool execution & manage errors
+        ###
+
+        # # Check if there's a result from the command append it to the message
+        # if result.status == "success":
+        #     ###
+        #     ### NOT IMPLEMENTED : Save the result of all tool execution
+        #     ###
+        #     self._agent.tool_result_history = [] 
+        #     def add_result_history(command_name, result) : 
+        #         # TODO : Implement tool result history
+        #         self._agent.tool_result_history = self._agent.tool_result_history_table.list()
+        #         self._agent.tool_result_history_table = self.get_table("tool_result_history")
+        #         self._agent.tool_result_history_table.add(
+        #             "system",
+        #             f"Tool {command_name} returned: {result.outputs}",
+        #             "action_result",
+        #         )
+        #     self._agent.tool_result_history.append(command_name, result)
+            
+        # elif result.status == "error":
+        #     message = f"Tool {command_name} failed: {result.reason}"
+
+        #     # Append hint to the error message if the exception has a hint
+        #     if (
+        #         result.error
+        #         and isinstance(result.error, AgentException)
+        #         and result.error.hint
+        #     ):
+        #         message = message.rstrip(".") + f". {result.error.hint}"
+
+        #     self._agent.message_history.add("system", message, "action_result")
 
         if result.status == "success":
             self._agent._logger.info(result)

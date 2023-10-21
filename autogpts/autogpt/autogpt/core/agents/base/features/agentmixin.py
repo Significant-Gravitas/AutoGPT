@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from autogpt.core.agents.simple.lib.models.plan import Plan
 
     from autogpt.core.resource.model_providers import CompletionModelFunction
+    from autogpt.core.memory.table import AbstractTable
 
 
 class AgentMixin:
@@ -47,7 +48,7 @@ class AgentMixin:
         return self._agent._logger
 
     ###
-    ## Shorcutes
+    ## Shorcuts
     ###
     def tool_registry(self) -> BaseToolsRegistry:
         return self._agent._tool_registry
@@ -60,3 +61,6 @@ class AgentMixin:
 
     def plan(self) -> Plan:
         return self._agent.plan
+    
+    def get_table(self,table_name : str ) -> AbstractTable :
+        return self._agent._memory.get_table(table_name=table_name)
