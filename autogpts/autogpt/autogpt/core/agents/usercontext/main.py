@@ -130,34 +130,6 @@ class UserContextAgent(BaseAgent):
         pass
 
     @classmethod
-    def _get_agent_from_settings(
-        cls,
-        agent_settings: UserContextAgent.SystemSettings,
-        agent_args: list,
-        logger: logging.Logger,
-    ) -> Tuple[UserContextAgent.SystemSettings, list]:
-        agent_args["chat_model_provider"] = cls._get_system_instance(
-            "chat_model_provider",
-            agent_settings,
-            logger,
-        )
-        from autogpts.autogpt.autogpt.core.agents.usercontext.strategies import (
-            StrategiesSet,
-            StrategiesSetConfiguration,
-        )
-
-        user_context_strategies = StrategiesSet.get_strategies(logger=logger)
-        agent_args["prompt_manager"] = cls._get_system_instance(
-            "prompt_manager",
-            agent_settings,
-            logger,
-            model_providers={"openai": agent_args["chat_model_provider"]},
-            strategies=user_context_strategies,
-        )
-
-        return agent_settings, agent_args
-
-    @classmethod
     def get_strategies(cls)-> list :
         from autogpts.autogpt.autogpt.core.agents.whichway.strategies import (
             StrategiesSet,

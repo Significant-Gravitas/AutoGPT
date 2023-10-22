@@ -214,11 +214,6 @@ class BaseAgent(Configurable, AbstractAgent):
             )
             self.agent_setting_class = self.__class__.__name__
 
-        # def update_agent_name_and_goals(self, agent_goals: dict) -> None:
-        #     for key, value in agent_goals.items():
-        #         # if key != 'agent' and key != 'workspace'  :
-        #         setattr(self, key, value)
-
 
     def __init__(
         self,
@@ -391,42 +386,15 @@ class BaseAgent(Configurable, AbstractAgent):
             settings = BaseAgent.SystemSettings(user_id="123", ...other_settings...)
             agent = YourClass.get_agent_from_settings(settings, logger)
         """
-        # if not isinstance(agent_settings, BaseAgent.SystemSettings):
-        #     agent_settings: BaseAgent.SystemSettings = agent_settings
         if not isinstance(agent_settings, cls.SystemSettings):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
-        # agent_args = {}
 
-        # agent_args["user_id"] = agent_settings.user_id
-        # agent_args["settings"] = agent_settings
-        # agent_args["logger"] = logger
-        # agent_args["workspace"] = cls._get_system_instance(
-        #     "workspace",
-        #     agent_settings,
-        #     logger,
-        # )
-
-        # memory_settings = agent_settings.memory
-        # agent_args["memory"] = AbstractMemory.get_adapter(
-        #     memory_settings=memory_settings, logger=logger
-        # )
 
         from importlib import import_module
 
         module_path, class_name = agent_settings._type_.rsplit(".", 1)
         module = import_module(module_path)
         agent_class : BaseAgent = getattr(module, class_name)
-
-
-        # agent_args["chat_model_provider"] = cls._get_system_instance(
-        #     "chat_model_provider",
-        #     agent_settings,
-        #     logger,
-        # )
-
-        # agent_settings, agent_args = agent_class._get_agent_from_settings(
-        #     agent_settings=agent_settings, agent_args=agent_args, logger=logger
-        # )
 
         settings_dict = agent_settings.__dict__
         items = settings_dict.items() 
@@ -487,19 +455,9 @@ class BaseAgent(Configurable, AbstractAgent):
         ...
     
 
-    @classmethod
-    @abstractmethod
-    def _get_agent_from_settings(
-        cls, agent_settings: BaseAgent.SystemSettings, agent_args: list, logger: logging.Logger
-    ) -> Tuple[BaseAgent.SystemSettings, list]:
-        return agent_settings, agent_args
-
     ################################################################
     # Factory interface for agent bootstrapping and initialization #
     ################################################################
-
-    # def check_user_context(self, min_len=250, max_len=300):
-    #     pass
 
     @classmethod
     def create_agent(
