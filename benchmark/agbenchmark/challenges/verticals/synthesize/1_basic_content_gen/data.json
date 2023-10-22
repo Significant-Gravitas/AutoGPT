@@ -9,7 +9,7 @@
     ],
     "eval_id": "895ae28a-4513-44ea-a872-0164771d1597",
     "ground": {
-        "answer": "A report highlighting elements from the 2 files.",
+        "answer": "Is the company mentioned in the output actively addressing or capitalizing on the challenges or trends listed?",
         "eval": {
             "scoring": "binary",
             "template": "question",
@@ -19,7 +19,7 @@
             "output.txt"
         ],
         "should_contain": [
-            "Is the company mentioned in the output actively addressing or capitalizing on the challenges or trends listed?"
+            ""
         ],
         "should_not_contain": []
     },
