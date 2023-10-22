@@ -20,7 +20,6 @@ DEFAULT_PROMPT = """You're tasked to write an implementation based on the provid
 You should also write tests for the implementation that will be run with pytest. 
 Make sure to write tests for all requirements.
 Just verify one test scenario in each test method.
-All files should be presented in the following format:
 """
 
 FIX_TESTS_PROMPT = """You are reviewing a solution written by an inexperienced programmer. 
