@@ -2,17 +2,15 @@ from __future__ import annotations
 
 import abc
 import enum
-from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, List,
-                    Optional)
+from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional)
 
-from typing_extensions import NamedTuple, TypedDict
+from typing_extensions import TypedDict
 
 from .features.agentmixin import AgentMixin
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import \
         ChatModelResponse
-    from autogpts.autogpt.autogpt.core.tools import BaseToolsRegistry, Tool
 
     from . import BaseAgent
 

@@ -13,11 +13,7 @@ if TYPE_CHECKING:
 
 from autogpts.AFAAS.app.lib.plan import Plan
 from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
-from autogpts.autogpt.autogpt.core.agents.base.features.context import \
-    get_agent_context
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
-from autogpts.autogpt.autogpt.core.utils.exceptions import InvalidArgumentError
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 

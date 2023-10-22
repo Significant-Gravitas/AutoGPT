@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from logging import Logger
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from autogpts.AFAAS.app.lib.plan import Plan

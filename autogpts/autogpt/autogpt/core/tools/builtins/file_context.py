@@ -18,7 +18,7 @@ from autogpts.AFAAS.app.lib.context_items import (FileContextItem,
                                                   FolderContextItem)
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.exceptions import (
-    DuplicateOperationError, ToolExecutionError)
+    ToolExecutionError)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg

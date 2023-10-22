@@ -28,8 +28,7 @@ from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
     enabled=lambda config: not config.noninteractive_mode,
 )
 async def user_interaction(question: str, task: Task, agent: BaseAgent) -> str:
-    from autogpts.AFAAS.app.lib.message_agent_user import (MessageAgentUser,
-                                                           Questions)
+    pass
 
     # resp = await clean_input(
     #     agent.legacy_config, f"{agent.ai_config.ai_name} asks: '{question}': "

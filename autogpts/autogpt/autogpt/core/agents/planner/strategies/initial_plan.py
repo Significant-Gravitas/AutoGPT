@@ -1,18 +1,13 @@
 import enum
-import uuid
 from logging import Logger
 from typing import Optional
 
-from pydantic import BaseModel
 
-from autogpts.AFAAS.app.lib import Task, TaskType
-from autogpts.autogpt.autogpt.core.configuration import (SystemConfiguration,
-                                                         UserConfigurable)
+from autogpts.AFAAS.app.lib import Task
 from autogpts.autogpt.autogpt.core.prompting.base import (
-    RESPONSE_SCHEMA, BasePromptStrategy, LanguageModelClassification,
-    PromptStrategiesConfiguration)
+    BasePromptStrategy, LanguageModelClassification, PromptStrategiesConfiguration)
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
-    json_loads, to_numbered_list, to_string_list)
+    json_loads, to_numbered_list)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema

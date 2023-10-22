@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from autogpts.autogpt.autogpt.core.configuration import Configurable
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 
 if TYPE_CHECKING:

@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Awaitable, Callable, Dict, List
+from typing import TYPE_CHECKING, Awaitable, Callable
 
-from typing_extensions import TypedDict
 
-from autogpts.autogpt.autogpt.core.ability import ToolResult
-from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
-    parse_ability_result, parse_agent_plan, parse_next_tool)
 
-from ..base import BaseLoop, BaseLoopHook
+from ..base import BaseLoop
 
 if TYPE_CHECKING:
     from ..base import BaseAgent
     from autogpts.autogpt.autogpt.core.resource.model_providers import ChatModelResponse
 
-from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
 
 from .strategies import RefineUserContextFunctionNames
 

@@ -26,7 +26,6 @@ from autogpt.agents.utils.exceptions import (AgentTerminated,
                                              InvalidAgentResponseError)
 from autogpt.config import (AIDirectives, AIProfile, Config, ConfigBuilder,
                             assert_config_has_openai_api_key)
-from autogpt.core.resource.model_providers import ModelProviderCredentials
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
 from autogpt.logs.config import configure_chat_plugins, configure_logging

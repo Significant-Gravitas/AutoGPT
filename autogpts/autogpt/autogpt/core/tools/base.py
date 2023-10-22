@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import abc
 from pprint import pformat
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any, ClassVar
 
 import inflection
 from pydantic import Field
 
-from ..agents.base.assistants import LanguageModelConfiguration, ToolExecutor
+from ..agents.base.assistants import LanguageModelConfiguration
 from ..agents.base.features.agentmixin import AgentMixin
 from ..configuration import SystemConfiguration
 from ..plugin.base import PluginLocation

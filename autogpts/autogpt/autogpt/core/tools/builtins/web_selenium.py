@@ -8,31 +8,16 @@ TOOL_CATEGORY_TITLE = "Web Browsing"
 import logging
 import re
 from pathlib import Path
-from sys import platform
 from typing import TYPE_CHECKING, Optional, Type
 
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.chrome.service import Service as ChromeDriverService
-from selenium.webdriver.chrome.webdriver import WebDriver as ChromeDriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.common.options import ArgOptions as BrowserOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
-from selenium.webdriver.edge.service import Service as EdgeDriverService
-from selenium.webdriver.edge.webdriver import WebDriver as EdgeDriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from selenium.webdriver.firefox.service import Service as GeckoDriverService
-from selenium.webdriver.firefox.webdriver import WebDriver as FirefoxDriver
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.safari.options import Options as SafariOptions
-from selenium.webdriver.safari.webdriver import WebDriver as SafariDriver
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.wait import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.firefox import GeckoDriverManager
-from webdriver_manager.microsoft import \
-    EdgeChromiumDriverManager as EdgeDriverManager
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent

@@ -3,7 +3,7 @@ import datetime
 import enum
 import logging
 import uuid
-from typing import Any, Callable, Generic, Optional, TypeVar, Union
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 

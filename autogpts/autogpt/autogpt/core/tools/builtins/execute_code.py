@@ -17,8 +17,7 @@ from autogpts.AFAAS.app.lib.tasks import Task
 from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.exceptions import (
-    CodeExecutionError, InvalidArgumentError, OperationNotAllowedError,
-    ToolExecutionError)
+    CodeExecutionError, InvalidArgumentError, ToolExecutionError)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg

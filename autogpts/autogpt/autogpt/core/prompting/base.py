@@ -2,27 +2,21 @@ from __future__ import annotations
 
 import abc
 import re
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional
 
-from pydantic import validator
 
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.planner.main import PlannerAgent
-    from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
 
-from autogpts.autogpt.autogpt.core.configuration import (Configurable,
-                                                         SystemConfiguration,
-                                                         SystemSettings,
-                                                         UserConfigurable)
+from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration
 from autogpts.autogpt.autogpt.core.prompting.schema import \
     LanguageModelClassification
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
-    json_loads, to_numbered_list)
+    json_loads)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict, BaseChatModelProvider, ChatMessage, ChatPrompt,
-    CompletionModelFunction, ModelProviderName, OpenAIModelName)
+    AssistantChatMessageDict, ChatPrompt, CompletionModelFunction)
 
 RESPONSE_SCHEMA = JSONSchema(
     type=JSONSchema.Type.OBJECT,

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import datetime
-import enum
 import logging
 import os
 import uuid
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 import yaml
 from pydantic import Field
@@ -634,8 +633,7 @@ class BaseAgent(Configurable, AbstractAgent):
             agent_settings_list = YourClass.get_agentsetting_list_from_memory(user_id, logger)
             print(agent_settings_list)
         """
-        from autogpts.autogpt.autogpt.core.memory.base import (AbstractMemory,
-                                                               MemoryConfig)
+        from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
         from autogpts.autogpt.autogpt.core.memory.table import (AbstractTable,
                                                                 AgentsTable)
 

@@ -4,11 +4,9 @@ import importlib
 import inspect
 import logging
 from dataclasses import dataclass, field
-from logging import Logger
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Iterator
 
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +14,8 @@ if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
 from autogpts.autogpt.autogpt.core.configuration import (Configurable,
-                                                         SystemConfiguration,
-                                                         SystemSettings)
+                                                         SystemConfiguration)
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
-from autogpts.autogpt.autogpt.core.plugin.simple import SimplePluginService
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
     BaseChatModelProvider, CompletionModelFunction, ModelProviderName)
 from autogpts.autogpt.autogpt.core.tools.base import (BaseToolsRegistry, Tool,

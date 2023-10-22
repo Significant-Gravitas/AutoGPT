@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 from typing import Callable, ParamSpec, TypeVar
 
-from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
 P = ParamSpec("P")
 T = TypeVar("T")

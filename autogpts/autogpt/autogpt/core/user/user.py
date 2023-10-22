@@ -1,8 +1,6 @@
 from datetime import datetime, timedelta
 
-from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import JSONResponse
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import HTTPException, status
 from firebase_admin import auth, credentials, initialize_app
 from jose import JWTError, jwt
 from passlib.context import CryptContext

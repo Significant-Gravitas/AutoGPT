@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import abc
 import enum
-from typing import (TYPE_CHECKING, Any, Callable, ClassVar, Dict, Generic,
-                    List, Literal, Optional, Protocol, TypedDict, TypeVar,
-                    Union)
+from typing import (Callable, ClassVar, Protocol)
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
@@ -12,7 +10,6 @@ from autogpts.autogpt.autogpt.core.configuration import UserConfigurable
 from autogpts.autogpt.autogpt.core.resource.schema import (
     BaseProviderBudget, BaseProviderCredentials, BaseProviderSettings,
     BaseProviderUsage, Embedding, ResourceType)
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
 class ModelProviderService(str, enum.Enum):

@@ -1,14 +1,9 @@
 from __future__ import annotations
 
 import enum
-import json
-import platform
-import re
-import uuid
 from logging import Logger
 from typing import TYPE_CHECKING, Callable, Optional
 
-import distro
 
 from autogpts.autogpt.autogpt.core.agents.base.agent_directives import \
     BaseAgentDirectives
@@ -20,15 +15,13 @@ if TYPE_CHECKING:
 # prompting
 from autogpts.AFAAS.app.lib.action_history import Episode
 from autogpts.autogpt.autogpt.core.prompting.base import (
-    RESPONSE_SCHEMA, LanguageModelClassification)
+    LanguageModelClassification)
 from autogpts.autogpt.autogpt.core.prompting.planningstrategies import (
     PlanningPromptStrategiesConfiguration, PlanningPromptStrategy)
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
-    indent, json_loads, to_numbered_list, to_string_list)
+    indent)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction,
-    OpenAIProvider)
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
+    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 
 
 class ThinkStrategyFunctionNames(str, enum.Enum):
@@ -128,7 +121,6 @@ class SelectToolStrategy(PlanningPromptStrategy):
                 0,
                 ChatMessage.system(f"## Progress\n\n{progress}"),
             )
-            pass
 
         messages = [
             ChatMessage.system(system_prompt),

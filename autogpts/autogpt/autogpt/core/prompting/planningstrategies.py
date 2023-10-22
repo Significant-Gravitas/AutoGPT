@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import abc
 import copy
-import re
 from logging import Logger
 from typing import TYPE_CHECKING, Optional, Union
 
-from pydantic import validator
 
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.planner.main import PlannerAgent
@@ -16,24 +12,16 @@ if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
 
 from autogpts.AFAAS.app.lib.plan import Plan
-from autogpts.autogpt.autogpt.core.configuration import (Configurable,
-                                                         SystemConfiguration,
-                                                         SystemSettings,
-                                                         UserConfigurable)
+from autogpts.autogpt.autogpt.core.configuration import UserConfigurable
 from autogpts.autogpt.autogpt.core.prompting.schema import \
     LanguageModelClassification
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
-    json_loads, to_numbered_list)
+    to_numbered_list)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict, BaseChatModelProvider, ChatMessage, ChatPrompt,
-    CompletionModelFunction, ModelProviderName, OpenAIModelName)
+    ChatMessage, CompletionModelFunction)
 
 from .base import (RESPONSE_SCHEMA, BasePromptStrategy,
                    PromptStrategiesConfiguration)
-from .utils.prompt_scratchpad import PromptScratchpad
-from .utils.templates import (PLAN_PROMPT_CONSTRAINTS,
-                              PLAN_PROMPT_PERFORMANCE_EVALUATIONS,
-                              PLAN_PROMPT_RESOURCES)
 
 
 class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
@@ -173,8 +161,6 @@ class PlanningPromptStrategy(BasePromptStrategy):
             "{best_practices}"
         )
 
-        from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
-            parse_ability_result, parse_agent_plan, parse_next_tool)
 
         print(
             f"""################################################################################################################################################################################################################################

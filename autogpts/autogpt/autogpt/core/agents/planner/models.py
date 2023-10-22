@@ -1,21 +1,15 @@
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING, Optional
 
 from pydantic import Field
 
 if TYPE_CHECKING:
-    from . import PlannerAgent
+    pass
 
 from autogpts.autogpt.autogpt.core.agents.base.models import (
     BaseAgentConfiguration, BaseAgentSystems)
-from autogpts.autogpt.autogpt.core.plugin.simple import PluginLocation
-from autogpts.autogpt.autogpt.core.resource.model_providers import \
-    OpenAISettings
-from autogpts.autogpt.autogpt.core.tools import SimpleToolRegistry
 
-from ..base import PromptManager
 
 
 class PlannerAgentSystems(BaseAgentSystems):

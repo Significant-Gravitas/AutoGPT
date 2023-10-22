@@ -1,26 +1,20 @@
 from __future__ import annotations
 
-import datetime
 import logging
 import uuid
-from typing import TYPE_CHECKING, Awaitable, Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 from pydantic import Field
 
-from autogpts.AFAAS.app.lib.plan import Plan, Task
-from autogpts.AFAAS.app.lib.tasks import TaskStatusList
-from autogpts.autogpt.autogpt.core.configuration import Configurable
+from autogpts.AFAAS.app.lib.plan import Plan
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
-from autogpts.autogpt.autogpt.core.plugin.simple import (PluginLocation,
-                                                         PluginStorageFormat)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
     OpenAIProvider, OpenAISettings)
 from autogpts.autogpt.autogpt.core.tools import (TOOL_CATEGORIES,
-                                                 SimpleToolRegistry,
-                                                 ToolResult)
+                                                 SimpleToolRegistry)
 
-from ..base import (BaseAgent, BaseLoopHook, LanguageModelConfiguration,
-                    PromptManager, ToolExecutor)
+from ..base import (BaseAgent, BaseLoopHook, PromptManager,
+                    ToolExecutor)
 from .loop import PlannerLoop
 from .models import (PlannerAgentConfiguration,  # PlannerAgentSystemSettings,
                      PlannerAgentSystems)
@@ -225,9 +219,8 @@ class PlannerAgent(BaseAgent):
     @classmethod
     def get_strategies(cls) -> list:
         # TODO : Continue refactorization => move to loop ?
-        from autogpts.autogpt.autogpt.core.agents.planner import strategies
         from autogpts.autogpt.autogpt.core.agents.planner.strategies import (
-            StrategiesConfiguration, StrategiesSet)
+            StrategiesSet)
 
         return StrategiesSet.get_strategies()
 

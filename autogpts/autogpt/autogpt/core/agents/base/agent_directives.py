@@ -6,8 +6,6 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import yaml
-from autogpt.logs.helpers import request_user_double_check
-from autogpt.utils import validate_yaml_file
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -70,7 +68,7 @@ class BaseAgentDirectives(BaseModel):
 
     @staticmethod
     def from_file(agent: BaseAgent) -> BaseAgentDirectives:
-        from .main import BaseAgent
+        pass
 
         config_params = agent.prompt_settings
 

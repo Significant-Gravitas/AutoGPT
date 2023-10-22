@@ -11,19 +11,19 @@ from autogpts.autogpt.autogpt.core.agents.base.features.agentmixin import \
     AgentMixin
 
 if TYPE_CHECKING:
-    from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
+    pass
 
 from autogpts.autogpt.autogpt.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          SystemSettings,
                                                          UserConfigurable)
 from autogpts.autogpt.autogpt.core.prompting.base import (
-    AbstractPromptStrategy, BasePromptStrategy, PromptStrategiesConfiguration)
+    AbstractPromptStrategy, BasePromptStrategy)
 from autogpts.autogpt.autogpt.core.prompting.schema import \
     LanguageModelClassification
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    BaseChatModelProvider, ChatModelResponse, CompletionModelFunction,
-    ModelProviderName, OpenAIModelName, OpenAIProvider)
+    BaseChatModelProvider, ChatModelResponse, ModelProviderName,
+    OpenAIModelName)
 from autogpts.autogpt.autogpt.core.workspace import AbstractWorkspace
 
 

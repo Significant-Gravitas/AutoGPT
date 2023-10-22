@@ -25,14 +25,9 @@ To initialize and use the `RefineUserContextStrategy`:
 import enum
 import uuid
 from logging import Logger
-from typing import Optional
 
-from pydantic import BaseModel
 
-from autogpts.AFAAS.app.lib.message_agent_user import (MessageAgentUser,
-                                                       Questions)
-from autogpts.autogpt.autogpt.core.configuration import (SystemConfiguration,
-                                                         UserConfigurable)
+from autogpts.AFAAS.app.lib.message_agent_user import Questions
 from autogpts.autogpt.autogpt.core.prompting.base import (
     BasePromptStrategy, PromptStrategiesConfiguration)
 from autogpts.autogpt.autogpt.core.prompting.schema import \

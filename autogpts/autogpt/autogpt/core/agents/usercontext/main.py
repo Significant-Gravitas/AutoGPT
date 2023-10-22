@@ -2,18 +2,12 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import TYPE_CHECKING, Awaitable, Callable, List, Optional, Tuple
+from typing import Awaitable, Callable
 
-from pydantic import Field
 
-from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
-from autogpts.autogpt.autogpt.core.configuration import Configurable
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
-from autogpts.autogpt.autogpt.core.plugin.simple import (PluginLocation,
-                                                         PluginStorageFormat)
 from autogpts.autogpt.autogpt.core.resource.model_providers import \
     OpenAIProvider
-from autogpts.autogpt.autogpt.core.tools import SimpleToolRegistry, ToolResult
 from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
 
 from ..base import BaseAgent, BaseLoopHook, PromptManager
@@ -129,7 +123,7 @@ class UserContextAgent(BaseAgent):
     @classmethod
     def get_strategies(cls)-> list :
         from autogpts.autogpt.autogpt.core.agents.whichway.strategies import (
-            StrategiesSet, StrategiesSetConfiguration)
+            StrategiesSet)
         return StrategiesSet.get_strategies()
 
     @classmethod

@@ -1,4 +1,3 @@
-import json
 import logging
 import uuid
 from pathlib import Path
@@ -6,13 +5,12 @@ from typing import TYPE_CHECKING
 
 from autogpts.autogpt.autogpt.core.configuration import (Configurable,
                                                          SystemConfiguration,
-                                                         SystemSettings,
                                                          UserConfigurable)
 from autogpts.autogpt.autogpt.core.workspace.base import AbstractWorkspace
 
 if TYPE_CHECKING:
     # Cyclic import
-    from autogpts.autogpt.autogpt.core.agents import BaseAgent
+    pass
 
 
 class WorkspaceConfiguration(SystemConfiguration):
