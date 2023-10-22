@@ -34,8 +34,8 @@ when you clone it.
 
 The first app is a straight CLI application.  I have not done anything yet to port all the friendly display stuff from the `logger.typewriter_log` logic.  
 
-- [Entry Point](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_app/cli.py)
-- [Client Application](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_app/main.py)
+- [Entry Point](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/autogpt/core/runner/cli_app/cli.py)
+- [Client Application](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/autogpt/core/runner/cli_app/main.py)
 
 You'll then need a settings file.  Run
 
@@ -73,9 +73,9 @@ The second app is still a CLI, but it sets up a local webserver that the client 
 rather than invoking calls to the Agent library code directly.  This application is essentially a sketch 
 at this point as the folks who were driving it have had less time (and likely not enough clarity) to proceed.
 
-- [Entry Point](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_web_app/cli.py)
-- [Client Application](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_web_app/client/client.py)
-- [Server API](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/autogpt/core/runner/cli_web_app/server/api.py)
+- [Entry Point](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/autogpt/core/runner/cli_web_app/cli.py)
+- [Client Application](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/autogpt/core/runner/cli_web_app/client/client.py)
+- [Server API](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/autogpt/core/runner/cli_web_app/server/api.py)
 
 To run, you still need to generate a default configuration.  You can do 
 

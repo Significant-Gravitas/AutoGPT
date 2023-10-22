@@ -80,9 +80,10 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.fromLTRB(0, 10, 20, 10),
-                          child: hasMarkdown
+                          child: false
                               ? Markdown(data: widget.chat.message)
-                              : Text(widget.chat.message, maxLines: null),
+                              : SelectableText(widget.chat.message,
+                                  maxLines: null),
                         ),
                       ),
                       ElevatedButton(
