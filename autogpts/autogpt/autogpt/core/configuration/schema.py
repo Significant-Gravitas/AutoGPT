@@ -70,7 +70,8 @@ class SystemSettings(BaseModel):
             "agent_setting_module",
             "agent_setting_class",
             "name",
-            "description"
+            "description",
+            "parent_agent"
         }
     
     # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
