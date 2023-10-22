@@ -35,7 +35,7 @@ from autogpts.autogpt.autogpt.core.runner.client_lib.workspacebuilder import (
     get_settings_from_file,
     get_logger_and_workspace,
 )
-from autogpts.autogpt.autogpt.core.agents import AgentSettings, PlannerAgent
+from autogpts.autogpt.autogpt.core.agents import PlannerAgent
 from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
     parse_agent_name_and_goals,
     parse_ability_result,

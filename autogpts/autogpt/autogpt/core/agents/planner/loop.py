@@ -52,7 +52,6 @@ except :
 try:
     from autogpts.autogpt.autogpt.core.agents.usercontext import (
         UserContextAgent,
-        UserContextAgentSettings,
         )
     aaas['usercontext'] = True
 except :
@@ -254,7 +253,7 @@ class PlannerLoop(BaseLoop):
 
 
     #     # USER CONTEXT AGENT : Create Agent Settings
-    #     usercontext_settings: UserContextAgentSettings = UserContextAgentSettings()
+    #     usercontext_settings: UserContextAgent.SystemSettings = UserContextAgent.SystemSettings()
     #     usercontext_settings["user_id"]= self._agent.user_id,
     #     usercontext_settings["parent_agent_id"]=  self._agent.agent_id,
     #     usercontext_settings["agent_goals"]=  self._agent.agent_goals,

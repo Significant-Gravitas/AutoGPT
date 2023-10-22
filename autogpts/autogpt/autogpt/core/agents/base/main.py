@@ -42,7 +42,7 @@ class AbstractAgent(ABC):
         
         user_id: str
         agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
-        agent_class: str
+        #agent_class: str
         # TODO: #22 https://github.com/ph-ausseil/afaas/issues/22
         modified_at : datetime.datetime  =  datetime.datetime.now()
         # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
@@ -142,7 +142,7 @@ class BaseAgent(Configurable, AbstractAgent):
         
         user_id: str
         agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
-        agent_class: Optional[str]
+        #agent_class: Optional[str]
         
         agent_setting_module : Optional[str]
         agent_setting_class : Optional[str]
@@ -237,7 +237,7 @@ class BaseAgent(Configurable, AbstractAgent):
         self.agent_id = agent_id
 
         # NOTE : Move to Configurable class ?
-        self.agent_class = f"{self.__class__.__name__}"
+        # self.agent_class = f"{self.__class__.__name__}"
 
     def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):
         """
@@ -413,7 +413,7 @@ class BaseAgent(Configurable, AbstractAgent):
 
         module_path, class_name = agent_settings._type_.rsplit(".", 1)
         module = import_module(module_path)
-        agent_class = getattr(module, class_name)
+        agent_class : BaseAgent = getattr(module, class_name)
 
         agent_settings, agent_args = agent_class._get_agent_from_settings(
             agent_settings=agent_settings, agent_args=agent_args, logger=logger

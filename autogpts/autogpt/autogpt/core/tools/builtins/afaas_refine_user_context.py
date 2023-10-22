@@ -17,7 +17,6 @@ from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 from autogpts.autogpt.autogpt.core.agents.usercontext import (
     UserContextAgent,
-    UserContextAgentSettings,
     )
 
 logger = logging.getLogger(__name__)
@@ -36,21 +35,20 @@ async def afaas_refine_user_context(agent: BaseAgent) -> None:
     """
     try : 
         # USER CONTEXT AGENT : Create Agent Settings
-        usercontext_settings: UserContextAgentSettings = UserContextAgentSettings(user_id= agent.user_id)
-        usercontext_settings.parent_agent_id=  agent.agent_id
+        usercontext_settings: UserContextAgent.SystemSettings = UserContextAgent.SystemSettings(user_id= agent.user_id, parent_agent_id =  agent.agent_id, parent_agent=  agent)
         usercontext_settings.agent_goals=  agent.agent_goals
         usercontext_settings.agent_goal_sentence=  agent.agent_goal_sentence
         usercontext_settings.memory  =  agent._memory._settings
         usercontext_settings.workspace =  agent._workspace._settings
         usercontext_settings.chat_model_provider=  agent._chat_model_provider._settings
 
+        # FIXME: REMOVE WHEN WE GO LIVE
 
         # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
         new_user_context_agent = UserContextAgent.create_agent(
             agent_settings=usercontext_settings, logger=agent._logger
             )
-
-        # # USER CONTEXT AGENT : Get UserContextAgent from DB (for POW / POC)
+        # USER CONTEXT AGENT : Get UserContextAgent from DB (for POW / POC)
         usercontext_settings.agent_id = new_user_context_agent.agent_id
 
         user_context_agent = UserContextAgent.get_agent_from_settings(

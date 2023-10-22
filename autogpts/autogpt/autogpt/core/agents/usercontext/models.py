@@ -47,17 +47,18 @@ class UserContextAgentConfiguration(BaseAgentConfiguration):
 #         pass
 
 
-class UserContextAgentSettings(BaseAgent.SystemSettings):
+# class UserContextAgent.SystemSettings(BaseAgent.SystemSettings):
 
-    chat_model_provider: OpenAISettings
-    prompt_manager: PromptManager.SystemSettings
+#     chat_model_provider: OpenAISettings
+#     prompt_manager: PromptManager.SystemSettings
 
-    user_id: uuid.UUID 
-    parent_agent_id: str 
+#     user_id: uuid.UUID 
+#     parent_agent_id: str 
+#     parent_agent : BaseAgent
 
-    agent_name: str = Field(default="UserHelperAgent")
-    agent_class: str = Field(default="UserContextAgent")
-    _type_: str = "autogpt.core.agents.usercontext.main.UserContextAgent"
+#     agent_name: str = Field(default="UserHelperAgent")
+#     agent_class: str = Field(default="UserContextAgent")
+#     _type_: str = "autogpt.core.agents.usercontext.main.UserContextAgent"
 
-    class Config(BaseAgent.SystemSettings.Config):
-        pass
+#     class Config(BaseAgent.SystemSettings.Config):
+#         pass

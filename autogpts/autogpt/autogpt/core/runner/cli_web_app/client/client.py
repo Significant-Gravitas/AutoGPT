@@ -6,7 +6,7 @@ import requests
 from pathlib import Path
 import click
 
-from autogpts.autogpt.autogpt.core.agents import AgentSettings, PlannerAgent
+from autogpts.autogpt.autogpt.core.agents import PlannerAgent
 from autogpts.autogpt.autogpt.core.runner.client_lib.logging import get_client_logger
 
 import requests

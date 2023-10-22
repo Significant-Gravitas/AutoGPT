@@ -34,7 +34,7 @@ async def afaas_whichway(agent: BaseAgent) -> None:
     """
     try : 
         # USER CONTEXT AGENT : Create Agent Settings
-        whichway_settings: RoutingAgent.SystemSettings = RoutingAgent.SystemSettings(user_id=agent.user_id, parent_agent_id =  agent.agent_id)
+        whichway_settings: RoutingAgent.SystemSettings = RoutingAgent.SystemSettings(user_id= agent.user_id, parent_agent_id =  agent.agent_id, parent_agent=  agent)
         whichway_settings.agent_goals=  agent.agent_goals
         whichway_settings.agent_goal_sentence=  agent.agent_goal_sentence
         whichway_settings.memory  =  agent._memory._settings
@@ -60,8 +60,8 @@ async def afaas_whichway(agent: BaseAgent) -> None:
             user_message_handler = agent._user_message_handler,
         )
 
-        agent.agent_goal_sentence =     whichway_return["agent_goal_sentence"]
-        agent.agent_goals =     whichway_return["agent_goals"]
+        # agent.agent_goal_sentence =     whichway_return["agent_goal_sentence"]
+        # agent.agent_goals =     whichway_return["agent_goals"]
     except Exception as e:
         raise str(e)
 

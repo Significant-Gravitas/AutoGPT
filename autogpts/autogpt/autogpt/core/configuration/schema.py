@@ -53,8 +53,9 @@ class SystemSettings(BaseModel):
         json_encoders = {
                 uuid.UUID: lambda v: str(v),
                 float: lambda v: str(9999.99 if v == float("inf") or v == float("-inf") else v),
-                datetime: lambda v: v.isoformat()
+                datetime.datetime: lambda v: str(v.isoformat())
             } 
+        arbitrary_types_allowed = True
         allow_inf_nan = False
         default_exclude = {
             "agent",
@@ -76,7 +77,15 @@ class SystemSettings(BaseModel):
     created_at : datetime.datetime  =  datetime.datetime.now()
     modified_at : datetime.datetime  = datetime.datetime.now()
 
-
+    def dict_memory(self,**dumps_kwargs: Any) -> dict : 
+        result = self.dict(**dumps_kwargs)
+        encoders = self.Config.json_encoders
+        for key, value in result.items():
+            for type_, encoder in encoders.items():
+                if isinstance(value, type_):
+                    result[key] = encoder(value)
+        return result
+    
     def json(self,**dumps_kwargs: Any) -> str:
         logging.Logger(__name__).warning(f'{__qualname__}.json()')
         return super().json(**dumps_kwargs)

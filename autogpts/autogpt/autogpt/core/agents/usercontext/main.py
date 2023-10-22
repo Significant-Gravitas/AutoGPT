@@ -11,7 +11,6 @@ from ..base import BaseAgent, PromptManager , BaseLoopHook
 from .loop import UserContextLoop
 from .models import (
     UserContextAgentConfiguration,
-    UserContextAgentSettings,
     UserContextAgentSystems,
 )
 
@@ -31,7 +30,6 @@ class UserContextAgent(BaseAgent):
     ################################################################################
 
     CLASS_CONFIGURATION = UserContextAgentConfiguration
-    CLASS_SETTINGS = UserContextAgentSettings
     CLASS_SYSTEMS = UserContextAgentSystems
 
 
@@ -39,8 +37,6 @@ class UserContextAgent(BaseAgent):
         configuration : UserContextAgentConfiguration = UserContextAgentConfiguration()
         name="usercontext_agent"
         description="An agent that improve the quality of input provided by users."
-        # user_id: Optional[uuid.UUID] = Field(default=None)
-        # agent_id: Optional[uuid.UUID] = Field(default=None)
 
         class Config(BaseAgent.SystemSettings.Config):
             pass
@@ -129,17 +125,17 @@ class UserContextAgent(BaseAgent):
 
     @classmethod
     def _create_agent_custom_treatment(
-        cls, agent_settings: UserContextAgentSettings, logger: logging.Logger
+        cls, agent_settings: UserContextAgent.SystemSettings, logger: logging.Logger
     ) -> None:
         pass
 
     @classmethod
     def _get_agent_from_settings(
         cls,
-        agent_settings: UserContextAgentSettings,
+        agent_settings: UserContextAgent.SystemSettings,
         agent_args: list,
         logger: logging.Logger,
-    ) -> Tuple[UserContextAgentSettings, list]:
+    ) -> Tuple[UserContextAgent.SystemSettings, list]:
         agent_args["chat_model_provider"] = cls._get_system_instance(
             "chat_model_provider",
             agent_settings,
@@ -164,7 +160,7 @@ class UserContextAgent(BaseAgent):
     """@classmethod
     def get_agent_from_settings(
         cls,
-        agent_settings: UserContextAgentSettings,
+        agent_settings: UserContextAgent.SystemSettings,
         logger: logging.Logger,
     ) -> Agent:
         agent_settings, agent_args = super().get_agent_from_settings(
@@ -198,7 +194,7 @@ class UserContextAgent(BaseAgent):
     async def determine_agent_name_and_goals(
         cls,
         user_objective: str,
-        agent_settings: UserContextAgentSettings,
+        agent_settings: UserContextAgent.SystemSettings,
         logger: logging.Logger,
     ) -> dict:
         logger.debug("Loading OpenAI provider.")

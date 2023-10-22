@@ -20,6 +20,7 @@ from typing import (
 
 from pydantic import BaseModel
 from ..base import AbstractTable
+from autogpts.autogpt.autogpt.core.configuration import  SystemSettings
 
 
 
@@ -119,9 +120,13 @@ class BaseNoSQLTable(AbstractTable):
 
     def add(self, value: dict, id : str = str(uuid.uuid4())) -> uuid.UUID:
         # Serialize non-serializable objects
-        if isinstance(value, BaseModel):
-            value = value.dict()
-        value = self.__class__.serialize_value(value)
+        if isinstance(value, SystemSettings):
+            value = value.dict_memory()
+        else : 
+            self.memory._logger.warning(
+                "Class not hinheriting from SystemSettings"
+            )
+            value = self.__class__.serialize_value(value)
 
         # Assigning primary key
         key = {"primary_key": str(id)}
