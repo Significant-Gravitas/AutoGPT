@@ -16,7 +16,7 @@ from autogpts.autogpt.autogpt.core.agents.base.features.context import get_agent
 from autogpts.autogpt.autogpt.core.utils.exceptions import InvalidArgumentError
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-
+from autogpts.AFAAS.app.lib.tasks import Task
 logger = logging.getLogger(__name__)
 
 
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
         )
     },
 )
-def finish(reason: str, agent: BaseAgent) -> None:
+def finish(reason: str, task : Task, agent: BaseAgent) -> None:
     """
     A function that takes in a string and exits the program
 
@@ -59,7 +59,7 @@ def finish(reason: str, agent: BaseAgent) -> None:
     },
     available=lambda a: bool(get_agent_context(a)),
 )
-def close_context_item(number: int, agent: BaseAgent) -> str:
+def close_context_item(number: int, task : Task, agent: BaseAgent) -> str:
     assert (context := get_agent_context(agent)) is not None
 
     if number > len(context.items) or number == 0:

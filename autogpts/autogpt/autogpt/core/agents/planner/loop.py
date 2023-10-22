@@ -232,7 +232,7 @@ class PlannerLoop(BaseLoop):
                     command_args = self._current_task.arguments
                     assistant_reply_dict = self._current_task.long_decription
                 else :
-
+                    # FIXME: REPLACE WITH ROUTING ?
                     command_name, command_args, assistant_reply_dict, = await self.select_tool()
 
                 ##############################################################
@@ -240,6 +240,7 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 result = await self.execute_tool(command_name = command_name, 
                                                  command_args = command_args,
+                                                 current_task = self._current_task
                                                  #user_input = assistant_reply_dict
                                                  )
 
@@ -377,6 +378,7 @@ class PlannerLoop(BaseLoop):
     async def execute_tool(
         self,
         command_name: str,
+        current_task: Task,
         command_args: dict[str, str] = {},
         user_input: str = "",
     ) -> ActionResult:
@@ -390,6 +392,7 @@ class PlannerLoop(BaseLoop):
             return_value = await execute_command(
                 command_name=command_name,
                 arguments=command_args,
+                task = current_task,
                 agent=self._agent,
             )
 
@@ -457,6 +460,7 @@ def execute_command(
     command_name: str,
     arguments: dict[str, str],
     agent: PlannerAgent,
+    task : Task
 ) -> ToolOutput:
     """Execute the command and return the result
 
@@ -471,7 +475,7 @@ def execute_command(
     # Execute a native command with the same name or alias, if it exists
     if command := agent._tool_registry.get_tool(tool_name=command_name):
         try:
-            return command(**arguments, agent=agent)
+            return command(**arguments, task = task, agent=agent)
         except AgentException:
             raise
         except Exception as e:

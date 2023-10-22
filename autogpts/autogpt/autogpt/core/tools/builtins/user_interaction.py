@@ -10,7 +10,7 @@ from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 # from autogpts.autogpt.autogpt.core.utils.app import clean_input
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-
+from autogpts.AFAAS.app.lib.tasks import Task
 
 @tool(
     "user_interaction",
@@ -27,7 +27,7 @@ from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
     },
     enabled=lambda config: not config.noninteractive_mode,
 )
-async def user_interaction(question: str, agent: BaseAgent) -> str:
+async def user_interaction(question: str, task : Task, agent: BaseAgent) -> str:
 
     from autogpts.AFAAS.app.lib.message_agent_user import Questions, MessageAgentUser
     # resp = await clean_input(

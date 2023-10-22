@@ -13,7 +13,7 @@ from autogpts.autogpt.autogpt.core.agents.base.features.context import get_agent
 from autogpts.autogpt.autogpt.core.utils.exceptions import InvalidArgumentError
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-
+from autogpts.AFAAS.app.lib.tasks import Task
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
         )
     }
 )
-async def query_language_model(agent: BaseAgent) -> None:
+async def query_language_model(task : Task, agent: BaseAgent) -> None:
    # plan =  self.execute_strategy(
     agent._loop.tool_registry().list_tools_descriptions()
     plan = await agent._loop.execute_strategy(

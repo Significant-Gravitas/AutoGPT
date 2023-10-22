@@ -18,7 +18,7 @@ from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 from autogpts.autogpt.autogpt.core.agents.usercontext import (
     UserContextAgent,
     )
-
+from autogpts.AFAAS.app.lib.tasks import Task
 logger = logging.getLogger(__name__)
 
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
     #parameters = ,
     hide = True
 )
-async def afaas_refine_user_context(agent: BaseAgent) -> None:
+async def afaas_refine_user_context(task : Task, agent: BaseAgent) -> None:
     """
     Configures the user context agent based on the current agent settings and executes the user context agent.
     Returns the updated agent goals.

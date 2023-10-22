@@ -21,7 +21,7 @@ from autogpts.autogpt.autogpt.core.utils.exceptions import (
     OperationNotAllowedError,
 )
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
-
+from autogpts.AFAAS.app.lib.tasks import Task
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
@@ -44,7 +44,7 @@ DENYLIST_CONTROL = "denylist"
         ),
     },
 )
-def execute_python_code(code: str, agent: BaseAgent) -> str:
+def execute_python_code(code: str, task : Task, agent: BaseAgent) -> str:
     """Create and execute a Python file in a Docker container and return the STDOUT of the
     executed code. If there is any data that needs to be captured use a print statement
 
@@ -232,7 +232,7 @@ def execute_python_file(
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config file: .env - do not attempt to bypass the restriction.",
 )
-def execute_shell(command_line: str, agent: BaseAgent) -> str:
+def execute_shell(command_line: str, task : Task, agent: BaseAgent) -> str:
     """Execute a shell command and return the output
 
     Args:
@@ -279,7 +279,7 @@ def execute_shell(command_line: str, agent: BaseAgent) -> str:
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config. Do not attempt to bypass the restriction.",
 )
-def execute_shell_popen(command_line: str, agent: BaseAgent) -> str:
+def execute_shell_popen(command_line: str, task : Task, agent: BaseAgent) -> str:
     """Execute a shell command with Popen and returns an english description
     of the event and the process id
 

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
     #parameters = ,
     hide = True
 )
-async def afaas_make_initial_plan(agent: BaseAgent) -> None:
+async def afaas_make_initial_plan(task : Task, agent: BaseAgent) -> None:
    # plan =  self.execute_strategy(
     agent._loop.tool_registry().list_tools_descriptions()
     plan = await agent._loop.execute_strategy(
@@ -58,7 +58,7 @@ async def afaas_make_initial_plan(agent: BaseAgent) -> None:
 #     name = "afaas__plan",
 #     description = "Make a plan to tacle a tasks",
 # )
-# async def afaas_plan(agent: BaseAgent) -> None:
+# async def afaas_plan(task : Task, agent: BaseAgent) -> None:
 #    # plan =  self.execute_strategy(
 #     agent._loop.tool_registry().list_tools_descriptions()
 #     plan = await agent._loop.execute_strategy(
