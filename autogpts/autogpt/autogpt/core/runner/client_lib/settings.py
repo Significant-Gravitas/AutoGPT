@@ -4,7 +4,6 @@ import yaml
 
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
 
-
 # def make_user_configuration(settings_file_path: Path):
 #     user_configuration = PlannerAgent.build_user_configuration()
 

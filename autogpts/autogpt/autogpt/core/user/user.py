@@ -1,11 +1,12 @@
-from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, EmailStr, SecretStr
 from datetime import datetime, timedelta
-from jose import jwt, JWTError
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordBearer
+from firebase_admin import auth, credentials, initialize_app
+from jose import JWTError, jwt
 from passlib.context import CryptContext
-from firebase_admin import credentials, initialize_app, auth
+from pydantic import BaseModel, EmailStr, SecretStr
 
 USE_DICTIONARY = False  # Change to True to use in-memory dictionary
 

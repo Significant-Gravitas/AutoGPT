@@ -2,7 +2,6 @@
 """Tests for JSONFileMemory class"""
 import orjson
 import pytest
-
 from autogpt.config import Config
 from autogpt.file_workspace import FileWorkspace
 from autogpt.memory.vector import JSONFileMemory, MemoryItem

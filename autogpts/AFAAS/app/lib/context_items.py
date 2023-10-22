@@ -1,19 +1,20 @@
 from __future__ import annotations
-import logging
 
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autogpts.autogpt.autogpt.core.tools.builtins.file_operations_utils import read_textual_file
+    from autogpts.autogpt.autogpt.core.tools.builtins.file_operations_utils import (
+        read_textual_file,
+    )
+
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
-from autogpts.autogpt.autogpt.core.configuration import (
-   AFAASModel ,
-)
 
-from pydantic import  Field
+from pydantic import Field
 
+from autogpts.autogpt.autogpt.core.configuration import AFAASModel
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,4 @@
 import pytest
-
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
 

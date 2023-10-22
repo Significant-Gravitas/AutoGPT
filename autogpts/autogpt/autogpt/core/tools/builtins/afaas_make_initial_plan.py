@@ -11,25 +11,25 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpts.autogpt.autogpt.core.agents.base.features.context import get_agent_context
-from autogpts.autogpt.autogpt.core.utils.exceptions import InvalidArgumentError
-from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-
 from autogpts.AFAAS.app.lib.plan import Plan
 from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
+from autogpts.autogpt.autogpt.core.agents.base.features.context import \
+    get_agent_context
+from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.utils.exceptions import InvalidArgumentError
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
 
 
 @tool(
-    name = "afaas_make_initial_plan",
-    description = "Make a plan to tacle a tasks",
-    #parameters = ,
-    hide = True
+    name="afaas_make_initial_plan",
+    description="Make a plan to tacle a tasks",
+    # parameters = ,
+    hide=True,
 )
-async def afaas_make_initial_plan(task : Task, agent: BaseAgent) -> None:
-   # plan =  self.execute_strategy(
+async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
+    # plan =  self.execute_strategy(
     agent._loop.tool_registry().list_tools_descriptions()
     plan = await agent._loop.execute_strategy(
         strategy_name="make_initial_plan",
@@ -82,4 +82,3 @@ async def afaas_make_initial_plan(task : Task, agent: BaseAgent) -> None:
 #     agent._loop._current_task = agent.plan[-1]
 #     agent._loop._current_task.context.status = TaskStatusList.READY
 #     return plan
-

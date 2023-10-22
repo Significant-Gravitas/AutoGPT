@@ -1,37 +1,28 @@
 from __future__ import annotations
+
 import abc
+import re
+from typing import TYPE_CHECKING, Optional, Union
 
 from pydantic import validator
-import re
-from typing import TYPE_CHECKING, Union, Optional
+
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.planner.main import PlannerAgent
     from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
 
-from autogpts.autogpt.autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
-from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration
-from autogpts.autogpt.autogpt.core.prompting.schema import LanguageModelClassification
-
-
-from autogpts.autogpt.autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
-
+from autogpts.autogpt.autogpt.core.configuration import (Configurable,
+                                                         SystemConfiguration,
+                                                         SystemSettings,
+                                                         UserConfigurable)
+from autogpts.autogpt.autogpt.core.prompting.schema import \
+    LanguageModelClassification
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
+    json_loads, to_numbered_list)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    BaseChatModelProvider,
-    ModelProviderName,
-    OpenAIModelName,
-    AssistantChatMessageDict,
-    ChatMessage,
-    ChatPrompt,
-    CompletionModelFunction,
-)
-
+    AssistantChatMessageDict, BaseChatModelProvider, ChatMessage, ChatPrompt,
+    CompletionModelFunction, ModelProviderName, OpenAIModelName)
 
 RESPONSE_SCHEMA = JSONSchema(
     type=JSONSchema.Type.OBJECT,
@@ -91,14 +82,15 @@ RESPONSE_SCHEMA = JSONSchema(
 
 
 class PromptStrategiesConfiguration(SystemConfiguration):
-    temperature : float = 0.9 #if coding 0.05
-    top_p: Optional[float] = None,
-    max_tokens : Optional[int] = None,
-    frequency_penalty: Optional[float] = None # Avoid repeting oneselfif coding 0.3
-    presence_penalty : Optional[float] = None # Avoid certain subjects
+    temperature: float = 0.9  # if coding 0.05
+    top_p: Optional[float] = (None,)
+    max_tokens: Optional[int] = (None,)
+    frequency_penalty: Optional[float] = None  # Avoid repeting oneselfif coding 0.3
+    presence_penalty: Optional[float] = None  # Avoid certain subjects
 
 
-from autogpts.autogpt.autogpt.core.agents.base.features.agentmixin import AgentMixin
+from autogpts.autogpt.autogpt.core.agents.base.features.agentmixin import \
+    AgentMixin
 
 
 class AbstractPromptStrategy(AgentMixin, abc.ABC):
@@ -183,7 +175,6 @@ class BasePromptStrategy(AbstractPromptStrategy):
             "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
             f"{response_format}"
         )
-    
 
     ###
     ### parse_response_content
@@ -214,4 +205,3 @@ class BasePromptStrategy(AbstractPromptStrategy):
         assistant_reply_dict = response_content["content"]
 
         return command_name, command_args, assistant_reply_dict
-

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import functools
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec, TypeVar
+from typing import (TYPE_CHECKING, Any, Callable, Literal, Optional, ParamSpec,
+                    TypeVar)
 
 if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent

@@ -4,7 +4,6 @@ import logging
 from typing import MutableSet, Sequence
 
 import numpy as np
-
 from autogpt.config.config import Config
 
 from .. import MemoryItem, MemoryItemRelevance

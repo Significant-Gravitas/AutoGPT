@@ -8,11 +8,12 @@ from enum import Enum
 from logging import Logger
 from pathlib import Path
 from typing import TYPE_CHECKING
-from autogpts.autogpt.autogpt.core.configuration import Configurable
 
 from pydantic import Field
 
-from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration, SystemSettings
+from autogpts.autogpt.autogpt.core.configuration import (Configurable,
+                                                         SystemConfiguration,
+                                                         SystemSettings)
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.memory.table.base import AbstractTable
@@ -67,8 +68,7 @@ class MemoryConfig(SystemConfiguration):
 
 
 class AbstractMemory(Configurable, abc.ABC):
-
-    class SystemSettings(Configurable.SystemSettings) :
+    class SystemSettings(Configurable.SystemSettings):
         configuration: MemoryConfig = MemoryConfig()
         name: str = "Memory"
         description: str = "Memory is an abstract memory adapter"
@@ -76,7 +76,6 @@ class AbstractMemory(Configurable, abc.ABC):
         class Config(SystemSettings.Config):
             extra = "allow"
 
-    
     _instances = {}
 
     """
@@ -119,7 +118,11 @@ class AbstractMemory(Configurable, abc.ABC):
 
     @classmethod
     def get_adapter(
-        cls, memory_settings: AbstractMemory.SystemSettings, logger=Logger, *args, **kwargs
+        cls,
+        memory_settings: AbstractMemory.SystemSettings,
+        logger=Logger,
+        *args,
+        **kwargs,
     ) -> "AbstractMemory":
         """
         Get an instance of a memory adapter based on the provided configuration.
@@ -149,7 +152,8 @@ class AbstractMemory(Configurable, abc.ABC):
             return AbstractMemory._instances[config_key]
 
         if adapter_type == MemoryAdapterType.NOSQL_JSON_FILE:
-            from autogpts.autogpt.autogpt.core.memory.nosql.jsonfile import JSONFileMemory
+            from autogpts.autogpt.autogpt.core.memory.nosql.jsonfile import \
+                JSONFileMemory
 
             instance = JSONFileMemory(settings=memory_settings, logger=logger)
 
@@ -168,10 +172,13 @@ class AbstractMemory(Configurable, abc.ABC):
         else:
             raise ValueError("Invalid memory_adapter type")
 
-        AbstractMemory._instances[config_key] = instance  # Store the newly created instance
+        AbstractMemory._instances[
+            config_key
+        ] = instance  # Store the newly created instance
         return instance
 
     abc.abstractmethod
+
     def get_table(self, table_name: str) -> AbstractTable:
         """
         Get an instance of the table with the specified table_name.
@@ -199,19 +206,28 @@ class AbstractMemory(Configurable, abc.ABC):
 
         if table_name == "agents":
             from autogpts.autogpt.autogpt.core.memory.table import AgentsTable
+
             returnvalue = AgentsTable(memory=self)
             return returnvalue
         elif table_name == "message_agent_agent":
-            from autogpts.autogpt.autogpt.core.memory.table import MessagesAgentAgentTable
+            from autogpts.autogpt.autogpt.core.memory.table import \
+                MessagesAgentAgentTable
+
             return MessagesAgentAgentTable(memory=self)
         elif table_name == "message_agent_llm":
-            from autogpts.autogpt.autogpt.core.memory.table import MessagesAgentLLMTable
+            from autogpts.autogpt.autogpt.core.memory.table import \
+                MessagesAgentLLMTable
+
             return MessagesAgentLLMTable(memory=self)
         elif table_name == "message_user_agent":
-            from autogpts.autogpt.autogpt.core.memory.table import MessagesUserAgentTable
-            return MessagesUserAgentTable (memory=self)
+            from autogpts.autogpt.autogpt.core.memory.table import \
+                MessagesUserAgentTable
+
+            return MessagesUserAgentTable(memory=self)
         elif table_name == "users_informations":
-            from autogpts.autogpt.autogpt.core.memory.table  import UsersInformationsTable
+            from autogpts.autogpt.autogpt.core.memory.table import \
+                UsersInformationsTable
+
             return UsersInformationsTable(memory=self)
         else:
             raise ValueError(f"Unknown table: {table_name}")

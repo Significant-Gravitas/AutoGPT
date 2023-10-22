@@ -8,25 +8,23 @@ TOOL_CATEGORY_TITLE = "File Operations"
 import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
+
 from autogpts.AFAAS.app.lib.tasks import Task
+
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpts.autogpt.autogpt.core.utils.exceptions import (
-    ToolExecutionError,
-    DuplicateOperationError,
-)
+from autogpts.AFAAS.app.lib.context_items import (FileContextItem,
+                                                  FolderContextItem)
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.utils.exceptions import (
+    DuplicateOperationError, ToolExecutionError)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-from autogpts.AFAAS.app.lib.context_items import (
-    FileContextItem,
-    FolderContextItem,
-)
 
 from .decorators import sanitize_path_arg
 
 
-def agent_implements_context(task : Task, agent: BaseAgent) -> bool:
+def agent_implements_context(task: Task, agent: BaseAgent) -> bool:
     raise NotImplementedError("Not Implemented")
     return False
     # return isinstance(agent, ContextMixin)
@@ -46,7 +44,9 @@ def agent_implements_context(task : Task, agent: BaseAgent) -> bool:
     available=agent_implements_context,
 )
 @sanitize_path_arg("file_path")
-def open_file(file_path: Path, task : Task, agent: BaseAgent) -> tuple[str, FileContextItem]:
+def open_file(
+    file_path: Path, task: Task, agent: BaseAgent
+) -> tuple[str, FileContextItem]:
     """Open a file and return a context item
 
     Args:
@@ -98,7 +98,9 @@ def open_file(file_path: Path, task : Task, agent: BaseAgent) -> tuple[str, File
     available=agent_implements_context,
 )
 @sanitize_path_arg("path")
-def open_folder(path: Path, task : Task, agent: BaseAgent) -> tuple[str, FolderContextItem]:
+def open_folder(
+    path: Path, task: Task, agent: BaseAgent
+) -> tuple[str, FolderContextItem]:
     """Open a folder and return a context item
 
     Args:

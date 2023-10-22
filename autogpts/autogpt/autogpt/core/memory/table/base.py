@@ -1,21 +1,12 @@
 from __future__ import annotations
 
 import abc
-import uuid
 import datetime
-from pathlib import Path
+import uuid
 from enum import Enum
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    TypedDict,
-    Union,
-)
+from pathlib import Path
+from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Literal,
+                    Optional, TypedDict, Union)
 
 from pydantic import BaseModel
 

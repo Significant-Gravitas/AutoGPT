@@ -3,11 +3,9 @@ import enum
 
 from pydantic import SecretBytes, SecretField, SecretStr
 
-from autogpts.autogpt.autogpt.core.configuration import (
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
+from autogpts.autogpt.autogpt.core.configuration import (SystemConfiguration,
+                                                         SystemSettings,
+                                                         UserConfigurable)
 
 
 class ResourceType(str, enum.Enum):

@@ -1,27 +1,18 @@
-
 from __future__ import annotations
 
 import abc
-import uuid
 import datetime
-from pathlib import Path
+import uuid
 from enum import Enum
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    TypedDict,
-    Union,
-)
+from pathlib import Path
+from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Literal,
+                    Optional, TypedDict, Union)
 
 from pydantic import BaseModel
-from ..base import AbstractTable
-from autogpts.autogpt.autogpt.core.configuration import  SystemSettings
 
+from autogpts.autogpt.autogpt.core.configuration import SystemSettings
+
+from ..base import AbstractTable
 
 
 class BaseSQLTable(AbstractTable):
@@ -118,14 +109,12 @@ class BaseNoSQLTable(AbstractTable):
 
         return parent_dict
 
-    def add(self, value: dict, id : str = str(uuid.uuid4())) -> uuid.UUID:
+    def add(self, value: dict, id: str = str(uuid.uuid4())) -> uuid.UUID:
         # Serialize non-serializable objects
         if isinstance(value, SystemSettings):
             value = value.dict_memory()
-        else : 
-            self.memory._logger.warning(
-                "Class not hinheriting from SystemSettings"
-            )
+        else:
+            self.memory._logger.warning("Class not hinheriting from SystemSettings")
             value = self.__class__.serialize_value(value)
 
         # Assigning primary key
@@ -152,7 +141,7 @@ class BaseNoSQLTable(AbstractTable):
         if isinstance(value, BaseModel):
             value = value.dict()
 
-        value["modified_at"] : datetime.datetime = datetime.datetime.now()
+        value["modified_at"]: datetime.datetime = datetime.datetime.now()
         value = self.__class__.serialize_value(value)
 
         # key = {"primary_key": id}
@@ -273,4 +262,3 @@ class BaseNoSQLTable(AbstractTable):
             )
 
         return filtered_data_list
-

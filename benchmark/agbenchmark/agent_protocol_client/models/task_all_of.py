@@ -18,9 +18,8 @@ import json
 import pprint
 import re  # noqa: F401
 
-from pydantic import BaseModel, Field, StrictStr, conlist
-
 from agbenchmark.agent_protocol_client.models.artifact import Artifact
+from pydantic import BaseModel, Field, StrictStr, conlist
 
 
 class TaskAllOf(BaseModel):

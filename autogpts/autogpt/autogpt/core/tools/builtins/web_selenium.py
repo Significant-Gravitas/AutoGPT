@@ -31,15 +31,17 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
-from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
+from webdriver_manager.microsoft import \
+    EdgeChromiumDriverManager as EdgeDriverManager
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpts.autogpt.autogpt.core.utils.exceptions import ToolExecutionError
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.utils.exceptions import ToolExecutionError
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-from autogpts.autogpt.autogpt.core.utils.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpts.autogpt.autogpt.core.utils.processing.html import (
+    extract_hyperlinks, format_hyperlinks)
 from autogpts.autogpt.autogpt.core.utils.processing.text import summarize_text
 from autogpts.autogpt.autogpt.core.utils.url.validators import validate_url
 

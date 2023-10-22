@@ -1,19 +1,18 @@
 ### Some of it might have to be provided by the core
 
-import yaml
-import click
-from pathlib import Path
 from logging import Logger
-from autogpts.autogpt.autogpt.core.agents import (
-    PlannerAgent,
-)  ### TODO should work for every Agent
-from autogpts.autogpt.autogpt.core.runner.client_lib.logging import get_client_logger
+from pathlib import Path
+
+import click
+import yaml
+
+from autogpts.autogpt.autogpt.core.agents import \
+    PlannerAgent  # ## TODO should work for every Agent
+from autogpts.autogpt.autogpt.core.runner.client_lib.logging import \
+    get_client_logger
 from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
-    parse_agent_name_and_goals,
-    parse_ability_result,
-    parse_agent_plan,
-    parse_next_tool,
-)
+    parse_ability_result, parse_agent_name_and_goals, parse_agent_plan,
+    parse_next_tool)
 
 DEFAULT_SETTINGS_FILE = str(Path("~/auto-gpt/default_agent_settings.yml").expanduser())
 

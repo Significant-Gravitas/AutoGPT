@@ -5,12 +5,10 @@ from typing import Iterator, Optional, TypeVar
 
 import spacy
 
-from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import ChatPrompt
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    ChatMessage,
-    BaseChatModelProvider,
-    ModelTokenizer,
-)
+    BaseChatModelProvider, ChatMessage, ModelTokenizer)
+from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import \
+    ChatPrompt
 
 logger = logging.getLogger(__name__)
 

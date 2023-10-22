@@ -1,74 +1,76 @@
 from __future__ import annotations
 
+import datetime
+import enum
 import logging
+import os
 import uuid
 from abc import ABC, abstractmethod
-import os
-import yaml
-import datetime 
-import enum
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Tuple, Optional
-from pydantic import Field
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, Tuple
 
+import yaml
+from pydantic import Field
 
 if TYPE_CHECKING:
     from autogpts.AFAAS.app.lib.message_agent_user import MessageAgentUser
     from autogpts.AFAAS.app.lib.message_agent_agent import MessageAgentAgent
     from autogpts.AFAAS.app.lib.message_agent_llm import MessageAgentLLM
 
-from autogpts.autogpt.autogpt.core.configuration import  SystemSettings
-
 from autogpts.autogpt.autogpt.core.agents.base.loop import (  # Import only where it's needed
-    BaseLoop,
-    BaseLoopHook,
-)
-
+    BaseLoop, BaseLoopHook)
 from autogpts.autogpt.autogpt.core.agents.base.models import (
-    BaseAgentConfiguration,
-    BaseAgentSystems,
-    BaseAgentDirectives,
-)
+    BaseAgentConfiguration, BaseAgentDirectives, BaseAgentSystems)
+from autogpts.autogpt.autogpt.core.configuration import (Configurable,
+                                                         SystemSettings)
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 # from autogpts.autogpt.autogpt.core.workspace import AbstractWorkspace
 from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
-from autogpts.autogpt.autogpt.core.configuration import Configurable
 
 
 class AbstractAgent(ABC):
-
     class SystemSettings(SystemSettings):
         configuration: BaseAgentConfiguration = BaseAgentConfiguration()
-        
+
         user_id: str
         agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
-        #agent_class: str
+        # agent_class: str
         # TODO: #22 https://github.com/ph-ausseil/afaas/issues/22
-        modified_at : datetime.datetime  =  datetime.datetime.now()
+        modified_at: datetime.datetime = datetime.datetime.now()
         # TODO: #21 https://github.com/ph-ausseil/afaas/issues/21
-        created_at : datetime.datetime  =  datetime.datetime.now()
+        created_at: datetime.datetime = datetime.datetime.now()
 
         def _get_message_agent_user(self):
             return []
             return MessageAgentUser.get_from_db(self.agent_id)
-        
+
         def _get_message_agent_agent(self):
             return []
             return MessageAgentAgent.get_from_db(self.agent_id)
-        
+
         def _get_message_agent_llm(self):
             return []
             return MessageAgentLLM.get_from_db(self.agent_id)
 
         # Now use the default_factory argument to set the default values of the fields.
-        message_agent_user: list[MessageAgentUser] = Field(default_factory=_get_message_agent_user)
-        message_agent_agent: list[MessageAgentAgent] = Field(default_factory=_get_message_agent_agent)
-        message_agent_llm: list[MessageAgentLLM] = Field(default_factory=_get_message_agent_llm)
-        
+        message_agent_user: list[MessageAgentUser] = Field(
+            default_factory=_get_message_agent_user
+        )
+        message_agent_agent: list[MessageAgentAgent] = Field(
+            default_factory=_get_message_agent_agent
+        )
+        message_agent_llm: list[MessageAgentLLM] = Field(
+            default_factory=_get_message_agent_llm
+        )
+
         @property
         def _type_(self):
             # Nested Class
-            return self.__module__ + "." + ".".join(self.__class__.__qualname__.split('.')[:-1])
-            #__module__ + "." + ".".join(__name__)
+            return (
+                self.__module__
+                + "."
+                + ".".join(self.__class__.__qualname__.split(".")[:-1])
+            )
+            # __module__ + "." + ".".join(__name__)
 
     @classmethod
     def get_agent_class(cls) -> BaseAgent:
@@ -132,37 +134,41 @@ class AbstractAgent(ABC):
 
 
 class BaseAgent(Configurable, AbstractAgent):
-
     CLASS_CONFIGURATION = BaseAgentConfiguration
-    CLASS_SYSTEMS = BaseAgentSystems # BaseAgentSystems() = cls.SystemSettings().configuration.systems
+    CLASS_SYSTEMS = BaseAgentSystems  # BaseAgentSystems() = cls.SystemSettings().configuration.systems
 
     class SystemSettings(SystemSettings):
         configuration: BaseAgentConfiguration = BaseAgentConfiguration()
-        
+
         user_id: str
         agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
-        #agent_class: Optional[str]
-        
-        agent_setting_module : Optional[str]
-        agent_setting_class : Optional[str]
-        
+        # agent_class: Optional[str]
+
+        agent_setting_module: Optional[str]
+        agent_setting_class: Optional[str]
+
         @property
         def _type_(self):
             # Nested Class
-            return self.__module__ + "." + ".".join(self.__class__.__qualname__.split('.')[:-1])
-            #__module__ + "." + ".".join(__name__)
+            return (
+                self.__module__
+                + "."
+                + ".".join(self.__class__.__qualname__.split(".")[:-1])
+            )
+            # __module__ + "." + ".".join(__name__)
 
         memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
         workspace: SimpleWorkspace.SystemSettings = SimpleWorkspace.SystemSettings()
-        from autogpts.autogpt.autogpt.core.resource.model_providers.openai import OpenAISettings
+        from autogpts.autogpt.autogpt.core.resource.model_providers.openai import \
+            OpenAISettings
+
         chat_model_provider: OpenAISettings = OpenAISettings()
 
-
-        class Config(SystemSettings.Config):     
+        class Config(SystemSettings.Config):
             pass
             # json_encoders = SystemSettings.Config.json_encoders + { Task : lambda v: v.dict()}
 
-        def dict(self, include_all = False, *args, **kwargs):
+        def dict(self, include_all=False, *args, **kwargs):
             """
             Serialize the object to a dictionary representation.
 
@@ -176,7 +182,7 @@ class BaseAgent(Configurable, AbstractAgent):
                 dict: A dictionary representation of the object.
             """
             self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
-            if not include_all : 
+            if not include_all:
                 kwargs["exclude"] = self.Config.default_exclude
             # Call the .dict() method with the updated exclude_arg
             return super().dict(*args, **kwargs)
@@ -194,8 +200,10 @@ class BaseAgent(Configurable, AbstractAgent):
             Returns:
                 dict: A dictionary representation of the object.
             """
-            logging.Logger(__name__).warning('Warning : Recomended use json_api() or json_memory()')
-            logging.Logger(__name__).warning('BaseAgent.SystemSettings.json()')
+            logging.Logger(__name__).warning(
+                "Warning : Recomended use json_api() or json_memory()"
+            )
+            logging.Logger(__name__).warning("BaseAgent.SystemSettings.json()")
             self.prepare_values_before_serialization()  # Call the custom treatment before .json()
             kwargs["exclude"] = self.Config.default_exclude
             return super().json(*args, **kwargs)
@@ -214,7 +222,6 @@ class BaseAgent(Configurable, AbstractAgent):
                 f"{self.__class__.__module__}.{self.__class__.__name__}"
             )
             self.agent_setting_class = self.__class__.__name__
-
 
     def __init__(
         self,
@@ -330,7 +337,7 @@ class BaseAgent(Configurable, AbstractAgent):
             await agent.run(input_handler, message_handler)
         """
         self._logger.debug(str(self.__class__) + ".run() *kwarg : " + str(kwargs))
-        self._user_input_handler  = user_input_handler
+        self._user_input_handler = user_input_handler
         self._user_message_handler = user_message_handler
 
         if not self._loop._is_running:
@@ -390,32 +397,33 @@ class BaseAgent(Configurable, AbstractAgent):
         if not isinstance(agent_settings, cls.SystemSettings):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
 
-
         from importlib import import_module
 
         module_path, class_name = agent_settings._type_.rsplit(".", 1)
         module = import_module(module_path)
-        agent_class : BaseAgent = getattr(module, class_name)
+        agent_class: BaseAgent = getattr(module, class_name)
 
         settings_dict = agent_settings.__dict__
-        items = settings_dict.items() 
-        
-        system_dict : dict[Configurable] = {}
-        system_dict['settings'] = agent_settings
+        items = settings_dict.items()
+
+        system_dict: dict[Configurable] = {}
+        system_dict["settings"] = agent_settings
         system_dict["logger"] = logger
         system_dict["user_id"] = agent_settings.user_id
-        system_dict['strategies'] = cls.get_strategies()
+        system_dict["strategies"] = cls.get_strategies()
         system_dict["memory"] = AbstractMemory.get_adapter(
             memory_settings=agent_settings.memory, logger=logger
         )
 
         for system, setting in items:
-            if system not in ('memory', 'tool_registry') and isinstance(setting, SystemSettings):
+            if system not in ("memory", "tool_registry") and isinstance(
+                setting, SystemSettings
+            ):
                 system_dict[system] = cls._get_system_instance(
-                    new_system_name = system,
+                    new_system_name=system,
                     agent_settings=agent_settings,
                     logger=logger,
-                    existing_systems = system_dict ,
+                    existing_systems=system_dict,
                 )
 
         agent = agent_class(**system_dict)
@@ -432,29 +440,32 @@ class BaseAgent(Configurable, AbstractAgent):
         new_system_name: str,
         agent_settings: BaseAgent.SystemSettings,
         logger: logging.Logger,
-        existing_systems : list,
+        existing_systems: list,
         *args,
         **kwargs,
     ):
-        system_settings : SystemSettings = getattr(agent_settings, new_system_name)
-        system_class : Configurable = cls.CLASS_SYSTEMS.load_from_import_path(getattr( cls.CLASS_SYSTEMS(), new_system_name ))
+        system_settings: SystemSettings = getattr(agent_settings, new_system_name)
+        system_class: Configurable = cls.CLASS_SYSTEMS.load_from_import_path(
+            getattr(cls.CLASS_SYSTEMS(), new_system_name)
+        )
 
         if not system_class:
-            raise ValueError(f"No system class found for {new_system_name} in CLASS_SETTINGS")
+            raise ValueError(
+                f"No system class found for {new_system_name} in CLASS_SETTINGS"
+            )
         system_instance = system_class(
             system_settings,
             *args,
             logger=logger.getChild(new_system_name),
-            agent_systems = existing_systems,
+            agent_systems=existing_systems,
             **kwargs,
         )
         return system_instance
-    
+
     @classmethod
     @abstractmethod
     def get_strategies(cls) -> list:
         ...
-    
 
     ################################################################
     # Factory interface for agent bootstrapping and initialization #
@@ -515,7 +526,6 @@ class BaseAgent(Configurable, AbstractAgent):
     ) -> None:
         pass
 
-
     @classmethod
     @abstractmethod
     def load_prompt_settings(
@@ -572,7 +582,6 @@ class BaseAgent(Configurable, AbstractAgent):
         logger: logging.Logger,
         user_id: uuid.UUID,
     ) -> uuid.UUID:
-
         # TODO : Remove the user_id argument
         # NOTE : Monkey Patching
         BaseAgent.SystemSettings.Config.extra = "allow"
@@ -586,9 +595,11 @@ class BaseAgent(Configurable, AbstractAgent):
 
         memory_settings = agent_settings.memory
 
-        memory = AbstractMemory.get_adapter(memory_settings=memory_settings, logger=logger)
+        memory = AbstractMemory.get_adapter(
+            memory_settings=memory_settings, logger=logger
+        )
         agent_table = memory.get_table("agents")
-        agent_id = agent_table.add(agent_settings, id = agent_settings.agent_id)
+        agent_id = agent_table.add(agent_settings, id=agent_settings.agent_id)
         return agent_id
 
     def save_agent_in_memory(self) -> uuid.UUID:
@@ -598,14 +609,14 @@ class BaseAgent(Configurable, AbstractAgent):
             agent_id=self.agent_id, user_id=self.user_id, value=self
         )
         return agent_id
-    
+
     @classmethod
     def get_agentsetting_list_from_memory(
-        cls, 
-        user_id: uuid.UUID, 
+        cls,
+        user_id: uuid.UUID,
         logger: logging.Logger = logging.Logger(__name__),
-        page : int = 1,
-        page_size : int = 10
+        page: int = 1,
+        page_size: int = 10,
     ) -> list[BaseAgent.SystemSettings]:
         """
         Fetch a list of agent settings from memory based on the user ID.
@@ -623,16 +634,16 @@ class BaseAgent(Configurable, AbstractAgent):
             agent_settings_list = YourClass.get_agentsetting_list_from_memory(user_id, logger)
             print(agent_settings_list)
         """
-        from autogpts.autogpt.autogpt.core.memory.base import (
-            AbstractMemory,
-            MemoryConfig,
-            AbstractMemory,
-        )
-        from autogpts.autogpt.autogpt.core.memory.table import AgentsTable, AbstractTable
+        from autogpts.autogpt.autogpt.core.memory.base import (AbstractMemory,
+                                                               MemoryConfig)
+        from autogpts.autogpt.autogpt.core.memory.table import (AbstractTable,
+                                                                AgentsTable)
 
         memory_settings = AbstractMemory.SystemSettings()
 
-        memory = AbstractMemory.get_adapter(memory_settings=memory_settings, logger=logger)
+        memory = AbstractMemory.get_adapter(
+            memory_settings=memory_settings, logger=logger
+        )
         agent_table: AgentsTable = memory.get_table("agents")
 
         filter = AbstractTable.FilterDict(
@@ -644,18 +655,19 @@ class BaseAgent(Configurable, AbstractAgent):
                 ],
                 "agent_class": [
                     AbstractTable.FilterItem(
-                        value=str(cls.__name__), operator=AbstractTable.Operators.EQUAL_TO
+                        value=str(cls.__name__),
+                        operator=AbstractTable.Operators.EQUAL_TO,
                     )
                 ],
             }
         )
 
-        agent_list : list[dict]= agent_table.list(filter=filter)
-        agent_settings_list : list[cls.SystemSettings] = []
+        agent_list: list[dict] = agent_table.list(filter=filter)
+        agent_settings_list: list[cls.SystemSettings] = []
 
         # TODO : Move to Table
-        for agent in agent_list :
-            agent_settings_list.append(cls.SystemSettings(**agent ))
+        for agent in agent_list:
+            agent_settings_list.append(cls.SystemSettings(**agent))
 
         return agent_settings_list
 
@@ -667,15 +679,15 @@ class BaseAgent(Configurable, AbstractAgent):
         user_id: uuid.UUID,
         logger: logging.Logger,
     ) -> BaseAgent:
-        from autogpts.autogpt.autogpt.core.memory.base import (
-            AbstractMemory,
-        )
+        from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
         from autogpts.autogpt.autogpt.core.memory.table import AgentsTable
 
         # memory_settings = Memory.SystemSettings(configuration=agent_settings.memory)
         memory_settings = agent_settings.memory
 
-        memory = AbstractMemory.get_adapter(memory_settings=memory_settings, logger=logger)
+        memory = AbstractMemory.get_adapter(
+            memory_settings=memory_settings, logger=logger
+        )
         agent_table: AgentsTable = memory.get_table("agents")
         agent = agent_table.get(agent_id=str(agent_id), user_id=str(user_id))
 

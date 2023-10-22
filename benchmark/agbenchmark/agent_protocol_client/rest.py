@@ -20,8 +20,8 @@ import ssl
 from urllib.parse import urlencode
 
 import aiohttp
-
-from agbenchmark.agent_protocol_client.exceptions import ApiException, ApiValueError
+from agbenchmark.agent_protocol_client.exceptions import (ApiException,
+                                                          ApiValueError)
 
 logger = logging.getLogger(__name__)
 

@@ -1,31 +1,32 @@
 from __future__ import annotations
 
+import datetime
 import logging
 import uuid
+from typing import TYPE_CHECKING, Awaitable, Callable, List, Optional, Tuple
+
 from pydantic import Field
-import datetime
-from typing import TYPE_CHECKING, Awaitable, Callable, List, Tuple, Optional
 
-
-from ..base import PromptManager,  BaseAgent, BaseLoopHook, ToolExecutor, LanguageModelConfiguration
-from .loop import PlannerLoop
-from .models import (
-    PlannerAgentConfiguration,
-    PlannerAgentSystems,
-    # PlannerAgentSystemSettings,
-)
-from autogpts.autogpt.autogpt.core.configuration import Configurable
-from autogpts.autogpt.autogpt.core.tools import ToolResult, SimpleToolRegistry, TOOL_CATEGORIES
-from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
-from autogpts.AFAAS.app.lib.tasks import TaskStatusList
 from autogpts.AFAAS.app.lib.plan import Plan, Task
-from autogpts.autogpt.autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
-from autogpts.autogpt.autogpt.core.resource.model_providers import OpenAIProvider,   OpenAISettings
+from autogpts.AFAAS.app.lib.tasks import TaskStatusList
+from autogpts.autogpt.autogpt.core.configuration import Configurable
+from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
+from autogpts.autogpt.autogpt.core.plugin.simple import (PluginLocation,
+                                                         PluginStorageFormat)
+from autogpts.autogpt.autogpt.core.resource.model_providers import (
+    OpenAIProvider, OpenAISettings)
+from autogpts.autogpt.autogpt.core.tools import (TOOL_CATEGORIES,
+                                                 SimpleToolRegistry,
+                                                 ToolResult)
+
+from ..base import (BaseAgent, BaseLoopHook, LanguageModelConfiguration,
+                    PromptManager, ToolExecutor)
+from .loop import PlannerLoop
+from .models import (PlannerAgentConfiguration,  # PlannerAgentSystemSettings,
+                     PlannerAgentSystems)
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
-
-
 
 
 class PlannerAgent(BaseAgent):
@@ -34,31 +35,32 @@ class PlannerAgent(BaseAgent):
     ################################################################################
 
     CLASS_CONFIGURATION = PlannerAgentConfiguration
-    CLASS_SYSTEMS = PlannerAgentSystems # PlannerAgentSystems() = cls.SystemSettings().configuration.systems
+    CLASS_SYSTEMS = PlannerAgentSystems  # PlannerAgentSystems() = cls.SystemSettings().configuration.systems
 
     class SystemSettings(BaseAgent.SystemSettings):
-        name: str ="simple_agent"
-        description: str ="A simple agent."
-        configuration : PlannerAgentConfiguration = PlannerAgentConfiguration()
+        name: str = "simple_agent"
+        description: str = "A simple agent."
+        configuration: PlannerAgentConfiguration = PlannerAgentConfiguration()
 
         # chat_model_provider: OpenAISettings = Field(default=OpenAISettings(), exclude=True)
-        chat_model_provider: OpenAISettings =OpenAISettings()
-        tool_registry: SimpleToolRegistry.SystemSettings = SimpleToolRegistry.SystemSettings()
+        chat_model_provider: OpenAISettings = OpenAISettings()
+        tool_registry: SimpleToolRegistry.SystemSettings = (
+            SimpleToolRegistry.SystemSettings()
+        )
         prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
 
         agent_name: str = Field(default="New Agent")
         agent_role: Optional[str] = Field(default=None)
-        agent_goals: Optional[list] 
-        agent_goal_sentence: Optional[str] 
+        agent_goals: Optional[list]
+        agent_goal_sentence: Optional[str]
 
-        class Config(BaseAgent.SystemSettings.Config):            
+        class Config(BaseAgent.SystemSettings.Config):
             pass
 
         def json(self, *args, **kwargs):
             self.prepare_values_before_serialization()  # Call the custom treatment before .json()
             kwargs["exclude"] = self.Config.default_exclude
             return super().json(*args, **kwargs)
-
 
     def __init__(
         self,
@@ -70,7 +72,7 @@ class PlannerAgent(BaseAgent):
         prompt_manager: PromptManager,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             settings=settings,
@@ -86,24 +88,24 @@ class PlannerAgent(BaseAgent):
         self.agent_goals = settings.agent_goals
         self.agent_goal_sentence = settings.agent_goal_sentence
 
-        # 
+        #
         # Step 1 : Set the chat model provider
         #
         self._chat_model_provider = chat_model_provider
         # self._chat_model_provider.set_agent(agent=self)
 
-        # 
+        #
         # Step 2 : Load prompt_settings.yaml (configuration)
         #
         self.prompt_settings = self.load_prompt_settings()
 
-        # 
+        #
         # Step 3 : Set the chat model provider
         #
         self._prompt_manager = prompt_manager
         self._prompt_manager.set_agent(agent=self)
 
-        # 
+        #
         # Step 4 : Set the ToolRegistry
         #
         self._tool_registry = SimpleToolRegistry.with_tool_modules(
@@ -116,33 +118,31 @@ class PlannerAgent(BaseAgent):
         )
         # self._tool_registry.set_agent(agent=self)
 
-        ### 
+        ###
         ### Step 5 : Create the Loop
         ###
         self._loop: PlannerLoop = PlannerLoop()
         self._loop.set_agent(agent=self)
 
-        # Set tool Executor 
+        # Set tool Executor
         self._tool_executor = ToolExecutor()
-        self._tool_executor.set_agent(agent = self)
-        
-        ### 
+        self._tool_executor.set_agent(agent=self)
+
+        ###
         ### Step 5a : Create the plan
         ###
-        self.plan: Plan = Plan(user_id = user_id)
+        self.plan: Plan = Plan(user_id=user_id)
 
         # TODO: Move out of __init__, may be in PlannerAgent.run()
-        ### 
+        ###
         ### Step 5b : Set plan with tasks the plan
         ###
-            ### FIXME: Retrive the plan if it exists
+        ### FIXME: Retrive the plan if it exists
 
-
-            ### FIXME: Only when the agent is created 
+        ### FIXME: Only when the agent is created
         self._loop.add_initial_tasks()
 
-
-        ### 
+        ###
         ### Step 6 : add hooks/pluggins to the loop
         ###
         # TODO : Get hook added from configuration files
@@ -223,13 +223,12 @@ class PlannerAgent(BaseAgent):
         )
 
     @classmethod
-    def get_strategies(cls)-> list:
+    def get_strategies(cls) -> list:
         # TODO : Continue refactorization => move to loop ?
         from autogpts.autogpt.autogpt.core.agents.planner import strategies
         from autogpts.autogpt.autogpt.core.agents.planner.strategies import (
-            StrategiesSet,
-            StrategiesConfiguration,
-        )
+            StrategiesConfiguration, StrategiesSet)
+
         return StrategiesSet.get_strategies()
 
         # strategies_config = SimplePromptStrategiesConfiguration(
@@ -257,7 +256,6 @@ class PlannerAgent(BaseAgent):
         #     strategy_instance = strategy_classes[0](**strategy_config.dict())
 
         #     simple_strategies[strategy_name] = strategy_instance
-
 
     @classmethod
     async def determine_agent_name_and_goals(

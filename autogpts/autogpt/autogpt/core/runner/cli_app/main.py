@@ -1,8 +1,10 @@
-import click
 import logging
 
+import click
+
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
-from autogpts.autogpt.autogpt.core.runner.client_lib.logging import get_client_logger
+from autogpts.autogpt.autogpt.core.runner.client_lib.logging import \
+    get_client_logger
 
 
 async def handle_user_input_request(prompt):
@@ -27,18 +29,21 @@ async def run_auto_gpt():
     client_logger = get_client_logger(logger_level=logging.DEBUG)
     client_logger.info("Getting agent settings")
 
-
     import uuid
 
     #
     # We support multiple users however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b
     #
-    user_id : str = "A"+ str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
+    user_id: str = "A" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
     # Step 1. Collate the user's settings with the default system settings.
-    agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings(user_id= user_id)
+    agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings(
+        user_id=user_id
+    )
 
     # NOTE : Real world scenario, this user_id will be passed as an argument
-    agent_dict_list  : list[PlannerAgent.SystemSettings] = PlannerAgent.get_agentsetting_list_from_memory(
+    agent_dict_list: list[
+        PlannerAgent.SystemSettings
+    ] = PlannerAgent.get_agentsetting_list_from_memory(
         user_id=user_id, logger=client_logger
     )
 
@@ -54,13 +59,13 @@ async def run_auto_gpt():
             f"Loading agent {agent_id} from get_agentsetting_list_from_memory"
         )
         # agent_settings.update_agent_name_and_goals(agent_dict_list[0])
-        agent_from_list : PlannerAgent = PlannerAgent.get_agent_from_settings(
+        agent_from_list: PlannerAgent = PlannerAgent.get_agent_from_settings(
             agent_settings=agent_settings,
             logger=client_logger,
         )
 
         client_logger.info(f"Loading agent {agent_id} from get_agent_from_memory")
-        agent_from_memory : PlannerAgent = PlannerAgent.get_agent_from_memory(
+        agent_from_memory: PlannerAgent = PlannerAgent.get_agent_from_memory(
             agent_settings=agent_settings,
             agent_id=agent_id,
             user_id=user_id,
@@ -137,7 +142,7 @@ async def run_auto_gpt():
         # agent_settings.load_root_values()
 
         # Step 3. Create the agent.
-        agent : PlannerAgent = PlannerAgent.create_agent(
+        agent: PlannerAgent = PlannerAgent.create_agent(
             agent_settings=agent_settings,
             logger=client_logger,
         )

@@ -3,17 +3,7 @@ The Forge SDK. This is the core of the Forge. It contains the agent protocol, wh
 core of the Forge.
 """
 from .forge_log import ForgeLogger
-from .schema import (
-    Artifact,
-    ArtifactUpload,
-    Pagination,
-    Status,
-    Task,
-    TaskOutput,
-    TaskRequestBody,
-    Agent,
-    AgentArtifactsListResponse,
-    AgentListResponse,
-    AgentRequestBody,
-    AgentTasksListResponse,
-)
+from .schema import (Agent, AgentArtifactsListResponse, AgentListResponse,
+                     AgentRequestBody, AgentTasksListResponse, Artifact,
+                     ArtifactUpload, Pagination, Status, Task, TaskOutput,
+                     TaskRequestBody)

@@ -5,13 +5,17 @@ from __future__ import annotations
 COMMAND_CATEGORY = "web_browse"
 COMMAND_CATEGORY_TITLE = "Web Browsing"
 
+import functools
 import logging
 import re
 from pathlib import Path
 from sys import platform
-from typing import TYPE_CHECKING, Optional, Type, List, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Type
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
+from forge.sdk.errors import *
+from requests.compat import urljoin
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
@@ -31,21 +35,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
-from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
-
+from webdriver_manager.microsoft import \
+    EdgeChromiumDriverManager as EdgeDriverManager
 
 from ..registry import ability
-from forge.sdk.errors import *
-import functools
-import re
-from typing import Any, Callable
-from urllib.parse import urljoin, urlparse
-
-from requests.compat import urljoin
-
-
-from bs4 import BeautifulSoup
-from requests.compat import urljoin
 
 
 def extract_hyperlinks(soup: BeautifulSoup, base_url: str) -> list[tuple[str, str]]:
@@ -74,7 +67,6 @@ def format_hyperlinks(hyperlinks: list[tuple[str, str]]) -> list[str]:
         List[str]: The formatted hyperlinks
     """
     return [f"{link_text} ({link_url})" for link_text, link_url in hyperlinks]
-
 
 
 def validate_url(func: Callable[..., Any]) -> Any:
@@ -178,8 +170,6 @@ def check_local_file_access(url: str) -> bool:
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
 
-
-
 logger = logging.getLogger(__name__)
 
 FILE_DIR = Path(__file__).parent.parent
@@ -201,17 +191,19 @@ class BrowsingError(CommandExecutionError):
             "type": "string",
             "required": True,
         },
-                {
+        {
             "name": "question",
             "description": "A question that you want to answer using the content of the webpage.",
             "type": "string",
             "required": False,
-        }
+        },
     ],
     output_type="string",
 )
 @validate_url
-async def read_webpage(agent, task_id: str, url: str, question: str = "") -> Tuple(str, List[str]):
+async def read_webpage(
+    agent, task_id: str, url: str, question: str = ""
+) -> Tuple(str, List[str]):
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -372,4 +364,3 @@ def close_browser(driver: WebDriver) -> None:
         None
     """
     driver.quit()
-

@@ -1,65 +1,57 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING, Awaitable, Callable, Dict, List, Optional
+
 from pydantic import Field
-from typing import TYPE_CHECKING, Awaitable, Callable, List, Dict, Optional
 from typing_extensions import TypedDict
 
-from autogpts.AFAAS.app.lib.action import (
-    ActionHistory,
-    ActionResult,
-    ActionInterruptedByHuman,
-    ActionSuccessResult,
-    ActionErrorResult,
-)
+from autogpts.AFAAS.app.lib.action import (ActionErrorResult, ActionHistory,
+                                           ActionInterruptedByHuman,
+                                           ActionResult, ActionSuccessResult)
 from autogpts.AFAAS.app.lib.context_items import ContextItem
-from autogpts.autogpt.autogpt.core.tools import ToolOutput
 from autogpts.AFAAS.app.lib.plan import Plan
 from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
-
-from autogpts.autogpt.autogpt.core.tools import ToolResult
-from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
-    parse_ability_result,
-    parse_agent_plan,
-    parse_next_tool,
-)
 from autogpts.autogpt.autogpt.core.agents.base.exceptions import (
-    AgentException,
-    ToolExecutionError,
-    InvalidAgentResponseError,
-    UnknownToolError,
-)
-
+    AgentException, InvalidAgentResponseError, ToolExecutionError,
+    UnknownToolError)
+from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
+    parse_ability_result, parse_agent_plan, parse_next_tool)
+from autogpts.autogpt.autogpt.core.tools import ToolOutput, ToolResult
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.planner import PlannerAgent
+
     # from autogpts.autogpt.autogpt.core.prompting.schema import ChatModelResponse
-    from autogpts.autogpt.autogpt.core.resource.model_providers import ChatMessage, ChatModelResponse
+    from autogpts.autogpt.autogpt.core.resource.model_providers import (
+        ChatMessage,
+        ChatModelResponse,
+    )
 
-
-from autogpts.autogpt.autogpt.core.agents.base import BaseLoop, BaseLoopHook, UserFeedback
+from autogpts.autogpt.autogpt.core.agents.base import (BaseLoop, BaseLoopHook,
+                                                       UserFeedback)
 
 aaas = {}
 try:
-    from autogpts.autogpt.autogpt.core.agents.whichway import (
-        RoutingAgent,
-    )
-    Task.command : Optional[str] = Field(default="afaas_whichway")
-    aaas['whichway'] = True
-except :
-    aaas['whichway'] = False
+    from autogpts.autogpt.autogpt.core.agents.whichway import RoutingAgent
+
+    Task.command: Optional[str] = Field(default="afaas_whichway")
+    aaas["whichway"] = True
+except:
+    aaas["whichway"] = False
 
 try:
-    from autogpts.autogpt.autogpt.core.agents.usercontext import (
-        UserContextAgent,
-        )
-    aaas['usercontext'] = True
-except :
-    aaas['usercontext'] = False
+    from autogpts.autogpt.autogpt.core.agents.usercontext import \
+        UserContextAgent
+
+    aaas["usercontext"] = True
+except:
+    aaas["usercontext"] = False
 
 # FIXME: Deactivated for as long as we don't have the UI to support it
-aaas['usercontext'] = False
+aaas["usercontext"] = False
 # aaas['whichway'] = False
+
 
 class PlannerLoop(BaseLoop):
     _agent: PlannerAgent
@@ -75,65 +67,65 @@ class PlannerLoop(BaseLoop):
         self._active = False
         self.remaining_cycles = 1
 
-    def add_initial_tasks(self) : 
-
+    def add_initial_tasks(self):
         ###
         ### Step 1 : add whichway to the tasks
         ###
-        if aaas['whichway'] : 
+        if aaas["whichway"]:
             initial_task = Task(
-                #parent_task = self.plan() ,
-                task_parent_id = None,
-                task_predecessor_id = None,
-                responsible_agent_id = None,
-                task_goal = 'Define an agent approach to tackle a tasks',
-                command = 'afaas_whichway',
-                arguments= {},
-                acceptance_criteria=["A plan has been made to achieve the specific task"],
-                state=TaskStatusList.READY
-                )
-        else : 
+                # parent_task = self.plan() ,
+                task_parent_id=None,
+                task_predecessor_id=None,
+                responsible_agent_id=None,
+                task_goal="Define an agent approach to tackle a tasks",
+                command="afaas_whichway",
+                arguments={},
+                acceptance_criteria=[
+                    "A plan has been made to achieve the specific task"
+                ],
+                state=TaskStatusList.READY,
+            )
+        else:
             initial_task = Task(
-                #parent_task = self.plan() ,
-                task_parent_id = None,
-                task_predecessor_id = None,
-                responsible_agent_id = None,
-                task_goal = 'Make a plan to tacke a tasks',
-                command = 'afaas_make_initial_plan',
-                arguments= {},
-                acceptance_criteria=["Contextual information related to the task has been provided"],
-                state=TaskStatusList.READY
-                )
-            
-        self._current_task = initial_task #.task_id
+                # parent_task = self.plan() ,
+                task_parent_id=None,
+                task_predecessor_id=None,
+                responsible_agent_id=None,
+                task_goal="Make a plan to tacke a tasks",
+                command="afaas_make_initial_plan",
+                arguments={},
+                acceptance_criteria=[
+                    "Contextual information related to the task has been provided"
+                ],
+                state=TaskStatusList.READY,
+            )
+
+        self._current_task = initial_task  # .task_id
         initial_task_list = [initial_task]
 
         ###
         ### Step 2 : Prepend usercontext
         ###
-        if aaas['usercontext'] : 
-            refine_user_context_task =    Task(
-                    #parent_task = self.plan() ,
-                    task_parent_id = None,
-                    task_predecessor_id = None,
-                    responsible_agent_id = None,
-                    name = 'afaas_refine_user_context',
-                    task_goal = 'Refine a user requirements for better exploitation by Agents',
-                    command = 'afaas_refine_user_context',
-                    # arguments = None,
-                    state=TaskStatusList.READY
-                    ) 
+        if aaas["usercontext"]:
+            refine_user_context_task = Task(
+                # parent_task = self.plan() ,
+                task_parent_id=None,
+                task_predecessor_id=None,
+                responsible_agent_id=None,
+                name="afaas_refine_user_context",
+                task_goal="Refine a user requirements for better exploitation by Agents",
+                command="afaas_refine_user_context",
+                # arguments = None,
+                state=TaskStatusList.READY,
+            )
             initial_task_list = [refine_user_context_task] + initial_task_list
-            self._current_task = refine_user_context_task #.task_id
-        else :
+            self._current_task = refine_user_context_task  # .task_id
+        else:
             self._agent.agent_goals = [self._agent.agent_goal_sentence]
 
-
-        self._current_task_routing_description = ''
-        self._current_task_routing_feedbacks = ''
-        self.plan().add_tasks(tasks= initial_task_list)
-
-
+        self._current_task_routing_description = ""
+        self._current_task_routing_feedbacks = ""
+        self.plan().add_tasks(tasks=initial_task_list)
 
     async def run(
         self,
@@ -223,26 +215,31 @@ class PlannerLoop(BaseLoop):
             # FIXME replace _active by self.remaining_cycles > 0:
             if self._active:
                 self._loop_count += 1
-                
+
                 ##############################################################
                 ### Step 5 : select_tool()
-                ##############################################################               
-                if self._current_task.command is not None : 
-                    command_name = self._current_task.command 
+                ##############################################################
+                if self._current_task.command is not None:
+                    command_name = self._current_task.command
                     command_args = self._current_task.arguments
                     assistant_reply_dict = self._current_task.long_decription
-                else :
+                else:
                     # FIXME: REPLACE WITH ROUTING ?
-                    command_name, command_args, assistant_reply_dict, = await self.select_tool()
+                    (
+                        command_name,
+                        command_args,
+                        assistant_reply_dict,
+                    ) = await self.select_tool()
 
                 ##############################################################
                 ### Step 6 : execute_tool() #
                 ##############################################################
-                result = await self.execute_tool(command_name = command_name, 
-                                                 command_args = command_args,
-                                                 current_task = self._current_task
-                                                 #user_input = assistant_reply_dict
-                                                 )
+                result = await self.execute_tool(
+                    command_name=command_name,
+                    command_args=command_args,
+                    current_task=self._current_task
+                    # user_input = assistant_reply_dict
+                )
 
             self.save_plan()
 
@@ -286,21 +283,17 @@ class PlannerLoop(BaseLoop):
     #     self._agent.current_task.context.status = TaskStatusList.READY
     #     return plan
 
-    
-
     def __repr__(self):
         return "SimpleLoop()"
 
-    from typing import Literal, Any
+    from typing import Any, Literal
 
     ToolName = str
     ToolArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[ToolName, ToolArgs, AgentThoughts]
     from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import (
-        ChatMessage,
-        ChatPrompt,
-    )
+        ChatMessage, ChatPrompt)
 
     async def select_tool(
         self,
@@ -344,19 +337,17 @@ class PlannerLoop(BaseLoop):
         # NOTE : Test tools individually
         # command_name = "web_search"
         # command_args: {"query": "instructions for building a Pizza oven"}
-        
+
         try:
             return_value = await execute_command(
                 command_name=command_name,
                 arguments=command_args,
-                task = current_task,
+                task=current_task,
                 agent=self._agent,
             )
 
             # Intercept ContextItem if one is returned by the command
-            if type(return_value) == tuple and isinstance(
-                return_value[1], ContextItem
-            ):
+            if type(return_value) == tuple and isinstance(return_value[1], ContextItem):
                 context_item = return_value[1]
                 return_value = return_value[0]
                 self._agent._logger.debug(
@@ -368,7 +359,6 @@ class PlannerLoop(BaseLoop):
         except AgentException as e:
             result = ActionErrorResult(reason=e.message, error=e)
 
-
         ###
         ### TODO : Low priority : Save results of tool execution & manage errors
         ###
@@ -378,8 +368,8 @@ class PlannerLoop(BaseLoop):
         #     ###
         #     ### NOT IMPLEMENTED : Save the result of all tool execution
         #     ###
-        #     self._agent.tool_result_history = [] 
-        #     def add_result_history(command_name, result) : 
+        #     self._agent.tool_result_history = []
+        #     def add_result_history(command_name, result) :
         #         # TODO : Implement tool result history
         #         self._agent.tool_result_history = self._agent.tool_result_history_table.list()
         #         self._agent.tool_result_history_table = self.get_table("tool_result_history")
@@ -389,7 +379,7 @@ class PlannerLoop(BaseLoop):
         #             "action_result",
         #         )
         #     self._agent.tool_result_history.append(command_name, result)
-            
+
         # elif result.status == "error":
         #     message = f"Tool {command_name} failed: {result.reason}"
 
@@ -414,10 +404,7 @@ class PlannerLoop(BaseLoop):
 
 
 def execute_command(
-    command_name: str,
-    arguments: dict[str, str],
-    agent: PlannerAgent,
-    task : Task
+    command_name: str, arguments: dict[str, str], agent: PlannerAgent, task: Task
 ) -> ToolOutput:
     """Execute the command and return the result
 
@@ -432,7 +419,7 @@ def execute_command(
     # Execute a native command with the same name or alias, if it exists
     if command := agent._tool_registry.get_tool(tool_name=command_name):
         try:
-            return command(**arguments, task = task, agent=agent)
+            return command(**arguments, task=task, agent=agent)
         except AgentException:
             raise
         except Exception as e:

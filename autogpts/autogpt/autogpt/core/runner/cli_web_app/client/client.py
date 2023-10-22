@@ -2,17 +2,15 @@
 It is essential that Agent (the parent of PlannerAgent) provide a method to load an object from a dictionary/json object for webapps
 """
 import json
-import requests
 from pathlib import Path
+from time import sleep
+
 import click
+import requests
 
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
-from autogpts.autogpt.autogpt.core.runner.client_lib.logging import get_client_logger
-
-import requests
-import json
-
-from time import sleep
+from autogpts.autogpt.autogpt.core.runner.client_lib.logging import \
+    get_client_logger
 
 BASE_URL = "http://localhost:8080/api/v1"
 MAX_ATTEMPTS = 3

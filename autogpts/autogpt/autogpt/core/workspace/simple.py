@@ -1,15 +1,13 @@
 import json
 import logging
-from  typing import TYPE_CHECKING
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from autogpts.autogpt.autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
+from autogpts.autogpt.autogpt.core.configuration import (Configurable,
+                                                         SystemConfiguration,
+                                                         SystemSettings,
+                                                         UserConfigurable)
 from autogpts.autogpt.autogpt.core.workspace.base import AbstractWorkspace
 
 if TYPE_CHECKING:
@@ -19,23 +17,22 @@ if TYPE_CHECKING:
 
 class WorkspaceConfiguration(SystemConfiguration):
     root: str = ""
-    parent: str = UserConfigurable(default = "~/auto-gpt/agents")
-    restrict_to_workspace: bool = UserConfigurable(default =True)
+    parent: str = UserConfigurable(default="~/auto-gpt/agents")
+    restrict_to_workspace: bool = UserConfigurable(default=True)
 
-    
+
 class SimpleWorkspace(Configurable, AbstractWorkspace):
-    
     class SystemSettings(Configurable.SystemSettings):
         name = "workspace"
-        description="The workspace is the root directory for all agent activity."
-        configuration: WorkspaceConfiguration=WorkspaceConfiguration()
+        description = "The workspace is the root directory for all agent activity."
+        configuration: WorkspaceConfiguration = WorkspaceConfiguration()
 
     NULL_BYTES = ["\0", "\000", "\x00", "\u0000", "%00"]
 
     def __init__(
         self,
         settings: Configurable.SystemSettings,
-        agent_systems : list[Configurable],
+        agent_systems: list[Configurable],
         logger: logging.Logger,
     ):
         super().__init__(settings, logger.getChild("workspace"))

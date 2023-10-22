@@ -3,10 +3,11 @@ from __future__ import annotations
 import importlib
 import inspect
 import logging
-from logging import Logger
 from dataclasses import dataclass, field
+from logging import Logger
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Iterator
+
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -14,21 +15,19 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpts.autogpt.autogpt.core.tools.base import Tool, BaseToolsRegistry, ToolConfiguration
-from autogpts.autogpt.autogpt.core.tools.command_decorator import AUTO_GPT_TOOL_IDENTIFIER
-
-# from autogpts.autogpt.autogpt.core.tools.builtins import BUILTIN_TOOLS
-from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
-from autogpts.autogpt.autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
-
+from autogpts.autogpt.autogpt.core.configuration import (Configurable,
+                                                         SystemConfiguration,
+                                                         SystemSettings)
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 from autogpts.autogpt.autogpt.core.plugin.simple import SimplePluginService
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    BaseChatModelProvider,
-    CompletionModelFunction,
-    ModelProviderName,
-)
-
+    BaseChatModelProvider, CompletionModelFunction, ModelProviderName)
+from autogpts.autogpt.autogpt.core.tools.base import (BaseToolsRegistry, Tool,
+                                                      ToolConfiguration)
+from autogpts.autogpt.autogpt.core.tools.command_decorator import \
+    AUTO_GPT_TOOL_IDENTIFIER
+# from autogpts.autogpt.autogpt.core.tools.builtins import BUILTIN_TOOLS
+from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
 from autogpts.autogpt.autogpt.core.workspace.base import AbstractWorkspace
 
 
@@ -39,13 +38,14 @@ class ToolsRegistryConfiguration(SystemConfiguration):
     Attributes:
         tools: A dictionary mapping tool names to their configurations.
     """
+
     tools: dict[str, ToolConfiguration] = {}
 
 
 ToolsRegistryConfiguration.update_forward_refs()
 
 
-class SimpleToolRegistry(Configurable,BaseToolsRegistry):
+class SimpleToolRegistry(Configurable, BaseToolsRegistry):
     """
     A manager for a collection of Tool objects. Supports registration, modification, retrieval, and loading
     of tool plugins from a specified directory.
@@ -54,7 +54,7 @@ class SimpleToolRegistry(Configurable,BaseToolsRegistry):
         default_settings: Default system settings for the SimpleToolRegistry.
     """
 
-    class SystemSettings(Configurable.SystemSettings) :
+    class SystemSettings(Configurable.SystemSettings):
         """
         System settings for ToolRegistry.
 
@@ -62,9 +62,9 @@ class SimpleToolRegistry(Configurable,BaseToolsRegistry):
             configuration: Configuration settings for ToolRegistry.
         """
 
-        configuration: ToolsRegistryConfiguration =  ToolsRegistryConfiguration()
-        name : str ="simple_tool_registry"
-        description : str ="A simple tool registry."
+        configuration: ToolsRegistryConfiguration = ToolsRegistryConfiguration()
+        name: str = "simple_tool_registry"
+        description: str = "A simple tool registry."
 
     @dataclass
     class ToolCategory:

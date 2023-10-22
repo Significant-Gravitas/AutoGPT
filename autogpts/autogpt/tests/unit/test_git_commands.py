@@ -1,10 +1,9 @@
 import pytest
-from git.exc import GitCommandError
-from git.repo.base import Repo
-
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.core.tools.builtins.git_operations import clone_repository
+from git.exc import GitCommandError
+from git.repo.base import Repo
 
 
 @pytest.fixture

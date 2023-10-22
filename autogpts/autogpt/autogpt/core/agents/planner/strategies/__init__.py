@@ -1,15 +1,11 @@
 from logging import Logger
-from autogpts.autogpt.autogpt.core.prompting.base import PromptStrategiesConfiguration
 
 from autogpts.autogpt.autogpt.core.agents.planner.strategies.initial_plan import (
-    InitialPlanStrategy,
-    InitialPlanStrategyConfiguration,
-)
-
+    InitialPlanStrategy, InitialPlanStrategyConfiguration)
 from autogpts.autogpt.autogpt.core.agents.planner.strategies.select_tool import (
-    SelectToolStrategy,
-    SelectToolStrategyConfiguration,
-)
+    SelectToolStrategy, SelectToolStrategyConfiguration)
+from autogpts.autogpt.autogpt.core.prompting.base import \
+    PromptStrategiesConfiguration
 
 
 class StrategiesConfiguration(PromptStrategiesConfiguration):
@@ -18,13 +14,18 @@ class StrategiesConfiguration(PromptStrategiesConfiguration):
 
 
 class StrategiesSet:
-    from autogpts.autogpt.autogpt.core.prompting.base import BasePromptStrategy, AbstractPromptStrategy
+    from autogpts.autogpt.autogpt.core.prompting.base import (
+        AbstractPromptStrategy, BasePromptStrategy)
 
     @staticmethod
-    def get_strategies(logger: Logger = Logger(__name__)) -> list[AbstractPromptStrategy]:
+    def get_strategies(
+        logger: Logger = Logger(__name__),
+    ) -> list[AbstractPromptStrategy]:
         return [
             InitialPlanStrategy(
                 logger=logger, **InitialPlanStrategy.default_configuration.dict()
             ),
-            SelectToolStrategy(logger=logger, **SelectToolStrategy.default_configuration.dict()),
+            SelectToolStrategy(
+                logger=logger, **SelectToolStrategy.default_configuration.dict()
+            ),
         ]

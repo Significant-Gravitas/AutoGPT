@@ -1,7 +1,7 @@
+from typing import Any, Dict, Optional
 from uuid import UUID
-from typing import Dict, Any, Optional
 
-from pydantic import BaseModel, validator, Field
+from pydantic import BaseModel, Field, validator
 
 
 class AgentInfo(BaseModel):

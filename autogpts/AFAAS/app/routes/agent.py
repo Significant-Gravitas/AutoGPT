@@ -1,15 +1,13 @@
-
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Query, Request, Response, UploadFile, Depends
-from fastapi.responses import FileResponse
-from .dependencies.agents import get_agent
 from app.sdk.errors import *
 from app.sdk.forge_log import ForgeLogger
 from app.sdk.schema import *
+from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
+from fastapi.responses import FileResponse
 
-
+from .dependencies.agents import get_agent
 
 LOG = ForgeLogger(__name__)
 
@@ -37,23 +35,23 @@ AP alias /agent/tasks/{agent_id} (GET): Get an agent from its ID & return an age
 """
 import uuid
 from pathlib import Path
+
 import yaml
 from fastapi import APIRouter, FastAPI, Request
 
-
-from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.schema import AgentMessageRequestBody
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
-
+from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.schema import \
+    AgentMessageRequestBody
 
 afaas_agent_router = APIRouter()
 agent_router = APIRouter()
 
-            
 
 @afaas_agent_router.get("/agent/{agent_id}", tags=["agent"], response_model=Agent)
 @agent_router.get("/agent/tasks/{agent_id}", tags=["agent"], response_model=Agent)
-async def get_agent(request: Request, agent_id: str, agent : PlannerAgent= Depends(get_agent)
-    ) -> Agent:
+async def get_agent(
+    request: Request, agent_id: str, agent: PlannerAgent = Depends(get_agent)
+) -> Agent:
     """
     Gets the details of a task by ID.
 
@@ -127,14 +125,21 @@ async def get_agent(request: Request, agent_id: str, agent : PlannerAgent= Depen
             media_type="application/json",
         )
 
-@afaas_agent_router.get("/agent/{agent_id}/tasks", tags=["task"], response_model=AgentTasksListResponse)
-@agent_router.get("/agent/tasks/{agent_id}/steps", tags=["task"], response_model=AgentTasksListResponse)
+
+@afaas_agent_router.get(
+    "/agent/{agent_id}/tasks", tags=["task"], response_model=AgentTasksListResponse
+)
+@agent_router.get(
+    "/agent/tasks/{agent_id}/steps",
+    tags=["task"],
+    response_model=AgentTasksListResponse,
+)
 async def list_agent_tasks(
     request: Request,
     agent_id: str,
     page: Optional[int] = Query(1, ge=1),
     page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
-    agent : PlannerAgent= Depends(get_agent)
+    agent: PlannerAgent = Depends(get_agent),
 ) -> AgentTasksListResponse:
     """
     Retrieves a paginated list of stask associated with a specific task.
@@ -197,7 +202,10 @@ async def list_agent_tasks(
 @afaas_agent_router.post("/agent/{agent_id}/tasks", tags=["task"], response_model=Task)
 @agent_router.post("/agent/tasks/{agent_id}/steps", tags=["task"], response_model=Task)
 async def execute_agent_task(
-    request: Request, agent_id: str, step: Optional[TaskRequestBody] = None, agent : PlannerAgent= Depends(get_agent)
+    request: Request,
+    agent_id: str,
+    step: Optional[TaskRequestBody] = None,
+    agent: PlannerAgent = Depends(get_agent),
 ) -> Task:
     """
     Executes the next step for a specified task based on the current task status and returns the
@@ -265,13 +273,19 @@ async def execute_agent_task(
             media_type="application/json",
         )
 
+
 @afaas_agent_router.get(
     "/agent/{agent_id}/tasks/{task_id}", tags=["task"], response_model=Task
 )
 @agent_router.get(
     "/agent/tasks/{agent_id}/steps/{task_id}", tags=["task"], response_model=Task
 )
-async def get_agent_task(request: Request, agent_id: str, task_id: str, agent : PlannerAgent= Depends(get_agent)) -> Task:
+async def get_agent_task(
+    request: Request,
+    agent_id: str,
+    task_id: str,
+    agent: PlannerAgent = Depends(get_agent),
+) -> Task:
     """
     Retrieves the details of a specific step for a given task.
 
@@ -313,9 +327,11 @@ async def get_agent_task(request: Request, agent_id: str, task_id: str, agent : 
             media_type="application/json",
         )
 
+
 ###
 ### afaas
 ###
+
 
 @afaas_agent_router.post("/agent/{agent_id}/start", tags=["afaas"])
 async def start_simple_agent_main_loop(request: Request, agent_id: str):
@@ -360,7 +376,7 @@ async def message_simple_agent(
     - Required body.message  (str): The message sent from the client
     - Optional body.start (bool): Start a new loop
     Comment: Only works if the agent is inactive. Works for both client-facing = true and false, enabling sub-agents.
-    # """
+    #"""
     # user_configuration = get_settings_from_file()
     # # Get the logger and the workspace movec to a function
     # # Because almost every API end-point will excecute this piece of code
@@ -406,6 +422,3 @@ def get_message_history(request: Request, agent_id: str):
 @afaas_agent_router.get("/agent/{agent_id}/lastmessage", tags=["afaas"])
 def get_last_message(request: Request, agent_id: str):
     return {"message": "my last message"}
-
-
-

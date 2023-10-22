@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-
 import uuid
-from typing import (
-    TYPE_CHECKING,
-)
+from typing import TYPE_CHECKING
+
 from .base import BaseNoSQLTable
 
 
@@ -17,7 +15,7 @@ class AgentsTable(BaseNoSQLTable):
     if TYPE_CHECKING:
         from autogpts.autogpt.autogpt.core.agents import AbstractAgent
 
-    def add(self, value: dict , id : str = "A" + str(uuid.uuid4() )) -> str:
+    def add(self, value: dict, id: str = "A" + str(uuid.uuid4())) -> str:
         return super().add(value, id)
 
     # NOTE : overwrite parent update
@@ -42,8 +40,3 @@ class AgentsTable(BaseNoSQLTable):
             secondary_key=str(user_id),
         )
         return super().get(key=key)
-
-
-
-
-

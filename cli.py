@@ -835,8 +835,8 @@ Hey there amazing builders! We're thrilled to have you join this exciting journe
 def update(agent_name, hash, branch):
     import json
     import os
-    from datetime import datetime
     import subprocess
+    from datetime import datetime
 
     # Check if the agent_name.json file exists in the arena directory
     agent_json_file = f"./arena/{agent_name}.json"

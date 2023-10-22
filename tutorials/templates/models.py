@@ -1,13 +1,14 @@
 # Import necessary libraries and classes
 from __future__ import annotations
-from pydantic import Field, BaseModel
-from typing import Optional
+
 import uuid
+from typing import Optional
 
 from autogpt.core.configuration import SystemConfiguration, SystemSettings
 from autogpt.core.memory.base import MemorySettings
 from autogpt.core.plugin.simple import PluginLocation
 from autogpt.core.resource.model_providers import OpenAISettings
+from pydantic import BaseModel, Field
 
 
 # Define the Agent Systems Class

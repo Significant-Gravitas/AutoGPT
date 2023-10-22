@@ -4,15 +4,14 @@ from typing import TYPE_CHECKING, Type
 
 from pydantic import BaseModel
 
-from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration, UserConfigurable
+from autogpts.autogpt.autogpt.core.configuration import (SystemConfiguration,
+                                                         UserConfigurable)
 
 if TYPE_CHECKING:
-    from autogpts.autogpt.autogpt.core.tools import Tool, BaseToolsRegistry
     from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
     from autogpts.autogpt.autogpt.core.resource.model_providers import (
-        EmbeddingModelProvider,
-        BaseChatModelProvider,
-    )
+        BaseChatModelProvider, EmbeddingModelProvider)
+    from autogpts.autogpt.autogpt.core.tools import BaseToolsRegistry, Tool
 
     # Expand to other types as needed
     PluginType = (

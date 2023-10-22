@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 import abc
 import copy
 import re
 from logging import Logger
+from typing import TYPE_CHECKING, Optional, Union
+
 from pydantic import validator
-from typing import TYPE_CHECKING, Union, Optional
+
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
@@ -13,36 +16,24 @@ if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
 
 from autogpts.AFAAS.app.lib.plan import Plan
-from autogpts.autogpt.autogpt.core.prompting.utils.utils import json_loads, to_numbered_list
-from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration
-from autogpts.autogpt.autogpt.core.prompting.schema import (
-    LanguageModelClassification,
-)
-
-from autogpts.autogpt.autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
-
+from autogpts.autogpt.autogpt.core.configuration import (Configurable,
+                                                         SystemConfiguration,
+                                                         SystemSettings,
+                                                         UserConfigurable)
+from autogpts.autogpt.autogpt.core.prompting.schema import \
+    LanguageModelClassification
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
+    json_loads, to_numbered_list)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    BaseChatModelProvider,
-    ModelProviderName,
-    OpenAIModelName,
-    AssistantChatMessageDict,
-    ChatMessage,
-    ChatPrompt,
-    CompletionModelFunction,
-)
+    AssistantChatMessageDict, BaseChatModelProvider, ChatMessage, ChatPrompt,
+    CompletionModelFunction, ModelProviderName, OpenAIModelName)
 
-from .base import PromptStrategiesConfiguration, BasePromptStrategy, RESPONSE_SCHEMA
+from .base import (RESPONSE_SCHEMA, BasePromptStrategy,
+                   PromptStrategiesConfiguration)
 from .utils.prompt_scratchpad import PromptScratchpad
-from .utils.templates import (
-    PLAN_PROMPT_CONSTRAINTS,
-    PLAN_PROMPT_RESOURCES,
-    PLAN_PROMPT_PERFORMANCE_EVALUATIONS,
-)
+from .utils.templates import (PLAN_PROMPT_CONSTRAINTS,
+                              PLAN_PROMPT_PERFORMANCE_EVALUATIONS,
+                              PLAN_PROMPT_RESOURCES)
 
 
 class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
@@ -96,11 +87,11 @@ class PlanningPromptStrategy(BasePromptStrategy):
         self,
         logger: Logger,
         model_classification: LanguageModelClassification,
-        temperature : float , #if coding 0.05
-        top_p: Optional[float] ,
-        max_tokens : Optional[int] ,
-        frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
-        presence_penalty : Optional[float], # Avoid certain subjects
+        temperature: float,  # if coding 0.05
+        top_p: Optional[float],
+        max_tokens: Optional[int],
+        frequency_penalty: Optional[float],  # Avoid repeting oneselfif coding 0.3
+        presence_penalty: Optional[float],  # Avoid certain subjects
         **kwargs,
     ):
         super().__init__()
@@ -183,10 +174,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         )
 
         from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
-            parse_ability_result,
-            parse_agent_plan,
-            parse_next_tool,
-        )
+            parse_ability_result, parse_agent_plan, parse_next_tool)
 
         print(
             f"""################################################################################################################################################################################################################################

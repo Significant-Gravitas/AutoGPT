@@ -7,12 +7,13 @@ from pathlib import Path
 
 from git.repo import Repo
 
+from autogpts.AFAAS.app.lib.tasks import Task
 from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
-from autogpts.autogpt.autogpt.core.utils.exceptions import ToolExecutionError
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.utils.exceptions import ToolExecutionError
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 from autogpts.autogpt.autogpt.core.utils.url.validators import validate_url
-from autogpts.AFAAS.app.lib.tasks import Task
+
 from .decorators import sanitize_path_arg
 
 
@@ -36,7 +37,7 @@ from .decorators import sanitize_path_arg
 )
 @sanitize_path_arg("clone_path")
 @validate_url
-def clone_repository(url: str, clone_path: Path, task : Task, agent: BaseAgent) -> str:
+def clone_repository(url: str, clone_path: Path, task: Task, agent: BaseAgent) -> str:
     """Clone a GitHub repository locally.
 
     Args:

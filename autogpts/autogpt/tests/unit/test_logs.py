@@ -1,5 +1,4 @@
 import pytest
-
 from autogpt.logs.utils import remove_color_codes
 
 

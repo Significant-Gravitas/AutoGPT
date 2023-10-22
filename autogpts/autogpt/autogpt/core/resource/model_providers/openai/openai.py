@@ -3,46 +3,23 @@ import functools
 import logging
 import math
 import time
-from typing import Callable, ParamSpec, TypeVar, Dict, Any, Tuple
+from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar
 
 import openai
 import tiktoken
 from openai.error import APIError, RateLimitError
 
-from autogpts.autogpt.autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    UserConfigurable,
-)
-from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
-    Embedding,
-    EmbeddingModelInfo,
-    EmbeddingModelProvider,
-    EmbeddingModelResponse,
-    BaseModelProviderBudget,
-    BaseModelProviderCredentials,
-    ModelProviderName,
-    ModelProviderService,
-    BaseModelProviderSettings,
-    BaseModelProviderUsage,
-    ModelTokenizer,
-    
-)
-
+from autogpts.autogpt.autogpt.core.configuration import (Configurable,
+                                                         SystemConfiguration,
+                                                         UserConfigurable)
 from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import (
-    AssistantChatMessageDict,
-    ChatMessage,
-    ChatModelInfo,
-    BaseChatModelProvider,
-    ChatModelResponse,
-    CompletionModelFunction,
-    CompletionModelFunction,
-    ChatMessage,
-    BaseChatModelProvider,
-    ChatModelInfo,
-    ChatModelResponse,
-    AssistantFunctionCallDict
-)
+    AssistantChatMessageDict, AssistantFunctionCallDict, BaseChatModelProvider,
+    ChatMessage, ChatModelInfo, ChatModelResponse, CompletionModelFunction)
+from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
+    BaseModelProviderBudget, BaseModelProviderCredentials,
+    BaseModelProviderSettings, BaseModelProviderUsage, Embedding,
+    EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,
+    ModelProviderName, ModelProviderService, ModelTokenizer)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 _T = TypeVar("_T")
@@ -148,9 +125,9 @@ class OpenAIConfiguration(SystemConfiguration):
         maximum_retry_before_default_function: The maximum number of retries before a default function is used.
     """
 
-    retries_per_request: int = UserConfigurable(default = 10 )
-    maximum_retry : int = 1
-    maximum_retry_before_default_function : int = 1
+    retries_per_request: int = UserConfigurable(default=10)
+    maximum_retry: int = 1
+    maximum_retry_before_default_function: int = 1
 
 
 class OpenAIModelProviderBudget(BaseModelProviderBudget):
@@ -161,14 +138,13 @@ class OpenAIModelProviderBudget(BaseModelProviderBudget):
         warning_threshold: The warning threshold for budget.
     """
 
-    graceful_shutdown_threshold: float = UserConfigurable(default = 0.005)
-    warning_threshold: float = UserConfigurable(default =0.01)
+    graceful_shutdown_threshold: float = UserConfigurable(default=0.005)
+    warning_threshold: float = UserConfigurable(default=0.01)
 
-
-    total_budget : float =math.inf
-    total_cost : float =0.0
-    remaining_budget : float =math.inf
-    usage : BaseModelProviderUsage = BaseModelProviderUsage()
+    total_budget: float = math.inf
+    total_cost: float = 0.0
+    remaining_budget: float = math.inf
+    usage: BaseModelProviderUsage = BaseModelProviderUsage()
 
 
 class OpenAISettings(BaseModelProviderSettings):
@@ -181,12 +157,11 @@ class OpenAISettings(BaseModelProviderSettings):
     """
 
     configuration: OpenAIConfiguration = OpenAIConfiguration()
-    credentials : BaseModelProviderCredentials=BaseModelProviderCredentials()
+    credentials: BaseModelProviderCredentials = BaseModelProviderCredentials()
     budget: OpenAIModelProviderBudget = OpenAIModelProviderBudget()
 
-
-    name="chat_model_provider"
-    description="Provides access to OpenAI's API."
+    name = "chat_model_provider"
+    description = "Provides access to OpenAI's API."
 
 
 class OpenAIProvider(
@@ -206,7 +181,7 @@ class OpenAIProvider(
         self,
         settings: OpenAISettings,
         logger: logging.Logger,
-        agent_systems : list[Configurable],
+        agent_systems: list[Configurable],
     ):
         """
         Initialize the OpenAIProvider.
@@ -447,18 +422,15 @@ class OpenAIProvider(
 
         # Prerequisite : Read OpenAI API (Chat Model) function_call section
 
-        # User : 1 shirt take 5 minutes to dry , how long take 10 shirt to dry 
+        # User : 1 shirt take 5 minutes to dry , how long take 10 shirt to dry
         # Assistant : It takes 50 minutes
 
-        # System : "The user question was .... 
+        # System : "The user question was ....
         # The Assistant Response was ..."
-        # Is it ok ? 
+        # Is it ok ?
         # If not provide a feedback
 
         # => T shirt can be dried at the same time
-
-
-
 
         # ##############################################################################
         # ### Step 6: Formulate the response
@@ -800,7 +772,6 @@ class _OpenAIRetryHandler:
                 self._backoff(attempt)
 
         return _wrapped
-
 
 
 def format_function_specs_as_typescript_ns(

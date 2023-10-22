@@ -3,12 +3,8 @@ from unittest.mock import patch
 
 import pytest
 import requests
-
-from autogpt.app.utils import (
-    get_bulletin_from_web,
-    get_current_git_branch,
-    get_latest_bulletin,
-)
+from autogpt.app.utils import (get_bulletin_from_web, get_current_git_branch,
+                               get_latest_bulletin)
 from autogpt.json_utils.utilities import extract_dict_from_response
 from autogpt.utils import validate_yaml_file
 from tests.utils import skip_in_ci

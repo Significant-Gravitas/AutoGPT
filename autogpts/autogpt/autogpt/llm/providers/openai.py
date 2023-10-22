@@ -8,14 +8,14 @@ from unittest.mock import patch
 
 import openai
 import openai.api_resources.abstract.engine_api_resource as engine_api_resource
-from colorama import Fore, Style
-from openai.error import APIError, RateLimitError, ServiceUnavailableError, Timeout
-from openai.openai_object import OpenAIObject
-
 from autogpt.core.resource.model_providers import CompletionModelFunction
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.logs.helpers import request_user_double_check
 from autogpt.models.command import Command
+from colorama import Fore, Style
+from openai.error import (APIError, RateLimitError, ServiceUnavailableError,
+                          Timeout)
+from openai.openai_object import OpenAIObject
 
 logger = logging.getLogger(__name__)
 
@@ -181,9 +181,8 @@ def count_openai_functions_tokens(
 
     Reference: https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
     """
-    from autogpt.llm.utils import (
-        count_string_tokens,  # FIXME: maybe move to OpenAIProvider?
-    )
+    from autogpt.llm.utils import \
+        count_string_tokens  # FIXME: maybe move to OpenAIProvider?
 
     return count_string_tokens(
         f"# Tools\n\n## functions\n\n{format_function_specs_as_typescript_ns(functions)}",

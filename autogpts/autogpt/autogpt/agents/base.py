@@ -22,21 +22,12 @@ from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
-from autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
-from autogpt.core.prompting.schema import (
-    ChatMessage,
-    ChatPrompt,
-    CompletionModelFunction,
-)
-from autogpt.core.resource.model_providers.openai import (
-    OPEN_AI_CHAT_MODELS,
-    OpenAIModelName,
-)
+from autogpt.core.configuration import (Configurable, SystemConfiguration,
+                                        SystemSettings, UserConfigurable)
+from autogpt.core.prompting.schema import (ChatMessage, ChatPrompt,
+                                           CompletionModelFunction)
+from autogpt.core.resource.model_providers.openai import (OPEN_AI_CHAT_MODELS,
+                                                          OpenAIModelName)
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.action_history import ActionResult, EpisodicActionHistory

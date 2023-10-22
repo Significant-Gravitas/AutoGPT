@@ -6,12 +6,9 @@ from xml.etree import ElementTree
 
 import docx
 import yaml
-from bs4 import BeautifulSoup
-
 from autogpt.core.tools.builtins.file_operations_utils import (
-    is_file_binary_fn,
-    read_textual_file,
-)
+    is_file_binary_fn, read_textual_file)
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 

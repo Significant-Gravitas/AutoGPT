@@ -5,27 +5,6 @@ from io import BytesIO
 from uuid import uuid4
 
 import orjson
-from fastapi import APIRouter, FastAPI, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from forge.sdk.db import AgentDB
-from forge.sdk.errors import NotFoundError
-from forge.sdk.middlewares import AgentMiddleware
-from forge.sdk.routes.agent_protocol import base_router
-from forge.sdk.schema import (
-    Artifact,
-    Step,
-    StepRequestBody,
-    Task,
-    TaskArtifactsListResponse,
-    TaskListResponse,
-    TaskRequestBody,
-    TaskStepsListResponse,
-)
-from hypercorn.asyncio import serve as hypercorn_serve
-from hypercorn.config import Config as HypercornConfig
-
 from autogpt.agent_factory.configurators import configure_agent_with_state
 from autogpt.agent_factory.generators import generate_agent_for_task
 from autogpt.agent_manager import AgentManager
@@ -34,7 +13,21 @@ from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.file_workspace import FileWorkspace
-from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
+from autogpt.models.action_history import (ActionErrorResult,
+                                           ActionSuccessResult)
+from fastapi import APIRouter, FastAPI, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from forge.sdk.db import AgentDB
+from forge.sdk.errors import NotFoundError
+from forge.sdk.middlewares import AgentMiddleware
+from forge.sdk.routes.agent_protocol import base_router
+from forge.sdk.schema import (Artifact, Step, StepRequestBody, Task,
+                              TaskArtifactsListResponse, TaskListResponse,
+                              TaskRequestBody, TaskStepsListResponse)
+from hypercorn.asyncio import serve as hypercorn_serve
+from hypercorn.config import Config as HypercornConfig
 
 logger = logging.getLogger(__name__)
 

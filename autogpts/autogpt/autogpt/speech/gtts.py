@@ -4,9 +4,8 @@ from __future__ import annotations
 import os
 
 import gtts
-from playsound import playsound
-
 from autogpt.speech.base import VoiceBase
+from playsound import playsound
 
 
 class GTTSVoice(VoiceBase):

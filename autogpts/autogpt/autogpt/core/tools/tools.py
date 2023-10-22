@@ -32,7 +32,7 @@ class Tool:
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
         available: Literal[True] | Callable[[BaseAgent], bool] = True,
-        hide = False
+        hide=False,
     ):
         self.name = name
         self.description = description

@@ -1,6 +1,6 @@
-from .. import tools
-
 import warnings
+
+from .. import tools
 
 warnings.warn(
     "autogpt.core.ability is deprecated and will be removed in a future version. "

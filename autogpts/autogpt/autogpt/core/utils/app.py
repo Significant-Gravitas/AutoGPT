@@ -4,12 +4,11 @@ import re
 import sys
 
 import requests
+from autogpt.config import Config
 from colorama import Fore, Style
 from git.repo import Repo
 from prompt_toolkit import ANSI, PromptSession
 from prompt_toolkit.history import InMemoryHistory
-
-from autogpt.config import Config
 
 logger = logging.getLogger(__name__)
 session = PromptSession(history=InMemoryHistory())

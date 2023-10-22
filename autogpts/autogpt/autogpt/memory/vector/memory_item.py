@@ -6,11 +6,10 @@ from typing import Literal
 
 import ftfy
 import numpy as np
-from pydantic import BaseModel
-
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatMessage
 from autogpt.processing.text import chunk_content, split_text, summarize_text
+from pydantic import BaseModel
 
 from .utils import Embedding, get_embedding
 

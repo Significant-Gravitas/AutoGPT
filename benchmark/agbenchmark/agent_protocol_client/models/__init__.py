@@ -19,7 +19,9 @@ from agbenchmark.agent_protocol_client.models.artifacts import Artifacts
 from agbenchmark.agent_protocol_client.models.pagination import Pagination
 from agbenchmark.agent_protocol_client.models.step import Step
 from agbenchmark.agent_protocol_client.models.step_all_of import StepAllOf
-from agbenchmark.agent_protocol_client.models.step_request_body import StepRequestBody
+from agbenchmark.agent_protocol_client.models.step_request_body import \
+    StepRequestBody
 from agbenchmark.agent_protocol_client.models.task import Task
 from agbenchmark.agent_protocol_client.models.task_all_of import TaskAllOf
-from agbenchmark.agent_protocol_client.models.task_request_body import TaskRequestBody
+from agbenchmark.agent_protocol_client.models.task_request_body import \
+    TaskRequestBody

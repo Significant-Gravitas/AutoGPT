@@ -2,20 +2,19 @@ from __future__ import annotations
 
 import abc
 from pprint import pformat
-from typing import Any, ClassVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import inflection
 from pydantic import Field
-from .schema import ToolResult
 
-
-from ..tools.schema import ToolResult
-from ..configuration import SystemConfiguration
+from ..agents.base.assistants import LanguageModelConfiguration, ToolExecutor
 from ..agents.base.features.agentmixin import AgentMixin
-from ..agents.base.assistants  import LanguageModelConfiguration, ToolExecutor
-from ..resource.model_providers import CompletionModelFunction
-from ..utils.json_schema import JSONSchema
+from ..configuration import SystemConfiguration
 from ..plugin.base import PluginLocation
+from ..resource.model_providers import CompletionModelFunction
+from ..tools.schema import ToolResult
+from ..utils.json_schema import JSONSchema
+from .schema import ToolResult
 
 
 class ToolConfiguration(SystemConfiguration):

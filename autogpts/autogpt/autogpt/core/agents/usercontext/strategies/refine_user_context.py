@@ -22,33 +22,26 @@ To initialize and use the `RefineUserContextStrategy`:
 >>> strategy = RefineUserContextStrategy(logger, model_classification=LanguageModelClassification.FAST_MODEL_4K, default_function_call=RefineUserContextFunctionNames.REFINE_REQUIREMENTS, strategy_name="refine_user_context", context_min_tokens=250, context_max_tokens=300)
 >>> prompt = strategy.build_prompt(interupt_refinement_process=False, user_objective="Build a web app")
 """
-from logging import Logger
-import uuid
 import enum
+import uuid
+from logging import Logger
 from typing import Optional
+
 from pydantic import BaseModel
 
-from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration, UserConfigurable
-
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-
-from autogpts.autogpt.autogpt.core.prompting.utils.utils import json_loads, to_numbered_list, to_string_list
+from autogpts.AFAAS.app.lib.message_agent_user import (MessageAgentUser,
+                                                       Questions)
+from autogpts.autogpt.autogpt.core.configuration import (SystemConfiguration,
+                                                         UserConfigurable)
 from autogpts.autogpt.autogpt.core.prompting.base import (
-    BasePromptStrategy,
-    PromptStrategiesConfiguration,
-)
-from autogpts.autogpt.autogpt.core.prompting.schema import (
-    LanguageModelClassification,
-)
-
+    BasePromptStrategy, PromptStrategiesConfiguration)
+from autogpts.autogpt.autogpt.core.prompting.schema import \
+    LanguageModelClassification
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
+    json_loads, to_numbered_list, to_string_list)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    CompletionModelFunction,
-    ChatMessage,
-    AssistantChatMessageDict,
-    ChatPrompt,
-)
-
-from autogpts.AFAAS.app.lib.message_agent_user import Questions, MessageAgentUser
+    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
 class RefineUserContextFunctionNames(str, enum.Enum):

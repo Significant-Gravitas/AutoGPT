@@ -8,9 +8,9 @@ if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
     from autogpt.config import Config
 
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-from autogpts.autogpt.autogpt.core.tools.tools import Tool, ToolOutput
 from autogpts.autogpt.autogpt.core.tools.tool_parameters import ToolParameter
+from autogpts.autogpt.autogpt.core.tools.tools import Tool, ToolOutput
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"
@@ -24,7 +24,7 @@ def tool(
     disabled_reason: Optional[str] = None,
     aliases: list[str] = [],
     available: Literal[True] | Callable[[BaseAgent], bool] = True,
-    hide = False
+    hide=False,
 ) -> Callable[..., ToolOutput]:
     """The command decorator is used to create Tool objects from ordinary functions."""
 
@@ -45,7 +45,7 @@ def tool(
             disabled_reason=disabled_reason,
             aliases=aliases,
             available=available,
-            hide = hide
+            hide=hide,
         )
 
         if inspect.iscoroutinefunction(func):

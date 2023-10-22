@@ -12,12 +12,14 @@ import os
 import os.path
 from pathlib import Path
 from typing import Iterator, Literal
+
 from autogpts.AFAAS.app.lib.tasks import Task
 from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
-from autogpts.autogpt.autogpt.core.utils.exceptions import DuplicateOperationError
-from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
+from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.utils.exceptions import \
+    DuplicateOperationError
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 from .file_context import open_file, open_folder  # NOQA
@@ -145,7 +147,7 @@ def log_operation(
     },
 )
 @sanitize_path_arg("filename")
-def read_file(filename: Path, task : Task, agent: BaseAgent) -> str:
+def read_file(filename: Path, task: Task, agent: BaseAgent) -> str:
     """Read a file and return the contents
 
     Args:
@@ -210,7 +212,9 @@ def ingest_file(
     aliases=["create_file"],
 )
 @sanitize_path_arg("filename")
-async def write_to_file(filename: Path, contents: str, task : Task, agent: BaseAgent) -> str:
+async def write_to_file(
+    filename: Path, contents: str, task: Task, agent: BaseAgent
+) -> str:
     """Write contents to a file
 
     Args:
@@ -264,7 +268,7 @@ def append_to_file(
     },
 )
 @sanitize_path_arg("folder")
-def list_folder(folder: Path, task : Task, agent: BaseAgent) -> list[str]:
+def list_folder(folder: Path, task: Task, agent: BaseAgent) -> list[str]:
     """Lists files in a folder recursively
 
     Args:

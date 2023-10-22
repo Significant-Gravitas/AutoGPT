@@ -18,10 +18,9 @@ import json
 import pprint
 import re  # noqa: F401
 
-from pydantic import BaseModel
-
 from agbenchmark.agent_protocol_client.models.artifact import Artifact
 from agbenchmark.agent_protocol_client.models.pagination import Pagination
+from pydantic import BaseModel
 
 
 class Artifacts(BaseModel):

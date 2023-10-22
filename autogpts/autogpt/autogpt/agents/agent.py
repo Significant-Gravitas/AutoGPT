@@ -10,41 +10,30 @@ if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.models.command_registry import CommandRegistry
 
-from pydantic import Field
-
 from autogpt.core.configuration import Configurable
 from autogpt.core.prompting import ChatPrompt
-from autogpt.core.resource.model_providers import (
-    ChatMessage,
-    BaseChatModelProvider,
-    ChatModelResponse,
-)
+from autogpt.core.resource.model_providers import (BaseChatModelProvider,
+                                                   ChatMessage,
+                                                   ChatModelResponse)
 from autogpt.llm.api_manager import ApiManager
-from autogpt.logs.log_cycle import (
-    CURRENT_CONTEXT_FILE_NAME,
-    NEXT_ACTION_FILE_NAME,
-    USER_INPUT_FILE_NAME,
-    LogCycleHandler,
-)
-from autogpt.models.action_history import (
-    Action,
-    ActionErrorResult,
-    ActionInterruptedByHuman,
-    ActionResult,
-    ActionSuccessResult,
-)
+from autogpt.logs.log_cycle import (CURRENT_CONTEXT_FILE_NAME,
+                                    NEXT_ACTION_FILE_NAME,
+                                    USER_INPUT_FILE_NAME, LogCycleHandler)
+from autogpt.models.action_history import (Action, ActionErrorResult,
+                                           ActionInterruptedByHuman,
+                                           ActionResult, ActionSuccessResult)
 from autogpt.models.command import CommandOutput
 from autogpt.models.context_item import ContextItem
+from pydantic import Field
 
 from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from .features.context import ContextMixin
 from .features.file_workspace import FileWorkspaceMixin
 from .features.watchdog import WatchdogMixin
-from .prompt_strategies.one_shot import (
-    OneShotAgentPromptConfiguration,
-    OneShotAgentPromptStrategy,
-)
-from .utils.exceptions import AgentException, CommandExecutionError, UnknownCommandError
+from .prompt_strategies.one_shot import (OneShotAgentPromptConfiguration,
+                                         OneShotAgentPromptStrategy)
+from .utils.exceptions import (AgentException, CommandExecutionError,
+                               UnknownCommandError)
 
 logger = logging.getLogger(__name__)
 

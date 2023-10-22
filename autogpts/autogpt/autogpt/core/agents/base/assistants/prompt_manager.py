@@ -1,37 +1,29 @@
 from __future__ import annotations
+
 import logging
 import platform
 import time
-
-from pydantic import validator
 from typing import TYPE_CHECKING
 
-from autogpts.autogpt.autogpt.core.agents.base.features.agentmixin import AgentMixin
+from pydantic import validator
+
+from autogpts.autogpt.autogpt.core.agents.base.features.agentmixin import \
+    AgentMixin
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
 
-from autogpts.autogpt.autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    UserConfigurable,
-)
-
+from autogpts.autogpt.autogpt.core.configuration import (Configurable,
+                                                         SystemConfiguration,
+                                                         SystemSettings,
+                                                         UserConfigurable)
 from autogpts.autogpt.autogpt.core.prompting.base import (
-    BasePromptStrategy,
-    AbstractPromptStrategy,
-    PromptStrategiesConfiguration,
-)
-from autogpts.autogpt.autogpt.core.prompting.schema import LanguageModelClassification
+    AbstractPromptStrategy, BasePromptStrategy, PromptStrategiesConfiguration)
+from autogpts.autogpt.autogpt.core.prompting.schema import \
+    LanguageModelClassification
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    BaseChatModelProvider,
-    ChatModelResponse,
-    CompletionModelFunction,
-    ModelProviderName,
-    OpenAIModelName,
-    OpenAIProvider,
-)
+    BaseChatModelProvider, ChatModelResponse, CompletionModelFunction,
+    ModelProviderName, OpenAIModelName, OpenAIProvider)
 from autogpts.autogpt.autogpt.core.workspace import AbstractWorkspace
 
 
@@ -55,31 +47,31 @@ class PromptManagerConfiguration(SystemConfiguration):
     """Configuration for the PromptManager subsystem."""
 
     models: dict[LanguageModelClassification, LanguageModelConfiguration] = {
-                LanguageModelClassification.FAST_MODEL_4K: LanguageModelConfiguration(
-                    model_name=OpenAIModelName.GPT3,
-                    provider_name=ModelProviderName.OPENAI,
-                    temperature=0.9,
-                ),
-                LanguageModelClassification.FAST_MODEL_16K: LanguageModelConfiguration(
-                    model_name=OpenAIModelName.GPT3_16k,
-                    provider_name=ModelProviderName.OPENAI,
-                    temperature=0.9,
-                ),
-                LanguageModelClassification.FAST_MODEL_FINE_TUNED_4K: LanguageModelConfiguration(
-                    model_name=OpenAIModelName.GPT3_FINE_TUNED,
-                    provider_name=ModelProviderName.OPENAI,
-                    temperature=0.9,
-                ),
-                LanguageModelClassification.SMART_MODEL_8K: LanguageModelConfiguration(
-                    model_name=OpenAIModelName.GPT4,
-                    provider_name=ModelProviderName.OPENAI,
-                    temperature=0.9,
-                ),
-                LanguageModelClassification.SMART_MODEL_32K: LanguageModelConfiguration(
-                    model_name=OpenAIModelName.GPT4_32k,
-                    provider_name=ModelProviderName.OPENAI,
-                    temperature=0.9,
-                ),
+        LanguageModelClassification.FAST_MODEL_4K: LanguageModelConfiguration(
+            model_name=OpenAIModelName.GPT3,
+            provider_name=ModelProviderName.OPENAI,
+            temperature=0.9,
+        ),
+        LanguageModelClassification.FAST_MODEL_16K: LanguageModelConfiguration(
+            model_name=OpenAIModelName.GPT3_16k,
+            provider_name=ModelProviderName.OPENAI,
+            temperature=0.9,
+        ),
+        LanguageModelClassification.FAST_MODEL_FINE_TUNED_4K: LanguageModelConfiguration(
+            model_name=OpenAIModelName.GPT3_FINE_TUNED,
+            provider_name=ModelProviderName.OPENAI,
+            temperature=0.9,
+        ),
+        LanguageModelClassification.SMART_MODEL_8K: LanguageModelConfiguration(
+            model_name=OpenAIModelName.GPT4,
+            provider_name=ModelProviderName.OPENAI,
+            temperature=0.9,
+        ),
+        LanguageModelClassification.SMART_MODEL_32K: LanguageModelConfiguration(
+            model_name=OpenAIModelName.GPT4_32k,
+            provider_name=ModelProviderName.OPENAI,
+            temperature=0.9,
+        ),
     }
 
     @validator("models")
@@ -104,22 +96,24 @@ class PromptManagerConfiguration(SystemConfiguration):
 class PromptManager(Configurable, AgentMixin):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
-    #default_settings = PromptManager.SystemSettings()
+    # default_settings = PromptManager.SystemSettings()
     class SystemSettings(SystemSettings):
         configuration: PromptManagerConfiguration = PromptManagerConfiguration()
-        name="prompt_manager"
-        description="Manages the agent's planning and goal-setting by constructing language model prompts."
+        name = "prompt_manager"
+        description = "Manages the agent's planning and goal-setting by constructing language model prompts."
 
     def __init__(
         self,
         settings: PromptManager.SystemSettings,
         logger: logging.Logger,
-        agent_systems : list[Configurable],
+        agent_systems: list[Configurable],
     ) -> None:
         super().__init__(settings=settings, logger=logger)
-        model_providers: dict[ModelProviderName, BaseChatModelProvider] = {"openai": agent_systems['chat_model_provider']} 
-        strategies: dict[str, AbstractPromptStrategy] = agent_systems['strategies']
-        workspace: AbstractWorkspace = agent_systems['workspace']
+        model_providers: dict[ModelProviderName, BaseChatModelProvider] = {
+            "openai": agent_systems["chat_model_provider"]
+        }
+        strategies: dict[str, AbstractPromptStrategy] = agent_systems["strategies"]
+        workspace: AbstractWorkspace = agent_systems["workspace"]
 
         self._workspace = workspace
 
@@ -151,7 +145,7 @@ class PromptManager(Configurable, AgentMixin):
             raise ValueError(f"Invalid strategy name {strategy_name}")
 
         prompt_strategy: BasePromptStrategy = self._prompt_strategies[strategy_name]
-        if not hasattr(prompt_strategy, '_agent') or prompt_strategy._agent is None :
+        if not hasattr(prompt_strategy, "_agent") or prompt_strategy._agent is None:
             prompt_strategy.set_agent(agent=self._agent)
 
         kwargs.update(self.get_system_info(prompt_strategy))

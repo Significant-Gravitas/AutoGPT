@@ -4,11 +4,10 @@ import logging
 from typing import List, Optional
 
 import openai
-from openai import Model
-
 from autogpt.core.resource.model_providers.openai import OPEN_AI_MODELS
 from autogpt.core.resource.model_providers.schema import ChatModelInfo
 from autogpt.singleton import Singleton
+from openai import Model
 
 logger = logging.getLogger(__name__)
 

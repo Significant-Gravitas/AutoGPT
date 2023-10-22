@@ -1,4 +1,3 @@
-
 import json
 import os
 import pathlib
@@ -6,25 +5,25 @@ from io import BytesIO
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Query, Request, Response, UploadFile, Depends, Body
-from fastapi.responses import FileResponse
-
 from app.sdk.errors import *
 from app.sdk.forge_log import ForgeLogger
 from app.sdk.schema import *
-
-from fastapi.responses import RedirectResponse, StreamingResponse
-from .dependencies.agents import get_agent
+from fastapi import (APIRouter, Body, Depends, Query, Request, Response,
+                     UploadFile)
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
+
+from .dependencies.agents import get_agent
 
 afaas_artifact_router = APIRouter()
 artifact_router = APIRouter()
 
 LOG = ForgeLogger(__name__)
 
+
 @afaas_artifact_router.get(
-    "/agent/{agent_id}/artifacts", 
+    "/agent/{agent_id}/artifacts",
     tags=["artifacts"],
     response_model=AgentArtifactsListResponse,
 )
@@ -37,7 +36,8 @@ async def list_agent_artifacts(
     request: Request,
     agent_id: str,
     page: Optional[int] = Query(1, ge=1),
-    page_size: Optional[int] = Query(10, ge=1, alias="pageSize"), agent : PlannerAgent= Depends(get_agent)
+    page_size: Optional[int] = Query(10, ge=1, alias="pageSize"),
+    agent: PlannerAgent = Depends(get_agent),
 ) -> AgentArtifactsListResponse:
     """
     Retrieves a paginated list of artifacts associated with a specific task.
@@ -91,14 +91,21 @@ async def list_agent_artifacts(
             media_type="application/json",
         )
 
+
 @afaas_artifact_router.post(
-    "/agent/{agent_id}/artifacts", tags=["artifacts"], response_model=Artifact,
+    "/agent/{agent_id}/artifacts",
+    tags=["artifacts"],
+    response_model=Artifact,
 )
 @artifact_router.post(
     "/agent/tasks/{agent_id}/artifacts", tags=["artifacts"], response_model=Artifact
 )
 async def upload_agentartifacts(
-    request: Request, agent_id: str, file: UploadFile = Body(...), relative_path: Optional[str] = "", agent : PlannerAgent= Depends(get_agent)
+    request: Request,
+    agent_id: str,
+    file: UploadFile = Body(...),
+    relative_path: Optional[str] = "",
+    agent: PlannerAgent = Depends(get_agent),
 ) -> Artifact:
     """
     This endpoint is used to upload an artifact associated with a specific task. The artifact is provided as a file.
@@ -152,13 +159,20 @@ async def upload_agentartifacts(
 
 
 @afaas_artifact_router.post(
-    "/agent/{agent_id}/artifacts/{artifact_id}", tags=["artifacts"], response_model=str,
+    "/agent/{agent_id}/artifacts/{artifact_id}",
+    tags=["artifacts"],
+    response_model=str,
 )
 @artifact_router.get(
-    "/agent/tasks/{agent_id}/artifacts/{artifact_id}", tags=["artifacts"], response_model=str
+    "/agent/tasks/{agent_id}/artifacts/{artifact_id}",
+    tags=["artifacts"],
+    response_model=str,
 )
 async def download_agent_artifact(
-    request: Request, agent_id: str, artifact_id: str,  agent : PlannerAgent= Depends(get_agent)
+    request: Request,
+    agent_id: str,
+    artifact_id: str,
+    agent: PlannerAgent = Depends(get_agent),
 ) -> FileResponse:
     """
     Downloads an artifact associated with a specific task.
@@ -205,7 +219,6 @@ async def download_agent_artifact(
         )
 
 
-
 async def list_artifacts(
     agent, agent_id: str, page: int = 1, pageSize: int = 10
 ) -> AgentArtifactsListResponse:
@@ -220,6 +233,7 @@ async def list_artifacts(
 
     except Exception as e:
         raise
+
 
 async def create_artifact(
     agent, agent_id: str, file: UploadFile, relative_path: str
@@ -251,6 +265,7 @@ async def create_artifact(
         raise
     return artifact
 
+
 async def get_artifact(agent, agent_id: str, artifact_id: str) -> Artifact:
     """
     Get an artifact by ID.
@@ -272,7 +287,5 @@ async def get_artifact(agent, agent_id: str, artifact_id: str) -> Artifact:
     return StreamingResponse(
         BytesIO(retrieved_artifact),
         media_type="application/octet-stream",
-        headers={
-            "Content-Disposition": f"attachment; filename={artifact.file_name}"
-        },
+        headers={"Content-Disposition": f"attachment; filename={artifact.file_name}"},
     )

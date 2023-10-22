@@ -19,9 +19,8 @@ import pprint
 import re  # noqa: F401
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field, StrictStr, conlist
-
 from agbenchmark.agent_protocol_client.models.artifact import Artifact
+from pydantic import BaseModel, Field, StrictStr, conlist
 
 
 class Task(BaseModel):

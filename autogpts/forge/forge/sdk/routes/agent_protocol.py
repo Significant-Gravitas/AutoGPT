@@ -27,7 +27,6 @@ from typing import Optional
 
 from fastapi import APIRouter, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
-
 from forge.sdk.errors import *
 from forge.sdk.forge_log import ForgeLogger
 from forge.sdk.schema import *

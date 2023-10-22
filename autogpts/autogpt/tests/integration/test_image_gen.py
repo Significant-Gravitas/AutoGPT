@@ -4,13 +4,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from PIL import Image
-
 from autogpt.agents.agent import Agent
 from autogpt.core.tools.builtins.image_gen import (
-    generate_image,
-    generate_image_with_sd_webui,
-)
+    generate_image, generate_image_with_sd_webui)
+from PIL import Image
 
 
 @pytest.fixture(params=[256, 512, 1024])

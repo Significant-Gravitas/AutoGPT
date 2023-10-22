@@ -1,9 +1,8 @@
 import os
 
+import forge.sdk.forge_log
 import uvicorn
 from dotenv import load_dotenv
-
-import forge.sdk.forge_log
 
 LOG = forge.sdk.forge_log.ForgeLogger(__name__)
 

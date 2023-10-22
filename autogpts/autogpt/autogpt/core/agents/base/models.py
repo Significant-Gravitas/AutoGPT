@@ -1,37 +1,41 @@
-import uuid
-from typing import Optional
 import logging
-
+import uuid
 from importlib import import_module
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
-from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration, SystemSettings
+from autogpts.autogpt.autogpt.core.configuration import (SystemConfiguration,
+                                                         SystemSettings)
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 from autogpts.autogpt.autogpt.core.plugin.simple import PluginLocation
-#from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
+
+# from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
 
 
 class BaseAgentSystems(SystemConfiguration):
-    memory :str  = "autogpt.core.memory.base.Memory"
-    workspace : str = "autogpt.core.workspace.SimpleWorkspace"
+    memory: str = "autogpt.core.memory.base.Memory"
+    workspace: str = "autogpt.core.workspace.SimpleWorkspace"
 
     class Config(SystemConfiguration.Config):
         extra = "allow"
 
     @classmethod
-    #def load_from_import_path(cls, attr) -> "Configurable":
-    def load_from_import_path(cls, system_location : str):
+    # def load_from_import_path(cls, attr) -> "Configurable":
+    def load_from_import_path(cls, system_location: str):
         """Load a plugin from an import path."""
         module_path, _, class_name = system_location.rpartition(".")
         return getattr(import_module(module_path), class_name)
 
+
 class BaseAgentConfiguration(SystemConfiguration):
-    cycle_count : int =0
-    max_task_cycle_count : int =3
-    systems: BaseAgentSystems =BaseAgentSystems()
+    cycle_count: int = 0
+    max_task_cycle_count: int = 3
+    systems: BaseAgentSystems = BaseAgentSystems()
 
     class Config(SystemConfiguration.Config):
         extra = "allow"
+
 
 class BaseAgentDirectives(dict):
     """An object that contains the basic directives for the AI prompt.

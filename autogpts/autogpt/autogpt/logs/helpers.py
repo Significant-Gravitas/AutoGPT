@@ -3,7 +3,8 @@ from typing import Any, Optional
 
 from colorama import Fore
 
-from .config import SPEECH_OUTPUT_LOGGER, USER_FRIENDLY_OUTPUT_LOGGER, _chat_plugins
+from .config import (SPEECH_OUTPUT_LOGGER, USER_FRIENDLY_OUTPUT_LOGGER,
+                     _chat_plugins)
 
 
 def user_friendly_output(

@@ -1,5 +1,4 @@
 import pytest
-
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
 

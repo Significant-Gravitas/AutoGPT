@@ -14,10 +14,11 @@ import openai
 import requests
 from PIL import Image
 
+from autogpts.AFAAS.app.lib.tasks import Task
 from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-from autogpts.AFAAS.app.lib.tasks import Task
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +59,9 @@ def generate_image(prompt: str, agent: BaseAgent, size: int = 256) -> str:
     return "No Image Provider Set"
 
 
-def generate_image_with_hf(prompt: str, filename: str, task : Task, agent: BaseAgent) -> str:
+def generate_image_with_hf(
+    prompt: str, filename: str, task: Task, agent: BaseAgent
+) -> str:
     """Generate an image with HuggingFace's API.
 
     Args:

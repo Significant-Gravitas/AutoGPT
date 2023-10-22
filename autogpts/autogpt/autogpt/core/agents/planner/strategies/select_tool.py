@@ -1,47 +1,34 @@
 from __future__ import annotations
 
-import uuid
 import enum
 import json
 import platform
 import re
+import uuid
 from logging import Logger
 from typing import TYPE_CHECKING, Callable, Optional
 
-
 import distro
 
-from autogpts.autogpt.autogpt.core.agents.base.agent_directives import BaseAgentDirectives
+from autogpts.autogpt.autogpt.core.agents.base.agent_directives import \
+    BaseAgentDirectives
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.planner import PlannerAgent
 
 
 # prompting
-from autogpts.autogpt.autogpt.core.prompting.base import LanguageModelClassification, RESPONSE_SCHEMA
-from autogpts.autogpt.autogpt.core.prompting.planningstrategies import (
-    PlanningPromptStrategiesConfiguration,
-    PlanningPromptStrategy,
-)
-
-from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict,
-    ChatMessage,
-    CompletionModelFunction,
-    OpenAIProvider,
-    ChatPrompt,
-)
-
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-
-from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
-    json_loads,
-    to_numbered_list,
-    to_string_list,
-    indent,
-)
-
 from autogpts.AFAAS.app.lib.action_history import Episode
+from autogpts.autogpt.autogpt.core.prompting.base import (
+    RESPONSE_SCHEMA, LanguageModelClassification)
+from autogpts.autogpt.autogpt.core.prompting.planningstrategies import (
+    PlanningPromptStrategiesConfiguration, PlanningPromptStrategy)
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
+    indent, json_loads, to_numbered_list, to_string_list)
+from autogpts.autogpt.autogpt.core.resource.model_providers import (
+    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction,
+    OpenAIProvider)
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
 class ThinkStrategyFunctionNames(str, enum.Enum):
@@ -61,7 +48,9 @@ class SelectToolStrategyConfiguration(PlanningPromptStrategiesConfiguration):
 ### STRATEGY
 ####
 class SelectToolStrategy(PlanningPromptStrategy):
-    default_configuration: SelectToolStrategyConfiguration = SelectToolStrategyConfiguration()
+    default_configuration: SelectToolStrategyConfiguration = (
+        SelectToolStrategyConfiguration()
+    )
     STRATEGY_NAME = "select_tool"
 
     def __init__(
@@ -238,8 +227,8 @@ class SelectToolStrategy(PlanningPromptStrategy):
     def parse_response_content(
         self,
         response_content: AssistantChatMessageDict,
-    )   -> dict:
-        return self.default_parse_response_content(response_content )
+    ) -> dict:
+        return self.default_parse_response_content(response_content)
 
     def save(self):
         pass

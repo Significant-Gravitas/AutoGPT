@@ -1,8 +1,7 @@
 import logging
 
-from colorama import Style
-
 from autogpt.core.runner.client_lib.logging import FancyConsoleFormatter
+from colorama import Style
 
 from .utils import remove_color_codes
 

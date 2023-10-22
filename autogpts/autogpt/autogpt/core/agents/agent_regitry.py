@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-
 import importlib
 import inspect
 import logging
 from logging import Logger
 from typing import TYPE_CHECKING, Any, Iterator
-
 
 if TYPE_CHECKING:
     from .base import BaseAgent

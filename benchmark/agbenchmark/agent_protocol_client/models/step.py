@@ -19,9 +19,9 @@ import pprint
 import re  # noqa: F401
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field, StrictBool, StrictStr, conlist, validator
-
 from agbenchmark.agent_protocol_client.models.artifact import Artifact
+from pydantic import (BaseModel, Field, StrictBool, StrictStr, conlist,
+                      validator)
 
 
 class Step(BaseModel):

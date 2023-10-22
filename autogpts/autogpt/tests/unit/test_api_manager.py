@@ -1,13 +1,10 @@
 from unittest.mock import patch
 
 import pytest
-from pytest_mock import MockerFixture
-
-from autogpt.core.resource.model_providers import (
-    OPEN_AI_CHAT_MODELS,
-    OPEN_AI_EMBEDDING_MODELS,
-)
+from autogpt.core.resource.model_providers import (OPEN_AI_CHAT_MODELS,
+                                                   OPEN_AI_EMBEDDING_MODELS)
 from autogpt.llm.api_manager import ApiManager
+from pytest_mock import MockerFixture
 
 api_manager = ApiManager()
 

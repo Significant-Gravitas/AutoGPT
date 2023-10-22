@@ -8,16 +8,15 @@ import re
 from io import TextIOWrapper
 from pathlib import Path
 
-import pytest
-from pytest_mock import MockerFixture
-
 import autogpt.core.tools.builtins.file_operations as file_ops
+import pytest
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.config import Config
 from autogpt.file_workspace import FileWorkspace
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
+from pytest_mock import MockerFixture
 
 
 @pytest.fixture()

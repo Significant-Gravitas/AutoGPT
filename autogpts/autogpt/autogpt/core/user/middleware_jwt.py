@@ -1,17 +1,20 @@
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
+from starlette.middleware.base import (BaseHTTPMiddleware,
+                                       RequestResponseEndpoint)
+
 from autogpts.autogpt.autogpt.core.user.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/user/login")
 
 from fastapi import HTTPException, Request
-from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
+from starlette.middleware.base import (BaseHTTPMiddleware,
+                                       RequestResponseEndpoint)
 
 
 class JWTAuthenticationMiddleware(BaseHTTPMiddleware):

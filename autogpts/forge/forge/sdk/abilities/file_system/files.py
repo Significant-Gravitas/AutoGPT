@@ -2,6 +2,7 @@ from typing import List
 
 from ..registry import ability
 
+
 @ability(
     name="list_files",
     description="List files in a directory",

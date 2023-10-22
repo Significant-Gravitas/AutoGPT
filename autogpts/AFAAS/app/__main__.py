@@ -1,5 +1,6 @@
-import uvicorn
 import app.sdk.forge_log
+import uvicorn
+
 LOG = app.sdk.forge_log.ForgeLogger(__name__)
 
 
@@ -17,10 +18,8 @@ logo = """\n\n
   \n\n"""
 
 
-
 if __name__ == "__main__":
-    from api import api , port 
+    from api import api, port
+
     print(logo)
-    uvicorn.run(
-        "api:api", host="localhost", port=port, log_level="error", reload=True
-    )
+    uvicorn.run("api:api", host="localhost", port=port, log_level="error", reload=True)

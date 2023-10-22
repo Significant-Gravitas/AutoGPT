@@ -1,6 +1,7 @@
 import logging
 
-from .config import BelowLevelFilter, FancyConsoleFormatter, configure_root_logger
+from .config import (BelowLevelFilter, FancyConsoleFormatter,
+                     configure_root_logger)
 from .helpers import dump_prompt
 
 

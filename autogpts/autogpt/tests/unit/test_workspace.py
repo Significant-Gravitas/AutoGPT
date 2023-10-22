@@ -2,7 +2,6 @@ import itertools
 from pathlib import Path
 
 import pytest
-
 from autogpt.file_workspace import FileWorkspace
 
 _WORKSPACE_ROOT = Path("home/users/monty/auto_gpt_workspace")

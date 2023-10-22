@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
 from logging import Logger
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ..main import BaseAgent
-    from autogpts.autogpt.autogpt.core.tools.base import BaseToolsRegistry
-
-    from autogpts.autogpt.autogpt.core.tools.tools import Tool
     from autogpts.AFAAS.app.lib.plan import Plan
-
-    from autogpts.autogpt.autogpt.core.resource.model_providers import CompletionModelFunction
     from autogpts.autogpt.autogpt.core.memory.table import AbstractTable
+    from autogpts.autogpt.autogpt.core.resource.model_providers import \
+        CompletionModelFunction
+    from autogpts.autogpt.autogpt.core.tools.base import BaseToolsRegistry
+    from autogpts.autogpt.autogpt.core.tools.tools import Tool
+
+    from ..main import BaseAgent
 
 
 class AgentMixin:
@@ -61,6 +61,6 @@ class AgentMixin:
 
     def plan(self) -> Plan:
         return self._agent.plan
-    
-    def get_table(self,table_name : str ) -> AbstractTable :
+
+    def get_table(self, table_name: str) -> AbstractTable:
         return self._agent._memory.get_table(table_name=table_name)

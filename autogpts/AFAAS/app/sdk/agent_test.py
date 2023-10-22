@@ -2,7 +2,7 @@ import pytest
 
 from .agent import Agent
 from .db import AgentDB
-from .schema import TaskRequestBody, Agent, AgentListResponse, AgentRequestBody
+from .schema import Agent, AgentListResponse, AgentRequestBody, TaskRequestBody
 from .workspace import LocalWorkspace
 
 

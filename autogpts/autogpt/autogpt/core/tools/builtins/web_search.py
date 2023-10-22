@@ -12,15 +12,15 @@ from itertools import islice
 from duckduckgo_search import DDGS
 
 from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
-from autogpts.autogpt.autogpt.core.utils.exceptions import ConfigurationError
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
+from autogpts.autogpt.autogpt.core.utils.exceptions import ConfigurationError
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 
 @tool(
-    name = "web_search",
+    name="web_search",
     description="Searches the web",
     parameters={
         "query": JSONSchema(
@@ -41,11 +41,13 @@ def web_search(query: str, agent: BaseAgent, num_results: int = 8) -> str:
     Returns:
         str: The results of the search.
     """
-    print("""TODO : Merge with query language model in a 4 steps tools : 
+    print(
+        """TODO : Merge with query language model in a 4 steps tools : 
         1. query_llm
         2. check llm retult sanity
         3. if not sane search_web
-        4. send results to LLM to formal with original extra arguments""")
+        4. send results to LLM to formal with original extra arguments"""
+    )
     search_results = []
     attempts = 0
 
@@ -101,11 +103,13 @@ def google(query: str, agent: BaseAgent, num_results: int = 8) -> str | list[str
         str: The results of the search.
     """
 
-    print("""TODO : Merge with query language model in a 4 steps tools : 
+    print(
+        """TODO : Merge with query language model in a 4 steps tools : 
         1. query_llm
         2. check llm retult sanity
         3. if not sane search_web
-        4. send results to LLM to formal with original extra arguments""")
+        4. send results to LLM to formal with original extra arguments"""
+    )
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
 
@@ -161,11 +165,13 @@ def safe_google_results(results: str | list) -> str:
         str: The results of the search.
     """
 
-    print("""TODO : Merge with query language model in a 4 steps tools : 
+    print(
+        """TODO : Merge with query language model in a 4 steps tools : 
         1. query_llm
         2. check llm retult sanity
         3. if not sane search_web
-        4. send results to LLM to formal with original extra arguments""")
+        4. send results to LLM to formal with original extra arguments"""
+    )
     if isinstance(results, list):
         safe_message = json.dumps(
             [result.encode("utf-8", "ignore").decode("utf-8") for result in results]

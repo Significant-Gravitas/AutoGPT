@@ -1,21 +1,19 @@
 # Import necessary libraries and modules from the afaas framework and other packages.
-from autogpt.core.agents.base import BaseAgent, Configurable
-from autogpt.core.agents.usercontext.loop import (
-    UserContextLoop,
-)  # Import the UserContextLoop or your custom loop
-from autogpt.core.agents.usercontext.system import (
-    MyCustomAgentSystemSettings,
-)  # Import system settings
-from autogpt.core.agents.usercontext.configuration import (
-    MyCustomAgentConfiguration,
-)  # Import configuration
-from autogpt.core.memory import Memory
-from autogpt.core.workspace import SimpleWorkspace
-from autogpt.core.planning import SimplePlanner
-from autogpt.core.resource.model_providers.openai import OpenAIProvider
-from typing import Callable, Awaitable
 import logging
 import uuid
+from typing import Awaitable, Callable
+
+from autogpt.core.agents.base import BaseAgent, Configurable
+from autogpt.core.agents.usercontext.configuration import \
+    MyCustomAgentConfiguration  # Import configuration
+from autogpt.core.agents.usercontext.loop import \
+    UserContextLoop  # Import the UserContextLoop or your custom loop
+from autogpt.core.agents.usercontext.system import \
+    MyCustomAgentSystemSettings  # Import system settings
+from autogpt.core.memory import Memory
+from autogpt.core.planning import SimplePlanner
+from autogpt.core.resource.model_providers.openai import OpenAIProvider
+from autogpt.core.workspace import SimpleWorkspace
 
 
 # Define your custom agent class. The class name should reflect its purpose.

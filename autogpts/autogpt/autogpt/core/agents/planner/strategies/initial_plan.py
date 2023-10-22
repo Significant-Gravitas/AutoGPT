@@ -1,36 +1,21 @@
-from logging import Logger
-import uuid
 import enum
+import uuid
+from logging import Logger
 from typing import Optional
+
 from pydantic import BaseModel
 
-from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration, UserConfigurable
-
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-
-from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
-    json_loads,
-    to_numbered_list,
-    to_string_list,
-)
+from autogpts.AFAAS.app.lib import Task, TaskType
+from autogpts.autogpt.autogpt.core.configuration import (SystemConfiguration,
+                                                         UserConfigurable)
 from autogpts.autogpt.autogpt.core.prompting.base import (
-    BasePromptStrategy,
-    PromptStrategiesConfiguration,
-)
-from autogpts.autogpt.autogpt.core.prompting.base import LanguageModelClassification, RESPONSE_SCHEMA
-
+    RESPONSE_SCHEMA, BasePromptStrategy, LanguageModelClassification,
+    PromptStrategiesConfiguration)
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
+    json_loads, to_numbered_list, to_string_list)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    CompletionModelFunction,
-    ChatMessage,
-    AssistantChatMessageDict,
-    ChatPrompt,
-)
-
-
-from autogpts.AFAAS.app.lib import (
-    Task,
-    TaskType,
-)
+    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
 class InitialPlanFunctionNames(str, enum.Enum):
@@ -44,6 +29,7 @@ class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
     default_function_call: InitialPlanFunctionNames = (
         InitialPlanFunctionNames.INITIAL_PLAN
     )
+
 
 class InitialPlanStrategy(BasePromptStrategy):
     default_configuration = InitialPlanStrategyConfiguration()
@@ -88,7 +74,7 @@ class InitialPlanStrategy(BasePromptStrategy):
                         "task_goal": JSONSchema(
                             type=JSONSchema.Type.STRING,
                             description="The main goal or purpose of the task.",
-                            ),
+                        ),
                         "long_description": JSONSchema(
                             type=JSONSchema.Type.STRING,
                             description="A detailed description of the task.",
@@ -115,11 +101,11 @@ class InitialPlanStrategy(BasePromptStrategy):
         logger: Logger,
         model_classification: LanguageModelClassification,
         default_function_call: InitialPlanFunctionNames,
-        temperature : float , #if coding 0.05
-        top_p: Optional[float] ,
-        max_tokens : Optional[int] ,
-        frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
-        presence_penalty : Optional[float], # Avoid certain subjects
+        temperature: float,  # if coding 0.05
+        top_p: Optional[float],
+        max_tokens: Optional[int],
+        frequency_penalty: Optional[float],  # Avoid repeting oneselfif coding 0.3
+        presence_penalty: Optional[float],  # Avoid certain subjects
     ):
         self._logger = logger
         self._model_classification = model_classification

@@ -2,7 +2,6 @@ import hashlib
 import shutil
 
 import pytest
-
 from forge.sdk.memory.memstore import ChromaMemStore
 
 

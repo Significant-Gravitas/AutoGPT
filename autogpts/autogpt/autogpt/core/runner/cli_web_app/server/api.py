@@ -22,27 +22,20 @@ AP alias /agent/tasks/{agent_id} (GET): Get an agent from its ID & return an age
 """
 import uuid
 from pathlib import Path
+
 import yaml
 from fastapi import APIRouter, FastAPI, Request
-from autogpts.autogpt.autogpt.core.runner.client_lib.shared_click_commands import (
-    DEFAULT_SETTINGS_FILE,
-    make_settings,
-)
 
-from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.schema import AgentMessageRequestBody
-from autogpts.autogpt.autogpt.core.runner.client_lib.workspacebuilder import (
-    workspace_loader,
-    get_settings_from_file,
-    get_logger_and_workspace,
-)
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
+from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.schema import \
+    AgentMessageRequestBody
 from autogpts.autogpt.autogpt.core.runner.client_lib.parser import (
-    parse_agent_name_and_goals,
-    parse_ability_result,
-    parse_agent_plan,
-    parse_next_tool,
-)
-
+    parse_ability_result, parse_agent_name_and_goals, parse_agent_plan,
+    parse_next_tool)
+from autogpts.autogpt.autogpt.core.runner.client_lib.shared_click_commands import (
+    DEFAULT_SETTINGS_FILE, make_settings)
+from autogpts.autogpt.autogpt.core.runner.client_lib.workspacebuilder import (
+    get_logger_and_workspace, get_settings_from_file, workspace_loader)
 
 router = APIRouter()
 

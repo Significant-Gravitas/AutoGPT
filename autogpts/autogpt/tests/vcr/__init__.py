@@ -6,12 +6,8 @@ import openai.api_requestor
 import pytest
 from pytest_mock import MockerFixture
 
-from .vcr_filter import (
-    PROXY,
-    before_record_request,
-    before_record_response,
-    freeze_request_body,
-)
+from .vcr_filter import (PROXY, before_record_request, before_record_response,
+                         freeze_request_body)
 
 DEFAULT_RECORD_MODE = "new_episodes"
 BASE_VCR_CONFIG = {

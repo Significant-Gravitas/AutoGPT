@@ -4,13 +4,8 @@ from collections import defaultdict, deque
 from pathlib import Path
 
 import httpx
-
-from agbenchmark.agent_protocol_client import (
-    AgentApi,
-    ApiClient,
-    ApiException,
-    Configuration,
-)
+from agbenchmark.agent_protocol_client import (AgentApi, ApiClient,
+                                               ApiException, Configuration)
 from agbenchmark.reports.processing.report_types_v2 import BenchmarkRun
 from agbenchmark.schema import TaskEvalRequestBody
 from agbenchmark.utils.utils import write_pretty_json
@@ -23,15 +18,13 @@ import sys
 from typing import Any, Optional
 
 import psutil
-from fastapi import APIRouter, FastAPI
-from fastapi import (
-    HTTPException as FastAPIHTTPException,  # Import HTTPException from FastAPI
-)
-from fastapi import Request, Response
-from fastapi.middleware.cors import CORSMiddleware
-
 from agbenchmark.execute_sub_process import execute_subprocess
 from agbenchmark.schema import Task, TaskRequestBody
+from fastapi import APIRouter, FastAPI
+from fastapi import \
+    HTTPException as FastAPIHTTPException  # Import HTTPException from FastAPI
+from fastapi import Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import FastAPI
@@ -332,7 +325,8 @@ async def proxy(request: Request, task_id: str):
 @router.post("/agent/tasks/{task_id}/evaluations")
 async def create_evaluation(task_id: str) -> deque:
     from agbenchmark.__main__ import TEMP_FOLDER_ABS_PATH
-    from agbenchmark.agent_api_interface import copy_agent_artifacts_into_temp_folder
+    from agbenchmark.agent_api_interface import \
+        copy_agent_artifacts_into_temp_folder
     from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
     from agbenchmark.generate_test import create_challenge
 

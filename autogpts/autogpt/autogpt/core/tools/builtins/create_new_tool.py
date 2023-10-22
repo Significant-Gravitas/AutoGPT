@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 import logging
 
+from autogpts.autogpt.autogpt.core.plugin.simple import (PluginLocation,
+                                                         PluginStorageFormat)
 # from typing import TYPE_CHECKING
 # if TYPE_CHECKING:
 from autogpts.autogpt.autogpt.core.tools.base import Tool, ToolConfiguration
 from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
-from autogpts.autogpt.autogpt.core.plugin.simple import PluginLocation, PluginStorageFormat
 
 
 class CreateNewTool(Tool):

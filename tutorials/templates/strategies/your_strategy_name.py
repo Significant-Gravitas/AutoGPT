@@ -1,10 +1,8 @@
 # Import necessary libraries and modules from the afaas framework and other packages.
-from autogpt.core.prompting.base import (
-    BasePromptStrategy,
-    PromptStrategiesConfiguration,
-)
-from autogpt.core.core.resource.model_providers.chat_schema import ChatPrompt
 from autogpt.core.core.resource.model_providers import ChatModelResponse
+from autogpt.core.core.resource.model_providers.chat_schema import ChatPrompt
+from autogpt.core.prompting.base import (BasePromptStrategy,
+                                         PromptStrategiesConfiguration)
 from pydantic import BaseModel
 
 

@@ -2,18 +2,12 @@ import logging
 
 from autogpt.config import AIDirectives, AIProfile, Config
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.prompting import (
-    ChatPrompt,
-    LanguageModelClassification,
-    PromptStrategy,
-)
+from autogpt.core.prompting import (ChatPrompt, LanguageModelClassification,
+                                    PromptStrategy)
 from autogpt.core.prompting.utils import json_loads
 from autogpt.core.resource.model_providers.schema import (
-    AssistantChatMessageDict,
-    ChatMessage,
-    ChatModelProvider,
-    CompletionModelFunction,
-)
+    AssistantChatMessageDict, ChatMessage, ChatModelProvider,
+    CompletionModelFunction)
 from autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)

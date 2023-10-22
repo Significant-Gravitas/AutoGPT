@@ -49,28 +49,17 @@ Examples:
     Role.USER Calculate the sum of 5 and 3.
 """
 
-import enum
 import abc
-from pydantic import BaseModel, Field
-from typing import (
-    Any,
-    Optional,
-    List,
-    Union,
-    TypedDict,
-    Dict,
-    TypeVar,
-    Generic,
-    Callable,
-)
+import enum
+from typing import (Any, Callable, Dict, Generic, List, Optional, TypedDict,
+                    TypeVar, Union)
 
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
+from pydantic import BaseModel, Field
+
 from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
-    BaseModelResponse,
-    AbstractModelProvider,
-    ModelProviderService,
-    BaseModelInfo,
-)
+    AbstractModelProvider, BaseModelInfo, BaseModelResponse,
+    ModelProviderService)
+from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
 class Role(str, enum.Enum):

@@ -7,16 +7,18 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
+import autogpt
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
+from autogpt.plugins.plugins_config import PluginsConfig
+from autogpt.speech import TTSConfig
 from colorama import Fore
 from pydantic import Field, validator
 
-import autogpt
-from autogpts.autogpt.autogpt.core.configuration.schema import Configurable, SystemSettings
-from autogpts.autogpt.autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS
-from autogpt.plugins.plugins_config import PluginsConfig
-from autogpt.speech import TTSConfig
+from autogpts.autogpt.autogpt.core.configuration.schema import (Configurable,
+                                                                SystemSettings)
+from autogpts.autogpt.autogpt.core.resource.model_providers.openai import \
+    OPEN_AI_CHAT_MODELS
 
 PROJECT_ROOT = Path(autogpt.__file__).parent.parent
 AI_SETTINGS_FILE = Path("ai_settings.yaml")

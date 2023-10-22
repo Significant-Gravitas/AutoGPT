@@ -1,5 +1,4 @@
 import pytest
-
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.config import AIProfile, Config
 from autogpt.memory.vector import get_memory

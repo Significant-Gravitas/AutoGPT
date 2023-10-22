@@ -1,25 +1,16 @@
 from __future__ import annotations
 
 import abc
-import uuid
 import datetime
-from pathlib import Path
+import uuid
 from enum import Enum
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    TypedDict,
-    Union,
-)
+from pathlib import Path
+from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Literal,
+                    Optional, TypedDict, Union)
 
 from pydantic import BaseModel
-from ..base import AbstractTable
 
+from ..base import AbstractTable
 
 
 class BaseSQLTable(AbstractTable):
@@ -31,4 +22,3 @@ class BaseSQLTable(AbstractTable):
         value["id"] = id
         self.memory.add(key=id, value=value, table_name=self.table_name)
         return id
-

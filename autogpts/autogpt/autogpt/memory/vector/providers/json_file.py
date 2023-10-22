@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Iterator
 
 import orjson
-
 from autogpt.config import Config
 
 from ..memory_item import MemoryItem

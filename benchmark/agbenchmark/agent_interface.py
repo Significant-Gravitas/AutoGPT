@@ -3,9 +3,8 @@ import shutil
 import sys
 from typing import List
 
-from dotenv import load_dotenv
-
 from agbenchmark.execute_sub_process import execute_subprocess
+from dotenv import load_dotenv
 
 load_dotenv()
 

@@ -1,10 +1,9 @@
 # Import necessary libraries, modules and classes.
-from autogpt.core.prompting.base import (
-    PromptStrategiesConfiguration,
-    BasePromptStrategy,
-    PromptStrategy,
-)
 from logging import Logger
+
+from autogpt.core.prompting.base import (BasePromptStrategy,
+                                         PromptStrategiesConfiguration,
+                                         PromptStrategy)
 
 # Import your custom strategy class from the respective file.
 from .your_strategy_name import YourStrategyName, YourStrategyNameConfiguration

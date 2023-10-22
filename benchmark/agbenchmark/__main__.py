@@ -9,12 +9,11 @@ from typing import Any, Optional
 import click
 import pytest
 import toml
-from dotenv import load_dotenv
-from helicone.lock import HeliconeLockManager
-
 from agbenchmark.app import app
 from agbenchmark.reports.ReportManager import SingletonReportManager
 from agbenchmark.utils.data_types import AgentBenchmarkConfig
+from dotenv import load_dotenv
+from helicone.lock import HeliconeLockManager
 
 load_dotenv()
 

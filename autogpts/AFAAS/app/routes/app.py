@@ -1,8 +1,7 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter,  Response
-
+from fastapi import APIRouter, Response
 
 app_router = APIRouter()
 
@@ -21,4 +20,3 @@ async def check_server_status():
     Check if the server is running.
     """
     return Response(content="Server is running.", status_code=200)
-

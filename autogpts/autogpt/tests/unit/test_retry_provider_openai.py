@@ -1,10 +1,9 @@
 import logging
 
 import pytest
-from openai.error import APIError, RateLimitError, ServiceUnavailableError
-
 from autogpt.llm.providers import openai
 from autogpt.logs.config import USER_FRIENDLY_OUTPUT_LOGGER
+from openai.error import APIError, RateLimitError, ServiceUnavailableError
 
 
 @pytest.fixture(params=[RateLimitError, ServiceUnavailableError, APIError])

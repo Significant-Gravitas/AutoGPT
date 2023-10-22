@@ -1,40 +1,41 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-from typing import Union, Optional, List , TYPE_CHECKING
-from logging import Logger
 import uuid
+from logging import Logger
+from typing import TYPE_CHECKING, List, Optional, Union
+
+from pydantic import BaseModel, Field
 
 from .tasks import Task
 
 logger = Logger(name=__name__)
 
-from autogpts.autogpt.autogpt.core.configuration import (
-    AFAASModel,
-)
+from autogpts.autogpt.autogpt.core.configuration import AFAASModel
+
 
 class Plan(AFAASModel):
     """
     Represents a plan consisting of a list of tasks.
     """
-    plan_id : str = 'PL' + str(uuid.uuid4())
+
+    plan_id: str = "PL" + str(uuid.uuid4())
     # def _get_tasks_from_db(self):
     #     return Task.get_from_db(self.plan_id)
     # tasks: list[Task] =  Field(default_factory=_get_tasks_from_db)
     tasks: list[Task] = []
 
-    def add_tasks(self , tasks = list[Task], position : int = None) : 
-        if position is not None :
-            for tasks in tasks : 
+    def add_tasks(self, tasks=list[Task], position: int = None):
+        if position is not None:
+            for tasks in tasks:
                 self.tasks.insert(tasks, position)
-        else: 
-            for tasks in tasks : 
+        else:
+            for tasks in tasks:
                 self.tasks.append(tasks)
 
-    # def add_task(self , task = list[Task], position : int = None) : 
+    # def add_task(self , task = list[Task], position : int = None) :
     #     if position is not None :
     #         self.tasks.insert(task, position)
-    #     else : 
+    #     else :
     #         self.tasks.append(task)
 
     def dump(self, depth=0) -> dict:

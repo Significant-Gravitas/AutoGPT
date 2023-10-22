@@ -3,7 +3,6 @@ from contextlib import suppress
 from typing import Any, Sequence, overload
 
 import numpy as np
-
 from autogpt.config import Config
 
 logger = logging.getLogger(__name__)

@@ -1,7 +1,9 @@
 # Import necessary libraries and modules from the afaas framework and other packages.
+from typing import Awaitable, Callable
+
 from autogpt.core.agents.base import BaseAgent, BaseLoop
-from autogpt.core.prompting.base import PromptStrategiesConfiguration, LoophooksDict
-from typing import Callable, Awaitable
+from autogpt.core.prompting.base import (LoophooksDict,
+                                         PromptStrategiesConfiguration)
 
 
 # Define your custom loop class. The class name should reflect its purpose.

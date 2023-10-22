@@ -11,22 +11,18 @@ if TYPE_CHECKING:
     from autogpt.memory.vector import VectorMemory
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.agents.utils.exceptions import AgentException, InvalidAgentResponseError
-from autogpt.json_utils.utilities import extract_dict_from_response, validate_dict
+from autogpt.agents.utils.exceptions import (AgentException,
+                                             InvalidAgentResponseError)
+from autogpt.json_utils.utilities import (extract_dict_from_response,
+                                          validate_dict)
 from autogpt.llm.base import Message
 from autogpt.llm.utils import count_string_tokens
-from autogpt.logs.log_cycle import (
-    CURRENT_CONTEXT_FILE_NAME,
-    NEXT_ACTION_FILE_NAME,
-    USER_INPUT_FILE_NAME,
-    LogCycleHandler,
-)
-from autogpt.models.action_history import (
-    ActionErrorResult,
-    ActionInterruptedByHuman,
-    ActionResult,
-    ActionSuccessResult,
-)
+from autogpt.logs.log_cycle import (CURRENT_CONTEXT_FILE_NAME,
+                                    NEXT_ACTION_FILE_NAME,
+                                    USER_INPUT_FILE_NAME, LogCycleHandler)
+from autogpt.models.action_history import (ActionErrorResult,
+                                           ActionInterruptedByHuman,
+                                           ActionResult, ActionSuccessResult)
 from autogpt.models.context_item import ContextItem
 
 from .agent import execute_command, extract_command

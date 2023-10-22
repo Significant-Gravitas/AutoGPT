@@ -1,10 +1,11 @@
+from fastapi import BackgroundTasks, FastAPI
 from fastapi.responses import JSONResponse
-from fastapi import FastAPI, BackgroundTasks
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
-from autogpts.autogpt.autogpt.core.user.middleware_jwt import JWTAuthenticationMiddleware
-from autogpts.autogpt.autogpt.core.user.user import UserLogin
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema
 from firebase_admin import auth
 
+from autogpts.autogpt.autogpt.core.user.middleware_jwt import \
+    JWTAuthenticationMiddleware
+from autogpts.autogpt.autogpt.core.user.user import UserLogin
 
 app = FastAPI()
 # bypass_routes = ["/user/login", "/user/register"]

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 import logging
 import os
-import yaml
-from pydantic import BaseModel
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+import yaml
 from autogpt.logs.helpers import request_user_double_check
 from autogpt.utils import validate_yaml_file
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -86,4 +86,3 @@ class BaseAgentDirectives(BaseModel):
             constraints=self.constraints + other.constraints,
             best_practices=self.best_practices + other.best_practices,
         ).copy(deep=True)
-

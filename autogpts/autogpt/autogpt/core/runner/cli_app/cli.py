@@ -8,7 +8,8 @@ from autogpts.autogpt.autogpt.core.runner.cli_app.main import run_auto_gpt
 #     DEFAULT_SETTINGS_FILE,
 #     make_settings,
 # )
-from autogpts.autogpt.autogpt.core.runner.client_lib.utils import coroutine, handle_exceptions
+from autogpts.autogpt.autogpt.core.runner.client_lib.utils import (
+    coroutine, handle_exceptions)
 
 
 @click.group()
@@ -32,7 +33,7 @@ def autogpt():
     help="Drop into a debugger if an error is raised.",
 )
 @coroutine
-async def run( pdb: bool) -> None:
+async def run(pdb: bool) -> None:
     """Run the Auto-GPT agent."""
     click.echo("Running Auto-GPT agent...")
     # settings_file = Path(settings_file)

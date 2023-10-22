@@ -1,23 +1,22 @@
+import app.sdk.forge_log
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-
-import app.sdk.forge_log
 LOG = app.sdk.forge_log.ForgeLogger(__name__)
+
 
 class UserIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        
-        request.state.user_id = "a1621e69-970a-4340-86e7-778d82e2137b" 
+        request.state.user_id = "a1621e69-970a-4340-86e7-778d82e2137b"
 
-        LOG.info('Entering : UserIDMiddleware')
+        LOG.info("Entering : UserIDMiddleware")
 
         # Get the endpoint's name
         endpoint = request.scope.get("endpoint")
         endpoint_name = endpoint.__name__ if endpoint else "Unknown"
-        LOG.info('Endpoint : ' + endpoint_name )
-        LOG.info('Path : ' + request.scope.get("path"))
+        LOG.info("Endpoint : " + endpoint_name)
+        LOG.info("Path : " + request.scope.get("path"))
         LOG.info(f"Request {request.method} {request.url}")
 
         # try:
@@ -32,7 +31,8 @@ class UserIDMiddleware(BaseHTTPMiddleware):
         #     # Re-raise the exception to ensure the error propagates and is handled appropriately
         #     raise e
 
-
-        LOG.info(f"Response {request.method} {request.url} - Status: {response.status_code}")
-        LOG.info('Exiting : UserIDMiddleware')
+        LOG.info(
+            f"Response {request.method} {request.url} - Status: {response.status_code}"
+        )
+        LOG.info("Exiting : UserIDMiddleware")
         return response

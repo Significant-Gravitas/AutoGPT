@@ -1,24 +1,23 @@
 from __future__ import annotations
 
 import enum
-import uuid
-import string
-import random
 import importlib
 import pkgutil
-from typing import Optional, TYPE_CHECKING
+import random
+import string
+import uuid
+from typing import TYPE_CHECKING, Optional
+
 from pydantic import BaseModel, Field
 
+from autogpts.autogpt.autogpt.core.configuration import AFAASModel
 from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
-
-from autogpts.autogpt.autogpt.core.configuration import (
-    AFAASModel,
-)
-
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents import BaseAgent
+
     from .plan import Plan
+
 
 class TaskType(str, enum.Enum):
     """
@@ -188,16 +187,18 @@ class Task(AFAASModel):
     ###
     ### GENERAL properties
     ###
-    task_id: str = Field(default_factory=lambda: "T" + str(uuid.uuid4())) # task_id: str = Task.generate_short_id()
+    task_id: str = Field(
+        default_factory=lambda: "T" + str(uuid.uuid4())
+    )  # task_id: str = Task.generate_short_id()
     parent_task: Optional[Task]
     task_parent_id: Optional[str]
     task_predecessor_id: Optional[str]
-    #responsible_agent_id: Optional[str] = Field(default="")
-    state :  Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG.value)
+    # responsible_agent_id: Optional[str] = Field(default="")
+    state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG.value)
 
     task_goal: str
-    long_decription : Optional[str]
-    task_context : Optional[str]
+    long_decription: Optional[str]
+    task_context: Optional[str]
 
     ###
     ### Task Management properties
@@ -207,16 +208,16 @@ class Task(AFAASModel):
     acceptance_criteria: list[str]
 
     ###
-    ### Optional : Task execution properties 
+    ### Optional : Task execution properties
     ### Suggestion : for each new task always look it it can be divided in smaller tasks
     # ###
-    # if aaas : 
+    # if aaas :
     #     command : Optional[str] = Field(default="afaas_whichway")
     # else :
     #     command : Optional[str] = Field(default="afaas_make_initial_plan")
-    command : Optional[str] = Field(default="afaas_make_initial_plan")
-    arguments : Optional[dict] = Field(default={})
-    
+    command: Optional[str] = Field(default="afaas_make_initial_plan")
+    arguments: Optional[dict] = Field(default={})
+
     class Config:
         arbitrary_types_allowed = True
 

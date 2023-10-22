@@ -1,22 +1,19 @@
-import os
 import logging
+import os
 import pathlib
 from io import BytesIO
 from uuid import uuid4
-from dotenv import load_dotenv
 
-from fastapi import APIRouter, FastAPI, UploadFile, Request
+import app.sdk.forge_log
+from dotenv import load_dotenv
+from fastapi import APIRouter, FastAPI, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from routes import (AgentMiddleware, UserIDMiddleware, afaas_agent_router,
+                    afaas_artifact_router, afaas_user_router, agent_router,
+                    app_router, artifact_router, user_router)
 
-from routes import (app_router, 
-                    UserIDMiddleware, user_router, afaas_user_router,
-                    AgentMiddleware, agent_router, afaas_agent_router,
-                    artifact_router, afaas_artifact_router,             
-)
-
-import app.sdk.forge_log
 LOG = app.sdk.forge_log.ForgeLogger(__name__)
 
 port = os.getenv("PORT", 8000)
@@ -62,7 +59,6 @@ api.include_router(artifact_router, prefix="/ap/v1")
 api.include_router(afaas_artifact_router, prefix="/afaas/v1")
 
 
-
 script_dir = os.path.dirname(os.path.realpath(__file__))
 frontend_path = pathlib.Path(
     os.path.join(script_dir, "../../../frontend/build/web")
@@ -76,5 +72,6 @@ if os.path.exists(frontend_path):
         return RedirectResponse(url="/app/index.html", status_code=307)
 
 else:
-    LOG.warning(f"Frontend not found. {frontend_path} does not exist. The frontend will not be served"
+    LOG.warning(
+        f"Frontend not found. {frontend_path} does not exist. The frontend will not be served"
     )

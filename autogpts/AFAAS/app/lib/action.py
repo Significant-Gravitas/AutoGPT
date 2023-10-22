@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Iterator, Literal, Optional
 
-from autogpts.autogpt.autogpt.core.prompting.utils.utils import to_numbered_list, indent
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
+    indent, to_numbered_list)
 
 
 @dataclass
