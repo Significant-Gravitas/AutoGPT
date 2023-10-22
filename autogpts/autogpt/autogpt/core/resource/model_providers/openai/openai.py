@@ -206,6 +206,7 @@ class OpenAIProvider(
         self,
         settings: OpenAISettings,
         logger: logging.Logger,
+        agent_systems : list[Configurable],
     ):
         """
         Initialize the OpenAIProvider.

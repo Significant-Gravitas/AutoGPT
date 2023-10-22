@@ -35,6 +35,7 @@ class SimpleWorkspace(Configurable, AbstractWorkspace):
     def __init__(
         self,
         settings: Configurable.SystemSettings,
+        agent_systems : list[Configurable],
         logger: logging.Logger,
     ):
         super().__init__(settings, logger.getChild("workspace"))

@@ -157,38 +157,13 @@ class UserContextAgent(BaseAgent):
 
         return agent_settings, agent_args
 
-    """@classmethod
-    def get_agent_from_settings(
-        cls,
-        agent_settings: UserContextAgent.SystemSettings,
-        logger: logging.Logger,
-    ) -> Agent:
-        agent_settings, agent_args = super().get_agent_from_settings(
-            agent_settings=agent_settings, 
-            logger=logger
+    @classmethod
+    def get_strategies(cls)-> list :
+        from autogpts.autogpt.autogpt.core.agents.whichway.strategies import (
+            StrategiesSet,
+            StrategiesSetConfiguration,
         )
-        agent_args["chat_model_provider"] = cls._get_system_instance(
-            "chat_model_provider",
-            agent_settings,
-            logger,
-        )
-        agent_args["prompt_manager"] = cls._get_system_instance(
-            "prompt_manager",
-            agent_settings,
-            logger,
-            model_providers={"openai": agent_args["chat_model_provider"]},
-        )
-
-        # NOTE : Can't be moved to super() because require agent_args["chat_model_provider"]
-        agent_args["ability_registry"] = cls._get_system_instance(
-            "ability_registry",
-            agent_settings,
-            logger,
-            workspace=agent_args["workspace"],
-            memory=agent_args["memory"],
-            model_providers={"openai": agent_args["chat_model_provider"]},
-        )
-        return cls(**agent_args)"""
+        return StrategiesSet.get_strategies()
 
     @classmethod
     async def determine_agent_name_and_goals(

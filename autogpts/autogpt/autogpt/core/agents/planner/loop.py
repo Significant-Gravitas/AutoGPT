@@ -246,49 +246,6 @@ class PlannerLoop(BaseLoop):
 
             self.save_plan()
 
-    # async def run_user_context_agent(self):
-    #     """
-    #     Configures the user context agent based on the current agent settings and executes the user context agent.
-    #     Returns the updated agent goals.
-    #     """
-
-
-    #     # USER CONTEXT AGENT : Create Agent Settings
-    #     usercontext_settings: UserContextAgent.SystemSettings = UserContextAgent.SystemSettings()
-    #     usercontext_settings["user_id"]= self._agent.user_id,
-    #     usercontext_settings["parent_agent_id"]=  self._agent.agent_id,
-    #     usercontext_settings["agent_goals"]=  self._agent.agent_goals,
-    #     usercontext_settings["agent_goal_sentence"]=  self._agent.agent_goal_sentence,
-    #     usercontext_settings["memory"]=  self._agent._memory._settings.dict(),
-    #     usercontext_settings["workspace"]=  self._agent._workspace._settings.dict(),
-    #     usercontext_settings["chat_model_provider"]=  self._agent._chat_model_provider._settings.dict()
-
-
-    #     # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
-    #     new_user_context_agent = UserContextAgent.create_agent(
-    #         agent_settings=usercontext_settings, logger=self._agent._logger
-    #     )
-
-    #     # USER CONTEXT AGENT : Get UserContextAgent from DB (for POW / POC)
-    #     usercontext_settings.agent_id = new_user_context_agent.agent_id
-    #     user_context_agent = UserContextAgent.get_agent_from_settings(
-    #         agent_settings=usercontext_settings,
-    #         logger=self._agent._logger,
-    #     )
-
-    #     user_context_return: dict = await user_context_agent.run(
-    #         user_input_handler=self._user_input_handler,
-    #         user_message_handler=self._user_message_handler,
-    #     )
-
-    #     return (
-    #         user_context_return["agent_goal_sentence"],
-    #         user_context_return["agent_goals"],
-    #     )
-
-    # async def run_whichway_agent():
-    #     pass
-
     async def start(
         self,
         agent: PlannerAgent = None,

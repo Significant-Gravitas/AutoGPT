@@ -70,6 +70,7 @@ class PlannerAgent(BaseAgent):
         prompt_manager: PromptManager,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
+        **kwargs
     ):
         super().__init__(
             settings=settings,
@@ -128,7 +129,7 @@ class PlannerAgent(BaseAgent):
         ### 
         ### Step 5a : Create the plan
         ###
-        self.plan: Plan = Plan()
+        self.plan: Plan = Plan(user_id = user_id)
 
         # TODO: Move out of __init__, may be in PlannerAgent.run()
         ### 
@@ -237,7 +238,7 @@ class PlannerAgent(BaseAgent):
         # TODO : Continue refactorization => move to loop ?
         from autogpts.autogpt.autogpt.core.agents.planner import strategies
         from autogpts.autogpt.autogpt.core.agents.planner.strategies import (
-            Strategies,
+            StrategiesSet,
             StrategiesConfiguration,
         )
 
@@ -267,7 +268,7 @@ class PlannerAgent(BaseAgent):
 
         #     simple_strategies[strategy_name] = strategy_instance
 
-        simple_strategies = Strategies.get_strategies(logger=logger)
+        simple_strategies = StrategiesSet.get_strategies(logger=logger)
         # NOTE : Can't be moved to super() because require agent_args["chat_model_provider"]
         agent_args["prompt_manager"] = cls._get_system_instance(
             "prompt_manager",
@@ -295,6 +296,44 @@ class PlannerAgent(BaseAgent):
         #         setattr(agent, key, value)
 
         return agent_settings, agent_args
+
+
+    @classmethod
+    def get_strategies(cls)-> list:
+        # TODO : Continue refactorization => move to loop ?
+        from autogpts.autogpt.autogpt.core.agents.planner import strategies
+        from autogpts.autogpt.autogpt.core.agents.planner.strategies import (
+            StrategiesSet,
+            StrategiesConfiguration,
+        )
+        return StrategiesSet.get_strategies()
+
+        # strategies_config = SimplePromptStrategiesConfiguration(
+        #         name_and_goals=strategies.NameAndGoals.default_configuration,
+        #         initial_plan=strategies.InitialPlan.default_configuration,
+        #         next_ability=strategies.NextTool.default_configuration,)
+        # #agent_settings.prompt_manager.configuration.prompt_strategies = strategies_config
+
+        # #
+        # # Dynamicaly load all strategies
+        # # To do so Intanciate all class that inherit from PromptStrategy in package Strategy
+        # #
+        # simple_strategies = {}
+        # import inspect
+        # from  autogpt.core.agents.simple.lib.base import PromptStrategy
+        # for strategy_name, strategy_config in strategies_config.__dict__.items():
+        #     strategy_module = getattr(strategies, strategy_name)
+        #     # Filter classes that are subclasses of PromptStrategy and are defined within that module
+        #     strategy_classes = [member for name, member in inspect.getmembers(strategy_module)
+        #                         if inspect.isclass(member) and
+        #                         issubclass(member, PromptStrategy) and
+        #                         member.__module__ == strategy_module.__name__]
+        #     if not strategy_classes:
+        #         raise ValueError(f"No valid class found in module {strategy_name}")
+        #     strategy_instance = strategy_classes[0](**strategy_config.dict())
+
+        #     simple_strategies[strategy_name] = strategy_instance
+
 
     @classmethod
     async def determine_agent_name_and_goals(

@@ -17,7 +17,7 @@ class StrategiesSet:
     from autogpts.autogpt.autogpt.core.prompting.base import BasePromptStrategy, AbstractPromptStrategy
 
     @staticmethod
-    def get_strategies(logger=Logger) -> list[BasePromptStrategy]:
+    def get_strategies(logger : Logger = Logger(__name__))-> list[BasePromptStrategy]:
         return [
             RefineUserContextStrategy(
                 logger=logger, **RefineUserContextStrategy.default_configuration.dict()

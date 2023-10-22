@@ -17,11 +17,11 @@ class StrategiesConfiguration(PromptStrategiesConfiguration):
     select_tool: SelectToolStrategyConfiguration
 
 
-class Strategies:
+class StrategiesSet:
     from autogpts.autogpt.autogpt.core.prompting.base import BasePromptStrategy, AbstractPromptStrategy
 
     @staticmethod
-    def get_strategies(logger: Logger) -> list[AbstractPromptStrategy]:
+    def get_strategies(logger: Logger = Logger(__name__)) -> list[AbstractPromptStrategy]:
         return [
             InitialPlanStrategy(
                 logger=logger, **InitialPlanStrategy.default_configuration.dict()

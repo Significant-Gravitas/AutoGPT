@@ -34,12 +34,12 @@ async def afaas_whichway(task : Task, agent: BaseAgent) -> None:
     """
     try : 
         # USER CONTEXT AGENT : Create Agent Settings
-        whichway_settings: RoutingAgent.SystemSettings = RoutingAgent.SystemSettings(user_id= agent.user_id, parent_agent_id =  agent.agent_id, parent_agent=  agent)
+        whichway_settings: RoutingAgent.SystemSettings = RoutingAgent.SystemSettings(user_id= agent.user_id, parent_agent_id =  agent.agent_id, parent_agent=  agent, current_task = task)
         # whichway_settings.agent_goals=  agent.agent_goals
         # whichway_settings.agent_goal_sentence=  agent.agent_goal_sentence
         whichway_settings.memory  =  agent._memory._settings
         whichway_settings.workspace =  agent._workspace._settings
-        whichway_settings.chat_model_provider=  agent._chat_model_provider._settings
+        whichway_settings.chat_model_provider =  agent._chat_model_provider._settings
 
 
         # USER CONTEXT AGENT : Save RoutingAgent Settings in DB (for POW / POC)

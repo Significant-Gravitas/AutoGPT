@@ -1,4 +1,4 @@
-from autogpts.autogpt.autogpt.core.resource.model_providers.openai.openai import (
+from autogpts.autogpt.autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OPEN_AI_EMBEDDING_MODELS,
     OPEN_AI_MODELS,

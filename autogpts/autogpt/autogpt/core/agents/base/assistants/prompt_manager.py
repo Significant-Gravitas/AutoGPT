@@ -115,11 +115,13 @@ class PromptManager(Configurable, AgentMixin):
         self,
         settings: PromptManager.SystemSettings,
         logger: logging.Logger,
-        model_providers: dict[ModelProviderName, BaseChatModelProvider],
-        strategies: dict[str, AbstractPromptStrategy],
-        workspace: AbstractWorkspace = None,  # Workspace is not available during bootstrapping.
+        agent_systems : list[Configurable],
     ) -> None:
         super().__init__(settings=settings, logger=logger)
+        model_providers: dict[ModelProviderName, BaseChatModelProvider] = {"openai": agent_systems['chat_model_provider']} 
+        strategies: dict[str, AbstractPromptStrategy] = agent_systems['strategies']
+        workspace: AbstractWorkspace = agent_systems['workspace']
+
         self._workspace = workspace
 
         self._providers: dict[LanguageModelClassification, BaseChatModelProvider] = {}
