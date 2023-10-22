@@ -9,9 +9,11 @@ from .tasks import Task
 
 logger = Logger(name=__name__)
 
-from autogpts.autogpt.autogpt.core.configuration import SystemSettings
+from autogpts.autogpt.autogpt.core.configuration import (
+    AFAASModel,
+)
 
-class Plan(SystemSettings):
+class Plan(AFAASModel):
     """
     Represents a plan consisting of a list of tasks.
     """

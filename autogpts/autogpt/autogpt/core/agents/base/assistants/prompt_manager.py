@@ -18,7 +18,6 @@ from autogpts.autogpt.autogpt.core.configuration import (
     UserConfigurable,
 )
 
-# from autogpts.autogpt.autogpt.core.agents.simple.lib.schema import Task
 from autogpts.autogpt.autogpt.core.prompting.base import (
     BasePromptStrategy,
     AbstractPromptStrategy,

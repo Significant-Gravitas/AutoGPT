@@ -5,9 +5,12 @@ from typing import Any, Iterator, Literal, Optional
 from pydantic import BaseModel, Field
 
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import to_numbered_list, indent
+from autogpts.autogpt.autogpt.core.configuration import (
+   AFAASModel ,
+)
 
 
-class Action(BaseModel):
+class Action(AFAASModel):
     name: str
     args: dict[str, Any]
     reasoning: str
@@ -16,7 +19,7 @@ class Action(BaseModel):
         return f"{self.name}({', '.join([f'{a}={repr(v)}' for a, v in self.args.items()])})"
 
 
-class ActionSuccessResult(BaseModel):
+class ActionSuccessResult(AFAASModel):
     outputs: Any
     status: Literal["success"] = "success"
 
@@ -36,7 +39,7 @@ class ActionErrorResult(BaseModel, arbitrary_types_allowed=True):
         return f"Action failed: '{self.reason}'"
 
 
-class ActionInterruptedByHuman(BaseModel):
+class ActionInterruptedByHuman(AFAASModel):
     feedback: str
     status: Literal["interrupted_by_human"] = "interrupted_by_human"
 
@@ -47,7 +50,7 @@ class ActionInterruptedByHuman(BaseModel):
 ActionResult = ActionSuccessResult | ActionErrorResult | ActionInterruptedByHuman
 
 
-class Episode(BaseModel):
+class Episode(AFAASModel):
     action: Action
     result: ActionResult | None
 
@@ -57,7 +60,7 @@ class Episode(BaseModel):
         return executed_action + action_result
 
 
-class EpisodicActionHistory(BaseModel):
+class EpisodicActionHistory(AFAASModel):
     """Utility container for an action history"""
 
     episodes: list[Episode] = Field(default_factory=list)

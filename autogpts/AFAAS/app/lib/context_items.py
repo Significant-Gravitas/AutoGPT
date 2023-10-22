@@ -8,8 +8,11 @@ if TYPE_CHECKING:
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
+from autogpts.autogpt.autogpt.core.configuration import (
+   AFAASModel ,
+)
 
-from pydantic import BaseModel, Field
+from pydantic import  Field
 
 
 logger = logging.getLogger(__name__)
@@ -43,7 +46,7 @@ class ContextItem(ABC):
         )
 
 
-class FileContextItem(BaseModel, ContextItem):
+class FileContextItem(AFAASModel, ContextItem):
     file_path_in_workspace: Path
     workspace_path: Path
 
@@ -64,7 +67,7 @@ class FileContextItem(BaseModel, ContextItem):
         return read_textual_file(self.file_path, logger)
 
 
-class FolderContextItem(BaseModel, ContextItem):
+class FolderContextItem(AFAASModel, ContextItem):
     path_in_workspace: Path
     workspace_path: Path
 
@@ -91,7 +94,7 @@ class FolderContextItem(BaseModel, ContextItem):
         return "\n".join(items)
 
 
-class StaticContextItem(BaseModel, ContextItem):
+class StaticContextItem(AFAASModel, ContextItem):
     item_description: str = Field(alias="description")
     item_source: Optional[str] = Field(alias="source")
     item_content: str = Field(alias="content")

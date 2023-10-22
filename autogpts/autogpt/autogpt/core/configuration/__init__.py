@@ -4,4 +4,5 @@ from autogpts.autogpt.autogpt.core.configuration.schema import (
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,
+    AFAASModel
 )

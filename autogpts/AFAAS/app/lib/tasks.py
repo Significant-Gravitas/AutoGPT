@@ -11,6 +11,11 @@ from pydantic import BaseModel, Field
 
 from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
 
+from autogpts.autogpt.autogpt.core.configuration import (
+    AFAASModel,
+)
+
+
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents import BaseAgent
     from .plan import Plan
@@ -43,7 +48,7 @@ class TaskType(str, enum.Enum):
     PLAN: str = "plan"
 
 
-class TaskStatus(BaseModel):
+class TaskStatus(AFAASModel):
     """
     Model representing the status of a task.
 
@@ -131,7 +136,7 @@ class TaskStatusList(str, enum.Enum):
             return super().__eq__(other)
 
 
-class TaskContext(BaseModel):
+class TaskContext(AFAASModel):
     """
     Model representing the context of a task.
 
@@ -161,7 +166,7 @@ class TaskContext(BaseModel):
     enough_info: bool = False
 
 
-class Task(BaseModel):
+class Task(AFAASModel):
     """
     Model representing a task.
 

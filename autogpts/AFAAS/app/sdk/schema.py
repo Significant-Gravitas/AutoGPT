@@ -16,7 +16,7 @@ if TYPE_CHECKING :
     from ..routes.artifact import list_agent_artifacts , list_artifacts
 
 
-class ArtifactUpload(BaseModel):
+class ArtifactUpload(AFAASModel):
     file: str = Field(..., description="File to upload.", format="binary")
     relative_path: str = Field(
         ...,
@@ -25,7 +25,7 @@ class ArtifactUpload(BaseModel):
     )
 
 
-class Pagination(BaseModel):
+class Pagination(AFAASModel):
     total_items: int = Field(..., description="Total number of items.", example=42)
     total_pages: int = Field(..., description="Total number of pages.", example=97)
     current_page: int = Field(..., description="Current_page page number.", example=1)
@@ -43,7 +43,7 @@ class Pagination(BaseModel):
                    )
 
 
-class Artifact(BaseModel):
+class Artifact(AFAASModel):
     created_at: datetime = Field(
         ...,
         description="The creation datetime of the task.",
@@ -78,11 +78,11 @@ class Artifact(BaseModel):
     )
 
 
-class TaskOutput(BaseModel):
+class TaskOutput(AFAASModel):
     pass
 
 
-class AgentRequestBody(BaseModel):
+class AgentRequestBody(AFAASModel):
     input: str = Field(
         ...,
         min_length=1,
@@ -154,7 +154,7 @@ class Agent(AgentRequestBody):
             artifacts = [] # list_artifacts(agent= agent , agent_id= agent.agent_id )
         )
 
-class AgentListResponse(BaseModel):
+class AgentListResponse(AFAASModel):
     tasks: Optional[List[Agent]] = None
     pagination: Optional[Pagination] = None
 
@@ -183,7 +183,7 @@ class AgentListResponse(BaseModel):
 
 
 
-class TaskRequestBody(BaseModel):
+class TaskRequestBody(AFAASModel):
     name: Optional[str] = Field(
         None, description="The name of the task step.", example="Write to file"
     )
@@ -243,11 +243,11 @@ class Task(TaskRequestBody):
         ..., description="Whether this is the last step in the task.", example=True
     )
 
-class AgentTasksListResponse(BaseModel):
+class AgentTasksListResponse(AFAASModel):
     steps: Optional[List[Task]] = None
     pagination: Optional[Pagination] = None
 
 
-class AgentArtifactsListResponse(BaseModel):
+class AgentArtifactsListResponse(AFAASModel):
     artifacts: Optional[List[Artifact]] = None
     pagination: Optional[Pagination] = None

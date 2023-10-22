@@ -160,6 +160,7 @@ class BaseAgent(Configurable, AbstractAgent):
 
         class Config(SystemSettings.Config):     
             pass
+            # json_encoders = SystemSettings.Config.json_encoders + { Task : lambda v: v.dict()}
 
         def dict(self, include_all = False, *args, **kwargs):
             """
