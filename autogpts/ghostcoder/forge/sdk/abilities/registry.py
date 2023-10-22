@@ -86,6 +86,7 @@ def ability(
         )
         param_names.add("agent")
         param_names.add("task_id")
+        param_names.add("step_id")
         func_param_names = set(func_params.keys())
         if param_names != func_param_names:
             raise ValueError(
@@ -173,7 +174,7 @@ class AbilityRegister:
         return abilities_description
 
     async def run_ability(
-        self, task_id: str, ability_name: str, *args: Any, **kwds: Any
+        self, task_id: str, step_id: str, ability_name: str, *args: Any, **kwds: Any
     ) -> Any:
         """
         This method runs a specified ability with the provided arguments and keyword arguments.
@@ -183,6 +184,7 @@ class AbilityRegister:
 
         Args:
             task_id (str): The ID of the task that the ability is being run for.
+            step_id (str): The ID of the step that the ability is being run for.
             ability_name (str): The name of the ability to run.
             *args: Variable length argument list.
             **kwds: Arbitrary keyword arguments.
@@ -195,7 +197,7 @@ class AbilityRegister:
         """
         try:
             ability = self.abilities[ability_name]
-            return await ability(self.agent, task_id, *args, **kwds)
+            return await ability(self.agent, task_id, step_id,  *args, **kwds)
         except Exception:
             raise
 

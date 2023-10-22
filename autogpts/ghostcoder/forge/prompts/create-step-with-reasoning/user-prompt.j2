@@ -1,9 +1,9 @@
 Your main objective is to complete the task:
 {{ task }}
 
-{% if step %}
-The last executed step was "{{ step.name }}" with the following output:
-{{ step.output }}
+{% if step_input %}
+Input from last step:
+{{ step_input }}
 {% endif %}
 
 {% if files %}

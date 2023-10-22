@@ -26,7 +26,7 @@ DUCKDUCKGO_MAX_ATTEMPTS = 3
     ],
     output_type="list[str]",
 )
-async def web_search(agent, task_id: str, query: str) -> str:
+async def web_search(agent, task_id: str, step_id: str, query: str) -> str:
     """Return the results of a Google search
 
     Args:

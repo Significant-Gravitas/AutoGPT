@@ -128,7 +128,7 @@ You should also write tests for the implementation. Make sure to write tests for
 """
 
 FIX_TESTS_PROMPT = """You are reviewing a solution written by an inexperienced programmer. 
-The tests failed and you need to help the programmer to fix the code.
+The tests failed and you need to help the programmer to fix the code.  
 """
 
 FILE_FORMAT = """All files should be presented in the following format:
@@ -156,6 +156,7 @@ FILE_FORMAT = """All files should be presented in the following format:
 async def write_code_external(
         agent,
         task_id: str,
+        step_id: str,
         file: str) -> Tuple[bool, str]:
     return await _write_code(agent, task_id, file, job_specs=_job_specs)
 

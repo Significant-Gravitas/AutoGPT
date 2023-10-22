@@ -1,6 +1,6 @@
 from typing import Tuple, Optional
 
-from forge.sdk import ForgeLogger
+from forge.sdk import ForgeLogger, Artifact
 from forge.sdk.abilities.registry import ability
 from ghostcoder.codeblocks import create_parser, CodeBlockType
 from ghostcoder.filerepository import FileRepository
@@ -17,7 +17,10 @@ smart_llm_name = "gpt-4"
 basic_llm_name = "gpt-3.5-turbo"
 
 DEFAULT_PROMPT = """You're tasked to write an implementation based on the provided task. 
-You should also write tests for the implementation. Make sure to write tests for all requirements.
+You should also write tests for the implementation that will be run with pytest. 
+Make sure to write tests for all requirements.
+Just verify one test scenario in each test method.
+All files should be presented in the following format:
 """
 
 FIX_TESTS_PROMPT = """You are reviewing a solution written by an inexperienced programmer. 
@@ -42,12 +45,6 @@ FILE_FORMAT = """All files should be presented in the following format:
             "description": "File path to the file that should be updated or created.",
             "type": "string",
             "required": True,
-        },
-        {
-            "name": "instructions",
-            "description": "Instruction on what to fix",
-            "type": "string",
-            "required": True,
         }
     ],
     output_type="string",
@@ -55,9 +52,9 @@ FILE_FORMAT = """All files should be presented in the following format:
 async def fix_code(
         agent,
         task_id: str,
-        instructions: str,
-        file: str) -> Tuple[bool, str]:
-    return await _write_code(agent, task_id, file, instructions)
+        step_id: str,
+        file: str) -> str:
+    return await _write_code(agent, task_id, step_id, file, fix_code_mode=True)
 
 
 @ability(
@@ -77,19 +74,22 @@ async def fix_code(
 async def write_code(
         agent,
         task_id: str,
-        file: str) -> Tuple[bool, str]:
-    return await _write_code(agent, task_id, file)
+        step_id: str,
+        file: str) -> str:
+    return await _write_code(agent, task_id, step_id, file)
 
 
 async def _write_code(
         agent,
         task_id: str,
+        step_id: str,
         file: str,
-        fix_code_instructions: str = None,
+        fix_code_mode: bool = False,
         retry: int = 0
-) -> Tuple[bool, str]:
+) -> str:
     logger.info(f"Writing code in {file} for task {task_id}, retry {retry}")
     task = await agent.db.get_task(task_id)
+    step = await agent.db.get_step(task_id, step_id)
     repo_dir = agent.workspace.base_path / task_id
     llm = create_openai_client(log_dir=repo_dir / ".prompt_log",
                                llm_name=smart_llm_name,
@@ -98,7 +98,7 @@ async def _write_code(
 
     repository = FileRepository(repo_path=repo_dir, use_git=False)
 
-    if fix_code_instructions:
+    if fix_code_mode:
         system_prompt = FIX_TESTS_PROMPT + FILE_FORMAT
     else:
         system_prompt = DEFAULT_PROMPT + FILE_FORMAT
@@ -117,14 +117,14 @@ async def _write_code(
     file_items = [file_item]
 
     test_file = "test_" + file
-    test_file_item = None
+    use_existing_tests = False
 
     if has_tests:
-        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern="*.py", parse_test_results=use_pytest_parser)
+        if not repository.get_file_content(test_file):
+            use_existing_tests = True
     else:
         test_file_item = FileItem(file_path=test_file, content=repository.get_file_content(test_file))
         file_items.append(test_file_item)
-        test_tool = PythonPytestTestTool(current_dir=repository.repo_path, test_file_pattern=test_file, parse_test_results=use_pytest_parser)
 
     for other_file in other_files:
         if not other_file.content:
@@ -134,13 +134,11 @@ async def _write_code(
             continue
 
         is_test = "test" in other_file.file_path
-        low_prio_file = fix_code_instructions and not is_test
+        low_prio_file = fix_code_mode and not is_test
 
         trim_file = False
         skip_file = False
 
-        #if low_prio_file:  # TODO: Check context length first
-        #    trim_file = True
         if retry == 1 and low_prio_file:
             trim_file = True
         elif retry == 2 and low_prio_file:
@@ -165,9 +163,13 @@ async def _write_code(
         else:
             logger.info(f"Skipping file {other_file.file_path}")
 
-    if fix_code_instructions:
-        if not test_file_item:
+    if fix_code_mode:
+        fix_code_instructions = step.input
+
+        if use_existing_tests:
             fix_code_instructions += "\n\nThe tests are correct, you must adjust the code to make the tests pass."
+        else:
+            fix_code_instructions += "\n\nBoth the tests and the implementation might be incorrect."
 
         messages = [
             Message(sender="Human", items=[TextItem(text=task.input)]),
@@ -179,37 +181,44 @@ async def _write_code(
     try:
         outgoing_messages = code_writer.execute(incoming_messages=messages)
     except Exception as e:
-        # TODO: Ugly hack that only expects max token errors...
+        # TODO: Ugly hack that only expects max token errors and will retry with a smaller prompt context... Should be calculated with tiktoken before execution.
         if retry < 3:
-            return await _write_code(agent, task_id, file, fix_code_instructions, retry=retry+1)
+            return await _write_code(agent, task_id, file, fix_code_mode=fix_code_mode, retry=retry+1)
         else:
-            return False, f"Error: {e}"
-
-    await agent.db.create_artifact(
-        task_id=task_id,
-        file_name=file,
-        relative_path="",
-        agent_created=True,
-    )
-
-    # FIXME: Not adding the test file to artifacts to avoid test failures not in the actual benchmark
-    # await agent.db.create_artifact(
-    #     task_id=task_id,
-    #     file_name=test_file,
-    #     relative_path="",
-    #     agent_created=True,
-    # )
-
-    verification_result = test_tool.run_tests()
+            raise e
 
     output = ""
-    if not verification_result.success:
-        output += "\n\n".join([item.to_prompt() for item in verification_result.failures])
-        output += f"\n\nThe file {file} was implemented, but {len(verification_result.failures)} out of {verification_result.verification_count} tests failed!"
-    elif verification_result.verification_count > 0:
-        output = f"\n\nThe file {file} was implemented and {verification_result.verification_count} tests passed!"
+    text_items = outgoing_messages[0].find_items_by_type("text")
+    if text_items:
+        output = "\n".join(item.to_prompt() for item in text_items)
 
-    return verification_result.success, output
+    updated_files = []
+    update_items = outgoing_messages[0].find_items_by_type("updated_file")
+    for updated_file in update_items:
+        if updated_file.invalid:
+            logger.warning(f"Skipping invalid file {updated_file.file_path} with reason: {updated_file.invalid}")
+            output += f"\n\nI couldn't update {updated_file.file_path} because it is invalid: {updated_file.invalid}."
+        else:
+            logger.info(f"Updated file {updated_file.file_path}")
+            if "test" not in updated_file.file_path:  # FIXME: Just to avoid test failures from tests not in the actual benchmark tests
+                artifact = await agent.db.create_artifact(
+                    task_id=task_id,
+                    step_id=step_id,
+                    file_name=updated_file.file_path[1:],  # Remove leading slash
+                    relative_path="",
+                    agent_created=True,
+                )
+            updated_files.append(updated_file.file_path)
+
+    if not output:
+        if fix_code_mode:
+            output = f"I fixed the code in {updated_files}."
+        else:
+            output = f"I implemented {updated_files}"
+    elif fix_code and not updated_files:
+        output += "\n\nI didn't update any files."
+
+    return output
 
 
 def trim(content: str):

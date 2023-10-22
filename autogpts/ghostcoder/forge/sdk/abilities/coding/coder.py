@@ -34,6 +34,7 @@ logger = ForgeLogger(__name__)
 async def verify_code(
         agent,
         task_id: str,
+        step_id: str,
         test_file_pattern: str = "*.py") -> Tuple[bool, str]:
     test_tool = PythonPytestTestTool(current_dir=agent.workspace.base_path / task_id, test_file_pattern=test_file_pattern)
     verification_result = test_tool.run_tests()

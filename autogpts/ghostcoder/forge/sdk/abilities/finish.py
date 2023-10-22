@@ -22,6 +22,7 @@ logger = ForgeLogger(__name__)
 async def finish(
     agent,
     task_id: str,
+    step_id: str,
     reason: str,
 ) -> str:
     """

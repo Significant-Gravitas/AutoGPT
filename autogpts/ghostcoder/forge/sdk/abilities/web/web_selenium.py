@@ -212,7 +212,7 @@ class BrowsingError(CommandExecutionError):
     output_type="string",
 )
 @validate_url
-async def read_webpage(agent, task_id: str, url: str, question: str = "") -> Tuple(str, List[str]):
+async def read_webpage(agent, task_id: str, step_id: str, url: str, question: str = "") -> Tuple(str, List[str]):
     """Browse a website and return the answer and links to the user
 
     Args:

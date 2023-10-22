@@ -2,6 +2,7 @@ import json
 import logging
 import pprint
 import traceback
+from pathlib import Path
 from typing import List
 
 from forge.sdk import (
@@ -16,6 +17,7 @@ from forge.sdk import (
     PromptEngine,
     chat_completion_request, Status,
 )
+from ghostcoder.test_tools.verify_python_pytest import PythonPytestTestTool
 
 LOG = ForgeLogger(__name__)
 
@@ -114,13 +116,22 @@ class ForgeAgent(Agent):
         LOG.info("📦 Executing step")
         task = await self.db.get_task(task_id)
 
-        step, ability = await self.create_step(task, step_request)
+        steps, page = await self.db.list_steps(task.task_id, per_page=100)
+
+        step = None
+        if steps and steps[-1].status != Status.completed:
+            step = steps[-1]
+
+        if not step:
+            return await self.create_step(task, step_request)
+
+        ability = step.additional_input["ability"]
 
         LOG.info(f"Run ability {ability['name']} with arguments {ability['args']}")
 
         try:
             output = await self.abilities.run_ability(
-                task_id, ability["name"], **ability["args"]
+                task_id, step.step_id, ability["name"], **ability["args"]
             )
         except Exception as e:
             stack_trace = traceback.format_exc()
@@ -129,89 +140,104 @@ class ForgeAgent(Agent):
             await self.db.update_step(task.task_id, step.step_id, "failed", output=failure)
             return step
 
-        success = False
-        if isinstance(output, tuple):
-            success, output = output
+        # TODO: Move verify to its own ability
+        if ability["name"] in ["write_code", "fix_code"]:
+            test_tool = PythonPytestTestTool(current_dir=Path(self.workspace.base_path) / task_id,
+                                             test_file_pattern="*.py",
+                                             parse_test_results=True)
+            verification_result = test_tool.run_tests()
 
-            LOG.debug(f"Ability {ability['name']} returned success: {success}")
-            step.additional_input["success"] = success
+            if not verification_result.success:
+                step_input = "\n\n".join([item.to_prompt() for item in verification_result.failures])
+                step_input += f"\n\n{len(verification_result.failures)} out of {verification_result.verification_count} tests failed!"
 
-        if success and self.speedy_mode:
-            LOG.debug(f"Will set is_last because tests passed")
-            step.is_last = True
+                step_request = StepRequestBody(
+                    name="Fix code",
+                    input=step_input,
+                    additional_input={
+                        "ability": {
+                            "name": "fix_code",
+                            "args": {
+                                "file": ability["args"]["file"]
+                            }
+                        }
+                    })
+            elif verification_result.verification_count > 0:
+                step_input = f"{verification_result.verification_count} tests passed!"
+                if self.speedy_mode:
+                    LOG.debug(f"Will finish because the tests passed")
+                    step_request = StepRequestBody(
+                        name="Finish",
+                        input=step_input,
+                        additional_input={
+                            "ability": {
+                                "name": "finish",
+                                "args": {
+                                    "reason": "The task is complete"
+                                }
+                            }
+                        })
+        elif self.speedy_mode and ability["name"] == "write_file":
+            LOG.debug(f"Will finish as the ability is write_to_file")
+            step_request = StepRequestBody(
+                name="Finish",
+                additional_input={
+                    "ability": {
+                        "name": "finish",
+                        "args": {
+                            "reason": "The task is complete"
+                        }
+                    }
+                })
+        else:
+            step_request = StepRequestBody(input=output)
 
-        step.output = str(output)
+        LOG.debug(f"Executed step [{step.name}]")
+        step = await self.db.update_step(task.task_id, step.step_id, "completed", output=output)
+        LOG.info(f"Step completed: {step.step_id}")
 
-        LOG.debug(f"Executed step [{step.name}] output:\n{step.output}")
-
-        await self.db.update_step(task.task_id, step.step_id, "completed", output=step.output, is_last=step.is_last, additional_input=step.additional_input)
-
-        input = ""
-        if step.input:
-            input = f"input: {step.input[:19]}"
-        LOG.info(f"Step completed: {step.step_id} {input}")
+        if not step.is_last:
+            await self.create_step(task, step_request)
+            LOG.info(f"Step created: {step.step_id}")
 
         if step.is_last:
-            LOG.info(f"Task completed: {task.task_id} {input}")
+            LOG.info(f"Task completed: {task.task_id}")
 
         return step
 
-    async def create_step(self, task: Task, step_request: StepRequestBody):
+    async def create_step(self, task: Task, step_request: StepRequestBody) -> Step:
         if self.do_reasoning:
             prompt_engine = PromptEngine("create-step-with-reasoning")
         else:
             prompt_engine = PromptEngine("create-step")
 
         previous_steps, page = await self.db.list_steps(task.task_id, per_page=100)
-        if len(previous_steps) > 4:  # FIXME: To not end up in infinite test improvement loop
+        if len(previous_steps) > 5:  # FIXME: This is to not end up in infinite test improvement loop
             LOG.info(f"Found {len(previous_steps)} previously executed steps. Giving up...")
-            ability = {
-                "name": "finish",
-                "args": {
-                    "reason": "Giving up..."
-                }
-            }
-            step_request.name = "Giving up"
-            step_request.input = "Giving up"
-            step = await self.db.create_step(
+            step_request = StepRequestBody(
+                name="Giving up",
+                input="Giving up",
+                additional_input={"ability": {
+                    "name": "finish",
+                    "args": {
+                        "reason": "Giving up..."
+                    }
+                }}
+            )
+            return await self.db.create_step(
                 task_id=task.task_id,
                 input=step_request,
-                is_last=True,
-                additional_input={"ability": ability}
+                is_last=True
             )
-            return step, ability
 
-        if previous_steps:
-            last_step = previous_steps[-1]
-            LOG.info(f"Found {len(previous_steps)} previously executed steps. Last executed step was: {last_step.name}.")
-
-            if (self.use_external_coder and
-                    ("ability" in last_step.additional_input and
-                     last_step.additional_input["ability"].get("name", "") in ["write_code", "fix_code"]) and
-                    not last_step.additional_input.get("success", False)):
-                last_ability = last_step.additional_input["ability"]
-                step_request.name = "Fix code"
-                step_request.input = last_step.output
-                ability = {
-                    "name": "fix_code",
-                    "args": {
-                        "instructions": last_step.output,
-                        "file": last_ability["args"]["file"]
-                    }
-                }
-                step = await self.db.create_step(
-                    task_id=task.task_id,
-                    input=step_request,
-                    is_last=False,
-                    additional_input={"ability": ability}
-                )
-
-                return step, ability
-
-            previous_steps = previous_steps[:-1]
-        else:
-            LOG.info(f"No previous steps found.")
-            last_step = None
+        if "ability" in step_request.additional_input:
+            is_last = step_request.additional_input["ability"]["name"] == "finish"
+            LOG.info(f"Create step with ability {step_request.additional_input['ability']['name']}, is_last: {is_last}")
+            return await self.db.create_step(
+                task_id=task.task_id,
+                input=step_request,
+                is_last=is_last
+            )
 
         task_kwargs = {
             "abilities": self.abilities.list_abilities_for_prompt()
@@ -228,7 +254,7 @@ class ForgeAgent(Agent):
 
         files = []
         for artifact in artifacts:
-            data =  self.workspace.read(task.task_id, artifact.file_name)
+            data = self.workspace.read(task.task_id, artifact.file_name)
             if isinstance(data, bytes):
                 data = data.decode("utf-8")
 
@@ -237,9 +263,14 @@ class ForgeAgent(Agent):
                 "content": data
             })
 
+        # FIXME: Just set step input if it differs from task.input
+        step_input = None
+        if step_request.input and step_request.input.strip() != task.input.strip():
+            step_input = step_request.input
+
         task_kwargs = {
             "task": task.input,
-            "step": last_step,
+            "step_input": step_input,
             "files": files,
             "previous_steps": previous_steps
         }
@@ -256,14 +287,13 @@ class ForgeAgent(Agent):
         if "thoughts" in answer and "speak" in answer["thoughts"]:
             step_request.input = answer["thoughts"]["speak"]
 
-        step = await self.db.create_step(
+        step_request.additional_input = {"ability": answer["step"]["ability"]}
+
+        return await self.db.create_step(
             task_id=task.task_id,
             input=step_request,
             is_last=answer["step"]["ability"]["name"] == "finish",
-            additional_input={"ability": answer["step"]["ability"]}
         )
-
-        return step, answer["step"]["ability"]
 
     async def do_steps_request(self, messages: List[dict], retry: int = 0):
         chat_completion_kwargs = {

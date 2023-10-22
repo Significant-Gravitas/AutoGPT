@@ -182,8 +182,7 @@ class AgentDB:
         self,
         task_id: str,
         input: StepRequestBody,
-        is_last: bool = False,
-        additional_input: Optional[Dict[str, Any]] = {},
+        is_last: bool = False
     ) -> Step:
         if self.debug_enabled:
             LOG.debug(f"Creating new step for task_id: {task_id}")
@@ -196,7 +195,7 @@ class AgentDB:
                     input=input.input,
                     status="created",
                     is_last=is_last,
-                    additional_input=additional_input,
+                    additional_input=input.additional_input,
                 )
                 session.add(new_step)
                 session.commit()
@@ -323,9 +322,7 @@ class AgentDB:
         task_id: str,
         step_id: str,
         status: str,
-        output: Optional[str] = None,
-        additional_input: Optional[Dict[str, Any]] = {},
-        is_last: bool = False,
+        output: Optional[str] = None
     ) -> Step:
         if self.debug_enabled:
             LOG.debug(f"Updating step with task_id: {task_id} and step_id: {step_id}")
@@ -337,11 +334,7 @@ class AgentDB:
                     .first()
                 ):
                     step.status = status
-                    if additional_input:
-                        step.additional_input = additional_input
                     step.output = output
-                    step.is_last = is_last
-                    step.artifacts = []
                     session.commit()
                     return await self.get_step(task_id, step_id)
                 else:
