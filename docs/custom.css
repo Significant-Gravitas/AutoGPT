@@ -1,0 +1,12 @@
+/* Change color of AutoGPT Agent */
+a[title="AutoGPT Agent"],
+/* Change color of AutoGPT-Benchmarks */
+a[title="AutoGPT-Benchmarks"],
+/* Change color of AutoGPT-Forge */
+a[title="AutoGPT-Forge"],
+/* Change color of Frontend */
+a[title="Frontend"],
+/* Change color of Challenges */
+a[title="Challenges"] {
+    color: blue !important;
+}
