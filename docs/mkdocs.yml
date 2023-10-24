@@ -55,6 +55,8 @@ nav:
 theme:
   name: material
   custom_dir: overrides
+  extra_css:
+    - 'custom.css'
   icon:
     logo: material/book-open-variant
   favicon: favicon.png
@@ -130,6 +132,3 @@ extra_javascript:
   - _javascript/mathjax.js
   - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
-
-extra_css:
-  - 'custom.css'
