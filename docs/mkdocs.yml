@@ -7,7 +7,7 @@ nav:
 
   - AutoGPT Agent:
     - Agent-Setup:
-        - Start-Setup: AutoGPT/setup.md
+        - Setting up AutoGPT: AutoGPT/setup.md
         - Docker-Setup: AutoGPT/Setups/Docker-setup.md
         - Git-Setup: AutoGPT/Setups/Git-setup.md
         - No Git/Docker-Setup: AutoGPT/Setups/nogit-setup.md
