@@ -6,7 +6,8 @@ nav:
   - Home: index.md
 
   - AutoGPT Agent:
-    - Agent-Setup: AutoGPT/setup.md
+    - Agent-Setup:
+        - Agent-Setup: AutoGPT/setup.md
         - Docker-Setup: AutoGPT/Docker-setup.md
     - Usage: AutoGPT/usage.md
     - Plugins: AutoGPT/plugins.md
