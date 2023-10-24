@@ -86,6 +86,7 @@ async def verify_code(
 async def write_code(
         agent,
         task_id: str,
+        step_id: str,
         file_path: Optional[str] = None,
         test_file_path: Optional[str] = None,
         code: Optional[str] = None,

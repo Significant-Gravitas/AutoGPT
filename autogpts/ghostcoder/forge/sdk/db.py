@@ -322,6 +322,7 @@ class AgentDB:
         task_id: str,
         step_id: str,
         status: str,
+        is_last: bool = False,
         output: Optional[str] = None
     ) -> Step:
         if self.debug_enabled:
@@ -335,6 +336,7 @@ class AgentDB:
                 ):
                     step.status = status
                     step.output = output
+                    step.is_last = is_last
                     session.commit()
                     return await self.get_step(task_id, step_id)
                 else:

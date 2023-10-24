@@ -122,7 +122,7 @@ class AbilityRegister:
                 ability = os.path.relpath(
                     ability_path, os.path.dirname(__file__)
                 ).replace("/", ".")
-                LOG.debug(f"Registering abilities from: {ability}")
+                #LOG.debug(f"Registering abilities from: {ability}")
                 try:
                     module = importlib.import_module(
                         f".{ability[:-3]}", package="forge.sdk.abilities"
@@ -133,7 +133,7 @@ class AbilityRegister:
                         if hasattr(func, "ability"):
                             ab = func.ability
                             if ab.disabled:
-                                LOG.debug(f"Ability {ab.name} is disabled. Skipping...")
+                                #LOG.debug(f"Ability {ab.name} is disabled. Skipping...")
                                 continue
 
                             ab.category = (

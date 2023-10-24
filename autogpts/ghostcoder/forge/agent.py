@@ -21,9 +21,6 @@ from ghostcoder.test_tools.verify_python_pytest import PythonPytestTestTool
 
 LOG = ForgeLogger(__name__)
 
-MODEL_NAME = "gpt-4"  # gpt-3.5-turbo, gpt-4
-
-
 logging.basicConfig(level=logging.INFO)
 logging.getLogger('openai').setLevel(logging.INFO)
 logging.getLogger('urllib3').setLevel(logging.INFO)
@@ -123,7 +120,7 @@ class ForgeAgent(Agent):
             step = steps[-1]
 
         if not step:
-            return await self.create_step(task, step_request)
+            step = await self.create_step(task, step_request)
 
         ability = step.additional_input["ability"]
 
@@ -150,7 +147,6 @@ class ForgeAgent(Agent):
             if not verification_result.success:
                 step_input = "\n\n".join([item.to_prompt() for item in verification_result.failures])
                 step_input += f"\n\n{len(verification_result.failures)} out of {verification_result.verification_count} tests failed!"
-
                 step_request = StepRequestBody(
                     name="Fix code",
                     input=step_input,
@@ -162,21 +158,25 @@ class ForgeAgent(Agent):
                             }
                         }
                     })
-            elif verification_result.verification_count > 0:
+            else:
                 step_input = f"{verification_result.verification_count} tests passed!"
                 if self.speedy_mode:
                     LOG.debug(f"Will finish because the tests passed")
-                    step_request = StepRequestBody(
-                        name="Finish",
-                        input=step_input,
-                        additional_input={
-                            "ability": {
-                                "name": "finish",
-                                "args": {
-                                    "reason": "The task is complete"
-                                }
-                            }
-                        })
+
+                    step.is_last = True
+                    # FIXME: Skip the finish step to make it faster
+                    #step_request = StepRequestBody(
+                    #    name="Finish",
+                    #    input=step_input,
+                    #    additional_input={
+                    #        "ability": {
+                    #            "name": "finish",
+                    #            "args": {
+                    #                "reason": "The task is complete"
+                    #            }
+                    #        }
+                    #    })
+
         elif self.speedy_mode and ability["name"] == "write_file":
             LOG.debug(f"Will finish as the ability is write_to_file")
             step_request = StepRequestBody(
@@ -193,7 +193,7 @@ class ForgeAgent(Agent):
             step_request = StepRequestBody(input=output)
 
         LOG.debug(f"Executed step [{step.name}]")
-        step = await self.db.update_step(task.task_id, step.step_id, "completed", output=output)
+        step = await self.db.update_step(task.task_id, step.step_id, "completed", output=output, is_last=step.is_last)
         LOG.info(f"Step completed: {step.step_id}")
 
         if not step.is_last:
@@ -212,7 +212,7 @@ class ForgeAgent(Agent):
             prompt_engine = PromptEngine("create-step")
 
         previous_steps, page = await self.db.list_steps(task.task_id, per_page=100)
-        if len(previous_steps) > 5:  # FIXME: This is to not end up in infinite test improvement loop
+        if len(previous_steps) > 3:  # FIXME: This is to not end up in infinite test improvement loop
             LOG.info(f"Found {len(previous_steps)} previously executed steps. Giving up...")
             step_request = StepRequestBody(
                 name="Giving up",
@@ -280,19 +280,19 @@ class ForgeAgent(Agent):
 
         LOG.info("User: " + task_prompt)
 
-        answer = await self.do_steps_request(messages)
+        step, speak = await self.do_steps_request(messages)
 
-        step_request.name = answer["step"]["name"]
+        step_request.name = step.get("name", "Step")
 
-        if "thoughts" in answer and "speak" in answer["thoughts"]:
-            step_request.input = answer["thoughts"]["speak"]
+        if speak:
+            step_request.input = speak
 
-        step_request.additional_input = {"ability": answer["step"]["ability"]}
+        step_request.additional_input = {"ability": step["ability"]}
 
         return await self.db.create_step(
             task_id=task.task_id,
             input=step_request,
-            is_last=answer["step"]["ability"]["name"] == "finish",
+            is_last=step["ability"]["name"] == "finish",
         )
 
     async def do_steps_request(self, messages: List[dict], retry: int = 0):
@@ -322,14 +322,20 @@ class ForgeAgent(Agent):
             LOG.error(f"Unable to generate chat response: {e}")
             raise e
 
-        if "step" not in answer and not answer["step"] and not isinstance(answer["step"], dict):
+        step = None
+        if "step" in answer and answer["step"] and isinstance(answer["step"], dict):
+            step = answer["step"]
+        elif "ability" in answer and answer["ability"] and isinstance(answer["ability"], dict):
+            step = answer
+        else:
             LOG.info(f"No step provided, retry {retry}")
             return await do_retry([{"role": "user", "content": "You must provide a step."}])
 
-        invalid_abilities = self.validate_ability(answer["step"])
+        invalid_abilities = self.validate_ability(step)
         if invalid_abilities:
             return await do_retry(messages)
 
+        speak = None
         if "thoughts" in answer and answer["thoughts"]:
             LOG.debug(f"Thoughts:")
             if "reasoning" in answer["thoughts"]:
@@ -339,11 +345,12 @@ class ForgeAgent(Agent):
             if "text" in answer["thoughts"]:
                 LOG.debug(f"\tText: {answer['thoughts']['text']}")
             if "speak" in answer["thoughts"]:
+                speak = answer["thoughts"]["speak"]
                 LOG.debug(f"\tSpeak: {answer['thoughts']['speak']}")
         else:
             LOG.info(f"No thoughts provided")
 
-        return answer
+        return step, speak
 
     def validate_ability(self, step: dict):
         ability_names = [a.name for a in self.abilities.list_abilities().values()]
