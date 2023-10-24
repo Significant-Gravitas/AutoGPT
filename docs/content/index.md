@@ -48,3 +48,5 @@ Harness your AI journey with the AutoGPT Front-End.
 - **Benchmarking**: Testing your agent's skills in the Forge.
 - **Forge**: The template for building your AutoGPT agent.
 - **Frontend**: The UI for tasks, logs, and task history.
+
+---
