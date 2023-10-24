@@ -8,7 +8,9 @@ nav:
   - AutoGPT Agent:
     - Agent-Setup:
         - Agent-Setup: AutoGPT/setup.md
-        - Docker-Setup: AutoGPT/Docker-setup.md
+        - Docker-Setup: AutoGPT/Setups/Docker-setup.md
+        - Git-Setup: AutoGPT/Setups/Git-setup.md
+        - No Git/Docker-Setup: AutoGPT/Setups/nogit-setup.md
     - Usage: AutoGPT/usage.md
     - Plugins: AutoGPT/plugins.md
     - Configuration:
