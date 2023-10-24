@@ -32,10 +32,10 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 ## Setting up AutoGPT
 
 ### If you plan to use Docker please follow this setup
-[Docker Install](/docs/content/AutoGPT/Setups/Docker-setup.md)
+[Docker Install](Setups/Docker-setup.md)
 
 ### If you plan to use Git please follow this setup
-[Git Setup](/docs/content/AutoGPT/Setups/Git-setup.md)
+[Git Setup](Setups/Git-setup.md)
 
 ### If you dont want to use git or docker for the setup follow here.
-[No Git Or Docker Setup](/docs/content/AutoGPT/Setups/nogit-setup.md)
+[No Git Or Docker Setup](Setups/nogit-setup.md)
