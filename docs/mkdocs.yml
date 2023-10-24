@@ -55,8 +55,6 @@ nav:
 theme:
   name: material
   custom_dir: overrides
-  extra_css:
-    - 'content/custom.css'
   icon:
     logo: material/book-open-variant
   favicon: favicon.png
