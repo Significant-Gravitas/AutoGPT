@@ -36,7 +36,9 @@ Following Elon Musk's engineering philosophy, the primary objective for the MVP 
 - [ ] Official deployment of the Discord bot.
 - [ ] Implement a summarization feature to handle long-running outputs and provide a way to interact with AutoGPT during runtime.
 
+
 ## Stretch Goals:
+
 
 Stretch goals encompass additional features and integrations that enhance the functionality and user experience of the project:
 
@@ -62,6 +64,8 @@ We invite you to share your thoughts, suggestions, or questions. Your involvemen
 
 Join us on Discord at [Agora - The Creator Collective](https://discord.gg/Q3VKuj8hBT) where we will be rolling out the bots. This platform aims to connect like-minded individuals with the power of AutoGPT Discord bot integration and meta customization, enabling the ability to run any Forge agents with `./run agent start <agent name>` command.
 
-This project has been a long-time vision, and with the validation from the Auto-GPT team, it's inspiring to see it take shape. We have a good start, and with continued collaboration, we can build something truly beneficial for the community.
+[![Join us on Discord](https://invidget.switchblade.xyz/autogpt)](https://discord.gg/autogpt)
+
+
 
 ## This is the future. This is Swarms. This IS SPARTA!!!.

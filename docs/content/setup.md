@@ -96,7 +96,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 1. Clone the repository
 
     ```shell
-    git clone -b stable https://github.com/Significant-Gravitas/AutoGPT.git
+    git clone https://github.com/Significant-Gravitas/AutoGPT.git
     ```
 
 2. Navigate to the directory where you downloaded the repository
@@ -110,7 +110,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 !!! warning
     We recommend to use Git or Docker, to make updating easier. Also note that some features such as Python execution will only work inside docker for security reasons.
 
-1. Download `Source code (zip)` from the [latest stable release](https://github.com/Significant-Gravitas/AutoGPT/releases/latest)
+1. Download `Source code (zip)` from the [latest release](https://github.com/Significant-Gravitas/AutoGPT/releases/latest)
 2. Extract the zip-file into a folder
 
 
@@ -211,7 +211,7 @@ docker run -it --env-file=.env -v $PWD:/app auto-gpt
 docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuous
 ```
 
-[Docker Compose file]: https://github.com/Significant-Gravitas/AutoGPT/blob/stable/docker-compose.yml
+[Docker Compose file]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/docker-compose.yml
 
 
 ### Run with Dev Container

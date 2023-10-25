@@ -1,5 +1,6 @@
 import 'package:auto_gpt_flutter_client/models/task.dart';
 import 'package:auto_gpt_flutter_client/models/test_suite.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/task/test_suite_detail_view.dart';
 import 'package:auto_gpt_flutter_client/views/task/test_suite_list_tile.dart';
 import 'package:flutter/material.dart';
@@ -32,7 +33,10 @@ class _TaskViewState extends State<TaskView> {
   @override
   Widget build(BuildContext context) {
     // Combine tasks and test suites into a single list
-    final items = widget.viewModel.combinedDataSource;
+    final items = Provider.of<SettingsViewModel>(context, listen: false)
+            .isDeveloperModeEnabled
+        ? widget.viewModel.combinedDataSource
+        : widget.viewModel.tasksDataSource;
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(

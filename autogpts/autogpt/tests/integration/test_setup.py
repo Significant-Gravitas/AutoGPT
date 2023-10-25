@@ -2,78 +2,69 @@ from unittest.mock import patch
 
 import pytest
 
-from autogpt.app.setup import generate_aiconfig_automatic, interactive_ai_config_setup
-from autogpt.config.ai_config import AIConfig
+from autogpt.app.setup import (
+    apply_overrides_to_ai_settings,
+    interactively_revise_ai_settings,
+)
+from autogpt.config import AIDirectives, Config
+from autogpt.config.ai_profile import AIProfile
 
 
-@pytest.mark.vcr
-@pytest.mark.requires_openai_api_key
-async def test_generate_aiconfig_automatic_default(
-    patched_api_requestor, config, llm_provider
-):
-    user_inputs = [""]
-    with patch("autogpt.app.utils.session.prompt", side_effect=user_inputs):
-        ai_config = await interactive_ai_config_setup(config, llm_provider)
+@pytest.mark.asyncio
+async def test_apply_overrides_to_ai_settings():
+    ai_profile = AIProfile(ai_name="Test AI", ai_role="Test Role")
+    directives = AIDirectives(
+        resources=["Resource1"],
+        constraints=["Constraint1"],
+        best_practices=["BestPractice1"],
+    )
 
-    assert isinstance(ai_config, AIConfig)
-    assert ai_config.ai_name is not None
-    assert ai_config.ai_role is not None
-    assert 1 <= len(ai_config.ai_goals) <= 5
+    apply_overrides_to_ai_settings(
+        ai_profile,
+        directives,
+        override_name="New AI",
+        override_role="New Role",
+        replace_directives=True,
+        resources=["NewResource"],
+        constraints=["NewConstraint"],
+        best_practices=["NewBestPractice"],
+    )
 
-
-@pytest.mark.vcr
-@pytest.mark.requires_openai_api_key
-async def test_generate_aiconfig_automatic_typical(
-    patched_api_requestor, config, llm_provider
-):
-    user_prompt = "Help me create a rock opera about cybernetic giraffes"
-    ai_config = await generate_aiconfig_automatic(user_prompt, config, llm_provider)
-
-    assert isinstance(ai_config, AIConfig)
-    assert ai_config.ai_name is not None
-    assert ai_config.ai_role is not None
-    assert 1 <= len(ai_config.ai_goals) <= 5
+    assert ai_profile.ai_name == "New AI"
+    assert ai_profile.ai_role == "New Role"
+    assert directives.resources == ["NewResource"]
+    assert directives.constraints == ["NewConstraint"]
+    assert directives.best_practices == ["NewBestPractice"]
 
 
-@pytest.mark.vcr
-@pytest.mark.requires_openai_api_key
-async def test_generate_aiconfig_automatic_fallback(
-    patched_api_requestor, config, llm_provider
-):
+@pytest.mark.asyncio
+async def test_interactively_revise_ai_settings(config: Config):
+    ai_profile = AIProfile(ai_name="Test AI", ai_role="Test Role")
+    directives = AIDirectives(
+        resources=["Resource1"],
+        constraints=["Constraint1"],
+        best_practices=["BestPractice1"],
+    )
+
     user_inputs = [
-        "T&GF£OIBECC()!*",
-        "Chef-GPT",
-        "an AI designed to browse bake a cake.",
-        "Purchase ingredients",
-        "Bake a cake",
+        "n",
+        "New AI",
+        "New Role",
+        "NewConstraint",
         "",
+        "NewResource",
         "",
+        "NewBestPractice",
+        "",
+        "y",
     ]
-    with patch("autogpt.app.utils.session.prompt", side_effect=user_inputs):
-        ai_config = await interactive_ai_config_setup(config, llm_provider)
+    with patch("autogpt.app.setup.clean_input", side_effect=user_inputs):
+        ai_profile, directives = await interactively_revise_ai_settings(
+            ai_profile, directives, config
+        )
 
-    assert isinstance(ai_config, AIConfig)
-    assert ai_config.ai_name == "Chef-GPT"
-    assert ai_config.ai_role == "an AI designed to browse bake a cake."
-    assert ai_config.ai_goals == ["Purchase ingredients", "Bake a cake"]
-
-
-@pytest.mark.vcr
-@pytest.mark.requires_openai_api_key
-async def test_prompt_user_manual_mode(patched_api_requestor, config, llm_provider):
-    user_inputs = [
-        "--manual",
-        "Chef-GPT",
-        "an AI designed to browse bake a cake.",
-        "Purchase ingredients",
-        "Bake a cake",
-        "",
-        "",
-    ]
-    with patch("autogpt.app.utils.session.prompt", side_effect=user_inputs):
-        ai_config = await interactive_ai_config_setup(config, llm_provider)
-
-    assert isinstance(ai_config, AIConfig)
-    assert ai_config.ai_name == "Chef-GPT"
-    assert ai_config.ai_role == "an AI designed to browse bake a cake."
-    assert ai_config.ai_goals == ["Purchase ingredients", "Bake a cake"]
+    assert ai_profile.ai_name == "New AI"
+    assert ai_profile.ai_role == "New Role"
+    assert directives.resources == ["NewResource"]
+    assert directives.constraints == ["NewConstraint"]
+    assert directives.best_practices == ["NewBestPractice"]
