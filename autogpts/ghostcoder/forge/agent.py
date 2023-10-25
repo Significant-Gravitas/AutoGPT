@@ -140,7 +140,7 @@ class ForgeAgent(Agent):
         # TODO: Move verify to its own ability
         if ability["name"] in ["write_code", "fix_code"]:
             test_tool = PythonPytestTestTool(current_dir=Path(self.workspace.base_path) / task_id,
-                                             test_file_pattern="*.py",
+                                             test_file_pattern="",
                                              parse_test_results=True)
             verification_result = test_tool.run_tests()
 

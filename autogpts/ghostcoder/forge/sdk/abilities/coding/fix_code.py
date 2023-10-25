@@ -1,15 +1,15 @@
+from pathlib import Path
 from typing import Tuple, Optional, List
 
 import tiktoken
 
 from forge.sdk import ForgeLogger, Artifact
+from forge.sdk.abilities.coding.write_code import read_other_files
 from forge.sdk.abilities.registry import ability
-from ghostcoder.codeblocks import create_parser, CodeBlockType
 from ghostcoder.filerepository import FileRepository
 from ghostcoder.actions import CodeWriter
 from ghostcoder.benchmark.utils import create_openai_client
 from ghostcoder.schema import Message, TextItem, FileItem, CodeItem
-from ghostcoder.test_tools.verify_python_pytest import PythonPytestTestTool
 
 logger = ForgeLogger(__name__)
 
@@ -21,7 +21,9 @@ basic_llm_name = "gpt-3.5-turbo"
 _llm = smart_llm_name
 _temperature = 0.0
 
-_only_return_changes = True
+_only_return_changes = False
+
+ROLE_PROMPT = """You're a Staff Engineer with superior python programming skills."""
 
 DEFAULT_PROMPT = """You're tasked to write an implementation based on the provided task. 
 Review the requirements and write out your interpretation of the requirements and then do the full implementation.
@@ -34,9 +36,12 @@ You should also write tests for the implementation that will be run with pytest.
 """
 
 FIX_TESTS_PROMPT = """You are reviewing a solution written by an inexperienced programmer based on the provided requirements.
-Fix the code to make the tests pass. 
-Do only write out the functions you change.
+The tests failed because the implementation is incorrect.
+Review the requirements and the test output to see if there is anything missing. 
+Do only write out the functions you change and comment out the other parts of the code. 
 """
+
+# List the changes that is needed and fix the code to make the tests pass.
 
 FILE_FORMAT = """All files should be presented in the following format:
 
@@ -68,28 +73,6 @@ async def fix_code(
     return await _write_code(agent, task_id, step_id, file, fix_code_mode=True)
 
 
-@ability(
-    name="write_code",
-    disabled=True,
-    description="Use this to write code and tests. Provide the name of the file that should be implemented.",
-    parameters=[
-        {
-            "name": "file",
-            "description": "Name of the file that should be updated or created.",
-            "type": "string",
-            "required": True,
-        }
-    ],
-    output_type="string",
-)
-async def write_code(
-        agent,
-        task_id: str,
-        step_id: str,
-        file: str) -> str:
-    return await _write_code(agent, task_id, step_id, file)
-
-
 async def _write_code(
         agent,
         task_id: str,
@@ -104,6 +87,7 @@ async def _write_code(
     llm = create_openai_client(log_dir=repo_dir / ".prompt_log",
                                llm_name=_llm,
                                temperature=_temperature,
+                               max_tokens=2000,
                                streaming=False)
 
     repository = FileRepository(repo_path=repo_dir, use_git=False)
@@ -114,11 +98,12 @@ async def _write_code(
         system_prompt = DEFAULT_PROMPT + FILE_FORMAT
 
     code_writer = CodeWriter(llm=llm,
-                             role_prompt="You're an AI Developer with superior programming skills.",
+                             role_prompt=ROLE_PROMPT,
                              repository=repository,
-                             sys_prompt=system_prompt,
+                             sys_prompt=FILE_FORMAT,
                              allow_hallucinated_files=True,
                              expect_updated_code=True,
+                             max_tokens_in_prompt=6100,
                              auto_mode=True)
 
     other_files = code_writer.repository.get_source_files(language=None, include_test_files=True)
@@ -137,10 +122,7 @@ async def _write_code(
         test_file_item = FileItem(file_path=test_file, content=repository.get_file_content(test_file))
         file_items.append(test_file_item)
 
-    other_file_items = [FileItem(file_path=other_file.file_path, content=other_file.content, readonly=True)
-                        for other_file in other_files
-                        if other_file.content and any(file_item.file_path == other_file.file_path for file_item in file_items)]
-    other_file_message = Message(sender="Human", items=other_file_items)
+    other_file_items = read_other_files(repo_dir, file_item)
 
     if fix_code_mode:
         fix_code_instructions = step.input
@@ -152,9 +134,10 @@ async def _write_code(
 
         messages = [
             #Message(sender="Human", items=[TextItem(text="# Requirements\n\n" + task.input)]),
-            other_file_message,
+            Message(sender="Human", items=other_file_items),
             Message(sender="Human", items=[TextItem(text="Here's the implementation done by the inexperienced programmer.")] + file_items),
-            Message(sender="Human", items=[TextItem(text=fix_code_instructions)])
+            Message(sender="Human", items=[TextItem(text=fix_code_instructions)]),
+            Message(sender="Human", items=[TextItem(text=FIX_TESTS_PROMPT)])
         ]
 
         if _only_return_changes:
@@ -162,13 +145,9 @@ async def _write_code(
             start_update_file = FileItem(file_path=file, content=start_of_file)
             messages.append(Message(sender="AI", items=[start_update_file]))
             messages.append(Message(sender="Human", items=[TextItem(text="Now you're returning the whole file. You should just return the updated code, remember?")]))
-            messages.append(Message(sender="AI", items=[TextItem(text="I apologize for the confusion. I'll start by list my interpretations of the requirements and then I do a full implementation.")]))
+            messages.append(Message(sender="AI", items=[TextItem(text="I apologize for the confusion. Here's the updated code:")]))
     else:
         messages = [Message(sender="Human", items=[TextItem(text="# Requirements\n\n" + task.input)] + file_items)]
-
-    exceeding_tokens = calculate_tokens(messages) - 6000
-    if exceeding_tokens > 0:
-        other_file_message.items = trim_files(exceeding_tokens, fix_code_mode, other_file_items)
 
     try:
         outgoing_messages = code_writer.execute(incoming_messages=messages)
@@ -208,63 +187,3 @@ async def _write_code(
         output += "\n\nI didn't update any files."
 
     return output
-
-
-def trim(content: str):
-    parser = create_parser(language="python")
-    code_block = parser.parse(content)
-    trimmed_block = code_block.trim2(include_types=[CodeBlockType.FUNCTION, CodeBlockType.CLASS])
-    return trimmed_block.to_string()
-
-def calculate_tokens(messages: List[Message]):
-    msg_str = "\n\n".join([msg.to_prompt() for msg in messages])
-    return calculate_tokens(msg_str)
-
-def calculate_tokens(content: str):
-    enc = tiktoken.encoding_for_model(smart_llm_name)
-    tokens = enc.encode(content)
-    return len(tokens)
-
-def trim_files(exceeding_tokens: int, fix_code_mode: bool, other_file_items: List[FileItem], retry = 0) -> List[FileItem]:
-    logger.info(f"Exceeding tokens by {exceeding_tokens}, will try to trim request, retry {retry}")
-    trimmed_list = []
-    for other_file in other_file_items:
-        is_test = "test" in other_file.file_path
-        low_prio_file = fix_code_mode and not is_test
-
-        trim_file = False
-        skip_file = False
-
-        if retry == 1 and low_prio_file:
-            trim_file = True
-        elif retry == 2 and low_prio_file:
-            skip_file = True
-        elif retry == 2 and not low_prio_file:
-            trim_file = True
-        elif retry == 3:
-            skip_file = True
-
-        trimmed_content = ""
-        before = other_file.content
-
-        if exceeding_tokens <= 0:
-            trimmed_list.append(other_file)
-        if not skip_file:
-            if trim_file:
-                logger.info(f"Trimming file {other_file.file_path}")
-                trimmed_content = trim(other_file.content)
-            else:
-                trimmed_content = other_file.content
-
-            other_file.content = trimmed_content
-
-            trimmed_list.append(other_file)
-        else:
-            logger.info(f"Skipping file {other_file.file_path}")
-
-        exceeding_tokens -= calculate_tokens(before) - calculate_tokens(trimmed_content)
-
-    if exceeding_tokens < 0 and retry < 3:
-        return trim_files(exceeding_tokens, fix_code_mode, trimmed_list, retry + 1)
-    else:
-        return []
