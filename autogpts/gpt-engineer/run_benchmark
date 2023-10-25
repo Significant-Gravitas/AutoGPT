@@ -5,5 +5,4 @@ if lsof -t -i :8080; then
     kill $(lsof -t -i :8080)
 fi
 cd ../../benchmark
-pip install .
-agbenchmark "$@"
+poetry run agbenchmark "$@"
