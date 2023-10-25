@@ -9,9 +9,9 @@ The AutoGPT project has been divided into four distinct sections namely [Agents]
 ## [Welcome to the heart of AutoGPT](AutoGPT/setup.md)
 
 Where the magic happens – the AutoGPT Agent. This is your go-to toolkit for supercharging agents and AI innovation.
-<br/>
+
 - 👀 **Viewing** - See your progress come to life. With the AutoGPT Agent, you can easily monitor and control your agents through our user-friendly interface.
-<br>
+
 - Be part of the revolution! AutoGPT stays at the forefront of AI innovation and proudly features the codebase for the reigning champion in the Open-Source ecosystem.
 
 ---
@@ -20,26 +20,29 @@ Where the magic happens – the AutoGPT Agent. This is your go-to toolkit for su
 
 Test to impress with AutoGPT Benchmarks! Our benchmarking system offers a stringent testing environment to evaluate your agents objectively. 
 <br>
+
 - 📈 **Top Performance** - Among our currently benchmarked agents, AutoGPT consistently scores the best. The top-performing generalist agent will earn its position as the primary AutoGPT post-hackathon.
-<br/>
+<br>
+
 - 🔌 **Agent Protocol Standardization** - AutoGPT uses the agent protocol from the AI Engineer Foundation to ensure seamless compatibility.
 
 ---
 
 ## [AutoGPT-Forge](forge/get-started.md)
 
-Forge your future with AutoGPT! The Forge is your innovation lab. 
-<br>
+Forge your future with AutoGPT! The Forge is your innovation lab.
+<br></br>
+
 - 🏗️ **Building with Ease** - We've set the groundwork so you can focus on your agent's personality and capabilities. Comprehensive tutorials are available [Here](https://aiedge.medium.com/autogpt-forge-e3de53cc58ec).
 
 ---
 
 ## [Frontend](front-end/the-ui.md)
 
-Harness your AI journey with the AutoGPT Front-End. 
-<br>
+Harness your AI journey with the AutoGPT Front-End.
+
 - 🎮 **User-Friendly Interface** - Manage your agents effortlessly.
-<br>
+
 - 🔄 **Seamless Integration** - Smooth connectivity between your agent and our benchmarking system.
 
 ---
