@@ -133,7 +133,7 @@ async def step_handler(step: Step) -> Step:
         main(
             workspace_dir,
             step.additional_input.get("model", "gpt-4"),
-            step.additional_input.get("temperature", 0),
+            step.additional_input.get("temperature", 0.1),
             steps_config,
             False,
             step.additional_input.get("azure_endpoint", ""),
