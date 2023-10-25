@@ -4,11 +4,10 @@ from typing import Tuple, Optional, List
 import tiktoken
 
 from forge.sdk import ForgeLogger, Artifact
-from forge.sdk.abilities.coding.write_code import read_other_files
+from forge.sdk.abilities.coding.write_code import read_other_files, create_openai_client
 from forge.sdk.abilities.registry import ability
 from ghostcoder.filerepository import FileRepository
 from ghostcoder.actions import CodeWriter
-from ghostcoder.benchmark.utils import create_openai_client
 from ghostcoder.schema import Message, TextItem, FileItem, CodeItem
 
 logger = ForgeLogger(__name__)
@@ -49,6 +48,7 @@ FILE_FORMAT = """All files should be presented in the following format:
 ```python
 # ... code  
 ```
+---
 """
 
 @ability(
@@ -86,9 +86,10 @@ async def _write_code(
     repo_dir = agent.workspace.base_path / task_id
     llm = create_openai_client(log_dir=repo_dir / ".prompt_log",
                                llm_name=_llm,
-                               temperature=_temperature,
                                max_tokens=2000,
-                               streaming=False)
+                               temperature=_temperature,
+                               stop_sequence="---",
+                               streaming=True)
 
     repository = FileRepository(repo_path=repo_dir, use_git=False)
 
@@ -119,7 +120,7 @@ async def _write_code(
         if not repository.get_file_content(test_file):
             use_existing_tests = True
     else:
-        test_file_item = FileItem(file_path=test_file, content=repository.get_file_content(test_file))
+        test_file_item = FileItem(file_path=test_file, content=repository.get_file_content(test_file), stop_sequence="---")
         file_items.append(test_file_item)
 
     other_file_items = read_other_files(repo_dir, file_item)
@@ -137,7 +138,8 @@ async def _write_code(
             Message(sender="Human", items=other_file_items),
             Message(sender="Human", items=[TextItem(text="Here's the implementation done by the inexperienced programmer.")] + file_items),
             Message(sender="Human", items=[TextItem(text=fix_code_instructions)]),
-            Message(sender="Human", items=[TextItem(text=FIX_TESTS_PROMPT)])
+            Message(sender="Human", items=[TextItem(text=FIX_TESTS_PROMPT)]),
+            #Message(sender="AI", items=[TextItem(text=f"{file_item.file_path}\n```python")])
         ]
 
         if _only_return_changes:

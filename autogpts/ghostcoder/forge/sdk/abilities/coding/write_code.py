@@ -37,7 +37,7 @@ ONLY_WRITE_CODE = "Do a full implementation of the requirements."
 
 WRITE_CODE_PROMPT = """The implementation will be verified by a test suite and must therefore be fully functioning.
 Do not add placeholders. All requirements must be implemented right away!
-
+Split up complex logic in many functions.
 Stop after you wrote the code. 
 
 And most important. You must implement the full solution, not a simplified implementation, even if it might look complex!"""
