@@ -1,7 +1,8 @@
 # Ghostcoder - AutoGPT style
 This is a submission to the AutoGPT Arena Hacks hackathon. The Agent code is in the directory `autogpts/ghostcoder`.
 
-Ghostcoder is an agent specialized in writing, verifying, and editing code.
+Ghostcoder is an agent specialized in writing, verifying, and editing code. To accomplish this functionality
+from the experimental project [Ghostcoder](https://github.com/aorwall/ghostcoder) is used. 
 
 ## Concepts
 
