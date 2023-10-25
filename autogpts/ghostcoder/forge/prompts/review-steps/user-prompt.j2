@@ -1,0 +1,24 @@
+You ran the step \"{{ step.name }}\" and got the following output:
+"""
+{{ step.output }}
+"""
+
+## Next steps to run
+{% if next_steps %}
+{{ next_steps }}
+
+{% else %}
+There are no next steps.
+{% endif %}
+
+{% if previous_steps %}
+## Previous steps
+The following steps have already been run.
+{% for step in previous_steps %}
+- Name: {{ step.name }}
+  Description: {{ step.input }}
+{% endfor %}
+{% endif %}
+
+Your main objective is to complete the task:
+{{ task }}

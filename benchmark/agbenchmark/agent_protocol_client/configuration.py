@@ -76,6 +76,7 @@ class Configuration(object):
         server_operation_index=None,
         server_operation_variables=None,
         ssl_ca_cert=None,
+        connection_pool_maxsize=None
     ):
         """Constructor"""
         self._base_path = "http://localhost" if host is None else host
@@ -189,6 +190,8 @@ class Configuration(object):
         self.date_format = "%Y-%m-%d"
         """date format
         """
+
+        self.connection_pool_maxsize = connection_pool_maxsize
 
     def __deepcopy__(self, memo):
         cls = self.__class__

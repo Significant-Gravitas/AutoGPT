@@ -24,7 +24,7 @@ async def run_api_agent(
 ) -> None:
     host_value = None
 
-    configuration = Configuration(host=config["AgentBenchmarkConfig"].host + "/ap/v1")
+    configuration = Configuration(host=config["AgentBenchmarkConfig"].host + "/ap/v1", connection_pool_maxsize=1)
     async with ApiClient(configuration) as api_client:
         api_instance = AgentApi(api_client)
         task_request_body = TaskRequestBody(input=task.task)
@@ -64,7 +64,9 @@ async def run_api_agent(
 
 
 async def copy_agent_artifacts_into_temp_folder(api_instance, task_id):
+    print(f"Get artifacts for task {task_id}. Config is {api_instance.api_client.configuration.host}")
     artifacts = await api_instance.list_agent_task_artifacts(task_id=task_id)
+    print(f"All artifacts: {artifacts}")
     for artifact in artifacts.artifacts:
         # current absolute path of the directory of the file
         directory_location = pathlib.Path(TEMP_FOLDER_ABS_PATH)

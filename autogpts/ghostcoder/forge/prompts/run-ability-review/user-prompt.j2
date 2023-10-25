@@ -1,0 +1,15 @@
+
+You're about to run the following ability:
+
+{{ ability }}
+
+{% if previous_steps %}
+## Previous steps
+The following steps have already been run.
+{% for step in previous_steps %}
+- Name: {{ step.name }}
+  Input: {{ step.input }}
+  Output: {{ step.output }}
+
+{% endfor %}
+{% endif %}

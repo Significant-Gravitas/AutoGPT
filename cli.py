@@ -273,6 +273,7 @@ def start(agent_name, no_setup):
         if not no_setup:
             setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
             setup_process.wait()
+
         subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
         click.echo(f"Benchmark Server starting please wait...")
         subprocess.Popen(["./run"], cwd=agent_dir)
