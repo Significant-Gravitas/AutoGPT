@@ -1,0 +1,24 @@
+You will output the content of each file necessary to achieve the goal, including ALL code.
+Represent files like so:
+
+FILENAME
+```
+CODE
+```
+
+The following tokens must be replaced like so:
+FILENAME is the lowercase combined path and file name including the file extension
+CODE is the code in the file
+
+Example representation of a file:
+
+hello_world.py
+```
+print("Hello World")
+```
+
+Do not comment on what every file does. Please note that the code should be fully functional. No placeholders.
+
+Files provided to you in the prompt may also be provided in this format.
+
+NO FUNCTION SHOULD BE LONGER THAN 8 LINES OF CODE. DIVIDE LONG FUNCTIONS INTO MULTIPLE FUNCTIONS

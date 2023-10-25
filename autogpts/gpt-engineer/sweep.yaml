@@ -1,0 +1,18 @@
+# Sweep AI turns bug fixes & feature requests into code changes (https://sweep.dev)
+# For details on our config file, check out our docs at https://docs.sweep.dev
+
+# If you use this be sure to frequently sync your default branch(main, master) to dev.
+branch: 'main'
+# By default Sweep will read the logs and outputs from your existing Github Actions. To disable this, set this to false.
+gha_enabled: True
+description: 'Python project for AI code generation with next token prediction LLMs. Various AI steps are carried out in steps.py. Disk access via DB objects.'
+
+# Default Values: https://github.com/sweepai/sweep/blob/main/sweep.yaml
+sandbox:
+  install:
+    - pre-commit install
+  check:
+    - pre-commit run --files {file_path}
+
+rules:
+  - Ensure all new functions and classes have very clear, concise and up-to-date docstrings. Take gpt_engineer/ai.py as a good example.

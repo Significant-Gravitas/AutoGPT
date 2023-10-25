@@ -1,0 +1,108 @@
+
+index.html
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>To-Do List App</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>To-Do List</h1>
+    <form id="task-form">
+        <input type="text" id="task-input" placeholder="Enter a task">
+        <button type="submit">Add Task</button>
+    </form>
+    <ul id="task-list"></ul>
+    <script src="app.js"></script>
+</body>
+</html>
+```
+
+Next, we have the `styles.css` file:
+
+styles.css
+```css
+body {
+    font-family: Arial, sans-serif;
+}
+
+#task-form {
+    margin-bottom: 20px;
+}
+
+#task-input {
+    margin-right: 10px;
+}
+
+#task-list {
+    list-style-type: none;
+}
+```
+
+Finally, we have the `app.js` file:
+
+app.js
+```javascript
+document.addEventListener('DOMContentLoaded', () => {
+    const taskForm = document.getElementById('task-form');
+    const taskInput = document.getElementById('task-input');
+    const taskList = document.getElementById('task-list');
+
+    taskForm.addEventListener('submit', event => {
+        event.preventDefault();
+        addTask(taskInput.value);
+        taskInput.value = '';
+    });
+
+    taskList.addEventListener('click', event => {
+        if (event.target.tagName === 'BUTTON') {
+            if (event.target.textContent === 'Edit') {
+                editTask(event.target.parentElement);
+            } else if (event.target.textContent === 'Delete') {
+                deleteTask(event.target.parentElement);
+            }
+        }
+    });
+
+    function addTask(task) {
+        const listItem = document.createElement('li');
+        listItem.textContent = task;
+        const editButton = document.createElement('button');
+        editButton.textContent = 'Edit';
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = 'Delete';
+        listItem.appendChild(editButton);
+        listItem.appendChild(deleteButton);
+        taskList.appendChild(listItem);
+        saveTasks();
+    }
+
+    function editTask(listItem) {
+        const task = prompt('Edit the task', listItem.firstChild.textContent);
+        listItem.firstChild.textContent = task;
+        saveTasks();
+    }
+
+    function deleteTask(listItem) {
+        taskList.removeChild(listItem);
+        saveTasks();
+    }
+
+    function saveTasks() {
+        const tasks = Array.from(taskList.children).map(listItem => listItem.firstChild.textContent);
+        localStorage.setItem('tasks', JSON.stringify(tasks));
+    }
+
+    function loadTasks() {
+        const tasks = JSON.parse(localStorage.getItem('tasks'));
+        if (tasks) {
+            tasks.forEach(task => addTask(task));
+        }
+    }
+
+    loadTasks();
+});
+```

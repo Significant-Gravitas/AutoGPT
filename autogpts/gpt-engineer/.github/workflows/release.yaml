@@ -1,0 +1,52 @@
+name: Build and publish Python packages to PyPI
+
+on:
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - "3.10"
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install build tool
+        run: pip install build
+
+      - name: Build package
+        run: python -m build
+
+      - name: Upload package as build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: package
+          path: dist/
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: pypi
+      url: https://pypi.org/p/gpt-engineer
+    permissions:
+      id-token: write
+    steps:
+      - name: Collect packages to release
+        uses: actions/download-artifact@v3
+        with:
+          name: package
+          path: dist/
+
+      - name: Publish packages to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

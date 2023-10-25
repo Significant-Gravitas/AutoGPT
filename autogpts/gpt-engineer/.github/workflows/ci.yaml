@@ -1,0 +1,37 @@
+name: Pip install and pytest
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "**.py"
+      - "**.yaml"
+      - "**.yml"
+  push:
+    branches: [ main ]
+    paths:
+      - "**.py"
+      - "**.yaml"
+      - "**.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Install test runner
+        run: pip install pytest pytest-cov
+
+      - name: Run unit tests
+        run: pytest --cov=gpt_engineer
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v1

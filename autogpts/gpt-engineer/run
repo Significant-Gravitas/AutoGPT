@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Variable for the port
+BACKEND_PORT=8000
+# Activate the virtual environment
+source venv/bin/activate
+# Check if there's a process running on the desired port and kill it
+pid=$(lsof -t -i:$BACKEND_PORT)
+if [ $? -eq 0 ]; then
+    echo "Killing process running on port $BACKEND_PORT with PID: $pid"
+    kill -9 $pid
+else
+    echo "No process running on port $BACKEND_PORT"
+fi
+
+
+
+# Start the Python application
+python3 gpt_engineer/API/api.py

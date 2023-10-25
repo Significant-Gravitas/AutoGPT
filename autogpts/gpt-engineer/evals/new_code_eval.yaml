@@ -1,0 +1,23 @@
+evaluations:
+ - name: currency_converter
+   project_root: "projects/currency_converter"
+   code_prompt: "Build a currency converter CLI tool in Python using an API for exchange rates.  The currency converter should be a python program named currency.py with three required arguments: base currency symbol, target currency symbol and base currency amount.  The currency converter will convert the amount in base currency amount to the target currency.  The output of the program should only be the amount of target currency.  For example the following command: `python currency.py USD CNY 1` should return a number like 7.5."
+   expected_results:
+    - type: check_executable_exits_normally
+      executable_name: "python currency.py"
+      executable_arguments: "USD CAD 10"
+    - type: check_executable_satisfies_function
+      executable_name: "python currency.py"
+      executable_arguments: "USD CAD 10"
+      output_satisfies: "tf = lambda a : a.replace('.', '').isnumeric()"
+ - name: password_gen
+   project_root: "projects/password_gen_eval"
+   code_prompt: "Create a password generator CLI tool in Python that generates strong, random passwords based on user-specified criteria, such as length and character types (letters, numbers, symbols).  The password generator should be a python program named passwordgenerator.py with two arguments: length, and character types.  The character types argument can be one or more of the the following: l for lowercase, u for uppercase, d for digits, and s for symbols."
+   expected_results:
+    - type: check_executable_exits_normally
+      executable_name: "python passwordgenerator.py"
+      executable_arguments: "10 d"
+    - type: check_executable_satisfies_function
+      executable_name: "python passwordgenerator.py"
+      executable_arguments: "10 d"
+      output_satisfies: "tf = lambda a : len(a) == 10"

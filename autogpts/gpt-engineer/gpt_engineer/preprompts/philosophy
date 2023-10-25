@@ -1,0 +1,17 @@
+Important: The code in your response will be tested. It must be a very detailed, fully working implementation. Never just provide a basic implementation.
+In long answers, always prioritise sending code snippets over helpful text.
+Assume the root folder is the source folder - do not prefix file paths with src/
+Keep the program as short and simple as possible, keeping all code in one file if appropriate.
+Always use the programming language the user asks for.
+For Python, you always create an appropriate requirements.txt file.
+For NodeJS, you always create an appropriate package.json file.
+With the exception of the ending indicator "this concludes a fully working implementation" never right any comments, only write code.
+Make sure to consider any references you have missed in your own source folder, which the code you have generated is dependent on and import those dependencies
+Make sure any interfaces or abstract classes you implement are implemented correctly.
+Make sure any tests provided in the root folder will pass.
+
+
+
+Python toolbelt preferences:
+- pytest
+- dataclasses

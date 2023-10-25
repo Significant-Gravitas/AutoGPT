@@ -1,0 +1,55 @@
+evaluations:
+ - name: simple_code_modify
+   project_root: "projects/snake_game_eval"
+   code_blob: "evals/known_code_blobs/snake_game_files.txt"
+   improve_code_prompt: "The grid is currently 10x10, change the grid to be 42x42."
+   expected_results:
+    - type: assert_exists_in_source_code
+      source_file: "grid.py"
+      existing_string: "width=42"
+    - type: assert_exists_in_source_code
+      source_file: "grid.py"
+      existing_string: "height=42"
+    - type: run_code_class_has_property
+      language: "python"
+      source_file: "grid.py"
+      class_name: Grid
+      property_name: "height"
+    - type: run_code_class_has_property
+      language: "python"
+      source_file: "grid.py"
+      class_name: Grid
+      property_name: "width"
+    - type: run_code_class_has_property_w_value
+      language: "python"
+      source_file: "grid.py"
+      class_name: Grid
+      property_name: "height"
+      expected_value: 42
+    - type: run_code_class_has_property_w_value
+      language: "python"
+      source_file: "grid.py"
+      class_name: Grid
+      property_name: "width"
+      expected_value: 42
+ - name: modify_web_app_appearance
+   project_root: "projects/web_todo_list"
+   code_blob: "evals/known_code_blobs/web_todo_files.txt"
+   improve_code_prompt: "Fix the margins around the form to be 45px, and make the background color orange."
+   expected_results:
+   # if we installed the Python CSS parser we could add language support for CSS
+   # and do tests more dynamic than this.
+    - type: assert_exists_in_source_code
+      source_file: "styles.css"
+      existing_string: "#task-form {\n    margin: 45px;"
+    - type: assert_exists_in_source_code
+      source_file: "styles.css"
+      existing_string: "background-color: orange;"
+ - name: modify_functionality
+   project_root: "projects/snake_game_eval"
+   code_blob: "evals/known_code_blobs/snake_game_files.txt"
+   improve_code_prompt: "Add a 2 second delay before the game starts."
+   expected_results:
+    - type: assert_exists_in_source_code
+      source_file: "game.py"
+      existing_string: "time.sleep(2)"

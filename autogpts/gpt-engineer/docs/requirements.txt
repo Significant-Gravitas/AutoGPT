@@ -1,0 +1,13 @@
+autodoc_pydantic>=1.8.0
+myst_parser>=0.18.1
+nbsphinx==0.8.9
+sphinx==4.5.0
+sphinx-autobuild==2021.3.14
+sphinx_rtd_theme==1.0.0
+sphinx-typlog-theme==0.8.0
+sphinx-panels>=0.6.0
+toml>=0.10.2
+myst_nb>=0.17.1
+linkchecker>=10.2.1
+sphinx_copybutton>=0.5.1
+markdown-include>=0.6.0

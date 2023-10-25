@@ -1,0 +1,133 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+
+[project]
+name = "gpt-engineer"
+version = "0.0.9"
+description = "Specify what you want it to build, the AI asks for clarification, and then builds it."
+readme = "README.md"
+requires-python = ">=3.8, <4.0"
+dependencies = [
+  'black == 23.3.0',
+  'click >= 8.0.0',
+  'mypy == 1.3.0',
+  'openai == 0.27.8',
+  'pre-commit == 3.3.3',
+  'pytest == 7.3.1',
+  'ruff == 0.0.272',
+  'termcolor==2.3.0',
+  'typer >= 0.3.2',
+  'rudder-sdk-python == 2.0.2',
+  'dataclasses-json == 0.5.7',
+  'tiktoken >=0.0.4',
+  'tabulate == 0.9.0',
+  'python-dotenv >= 0.21.0',
+  'langchain >=0.0.240',
+  'fastapi >=0.99.0',
+  'hypercorn >=0.14.0',
+  'aiofiles >=23.0.0',
+  'python-multipart >= 0.0.6'
+]
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest >= 7.3.1",
+]
+doc = [
+
+    "autodoc_pydantic >= 1.8.0",
+    "myst_parser >= 0.18.1",
+    "nbsphinx >= 0.8.9",
+    "sphinx >= 4.5.0",
+    "sphinx-autobuild >= 2021.3.14",
+    "sphinx_book_theme >= 0.3.3",
+    "sphinx_rtd_theme >= 1.0.0",
+    "sphinx-typlog-theme >= 0.8.0",
+    "sphinx-panels >= 0.6.0",
+    "toml >= 0.10.2",
+    "myst-nb >= 0.17.1",
+    "linkchecker >= 10.2.1",
+    "sphinx-copybutton >= 0.5.1",
+    "markdown-include >= 0.6.0",
+    "sphinx_copybutton >= 0.5.2"
+]
+
+
+[project.scripts]
+gpt-engineer = 'gpt_engineer.cli.main:app'
+ge = 'gpt_engineer.cli.main:app'
+
+[tool.setuptools]
+packages = ["gpt_engineer", "gpt_engineer.cli", "gpt_engineer.core"]
+
+[tool.ruff]
+select = ["F", "E", "W", "I001"]
+line-length = 100
+show-fixes = false
+target-version = "py311"
+task-tags = ["TODO", "FIXME"]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/AntonOsika/gpt-engineer"
+"Bug Tracker" = "https://github.com/AntonOsika/gpt-engineer/issues"
+
+[tool.ruff.isort]
+known-first-party = []
+known-third-party = []
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+combine-as-imports = true
+split-on-trailing-comma = false
+lines-between-types = 1
+
+[tool.black]
+line-length = 90
+target-version = ["py311"]
+include = '\.pyi?$'
+exclude = '''
+(
+  /(
+      \.direnv
+    | \.eggs
+    | \.git
+    | \.tox
+    | \.venv
+    | _build
+    | build
+    | dist
+    | venv
+  )/
+)
+'''

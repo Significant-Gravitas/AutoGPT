@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Check if 'venv' directory exists
+if [ ! -d "venv" ]; then
+    echo "Virtual environment 'venv' does not exist. Creating it now..."
+    python3 -m venv venv
+else
+    echo "'venv' already exists."
+fi
+
+# Activate the virtual environment
+source venv/bin/activate
+
+# Print the absolute path of the current working directory
+echo "Current Working Directory: $(pwd)"
+
+# Install the software in the current directory
+pip install .
+# so that it runs the files in the repo
+pip uninstall gpt-engineer --yes
