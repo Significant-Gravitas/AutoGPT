@@ -6,4 +6,4 @@ if lsof -t -i :8080; then
 fi
 # This is the cli entry point for the benchmarking tool.
 # To run this in server mode pass in `serve` as the first argument.
-poetry run agbenchmark "$@"
+PYTHONDONTWRITEBYTECODE=1 poetry run agbenchmark "$@"
