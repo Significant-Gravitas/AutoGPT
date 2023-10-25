@@ -7,13 +7,22 @@ if [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "
     
     exit 1
 else
-    if ! command -v python3 &> /dev/null
+PYTHON_CMD="python"
+
+    if [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
+        PYTHON_CMD="python"
+    fi
+
+    if ! command -v $PYTHON_CMD &> /dev/null
     then
-        echo "python3 could not be found"
-        echo "Installing python3 using pyenv..."
-        if ! command -v pyenv &> /dev/null
-        then
-            echo "pyenv could not be found"
+        echo "$PYTHON_CMD could not be found"
+    # if ! command -v python3 &> /dev/null
+    # then
+    #     echo "python3 could not be found"
+    #     echo "Installing python3 using pyenv..."
+    #     if ! command -v pyenv &> /dev/null
+    #     then
+    #         echo "pyenv could not be found"
             echo "Installing pyenv..."
             curl https://pyenv.run | bash
         fi

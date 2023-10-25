@@ -49,7 +49,8 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
     if os.path.exists(setup_script):
         click.echo(click.style("🚀 Setup initiated...\n", fg="green"))
         try:
-            subprocess.check_call([setup_script], cwd=script_dir)
+            subprocess.check_call(['bash', setup_script], cwd=script_dir)
+            # subprocess.check_call([setup_script], cwd=script_dir)
         except subprocess.CalledProcessError:
             click.echo(
                 click.style("❌ There was an issue with the installation.", fg="red")
@@ -271,7 +272,8 @@ def start(agent_name, no_setup):
     if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
         os.chdir(agent_dir)
         if not no_setup:
-            setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
+            setup_process = subprocess.Popen(["bash", "./setup"], cwd=agent_dir)
+            # setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
             setup_process.wait()
         subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
         click.echo(f"Benchmark Server starting please wait...")
