@@ -1,0 +1,61 @@
+# This defines the type of the template. Don't remove it.
+template_type: monolithic
+
+# Message processing variables
+# These variables are used to process Auto-GPT's input array of messages into a string
+strip_messages_from_end: 0      # Only used when an RP prompt is sent to the LLM
+send_as: "System"               # The name to be used when speaking to the LLM
+ai_name: "AI"                   # Chat attribution to the AI, is typically different ai_setting sname
+
+# This text preceeds the LLM prompt. It is non-standard but may be useful to you.
+prescript: ""
+
+# Strings used to construct the generic monolithic prompt sent by Auto-GPT
+strings:
+  lead_in: 'You are '
+  general_guidance:
+  - Your decisions must always be made independently without seeking user assistance.
+  - Play to your strengths as an LLM and pursue simple strategies with no legal complications.
+  os_prompt: '\n\nThe OS you are running on is: '
+  goal_label: ".\n\nGOALS:\n\n"
+  constraints_label: 'Constraints:\n'
+  constraints:
+  - "~4000 word limit for short term memory. Your short term memory is short, so immediately
+    save important information to files."
+  - If you are unsure how you previously did something or want to recall past events,
+    thinking about similar events will help you remember.
+  - No user assistance
+  - Exclusively use the commands listed in double quotes e.g. "command name"
+  commands_label: '\n\nCommands:\n'
+  resources_label: '\n\nResources:\n'
+  resources:
+  - Internet access for searches and information gathering.
+  - Long Term memory management.
+  - GPT-3.5 powered Agents for delegation of simple tasks.
+  performance_eval_label: '\n\nPerformance Evaluation:\n'
+  performance_eval:
+  - Continuously review and analyze your actions to ensure you are performing to the
+    best of your abilities.
+  - Constructively self-criticize your big-picture behavior constantly.
+  - Reflect on past decisions and strategies to refine your approach.
+  - Every command has a cost, so be smart and efficient. Aim to complete tasks in
+    the least number of steps.
+  - Write all code to a file.
+  response_format_label: '\n\nResponse Format:\n'
+  response_format_pre_prompt: "You should only respond in YAML format as described
+    below \nResponse Format: \n\n--START TEMPLATE--\n"
+  response_format_post_prompt: " \n--END TEMPLATE--\n\nEnsure the response can be parsed by Python.\n\nHistory:\n"
+
+# This string appears at the end of the LLM prompt. It is non-standard but may be useful to you.
+postscript: "Please complete the template and reply.\n\n"
+
+# History tags
+history_start: '--Begin History--'
+history_end: '--End History--'
+history_none: '--No History--'
+
+# This YAML corresponds to a simplified JSON format that is translated by the plugin into the
+# format expected by Auto-GPT.
+response_format: "plan_summary: <str>\nreasoning: <str>\nnext_steps:\n - <str-item1>\n - <str-itemN>\n
+  \nconsiderations: <str>\ntts_msg: <str>\ncommand_name: <str>\nargs:\n - name: <str-item1>
+  \n   value: <str-item1>\n - name: <str-itemN>\n   value: <str-itemN>"
