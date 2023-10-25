@@ -41,8 +41,6 @@
     docker pull significantgravitas/auto-gpt
     ```
 
-6. Continue to [Run with Docker](#run-with-docker)
-
 !!! note "Docker only supports headless browsing"
     AutoGPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.
     Please do not change this setting in combination with Docker, or AutoGPT will crash.
