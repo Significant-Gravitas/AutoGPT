@@ -144,6 +144,20 @@ class _ChatViewState extends State<ChatView> {
                             "linear-gradient(to right, #dc1c13, #dc1c13)",
                         textColor: Colors.white,
                         fontSize: 16.0);
+                  } else if (response is http.Response &&
+                      response.statusCode >= 500 &&
+                      response.statusCode < 600) {
+                    Fluttertoast.showToast(
+                        msg: "500 error: Something went wrong",
+                        toastLength: Toast.LENGTH_LONG,
+                        gravity: ToastGravity.TOP,
+                        timeInSecForIosWeb: 5,
+                        backgroundColor: Colors.red,
+                        webPosition: "center",
+                        webBgColor:
+                            "linear-gradient(to right, #dc1c13, #dc1c13)",
+                        textColor: Colors.white,
+                        fontSize: 16.0);
                   }
                 }
               },

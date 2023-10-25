@@ -68,10 +68,10 @@ jobs:
         event_ref_type: ${{ github.event.ref}}
         inputs_no_cache: ${{ inputs.no_cache }}
 
-        prod_branch: stable
-        dev_branch: master
+        prod_branch: master
+        dev_branch: development
         repository: ${{ github.repository }}
-        base_branch: ${{ github.ref_name != 'master' && github.ref_name != 'stable' && 'master' || 'stable' }}
+        base_branch: ${{ github.ref_name != 'master' && github.ref_name != 'development' && 'development' || 'master' }}
 
         ref_type: ${{ github.ref_type }}
         current_ref: ${{ github.ref_name }}

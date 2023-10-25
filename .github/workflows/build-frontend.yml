@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - development
       - 'ci-test*' # This will match any branch that starts with "ci-test"
     paths:
       - 'frontend/**'

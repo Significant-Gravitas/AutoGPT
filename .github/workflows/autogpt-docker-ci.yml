@@ -2,12 +2,12 @@ name: AutoGPT Docker CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, development ]
     paths:
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
   pull_request:
-    branches: [ master, release-*, stable ]
+    branches: [ master, development, release-* ]
     paths:
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
@@ -61,10 +61,10 @@ jobs:
 
         build_type: ${{ matrix.build-type }}
 
-        prod_branch: stable
-        dev_branch: master
+        prod_branch: master
+        dev_branch: development
         repository: ${{ github.repository }}
-        base_branch: ${{ github.ref_name != 'master' && github.ref_name != 'stable' && 'master' || 'stable' }}
+        base_branch: ${{ github.ref_name != 'master' && github.ref_name != 'development' && 'development' || 'master' }}
 
         current_ref: ${{ github.ref_name }}
         commit_hash: ${{ github.event.after }}

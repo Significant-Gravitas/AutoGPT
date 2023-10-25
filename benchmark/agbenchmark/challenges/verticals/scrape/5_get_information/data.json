@@ -5,11 +5,12 @@
     ],
     "cutoff": 60,
     "dependencies": [
-        "TestRevenueRetrieval2"
+        "TestRevenueRetrieval"
     ],
     "eval_id": "1758058c-f726-484f-96fa-f05e278e5ff5",
     "ground": {
         "answer": "The twitter handles of the two hosts of Latent Space.",
+        "case_sensitive": false,
         "eval": {
             "type": "file"
         },

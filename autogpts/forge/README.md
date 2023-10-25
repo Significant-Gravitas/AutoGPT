@@ -22,10 +22,3 @@ The getting started [tutorial series](https://aiedge.medium.com/autogpt-forge-e3
 4. [AutoGPT Forge: Crafting Intelligent Agent Logic](https://medium.com/@aiedge/autogpt-forge-crafting-intelligent-agent-logic-bc5197b14cb4)
 
 
-Coming soon:
-
-
-3. Interacting with and Benchmarking your Agent
-4. Abilities
-5. The Planning Loop
-6. Memories
