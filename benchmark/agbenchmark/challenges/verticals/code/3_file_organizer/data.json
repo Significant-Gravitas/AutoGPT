@@ -25,5 +25,5 @@
         "side_effects": []
     },
     "name": "FileOrganizer",
-    "task": "Create a file organizer CLI tool in Python that sorts files in a directory based on their file types (e.g., images, documents, audio) and moves them into these corresponding folders: 'images', 'documents', 'audio'. The entry point will be a python file that can be run this way: python organize_files.py --directory_path=YOUR_DIRECTORY_PATH"
+    "task": "Create a file organizer CLI tool in Python that sorts files in a directory based on their file types (e.g., images, documents, audio) and moves them into these corresponding folders: 'images', 'documents', 'audio'. \n\nSome examples of file types:\n* images: png, jpg, jpeg\n* documents: pdf, docx, txt\n* audio: mp3, wav, flac\n\n The entry point will be a python file that can be run this way: python organize_files.py --directory_path=YOUR_DIRECTORY_PATH"
 }
