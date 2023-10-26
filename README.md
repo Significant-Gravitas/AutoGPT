@@ -9,7 +9,7 @@ from the experimental project [Ghostcoder](https://github.com/aorwall/ghostcoder
 ### Write code
 When a task comes in related to writing code, the "write code" ability will be executed.
 
-This is managed with a prompt instructing GPT to demonstrate its understanding of the task by listing the requirements.
+This is managed with a prompt instructing GPT to demonstrate its understanding of the task by listing the requirements and then write the implementation.
 
 Any other files in the workspace will be included in the prompt unless they exceed the maximum token count.
 
