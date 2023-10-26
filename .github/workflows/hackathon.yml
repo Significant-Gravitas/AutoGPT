@@ -1,0 +1,86 @@
+name: Hackathon
+
+on:
+  workflow_dispatch:
+    branches: [hackathon]
+    inputs:
+      agents:
+        description: "Agents to run (comma-separated)"
+        required: false
+        default: "ZEROAGPT_03" # Default agents if none are specified
+
+jobs:
+  matrix-setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      env-name: ${{ steps.set-matrix.outputs.env-name }}
+    steps:
+      - id: set-matrix
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            echo "::set-output name=env-name::production"
+            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI', 'PolyGPT', 'Turbo' ]"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            IFS=',' read -ra matrix_array <<< "${{ github.event.inputs.agents }}"
+            matrix_string="[ \"$(echo "${matrix_array[@]}" | sed 's/ /", "/g')\" ]"
+            echo "::set-output name=env-name::production"
+            echo "::set-output name=matrix::$matrix_string"
+          else
+            echo "::set-output name=env-name::testing"
+            echo "::set-output name=matrix::[ 'mini-agi' ]"
+          fi
+
+  tests:
+    environment:
+      name: "${{ needs.matrix-setup.outputs.env-name }}"
+    needs: matrix-setup
+    env:
+      min-python-version: "3.10"
+    name: "${{ matrix.agent-name }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        agent-name: ${{fromJson(needs.matrix-setup.outputs.matrix)}}
+    steps:
+      - name: Print Environment Name
+        run: |
+          echo "Matrix Setup Environment Name: ${{ needs.matrix-setup.outputs.env-name }}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          submodules: true
+
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ env.min-python-version }}
+
+      - id: get_date
+        name: Get date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python -
+
+      - name: Run regression tests
+        run: |
+          ./run agent start ${{ matrix.agent-name }}
+          cd autogpts/${{ matrix.agent-name }}
+          poetry run agbenchmark --mock
+          poetry run agbenchmark --test=WriteFile
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AGENT_NAME: ${{ matrix.agent-name }}
+          HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
+          REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+          HELICONE_CACHE_ENABLED: false
+          HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
+          REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
