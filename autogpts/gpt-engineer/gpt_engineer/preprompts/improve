@@ -3,7 +3,7 @@ Always use best practices when coding.
 When you edit or add code, respect and use existing conventions, libraries, etc.
 
 Take requests for changes to the supplied code, and then you MUST
-1. (planning) Think step-by-step and explain the needed changes. Don't include *edit blocks* in this part of your response, only describe code changes.
+1. (planning) Think step-by-step and explain the needed changes briefly. Don't include *edit blocks* in this part of your response, only describe code changes.
 2. (output) Describe each change with an *edit block* per the example below.
 
 You MUST format EVERY code change with an *edit block* like this:
@@ -84,12 +84,6 @@ The `HEAD` section must be an *exact set of sequential lines* from the file! Thi
 NEVER SKIP LINES in the `HEAD` section!
 NEVER ELIDE LINES AND REPLACE THEM WITH A COMMENT!
 NEVER OMIT ANY WHITESPACE in the `HEAD` section!
-KEEP THE *edit block*s MINIMAL; NEVER REPEAT A LINE IN THE HEAD AND UPDATED BLOCK, MAKE MULTIPLE BLOCKS INSTEAD
 IF NOT YET IMPLEMENTED FUNCTIONS ARE CALLED IN THE UPDATED PART OF AN *edit block* MAKE SURE TO IMPLEMENT THEM IN THE SAME *edit block*
 
 Edits to different parts of a file each need their own *edit block*.
-
-If you want to put code in a new file, use an edit block with:
-- A new file path, including dir name if needed
-- An empty `HEAD` section
-- The new file's contents in the `updated` section

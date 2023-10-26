@@ -124,9 +124,17 @@ async def step_handler(step: Step) -> Step:
     workspace_dir = Agent.get_workspace(step.task_id)
     artifacts_in = await Agent.db.list_artifacts(step.task_id)
     # if any python files in the artifacts in
-    python_file_list = [".py" in artifact.file_name for artifact in artifacts_in]
-    if any(python_file_list):
+    common_file_extensions = [".txt", ".json", ".xml", ".html", ".css", ".js", ".java", ".cpp", ".c", ".cs",
+                              ".py", ".rb", ".php", ".sql", ".md", ".yml", ".yaml", ".sh", ".jar",
+                              ".zip", ".tar.gz", ".svg", ".png", ".jpg", ".gif", ".log", ".csv"]
+    # Check if the file has one of the common extensions
+    file_list = [artifact.file_name.endswith(tuple(common_file_extensions)) for artifact in artifacts_in]
+    contains_test = any('test' in artifact.file_name.lower() for artifact in artifacts_in)
+
+    if any(file_list):  # any files at all
         steps_config = "simple_enhanced"
+        if contains_test:  # any files with test in the name
+            steps_config = "simple_enhanced_selfheal"
     else:
         steps_config = "simple"
     try:
