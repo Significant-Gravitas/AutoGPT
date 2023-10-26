@@ -95,7 +95,8 @@ class Battleship(AbstractBattleship):
 This code is parsed into "code blocks" and compared to code blocks from the original file.
 
 Getting this to work correctly is a bit of trial and error since GPT tends to return syntactically 
-incorrect code when not returning all of the code. 
+incorrect code when not returning all of the code. . When such invalid code is returned, the agent 
+will instruct GPT to return the entire file as a fallback.
 
 
 ### Trim code
@@ -139,5 +140,12 @@ as possible. However, for further development, I want to break it down into seve
 demonstrating an understanding of the task will be its own step. And there will be an opportunity for 
 self-reflection after each completed step.
 
-Next is the step to handle larger codebases, both repositories with many files and larger files that 
-don't fit within the context.
+Moreover, I want to make the code merging functionality more robust. This would be achieved by catching
+more error scenarios and also by validating while the code is being streamed from GPT.
+
+Following this, another essential step will be to handle larger codebases, both repositories with many
+files and larger files that don't fit within the context. My hope is that the code blocks concept can 
+facilitate this. Partly to be able to divide the code into relevant chunks that can be indexed in a
+vector store, but also to examine how dependencies between code blocks can be defined in a knowledge
+graph. Then, for large files, I want to experiment with how one can extract relevant code blocks and
+only provide these to the prompt context.
