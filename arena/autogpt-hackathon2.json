@@ -1,6 +1,1 @@
-{
-    "github_repo_url": "https://github.com/ThisisHubert/AutoGPT-hackathon",
-    "timestamp": "2023-10-22T08:35:42.167682",
-    "commit_hash_to_benchmark": "16e266c65fb4620a1b1397532c503fa426ec191d",
-    "branch_to_benchmark": "master"
-}
+{"github_repo_url": "https://github.com/ThisisHubert/AutoGPT-hackathon", "timestamp": "2023-10-23T09:20:51Z", "commit_hash_to_benchmark": "ab362f96c3255052350e8e8081b363c7b97ffd6f", "branch_to_benchmark": "master"}
