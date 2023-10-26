@@ -1,6 +1,1 @@
-{
-    "github_repo_url": "https://github.com/polywrap/evo.ninja",
-    "timestamp": "2023-10-06T23:28:08.231544",
-    "commit_hash_to_benchmark": "8440f065d144036b543d151c38b473506c7f6029",
-    "branch_to_benchmark": "dev"
-}
+{"github_repo_url": "https://github.com/polywrap/evo.ninja", "timestamp": "2023-10-26T09:49:34Z", "commit_hash_to_benchmark": "8832a1008607ab8a27de81fbea69bc73c3febb6f", "branch_to_benchmark": "dev"}
