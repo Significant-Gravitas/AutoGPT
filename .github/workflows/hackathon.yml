@@ -73,7 +73,8 @@ jobs:
       - name: Run regression tests
         run: |
           ./run agent start ${{ matrix.agent-name }}
-          cd autogpts/${{ matrix.agent-name }}
+          cd benchmark
+          poetry install 
           poetry run agbenchmark --mock
           poetry run agbenchmark --test=WriteFile
         env:
