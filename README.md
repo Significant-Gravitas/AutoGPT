@@ -131,3 +131,13 @@ the focus is on managing code.
 
 Instead of letting GPT choose the next step, this is done automatically based on the previous
 ability and whether tests have passed.
+
+## Next steps
+My plan is to continue developing Ghostcoder into an agent that can function in real-world scenarios. 
+In the hackathon submission, the focus has been on creating an accurate solution in as short a time 
+as possible. However, for further development, I want to break it down into several steps. For example, 
+demonstrating an understanding of the task will be its own step. And there will be an opportunity for 
+self-reflection after each completed step.
+
+Next is the step to handle larger codebases, both repositories with many files and larger files that 
+don't fit within the context.
