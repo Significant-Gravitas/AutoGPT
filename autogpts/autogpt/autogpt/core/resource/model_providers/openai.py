@@ -347,6 +347,9 @@ class OpenAIProvider(
         if functions:
             if OPEN_AI_CHAT_MODELS[model_name].has_function_call_api:
                 completion_kwargs["functions"] = [f.schema for f in functions]
+                if len(functions) == 1:
+                    # force the model to call the only specified function
+                    completion_kwargs["function_call"] = {"name": functions[0].name}
             else:
                 # Provide compatibility with older models
                 _functions_compat_fix_kwargs(functions, completion_kwargs)

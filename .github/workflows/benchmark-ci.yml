@@ -2,13 +2,13 @@ name: Benchmark CI
 
 on:
   push:
-    branches: [master, ci-test*]
+    branches: [ master, development, ci-test* ]
     paths:
       - 'benchmark/**'
       - .github/workflows/benchmark-ci.yml
       - '!benchmark/reports/**'
   pull_request:
-    branches: [stable, master, release-*]
+    branches: [ master, development, release-* ]
     paths:
       - 'benchmark/**'
       - '!benchmark/reports/**'

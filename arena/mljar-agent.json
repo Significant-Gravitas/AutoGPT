@@ -1,6 +1,1 @@
-{
-    "github_repo_url": "https://github.com/mljar/mljar-agent",
-    "timestamp": "2023-10-03T11:28:17.260748",
-    "commit_hash_to_benchmark": "d8d7fc4858a8d13407f6d7da360c6b5d398f2175",
-    "branch_to_benchmark": "master"
-}
+{"github_repo_url": "https://github.com/mljar/mljar-agent", "timestamp": "2023-10-25T14:04:51Z", "commit_hash_to_benchmark": "2fbc4d6ef48f0201c046b649e7bc74b9d11ae4e5", "branch_to_benchmark": "master"}
