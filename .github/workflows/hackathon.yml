@@ -77,7 +77,7 @@ jobs:
           git clone "$link" -b "$branch" "$AGENT_NAME"
           cd $AGENT_NAME
           ./run agent start $AGENT_NAME
-          cd benchmark
+          cd ../benchmark
           poetry install
           poetry run agbenchmark
         env:
