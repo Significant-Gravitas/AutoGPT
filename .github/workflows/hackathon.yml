@@ -72,15 +72,13 @@ jobs:
 
       - name: Run benchmark
         run: |
-          mkdir agent
           link=$(jq -r '.["github_repo_url"]' arena/$AGENT_NAME.json)
           branch=$(jq -r '.["branch_to_benchmark"]' arena/$AGENT_NAME.json)
-          cd agent
-          git clone "$link" -b "$branch"
+          git clone "$link" -b "$branch" "$AGENT_NAME"
           cd $AGENT_NAME
           ./run agent start $AGENT_NAME
           cd benchmark
-          poetry install 
+          poetry install
           poetry run agbenchmark --mock
           poetry run agbenchmark --test=WriteFile
         env:
