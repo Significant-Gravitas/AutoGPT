@@ -11,7 +11,7 @@ class AgentException(Exception):
     message: str
 
     hint: Optional[str] = None
-    """A hint which can be passed to the LLM to reduce reoccurrence of this error"""
+    """A hint which can be passed to the LLM to reduce recurrence of this error"""
 
     def __init__(self, message: str, *args):
         self.message = message
@@ -37,7 +37,7 @@ class DuplicateOperationError(AgentException):
 
 
 class CommandExecutionError(AgentException):
-    """An error occured when trying to execute the command"""
+    """An error occurred when trying to execute the command"""
 
 
 class InvalidArgumentError(CommandExecutionError):
