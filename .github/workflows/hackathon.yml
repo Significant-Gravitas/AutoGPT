@@ -20,7 +20,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "schedule" ]; then
             echo "::set-output name=env-name::production"
-            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI', 'PolyGPT', 'Turbo' ]"
+            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI', 'evo-ninja', 'Turbo' ]"
           elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             IFS=',' read -ra matrix_array <<< "${{ github.event.inputs.agents }}"
             matrix_string="[ \"$(echo "${matrix_array[@]}" | sed 's/ /", "/g')\" ]"
@@ -85,3 +85,38 @@ jobs:
           HELICONE_CACHE_ENABLED: false
           HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
           REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
+
+      # Support node.js-based agents.
+      # NOTE: This is for example purposes, you will need to move this logic wherever you see fit
+
+      - name: Read node version from .nvmrc (or use default v18.15)
+        id: nvm
+        run: echo NVMRC=$([[ -f .nvmrc ]] && cat .nvmrc || echo "v18.15") >> "$GITHUB_OUTPUT"
+        working-directory: ${{ matrix.agent-name }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ steps.nvm.outputs.NVMRC }}
+
+      # NOTE: this could be put within a generic `./install.sh` script
+      #       that the agents can create and check-in to their repos
+      - name: Install node.js dependencies
+        run: yarn
+        working-directory: ${{ matrix.agent-name }}
+
+      # NOTE: this will go within the `./start` script for evo.ninja
+      - name: Start the agent
+        run: yarn start:api -c &
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SERP_API_KEY: ${{ secrets.SERP_API_KEY }}
+          # The env vars below are required right now for evo.ninja
+          # but could easily be made optional (w/ defaults). would just
+          # need to be able to push a new commit to our submission. Let me know please.
+          GPT_MODEL: "gpt-4-0613"
+          CONTEXT_WINDOW_TOKENS: 8000
+          MAX_RESPONSE_TOKENS: 2000
+
+      # After this step, evo.ninja will be running the agent-protocol at port 8000.
+      # Simply run the benchmarks you would normally, nothing special past this point.
