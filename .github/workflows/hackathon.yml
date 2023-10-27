@@ -79,8 +79,7 @@ jobs:
           ./run agent start $AGENT_NAME
           cd benchmark
           poetry install
-          poetry run agbenchmark --mock
-          poetry run agbenchmark --test=WriteFile
+          poetry run agbenchmark
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
