@@ -70,6 +70,11 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python -
 
+      - name: Install Node.js
+        uses: actions/setup-node@v1
+        with:
+          node-version: v18.15
+
       - name: Run benchmark
         run: |
           link=$(jq -r '.["github_repo_url"]' arena/$AGENT_NAME.json)
