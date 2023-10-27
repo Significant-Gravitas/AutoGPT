@@ -87,4 +87,5 @@ jobs:
           poetry run agbenchmark --test=WriteFile
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SERP_API_KEY: ${{ secrets.SERP_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
