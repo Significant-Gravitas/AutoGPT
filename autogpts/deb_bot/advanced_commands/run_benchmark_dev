@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Kill processes using port 8080 if any.
+if lsof -t -i :8080; then
+    kill $(lsof -t -i :8080)
+fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+uvicorn agbenchmark.app:app --host localhost --port 8080 --reload --log-level info --reload-dir "$SCRIPT_DIR/../../../benchmark/agbenchmark"
