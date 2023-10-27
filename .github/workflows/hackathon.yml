@@ -7,7 +7,7 @@ on:
       agents:
         description: "Agents to run (comma-separated)"
         required: false
-        default: "ZEROAGPT_03" # Default agents if none are specified
+        default: "put the name of your agent here ( same name as arena entry)" # Default agents if none are specified
 
 jobs:
   matrix-setup:
@@ -20,7 +20,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "schedule" ]; then
             echo "::set-output name=env-name::production"
-            echo "::set-output name=matrix::[ 'ZEROAGPT_03', 'evo-ninja', 'gpt-engineer']"
+            echo "::set-output name=matrix::[ 'irrelevant']"
           elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             IFS=',' read -ra matrix_array <<< "${{ github.event.inputs.agents }}"
             matrix_string="[ \"$(echo "${matrix_array[@]}" | sed 's/ /", "/g')\" ]"
@@ -28,7 +28,7 @@ jobs:
             echo "::set-output name=matrix::$matrix_string"
           else
             echo "::set-output name=env-name::testing"
-            echo "::set-output name=matrix::[ 'mini-agi' ]"
+            echo "::set-output name=matrix::[ 'irrelevant' ]"
           fi
 
   tests:
