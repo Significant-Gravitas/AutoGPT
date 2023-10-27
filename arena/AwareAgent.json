@@ -1,1 +1,6 @@
-{"github_repo_url": "https://github.com/LuisLechugaRuiz/AwareAgent", "timestamp": "2023-10-26T09:59:29Z", "commit_hash_to_benchmark": "6339e755c60eb810659be4287a69b8056a4dc61f", "branch_to_benchmark": "master"}
+{
+    "github_repo_url": "https://github.com/LuisLechugaRuiz/AwareAgent",
+    "timestamp": "2023-10-26T10:10:01.481205",
+    "commit_hash_to_benchmark": "c180063dde49af02ed95ec4c019611da0a5540d7",
+    "branch_to_benchmark": "master"
+}
