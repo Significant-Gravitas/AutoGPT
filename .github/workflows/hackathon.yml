@@ -101,8 +101,8 @@ jobs:
 
       # NOTE: this could be put within a generic `./install.sh` script
       #       that the agents can create and check-in to their repos
-      - name: Install node.js dependencies
-        run: yarn
+      - name: Install node.js dependencies & build
+        run: yarn && yarn build
         working-directory: ${{ matrix.agent-name }}
 
       # NOTE: this will go within the `./start` script for evo.ninja
