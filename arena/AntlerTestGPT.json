@@ -1,6 +1,1 @@
-{
-    "github_repo_url": "https://github.com/pjw1/AntlerAI",
-    "timestamp": "2023-09-26T12:59:42.913784",
-    "commit_hash_to_benchmark": "cf630e4f2cee04fd935612f95308322cd9eb1df7",
-    "branch_to_benchmark": "master"
-}
+{"github_repo_url": "https://github.com/pjw1/AntlerAI", "timestamp": "2023-10-07T11:46:39Z", "commit_hash_to_benchmark": "f81e086e5647370854ec639c531c900775a99207", "branch_to_benchmark": "master"}
