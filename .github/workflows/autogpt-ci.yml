@@ -2,17 +2,17 @@ name: AutoGPT Python CI
 
 on:
   push:
-    branches: [ master, ci-test* ]
+    branches: [ master, development, ci-test* ]
     paths:
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
   pull_request:
-    branches: [ stable, master, release-* ]
+    branches: [ master, development, release-* ]
     paths:
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
   pull_request_target:
-    branches: [ master, release-*, ci-test* ]
+    branches: [ master, development, release-*, ci-test* ]
     paths:
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
