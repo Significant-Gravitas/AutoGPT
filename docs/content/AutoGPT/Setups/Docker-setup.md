@@ -128,7 +128,7 @@ Once you have a recent version of Docker Compose, run the commands below in your
     want this, comment or remove the `depends: - redis` and `redis:` sections from
     `docker-compose.yml`.
 
-    For related settings, see [Memory > Redis setup](./configuration/memory.md#redis-setup).
+    For related settings, see [Memory > Redis setup](../configuration/memory.md)
 
 You can pass extra arguments, e.g. running with `--gpt3only` and `--continuous`:
 
