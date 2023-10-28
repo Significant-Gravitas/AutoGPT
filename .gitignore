@@ -1,5 +1,6 @@
 autogpts/autogpt/autogpt/core/agents/usercontext/*
 whichway/
+arena/
 
 ## Original ignores
 .github_access_token
