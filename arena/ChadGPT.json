@@ -1,6 +1,6 @@
 {
-    "github_repo_url": "https://github.com/Ahmad-Alaziz/ChadGPT",
-    "timestamp": "2023-09-30T21:55:19.017916",
-    "commit_hash_to_benchmark": "a0fba5d1f13d35a1c4a8b7718550677bf62b5101",
+    "github_repo_url": "https://github.com/mahmudremal/AutoGPT.git",
+    "timestamp": "2023-10-28T17:33:30.063156",
+    "commit_hash_to_benchmark": "85d4b1b9d67730549543ca4688fadf6890767dff",
     "branch_to_benchmark": "master"
 }
