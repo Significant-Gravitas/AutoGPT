@@ -84,7 +84,7 @@ jobs:
           ./run agent start $AGENT_NAME
           cd ../benchmark
           poetry install
-          poetry run agbenchmark
+          poetry run agbenchmark --test=WriteFile
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SERP_API_KEY: ${{ secrets.SERP_API_KEY }}
