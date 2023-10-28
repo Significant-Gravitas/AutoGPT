@@ -66,6 +66,14 @@ jobs:
         name: Get date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
+      - name: Set up PostgreSQL
+        uses: postgresql/setup-postgres@v2
+        with:
+          postgres-version: '14.9'
+          postgresql-database: ${{ env.DB_NAME }}
+          postgresql-username: ${{ env.DB_USER }}
+          postgresql-password: ${{ env.DB_PASSWORD }}
+
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python -
