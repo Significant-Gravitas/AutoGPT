@@ -5,9 +5,9 @@ on:
     branches: [hackathon]
     inputs:
       agents:
-        description: "Agents to run (comma-separated)"
+        description: 'Agents to run (comma-separated)'
         required: false
-        default: "put the name of your agent here ( same name as arena entry)" # Default agents if none are specified
+        default: 'put the name of your agent here ( same name as arena entry)' # Default agents if none are specified
 
 jobs:
   matrix-setup:
@@ -33,11 +33,11 @@ jobs:
 
   tests:
     environment:
-      name: "${{ needs.matrix-setup.outputs.env-name }}"
+      name: '${{ needs.matrix-setup.outputs.env-name }}'
     needs: matrix-setup
     env:
-      min-python-version: "3.10"
-    name: "${{ matrix.agent-name }}"
+      min-python-version: '3.10'
+    name: '${{ matrix.agent-name }}'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     strategy:
@@ -88,4 +88,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SERP_API_KEY: ${{ secrets.SERP_API_KEY }}
+          SERPAPI_API_KEY: ${{ secrets.SERP_API_KEY }}
+          WEAVIATE_API_KEY: ${{ secrets.WEAVIATE_API_KEY }}
+          WEAVIATE_URL: ${{ secrets.WEAVIATE_URL }}
           AGENT_NAME: ${{ matrix.agent-name }}
