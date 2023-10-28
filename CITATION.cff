@@ -13,7 +13,7 @@ authors:
 repository-code: 'https://github.com/Significant-Gravitas/AutoGPT'
 url: 'https://agpt.co'
 abstract: >-
-  An experimental open-source attempt to make GPT-4 fully
+  A collection of tools and experimental open-source attempts to make GPT-4 fully
   autonomous.
 keywords:
   - AI

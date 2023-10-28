@@ -175,3 +175,4 @@ pri*
 # ignore
 ig*
 .github_access_token
+arena/TestAgent.json
