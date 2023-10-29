@@ -698,12 +698,14 @@ async def _create_chat_completion(
         message.dict(include={"role", "content", "function_call", "name"})
         for message in messages
     ]
+    
     if "functions" in kwargs:
         # wargs["functions"] = [function.dict() for function in kwargs["functions"]]
         kwargs["functions"] = [function for function in kwargs["functions"]]
-
-    if kwargs["function_call"] != "auto":
-        kwargs["function_call"] = {"name": kwargs["function_call"]}
+        if len(kwargs["functions"]) == 1:
+            kwargs["function_call"] = {"name": kwargs["functions"][0].name}
+        elif kwargs["function_call"] != "auto":
+            kwargs["function_call"] = {"name": kwargs["function_call"]}
 
     return_value = await openai.ChatCompletion.acreate(
         messages=raw_messages,
