@@ -12,6 +12,24 @@ on:
 jobs:
   matrix-setup:
     runs-on: ubuntu-latest
+    # Service containers to run with `matrix-setup`
+    services:
+      # Label used to access the service container
+      postgres:
+        # Docker Hub image
+        image: postgres
+        # Provide the password for postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          # Maps tcp port 5432 on service container to the host
+          - 5432:5432
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       env-name: ${{ steps.set-matrix.outputs.env-name }}
@@ -39,6 +57,23 @@ jobs:
       min-python-version: '3.10'
     name: '${{ matrix.agent-name }}'
     runs-on: ubuntu-latest
+    services:
+      # Label used to access the service container
+      postgres:
+        # Docker Hub image
+        image: postgres
+        # Provide the password for postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          # Maps tcp port 5432 on service container to the host
+          - 5432:5432
     timeout-minutes: 50
     strategy:
       fail-fast: false
@@ -48,6 +83,10 @@ jobs:
       - name: Print Environment Name
         run: |
           echo "Matrix Setup Environment Name: ${{ needs.matrix-setup.outputs.env-name }}"
+
+      - name: Check Docker Container
+        id: check  
+        run: docker ps
 
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -66,14 +105,6 @@ jobs:
         name: Get date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-      - name: Set up PostgreSQL
-        uses: postgresql/setup-postgres@v2
-        with:
-          postgres-version: '14.9'
-          postgresql-database: ${{ env.DB_NAME }}
-          postgresql-username: ${{ env.DB_USER }}
-          postgresql-password: ${{ env.DB_PASSWORD }}
-
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python -
@@ -89,6 +120,7 @@ jobs:
           branch=$(jq -r '.["branch_to_benchmark"]' arena/$AGENT_NAME.json)
           git clone "$link" -b "$branch" "$AGENT_NAME"
           cd $AGENT_NAME
+          cp ./autogpts/$AGENT_NAME/.env.example ./autogpts/$AGENT_NAME/.env
           ./run agent start $AGENT_NAME
           cd ../benchmark
           poetry install
