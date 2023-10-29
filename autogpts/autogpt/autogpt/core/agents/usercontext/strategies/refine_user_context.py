@@ -70,6 +70,7 @@ class RefineUserContextStrategyConfiguration(PromptStrategiesConfiguration):
     context_min_tokens: int = 250
     context_max_tokens: int = 500
     use_message: bool = False
+    temperature : float =  0.9
 
 
 class RefineUserContextStrategy(BasePromptStrategy):
@@ -102,8 +103,6 @@ class RefineUserContextStrategy(BasePromptStrategy):
     """
     default_configuration = RefineUserContextStrategyConfiguration()
     STRATEGY_NAME = "refine_user_context"
-    CONTEXT_MIN_TOKENS = 250
-    CONTEXT_MAX_TOKENS = 300
 
     ###
     ### PROMPTS
@@ -149,100 +148,15 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
     # NEW_USER_PROMPT = "These are my requirement : \"{user_response}\"\n"
     NEW_USER_PROMPT = "{user_response}"
 
-    #     REFINED_ONCE_SYSTEM_PROMPT = ("### User's Journey:\n"
-    # #"So far the user have expressed these requirements :\n"
-    # "\"{user_response}\"\n\n"
-    # "- **Your questions**:\n"
-    # "{last_questions}\n"
-    # "- **User's Response**: \n"
-    # "{user_response}\n\n"
-    # )
 
-    #     REFINED_SYSTEM_PROMPT = ("### User's Journey:\n"
-    # #"So far the user have expressed these requirements :\n"
-    # "'{user_last_goal}'\n\n"
-    # "- **Your full history of Questions**:\n"
-    # "'{questions_history_full}\n"
-    # "- **Your Last Questions**:\n"
-    # "{last_questions}\n"
-    # "- **User's Last Response**:\n"
-    # "{user_response}\n\n"
-    # )
-
-    #     REFINED_SYSTEM_PROMPT = ("### User's Journey:\n"
-    # "So far the user have expressed these requirements :\n"
-    # "'{user_last_goal}'\n")
     REFINED_SYSTEM_PROMPT = ""
     REFINED_USER_PROMPT_A = "{user_last_goal}"
     REFINED_ASSISTANT_PROMPT = "{last_questions}"
     REFINED_USER_PROMPT_B = "{user_response}"
 
-    #     SYSTEM_PROMPT_FOOTER = ("Guide the user closer to a refined goal by referencing the above journey and adhering to the **COCE Framework**. Provide actionable insights and questions.\n\n"
-    # "### Note:\n"
-    # "This is an iterative process. Your generated `reformulated_goal` will serve as the user's next goal and the questions will gather further details from the user.\n"
-    # )
 
-    # SYSTEM_PROMPT_NOTICE = "**IMPORTANT** : YOU MUST USE FUNCTIONS AT YOUR DISPOSAL"
     SYSTEM_PROMPT_NOTICE = ""
 
-    ###
-    ### FUNCTIONS
-    ###
-
-    FUNCTION_REFINE_USER_CONTEXT = CompletionModelFunction(
-        name=RefineUserContextFunctionNames.REFINE_REQUIREMENTS,
-        description="Refines and clarifies user requirements by reformulating them and generating pertinent questions to extract more detailed and explicit information from the user, all while adhering to the COCE Framework.",
-        parameters={
-            "reformulated_goal": JSONSchema(
-                type=JSONSchema.Type.STRING,
-                ##"description": f"Users requirements as interpreted from their initial expressed requirements and their most recent answer, making sure it adheres to the COCE Framework and remains true to the user's intent. It should be formatted using Markdown and expressed in {CONTEXT_MIN_TOKENS} to {CONTEXT_MAX_TOKENS} words."
-                description=f"Users requirements as interpreted from their initial expressed requirements and their most recent answer, making sure it adheres to the COCE Framework and remains true to the user's intent. It should be formatted using Markdown and expressed in less than {CONTEXT_MAX_TOKENS} words.",
-                required=True,
-            ),
-            "questions": JSONSchema(
-                type=JSONSchema.Type.ARRAY,
-                minItems=1,
-                maxItems=5,
-                items=JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                ),
-                description="Five questions designed to extract more detailed and explicit information from the user, guiding them towards a clearer expression of their requirements while staying within the COCE Framework.",
-                required=True,
-            ),
-        },
-    )
-
-    FUNCTION_REQUEST_SECOND_CONFIRMATION = {
-        "name": RefineUserContextFunctionNames.REQUEST_SECOND_CONFIRMATION,
-        "description": "Double-check the user's intent to end the iterative requirement refining process. It poses a simple yes/no question to ensure that the user truly wants to conclude refining and proceed to the validation step.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "questions": {
-                    "type": "string",
-                    "description": "A question aimed at reconfirming the user's intention to finalize their requirements. The question should be phrased in a manner that lets the user easily signify continuation ('no') or conclusion ('yes') of the refining process.",
-                }
-            },
-            "required": ["questions"],
-        },
-    }
-
-    FUNCTION_VALIDATE_GOAL = CompletionModelFunction(
-        name=RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS,
-        description="Seals the iterative process of refining requirements. It gets activated when the user communicates satisfaction with the requirements, signaling readiness to finalize the current list of goals.",
-        parameters={
-            "goal_list": JSONSchema(
-                type=JSONSchema.Type.ARRAY,
-                minItems=1,
-                maxItems=5,
-                items=JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                ),
-                description="List of user requirements that emerged from prior interactions. Each entry in the list stands for a distinct and atomic requirement or aim expressed by the user.",
-                required=True,
-            )
-        },
-    )
 
     def __init__(
         self,
@@ -299,21 +213,86 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         self._config = self.default_configuration
         self.exit_token: str = exit_token
 
-        function_refine_user_context = (
-            RefineUserContextStrategy.FUNCTION_REFINE_USER_CONTEXT
-        )
-        function_request_second_confirmation= CompletionModelFunction(
-            **RefineUserContextStrategy.FUNCTION_REQUEST_SECOND_CONFIRMATION,
-        )
-        function_validate_requirements = (
-            RefineUserContextStrategy.FUNCTION_VALIDATE_GOAL
-        )
-        self._functions = [
-            function_refine_user_context,
-            function_request_second_confirmation ,
-            function_validate_requirements,
-        ]
+        
 
+
+    def set_functions(self, **kwargs) :
+
+        ###
+        ### FUNCTIONS
+        ###
+        self.function_refine_user_context : CompletionModelFunction= CompletionModelFunction(
+            name=RefineUserContextFunctionNames.REFINE_REQUIREMENTS,
+            description="Refines and clarifies user requirements by reformulating them and generating pertinent questions to extract more detailed and explicit information from the user, all while adhering to the COCE Framework.",
+            parameters={
+                "reformulated_goal": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    description=f"Users requirements as interpreted from their initial expressed requirements and their most recent answer, making sure it adheres to the COCE Framework and remains true to the user's intent. It should be formatted using Markdown and expressed in less than {self.context_max_tokens} words.",
+                    required=True,
+                ),
+                "questions": JSONSchema(
+                    type=JSONSchema.Type.ARRAY,
+                    minItems=1,
+                    maxItems=5,
+                    items=JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                    ),
+                    description="Five questions designed to extract more detailed and explicit information from the user, guiding them towards a clearer expression of their requirements while staying within the COCE Framework.",
+                    required=True,
+                ),
+            },
+        )
+
+        self.function_request_second_confirmation: CompletionModelFunction = {
+            "name": RefineUserContextFunctionNames.REQUEST_SECOND_CONFIRMATION,
+            "description": "Double-check the user's intent to end the iterative requirement refining process. It poses a simple yes/no question to ensure that the user truly wants to conclude refining and proceed to the validation step.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "questions": {
+                        "type": "string",
+                        "description": "A question aimed at reconfirming the user's intention to finalize their requirements. The question should be phrased in a manner that lets the user easily signify continuation ('no') or conclusion ('yes') of the refining process.",
+                    }
+                },
+                "required": ["questions"],
+            },
+        }
+
+        self.function_request_second_confirmation : CompletionModelFunction= CompletionModelFunction(
+            name=RefineUserContextFunctionNames.REQUEST_SECOND_CONFIRMATION,
+            description="Double-check the user's intent to end the iterative requirement refining process. It poses a simple yes/no question to ensure that the user truly wants to conclude refining and proceed to the validation step.",
+            parameters={
+                "questions": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    description="A question aimed at reconfirming the user's intention to finalize their requirements. The question should be phrased in a manner that lets the user easily signify continuation ('no') or conclusion ('yes') of the refining process.",
+                    required=True,
+                ),
+            }
+        )
+
+        self.function_validate_goal : CompletionModelFunction= CompletionModelFunction(
+            name=RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS,
+            description="Seals the iterative process of refining requirements. It gets activated when the user communicates satisfaction with the requirements, signaling readiness to finalize the current list of goals.",
+            parameters={
+                "goal_list": JSONSchema(
+                    type=JSONSchema.Type.ARRAY,
+                    minItems=1,
+                    maxItems=5,
+                    items=JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                    ),
+                    description="List of user requirements that emerged from prior interactions. Each entry in the list stands for a distinct and atomic requirement or aim expressed by the user.",
+                    required=True,
+                )
+            },
+        )
+
+        self._functions = [
+            self.function_refine_user_context,
+            self.function_request_second_confirmation ,
+            self.function_validate_goal,
+        ]
+        
     def build_prompt(
         self, interupt_refinement_process: bool, user_objective: str = "", **kwargs
     ) -> ChatPrompt:
@@ -461,7 +440,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             # TODO
             tokens_used=0,
         )
-        # self._logger.debug('Executing prompt : ' + str(prompt))
+        
         return prompt
 
     def parse_response_content(

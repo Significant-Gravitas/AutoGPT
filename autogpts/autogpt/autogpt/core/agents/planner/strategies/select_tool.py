@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 # prompting
 from autogpts.AFAAS.app.lib.action_history import Episode
 from autogpts.autogpt.autogpt.core.prompting.base import (
-    LanguageModelClassification)
+    LanguageModelClassification, DefaultParsedResponse)
 from autogpts.autogpt.autogpt.core.prompting.planningstrategies import (
     PlanningPromptStrategiesConfiguration, PlanningPromptStrategy)
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
@@ -35,6 +35,7 @@ class SelectToolStrategyConfiguration(PlanningPromptStrategiesConfiguration):
     model_classification: LanguageModelClassification = (
         LanguageModelClassification.FAST_MODEL_16K
     )
+    temperature : float = 0.7
 
 
 ###
@@ -219,7 +220,7 @@ class SelectToolStrategy(PlanningPromptStrategy):
     def parse_response_content(
         self,
         response_content: AssistantChatMessageDict,
-    ) -> dict:
+    ) -> DefaultParsedResponse:
         return self.default_parse_response_content(response_content)
 
     def save(self):

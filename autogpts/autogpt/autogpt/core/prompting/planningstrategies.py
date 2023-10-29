@@ -334,7 +334,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
     #     #     "You operate within the following constraints:\n"
     #     #     f"{to_numbered_list(agent.constraints + additional_constraints)}")
 
-    #     # NOTE : PLANCE HOLDER
+    #     # NOTE : PLACE HOLDER
     #     # if agent.resources :
     #     #     body.append("## Resources\n"
     #     #     "You can leverage access to the following resources:\n"

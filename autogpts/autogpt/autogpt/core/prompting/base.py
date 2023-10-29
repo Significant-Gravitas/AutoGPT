@@ -74,9 +74,13 @@ RESPONSE_SCHEMA = JSONSchema(
     },
 )
 
+class DefaultParsedResponse(dict) :
+    command_name : str
+    command_args : dict
+    assistant_reply_dict : dict
 
 class PromptStrategiesConfiguration(SystemConfiguration):
-    temperature: float = 0.9  # if coding 0.05
+    temperature: float
     top_p: Optional[float] = (None,)
     max_tokens: Optional[int] = (None,)
     frequency_penalty: Optional[float] = None  # Avoid repeting oneselfif coding 0.3
@@ -103,7 +107,10 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     @abc.abstractmethod
     def parse_response_content(self, response_content: AssistantChatMessageDict):
         ...
-
+    
+    @abc.abstractmethod
+    def set_functions(self, **kwargs):
+        ...
 
 class BasePromptStrategy(AbstractPromptStrategy):
     @property
@@ -176,7 +183,7 @@ class BasePromptStrategy(AbstractPromptStrategy):
     def default_parse_response_content(
         self,
         response_content: AssistantChatMessageDict,
-    ) -> dict:
+    ) -> DefaultParsedResponse:
         """Parse the actual text response from the objective model.
 
         Args:
@@ -198,4 +205,8 @@ class BasePromptStrategy(AbstractPromptStrategy):
         command_args = parsed_response
         assistant_reply_dict = response_content["content"]
 
-        return command_name, command_args, assistant_reply_dict
+        return DefaultParsedResponse(
+                command_name = command_name, 
+                command_args = command_args, 
+                assistant_reply_dict = assistant_reply_dict
+                )

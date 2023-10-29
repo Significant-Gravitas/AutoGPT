@@ -22,6 +22,10 @@ from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
     ModelProviderName, ModelProviderService, ModelTokenizer)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
+import autogpts.AFAAS.app.sdk.forge_log as agptlogger
+
+LOG = agptlogger.ForgeLogger(__name__)
+
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
@@ -318,7 +322,7 @@ class OpenAIProvider(
         try:
             encoding = tiktoken.encoding_for_model(encoding_model)
         except KeyError:
-            cls._logger.warn(
+            LOG.warn(
                 f"Model {model_name} not found. Defaulting to cl100k_base encoding."
             )
             encoding = tiktoken.get_encoding("cl100k_base")
@@ -474,7 +478,7 @@ class OpenAIProvider(
         self, functions: list[CompletionModelFunction], response_message: Dict[str, Any]
     ) -> bool:
         if functions is not None and "function_call" not in response_message:
-            self._logger.error(
+            LOG.error(
                 f"Attempt number {self._func_call_fails_count + 1} : Function Call was expected"
             )
             return True
@@ -540,7 +544,7 @@ class OpenAIProvider(
         return response
 
     async def create_language_completion(self, **kwargs):
-        self._logger.warning(
+        LOG.warning(
             "create_language_completion is deprecated, use create_chat_completion"
         )
         return await self.create_chat_completion(**kwargs)
@@ -703,10 +707,12 @@ async def _create_chat_completion(
         # wargs["functions"] = [function.dict() for function in kwargs["functions"]]
         kwargs["functions"] = [function for function in kwargs["functions"]]
         if len(kwargs["functions"]) == 1:
-            kwargs["function_call"] = {"name": kwargs["functions"][0].name}
+            kwargs["function_call"] = {"name": kwargs["functions"][0]['name']}
         elif kwargs["function_call"] != "auto":
             kwargs["function_call"] = {"name": kwargs["function_call"]}
 
+    LOG.debug(raw_messages[0]['content'])
+    LOG.debug(kwargs)
     return_value = await openai.ChatCompletion.acreate(
         messages=raw_messages,
         **kwargs,
@@ -743,14 +749,14 @@ class _OpenAIRetryHandler:
         self._warn_user = warn_user
 
     def _log_rate_limit_error(self) -> None:
-        self._logger.debug(self._retry_limit_msg)
+        LOG.debug(self._retry_limit_msg)
         if self._warn_user:
-            self._logger.warning(self._api_key_error_msg)
+            LOG.warning(self._api_key_error_msg)
             self._warn_user = False
 
     def _backoff(self, attempt: int) -> None:
         backoff = self._backoff_base ** (attempt + 2)
-        self._logger.debug(self._backoff_msg.format(backoff=backoff))
+        LOG.debug(self._backoff_msg.format(backoff=backoff))
         time.sleep(backoff)
 
     def __call__(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
@@ -770,7 +776,7 @@ class _OpenAIRetryHandler:
                     if (e.http_status != 502) or (attempt == num_attempts):
                         raise
                 except Exception as e:
-                    self._logger.warning(e)
+                    LOG.warning(e)
                 self._backoff(attempt)
 
         return _wrapped

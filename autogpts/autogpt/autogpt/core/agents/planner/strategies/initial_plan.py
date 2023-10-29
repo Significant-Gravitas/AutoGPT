@@ -24,6 +24,7 @@ class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
     default_function_call: InitialPlanFunctionNames = (
         InitialPlanFunctionNames.INITIAL_PLAN
     )
+    temperature : float = 0.9
 
 
 class InitialPlanStrategy(BasePromptStrategy):
@@ -57,40 +58,6 @@ class InitialPlanStrategy(BasePromptStrategy):
     ### FUNCTIONS
     ###
 
-    DEFAULT_CREATE_PLAN_FUNCTION = CompletionModelFunction(
-        name=InitialPlanFunctionNames.INITIAL_PLAN.value,
-        description="Creates a set of tasks that forms the initial plan for an autonomous agent.",
-        parameters={
-            "task_list": JSONSchema(
-                type=JSONSchema.Type.ARRAY,
-                items=JSONSchema(
-                    type=JSONSchema.Type.OBJECT,
-                    properties={
-                        "task_goal": JSONSchema(
-                            type=JSONSchema.Type.STRING,
-                            description="The main goal or purpose of the task.",
-                        ),
-                        "long_description": JSONSchema(
-                            type=JSONSchema.Type.STRING,
-                            description="A detailed description of the task.",
-                        ),
-                        "task_context": JSONSchema(
-                            type=JSONSchema.Type.STRING,
-                            description="Additional context or information about the task.",
-                        ),
-                        "acceptance_criteria": JSONSchema(
-                            type=JSONSchema.Type.ARRAY,
-                            items=JSONSchema(
-                                type=JSONSchema.Type.STRING,
-                                description="A list of measurable and testable criteria that must be met for the task to be considered complete.",
-                            ),
-                        ),
-                    },
-                ),
-            ),
-        },
-    )
-
     def __init__(
         self,
         logger: Logger,
@@ -108,11 +75,47 @@ class InitialPlanStrategy(BasePromptStrategy):
         self._system_prompt_template = self.FIRST_SYSTEM_PROMPT_TEMPLATE
         self._system_info = self.DEFAULT_SYSTEM_INFO
         self._user_prompt_template = self.DEFAULT_USER_PROMPT_TEMPLATE
-        self._strategy_functions = [self.DEFAULT_CREATE_PLAN_FUNCTION]
-
+        
     @property
     def model_classification(self) -> LanguageModelClassification:
         return self._model_classification
+
+    def set_functions(self, **kwargs):
+        self.DEFAULT_CREATE_PLAN_FUNCTION = CompletionModelFunction(
+            name=InitialPlanFunctionNames.INITIAL_PLAN.value,
+            description="Creates a set of tasks that forms the initial plan for an autonomous agent.",
+            parameters={
+                "task_list": JSONSchema(
+                    type=JSONSchema.Type.ARRAY,
+                    items=JSONSchema(
+                        type=JSONSchema.Type.OBJECT,
+                        properties={
+                            "task_goal": JSONSchema(
+                                type=JSONSchema.Type.STRING,
+                                description="The main goal or purpose of the task.",
+                            ),
+                            "long_description": JSONSchema(
+                                type=JSONSchema.Type.STRING,
+                                description="A detailed description of the task.",
+                            ),
+                            "task_context": JSONSchema(
+                                type=JSONSchema.Type.STRING,
+                                description="Additional context or information about the task.",
+                            ),
+                            "acceptance_criteria": JSONSchema(
+                                type=JSONSchema.Type.ARRAY,
+                                items=JSONSchema(
+                                    type=JSONSchema.Type.STRING,
+                                    description="A list of measurable and testable criteria that must be met for the task to be considered complete.",
+                                ),
+                            ),
+                        },
+                    ),
+                ),
+            },
+        )
+
+        self._strategy_functions = [self.DEFAULT_CREATE_PLAN_FUNCTION]
 
     def build_prompt(
         self,

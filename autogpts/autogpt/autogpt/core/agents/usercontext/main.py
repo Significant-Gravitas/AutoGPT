@@ -122,7 +122,7 @@ class UserContextAgent(BaseAgent):
 
     @classmethod
     def get_strategies(cls)-> list :
-        from autogpts.autogpt.autogpt.core.agents.whichway.strategies import (
+        from autogpts.autogpt.autogpt.core.agents.routing.strategies import (
             StrategiesSet)
         return StrategiesSet.get_strategies()
 

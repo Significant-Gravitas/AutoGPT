@@ -199,6 +199,7 @@ class Task(AFAASModel):
     task_goal: str
     long_decription: Optional[str]
     task_context: Optional[str]
+    task_text_output : Optional[str] # placeholder
 
     ###
     ### Task Management properties

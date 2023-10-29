@@ -95,7 +95,7 @@ class ConsoleFormatter(logging.Formatter):
             rec.levelname = levelname_color
         rec.name = f"{GREY}{rec.name:<15}{RESET_SEQ}"
         rec.msg = (
-            KEYWORD_COLORS[levelname] + EMOJIS[levelname] + "  " + rec.msg + RESET_SEQ
+            KEYWORD_COLORS[levelname] + EMOJIS[levelname] + "  " + str( rec.msg )+ RESET_SEQ
         )
         return logging.Formatter.format(self, rec)
 

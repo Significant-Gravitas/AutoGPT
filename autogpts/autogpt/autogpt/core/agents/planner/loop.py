@@ -27,10 +27,10 @@ aaas = {}
 try:
     pass
 
-    Task.command: Optional[str] = Field(default="afaas_whichway")
-    aaas["whichway"] = True
+    Task.command: Optional[str] = Field(default="afaas_routing")
+    aaas["routing"] = True
 except:
-    aaas["whichway"] = False
+    aaas["routing"] = False
 
 try:
     pass
@@ -41,7 +41,7 @@ except:
 
 # FIXME: Deactivated for as long as we don't have the UI to support it
 aaas["usercontext"] = False
-# aaas['whichway'] = False
+# aaas['routing'] = False
 
 
 class PlannerLoop(BaseLoop):
@@ -60,17 +60,18 @@ class PlannerLoop(BaseLoop):
 
     def add_initial_tasks(self):
         ###
-        ### Step 1 : add whichway to the tasks
+        ### Step 1 : add routing to the tasks
         ###
-        if aaas["whichway"]:
+        if aaas["routing"]:
             initial_task = Task(
                 # parent_task = self.plan() ,
                 task_parent_id=None,
                 task_predecessor_id=None,
                 responsible_agent_id=None,
-                task_goal="Define an agent approach to tackle a tasks",
-                command="afaas_whichway",
-                arguments={},
+                # task_goal="Define an agent approach to tackle a tasks",
+                task_goal= self._agent.agent_goal_sentence,
+                command="afaas_routing",
+                arguments = {'note_to_agent_length' : 400},
                 acceptance_criteria=[
                     "A plan has been made to achieve the specific task"
                 ],
@@ -82,7 +83,8 @@ class PlannerLoop(BaseLoop):
                 task_parent_id=None,
                 task_predecessor_id=None,
                 responsible_agent_id=None,
-                task_goal="Make a plan to tacke a tasks",
+                # task_goal="Make a plan to tacke a tasks",
+                task_goal= self._agent.agent_goal_sentence,
                 command="afaas_make_initial_plan",
                 arguments={},
                 acceptance_criteria=[
@@ -106,7 +108,7 @@ class PlannerLoop(BaseLoop):
                 name="afaas_refine_user_context",
                 task_goal="Refine a user requirements for better exploitation by Agents",
                 command="afaas_refine_user_context",
-                # arguments = None,
+                arguments={},
                 state=TaskStatusList.READY,
             )
             initial_task_list = [refine_user_context_task] + initial_task_list
@@ -169,8 +171,8 @@ class PlannerLoop(BaseLoop):
             ##############################################################
             routing_feedbacks = ""
             description = ""
-            if aaas["whichway"]:
-                description, routing_feedbacks = await self.run_whichway_agent()
+            if aaas["routing"]:
+                description, routing_feedbacks = await self.run_routing_agent()
 
             ##############################################################
             ### Step 4 : Saving agent with its new goals

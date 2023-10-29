@@ -11,7 +11,7 @@ TOOL_CATEGORIES = [
     "autogpt.core.tools.builtins.image_gen",
     "autogpt.core.tools.builtins.afaas_refine_user_context",
     "autogpt.core.tools.builtins.afaas_make_initial_plan",
-    "autogpt.core.tools.builtins.afaas_whichway",
+    "autogpt.core.tools.builtins.afaas_routing",
     "autogpt.core.tools.builtins.query_language_model",
 ]
 

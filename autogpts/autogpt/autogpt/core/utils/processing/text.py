@@ -11,7 +11,7 @@ from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import \
     ChatPrompt
 
 logger = logging.getLogger(__name__)
-
+logger.warning(" Deprecated : Use langchain")
 T = TypeVar("T")
 
 
