@@ -9,6 +9,7 @@
     "eval_id": "6e2bf1f0-6842-4704-8ed1-b17c2065bbac",
     "ground": {
         "answer": "The csv labelled",
+        "case_sensitive": true,
         "eval": {
             "type": "file"
         },
