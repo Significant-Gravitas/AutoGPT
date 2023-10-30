@@ -30,7 +30,7 @@ class ErrorInfo(BaseModel):
     args: tuple
     message: str
     exception_type: str
-    _repr: str
+    repr: str
 
     @staticmethod
     def from_exception(exception: Exception) -> ErrorInfo:
@@ -38,14 +38,14 @@ class ErrorInfo(BaseModel):
             args=exception.args,
             message=getattr(exception, "message", exception.args[0]),
             exception_type=exception.__class__.__name__,
-            _repr=repr(exception),
+            repr=repr(exception),
         )
 
     def __str__(self):
         return repr(self)
 
     def __repr__(self):
-        return self._repr
+        return self.repr
 
 
 class ActionErrorResult(BaseModel):
