@@ -243,7 +243,7 @@ class Agent(
 
                 result = ActionSuccessResult(outputs=return_value)
             except AgentException as e:
-                result = ActionErrorResult(reason=e.message, error=e)
+                result = ActionErrorResult.from_exception(e)
 
             result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
             if result_tlength > self.send_token_limit // 3:

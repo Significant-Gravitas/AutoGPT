@@ -2,13 +2,12 @@ name: Valid AutoGPTs
 
 on:
   workflow_dispatch:
-    branches: [master]
   schedule:
     - cron: '0 8 * * *'
   push:
-    branches: [master, ci-test*]
+    branches: [ master, development, ci-test* ]
   pull_request:
-    branches: [stable, master, release-*]
+    branches: [ master, development, release-* ]
 
 jobs:
   run-tests:

@@ -276,7 +276,7 @@ class PlanningAgent(ContextMixin, FileWorkspaceMixin, BaseAgent):
 
                 result = ActionSuccessResult(outputs=return_value)
             except AgentException as e:
-                result = ActionErrorResult(reason=e.message, error=e)
+                result = ActionErrorResult.from_exception(e)
 
             result_tlength = count_string_tokens(str(result), self.llm.name)
             memory_tlength = count_string_tokens(

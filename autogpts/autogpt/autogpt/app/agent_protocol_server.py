@@ -181,20 +181,26 @@ class AgentProtocolServer:
         is_init_step = not bool(agent.event_history)
         execute_command, execute_command_args, execute_result = None, None, None
         execute_approved = False
-        if is_init_step:
+
+        # HACK: only for compatibility with AGBenchmark
+        if step_request.input == "y":
             step_request.input = ""
-        elif (
-            agent.event_history.current_episode
+
+        user_input = step_request.input if not is_init_step else ""
+
+        if (
+            not is_init_step
+            and agent.event_history.current_episode
             and not agent.event_history.current_episode.result
         ):
             execute_command = agent.event_history.current_episode.action.name
             execute_command_args = agent.event_history.current_episode.action.args
-            execute_approved = not step_request.input or step_request.input == "y"
+            execute_approved = not user_input
 
             logger.debug(
                 f"Agent proposed command"
                 f" {execute_command}({fmt_kwargs(execute_command_args)})."
-                f" User input/feedback: {repr(step_request.input)}"
+                f" User input/feedback: {repr(user_input)}"
             )
 
         # Save step request
@@ -218,7 +224,7 @@ class AgentProtocolServer:
                 return step
 
             if execute_command == ask_user.__name__:  # HACK
-                execute_result = ActionSuccessResult(outputs=step_request.input)
+                execute_result = ActionSuccessResult(outputs=user_input)
                 agent.event_history.register_result(execute_result)
             elif execute_approved:
                 step = await self.db.update_step(
@@ -232,11 +238,11 @@ class AgentProtocolServer:
                     command_args=execute_command_args,
                 )
             else:
-                assert step_request.input
+                assert user_input
                 execute_result = await agent.execute(
                     command_name="human_feedback",  # HACK
                     command_args={},
-                    user_input=step_request.input,
+                    user_input=user_input,
                 )
 
         # Propose next action
