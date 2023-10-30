@@ -54,7 +54,7 @@ class UserMessageTile extends StatelessWidget {
                     // Padding for the text content
                     padding: const EdgeInsets.fromLTRB(0, 10, 20, 10),
                     // Displaying the user message with no max line limit
-                    child: Text(
+                    child: SelectableText(
                       message,
                       maxLines: null,
                     ),

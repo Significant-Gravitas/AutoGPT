@@ -2,13 +2,13 @@ name: Benchmark CI
 
 on:
   push:
-    branches: [master, ci-test*]
+    branches: [ master, development, ci-test* ]
     paths:
       - 'benchmark/**'
       - .github/workflows/benchmark-ci.yml
       - '!benchmark/reports/**'
   pull_request:
-    branches: [stable, master, release-*]
+    branches: [ master, development, release-* ]
     paths:
       - 'benchmark/**'
       - '!benchmark/reports/**'
@@ -98,7 +98,7 @@ jobs:
 
       - name: Run regression tests
         run: |
-          ./run agent start ${{ matrix.agent-name }} --setup
+          ./run agent start ${{ matrix.agent-name }}
           sleep 10
           cd autogpts/${{ matrix.agent-name }}
           set +e # Ignore non-zero exit codes and continue execution

@@ -1,4 +1,6 @@
 .*
+**/.venv*
+**/__pycache__
 *.template
 *.yaml
 *.yml

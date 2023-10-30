@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from autogpt.workspace import Workspace
+from autogpt.file_workspace import FileWorkspace
 
 _WORKSPACE_ROOT = Path("home/users/monty/auto_gpt_workspace")
 
@@ -40,7 +40,7 @@ _INACCESSIBLE_PATHS = (
                 "test_folder/{null_byte}",
                 "test_folder/{null_byte}test_file.txt",
             ],
-            Workspace.NULL_BYTES,
+            FileWorkspace.NULL_BYTES,
         )
     ]
     + [
@@ -68,7 +68,7 @@ def inaccessible_path(request):
 
 
 def test_sanitize_path_accessible(accessible_path, workspace_root):
-    full_path = Workspace._sanitize_path(
+    full_path = FileWorkspace._sanitize_path(
         accessible_path,
         root=workspace_root,
         restrict_to_root=True,
@@ -79,7 +79,7 @@ def test_sanitize_path_accessible(accessible_path, workspace_root):
 
 def test_sanitize_path_inaccessible(inaccessible_path, workspace_root):
     with pytest.raises(ValueError):
-        Workspace._sanitize_path(
+        FileWorkspace._sanitize_path(
             inaccessible_path,
             root=workspace_root,
             restrict_to_root=True,
@@ -87,13 +87,13 @@ def test_sanitize_path_inaccessible(inaccessible_path, workspace_root):
 
 
 def test_get_path_accessible(accessible_path, workspace_root):
-    workspace = Workspace(workspace_root, True)
+    workspace = FileWorkspace(workspace_root, True)
     full_path = workspace.get_path(accessible_path)
     assert full_path.is_absolute()
     assert full_path.is_relative_to(workspace_root)
 
 
 def test_get_path_inaccessible(inaccessible_path, workspace_root):
-    workspace = Workspace(workspace_root, True)
+    workspace = FileWorkspace(workspace_root, True)
     with pytest.raises(ValueError):
         workspace.get_path(inaccessible_path)
