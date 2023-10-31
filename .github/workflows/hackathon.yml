@@ -20,7 +20,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "schedule" ]; then
             echo "::set-output name=env-name::production"
-            echo "::set-output name=matrix::[ 'gpt-engineer', 'smol-developer', 'Auto-GPT', 'mini-agi', 'beebot', 'BabyAGI', 'PolyGPT', 'Turbo' ]"
+            echo "::set-output name=matrix::[ 'ZEROAGPT_03', 'evo-ninja', 'gpt-engineer']"
           elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             IFS=',' read -ra matrix_array <<< "${{ github.event.inputs.agents }}"
             matrix_string="[ \"$(echo "${matrix_array[@]}" | sed 's/ /", "/g')\" ]"
@@ -70,18 +70,16 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python -
 
-      - name: Run regression tests
+      - name: Run benchmark
         run: |
-          ./run agent start ${{ matrix.agent-name }}
+          link=$(jq -r '.["github_repo_url"]' arena/$AGENT_NAME.json)
+          branch=$(jq -r '.["branch_to_benchmark"]' arena/$AGENT_NAME.json)
+          git clone "$link" -b "$branch" "$AGENT_NAME"
+          cd $AGENT_NAME
+          ./run agent start $AGENT_NAME
           cd benchmark
-          poetry install 
-          poetry run agbenchmark --mock
-          poetry run agbenchmark --test=WriteFile
+          poetry install
+          poetry run agbenchmark
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENT_NAME: ${{ matrix.agent-name }}
-          HELICONE_API_KEY: ${{ secrets.HELICONE_API_KEY }}
-          REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
-          HELICONE_CACHE_ENABLED: false
-          HELICONE_PROPERTY_AGENT: ${{ matrix.agent-name }}
-          REPORT_LOCATION: ${{ format('../../reports/{0}', matrix.agent-name) }}
