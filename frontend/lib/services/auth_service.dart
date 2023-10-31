@@ -5,7 +5,8 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn googleSignIn = GoogleSignIn(
       clientId:
-          "387936576242-iejdacrjljds7hf99q0p6eqna8rju3sb.apps.googleusercontent.com");
+          // "387936576242-iejdacrjljds7hf99q0p6eqna8rju3sb.apps.googleusercontent.com");
+             "912223758275-ol1m55autkcal46btct3kfa28a633lrs.apps.googleusercontent.com");
 
 // Sign in with Google using redirect
 // Sign in with Google using redirect

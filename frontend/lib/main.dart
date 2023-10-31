@@ -23,14 +23,23 @@ import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
+    // options: const FirebaseOptions(
+    //   apiKey: 'AIzaSyBvYLAK_A0uhFuVPQbTxUdVWbb_Lsur9cg',
+    //   authDomain: 'prod-auto-gpt.firebaseapp.com',
+    //   projectId: 'prod-auto-gpt',
+    //   storageBucket: 'prod-auto-gpt.appspot.com',
+    //   messagingSenderId: '387936576242',
+    //   appId: '1:387936576242:web:7536e0c50dd81b4dd7a66b',
+    //   measurementId: 'G-8PRS69JJRL',
+    // ),
     options: const FirebaseOptions(
-      apiKey: 'AIzaSyBvYLAK_A0uhFuVPQbTxUdVWbb_Lsur9cg',
-      authDomain: 'prod-auto-gpt.firebaseapp.com',
-      projectId: 'prod-auto-gpt',
-      storageBucket: 'prod-auto-gpt.appspot.com',
-      messagingSenderId: '387936576242',
-      appId: '1:387936576242:web:7536e0c50dd81b4dd7a66b',
-      measurementId: 'G-8PRS69JJRL',
+      apiKey: "AIzaSyCNqKkmKuMg383nyqV33kV6u6TALGUzv9w",
+      authDomain: "autogpttest-403306.firebaseapp.com",
+      projectId: "autogpttest-403306",
+      storageBucket: "autogpttest-403306.appspot.com",
+      messagingSenderId: "912223758275",
+      appId: "1:912223758275:web:4faecfbb977c13ba46ff76",
+      measurementId: "G-ZLTLB94VXE"
     ),
   );
 

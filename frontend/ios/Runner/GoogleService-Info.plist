@@ -3,19 +3,19 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>387936576242-lr7i0b7lnvect4csvjmfrpkl65ejj652.apps.googleusercontent.com</string>
+	<string>912223758275-ol1m55autkcal46btct3kfa28a633lrs.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.387936576242-lr7i0b7lnvect4csvjmfrpkl65ejj652</string>
+	<string>com.googleusercontent.apps.912223758275-ol1m55autkcal46btct3kfa28a633lrs</string>
 	<key>API_KEY</key>
-	<string>AIzaSyAX7fHhc9a7Fjb9o89Ewz6bijX37M7Zxik</string>
+	<string>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</string>
 	<key>GCM_SENDER_ID</key>
-	<string>387936576242</string>
+	<string>912223758275</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
 	<string>com.example.autoGptFlutterClient</string>
 	<key>PROJECT_ID</key>
-	<string>prod-auto-gpt</string>
+	<string>autogpttest-403306</string>
 	<key>STORAGE_BUCKET</key>
 	<string>prod-auto-gpt.appspot.com</string>
 	<key>IS_ADS_ENABLED</key>
