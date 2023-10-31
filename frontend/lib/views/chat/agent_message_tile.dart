@@ -34,8 +34,9 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
             r'(?:\*|_).*?(?:\*|_)|' + // Italic
             r'\[.*?\]\(.*?\)|' + // Links
             r'!\[.*?\]\(.*?\)|' + // Images
-            r'#{1,6}.*', // Headers
-        multiLine: true,
+            r'#{1,6}.*|' + // Headers
+            r'```.*?```', // Fenced code blocks
+        dotAll: true, // To match across multiple lines
         caseSensitive: false,
       );
 
@@ -80,10 +81,45 @@ class _AgentMessageTileState extends State<AgentMessageTile> {
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.fromLTRB(0, 10, 20, 10),
-                          child: false
-                              ? Markdown(data: widget.chat.message)
-                              : SelectableText(widget.chat.message,
-                                  maxLines: null),
+                          child: SingleChildScrollView(
+                            child: hasMarkdown
+                                ? Markdown(
+                                    data: widget.chat.message,
+                                    shrinkWrap: true,
+                                    styleSheet: MarkdownStyleSheet.fromTheme(
+                                            Theme.of(context))
+                                        .copyWith(
+                                      blockquoteDecoration: BoxDecoration(
+                                        color: Colors
+                                            .black, // Background color for blockquotes
+                                        border: Border(
+                                          left: BorderSide(
+                                            color: Colors.grey,
+                                            width: 4.0,
+                                          ),
+                                        ),
+                                      ),
+                                      blockquoteAlign: WrapAlignment.start,
+                                      blockquotePadding: const EdgeInsets.all(
+                                          10.0), // Padding for blockquotes
+                                      codeblockDecoration: BoxDecoration(
+                                        color: Colors.grey[
+                                            200], // Background color for code blocks
+                                        borderRadius:
+                                            BorderRadius.circular(4.0),
+                                      ),
+                                      codeblockPadding: const EdgeInsets.all(
+                                          10.0), // Padding for code blocks
+                                      code: TextStyle(
+                                        backgroundColor: Colors.grey[
+                                            200], // Background color for inline code
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                  )
+                                : SelectableText(widget.chat.message,
+                                    maxLines: null),
+                          ),
                         ),
                       ),
                       ElevatedButton(
