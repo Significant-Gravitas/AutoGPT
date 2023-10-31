@@ -42,8 +42,8 @@ class Agent:
         origins = [
             "http://localhost:5000",
             "http://127.0.0.1:5000",
-            "http://localhost:8000",
-            "http://127.0.0.1:8000",
+            "http://0.0.0.0:8000",
+            "http://0.0.0.0:8000",
             "http://localhost:8080",
             "http://127.0.0.1:8080",
             # Add any other origins you want to whitelist
@@ -80,7 +80,7 @@ class Agent:
 
     def start(self, port):
         uvicorn.run(
-            "forge.app:app", host="localhost", port=port, log_level="error", reload=True
+            "forge.app:app", host="0.0.0.0", port=port, log_level="error", reload=True
         )
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:

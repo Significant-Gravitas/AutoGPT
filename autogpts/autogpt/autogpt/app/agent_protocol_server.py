@@ -55,7 +55,7 @@ class AgentProtocolServer:
         """Start the agent server."""
         logger.debug("Starting the agent server...")
         config = HypercornConfig()
-        config.bind = [f"localhost:{port}"]
+        config.bind = [f"0.0.0.0:{port}"]
         app = FastAPI(
             title="AutoGPT Server",
             description="Forked from AutoGPT Forge; Modified version of The Agent Protocol.",
@@ -66,8 +66,8 @@ class AgentProtocolServer:
         origins = [
             "http://localhost:5000",
             "http://127.0.0.1:5000",
-            "http://localhost:8000",
-            "http://127.0.0.1:8000",
+            "http://0.0.0.0:8000",
+            "http://0.0.0.0:8000",
             "http://localhost:8080",
             "http://127.0.0.1:8080",
             # Add any other origins you want to whitelist
@@ -107,7 +107,7 @@ class AgentProtocolServer:
         config.loglevel = "ERROR"
         config.bind = [f"0.0.0.0:{port}"]
 
-        logger.info(f"AutoGPT server starting on http://localhost:{port}")
+        logger.info(f"AutoGPT server starting on http://0.0.0.0:{port}")
         await hypercorn_serve(app, config)
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
