@@ -12,6 +12,7 @@
 """
 
 
+import asyncio
 import io
 import json
 import logging
@@ -160,6 +161,8 @@ class RESTClientObject(object):
                          declared content type."""
                 raise ApiException(status=0, reason=msg)
 
+        await asyncio.sleep(0.001)
+        
         r = await self.pool_manager.request(**args)
         if _preload_content:
             data = await r.read()
