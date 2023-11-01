@@ -113,6 +113,7 @@ class _ChatViewState extends State<ChatView> {
             padding: const EdgeInsets.all(8.0),
             child: ChatInputField(
               onSendPressed: (message) async {
+                widget.viewModel.addTemporaryMessage(message);
                 try {
                   if (widget.viewModel.currentTaskId != null) {
                     widget.viewModel.sendChatMessage(
