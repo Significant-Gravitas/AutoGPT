@@ -13,7 +13,8 @@ RUN apt-get update \
 
 # Install Poetry - respects $POETRY_VERSION & $POETRY_HOME
 ENV POETRY_VERSION=1.1.8 \
-    POETRY_HOME="/opt/poetry" \
+    # POETRY_HOME="/opt/poetry" \
+    POETRY_HOME="/Users/randy.grant/opt/anaconda3/envs/autogpt/bin/poetry" \
     POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_CREATE=false \
     PATH="$POETRY_HOME/bin:$PATH"

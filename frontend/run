@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/zsh
 
 kill $(lsof -t -i :5000)
 
