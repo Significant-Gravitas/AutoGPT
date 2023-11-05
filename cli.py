@@ -221,7 +221,7 @@ def create(agent_name):
     import re
     import shutil
 
-    if not re.match("^[a-zA-Z0-9_-]*$", agent_name):
+    if not re.match("\W*$", agent_name):
         click.echo(
             click.style(
                 f"😞 Agent name '{agent_name}' is not valid. It should not contain spaces or special characters other than -_",
@@ -231,9 +231,11 @@ def create(agent_name):
         return
     try:
         new_agent_dir = f"./autogpts/{agent_name}"
-        agent_json_file = f"./arena/{agent_name}.json"
+        new_agent_name = f"{agent_name.lower()}.json"
 
-        if not os.path.exists(new_agent_dir) and not os.path.exists(agent_json_file):
+        existing_arena_files = [name.lower() for name in os.listdir("./arena/")]
+
+        if not os.path.exists(new_agent_dir) and not new_agent_name in existing_arena_files:
             shutil.copytree("./autogpts/forge", new_agent_dir)
             click.echo(
                 click.style(
@@ -250,7 +252,7 @@ def create(agent_name):
         else:
             click.echo(
                 click.style(
-                    f"😞 Agent '{agent_name}' already exists. Enter a different name for your agent",
+                    f"😞 Agent '{agent_name}' already exists. Enter a different name for your agent, the name needs to be unique regardless of case",
                     fg="red",
                 )
             )
@@ -893,7 +895,6 @@ def update(agent_name, hash, branch):
                 fg="green",
             )
         )
-
 
 if __name__ == "__main__":
     cli()
