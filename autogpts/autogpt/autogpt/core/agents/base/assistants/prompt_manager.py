@@ -174,14 +174,17 @@ class PromptManager(Configurable, AgentMixin):
         prompt = prompt_strategy.build_prompt(**template_kwargs)
 
         #self._logger.debug(f"Using prompt:\n{prompt}\n\n")
-        response = await provider.create_chat_completion(
-            model_prompt=prompt.messages,
+        response : ChatModelResponse = await provider.create_chat_completion(
+            chat_messages=prompt.messages,
             functions=prompt.functions,
             **model_configuration,
             completion_parser=prompt_strategy.parse_response_content,
             function_call=prompt.function_call,
             default_function_call=prompt.default_function_call,
         )
+
+        response.chat_messages = prompt.messages
+        response.system_prompt = prompt.messages[0].content
         return response
 
     def get_system_info(self, strategy: AbstractPromptStrategy) -> SystemInfo:

@@ -339,7 +339,7 @@ class OpenAIProvider(
 
     async def create_chat_completion(
         self,
-        model_prompt: list[ChatMessage],
+        chat_messages: list[ChatMessage],
         functions: list[CompletionModelFunction],
         model_name: OpenAIModelName,
         function_call: str,
@@ -383,7 +383,7 @@ class OpenAIProvider(
         # ### Step 2: Execute main chat completion and extract details
         # ##############################################################################
         response = await self._get_chat_response(
-            model_prompt=model_prompt, **completion_kwargs
+            model_prompt=chat_messages, **completion_kwargs
         )
         response_message, response_args = self._extract_response_details(
             response=response, model_name=model_name
@@ -397,7 +397,7 @@ class OpenAIProvider(
         ):
             if self._func_call_fails_count <= self._configuration.maximum_retry:
                 return await self._retry_chat_completion(
-                    model_prompt=model_prompt,
+                    model_prompt=chat_messages,
                     functions=functions,
                     completion_kwargs=completion_kwargs,
                     model_name=model_name,
@@ -503,7 +503,7 @@ class OpenAIProvider(
         response.update(response_args)
         self._budget.update_usage_and_cost(model_response=response)
         return await self.create_chat_completion(
-            model_prompt=model_prompt,
+            chat_messages=model_prompt,
             model_name=model_name,
             completion_parser=completion_parser,
             **completion_kwargs,

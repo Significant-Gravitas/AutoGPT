@@ -42,6 +42,28 @@ def to_string_list(string_list) -> str:
     return formatted_string
 
 
+def to_md_quotation(text):
+    """
+    Transforms a given string into a Markdown blockquote.
+
+    Parameters:
+    text (str): The string to be transformed.
+
+    Returns:
+    str: The transformed string as a Markdown blockquote.
+    """
+    # Split the text into lines
+    lines = text.split('\n')
+
+    # Prefix each line with "> "
+    quoted_lines = [f"> {line}" for line in lines]
+
+    # Join the lines back into a single string
+    quoted_text = '\n'.join(quoted_lines)
+
+    return quoted_text
+
+
 def json_loads(json_str: str):
     # TODO: this is a hack function for now. Trying to see what errors show up in testing.
     #   Can hopefully just replace with a call to ast.literal_eval (the function api still

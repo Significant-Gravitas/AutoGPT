@@ -16,7 +16,7 @@ from autogpts.autogpt.autogpt.core.prompting.schema import \
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
     json_loads)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict, ChatPrompt, CompletionModelFunction)
+    AssistantChatMessageDict, ChatPrompt, CompletionModelFunction, ChatModelResponse)
 
 RESPONSE_SCHEMA = JSONSchema(
     type=JSONSchema.Type.OBJECT,
@@ -210,3 +210,7 @@ class BasePromptStrategy(AbstractPromptStrategy):
                 command_args = command_args, 
                 assistant_reply_dict = assistant_reply_dict
                 )
+    
+    @staticmethod
+    def get_autocorrection_response(response : ChatModelResponse) :
+        return response.parsed_result['command_args']['note_to_agent']

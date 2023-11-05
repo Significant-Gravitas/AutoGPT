@@ -502,6 +502,8 @@ class ChatModelResponse(BaseModelResponse, Generic[_T]):
     """Standard response struct for a response from a language model."""
 
     content: dict = None
+    chat_messages : list[ChatMessage] = []
+    system_prompt : str = None
 
 
 ###############
@@ -547,10 +549,10 @@ class BaseChatModelProvider(AbstractModelProvider):
     @abc.abstractmethod
     async def create_chat_completion(
         self,
-        model_prompt: list[ChatMessage],
         model_name: str,
-        completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
+        chat_messages: list[ChatMessage],
         functions: list[CompletionModelFunction] = [],
+        completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
         **kwargs,
     ) -> ChatModelResponse[_T]:
         ...
