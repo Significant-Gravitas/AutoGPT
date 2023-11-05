@@ -219,7 +219,7 @@ def create(agent_name):
     import re
     import shutil
 
-    if not re.match("^[a-zA-Z0-9_-]*$", agent_name):
+    if not re.match("\W*$", agent_name):
         click.echo(
             click.style(
                 f"😞 Agent name '{agent_name}' is not valid. It should not contain spaces or special characters other than -_",
