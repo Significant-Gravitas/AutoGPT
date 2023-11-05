@@ -20,6 +20,10 @@ class TaskViewModel with ChangeNotifier {
   Task? _selectedTask;
   TestSuite? _selectedTestSuite;
 
+  bool _isWaitingForAgentResponse = false;
+
+  bool get isWaitingForAgentResponse => _isWaitingForAgentResponse;
+
   TaskViewModel(this._taskService, this._prefsService);
 
   /// Returns the currently selected task.
@@ -28,6 +32,8 @@ class TaskViewModel with ChangeNotifier {
 
   /// Adds a task and returns its ID.
   Future<String> createTask(String title) async {
+    _isWaitingForAgentResponse = true;
+    notifyListeners();
     try {
       final newTask = TaskRequestBody(input: title);
       // Add to data source
@@ -45,6 +51,9 @@ class TaskViewModel with ChangeNotifier {
     } catch (e) {
       // TODO: We are bubbling up the full response. Revisit this.
       rethrow;
+    } finally {
+      _isWaitingForAgentResponse = false;
+      notifyListeners();
     }
   }
 
