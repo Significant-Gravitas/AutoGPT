@@ -1,14 +1,12 @@
 ### Set up with Docker
 
-!!! Important: Docker Setup Issue
+!!! important "Docker Setup Issue"
     The Docker setup is currently broken because of an issue with Poetry.
 
     [**We have an open PR if you'd like to take a look**](https://github.com/python-poetry/poetry/issues/8548)
 
     Please keep this in mind. We apologize for any inconvenience, and thank you for your patience.
 
-
----
 
 1. Make sure you have Docker installed, see [requirements](#requirements)
 2. Create a project directory for AutoGPT
