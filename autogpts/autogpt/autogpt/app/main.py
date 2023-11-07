@@ -556,14 +556,17 @@ async def run_interaction_loop(
 
         handle_stop_signal()
 
-        result = await agent.execute(command_name, command_args, user_input)
+        if command_name:
+            result = await agent.execute(command_name, command_args, user_input)
 
-        if result.status == "success":
-            logger.info(result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW})
-        elif result.status == "error":
-            logger.warn(
-                f"Command {command_name} returned an error: {result.error or result.reason}"
-            )
+            if result.status == "success":
+                logger.info(
+                    result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW}
+                )
+            elif result.status == "error":
+                logger.warn(
+                    f"Command {command_name} returned an error: {result.error or result.reason}"
+                )
 
 
 def update_user(
@@ -689,7 +692,7 @@ def print_assistant_thoughts(
         )
         assistant_thoughts_plan = remove_ansi_escape(assistant_thoughts.get("plan", ""))
         assistant_thoughts_criticism = remove_ansi_escape(
-            assistant_thoughts.get("criticism", "")
+            assistant_thoughts.get("self_criticism", "")
         )
         assistant_thoughts_speak = remove_ansi_escape(
             assistant_thoughts.get("speak", "")

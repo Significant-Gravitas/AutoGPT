@@ -1,6 +1,1 @@
-{
-    "github_repo_url": "https://github.com/admariner/AutoGPT",
-    "timestamp": "2023-10-07T14:12:26.956967",
-    "commit_hash_to_benchmark": "b2d53d8d18c754a5b877ffeb9f42d3387c3324fd",
-    "branch_to_benchmark": "master"
-}
+{"github_repo_url": "https://github.com/admariner/AutoGPT", "timestamp": "2023-10-23T09:20:51Z", "commit_hash_to_benchmark": "ab362f96c3255052350e8e8081b363c7b97ffd6f", "branch_to_benchmark": "master"}

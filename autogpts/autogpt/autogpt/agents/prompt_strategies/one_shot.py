@@ -42,7 +42,8 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
         "{resources}\n"
         "\n"
         "## Commands\n"
-        "You have access to the following commands:\n"
+        "These are the ONLY commands you can use."
+        " Any action you perform must be possible through one of these commands:\n"
         "{commands}\n"
         "\n"
         "## Best practices\n"
@@ -62,6 +63,13 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
                 type=JSONSchema.Type.OBJECT,
                 required=True,
                 properties={
+                    "observations": JSONSchema(
+                        description=(
+                            "Relevant observations from your last action (if any)"
+                        ),
+                        type=JSONSchema.Type.STRING,
+                        required=False,
+                    ),
                     "text": JSONSchema(
                         description="Thoughts",
                         type=JSONSchema.Type.STRING,
@@ -71,13 +79,13 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
                         type=JSONSchema.Type.STRING,
                         required=True,
                     ),
-                    "plan": JSONSchema(
-                        description="Short markdown-style bullet list that conveys the long-term plan",
+                    "self_criticism": JSONSchema(
+                        description="Constructive self-criticism",
                         type=JSONSchema.Type.STRING,
                         required=True,
                     ),
-                    "criticism": JSONSchema(
-                        description="Constructive self-criticism",
+                    "plan": JSONSchema(
+                        description="Short markdown-style bullet list that conveys the long-term plan",
                         type=JSONSchema.Type.STRING,
                         required=True,
                     ),

@@ -26,11 +26,39 @@ class ActionSuccessResult(BaseModel):
         return f"```\n{self.outputs}\n```" if multiline else str(self.outputs)
 
 
-# FIXME: implement validators instead of allowing arbitrary types
-class ActionErrorResult(BaseModel, arbitrary_types_allowed=True):
+class ErrorInfo(BaseModel):
+    args: tuple
+    message: str
+    exception_type: str
+    repr: str
+
+    @staticmethod
+    def from_exception(exception: Exception) -> ErrorInfo:
+        return ErrorInfo(
+            args=exception.args,
+            message=getattr(exception, "message", exception.args[0]),
+            exception_type=exception.__class__.__name__,
+            repr=repr(exception),
+        )
+
+    def __str__(self):
+        return repr(self)
+
+    def __repr__(self):
+        return self.repr
+
+
+class ActionErrorResult(BaseModel):
     reason: str
-    error: Optional[Exception] = None
+    error: Optional[ErrorInfo] = None
     status: Literal["error"] = "error"
+
+    @staticmethod
+    def from_exception(exception: Exception) -> ActionErrorResult:
+        return ActionErrorResult(
+            reason=getattr(exception, "message", exception.args[0]),
+            error=ErrorInfo.from_exception(exception),
+        )
 
     def __str__(self) -> str:
         return f"Action failed: '{self.reason}'"
