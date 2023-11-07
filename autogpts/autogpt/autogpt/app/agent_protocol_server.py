@@ -226,6 +226,8 @@ class AgentProtocolServer:
             if execute_command == ask_user.__name__:  # HACK
                 execute_result = ActionSuccessResult(outputs=user_input)
                 agent.event_history.register_result(execute_result)
+            elif not execute_command:
+                execute_result = None
             elif execute_approved:
                 step = await self.db.update_step(
                     task_id=task_id,
