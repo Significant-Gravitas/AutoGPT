@@ -57,7 +57,27 @@ def web_search(query: str, agent: Agent, num_results: int = 8) -> str:
         time.sleep(1)
         attempts += 1
 
-    results = json.dumps(search_results, ensure_ascii=False, indent=4)
+    search_results = [
+        {
+            "title": r["title"],
+            "url": r["href"],
+            **({"exerpt": r["body"]} if r.get("body") else {}),
+        }
+        for r in search_results
+    ]
+
+    results = (
+        "## Search results\n"
+        # "Read these results carefully."
+        # " Extract the information you need for your task from the list of results"
+        # " if possible. Otherwise, choose a webpage from the list to read entirely."
+        # "\n\n"
+    ) + "\n\n".join(
+        f"### \"{r['title']}\"\n"
+        f"**URL:** {r['url']}  \n"
+        "**Excerpt:** " + (f'"{exerpt}"' if (exerpt := r.get("exerpt")) else "N/A")
+        for r in search_results
+    )
     return safe_google_results(results)
 
 

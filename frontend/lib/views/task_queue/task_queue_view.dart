@@ -1,18 +1,20 @@
 import 'package:auto_gpt_flutter_client/models/benchmark/benchmark_task_status.dart';
 import 'package:auto_gpt_flutter_client/models/test_option.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/viewmodels/task_queue_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/task_queue/leaderboard_submission_button.dart';
 import 'package:auto_gpt_flutter_client/views/task_queue/leaderboard_submission_dialog.dart';
 import 'package:auto_gpt_flutter_client/views/task_queue/test_suite_button.dart';
 import 'package:flutter/material.dart';
-import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:provider/provider.dart';
 
 class TaskQueueView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final viewModel = Provider.of<SkillTreeViewModel>(context);
+    // TODO: This should be injected instead
+    final viewModel = Provider.of<TaskQueueViewModel>(context);
 
     // Node hierarchy
     final nodeHierarchy = viewModel.selectedNodeHierarchy ?? [];
@@ -102,8 +104,13 @@ class TaskQueueView extends StatelessWidget {
                   selectedOptionString: viewModel.selectedOption.description,
                   onOptionSelected: (selectedOption) {
                     print('Option Selected: $selectedOption');
+                    final skillTreeViewModel =
+                        Provider.of<SkillTreeViewModel>(context, listen: false);
                     viewModel.updateSelectedNodeHierarchyBasedOnOption(
-                        TestOptionExtension.fromDescription(selectedOption)!);
+                        TestOptionExtension.fromDescription(selectedOption)!,
+                        skillTreeViewModel.selectedNode,
+                        skillTreeViewModel.skillTreeNodes,
+                        skillTreeViewModel.skillTreeEdges);
                   },
                   onPlayPressed: (selectedOption) {
                     print('Starting benchmark with option: $selectedOption');
@@ -129,6 +136,7 @@ class TaskQueueView extends StatelessWidget {
                                 viewModel.submitToLeaderboard(
                                     teamName, repoUrl, commitSha);
                               },
+                              viewModel: viewModel,
                             ),
                           );
                         },

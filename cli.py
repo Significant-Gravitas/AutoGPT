@@ -214,12 +214,12 @@ def agent():
 @agent.command()
 @click.argument("agent_name")
 def create(agent_name):
-    """Create's a new agent with the agent name provieded"""
+    """Create's a new agent with the agent name provided"""
     import os
     import re
     import shutil
 
-    if not re.match("^[a-zA-Z0-9_-]*$", agent_name):
+    if not re.match("\w*$", agent_name):
         click.echo(
             click.style(
                 f"😞 Agent name '{agent_name}' is not valid. It should not contain spaces or special characters other than -_",
@@ -229,9 +229,11 @@ def create(agent_name):
         return
     try:
         new_agent_dir = f"./autogpts/{agent_name}"
-        agent_json_file = f"./arena/{agent_name}.json"
+        new_agent_name = f"{agent_name.lower()}.json"
 
-        if not os.path.exists(new_agent_dir) and not os.path.exists(agent_json_file):
+        existing_arena_files = [name.lower() for name in os.listdir("./arena/")]
+
+        if not os.path.exists(new_agent_dir) and not new_agent_name in existing_arena_files:
             shutil.copytree("./autogpts/forge", new_agent_dir)
             click.echo(
                 click.style(
@@ -248,7 +250,7 @@ def create(agent_name):
         else:
             click.echo(
                 click.style(
-                    f"😞 Agent '{agent_name}' already exists. Enter a different name for your agent",
+                    f"😞 Agent '{agent_name}' already exists. Enter a different name for your agent, the name needs to be unique regardless of case",
                     fg="red",
                 )
             )
@@ -258,8 +260,8 @@ def create(agent_name):
 
 @agent.command()
 @click.argument("agent_name")
-@click.option("--setup", is_flag=True, help="Rebuilds your poetry env")
-def start(agent_name, setup):
+@click.option("--no-setup", is_flag=True, help="Rebuilds your poetry env")
+def start(agent_name, no_setup):
     """Start agent command"""
     import os
     import subprocess
@@ -270,7 +272,7 @@ def start(agent_name, setup):
     run_bench_command = os.path.join(agent_dir, "run_benchmark")
     if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
         os.chdir(agent_dir)
-        if setup:
+        if not no_setup:
             setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
             setup_process.wait()
         subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
@@ -301,14 +303,22 @@ def stop():
     import subprocess
 
     try:
-        pid = int(subprocess.check_output(["lsof", "-t", "-i", ":8000"]))
-        os.kill(pid, signal.SIGTERM)
+        pids = subprocess.check_output(["lsof", "-t", "-i", ":8000"]).split()
+        if isinstance(pids, int):
+            os.kill(int(pids), signal.SIGTERM)
+        else:
+            for pid in pids:
+                os.kill(int(pid), signal.SIGTERM)
     except subprocess.CalledProcessError:
         click.echo("No process is running on port 8000")
 
     try:
-        pid = int(subprocess.check_output(["lsof", "-t", "-i", ":8080"]))
-        os.kill(pid, signal.SIGTERM)
+        pids = int(subprocess.check_output(["lsof", "-t", "-i", ":8080"]))
+        if isinstance(pids, int):
+            os.kill(int(pids), signal.SIGTERM)
+        else:
+            for pid in pids:
+                os.kill(int(pid), signal.SIGTERM)
     except subprocess.CalledProcessError:
         click.echo("No process is running on port 8080")
 
@@ -877,7 +887,6 @@ def update(agent_name, hash, branch):
                 fg="green",
             )
         )
-
 
 if __name__ == "__main__":
     cli()

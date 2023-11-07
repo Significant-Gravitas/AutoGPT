@@ -1,15 +1,16 @@
 import 'package:auto_gpt_flutter_client/models/task.dart';
 import 'package:auto_gpt_flutter_client/models/task_request_body.dart';
 import 'package:auto_gpt_flutter_client/models/task_response.dart';
+import 'package:auto_gpt_flutter_client/services/shared_preferences_service.dart';
 import 'package:auto_gpt_flutter_client/utils/rest_api_utility.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service class for performing task-related operations.
 class TaskService {
   final RestApiUtility api;
+  final SharedPreferencesService prefsService;
   List<String> _deletedTaskIds = [];
 
-  TaskService(this.api);
+  TaskService(this.api, this.prefsService);
 
   /// Creates a new task.
   ///
@@ -84,17 +85,14 @@ class TaskService {
   }
 
   Future<void> loadDeletedTasks() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    _deletedTaskIds = prefs.getStringList('deletedTasks') ?? [];
-
-    // Print out all deleted task IDs
+    _deletedTaskIds = await prefsService.getStringList('deletedTasks') ?? [];
     print("Deleted tasks fetched successfully!");
   }
 
   void saveDeletedTask(String taskId) {
     _deletedTaskIds.add(taskId);
-    SharedPreferences.getInstance()
-        .then((prefs) => prefs.setStringList('deletedTasks', _deletedTaskIds));
+    prefsService.setStringList('deletedTasks', _deletedTaskIds);
+    print("Task $taskId deleted successfully!");
   }
 
   bool isTaskDeleted(String taskId) {

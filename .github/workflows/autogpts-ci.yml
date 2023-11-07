@@ -2,20 +2,19 @@ name: Valid AutoGPTs
 
 on:
   workflow_dispatch:
-    branches: [master]
   schedule:
     - cron: '0 8 * * *'
   push:
-    branches: [master, ci-test*]
+    branches: [ master, development, ci-test* ]
   pull_request:
-    branches: [stable, master, release-*]
+    branches: [ master, development, release-* ]
 
 jobs:
   run-tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        agent-name: [ forge ]
+        agent-name: [ autogpt, forge ]
       fail-fast: false
     timeout-minutes: 20
     steps:
@@ -39,7 +38,7 @@ jobs:
 
       - name: Run regression tests
         run: |
-          ./run agent start ${{ matrix.agent-name }} --setup
+          ./run agent start ${{ matrix.agent-name }}
           cd autogpts/${{ matrix.agent-name }}
           poetry run agbenchmark --mock
           poetry run agbenchmark --test=WriteFile
