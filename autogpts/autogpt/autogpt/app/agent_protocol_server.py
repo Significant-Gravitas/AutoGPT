@@ -264,7 +264,8 @@ class AgentProtocolServer:
         output = (
             (
                 f"Command `{execute_command}({fmt_kwargs(execute_command_args)})` returned:"
-                f" {execute_result}\n\n"
+                + ("\n\n" if "\n" in str(execute_result) else " ")
+                + f"{execute_result}\n\n"
             )
             if execute_command_args and execute_command != "ask_user"
             else ""

@@ -692,7 +692,7 @@ def print_assistant_thoughts(
         )
         assistant_thoughts_plan = remove_ansi_escape(assistant_thoughts.get("plan", ""))
         assistant_thoughts_criticism = remove_ansi_escape(
-            assistant_thoughts.get("criticism", "")
+            assistant_thoughts.get("self_criticism", "")
         )
         assistant_thoughts_speak = remove_ansi_escape(
             assistant_thoughts.get("speak", "")
