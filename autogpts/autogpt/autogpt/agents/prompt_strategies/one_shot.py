@@ -316,7 +316,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         )
 
         return (
-            f"Respond strictly with a JSON object{' containing your thoughts, and a function_call specifying the next command to use' if use_functions_api else ''}. "
+            f"Respond strictly with a JSON object{' containing your thoughts, and a tool_call specifying the next command to use' if use_functions_api else ''}. "
             "The JSON object should be compatible with the TypeScript type `Response` from the following:\n"
             f"{response_format}"
         )
@@ -431,11 +431,13 @@ def extract_command(
         Exception: If any other error occurs
     """
     if use_openai_functions_api:
-        if "function_call" not in assistant_reply:
-            raise InvalidAgentResponseError("No 'function_call' in assistant reply")
+        if not assistant_reply.get("tool_calls"):
+            raise InvalidAgentResponseError("No 'tool_calls' in assistant reply")
         assistant_reply_json["command"] = {
-            "name": assistant_reply["function_call"]["name"],
-            "args": json.loads(assistant_reply["function_call"]["arguments"]),
+            "name": assistant_reply["tool_calls"][0]["function"]["name"],
+            "args": json.loads(
+                assistant_reply["tool_calls"][0]["function"]["arguments"]
+            ),
         }
     try:
         if not isinstance(assistant_reply_json, dict):

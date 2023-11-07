@@ -77,16 +77,28 @@ class AssistantFunctionCallDict(TypedDict):
     arguments: str
 
 
+class AssistantToolCall(BaseModel):
+    # id: str
+    type: Literal["function"]
+    function: AssistantFunctionCall
+
+
+class AssistantToolCallDict(TypedDict):
+    # id: str
+    type: Literal["function"]
+    function: AssistantFunctionCallDict
+
+
 class AssistantChatMessage(ChatMessage):
     role: Literal["assistant"]
     content: Optional[str]
-    function_call: Optional[AssistantFunctionCall]
+    tool_calls: Optional[list[AssistantToolCall]]
 
 
 class AssistantChatMessageDict(TypedDict, total=False):
     role: str
     content: str
-    function_call: AssistantFunctionCallDict
+    tool_calls: list[AssistantToolCallDict]
 
 
 class CompletionModelFunction(BaseModel):
