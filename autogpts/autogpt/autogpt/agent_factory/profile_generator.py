@@ -36,9 +36,10 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
             "\n"
             "Example Input:\n"
             '"""Help me with marketing my business"""\n\n'
-            "Example Function Call:\n"
+            "Example Call:\n"
             "```\n"
-            "{"
+            "["  # tool_calls
+            '{"type": "function", "function": {'
             '"name": "create_agent",'
             ' "arguments": {'
             '"name": "CMOGPT",'
@@ -65,7 +66,9 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
             "]"  # constraints
             "}"  # directives
             "}"  # arguments
-            "}\n"
+            "}"  # function
+            "}"  # tool call
+            "]\n"  # tool_calls
             "```"
         )
     )

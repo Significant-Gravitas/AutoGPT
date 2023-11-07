@@ -78,13 +78,13 @@ class AssistantFunctionCallDict(TypedDict):
 
 
 class AssistantToolCall(BaseModel):
-    id: str
+    # id: str
     type: Literal["function"]
     function: AssistantFunctionCall
 
 
 class AssistantToolCallDict(TypedDict):
-    id: str
+    # id: str
     type: Literal["function"]
     function: AssistantFunctionCallDict
 

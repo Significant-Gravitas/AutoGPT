@@ -427,7 +427,9 @@ def extract_command(
             raise InvalidAgentResponseError("No 'tool_calls' in assistant reply")
         assistant_reply_json["command"] = {
             "name": assistant_reply["tool_calls"][0]["function"]["name"],
-            "args": json.loads(assistant_reply["tool_calls"][0]["function"]["arguments"]),
+            "args": json.loads(
+                assistant_reply["tool_calls"][0]["function"]["arguments"]
+            ),
         }
     try:
         if not isinstance(assistant_reply_json, dict):

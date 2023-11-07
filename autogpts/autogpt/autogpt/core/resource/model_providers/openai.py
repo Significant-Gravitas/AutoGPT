@@ -368,8 +368,7 @@ class OpenAIProvider(
         if functions:
             if OPEN_AI_CHAT_MODELS[model_name].has_function_call_api:
                 completion_kwargs["tools"] = [
-                    {"type": "function", "function": f.schema}
-                    for f in functions
+                    {"type": "function", "function": f.schema} for f in functions
                 ]
                 if len(functions) == 1:
                     # force the model to call the only specified function
