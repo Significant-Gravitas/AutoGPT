@@ -90,12 +90,12 @@ If you continue to experience issues, consider storing your project files within
 
    ![Create an Agent](docs/content/imgs/quickstart/007_create_agent.png)
 
-    Upon creating your agent its time to offically enter the Arena!
+    Upon creating your agent its time to officially enter the Arena!
     Do so by running `./run arena enter YOUR_AGENT_NAME`
 
    ![Enter the Arena](docs/content/imgs/quickstart/008_enter_arena.png)
 
-   > Note: for adavanced yours, create a new branch and create a file called YOUR_AGENT_NAME.json in the arena directory. Then commit this and create a PR to merge into the main repo. Only single file entries will be permitted. The json file needs the following format. 
+   > Note: for advanced users, create a new branch and create a file called YOUR_AGENT_NAME.json in the arena directory. Then commit this and create a PR to merge into the main repo. Only single file entries will be permitted. The json file needs the following format. 
    ```json
    {
     "github_repo_url": "https://github.com/Swiftyos/YourAgentName",
