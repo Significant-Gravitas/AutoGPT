@@ -95,10 +95,10 @@ class AssistantChatMessage(ChatMessage):
     tool_calls: Optional[list[AssistantToolCall]]
 
 
-class AssistantChatMessageDict(TypedDict):
+class AssistantChatMessageDict(TypedDict, total=False):
     role: str
-    content: Optional[str]
-    tool_calls: Optional[list[AssistantToolCallDict]]
+    content: str
+    tool_calls: list[AssistantToolCallDict]
 
 
 class CompletionModelFunction(BaseModel):
