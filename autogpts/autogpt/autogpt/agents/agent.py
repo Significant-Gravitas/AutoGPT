@@ -187,13 +187,14 @@ class Agent(
             NEXT_ACTION_FILE_NAME,
         )
 
-        self.event_history.register_action(
-            Action(
-                name=command_name,
-                args=arguments,
-                reasoning=assistant_reply_dict["thoughts"]["reasoning"],
+        if command_name:
+            self.event_history.register_action(
+                Action(
+                    name=command_name,
+                    args=arguments,
+                    reasoning=assistant_reply_dict["thoughts"]["reasoning"],
+                )
             )
-        )
 
         return command_name, arguments, assistant_reply_dict
 
