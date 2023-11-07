@@ -609,7 +609,7 @@ def _functions_compat_fix_kwargs(
                     enum=["function"],
                 ),
                 "function": function_call_schema,
-            }
+            },
         ),
     )
     completion_kwargs["messages"] = [
