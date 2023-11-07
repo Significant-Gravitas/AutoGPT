@@ -55,7 +55,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     prompt_settings_file: Path = project_root / PROMPT_SETTINGS_FILE
     # Model configuration
     fast_llm: str = "gpt-3.5-turbo-16k"
-    smart_llm: str = "gpt-4-0314"
+    smart_llm: str = "gpt-4"
     temperature: float = 0
     openai_functions: bool = False
     embedding_model: str = "text-embedding-ada-002"
