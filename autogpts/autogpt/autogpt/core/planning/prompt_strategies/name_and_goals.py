@@ -133,7 +133,9 @@ class NameAndGoals(PromptStrategy):
 
         """
         try:
-            parsed_response = json_loads(response_content["function_call"]["arguments"])
+            parsed_response = json_loads(
+                response_content["tool_calls"][0]["function"]["arguments"]
+            )
         except KeyError:
             logger.debug(f"Failed to parse this response content: {response_content}")
             raise
