@@ -34,6 +34,13 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 ### If you plan to use Docker please follow this setup
 [Docker Install](Setups/Docker-setup.md)
 
+!!! important "Docker Setup Issue"
+    We are addressing a known issue with the Docker setup related to Poetry.
+
+    [**We have an open PR if you'd like to take a look**](https://github.com/python-poetry/poetry/issues/8548)
+
+    Please keep this in mind. We apologize for any inconvenience, and thank you for your patience.
+
 ### If you plan to use Git please follow this setup
 [Git Setup](Setups/Git-setup.md)
 
