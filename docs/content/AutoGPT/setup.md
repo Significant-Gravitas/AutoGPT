@@ -31,8 +31,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
 ## Setting up AutoGPT
 
-### If you plan to use Docker please follow this setup
-[Docker Install](Setups/Docker-setup.md)
+### If you plan to use Docker please follow this setup.
 
 !!! important "Docker Setup Issue"
     We are addressing a known issue with the Docker setup related to Poetry.
@@ -41,8 +40,10 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
     Please keep this in mind. We apologize for any inconvenience, and thank you for your patience.
 
-### If you plan to use Git please follow this setup
-[Git Setup](Setups/Git-setup.md)
+[Docker Install Here.](Setups/Docker-setup.md)
+
+### If you plan to use Git please follow this setup.
+[Git Setup Here.](Setups/Git-setup.md)
 
 ### If you dont want to use git or docker for the setup follow here.
-[No Git Or Docker Setup](Setups/nogit-setup.md)
+[No Git Or Docker Setup Here.](Setups/nogit-setup.md)
