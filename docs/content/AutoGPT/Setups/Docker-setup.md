@@ -1,7 +1,7 @@
 ### Set up with Docker
 
 !!! important "Docker Setup Issue"
-    The Docker setup is currently broken because of an issue with Poetry.
+    We are addressing a known issue with the Docker setup related to Poetry.
 
     [**We have an open PR if you'd like to take a look**](https://github.com/python-poetry/poetry/issues/8548)
 
