@@ -32,7 +32,10 @@
     ```
 3. Open the `.env` file in a text editor.
 4. Find the line that says `OPENAI_API_KEY=`.
-5. After the `=`, enter your unique OpenAI API Key *without any quotes or spaces*.
+5. Insert your OpenAI API Key directly after = without quotes or spaces..
+    ```yaml
+    OPENAI_API_KEY=sk-qwertykeys123456
+    ```
 6. Enter any other API keys or tokens for services you would like to use.
 
     !!! note
