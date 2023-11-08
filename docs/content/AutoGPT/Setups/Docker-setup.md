@@ -101,9 +101,7 @@
 [openai-python docs]: https://github.com/openai/openai-python#microsoft-azure-endpoints
 [Azure OpenAI docs]: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line
 
-## Running AutoGPT
-
-### Run with Docker
+## Running AutoGPT In Docker
 
 Easiest is to use `docker compose`. 
 
