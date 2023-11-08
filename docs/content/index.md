@@ -8,7 +8,7 @@ The AutoGPT project has been divided into four distinct sections: [Agents](#welc
 
 ## [Welcome to the heart of AutoGPT](AutoGPT/setup.md)
 
-Where the magic happens – the AutoGPT Agent. This is your go-to toolkit for supercharging agents and AI innovation.
+Welcome to the heart of AutoGPT, where the magic happens – the AutoGPT Agent. This is your go-to toolkit for supercharging agents and AI innovation.
 
 - 👀 **Viewing** - See your progress come to life. With the AutoGPT Agent, you can easily monitor and control your agents through our user-friendly interface.
 
