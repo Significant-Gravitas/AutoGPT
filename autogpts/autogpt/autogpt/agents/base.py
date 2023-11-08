@@ -61,7 +61,7 @@ class BaseAgentConfiguration(SystemConfiguration):
     default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT
     """The default instruction passed to the AI for a thinking cycle."""
 
-    big_brain: bool = UserConfigurable(default=False)
+    big_brain: bool = UserConfigurable(default=True)
     """
     Whether this agent uses the configured smart LLM (default) to think,
     as opposed to the configured fast LLM. Enabling this disables hybrid mode.
