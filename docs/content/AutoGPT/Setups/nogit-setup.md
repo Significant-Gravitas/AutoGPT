@@ -1,4 +1,4 @@
-### Set up without Git/Docker
+### Setting Up without Git/Docker
 
 !!! warning
     We recommend to use Git or Docker, to make updating easier. Also note that some features such as Python execution will only work inside docker for security reasons.
@@ -53,11 +53,9 @@
 [Azure OpenAI docs]: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line
 
 
-### Run without Docker
+### Start AutoGPT In A irtual Environment
 
-#### Create a Virtual Environment
-
-Create a virtual environment to run in.
+First we need to create a virtual environment to run in.
 
 ```shell
 python -m venv .venv
