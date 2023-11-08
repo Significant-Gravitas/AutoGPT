@@ -36,7 +36,7 @@ Forge your future with AutoGPT! The Forge is your innovation lab.
 
 ## [Frontend](front-end/the-ui.md)
 
-Harness your AI journey with the AutoGPT Front-End.
+Harness your AI journey with the AutoGPT FrontEnd.
 
 - 🎮 **User-Friendly Interface** - Manage your agents effortlessly.
 
