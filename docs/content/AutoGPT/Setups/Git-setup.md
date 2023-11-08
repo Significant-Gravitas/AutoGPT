@@ -26,7 +26,10 @@
     hidden files, follow the instructions for your specific operating system:
     [Windows][show hidden files/Windows], [macOS][show hidden files/macOS].
 2. Create a copy of `.env.template` and call it `.env`;
-    if you're already in a command prompt/terminal window: `cp .env.template .env`.
+    if you're already in a command prompt/terminal window: 
+    ```shell
+    cp .env.template .env
+    ```
 3. Open the `.env` file in a text editor.
 4. Find the line that says `OPENAI_API_KEY=`.
 5. After the `=`, enter your unique OpenAI API Key *without any quotes or spaces*.
