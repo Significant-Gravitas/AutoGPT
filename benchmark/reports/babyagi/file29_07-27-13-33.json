@@ -1,0 +1,32 @@
+{
+    "command": "agbenchmark start --test=TestWriteFile",
+    "completion_time": "2023-07-27-13:34",
+    "benchmark_start_time": "2023-07-27-13:33",
+    "metrics": {
+        "run_time": "100.88 seconds",
+        "highest_difficulty": "No successful tests"
+    },
+    "tests": {
+        "TestWriteFile": {
+            "data_path": "agbenchmark/challenges/interface/write_file/data.json",
+            "is_regression": false,
+            "category": [
+                "interface"
+            ],
+            "task": "Print the the capital of America to a .txt file",
+            "answer": "Washington",
+            "description": "Tests the writing to file",
+            "metrics": {
+                "difficulty": "interface",
+                "success": false,
+                "fail_reason": "assert 1 in []",
+                "success_%": 0.0,
+                "run_time": "100.224 seconds"
+            },
+            "reached_cutoff": true
+        }
+    },
+    "config": {
+        "workspace": "babycoder/playground"
+    }
+}

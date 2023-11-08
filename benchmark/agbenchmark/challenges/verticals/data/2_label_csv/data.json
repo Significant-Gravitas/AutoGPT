@@ -1,0 +1,32 @@
+{
+    "category": [
+        "data"
+    ],
+    "cutoff": 60,
+    "dependencies": [
+        "TestSortCsv"
+    ],
+    "eval_id": "6e2bf1f0-6842-4704-8ed1-b17c2065bbac",
+    "ground": {
+        "answer": "The csv labelled",
+        "case_sensitive": true,
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.csv"
+        ],
+        "should_contain": [
+            "Item,Color\nBanana,yellow\nLeaf,green\nSky,blue\nSunflower,yellow\nGrass,green\nJeans,blue\nLemon,yellow\nTree,green\nOcean,blue\nDaisy,yellow\nFern,green"
+        ]
+    },
+    "info": {
+        "description": "Tests if the agent can label data in a csv",
+        "difficulty": "basic",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "LabelCsv",
+    "task": "The csv 'input.csv' has many items. Create a 'Color' column for these items and classify them as either 'blue', 'green', or 'yellow' depending on what the most likely color is. Use lowercase letters to classify and preserve the order of the rows. The color column should be the second column. Write the output in output.csv"
+}

@@ -1,0 +1,30 @@
+Specifications for Battleship
+
+Overview: Battleship is a two-player strategy game where each player places their fleet of ships on a grid and tries to sink the opponent's fleet by guessing their locations.
+Players take turns calling out a row and column, attempting to name a square containing one of the opponent's ships.
+
+The Grid: Each player's grid is a 10x10 grid, identified by rows (using numbers 1-10) and columns (using letters A-J).
+
+Ships:
+
+Carrier - 5 squares
+Battleship - 4 squares
+Cruiser - 3 squares
+Submarine - 3 squares
+Destroyer - 2 squares
+Each ship occupies contiguous squares on the grid, arranged either horizontally or vertically.
+
+Setup:
+
+At the start of the game, each player places their fleet on their grid. This setup is hidden from the opponent.
+The game begins with Player 1, followed by Player 2, and so on.
+Taking Turns:
+
+On a player's turn, they announce a grid square (e.g., "D5").
+The opponent announces whether that square is a "hit" (if there's a part of a ship on that square) or "miss" (if the square is empty).
+If a player hits a square occupied by a ship, they get another turn to guess. This continues until they make a miss, at which point their turn ends.
+If a player hits all the squares occupied by a ship, the opponent must announce the sinking of that specific ship, e.g., "You sank my Battleship!"
+
+Objective: The goal is to sink all of your opponent's ships before they sink yours.
+
+End of the Game: The game ends when one player has sunk all of the opponent's ships. The winner is the player who sinks all the opposing fleet first.

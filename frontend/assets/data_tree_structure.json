@@ -1,0 +1,360 @@
+{
+    "edges": [
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]"
+        },
+        {
+            "arrows": "to",
+            "from": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]_to_agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]",
+            "to": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]"
+        }
+    ],
+    "nodes": [
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "coding",
+                    "scrape_synthesize",
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestWriteFile"
+                ],
+                "eval_id": "f219f3d3-a41b-45a9-a3d0-389832086ee8",
+                "ground": {
+                    "answer": "The content of output.txt should be 'Hello World!'",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "Hello World!"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can read a file.",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestReadFile",
+                "task": "Read the file called file_to_read.txt and write its content to a file called output.txt"
+            },
+            "id": "agbenchmark/generate_test.py::TestReadFile::test_method[challenge_data0]",
+            "label": "ReadFile",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "general",
+                    "coding",
+                    "scrape_synthesize",
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [],
+                "eval_id": "021c695a-6cc4-46c2-b93a-f3a9b0f4d123",
+                "ground": {
+                    "answer": "The word 'Washington', printed to a .txt file named anything",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        ".txt"
+                    ],
+                    "should_contain": [
+                        "Washington"
+                    ],
+                    "should_not_contain": []
+                },
+                "info": {
+                    "description": "Tests if the agent can write a file",
+                    "difficulty": "interface",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestWriteFile",
+                "task": "Write the word 'Washington' to a .txt file"
+            },
+            "id": "agbenchmark/generate_test.py::TestWriteFile::test_method[challenge_data0]",
+            "label": "WriteFile",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data"
+                ],
+                "cutoff": 90,
+                "dependencies": [
+                    "TestAnswerQuestionSmallCsv"
+                ],
+                "eval_id": "bb6e0a4b-7faf-4aa6-a524-548cddbc2732",
+                "ground": {
+                    "answer": "The correct amount spent on utilities.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "1861"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can answer a question from a csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestAnswerQuestionCsv",
+                "task": "How much was spent on utilities in total ? Write the answer in an output.txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionCsv::test_method[challenge_data0]",
+            "label": "AnswerQuestionCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestReadFile"
+                ],
+                "eval_id": "9df3f07a-5047-488f-b788-1e1f57eba970",
+                "ground": {
+                    "answer": "The correct amount spent on utilities.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "84"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can answer a question from a small csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestAnswerQuestionSmallCsv",
+                "task": "How much was spent on utilities in total ? Write the answer in an output.txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionSmallCsv::test_method[challenge_data0]",
+            "label": "AnswerQuestionSmallCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data",
+                    "general"
+                ],
+                "cutoff": 120,
+                "dependencies": [
+                    "TestAnswerQuestionCsv",
+                    "TestCombineCsv"
+                ],
+                "eval_id": "b1bb61cd-3d09-4a69-bb2a-9dbb3c477589",
+                "ground": {
+                    "answer": "The correct amount spent on utilities.",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.txt"
+                    ],
+                    "should_contain": [
+                        "1861"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can answer a question from a csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestAnswerQuestionCombineCsv",
+                "task": "How much was spent on utilities in total ? Write the answer in an output.txt file."
+            },
+            "id": "agbenchmark/generate_test.py::TestAnswerQuestionCombineCsv::test_method[challenge_data0]",
+            "label": "AnswerQuestionCombineCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestLabelCsv"
+                ],
+                "eval_id": "52467beb-b951-4356-9776-9a0ae46bb33b",
+                "ground": {
+                    "answer": "The csv data is combined",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.csv"
+                    ],
+                    "should_contain": [
+                        "Age,ID,Name,Occupation,Salary\n28,101,John,Engineer,80000\n34,102,Alice,Doctor,120000\n45,103,Bob,Lawyer,95000"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can combine data from a csv",
+                    "difficulty": "intermediate",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestCombineCsv",
+                "task": "The csvs 'file1.csv' and 'file2.csv' both have a column 'ID'. Combine these 2 csvs using the 'ID' column. Sort the rows by ID in ascending order and the columns alphabetically. Write the output in output.csv"
+            },
+            "id": "agbenchmark/generate_test.py::TestCombineCsv::test_method[challenge_data0]",
+            "label": "CombineCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestSortCsv"
+                ],
+                "eval_id": "6e2bf1f0-6842-4704-8ed1-b17c2065bbac",
+                "ground": {
+                    "answer": "The csv labelled",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.csv"
+                    ],
+                    "should_contain": [
+                        "Item,Color\nBanana,yellow\nLeaf,green\nSky,blue\nSunflower,yellow\nGrass,green\nJeans,blue\nLemon,yellow\nTree,green\nOcean,blue\nDaisy,yellow\nFern,green"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can label data in a csv",
+                    "difficulty": "basic",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestLabelCsv",
+                "task": "The csv 'input.csv' has many items. create a 'Color' column for these items and classify them as either 'blue', 'green', or 'yellow' depending on what the most likely color is. Preserve the order of the rows. The color column should be the second column. Write the output in output.csv"
+            },
+            "id": "agbenchmark/generate_test.py::TestLabelCsv::test_method[challenge_data0]",
+            "label": "LabelCsv",
+            "shape": "dot"
+        },
+        {
+            "color": "grey",
+            "data": {
+                "category": [
+                    "data",
+                    "general"
+                ],
+                "cutoff": 60,
+                "dependencies": [
+                    "TestReadFile"
+                ],
+                "eval_id": "d59ec964-6f67-4b3d-a4de-c4436fc76f95",
+                "ground": {
+                    "answer": "The csv sorted by date",
+                    "eval": {
+                        "type": "file"
+                    },
+                    "files": [
+                        "output.csv"
+                    ],
+                    "should_contain": [
+                        "id,name,timestamp\n1,Bob,2023-09-24 12:05:00\n2,Charlie,2023-09-24 12:10:00\n3,Alice,2023-09-25 14:10:00\n4,David,2023-09-26 16:20:00"
+                    ]
+                },
+                "info": {
+                    "description": "Tests if the agent can sort a csv",
+                    "difficulty": "basic",
+                    "side_effects": [
+                        ""
+                    ]
+                },
+                "name": "TestSortCsv",
+                "task": "Sort the input.csv by the 'timestamp' column and write the new csv in the output.csv file. The order of the columns should be preserved."
+            },
+            "id": "agbenchmark/generate_test.py::TestSortCsv::test_method[challenge_data0]",
+            "label": "SortCsv",
+            "shape": "dot"
+        }
+    ]
+}

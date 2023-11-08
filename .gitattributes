@@ -1,0 +1,3 @@
+frontend/build/* linguist-generated
+
+**/poetry.lock linguist-generated
