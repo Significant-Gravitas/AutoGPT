@@ -1,4 +1,4 @@
-# 🚀 **AutoGPT-Forge**: Build Your Own AutoGPT Agent! 🧠 
+# **AutoGPT-Forge**: Build Your Own AutoGPT Agent!  
 
 ### 🌌 Dive into the Universe of AutoGPT Creation! 🌌
 
