@@ -44,7 +44,7 @@ Harness your AI journey with the AutoGPT Front-End.
 
 ---
 
-[Join the AutoGPT discord server for any queries](discord.gg/autogpt)
+[Join the AutoGPT Discord server for any queries](discord.gg/autogpt)
 
 ### Glossary of Terms
 
