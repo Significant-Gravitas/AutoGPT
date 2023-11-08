@@ -1,5 +1,3 @@
-# Exclude VCR cassettes from stats
-tests/Auto-GPT-test-cassettes/**/**.y*ml linguist-generated
+frontend/build/* linguist-generated
 
-# Mark documentation as such
-docs/**.md linguist-documentation
+**/poetry.lock linguist-generated

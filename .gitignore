@@ -1,11 +1,7 @@
 ## Original ignores
+.github_access_token
 autogpt/keys.py
-autogpt/*json
-autogpt/node_modules/
-autogpt/__pycache__/keys.cpython-310.pyc
-autogpt/auto_gpt_workspace
-package-lock.json
-*.pyc
+autogpt/*.json
 auto_gpt_workspace/*
 *.mpeg
 .env
@@ -17,7 +13,7 @@ last_run_ai_settings.yaml
 auto-gpt.json
 log.txt
 log-ingestion.txt
-logs
+/logs
 *.log
 *.mp3
 mem.sqlite3
@@ -33,10 +29,8 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
 develop-eggs/
 dist/
-plugins/
 downloads/
 eggs/
 .eggs/
@@ -164,3 +158,18 @@ openai/
 
 # news
 CURRENT_BULLETIN.md
+
+# AgBenchmark
+agbenchmark/reports/
+
+# Nodejs
+package-lock.json
+package.json
+
+# Allow for locally private items
+# private
+pri* 
+# ignore
+ig*
+.github_access_token
+arena/TestAgent.json
