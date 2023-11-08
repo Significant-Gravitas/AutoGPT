@@ -2,7 +2,7 @@
 
 Welcome to the AutoGPT Docs.
 
-The AutoGPT project has been divided into four distinct sections namely [Agents](#welcome-to-the-heart-of-autogpt), [Benchmarks](#autogpt-benchmarks), [Forge](#autogpt-forge) and [Frontend](#frontend)
+The AutoGPT project has been divided into four distinct sections: [Agents](#welcome-to-the-heart-of-autogpt), [Benchmarks](#autogpt-benchmarks), [Forge](#autogpt-forge), and [Frontend](#frontend)
 
 ---
 
