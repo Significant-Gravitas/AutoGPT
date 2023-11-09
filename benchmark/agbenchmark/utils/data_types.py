@@ -175,6 +175,9 @@ class Category(str, Enum):
     CODING = "coding"
     SCRAPE_SYNTHESIZE = "scrape_synthesize"
     VALIDATION = "validation"
+    GAIA_1 = "GAIA_1"
+    GAIA_2 = "GAIA_2"
+    GAIA_3 = "GAIA_3"
 
 
 class ChallengeData(BaseModel):
