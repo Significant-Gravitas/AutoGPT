@@ -40,4 +40,11 @@ You have access to the following abilities you can call:
 - {{ best_practice }}
 {% endfor %}
 {% endif %}
+
+{% if previous_actions %}
+## History of Abilities Used
+{% for action in previous_actions %}
+- {{ action }}
+{% endfor %}
+{% endif %}
 {% endblock %}

@@ -84,7 +84,7 @@ def ability(
         func_param_names = set(func_params.keys())
         if param_names != func_param_names:
             raise ValueError(
-                f"Mismatch in parameter names. Ability Annotation includes {param_names}, but function acatually takes {func_param_names} in function {func.__name__} signature"
+                f"Mismatch in parameter names. Ability Annotation includes {param_names}, but function actually takes {func_param_names} in function {func.__name__} signature"
             )
         func.ability = Ability(
             name=name,

@@ -12,14 +12,14 @@ import time
     "eval_id, input_text, expected_artifact_length, test_name, should_be_successful",
     [
         (
-            "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
+            "021c695a-6cc4-46c2-b93a-f3a9b0f4d123",
             "Write the word 'Washington' to a .txt file",
             0,
             "WriteFile",
             True,
         ),
         (
-            "261ccfaa-02a2-4c1a-8a56-c76c66f7dba1",
+            "f219f3d3-a41b-45a9-a3d0-389832086ee8",
             "Read the file called file_to_read.txt and write its content to a file called output.txt",
             1,
             "ReadFile",
@@ -31,11 +31,16 @@ def test_entire_workflow(
     eval_id, input_text, expected_artifact_length, test_name, should_be_successful
 ):
     task_request = {"eval_id": eval_id, "input": input_text}
-
+    response = requests.get(f"{URL_AGENT}/agent/tasks")
+    task_count_before = response.json()["pagination"]["total_items"]
     # First POST request
     task_response_benchmark = requests.post(
         URL_BENCHMARK + "/agent/tasks", json=task_request
     )
+    response = requests.get(f"{URL_AGENT}/agent/tasks")
+    task_count_after = response.json()["pagination"]["total_items"]
+    assert task_count_after == task_count_before + 1
+
     timestamp_after_task_eval_created = datetime.datetime.now(datetime.timezone.utc)
     time.sleep(1.1)  # To make sure the 2 timestamps to compare are different
     assert task_response_benchmark.status_code == 200

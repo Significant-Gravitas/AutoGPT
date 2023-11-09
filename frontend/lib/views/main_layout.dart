@@ -1,3 +1,4 @@
+import 'package:auto_gpt_flutter_client/viewmodels/settings_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/skill_tree_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/task_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
@@ -23,6 +24,7 @@ class MainLayout extends StatelessWidget {
     // Access the various ViewModels from the context
     final taskViewModel = Provider.of<TaskViewModel>(context);
     final chatViewModel = Provider.of<ChatViewModel>(context);
+    final settingsViewModel = Provider.of<SettingsViewModel>(context);
 
     // Initialize the width for the SideBarView
     double sideBarWidth = 60.0;
@@ -75,7 +77,7 @@ class MainLayout extends StatelessWidget {
                         SizedBox(
                             width: settingsViewWidth,
                             // Render the SettingsView with the same width as TaskView
-                            child: const SettingsView()),
+                            child: SettingsView(viewModel: settingsViewModel)),
                         SizedBox(
                             width: chatViewWidth,
                             // Render the ChatView next to the SettingsView

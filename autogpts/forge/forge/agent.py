@@ -1,25 +1,25 @@
-import json
-import pprint
-
 from forge.sdk import (
     Agent,
     AgentDB,
+    ForgeLogger,
     Step,
     StepRequestBody,
-    Workspace,
-    ForgeLogger,
     Task,
     TaskRequestBody,
-    PromptEngine,
-    chat_completion_request,
+    Workspace,    
+    PromptEngine,	
+    chat_completion_request,	
+    ChromaMemStore	
 )
+import json	
+import pprint
 
 LOG = ForgeLogger(__name__)
 
 
 class ForgeAgent(Agent):
     """
-    The goal of the Forge is to take care of the boilerplate code so you can focus on
+    The goal of the Forge is to take care of the boilerplate code, so you can focus on
     agent design.
 
     There is a great paper surveying the agent landscape: https://arxiv.org/abs/2308.11432
@@ -39,18 +39,18 @@ class ForgeAgent(Agent):
     a coder, a planner etc. In using the profile in the llm prompt it has been shown to
     improve the quality of the output. https://arxiv.org/abs/2305.14688
 
-    Additionally baed on the profile selected, the agent could be configured to use a
-    different llm. The possabilities are endless and the profile can be selected selected
+    Additionally, based on the profile selected, the agent could be configured to use a
+    different llm. The possibilities are endless and the profile can be selected
     dynamically based on the task at hand.
 
     Memory:
 
-    Memory is critical for the agent to acculmulate experiences, self-evolve, and behave
+    Memory is critical for the agent to accumulate experiences, self-evolve, and behave
     in a more consistent, reasonable, and effective manner. There are many approaches to
     memory. However, some thoughts: there is long term and short term or working memory.
     You may want different approaches for each. There has also been work exploring the
     idea of memory reflection, which is the ability to assess its memories and re-evaluate
-    them. For example, condensting short term memories into long term memories.
+    them. For example, condensing short term memories into long term memories.
 
     Planning:
 
@@ -62,7 +62,7 @@ class ForgeAgent(Agent):
 
     Action:
 
-    Actions translate the agents decisions into specific outcomes. For example, if the agent
+    Actions translate the agent's decisions into specific outcomes. For example, if the agent
     decides to write a file, the action would be to write the file. There are many approaches you
     could implement actions.
 
@@ -96,11 +96,14 @@ class ForgeAgent(Agent):
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
         """
+        For a tutorial on how to add your own logic please see the offical tutorial series:
+        https://aiedge.medium.com/autogpt-forge-e3de53cc58ec
+
         The agent protocol, which is the core of the Forge, works by creating a task and then
         executing steps for that task. This method is called when the agent is asked to execute
         a step.
 
-        The task that is created contains an input string, for the bechmarks this is the task
+        The task that is created contains an input string, for the benchmarks this is the task
         the agent has been asked to solve and additional input, which is a dictionary and
         could contain anything.
 
@@ -110,8 +113,8 @@ class ForgeAgent(Agent):
         task = await self.db.get_task(task_id)
         ```
 
-        The step request body is essentailly the same as the task request and contains an input
-        string, for the bechmarks this is the task the agent has been asked to solve and
+        The step request body is essentially the same as the task request and contains an input
+        string, for the benchmarks this is the task the agent has been asked to solve and
         additional input, which is a dictionary and could contain anything.
 
         You need to implement logic that will take in this step input and output the completed step
@@ -120,28 +123,25 @@ class ForgeAgent(Agent):
         if they want the agent to continue or not.
         """
         # An example that
-        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
         step = await self.db.create_step(
             task_id=task_id, input=step_request, is_last=True
         )
-        step_input = "None"
-        if step.input:
-            step_input = step.input[:19]
-        message = f"\t🔄 Step executed: {step.step_id} input: {step_input}"
-        if step.is_last:
-            message = (
-                f"\t✅ Final Step completed: {step.step_id} input: {step_input}"
-            )
 
-        LOG.info(message)
+        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
 
-        artifact = await self.db.create_artifact(
+        await self.db.create_artifact(
             task_id=task_id,
             step_id=step.step_id,
             file_name="output.txt",
             relative_path="",
             agent_created=True,
         )
+
         step.output = "Washington D.C"
+
+        LOG.info(f"\t✅ Final Step completed: {step.step_id}. \n" +
+                 f"Output should be placeholder text Washington D.C. You'll need to \n" +
+                 f"modify execute_step to include LLM behavior. Follow the tutorial " +
+                 f"if confused. ")
 
         return step

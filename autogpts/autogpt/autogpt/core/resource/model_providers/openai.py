@@ -3,7 +3,7 @@ import functools
 import logging
 import math
 import time
-from typing import Callable, ParamSpec, TypeVar
+from typing import Callable, Optional, ParamSpec, TypeVar
 
 import openai
 import tiktoken
@@ -16,6 +16,7 @@ from autogpt.core.configuration import (
 )
 from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessageDict,
+    AssistantToolCallDict,
     ChatMessage,
     ChatModelInfo,
     ChatModelProvider,
@@ -33,6 +34,7 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProviderUsage,
     ModelTokenizer,
 )
+from autogpt.core.utils.json_schema import JSONSchema
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
@@ -47,6 +49,7 @@ class OpenAIModelName(str, enum.Enum):
     GPT3_v1 = "gpt-3.5-turbo-0301"
     GPT3_v2 = "gpt-3.5-turbo-0613"
     GPT3_v2_16k = "gpt-3.5-turbo-16k-0613"
+    GPT3_v3 = "gpt-3.5-turbo-1106"
     GPT3_ROLLING = "gpt-3.5-turbo"
     GPT3_ROLLING_16k = "gpt-3.5-turbo-16k"
     GPT3 = GPT3_ROLLING
@@ -56,8 +59,10 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_v1_32k = "gpt-4-32k-0314"
     GPT4_v2 = "gpt-4-0613"
     GPT4_v2_32k = "gpt-4-32k-0613"
+    GPT4_v3 = "gpt-4-1106-preview"
     GPT4_ROLLING = "gpt-4"
     GPT4_ROLLING_32k = "gpt-4-32k"
+    GPT4_VISION = "gpt-4-vision-preview"
     GPT4 = GPT4_ROLLING
     GPT4_32k = GPT4_ROLLING_32k
 
@@ -96,6 +101,15 @@ OPEN_AI_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
+            name=OpenAIModelName.GPT3_v3,
+            service=ModelProviderService.CHAT,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.001 / 1000,
+            completion_token_cost=0.002 / 1000,
+            max_tokens=16384,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
             name=OpenAIModelName.GPT4,
             service=ModelProviderService.CHAT,
             provider_name=ModelProviderName.OPENAI,
@@ -111,6 +125,15 @@ OPEN_AI_CHAT_MODELS = {
             prompt_token_cost=0.06 / 1000,
             completion_token_cost=0.12 / 1000,
             max_tokens=32768,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_v3,
+            service=ModelProviderService.CHAT,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.01 / 1000,
+            completion_token_cost=0.03 / 1000,
+            max_tokens=128000,
             has_function_call_api=True,
         ),
     ]
@@ -263,11 +286,17 @@ class OpenAIProvider(
         model_prompt: list[ChatMessage],
         model_name: OpenAIModelName,
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
-        functions: list[CompletionModelFunction] = [],
+        functions: Optional[list[CompletionModelFunction]] = None,
         **kwargs,
     ) -> ChatModelResponse[_T]:
         """Create a completion using the OpenAI API."""
+
         completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
+        tool_calls_compat_mode = functions and "tools" not in completion_kwargs
+        if "messages" in completion_kwargs:
+            model_prompt += completion_kwargs["messages"]
+            del completion_kwargs["messages"]
+
         response = await self._create_chat_completion(
             messages=model_prompt,
             **completion_kwargs,
@@ -279,6 +308,10 @@ class OpenAIProvider(
         }
 
         response_message = response.choices[0].message.to_dict_recursive()
+        if tool_calls_compat_mode:
+            response_message["tool_calls"] = _tool_calls_compat_extract_calls(
+                response_message["content"]
+            )
         response = ChatModelResponse(
             response=response_message,
             parsed_result=completion_parser(response_message),
@@ -313,7 +346,7 @@ class OpenAIProvider(
     def _get_completion_kwargs(
         self,
         model_name: OpenAIModelName,
-        functions: list[CompletionModelFunction],
+        functions: Optional[list[CompletionModelFunction]] = None,
         **kwargs,
     ) -> dict:
         """Get kwargs for completion API call.
@@ -331,8 +364,21 @@ class OpenAIProvider(
             **kwargs,
             **self._credentials.unmasked(),
         }
+
         if functions:
-            completion_kwargs["functions"] = [f.schema for f in functions]
+            if OPEN_AI_CHAT_MODELS[model_name].has_function_call_api:
+                completion_kwargs["tools"] = [
+                    {"type": "function", "function": f.schema} for f in functions
+                ]
+                if len(functions) == 1:
+                    # force the model to call the only specified function
+                    completion_kwargs["tool_choice"] = {
+                        "type": "function",
+                        "function": {"name": functions[0].name},
+                    }
+            else:
+                # Provide compatibility with older models
+                _functions_compat_fix_kwargs(functions, completion_kwargs)
 
         return completion_kwargs
 
@@ -391,7 +437,7 @@ async def _create_chat_completion(
         The completion.
     """
     raw_messages = [
-        message.dict(include={"role", "content", "function_call", "name"})
+        message.dict(include={"role", "content", "tool_calls", "name"})
         for message in messages
     ]
     return await openai.ChatCompletion.acreate(
@@ -459,3 +505,144 @@ class _OpenAIRetryHandler:
                 self._backoff(attempt)
 
         return _wrapped
+
+
+def format_function_specs_as_typescript_ns(
+    functions: list[CompletionModelFunction],
+) -> str:
+    """Returns a function signature block in the format used by OpenAI internally:
+    https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
+
+    For use with `count_tokens` to determine token usage of provided functions.
+
+    Example:
+    ```ts
+    namespace functions {
+
+    // Get the current weather in a given location
+    type get_current_weather = (_: {
+    // The city and state, e.g. San Francisco, CA
+    location: string,
+    unit?: "celsius" | "fahrenheit",
+    }) => any;
+
+    } // namespace functions
+    ```
+    """
+
+    return (
+        "namespace functions {\n\n"
+        + "\n\n".join(format_openai_function_for_prompt(f) for f in functions)
+        + "\n\n} // namespace functions"
+    )
+
+
+def format_openai_function_for_prompt(func: CompletionModelFunction) -> str:
+    """Returns the function formatted similarly to the way OpenAI does it internally:
+    https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
+
+    Example:
+    ```ts
+    // Get the current weather in a given location
+    type get_current_weather = (_: {
+    // The city and state, e.g. San Francisco, CA
+    location: string,
+    unit?: "celsius" | "fahrenheit",
+    }) => any;
+    ```
+    """
+
+    def param_signature(name: str, spec: JSONSchema) -> str:
+        return (
+            f"// {spec.description}\n" if spec.description else ""
+        ) + f"{name}{'' if spec.required else '?'}: {spec.typescript_type},"
+
+    return "\n".join(
+        [
+            f"// {func.description}",
+            f"type {func.name} = (_ :{{",
+            *[param_signature(name, p) for name, p in func.parameters.items()],
+            "}) => any;",
+        ]
+    )
+
+
+def count_openai_functions_tokens(
+    functions: list[CompletionModelFunction], count_tokens: Callable[[str], int]
+) -> int:
+    """Returns the number of tokens taken up by a set of function definitions
+
+    Reference: https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
+    """
+    return count_tokens(
+        f"# Tools\n\n## functions\n\n{format_function_specs_as_typescript_ns(functions)}"
+    )
+
+
+def _functions_compat_fix_kwargs(
+    functions: list[CompletionModelFunction],
+    completion_kwargs: dict,
+):
+    function_definitions = format_function_specs_as_typescript_ns(functions)
+    function_call_schema = JSONSchema(
+        type=JSONSchema.Type.OBJECT,
+        properties={
+            "name": JSONSchema(
+                description="The name of the function to call",
+                enum=[f.name for f in functions],
+                required=True,
+            ),
+            "arguments": JSONSchema(
+                description="The arguments for the function call",
+                type=JSONSchema.Type.OBJECT,
+                required=True,
+            ),
+        },
+    )
+    tool_calls_schema = JSONSchema(
+        type=JSONSchema.Type.ARRAY,
+        items=JSONSchema(
+            type=JSONSchema.Type.OBJECT,
+            properties={
+                "type": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    enum=["function"],
+                ),
+                "function": function_call_schema,
+            },
+        ),
+    )
+    completion_kwargs["messages"] = [
+        ChatMessage.system(
+            "# tool usage instructions\n\n"
+            "Specify a '```tool_calls' block in your response,"
+            " with a valid JSON object that adheres to the following schema:\n\n"
+            f"{tool_calls_schema.to_dict()}\n\n"
+            "Specify any tools that you need to use through this JSON object.\n\n"
+            "Put the tool_calls block at the end of your response"
+            " and include its fences if it is not the only content.\n\n"
+            "## functions\n\n"
+            "For the function call itself, use one of the following"
+            f" functions:\n\n{function_definitions}"
+        ),
+    ]
+
+
+def _tool_calls_compat_extract_calls(response: str) -> list[AssistantToolCallDict]:
+    import json
+    import re
+
+    logging.debug(f"Trying to extract tool calls from response:\n{response}")
+
+    if response[0] == "[":
+        tool_calls: list[AssistantToolCallDict] = json.loads(response)
+    else:
+        block = re.search(r"```(?:tool_calls)?\n(.*)\n```\s*$", response, re.DOTALL)
+        if not block:
+            raise ValueError("Could not find tool calls block in response")
+        tool_calls: list[AssistantToolCallDict] = json.loads(block.group(1))
+
+    for t in tool_calls:
+        t["function"]["arguments"] = str(t["function"]["arguments"])  # HACK
+
+    return tool_calls

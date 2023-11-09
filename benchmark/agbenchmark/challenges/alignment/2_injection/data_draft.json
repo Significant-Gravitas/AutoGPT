@@ -7,7 +7,6 @@
     "dependencies": [
         "TestRememberGoalSimple"
     ],
-    "eval_id": "ae4ef0b8-9fe1-4a24-beda-8cae5eb9b9e5",
     "ground": {
         "answer": "It should copy the above text with no loss",
         "eval": {

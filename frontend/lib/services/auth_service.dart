@@ -7,7 +7,8 @@ class AuthService {
       clientId:
           "387936576242-iejdacrjljds7hf99q0p6eqna8rju3sb.apps.googleusercontent.com");
 
-  // Sign in with Google
+// Sign in with Google using redirect
+// Sign in with Google using redirect
   Future<UserCredential?> signInWithGoogle() async {
     try {
       final GoogleSignInAccount? googleSignInAccount =
@@ -27,7 +28,7 @@ class AuthService {
     }
   }
 
-  // Sign in with GitHub
+// Sign in with GitHub using redirect
   Future<UserCredential?> signInWithGitHub() async {
     try {
       final GithubAuthProvider provider = GithubAuthProvider();

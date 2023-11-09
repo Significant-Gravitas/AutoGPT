@@ -4,16 +4,16 @@
 /// This class contains essential information like the repository URL, team name, and the Git commit SHA for both the benchmark and the agent.
 class RepositoryInfo {
   /// The URL of the repository where the benchmark code resides.
-  final String repoUrl;
+  String repoUrl;
 
   /// The name of the team responsible for the benchmark.
-  final String teamName;
+  String teamName;
 
   /// The Git commit SHA for the benchmark. This helps in tracing the exact version of the benchmark code.
-  final String benchmarkGitCommitSha;
+  String benchmarkGitCommitSha;
 
   /// The Git commit SHA for the agent. This helps in tracing the exact version of the agent code.
-  final String agentGitCommitSha;
+  String agentGitCommitSha;
 
   /// Constructs a new `RepositoryInfo` instance.
   ///
@@ -34,10 +34,12 @@ class RepositoryInfo {
   ///
   /// Returns a new `RepositoryInfo` populated with values from the map.
   factory RepositoryInfo.fromJson(Map<String, dynamic> json) => RepositoryInfo(
-        repoUrl: json['repo_url'] ?? "",
-        teamName: json['team_name'] ?? "",
-        benchmarkGitCommitSha: json['benchmark_git_commit_sha'] ?? "",
-        agentGitCommitSha: json['agent_git_commit_sha'] ?? "",
+        repoUrl: json['repo_url'] ??
+            'https://github.com/Significant-Gravitas/AutoGPT',
+        teamName: json['team_name'] ?? 'placeholder',
+        benchmarkGitCommitSha:
+            json['benchmark_git_commit_sha'] ?? 'placeholder',
+        agentGitCommitSha: json['agent_git_commit_sha'] ?? 'placeholder',
       );
 
   /// Converts the `RepositoryInfo` instance to a map.

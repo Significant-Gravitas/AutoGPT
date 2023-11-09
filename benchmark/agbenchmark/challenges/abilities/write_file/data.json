@@ -1,10 +1,13 @@
 {
     "category": [
-        "interface"
+        "general",
+        "coding",
+        "scrape_synthesize",
+        "data"
     ],
     "cutoff": 60,
     "dependencies": [],
-    "eval_id": "81b64bf9-2b6a-4ac8-bcd2-8bfe36244ac0",
+    "eval_id": "021c695a-6cc4-46c2-b93a-f3a9b0f4d123",
     "ground": {
         "answer": "The word 'Washington', printed to a .txt file named anything",
         "eval": {
@@ -19,7 +22,7 @@
         "should_not_contain": []
     },
     "info": {
-        "description": "Tests the agents ability to write to a file",
+        "description": "Tests if the agent can write a file",
         "difficulty": "interface",
         "side_effects": [
             ""

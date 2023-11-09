@@ -5,7 +5,7 @@
 /// the time of completion, the time when the benchmark started, and the name of the test.
 class RunDetails {
   /// The unique identifier for the benchmark run, typically a UUID.
-  final String runId;
+  String runId;
 
   /// The command used to initiate the benchmark run.
   final String command;
@@ -40,13 +40,15 @@ class RunDetails {
   ///
   /// Returns a new `RunDetails` populated with values from the map.
   factory RunDetails.fromJson(Map<String, dynamic> json) => RunDetails(
-        runId: json['run_id'] ?? "",
-        command: json['command'],
+        runId: json['run_id'] ?? 'placerholder',
+        command: json['command'] ?? 'placeholder',
         completionTime: json['completion_time'] == null
             ? DateTime.now()
             : DateTime.parse(json['completion_time']),
-        benchmarkStartTime: DateTime.parse(json['benchmark_start_time']),
-        testName: json['test_name'],
+        benchmarkStartTime: json['benchmark_start_time'] == null
+            ? DateTime.now()
+            : DateTime.parse(json['benchmark_start_time']),
+        testName: json['test_name'] ?? 'placeholder',
       );
 
   /// Converts the `RunDetails` instance to a map.

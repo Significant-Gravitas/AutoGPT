@@ -1,16 +1,22 @@
+import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
+import 'package:auto_gpt_flutter_client/views/chat/continuous_mode_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatInputField extends StatefulWidget {
   // Callback to be triggered when the send button is pressed
   final Function(String) onSendPressed;
   final Function() onContinuousModePressed;
   final bool isContinuousMode;
+  // TODO: Create a view model for this class and remove the ChatViewModel
+  final ChatViewModel viewModel;
 
   const ChatInputField({
     Key? key,
     required this.onSendPressed,
     required this.onContinuousModePressed,
     this.isContinuousMode = false,
+    required this.viewModel,
   }) : super(key: key);
 
   @override
@@ -21,6 +27,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
   // Controller for the TextField to manage its content
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  final FocusNode _throwawayFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -36,6 +43,42 @@ class _ChatInputFieldState extends State<ChatInputField> {
   void dispose() {
     _focusNode.dispose(); // Dispose of the FocusNode when you're done.
     super.dispose();
+  }
+
+  Future<void> _presentContinuousModeDialogIfNeeded() async {
+    final showContinuousModeDialog = await widget.viewModel.prefsService
+            .getBool('showContinuousModeDialog') ??
+        true;
+
+    FocusScope.of(context).requestFocus(_throwawayFocusNode);
+    if (showContinuousModeDialog) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return ContinuousModeDialog(
+            onProceed: () {
+              Navigator.of(context).pop();
+              _executeContinuousMode();
+            },
+            onCheckboxChanged: (bool value) async {
+              await widget.viewModel.prefsService
+                  .setBool('showContinuousModeDialog', !value);
+            },
+          );
+        },
+      );
+    } else {
+      _executeContinuousMode();
+    }
+  }
+
+  void _executeContinuousMode() {
+    if (!widget.isContinuousMode) {
+      widget.onSendPressed(_controller.text);
+      _controller.clear();
+      _focusNode.unfocus();
+    }
+    widget.onContinuousModePressed();
   }
 
   @override
@@ -93,7 +136,6 @@ class _ChatInputFieldState extends State<ChatInputField> {
                           },
                         ),
                       ),
-                    // TODO: Include pop up to explain continuous mode reprecussions
                     Tooltip(
                       message: widget.isContinuousMode
                           ? ''
@@ -104,12 +146,12 @@ class _ChatInputFieldState extends State<ChatInputField> {
                             ? Icons.pause
                             : Icons.fast_forward),
                         onPressed: () {
+                          // TODO: All of this logic should be handled at a higher level in the widget tree. Temporary
                           if (!widget.isContinuousMode) {
-                            widget.onSendPressed(_controller.text);
-                            _controller.clear();
-                            _focusNode.unfocus();
+                            _presentContinuousModeDialogIfNeeded();
+                          } else {
+                            widget.onContinuousModePressed();
                           }
-                          widget.onContinuousModePressed();
                         },
                       ),
                     )

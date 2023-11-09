@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
 from autogpt.agents.utils.exceptions import CommandExecutionError
 from autogpt.command_decorator import command
+from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import summarize_text
 from autogpt.url_utils.validators import validate_url
@@ -60,12 +61,16 @@ class BrowsingError(CommandExecutionError):
     " If you are looking to extract specific information from the webpage, you should"
     " specify a question.",
     {
-        "url": {"type": "string", "description": "The URL to visit", "required": True},
-        "question": {
-            "type": "string",
-            "description": "A question that you want to answer using the content of the webpage.",
-            "required": False,
-        },
+        "url": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="The URL to visit",
+            required=True,
+        ),
+        "question": JSONSchema(
+            type=JSONSchema.Type.STRING,
+            description="A question that you want to answer using the content of the webpage.",
+            required=False,
+        ),
     },
 )
 @validate_url
@@ -106,11 +111,12 @@ async def read_webpage(url: str, agent: Agent, question: str = "") -> str:
             links = links[:LINKS_TO_RETURN]
 
         text_fmt = f"'''{text}'''" if "\n" in text else f"'{text}'"
+        links_fmt = "\n".join(f"- {link}" for link in links)
         return (
             f"Page content{' (summary)' if summarized else ''}:"
             if return_literal_content
             else "Answer gathered from webpage:"
-        ) + f" {text_fmt}\n\nLinks: {links}"
+        ) + f" {text_fmt}\n\nLinks:\n{links_fmt}"
 
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.

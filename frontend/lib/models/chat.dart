@@ -1,3 +1,4 @@
+import 'package:auto_gpt_flutter_client/models/artifact.dart';
 import 'package:auto_gpt_flutter_client/models/message_type.dart';
 
 /// Represents a chat message related to a specific task.
@@ -8,6 +9,7 @@ class Chat {
   final DateTime timestamp;
   final MessageType messageType;
   final Map<String, dynamic>? jsonResponse;
+  final List<Artifact> artifacts;
 
   Chat({
     required this.id,
@@ -16,6 +18,7 @@ class Chat {
     required this.timestamp,
     required this.messageType,
     this.jsonResponse,
+    required this.artifacts,
   });
 
   // Convert a Map (usually from JSON) to a Chat object
@@ -27,6 +30,10 @@ class Chat {
       timestamp: DateTime.parse(map['timestamp']),
       messageType: MessageType.values.firstWhere(
           (e) => e.toString() == 'MessageType.${map['messageType']}'),
+      artifacts: (map['artifacts'] as List)
+          .map(
+              (artifact) => Artifact.fromJson(artifact as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -39,7 +46,8 @@ class Chat {
           taskId == other.taskId &&
           message == other.message &&
           timestamp == other.timestamp &&
-          messageType == other.messageType;
+          messageType == other.messageType &&
+          artifacts == other.artifacts;
 
   @override
   int get hashCode =>
@@ -47,9 +55,10 @@ class Chat {
       taskId.hashCode ^
       message.hashCode ^
       timestamp.hashCode ^
-      messageType.hashCode;
+      messageType.hashCode ^
+      artifacts.hashCode;
 
   @override
   String toString() =>
-      'Chat(id: $id, taskId: $taskId, message: $message, timestamp: $timestamp, messageType: $messageType)';
+      'Chat(id: $id, taskId: $taskId, message: $message, timestamp: $timestamp, messageType: $messageType, artifacts: $artifacts)'; // Added artifacts in toString method
 }

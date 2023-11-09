@@ -49,11 +49,6 @@ class Challenge(ABC):
     async def setup_challenge(self, config: Dict[str, Any], cutoff: int) -> None:
         from agbenchmark.agent_interface import copy_artifacts_into_temp_folder
 
-        artifact_paths = [
-            self.ARTIFACTS_LOCATION,
-            str(Path(self.CHALLENGE_LOCATION).parent),
-        ]
-
         if not self.task:
             return
 
@@ -66,6 +61,10 @@ class Challenge(ABC):
 
         # hidden files are added after the agent runs. Hidden files can be python test files.
         # We copy them in the temporary folder to make it easy to import the code produced by the agent
+        artifact_paths = [
+            self.ARTIFACTS_LOCATION,
+            str(Path(self.CHALLENGE_LOCATION).parent),
+        ]
         for path in artifact_paths:
             copy_artifacts_into_temp_folder(TEMP_FOLDER_ABS_PATH, "custom_python", path)
 
@@ -124,6 +123,9 @@ class Challenge(ABC):
         print("\033[1;34mScoring content:\033[0m", content)
         if ground.should_contain:
             for should_contain_word in ground.should_contain:
+                if not getattr(ground, 'case_sensitive', True):
+                    should_contain_word = should_contain_word.lower()
+                    content = content.lower()
                 print_content = (
                     f"\033[1;34mWord that should exist\033[0m - {should_contain_word}:"
                 )
@@ -135,6 +137,9 @@ class Challenge(ABC):
 
         if ground.should_not_contain:
             for should_not_contain_word in ground.should_not_contain:
+                if not getattr(ground, 'case_sensitive', True):
+                    should_not_contain_word = should_not_contain_word.lower()
+                    content = content.lower()
                 print_content = f"\033[1;34mWord that should not exist\033[0m - {should_not_contain_word}:"
                 if should_not_contain_word in content:
                     print(print_content, "False")

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import logging
-import re
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from pydantic import Field, validator
 
 if TYPE_CHECKING:
     from autogpt.config import Config
+    from autogpt.core.prompting.base import PromptStrategy
     from autogpt.core.resource.model_providers.schema import (
         ChatModelInfo,
         ChatModelProvider,
@@ -17,15 +18,21 @@ if TYPE_CHECKING:
     )
     from autogpt.models.command_registry import CommandRegistry
 
-from autogpt.config.ai_config import AIConfig
+from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
+from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
+from autogpt.config.ai_profile import AIProfile
 from autogpt.core.configuration import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.prompting.schema import ChatMessage, ChatPrompt
+from autogpt.core.prompting.schema import (
+    ChatMessage,
+    ChatPrompt,
+    CompletionModelFunction,
+)
 from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS,
     OpenAIModelName,
@@ -33,8 +40,9 @@ from autogpt.core.resource.model_providers.openai import (
 from autogpt.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.action_history import ActionResult, EpisodicActionHistory
-from autogpt.prompts.generator import PromptGenerator
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
+
+from .utils.agent_file_manager import AgentFileManager
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +52,8 @@ AgentThoughts = dict[str, Any]
 
 
 class BaseAgentConfiguration(SystemConfiguration):
+    allow_fs_access: bool = UserConfigurable(default=False)
+
     fast_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
     smart_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT4)
     use_functions_api: bool = UserConfigurable(default=False)
@@ -78,9 +88,8 @@ class BaseAgentConfiguration(SystemConfiguration):
     defaults to 75% of `llm.max_tokens`.
     """
 
-    summary_max_tlength: Optional[
-        int
-    ] = None  # TODO: move to ActionHistoryConfiguration
+    summary_max_tlength: Optional[int] = None
+    # TODO: move to ActionHistoryConfiguration
 
     plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
 
@@ -111,72 +120,102 @@ class BaseAgentConfiguration(SystemConfiguration):
                 f"Model {smart_llm} does not support OpenAI Functions. "
                 "Please disable OPENAI_FUNCTIONS or choose a suitable model."
             )
+        return v
 
 
 class BaseAgentSettings(SystemSettings):
-    ai_config: AIConfig
-    """The AIConfig or "personality" object associated with this agent."""
+    agent_id: Optional[str] = None
+    agent_data_dir: Optional[Path] = None
 
-    config: BaseAgentConfiguration
+    ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
+    """The AI profile or "personality" of the agent."""
+
+    directives: AIDirectives = Field(
+        default_factory=lambda: AIDirectives.from_file(
+            ConfigBuilder.default_settings.prompt_settings_file
+        )
+    )
+    """Directives (general instructional guidelines) for the agent."""
+
+    task: str = "Terminate immediately"  # FIXME: placeholder for forge.sdk.schema.Task
+    """The user-given task that the agent is working on."""
+
+    config: BaseAgentConfiguration = Field(default_factory=BaseAgentConfiguration)
     """The configuration for this BaseAgent subsystem instance."""
 
-    history: EpisodicActionHistory
+    history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
     """(STATE) The action history of the agent."""
+
+    def save_to_json_file(self, file_path: Path) -> None:
+        with file_path.open("w") as f:
+            f.write(self.json())
+
+    @classmethod
+    def load_from_json_file(cls, file_path: Path):
+        return cls.parse_file(file_path)
 
 
 class BaseAgent(Configurable[BaseAgentSettings], ABC):
     """Base class for all AutoGPT agent classes."""
 
-    ThoughtProcessID = Literal["one-shot"]
     ThoughtProcessOutput = tuple[CommandName, CommandArgs, AgentThoughts]
 
     default_settings = BaseAgentSettings(
         name="BaseAgent",
         description=__doc__,
-        ai_config=AIConfig(),
-        config=BaseAgentConfiguration(),
-        history=EpisodicActionHistory(),
     )
 
     def __init__(
         self,
         settings: BaseAgentSettings,
         llm_provider: ChatModelProvider,
+        prompt_strategy: PromptStrategy,
         command_registry: CommandRegistry,
         legacy_config: Config,
     ):
-        self.ai_config = settings.ai_config
+        self.state = settings
+        self.config = settings.config
+        self.ai_profile = settings.ai_profile
+        self.directives = settings.directives
+        self.event_history = settings.history
+
+        self.legacy_config = legacy_config
+        """LEGACY: Monolithic application configuration."""
+
+        self.file_manager: AgentFileManager = (
+            AgentFileManager(settings.agent_data_dir)
+            if settings.agent_data_dir
+            else None
+        )  # type: ignore
 
         self.llm_provider = llm_provider
+
+        self.prompt_strategy = prompt_strategy
 
         self.command_registry = command_registry
         """The registry containing all commands available to the agent."""
 
-        self.llm_provider = llm_provider
-
-        self.prompt_generator = PromptGenerator(
-            ai_config=settings.ai_config,
-            ai_directives=AIDirectives.from_file(legacy_config.prompt_settings_file),
-            command_registry=command_registry,
-        )
-        """The prompt generator used for generating the system prompt."""
-
-        self.legacy_config = legacy_config
-        self.config = settings.config
-        """The applicable application configuration."""
-
-        self.event_history = settings.history
+        self._prompt_scratchpad: PromptScratchpad | None = None
 
         # Support multi-inheritance and mixins for subclasses
         super(BaseAgent, self).__init__()
 
-    @property
-    def system_prompt(self) -> str:
-        """
-        The system prompt sets up the AI's personality and explains its goals,
-        available resources, and restrictions.
-        """
-        return self.prompt_generator.construct_system_prompt(self)
+        logger.debug(f"Created {__class__} '{self.ai_profile.ai_name}'")
+
+    def set_id(self, new_id: str, new_agent_dir: Optional[Path] = None):
+        self.state.agent_id = new_id
+        if self.state.agent_data_dir:
+            if not new_agent_dir:
+                raise ValueError(
+                    "new_agent_dir must be specified if one is currently configured"
+                )
+            self.attach_fs(new_agent_dir)
+
+    def attach_fs(self, agent_dir: Path) -> AgentFileManager:
+        self.file_manager = AgentFileManager(agent_dir)
+        self.file_manager.initialize()
+        self.state.agent_data_dir = agent_dir
+        return self.file_manager
 
     @property
     def llm(self) -> ChatModelInfo:
@@ -190,11 +229,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
     def send_token_limit(self) -> int:
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
-    async def think(
-        self,
-        instruction: Optional[str] = None,
-        thought_process_id: ThoughtProcessID = "one-shot",
-    ) -> ThoughtProcessOutput:
+    async def propose_action(self) -> ThoughtProcessOutput:
         """Runs the agent for one cycle.
 
         Params:
@@ -203,23 +238,35 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
+        assert self.file_manager, (
+            f"Agent has no FileManager: call {__class__.__name__}.attach_fs()"
+            " before trying to run the agent."
+        )
 
-        instruction = instruction or self.config.default_cycle_instruction
+        # Scratchpad as surrogate PromptGenerator for plugin hooks
+        self._prompt_scratchpad = PromptScratchpad()
 
-        prompt: ChatPrompt = self.construct_prompt(instruction, thought_process_id)
-        prompt = self.on_before_think(prompt, thought_process_id, instruction)
+        prompt: ChatPrompt = self.build_prompt(scratchpad=self._prompt_scratchpad)
+        prompt = self.on_before_think(prompt, scratchpad=self._prompt_scratchpad)
 
         logger.debug(f"Executing prompt:\n{dump_prompt(prompt)}")
         raw_response = await self.llm_provider.create_chat_completion(
             prompt.messages,
-            functions=get_openai_command_specs(self.command_registry)
+            functions=get_openai_command_specs(
+                self.command_registry.list_available_commands(self)
+            )
+            + list(self._prompt_scratchpad.commands.values())
             if self.config.use_functions_api
             else [],
             model_name=self.llm.name,
         )
         self.config.cycle_count += 1
 
-        return self.on_response(raw_response, thought_process_id, prompt, instruction)
+        return self.on_response(
+            llm_response=raw_response,
+            prompt=prompt,
+            scratchpad=self._prompt_scratchpad,
+        )
 
     @abstractmethod
     async def execute(
@@ -240,46 +287,12 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         """
         ...
 
-    def construct_base_prompt(
+    def build_prompt(
         self,
-        thought_process_id: ThoughtProcessID,
-        prepend_messages: list[ChatMessage] = [],
-        append_messages: list[ChatMessage] = [],
-        reserve_tokens: int = 0,
-    ) -> ChatPrompt:
-        """Constructs and returns a prompt with the following structure:
-        1. System prompt
-        2. `prepend_messages`
-        3. `append_messages`
-
-        Params:
-            prepend_messages: Messages to insert between the system prompt and message history
-            append_messages: Messages to insert after the message history
-            reserve_tokens: Number of tokens to reserve for content that is added later
-        """
-
-        if self.event_history:
-            prepend_messages.insert(
-                0,
-                ChatMessage.system(
-                    "## Progress\n\n" f"{self.event_history.fmt_paragraph()}"
-                ),
-            )
-
-        prompt = ChatPrompt(
-            messages=[
-                ChatMessage.system(self.system_prompt),
-            ]
-            + prepend_messages
-            + (append_messages or []),
-        )
-
-        return prompt
-
-    def construct_prompt(
-        self,
-        cycle_instruction: str,
-        thought_process_id: ThoughtProcessID,
+        scratchpad: PromptScratchpad,
+        extra_commands: Optional[list[CompletionModelFunction]] = None,
+        extra_messages: Optional[list[ChatMessage]] = None,
+        **extras,
     ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
@@ -289,93 +302,46 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         Params:
             cycle_instruction: The final instruction for a thinking cycle
         """
+        if not extra_commands:
+            extra_commands = []
+        if not extra_messages:
+            extra_messages = []
 
-        if not cycle_instruction:
-            raise ValueError("No instruction given")
+        # Apply additions from plugins
+        for plugin in self.config.plugins:
+            if not plugin.can_handle_post_prompt():
+                continue
+            plugin.post_prompt(scratchpad)
+        ai_directives = self.directives.copy(deep=True)
+        ai_directives.resources += scratchpad.resources
+        ai_directives.constraints += scratchpad.constraints
+        ai_directives.best_practices += scratchpad.best_practices
+        extra_commands += list(scratchpad.commands.values())
 
-        cycle_instruction_msg = ChatMessage.user(cycle_instruction)
-        cycle_instruction_tlength = self.llm_provider.count_message_tokens(
-            cycle_instruction_msg, self.llm.name
+        prompt = self.prompt_strategy.build_prompt(
+            task=self.state.task,
+            ai_profile=self.ai_profile,
+            ai_directives=ai_directives,
+            commands=get_openai_command_specs(
+                self.command_registry.list_available_commands(self)
+            )
+            + extra_commands,
+            event_history=self.event_history,
+            max_prompt_tokens=self.send_token_limit,
+            count_tokens=lambda x: self.llm_provider.count_tokens(x, self.llm.name),
+            count_message_tokens=lambda x: self.llm_provider.count_message_tokens(
+                x, self.llm.name
+            ),
+            extra_messages=extra_messages,
+            **extras,
         )
-
-        append_messages: list[ChatMessage] = []
-
-        response_format_instr = self.response_format_instruction(thought_process_id)
-        if response_format_instr:
-            append_messages.append(ChatMessage.system(response_format_instr))
-
-        prompt = self.construct_base_prompt(
-            thought_process_id,
-            append_messages=append_messages,
-            reserve_tokens=cycle_instruction_tlength,
-        )
-
-        # ADD user input message ("triggering prompt")
-        prompt.messages.append(cycle_instruction_msg)
 
         return prompt
-
-    # This can be expanded to support multiple types of (inter)actions within an agent
-    def response_format_instruction(self, thought_process_id: ThoughtProcessID) -> str:
-        if thought_process_id != "one-shot":
-            raise NotImplementedError(f"Unknown thought process '{thought_process_id}'")
-
-        RESPONSE_FORMAT_WITH_COMMAND = """```ts
-        interface Response {
-            thoughts: {
-                // Thoughts
-                text: string;
-                reasoning: string;
-                // Short markdown-style bullet list that conveys the long-term plan
-                plan: string;
-                // Constructive self-criticism
-                criticism: string;
-                // Summary of thoughts to say to the user
-                speak: string;
-            };
-            command: {
-                name: string;
-                args: Record<string, any>;
-            };
-        }
-        ```"""
-
-        RESPONSE_FORMAT_WITHOUT_COMMAND = """```ts
-        interface Response {
-            thoughts: {
-                // Thoughts
-                text: string;
-                reasoning: string;
-                // Short markdown-style bullet list that conveys the long-term plan
-                plan: string;
-                // Constructive self-criticism
-                criticism: string;
-                // Summary of thoughts to say to the user
-                speak: string;
-            };
-        }
-        ```"""
-
-        response_format = re.sub(
-            r"\n\s+",
-            "\n",
-            RESPONSE_FORMAT_WITHOUT_COMMAND
-            if self.config.use_functions_api
-            else RESPONSE_FORMAT_WITH_COMMAND,
-        )
-
-        use_functions = self.config.use_functions_api and self.command_registry.commands
-        return (
-            f"Respond strictly with JSON{', and also specify a command to use through a function_call' if use_functions else ''}. "
-            "The JSON should be compatible with the TypeScript type `Response` from the following:\n"
-            f"{response_format}"
-        )
 
     def on_before_think(
         self,
         prompt: ChatPrompt,
-        thought_process_id: ThoughtProcessID,
-        instruction: str,
+        scratchpad: PromptScratchpad,
     ) -> ChatPrompt:
         """Called after constructing the prompt but before executing it.
 
@@ -395,7 +361,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         for i, plugin in enumerate(self.config.plugins):
             if not plugin.can_handle_on_planning():
                 continue
-            plugin_response = plugin.on_planning(self.prompt_generator, prompt.raw())
+            plugin_response = plugin.on_planning(scratchpad, prompt.raw())
             if not plugin_response or plugin_response == "":
                 continue
             message_to_add = ChatMessage.system(plugin_response)
@@ -415,9 +381,8 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
     def on_response(
         self,
         llm_response: ChatModelResponse,
-        thought_process_id: ThoughtProcessID,
         prompt: ChatPrompt,
-        instruction: str,
+        scratchpad: PromptScratchpad,
     ) -> ThoughtProcessOutput:
         """Called upon receiving a response from the chat model.
 
@@ -434,7 +399,9 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         """
 
         return self.parse_and_process_response(
-            llm_response, thought_process_id, prompt, instruction
+            llm_response,
+            prompt,
+            scratchpad=scratchpad,
         )
 
         # TODO: update memory/context
@@ -443,9 +410,8 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
     def parse_and_process_response(
         self,
         llm_response: ChatModelResponse,
-        thought_process_id: ThoughtProcessID,
         prompt: ChatPrompt,
-        instruction: str,
+        scratchpad: PromptScratchpad,
     ) -> ThoughtProcessOutput:
         """Validate, parse & process the LLM's response.
 

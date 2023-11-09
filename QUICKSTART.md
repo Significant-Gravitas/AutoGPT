@@ -1,5 +1,7 @@
 # Quickstart Guide
 
+> For the complete getting started [tutorial series](https://aiedge.medium.com/autogpt-forge-e3de53cc58ec) <- click here
+
 Welcome to the Quickstart Guide! This guide will walk you through the process of setting up and running your own AutoGPT agent. Whether you're a seasoned AI developer or just starting out, this guide will provide you with the necessary steps to jumpstart your journey in the world of AI development with AutoGPT.
 
 ## System Requirements
@@ -36,12 +38,45 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
     It can be accessed by running the `run` command by typing `./run` in the terminal.
 
     The first command you need to use is `./run setup` This will guide you through the process of setting up your system.
-    Intially you will get instructions for installing flutter, chrome and setting up your github access token like the following image:
+    Initially you will get instructions for installing flutter, chrome and setting up your github access token like the following image:
 
     > Note: for advanced users. The github access token is only needed for the ./run arena enter command so the system can automatically create a PR
 
     
     ![Setup the Project](docs/content/imgs/quickstart/005_setup.png)
+
+### For Windows Users
+
+If you're a Windows user and experience issues after installing WSL, follow the steps below to resolve them. 
+
+#### Update WSL 
+Run the following command in Powershell or Command Prompt to:
+1. Enable the optional WSL and Virtual Machine Platform components.
+2. Download and install the latest Linux kernel.
+3. Set WSL 2 as the default.
+4. Download and install the Ubuntu Linux distribution (a reboot may be required).
+
+```shell
+wsl --install
+```
+
+For more detailed information and additional steps, refer to [Microsoft's WSL Setup Environment Documentation](https://learn.microsoft.com/en-us/windows/wsl/setup/environment).
+
+#### Resolve FileNotFoundError or "No such file or directory" Errors
+When you run `./run setup`, if you encounter errors like `No such file or directory` or `FileNotFoundError`, it might be because Windows-style line endings (CRLF - Carriage Return Line Feed) are not compatible with Unix/Linux style line endings (LF - Line Feed).
+
+To resolve this, you can use the `dos2unix` utility to convert the line endings in your script from CRLF to LF. Here’s how to install and run `dos2unix` on the script:
+
+```shell
+sudo apt update
+sudo apt install dos2unix
+dos2unix ./run
+```
+
+After executing the above commands, running `./run setup` should work successfully. 
+
+#### Store Project Files within the WSL File System
+If you continue to experience issues, consider storing your project files within the WSL file system instead of the Windows file system. This method avoids issues related to path translations and permissions and provides a more consistent development environment.
     
     You can keep running the command to get feedback on where you are up to with your setup. 
     When setup has been completed, the command will return an output like this:
@@ -55,12 +90,12 @@ This project supports Linux (Debian based), Mac, and Windows Subsystem for Linux
 
    ![Create an Agent](docs/content/imgs/quickstart/007_create_agent.png)
 
-    Upon creating your agent its time to offically enter the Arena!
+    Upon creating your agent its time to officially enter the Arena!
     Do so by running `./run arena enter YOUR_AGENT_NAME`
 
    ![Enter the Arena](docs/content/imgs/quickstart/008_enter_arena.png)
 
-   > Note: for adavanced yours, create a new branch and create a file called YOUR_AGENT_NAME.json in the arena directory. Then commit this and create a PR to merge into the main repo. Only single file entries will be permitted. The json file needs the following format. 
+   > Note: for advanced users, create a new branch and create a file called YOUR_AGENT_NAME.json in the arena directory. Then commit this and create a PR to merge into the main repo. Only single file entries will be permitted. The json file needs the following format. 
    ```json
    {
     "github_repo_url": "https://github.com/Swiftyos/YourAgentName",
@@ -135,7 +170,7 @@ Commands:
   list     List benchmark tests command
 ```
 
-The benchmark has been split into different categories of skills you and test your agent on. You can see what categories are available with
+The benchmark has been split into different categories of skills you can test your agent on. You can see what categories are available with
 ```bash
 ./run benchmark categories list
 # And what tests are available with
