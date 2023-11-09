@@ -34,7 +34,7 @@ def create_single_test(
 
     # Define test class dynamically
     challenge_class = types.new_class(f"Test{data['name']}", (Challenge,))
-    print(challenge_location)
+    print(f"challenge_class: {challenge_class}")
     # clean_challenge_location = get_test_path(challenge_location)
     setattr(challenge_class, "CHALLENGE_LOCATION", challenge_location)
 
@@ -112,6 +112,7 @@ def create_single_test(
     )(test_method)
 
     setattr(challenge_class, "test_method", test_method)
+    print(f"Challenge Class {challenge_class}")
 
     # Attach the new class to a module so it can be discovered by pytest
     module = importlib.import_module(__name__)
@@ -213,6 +214,7 @@ def generate_tests() -> None:  # sourcery skip: invert-any-all
         json_files, challenge_class = create_challenge(data, json_file, json_files)
 
         print(f"Generated test for {data['name']}.")
+        print(f"- {data}")
     print("Test generation complete.")
 
 

@@ -30,6 +30,9 @@ class Challenge(ABC):
     CHALLENGE_LOCATION: str = ""
     scores: dict[str, Any] = {}  # this is for suites
 
+    # def __repr__(self) -> str:
+    #     return f"{self.__class__.__name__}(CHALLENGE_LOCATION={self.CHALLENGE_LOCATION}, _data_cache={self._data_cache!r})"
+
     @property
     def data(self) -> ChallengeData:
         if self.CHALLENGE_LOCATION not in self._data_cache:
@@ -44,6 +47,7 @@ class Challenge(ABC):
 
     @property
     def dependencies(self) -> list:
+        print(f"got prop dependencies data:  {self.data.dependencies}")
         return self.data.dependencies
 
     async def setup_challenge(self, config: Dict[str, Any], cutoff: int) -> None:

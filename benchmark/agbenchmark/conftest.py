@@ -161,7 +161,9 @@ def check_regression(request: Any) -> None:
     agent_benchmark_config = load_config_from_request(request)
     with contextlib.suppress(Exception):
         test = agent_benchmark_config.get_regression_reports_path()
+        print(f"Found a test {test}")
         data = json.loads(test)
+        print(f"Got its data {data}")
         challenge_location = getattr(request.node.parent.cls, "CHALLENGE_LOCATION", "")
 
         skip_string = f"Skipping {test_name} at {challenge_location}"
@@ -188,6 +190,7 @@ def challenge_data(request: Any) -> None:
     Returns:
         None: The challenge data is directly passed to the test function and does not need to be returned.
     """
+    print(f"REQUEST DATA HERE {request}")
     return request.param
 
 
@@ -239,6 +242,8 @@ def pytest_runtest_makereport(item: Any, call: Any) -> None:
         call (Any): The call object from which the test result is retrieved.
     """
     challenge_data = item.funcargs.get("challenge_data", None)
+
+    print(f"pytest_runtest_makereport Challenge data: {challenge_data}")
 
     if not challenge_data:
         # this will only happen for dummy dependency setup tests
@@ -357,9 +362,13 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         else {}
     )
 
+    print(f"data??? {data}")
+
     for item in items:
         # Assuming item.cls is your test class
         test_class_instance = item.cls()
+
+        print(f"item: {item!r}")
 
         if "test_method" not in item.name:
             continue
@@ -378,6 +387,7 @@ def pytest_collection_modifyitems(items: Any, config: Any) -> None:
         #     or config.getoption("--no_dep")
         #     or config.getoption("--maintain")
         # ):
+        print(f"test_class_instance: {test_class_instance!r}")
         dependencies = test_class_instance.dependencies
 
         # Add depends marker dynamically

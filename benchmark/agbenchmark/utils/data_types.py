@@ -212,6 +212,7 @@ class ChallengeData(BaseModel):
         try:
             return ChallengeData(**data)
         except:
+            print(f"FAILED TO PARSE: {data}")
             test = "ok"
 
     def challenge_from_datum(self, file_datum: list[dict[str, Any]]) -> "ChallengeData":
