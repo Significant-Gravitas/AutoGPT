@@ -51,6 +51,8 @@ class Test(BaseModelBenchmark):
     category: List[str]
     task: str
     reached_cutoff: bool
+    metadata: Any
+
 
 
 class ReportBase(BaseModelBenchmark):
@@ -66,6 +68,7 @@ class ReportBase(BaseModelBenchmark):
 
 class Report(ReportBase):
     tests: Dict[str, Test]
+
 
 
 class ReportV2(Test, ReportBase):
