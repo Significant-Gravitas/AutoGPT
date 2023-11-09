@@ -30,9 +30,10 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
             "\n"
             "Example Input:\n"
             '"""Help me with marketing my business"""\n\n'
-            "Example Function Call:\n"
+            "Example Call:\n"
             "```\n"
-            "{"
+            "["  # tool_calls
+            '{"type": "function", "function": {'
             '"name": "create_agent",'
             ' "arguments": {'
             '"name": "CMOGPT",'
@@ -59,7 +60,9 @@ class AgentProfileGeneratorConfiguration(SystemConfiguration):
             "]"  # constraints
             "}"  # directives
             "}"  # arguments
-            "}\n"
+            "}"  # function
+            "}"  # tool call
+            "]\n"  # tool_calls
             "```"
         )
     )
@@ -166,7 +169,9 @@ class AgentProfileGenerator(PromptStrategy):
 
         """
         try:
-            arguments = json_loads(response_content["function_call"]["arguments"])
+            arguments = json_loads(
+                response_content["tool_calls"][0]["function"]["arguments"]
+            )
             ai_profile = AIProfile(
                 ai_name=arguments.get("name"),
                 ai_role=arguments.get("description"),

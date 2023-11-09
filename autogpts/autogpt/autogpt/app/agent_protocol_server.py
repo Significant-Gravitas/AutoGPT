@@ -219,6 +219,8 @@ class AgentProtocolServer:
             if execute_command == ask_user.__name__:  # HACK
                 execute_result = ActionSuccessResult(outputs=user_input)
                 agent.event_history.register_result(execute_result)
+            elif not execute_command:
+                execute_result = None
             elif execute_approved:
                 step = await self.db.update_step(
                     task_id=task_id,
@@ -255,7 +257,8 @@ class AgentProtocolServer:
         output = (
             (
                 f"Command `{execute_command}({fmt_kwargs(execute_command_args)})` returned:"
-                f" {execute_result}\n\n"
+                + ("\n\n" if "\n" in str(execute_result) else " ")
+                + f"{execute_result}\n\n"
             )
             if execute_command_args and execute_command != "ask_user"
             else ""
