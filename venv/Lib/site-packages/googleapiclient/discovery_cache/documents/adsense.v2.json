@@ -1,0 +1,2610 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/adsense": {
+          "description": "View and manage your AdSense data"
+        },
+        "https://www.googleapis.com/auth/adsense.readonly": {
+          "description": "View your AdSense data"
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://adsense.googleapis.com/",
+  "batchPath": "batch",
+  "description": "The AdSense Management API allows publishers to access their inventory and run earnings and performance reports.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://developers.google.com/adsense/management/",
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "adsense:v2",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://adsense.mtls.googleapis.com/",
+  "name": "adsense",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "accounts": {
+      "methods": {
+        "get": {
+          "description": "Gets information about the selected AdSense account.",
+          "flatPath": "v2/accounts/{accountsId}",
+          "httpMethod": "GET",
+          "id": "adsense.accounts.get",
+          "parameterOrder": [
+            "name"
+          ],
+          "parameters": {
+            "name": {
+              "description": "Required. Account to get information about. Format: accounts/{account}",
+              "location": "path",
+              "pattern": "^accounts/[^/]+$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v2/{+name}",
+          "response": {
+            "$ref": "Account"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adsense",
+            "https://www.googleapis.com/auth/adsense.readonly"
+          ]
+        },
+        "getAdBlockingRecoveryTag": {
+          "description": "Gets the ad blocking recovery tag of an account.",
+          "flatPath": "v2/accounts/{accountsId}/adBlockingRecoveryTag",
+          "httpMethod": "GET",
+          "id": "adsense.accounts.getAdBlockingRecoveryTag",
+          "parameterOrder": [
+            "name"
+          ],
+          "parameters": {
+            "name": {
+              "description": "Required. The name of the account to get the tag for. Format: accounts/{account}",
+              "location": "path",
+              "pattern": "^accounts/[^/]+$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v2/{+name}/adBlockingRecoveryTag",
+          "response": {
+            "$ref": "AdBlockingRecoveryTag"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adsense",
+            "https://www.googleapis.com/auth/adsense.readonly"
+          ]
+        },
+        "list": {
+          "description": "Lists all accounts available to this user.",
+          "flatPath": "v2/accounts",
+          "httpMethod": "GET",
+          "id": "adsense.accounts.list",
+          "parameterOrder": [],
+          "parameters": {
+            "pageSize": {
+              "description": "The maximum number of accounts to include in the response, used for paging. If unspecified, at most 10000 accounts will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000.",
+              "format": "int32",
+              "location": "query",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "A page token, received from a previous `ListAccounts` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListAccounts` must match the call that provided the page token.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v2/accounts",
+          "response": {
+            "$ref": "ListAccountsResponse"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adsense",
+            "https://www.googleapis.com/auth/adsense.readonly"
+          ]
+        },
+        "listChildAccounts": {
+          "description": "Lists all accounts directly managed by the given AdSense account.",
+          "flatPath": "v2/accounts/{accountsId}:listChildAccounts",
+          "httpMethod": "GET",
+          "id": "adsense.accounts.listChildAccounts",
+          "parameterOrder": [
+            "parent"
+          ],
+          "parameters": {
+            "pageSize": {
+              "description": "The maximum number of accounts to include in the response, used for paging. If unspecified, at most 10000 accounts will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000.",
+              "format": "int32",
+              "location": "query",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "A page token, received from a previous `ListChildAccounts` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListChildAccounts` must match the call that provided the page token.",
+              "location": "query",
+              "type": "string"
+            },
+            "parent": {
+              "description": "Required. The parent account, which owns the child accounts. Format: accounts/{account}",
+              "location": "path",
+              "pattern": "^accounts/[^/]+$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v2/{+parent}:listChildAccounts",
+          "response": {
+            "$ref": "ListChildAccountsResponse"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adsense",
+            "https://www.googleapis.com/auth/adsense.readonly"
+          ]
+        }
+      },
+      "resources": {
+        "adclients": {
+          "methods": {
+            "get": {
+              "description": "Gets the ad client from the given resource name.",
+              "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}",
+              "httpMethod": "GET",
+              "id": "adsense.accounts.adclients.get",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "Required. The name of the ad client to retrieve. Format: accounts/{account}/adclients/{adclient}",
+                  "location": "path",
+                  "pattern": "^accounts/[^/]+/adclients/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v2/{+name}",
+              "response": {
+                "$ref": "AdClient"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/adsense",
+                "https://www.googleapis.com/auth/adsense.readonly"
+              ]
+            },
+            "getAdcode": {
+              "description": "Gets the AdSense code for a given ad client. This returns what was previously known as the 'auto ad code'. This is only supported for ad clients with a product_code of AFC. For more information, see [About the AdSense code](https://support.google.com/adsense/answer/9274634).",
+              "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/adcode",
+              "httpMethod": "GET",
+              "id": "adsense.accounts.adclients.getAdcode",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "Required. Name of the ad client for which to get the adcode. Format: accounts/{account}/adclients/{adclient}",
+                  "location": "path",
+                  "pattern": "^accounts/[^/]+/adclients/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v2/{+name}/adcode",
+              "response": {
+                "$ref": "AdClientAdCode"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/adsense",
+                "https://www.googleapis.com/auth/adsense.readonly"
+              ]
+            },
+            "list": {
+              "description": "Lists all the ad clients available in an account.",
+              "flatPath": "v2/accounts/{accountsId}/adclients",
+              "httpMethod": "GET",
+              "id": "adsense.accounts.adclients.list",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "pageSize": {
+                  "description": "The maximum number of ad clients to include in the response, used for paging. If unspecified, at most 10000 ad clients will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "pageToken": {
+                  "description": "A page token, received from a previous `ListAdClients` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListAdClients` must match the call that provided the page token.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "parent": {
+                  "description": "Required. The account which owns the collection of ad clients. Format: accounts/{account}",
+                  "location": "path",
+                  "pattern": "^accounts/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v2/{+parent}/adclients",
+              "response": {
+                "$ref": "ListAdClientsResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/adsense",
+                "https://www.googleapis.com/auth/adsense.readonly"
+              ]
+            }
+          },
+          "resources": {
+            "adunits": {
+              "methods": {
+                "create": {
+                  "description": "Creates an ad unit. This method can only be used by projects enabled for the [AdSense for Platforms](https://developers.google.com/adsense/platforms/) product. Note that ad units can only be created for ad clients with an \"AFC\" product code. For more info see the [AdClient resource](/adsense/management/reference/rest/v2/accounts.adclients). For now, this method can only be used to create `DISPLAY` ad units. See: https://support.google.com/adsense/answer/9183566",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/adunits",
+                  "httpMethod": "POST",
+                  "id": "adsense.accounts.adclients.adunits.create",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "parent": {
+                      "description": "Required. Ad client to create an ad unit under. Format: accounts/{account}/adclients/{adclient}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+parent}/adunits",
+                  "request": {
+                    "$ref": "AdUnit"
+                  },
+                  "response": {
+                    "$ref": "AdUnit"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense"
+                  ]
+                },
+                "get": {
+                  "description": "Gets an ad unit from a specified account and ad client.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/adunits/{adunitsId}",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.adclients.adunits.get",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. AdUnit to get information about. Format: accounts/{account}/adclients/{adclient}/adunits/{adunit}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+/adunits/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+name}",
+                  "response": {
+                    "$ref": "AdUnit"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                },
+                "getAdcode": {
+                  "description": "Gets the ad unit code for a given ad unit. For more information, see [About the AdSense code](https://support.google.com/adsense/answer/9274634) and [Where to place the ad code in your HTML](https://support.google.com/adsense/answer/9190028).",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/adunits/{adunitsId}/adcode",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.adclients.adunits.getAdcode",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. Name of the adunit for which to get the adcode. Format: accounts/{account}/adclients/{adclient}/adunits/{adunit}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+/adunits/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+name}/adcode",
+                  "response": {
+                    "$ref": "AdUnitAdCode"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                },
+                "list": {
+                  "description": "Lists all ad units under a specified account and ad client.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/adunits",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.adclients.adunits.list",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "pageSize": {
+                      "description": "The maximum number of ad units to include in the response, used for paging. If unspecified, at most 10000 ad units will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "A page token, received from a previous `ListAdUnits` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListAdUnits` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The ad client which owns the collection of ad units. Format: accounts/{account}/adclients/{adclient}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+parent}/adunits",
+                  "response": {
+                    "$ref": "ListAdUnitsResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                },
+                "listLinkedCustomChannels": {
+                  "description": "Lists all the custom channels available for an ad unit.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/adunits/{adunitsId}:listLinkedCustomChannels",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.adclients.adunits.listLinkedCustomChannels",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "pageSize": {
+                      "description": "The maximum number of custom channels to include in the response, used for paging. If unspecified, at most 10000 custom channels will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "A page token, received from a previous `ListLinkedCustomChannels` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListLinkedCustomChannels` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The ad unit which owns the collection of custom channels. Format: accounts/{account}/adclients/{adclient}/adunits/{adunit}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+/adunits/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+parent}:listLinkedCustomChannels",
+                  "response": {
+                    "$ref": "ListLinkedCustomChannelsResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                },
+                "patch": {
+                  "description": "Updates an ad unit. This method can only be used by projects enabled for the [AdSense for Platforms](https://developers.google.com/adsense/platforms/) product. For now, this method can only be used to update `DISPLAY` ad units. See: https://support.google.com/adsense/answer/9183566",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/adunits/{adunitsId}",
+                  "httpMethod": "PATCH",
+                  "id": "adsense.accounts.adclients.adunits.patch",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Output only. Resource name of the ad unit. Format: accounts/{account}/adclients/{adclient}/adunits/{adunit}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+/adunits/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "updateMask": {
+                      "description": "The list of fields to update. If empty, a full update is performed.",
+                      "format": "google-fieldmask",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+name}",
+                  "request": {
+                    "$ref": "AdUnit"
+                  },
+                  "response": {
+                    "$ref": "AdUnit"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense"
+                  ]
+                }
+              }
+            },
+            "customchannels": {
+              "methods": {
+                "create": {
+                  "description": "Creates a custom channel. This method can only be used by projects enabled for the [AdSense for Platforms](https://developers.google.com/adsense/platforms/) product.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/customchannels",
+                  "httpMethod": "POST",
+                  "id": "adsense.accounts.adclients.customchannels.create",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "parent": {
+                      "description": "Required. The ad client to create a custom channel under. Format: accounts/{account}/adclients/{adclient}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+parent}/customchannels",
+                  "request": {
+                    "$ref": "CustomChannel"
+                  },
+                  "response": {
+                    "$ref": "CustomChannel"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense"
+                  ]
+                },
+                "delete": {
+                  "description": "Deletes a custom channel. This method can only be used by projects enabled for the [AdSense for Platforms](https://developers.google.com/adsense/platforms/) product.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/customchannels/{customchannelsId}",
+                  "httpMethod": "DELETE",
+                  "id": "adsense.accounts.adclients.customchannels.delete",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. Name of the custom channel to delete. Format: accounts/{account}/adclients/{adclient}/customchannels/{customchannel}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+/customchannels/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+name}",
+                  "response": {
+                    "$ref": "Empty"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense"
+                  ]
+                },
+                "get": {
+                  "description": "Gets information about the selected custom channel.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/customchannels/{customchannelsId}",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.adclients.customchannels.get",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. Name of the custom channel. Format: accounts/{account}/adclients/{adclient}/customchannels/{customchannel}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+/customchannels/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+name}",
+                  "response": {
+                    "$ref": "CustomChannel"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                },
+                "list": {
+                  "description": "Lists all the custom channels available in an ad client.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/customchannels",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.adclients.customchannels.list",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "pageSize": {
+                      "description": "The maximum number of custom channels to include in the response, used for paging. If unspecified, at most 10000 custom channels will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "A page token, received from a previous `ListCustomChannels` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListCustomChannels` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The ad client which owns the collection of custom channels. Format: accounts/{account}/adclients/{adclient}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+parent}/customchannels",
+                  "response": {
+                    "$ref": "ListCustomChannelsResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                },
+                "listLinkedAdUnits": {
+                  "description": "Lists all the ad units available for a custom channel.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/customchannels/{customchannelsId}:listLinkedAdUnits",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.adclients.customchannels.listLinkedAdUnits",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "pageSize": {
+                      "description": "The maximum number of ad units to include in the response, used for paging. If unspecified, at most 10000 ad units will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "A page token, received from a previous `ListLinkedAdUnits` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListLinkedAdUnits` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The custom channel which owns the collection of ad units. Format: accounts/{account}/adclients/{adclient}/customchannels/{customchannel}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+/customchannels/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+parent}:listLinkedAdUnits",
+                  "response": {
+                    "$ref": "ListLinkedAdUnitsResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                },
+                "patch": {
+                  "description": "Updates a custom channel. This method can only be used by projects enabled for the [AdSense for Platforms](https://developers.google.com/adsense/platforms/) product.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/customchannels/{customchannelsId}",
+                  "httpMethod": "PATCH",
+                  "id": "adsense.accounts.adclients.customchannels.patch",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Output only. Resource name of the custom channel. Format: accounts/{account}/adclients/{adclient}/customchannels/{customchannel}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+/customchannels/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "updateMask": {
+                      "description": "The list of fields to update. If empty, a full update is performed.",
+                      "format": "google-fieldmask",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+name}",
+                  "request": {
+                    "$ref": "CustomChannel"
+                  },
+                  "response": {
+                    "$ref": "CustomChannel"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense"
+                  ]
+                }
+              }
+            },
+            "urlchannels": {
+              "methods": {
+                "get": {
+                  "description": "Gets information about the selected url channel.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/urlchannels/{urlchannelsId}",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.adclients.urlchannels.get",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. The name of the url channel to retrieve. Format: accounts/{account}/adclients/{adclient}/urlchannels/{urlchannel}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+/urlchannels/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+name}",
+                  "response": {
+                    "$ref": "UrlChannel"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                },
+                "list": {
+                  "description": "Lists active url channels.",
+                  "flatPath": "v2/accounts/{accountsId}/adclients/{adclientsId}/urlchannels",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.adclients.urlchannels.list",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "pageSize": {
+                      "description": "The maximum number of url channels to include in the response, used for paging. If unspecified, at most 10000 url channels will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "A page token, received from a previous `ListUrlChannels` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListUrlChannels` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The ad client which owns the collection of url channels. Format: accounts/{account}/adclients/{adclient}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/adclients/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+parent}/urlchannels",
+                  "response": {
+                    "$ref": "ListUrlChannelsResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "alerts": {
+          "methods": {
+            "list": {
+              "description": "Lists all the alerts available in an account.",
+              "flatPath": "v2/accounts/{accountsId}/alerts",
+              "httpMethod": "GET",
+              "id": "adsense.accounts.alerts.list",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "languageCode": {
+                  "description": "The language to use for translating alert messages. If unspecified, this defaults to the user's display language. If the given language is not supported, alerts will be returned in English. The language is specified as an [IETF BCP-47 language code](https://en.wikipedia.org/wiki/IETF_language_tag).",
+                  "location": "query",
+                  "type": "string"
+                },
+                "parent": {
+                  "description": "Required. The account which owns the collection of alerts. Format: accounts/{account}",
+                  "location": "path",
+                  "pattern": "^accounts/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v2/{+parent}/alerts",
+              "response": {
+                "$ref": "ListAlertsResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/adsense",
+                "https://www.googleapis.com/auth/adsense.readonly"
+              ]
+            }
+          }
+        },
+        "payments": {
+          "methods": {
+            "list": {
+              "description": "Lists all the payments available for an account.",
+              "flatPath": "v2/accounts/{accountsId}/payments",
+              "httpMethod": "GET",
+              "id": "adsense.accounts.payments.list",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "parent": {
+                  "description": "Required. The account which owns the collection of payments. Format: accounts/{account}",
+                  "location": "path",
+                  "pattern": "^accounts/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v2/{+parent}/payments",
+              "response": {
+                "$ref": "ListPaymentsResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/adsense",
+                "https://www.googleapis.com/auth/adsense.readonly"
+              ]
+            }
+          }
+        },
+        "reports": {
+          "methods": {
+            "generate": {
+              "description": "Generates an ad hoc report.",
+              "flatPath": "v2/accounts/{accountsId}/reports:generate",
+              "httpMethod": "GET",
+              "id": "adsense.accounts.reports.generate",
+              "parameterOrder": [
+                "account"
+              ],
+              "parameters": {
+                "account": {
+                  "description": "Required. The account which owns the collection of reports. Format: accounts/{account}",
+                  "location": "path",
+                  "pattern": "^accounts/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                },
+                "currencyCode": {
+                  "description": "The [ISO-4217 currency code](https://en.wikipedia.org/wiki/ISO_4217) to use when reporting on monetary metrics. Defaults to the account's currency if not set.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "dateRange": {
+                  "description": "Date range of the report, if unset the range will be considered CUSTOM.",
+                  "enum": [
+                    "REPORTING_DATE_RANGE_UNSPECIFIED",
+                    "CUSTOM",
+                    "TODAY",
+                    "YESTERDAY",
+                    "MONTH_TO_DATE",
+                    "YEAR_TO_DATE",
+                    "LAST_7_DAYS",
+                    "LAST_30_DAYS"
+                  ],
+                  "enumDescriptions": [
+                    "Unspecified date range.",
+                    "A custom date range specified using the `start_date` and `end_date` fields. This is the default if no ReportingDateRange is provided.",
+                    "Current day.",
+                    "Yesterday.",
+                    "From the start of the current month to the current day. e.g. if the current date is 2020-03-12 then the range will be [2020-03-01, 2020-03-12].",
+                    "From the start of the current year to the current day. e.g. if the current date is 2020-03-12 then the range will be [2020-01-01, 2020-03-12].",
+                    "Last 7 days, excluding current day.",
+                    "Last 30 days, excluding current day."
+                  ],
+                  "location": "query",
+                  "type": "string"
+                },
+                "dimensions": {
+                  "description": "Dimensions to base the report on.",
+                  "enum": [
+                    "DIMENSION_UNSPECIFIED",
+                    "DATE",
+                    "WEEK",
+                    "MONTH",
+                    "ACCOUNT_NAME",
+                    "AD_CLIENT_ID",
+                    "HOSTED_AD_CLIENT_ID",
+                    "PRODUCT_NAME",
+                    "PRODUCT_CODE",
+                    "AD_UNIT_NAME",
+                    "AD_UNIT_ID",
+                    "AD_UNIT_SIZE_NAME",
+                    "AD_UNIT_SIZE_CODE",
+                    "CUSTOM_CHANNEL_NAME",
+                    "CUSTOM_CHANNEL_ID",
+                    "OWNED_SITE_DOMAIN_NAME",
+                    "OWNED_SITE_ID",
+                    "PAGE_URL",
+                    "URL_CHANNEL_NAME",
+                    "URL_CHANNEL_ID",
+                    "BUYER_NETWORK_NAME",
+                    "BUYER_NETWORK_ID",
+                    "BID_TYPE_NAME",
+                    "BID_TYPE_CODE",
+                    "CREATIVE_SIZE_NAME",
+                    "CREATIVE_SIZE_CODE",
+                    "DOMAIN_NAME",
+                    "DOMAIN_CODE",
+                    "COUNTRY_NAME",
+                    "COUNTRY_CODE",
+                    "PLATFORM_TYPE_NAME",
+                    "PLATFORM_TYPE_CODE",
+                    "TARGETING_TYPE_NAME",
+                    "TARGETING_TYPE_CODE",
+                    "CONTENT_PLATFORM_NAME",
+                    "CONTENT_PLATFORM_CODE",
+                    "AD_PLACEMENT_NAME",
+                    "AD_PLACEMENT_CODE",
+                    "REQUESTED_AD_TYPE_NAME",
+                    "REQUESTED_AD_TYPE_CODE",
+                    "SERVED_AD_TYPE_NAME",
+                    "SERVED_AD_TYPE_CODE",
+                    "AD_FORMAT_NAME",
+                    "AD_FORMAT_CODE",
+                    "CUSTOM_SEARCH_STYLE_NAME",
+                    "CUSTOM_SEARCH_STYLE_ID",
+                    "DOMAIN_REGISTRANT",
+                    "WEBSEARCH_QUERY_STRING"
+                  ],
+                  "enumDescriptions": [
+                    "Unspecified dimension.",
+                    "Date dimension in YYYY-MM-DD format (e.g. \"2010-02-10\").",
+                    "Week dimension in YYYY-MM-DD format, representing the first day of each week (e.g. \"2010-02-08\"). The first day of the week is determined by the language_code specified in a report generation request (so e.g. this would be a Monday for \"en-GB\" or \"es\", but a Sunday for \"en\" or \"fr-CA\").",
+                    "Month dimension in YYYY-MM format (e.g. \"2010-02\").",
+                    "Account name. The members of this dimension match the values from Account.display_name.",
+                    "Unique ID of an ad client. The members of this dimension match the values from AdClient.reporting_dimension_id.",
+                    "Unique ID of a sub-account's ad client. The members of this dimension match the values from AdClient.reporting_dimension_id (for the sub-account).",
+                    "Localized product name (e.g. \"AdSense for Content\", \"AdSense for Search\").",
+                    "Product code (e.g. \"AFC\", \"AFS\"). The members of this dimension match the values from AdClient.product_code.",
+                    "Ad unit name (within which an ad was served). The members of this dimension match the values from AdUnit.display_name.",
+                    "Unique ID of an ad unit (within which an ad was served). The members of this dimension match the values from AdUnit.reporting_dimension_id.",
+                    "Localized size of an ad unit (e.g. \"728x90\", \"Responsive\").",
+                    "The size code of an ad unit (e.g. \"728x90\", \"responsive\").",
+                    "Custom channel name. The members of this dimension match the values from CustomChannel.display_name.",
+                    "Unique ID of a custom channel. The members of this dimension match the values from CustomChannel.reporting_dimension_id.",
+                    "Domain name of a verified site (e.g. \"example.com\"). The members of this dimension match the values from Site.domain.",
+                    "Unique ID of a verified site. The members of this dimension match the values from Site.reporting_dimension_id.",
+                    "URL of the page upon which the ad was served. This is a complete URL including scheme and query parameters. Note that the URL that appears in this dimension may be a canonicalized version of the one that was used in the original request, and so may not exactly match the URL that a user might have seen. Note that there are also some caveats to be aware of when using this dimension. For more information, see [Page URL breakdown](https://support.google.com/adsense/answer/11988478).",
+                    "Name of a URL channel. The members of this dimension match the values from UrlChannel.uri_pattern.",
+                    "Unique ID of a URL channel. The members of this dimension match the values from UrlChannel.reporting_dimension_id.",
+                    "Name of an ad network that returned the winning ads for an ad request (e.g. \"Google AdWords\"). Note that unlike other \"NAME\" dimensions, the members of this dimensions are not localized.",
+                    "Unique (opaque) ID of an ad network that returned the winning ads for an ad request.",
+                    "Localized bid type name (e.g. \"CPC bids\", \"CPM bids\") for a served ad.",
+                    "Type of a bid (e.g. \"cpc\", \"cpm\") for a served ad.",
+                    "Localized creative size name (e.g. \"728x90\", \"Dynamic\") of a served ad.",
+                    "Creative size code (e.g. \"728x90\", \"dynamic\") of a served ad.",
+                    "Localized name of a host on which an ad was served, after IDNA decoding (e.g. \"www.google.com\", \"Web caches and other\", \"b\u00fccher.example\").",
+                    "Name of a host on which an ad was served (e.g. \"www.google.com\", \"webcaches\", \"xn--bcher-kva.example\").",
+                    "Localized region name of a user viewing an ad (e.g. \"United States\", \"France\").",
+                    "CLDR region code of a user viewing an ad (e.g. \"US\", \"FR\").",
+                    "Localized platform type name (e.g. \"High-end mobile devices\", \"Desktop\").",
+                    "Platform type code (e.g. \"HighEndMobile\", \"Desktop\").",
+                    "Localized targeting type name (e.g. \"Contextual\", \"Personalized\", \"Run of Network\").",
+                    "Targeting type code (e.g. \"Keyword\", \"UserInterest\", \"RunOfNetwork\").",
+                    "Localized content platform name an ad request was made from (e.g. \"AMP\", \"Web\").",
+                    "Content platform code an ad request was made from (e.g. \"AMP\", \"HTML\").",
+                    "Localized ad placement name (e.g. \"Ad unit\", \"Global settings\", \"Manual\").",
+                    "Ad placement code (e.g. \"AD_UNIT\", \"ca-pub-123456:78910\", \"OTHER\").",
+                    "Localized requested ad type name (e.g. \"Display\", \"Link unit\", \"Other\").",
+                    "Requested ad type code (e.g. \"IMAGE\", \"RADLINK\", \"OTHER\").",
+                    "Localized served ad type name (e.g. \"Display\", \"Link unit\", \"Other\").",
+                    "Served ad type code (e.g. \"IMAGE\", \"RADLINK\", \"OTHER\").",
+                    "Localized ad format name indicating the way an ad is shown to the users on your site (e.g. \"In-page\", \"Anchor\", \"Vignette\").",
+                    "Ad format code indicating the way an ad is shown to the users on your site (e.g. \"ON_PAGE\", \"ANCHOR\", \"INTERSTITIAL\").",
+                    "Custom search style name.",
+                    "Custom search style id.",
+                    "Domain registrants.",
+                    "Query strings for web searches."
+                  ],
+                  "location": "query",
+                  "repeated": true,
+                  "type": "string"
+                },
+                "endDate.day": {
+                  "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "endDate.month": {
+                  "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "endDate.year": {
+                  "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "filters": {
+                  "description": "A list of [filters](/adsense/management/reporting/filtering) to apply to the report. All provided filters must match in order for the data to be included in the report.",
+                  "location": "query",
+                  "repeated": true,
+                  "type": "string"
+                },
+                "languageCode": {
+                  "description": "The language to use for translating report output. If unspecified, this defaults to English (\"en\"). If the given language is not supported, report output will be returned in English. The language is specified as an [IETF BCP-47 language code](https://en.wikipedia.org/wiki/IETF_language_tag).",
+                  "location": "query",
+                  "type": "string"
+                },
+                "limit": {
+                  "description": "The maximum number of rows of report data to return. Reports producing more rows than the requested limit will be truncated. If unset, this defaults to 100,000 rows for `Reports.GenerateReport` and 1,000,000 rows for `Reports.GenerateCsvReport`, which are also the maximum values permitted here. Report truncation can be identified (for `Reports.GenerateReport` only) by comparing the number of rows returned to the value returned in `total_matched_rows`.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "metrics": {
+                  "description": "Required. Reporting metrics.",
+                  "enum": [
+                    "METRIC_UNSPECIFIED",
+                    "PAGE_VIEWS",
+                    "AD_REQUESTS",
+                    "MATCHED_AD_REQUESTS",
+                    "TOTAL_IMPRESSIONS",
+                    "IMPRESSIONS",
+                    "INDIVIDUAL_AD_IMPRESSIONS",
+                    "CLICKS",
+                    "PAGE_VIEWS_SPAM_RATIO",
+                    "AD_REQUESTS_SPAM_RATIO",
+                    "MATCHED_AD_REQUESTS_SPAM_RATIO",
+                    "IMPRESSIONS_SPAM_RATIO",
+                    "INDIVIDUAL_AD_IMPRESSIONS_SPAM_RATIO",
+                    "CLICKS_SPAM_RATIO",
+                    "AD_REQUESTS_COVERAGE",
+                    "PAGE_VIEWS_CTR",
+                    "AD_REQUESTS_CTR",
+                    "MATCHED_AD_REQUESTS_CTR",
+                    "IMPRESSIONS_CTR",
+                    "INDIVIDUAL_AD_IMPRESSIONS_CTR",
+                    "ACTIVE_VIEW_MEASURABILITY",
+                    "ACTIVE_VIEW_VIEWABILITY",
+                    "ACTIVE_VIEW_TIME",
+                    "ESTIMATED_EARNINGS",
+                    "PAGE_VIEWS_RPM",
+                    "AD_REQUESTS_RPM",
+                    "MATCHED_AD_REQUESTS_RPM",
+                    "IMPRESSIONS_RPM",
+                    "INDIVIDUAL_AD_IMPRESSIONS_RPM",
+                    "COST_PER_CLICK",
+                    "ADS_PER_IMPRESSION",
+                    "TOTAL_EARNINGS",
+                    "WEBSEARCH_RESULT_PAGES"
+                  ],
+                  "enumDescriptions": [
+                    "Unspecified metric.",
+                    "Number of page views.",
+                    "Number of ad units that requested ads (for content ads) or search queries (for search ads). An ad request may result in zero, one, or multiple individual ad impressions depending on the size of the ad unit and whether any ads were available.",
+                    "Requests that returned at least one ad.",
+                    "Impressions. An impression is counted for each ad request where at least one ad has been downloaded to the user\u2019s device and has begun to load. It is the number of ad units (for content ads) or search queries (for search ads) that showed ads.",
+                    "Impressions. An impression is counted for each ad request where at least one ad has been downloaded to the user\u2019s device and has begun to load. It is the number of ad units (for content ads) or search queries (for search ads) that showed ads.",
+                    "Ads shown. Different ad formats will display varying numbers of ads. For example, a vertical banner may consist of 2 or more ads. Also, the number of ads in an ad unit may vary depending on whether the ad unit is displaying standard text ads, expanded text ads or image ads.",
+                    "Number of times a user clicked on a standard content ad.",
+                    "Fraction of page views considered to be spam. Only available to premium accounts.",
+                    "Fraction of ad requests considered to be spam. Only available to premium accounts.",
+                    "Fraction of ad requests that returned ads considered to be spam. Only available to premium accounts.",
+                    "Fraction of impressions considered to be spam. Only available to premium accounts.",
+                    "Fraction of ad impressions considered to be spam. Only available to premium accounts.",
+                    "Fraction of clicks considered to be spam. Only available to premium accounts.",
+                    "Ratio of requested ad units or queries to the number returned to the site.",
+                    "Ratio of individual page views that resulted in a click.",
+                    "Ratio of ad requests that resulted in a click.",
+                    "Ratio of clicks to matched requests.",
+                    "Ratio of IMPRESSIONS that resulted in a click.",
+                    "Ratio of individual ad impressions that resulted in a click.",
+                    "Ratio of requests that were measurable for viewability.",
+                    "Ratio of requests that were viewable.",
+                    "Mean time an ad was displayed on screen.",
+                    "Estimated earnings of the publisher. Note that earnings up to yesterday are accurate, more recent earnings are estimated due to the possibility of spam, or exchange rate fluctuations.",
+                    "Revenue per thousand page views. This is calculated by dividing the estimated revenue by the number of page views multiplied by 1000.",
+                    "Revenue per thousand ad requests. This is calculated by dividing estimated revenue by the number of ad requests multiplied by 1000.",
+                    "Revenue per thousand matched ad requests. This is calculated by dividing estimated revenue by the number of matched ad requests multiplied by 1000.",
+                    "Revenue per thousand ad impressions. This is calculated by dividing estimated revenue by the number of ad impressions multiplied by 1000.",
+                    "Revenue per thousand individual ad impressions. This is calculated by dividing estimated revenue by the number of individual ad impressions multiplied by 1000.",
+                    "Amount the publisher earns each time a user clicks on an ad. CPC is calculated by dividing the estimated revenue by the number of clicks received.",
+                    "Number of ad views per impression.",
+                    "Total earnings are the gross estimated earnings from revenue shared traffic before any parent and child account revenue share is applied.",
+                    "Number of results pages."
+                  ],
+                  "location": "query",
+                  "repeated": true,
+                  "type": "string"
+                },
+                "orderBy": {
+                  "description": "The name of a dimension or metric to sort the resulting report on, can be prefixed with \"+\" to sort ascending or \"-\" to sort descending. If no prefix is specified, the column is sorted ascending.",
+                  "location": "query",
+                  "repeated": true,
+                  "type": "string"
+                },
+                "reportingTimeZone": {
+                  "description": "Timezone in which to generate the report. If unspecified, this defaults to the account timezone. For more information, see [changing the time zone of your reports](https://support.google.com/adsense/answer/9830725).",
+                  "enum": [
+                    "REPORTING_TIME_ZONE_UNSPECIFIED",
+                    "ACCOUNT_TIME_ZONE",
+                    "GOOGLE_TIME_ZONE"
+                  ],
+                  "enumDescriptions": [
+                    "Unspecified timezone.",
+                    "Use the account timezone in the report.",
+                    "Use the Google timezone in the report (America/Los_Angeles)."
+                  ],
+                  "location": "query",
+                  "type": "string"
+                },
+                "startDate.day": {
+                  "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "startDate.month": {
+                  "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "startDate.year": {
+                  "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                }
+              },
+              "path": "v2/{+account}/reports:generate",
+              "response": {
+                "$ref": "ReportResult"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/adsense",
+                "https://www.googleapis.com/auth/adsense.readonly"
+              ]
+            },
+            "generateCsv": {
+              "description": "Generates a csv formatted ad hoc report.",
+              "flatPath": "v2/accounts/{accountsId}/reports:generateCsv",
+              "httpMethod": "GET",
+              "id": "adsense.accounts.reports.generateCsv",
+              "parameterOrder": [
+                "account"
+              ],
+              "parameters": {
+                "account": {
+                  "description": "Required. The account which owns the collection of reports. Format: accounts/{account}",
+                  "location": "path",
+                  "pattern": "^accounts/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                },
+                "currencyCode": {
+                  "description": "The [ISO-4217 currency code](https://en.wikipedia.org/wiki/ISO_4217) to use when reporting on monetary metrics. Defaults to the account's currency if not set.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "dateRange": {
+                  "description": "Date range of the report, if unset the range will be considered CUSTOM.",
+                  "enum": [
+                    "REPORTING_DATE_RANGE_UNSPECIFIED",
+                    "CUSTOM",
+                    "TODAY",
+                    "YESTERDAY",
+                    "MONTH_TO_DATE",
+                    "YEAR_TO_DATE",
+                    "LAST_7_DAYS",
+                    "LAST_30_DAYS"
+                  ],
+                  "enumDescriptions": [
+                    "Unspecified date range.",
+                    "A custom date range specified using the `start_date` and `end_date` fields. This is the default if no ReportingDateRange is provided.",
+                    "Current day.",
+                    "Yesterday.",
+                    "From the start of the current month to the current day. e.g. if the current date is 2020-03-12 then the range will be [2020-03-01, 2020-03-12].",
+                    "From the start of the current year to the current day. e.g. if the current date is 2020-03-12 then the range will be [2020-01-01, 2020-03-12].",
+                    "Last 7 days, excluding current day.",
+                    "Last 30 days, excluding current day."
+                  ],
+                  "location": "query",
+                  "type": "string"
+                },
+                "dimensions": {
+                  "description": "Dimensions to base the report on.",
+                  "enum": [
+                    "DIMENSION_UNSPECIFIED",
+                    "DATE",
+                    "WEEK",
+                    "MONTH",
+                    "ACCOUNT_NAME",
+                    "AD_CLIENT_ID",
+                    "HOSTED_AD_CLIENT_ID",
+                    "PRODUCT_NAME",
+                    "PRODUCT_CODE",
+                    "AD_UNIT_NAME",
+                    "AD_UNIT_ID",
+                    "AD_UNIT_SIZE_NAME",
+                    "AD_UNIT_SIZE_CODE",
+                    "CUSTOM_CHANNEL_NAME",
+                    "CUSTOM_CHANNEL_ID",
+                    "OWNED_SITE_DOMAIN_NAME",
+                    "OWNED_SITE_ID",
+                    "PAGE_URL",
+                    "URL_CHANNEL_NAME",
+                    "URL_CHANNEL_ID",
+                    "BUYER_NETWORK_NAME",
+                    "BUYER_NETWORK_ID",
+                    "BID_TYPE_NAME",
+                    "BID_TYPE_CODE",
+                    "CREATIVE_SIZE_NAME",
+                    "CREATIVE_SIZE_CODE",
+                    "DOMAIN_NAME",
+                    "DOMAIN_CODE",
+                    "COUNTRY_NAME",
+                    "COUNTRY_CODE",
+                    "PLATFORM_TYPE_NAME",
+                    "PLATFORM_TYPE_CODE",
+                    "TARGETING_TYPE_NAME",
+                    "TARGETING_TYPE_CODE",
+                    "CONTENT_PLATFORM_NAME",
+                    "CONTENT_PLATFORM_CODE",
+                    "AD_PLACEMENT_NAME",
+                    "AD_PLACEMENT_CODE",
+                    "REQUESTED_AD_TYPE_NAME",
+                    "REQUESTED_AD_TYPE_CODE",
+                    "SERVED_AD_TYPE_NAME",
+                    "SERVED_AD_TYPE_CODE",
+                    "AD_FORMAT_NAME",
+                    "AD_FORMAT_CODE",
+                    "CUSTOM_SEARCH_STYLE_NAME",
+                    "CUSTOM_SEARCH_STYLE_ID",
+                    "DOMAIN_REGISTRANT",
+                    "WEBSEARCH_QUERY_STRING"
+                  ],
+                  "enumDescriptions": [
+                    "Unspecified dimension.",
+                    "Date dimension in YYYY-MM-DD format (e.g. \"2010-02-10\").",
+                    "Week dimension in YYYY-MM-DD format, representing the first day of each week (e.g. \"2010-02-08\"). The first day of the week is determined by the language_code specified in a report generation request (so e.g. this would be a Monday for \"en-GB\" or \"es\", but a Sunday for \"en\" or \"fr-CA\").",
+                    "Month dimension in YYYY-MM format (e.g. \"2010-02\").",
+                    "Account name. The members of this dimension match the values from Account.display_name.",
+                    "Unique ID of an ad client. The members of this dimension match the values from AdClient.reporting_dimension_id.",
+                    "Unique ID of a sub-account's ad client. The members of this dimension match the values from AdClient.reporting_dimension_id (for the sub-account).",
+                    "Localized product name (e.g. \"AdSense for Content\", \"AdSense for Search\").",
+                    "Product code (e.g. \"AFC\", \"AFS\"). The members of this dimension match the values from AdClient.product_code.",
+                    "Ad unit name (within which an ad was served). The members of this dimension match the values from AdUnit.display_name.",
+                    "Unique ID of an ad unit (within which an ad was served). The members of this dimension match the values from AdUnit.reporting_dimension_id.",
+                    "Localized size of an ad unit (e.g. \"728x90\", \"Responsive\").",
+                    "The size code of an ad unit (e.g. \"728x90\", \"responsive\").",
+                    "Custom channel name. The members of this dimension match the values from CustomChannel.display_name.",
+                    "Unique ID of a custom channel. The members of this dimension match the values from CustomChannel.reporting_dimension_id.",
+                    "Domain name of a verified site (e.g. \"example.com\"). The members of this dimension match the values from Site.domain.",
+                    "Unique ID of a verified site. The members of this dimension match the values from Site.reporting_dimension_id.",
+                    "URL of the page upon which the ad was served. This is a complete URL including scheme and query parameters. Note that the URL that appears in this dimension may be a canonicalized version of the one that was used in the original request, and so may not exactly match the URL that a user might have seen. Note that there are also some caveats to be aware of when using this dimension. For more information, see [Page URL breakdown](https://support.google.com/adsense/answer/11988478).",
+                    "Name of a URL channel. The members of this dimension match the values from UrlChannel.uri_pattern.",
+                    "Unique ID of a URL channel. The members of this dimension match the values from UrlChannel.reporting_dimension_id.",
+                    "Name of an ad network that returned the winning ads for an ad request (e.g. \"Google AdWords\"). Note that unlike other \"NAME\" dimensions, the members of this dimensions are not localized.",
+                    "Unique (opaque) ID of an ad network that returned the winning ads for an ad request.",
+                    "Localized bid type name (e.g. \"CPC bids\", \"CPM bids\") for a served ad.",
+                    "Type of a bid (e.g. \"cpc\", \"cpm\") for a served ad.",
+                    "Localized creative size name (e.g. \"728x90\", \"Dynamic\") of a served ad.",
+                    "Creative size code (e.g. \"728x90\", \"dynamic\") of a served ad.",
+                    "Localized name of a host on which an ad was served, after IDNA decoding (e.g. \"www.google.com\", \"Web caches and other\", \"b\u00fccher.example\").",
+                    "Name of a host on which an ad was served (e.g. \"www.google.com\", \"webcaches\", \"xn--bcher-kva.example\").",
+                    "Localized region name of a user viewing an ad (e.g. \"United States\", \"France\").",
+                    "CLDR region code of a user viewing an ad (e.g. \"US\", \"FR\").",
+                    "Localized platform type name (e.g. \"High-end mobile devices\", \"Desktop\").",
+                    "Platform type code (e.g. \"HighEndMobile\", \"Desktop\").",
+                    "Localized targeting type name (e.g. \"Contextual\", \"Personalized\", \"Run of Network\").",
+                    "Targeting type code (e.g. \"Keyword\", \"UserInterest\", \"RunOfNetwork\").",
+                    "Localized content platform name an ad request was made from (e.g. \"AMP\", \"Web\").",
+                    "Content platform code an ad request was made from (e.g. \"AMP\", \"HTML\").",
+                    "Localized ad placement name (e.g. \"Ad unit\", \"Global settings\", \"Manual\").",
+                    "Ad placement code (e.g. \"AD_UNIT\", \"ca-pub-123456:78910\", \"OTHER\").",
+                    "Localized requested ad type name (e.g. \"Display\", \"Link unit\", \"Other\").",
+                    "Requested ad type code (e.g. \"IMAGE\", \"RADLINK\", \"OTHER\").",
+                    "Localized served ad type name (e.g. \"Display\", \"Link unit\", \"Other\").",
+                    "Served ad type code (e.g. \"IMAGE\", \"RADLINK\", \"OTHER\").",
+                    "Localized ad format name indicating the way an ad is shown to the users on your site (e.g. \"In-page\", \"Anchor\", \"Vignette\").",
+                    "Ad format code indicating the way an ad is shown to the users on your site (e.g. \"ON_PAGE\", \"ANCHOR\", \"INTERSTITIAL\").",
+                    "Custom search style name.",
+                    "Custom search style id.",
+                    "Domain registrants.",
+                    "Query strings for web searches."
+                  ],
+                  "location": "query",
+                  "repeated": true,
+                  "type": "string"
+                },
+                "endDate.day": {
+                  "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "endDate.month": {
+                  "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "endDate.year": {
+                  "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "filters": {
+                  "description": "A list of [filters](/adsense/management/reporting/filtering) to apply to the report. All provided filters must match in order for the data to be included in the report.",
+                  "location": "query",
+                  "repeated": true,
+                  "type": "string"
+                },
+                "languageCode": {
+                  "description": "The language to use for translating report output. If unspecified, this defaults to English (\"en\"). If the given language is not supported, report output will be returned in English. The language is specified as an [IETF BCP-47 language code](https://en.wikipedia.org/wiki/IETF_language_tag).",
+                  "location": "query",
+                  "type": "string"
+                },
+                "limit": {
+                  "description": "The maximum number of rows of report data to return. Reports producing more rows than the requested limit will be truncated. If unset, this defaults to 100,000 rows for `Reports.GenerateReport` and 1,000,000 rows for `Reports.GenerateCsvReport`, which are also the maximum values permitted here. Report truncation can be identified (for `Reports.GenerateReport` only) by comparing the number of rows returned to the value returned in `total_matched_rows`.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "metrics": {
+                  "description": "Required. Reporting metrics.",
+                  "enum": [
+                    "METRIC_UNSPECIFIED",
+                    "PAGE_VIEWS",
+                    "AD_REQUESTS",
+                    "MATCHED_AD_REQUESTS",
+                    "TOTAL_IMPRESSIONS",
+                    "IMPRESSIONS",
+                    "INDIVIDUAL_AD_IMPRESSIONS",
+                    "CLICKS",
+                    "PAGE_VIEWS_SPAM_RATIO",
+                    "AD_REQUESTS_SPAM_RATIO",
+                    "MATCHED_AD_REQUESTS_SPAM_RATIO",
+                    "IMPRESSIONS_SPAM_RATIO",
+                    "INDIVIDUAL_AD_IMPRESSIONS_SPAM_RATIO",
+                    "CLICKS_SPAM_RATIO",
+                    "AD_REQUESTS_COVERAGE",
+                    "PAGE_VIEWS_CTR",
+                    "AD_REQUESTS_CTR",
+                    "MATCHED_AD_REQUESTS_CTR",
+                    "IMPRESSIONS_CTR",
+                    "INDIVIDUAL_AD_IMPRESSIONS_CTR",
+                    "ACTIVE_VIEW_MEASURABILITY",
+                    "ACTIVE_VIEW_VIEWABILITY",
+                    "ACTIVE_VIEW_TIME",
+                    "ESTIMATED_EARNINGS",
+                    "PAGE_VIEWS_RPM",
+                    "AD_REQUESTS_RPM",
+                    "MATCHED_AD_REQUESTS_RPM",
+                    "IMPRESSIONS_RPM",
+                    "INDIVIDUAL_AD_IMPRESSIONS_RPM",
+                    "COST_PER_CLICK",
+                    "ADS_PER_IMPRESSION",
+                    "TOTAL_EARNINGS",
+                    "WEBSEARCH_RESULT_PAGES"
+                  ],
+                  "enumDescriptions": [
+                    "Unspecified metric.",
+                    "Number of page views.",
+                    "Number of ad units that requested ads (for content ads) or search queries (for search ads). An ad request may result in zero, one, or multiple individual ad impressions depending on the size of the ad unit and whether any ads were available.",
+                    "Requests that returned at least one ad.",
+                    "Impressions. An impression is counted for each ad request where at least one ad has been downloaded to the user\u2019s device and has begun to load. It is the number of ad units (for content ads) or search queries (for search ads) that showed ads.",
+                    "Impressions. An impression is counted for each ad request where at least one ad has been downloaded to the user\u2019s device and has begun to load. It is the number of ad units (for content ads) or search queries (for search ads) that showed ads.",
+                    "Ads shown. Different ad formats will display varying numbers of ads. For example, a vertical banner may consist of 2 or more ads. Also, the number of ads in an ad unit may vary depending on whether the ad unit is displaying standard text ads, expanded text ads or image ads.",
+                    "Number of times a user clicked on a standard content ad.",
+                    "Fraction of page views considered to be spam. Only available to premium accounts.",
+                    "Fraction of ad requests considered to be spam. Only available to premium accounts.",
+                    "Fraction of ad requests that returned ads considered to be spam. Only available to premium accounts.",
+                    "Fraction of impressions considered to be spam. Only available to premium accounts.",
+                    "Fraction of ad impressions considered to be spam. Only available to premium accounts.",
+                    "Fraction of clicks considered to be spam. Only available to premium accounts.",
+                    "Ratio of requested ad units or queries to the number returned to the site.",
+                    "Ratio of individual page views that resulted in a click.",
+                    "Ratio of ad requests that resulted in a click.",
+                    "Ratio of clicks to matched requests.",
+                    "Ratio of IMPRESSIONS that resulted in a click.",
+                    "Ratio of individual ad impressions that resulted in a click.",
+                    "Ratio of requests that were measurable for viewability.",
+                    "Ratio of requests that were viewable.",
+                    "Mean time an ad was displayed on screen.",
+                    "Estimated earnings of the publisher. Note that earnings up to yesterday are accurate, more recent earnings are estimated due to the possibility of spam, or exchange rate fluctuations.",
+                    "Revenue per thousand page views. This is calculated by dividing the estimated revenue by the number of page views multiplied by 1000.",
+                    "Revenue per thousand ad requests. This is calculated by dividing estimated revenue by the number of ad requests multiplied by 1000.",
+                    "Revenue per thousand matched ad requests. This is calculated by dividing estimated revenue by the number of matched ad requests multiplied by 1000.",
+                    "Revenue per thousand ad impressions. This is calculated by dividing estimated revenue by the number of ad impressions multiplied by 1000.",
+                    "Revenue per thousand individual ad impressions. This is calculated by dividing estimated revenue by the number of individual ad impressions multiplied by 1000.",
+                    "Amount the publisher earns each time a user clicks on an ad. CPC is calculated by dividing the estimated revenue by the number of clicks received.",
+                    "Number of ad views per impression.",
+                    "Total earnings are the gross estimated earnings from revenue shared traffic before any parent and child account revenue share is applied.",
+                    "Number of results pages."
+                  ],
+                  "location": "query",
+                  "repeated": true,
+                  "type": "string"
+                },
+                "orderBy": {
+                  "description": "The name of a dimension or metric to sort the resulting report on, can be prefixed with \"+\" to sort ascending or \"-\" to sort descending. If no prefix is specified, the column is sorted ascending.",
+                  "location": "query",
+                  "repeated": true,
+                  "type": "string"
+                },
+                "reportingTimeZone": {
+                  "description": "Timezone in which to generate the report. If unspecified, this defaults to the account timezone. For more information, see [changing the time zone of your reports](https://support.google.com/adsense/answer/9830725).",
+                  "enum": [
+                    "REPORTING_TIME_ZONE_UNSPECIFIED",
+                    "ACCOUNT_TIME_ZONE",
+                    "GOOGLE_TIME_ZONE"
+                  ],
+                  "enumDescriptions": [
+                    "Unspecified timezone.",
+                    "Use the account timezone in the report.",
+                    "Use the Google timezone in the report (America/Los_Angeles)."
+                  ],
+                  "location": "query",
+                  "type": "string"
+                },
+                "startDate.day": {
+                  "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "startDate.month": {
+                  "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "startDate.year": {
+                  "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                }
+              },
+              "path": "v2/{+account}/reports:generateCsv",
+              "response": {
+                "$ref": "HttpBody"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/adsense",
+                "https://www.googleapis.com/auth/adsense.readonly"
+              ]
+            },
+            "getSaved": {
+              "description": "Gets the saved report from the given resource name.",
+              "flatPath": "v2/accounts/{accountsId}/reports/{reportsId}/saved",
+              "httpMethod": "GET",
+              "id": "adsense.accounts.reports.getSaved",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "Required. The name of the saved report to retrieve. Format: accounts/{account}/reports/{report}",
+                  "location": "path",
+                  "pattern": "^accounts/[^/]+/reports/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v2/{+name}/saved",
+              "response": {
+                "$ref": "SavedReport"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/adsense",
+                "https://www.googleapis.com/auth/adsense.readonly"
+              ]
+            }
+          },
+          "resources": {
+            "saved": {
+              "methods": {
+                "generate": {
+                  "description": "Generates a saved report.",
+                  "flatPath": "v2/accounts/{accountsId}/reports/{reportsId}/saved:generate",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.reports.saved.generate",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "currencyCode": {
+                      "description": "The [ISO-4217 currency code](https://en.wikipedia.org/wiki/ISO_4217) to use when reporting on monetary metrics. Defaults to the account's currency if not set.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "dateRange": {
+                      "description": "Date range of the report, if unset the range will be considered CUSTOM.",
+                      "enum": [
+                        "REPORTING_DATE_RANGE_UNSPECIFIED",
+                        "CUSTOM",
+                        "TODAY",
+                        "YESTERDAY",
+                        "MONTH_TO_DATE",
+                        "YEAR_TO_DATE",
+                        "LAST_7_DAYS",
+                        "LAST_30_DAYS"
+                      ],
+                      "enumDescriptions": [
+                        "Unspecified date range.",
+                        "A custom date range specified using the `start_date` and `end_date` fields. This is the default if no ReportingDateRange is provided.",
+                        "Current day.",
+                        "Yesterday.",
+                        "From the start of the current month to the current day. e.g. if the current date is 2020-03-12 then the range will be [2020-03-01, 2020-03-12].",
+                        "From the start of the current year to the current day. e.g. if the current date is 2020-03-12 then the range will be [2020-01-01, 2020-03-12].",
+                        "Last 7 days, excluding current day.",
+                        "Last 30 days, excluding current day."
+                      ],
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "endDate.day": {
+                      "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "endDate.month": {
+                      "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "endDate.year": {
+                      "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "languageCode": {
+                      "description": "The language to use for translating report output. If unspecified, this defaults to English (\"en\"). If the given language is not supported, report output will be returned in English. The language is specified as an [IETF BCP-47 language code](https://en.wikipedia.org/wiki/IETF_language_tag).",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "Required. Name of the saved report. Format: accounts/{account}/reports/{report}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/reports/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "reportingTimeZone": {
+                      "description": "Timezone in which to generate the report. If unspecified, this defaults to the account timezone. For more information, see [changing the time zone of your reports](https://support.google.com/adsense/answer/9830725).",
+                      "enum": [
+                        "REPORTING_TIME_ZONE_UNSPECIFIED",
+                        "ACCOUNT_TIME_ZONE",
+                        "GOOGLE_TIME_ZONE"
+                      ],
+                      "enumDescriptions": [
+                        "Unspecified timezone.",
+                        "Use the account timezone in the report.",
+                        "Use the Google timezone in the report (America/Los_Angeles)."
+                      ],
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "startDate.day": {
+                      "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "startDate.month": {
+                      "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "startDate.year": {
+                      "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    }
+                  },
+                  "path": "v2/{+name}/saved:generate",
+                  "response": {
+                    "$ref": "ReportResult"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                },
+                "generateCsv": {
+                  "description": "Generates a csv formatted saved report.",
+                  "flatPath": "v2/accounts/{accountsId}/reports/{reportsId}/saved:generateCsv",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.reports.saved.generateCsv",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "currencyCode": {
+                      "description": "The [ISO-4217 currency code](https://en.wikipedia.org/wiki/ISO_4217) to use when reporting on monetary metrics. Defaults to the account's currency if not set.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "dateRange": {
+                      "description": "Date range of the report, if unset the range will be considered CUSTOM.",
+                      "enum": [
+                        "REPORTING_DATE_RANGE_UNSPECIFIED",
+                        "CUSTOM",
+                        "TODAY",
+                        "YESTERDAY",
+                        "MONTH_TO_DATE",
+                        "YEAR_TO_DATE",
+                        "LAST_7_DAYS",
+                        "LAST_30_DAYS"
+                      ],
+                      "enumDescriptions": [
+                        "Unspecified date range.",
+                        "A custom date range specified using the `start_date` and `end_date` fields. This is the default if no ReportingDateRange is provided.",
+                        "Current day.",
+                        "Yesterday.",
+                        "From the start of the current month to the current day. e.g. if the current date is 2020-03-12 then the range will be [2020-03-01, 2020-03-12].",
+                        "From the start of the current year to the current day. e.g. if the current date is 2020-03-12 then the range will be [2020-01-01, 2020-03-12].",
+                        "Last 7 days, excluding current day.",
+                        "Last 30 days, excluding current day."
+                      ],
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "endDate.day": {
+                      "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "endDate.month": {
+                      "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "endDate.year": {
+                      "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "languageCode": {
+                      "description": "The language to use for translating report output. If unspecified, this defaults to English (\"en\"). If the given language is not supported, report output will be returned in English. The language is specified as an [IETF BCP-47 language code](https://en.wikipedia.org/wiki/IETF_language_tag).",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "Required. Name of the saved report. Format: accounts/{account}/reports/{report}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+/reports/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "reportingTimeZone": {
+                      "description": "Timezone in which to generate the report. If unspecified, this defaults to the account timezone. For more information, see [changing the time zone of your reports](https://support.google.com/adsense/answer/9830725).",
+                      "enum": [
+                        "REPORTING_TIME_ZONE_UNSPECIFIED",
+                        "ACCOUNT_TIME_ZONE",
+                        "GOOGLE_TIME_ZONE"
+                      ],
+                      "enumDescriptions": [
+                        "Unspecified timezone.",
+                        "Use the account timezone in the report.",
+                        "Use the Google timezone in the report (America/Los_Angeles)."
+                      ],
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "startDate.day": {
+                      "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "startDate.month": {
+                      "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "startDate.year": {
+                      "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    }
+                  },
+                  "path": "v2/{+name}/saved:generateCsv",
+                  "response": {
+                    "$ref": "HttpBody"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                },
+                "list": {
+                  "description": "Lists saved reports.",
+                  "flatPath": "v2/accounts/{accountsId}/reports/saved",
+                  "httpMethod": "GET",
+                  "id": "adsense.accounts.reports.saved.list",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "pageSize": {
+                      "description": "The maximum number of reports to include in the response, used for paging. If unspecified, at most 10000 reports will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "A page token, received from a previous `ListSavedReports` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListSavedReports` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The account which owns the collection of reports. Format: accounts/{account}",
+                      "location": "path",
+                      "pattern": "^accounts/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+parent}/reports/saved",
+                  "response": {
+                    "$ref": "ListSavedReportsResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/adsense",
+                    "https://www.googleapis.com/auth/adsense.readonly"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "sites": {
+          "methods": {
+            "get": {
+              "description": "Gets information about the selected site.",
+              "flatPath": "v2/accounts/{accountsId}/sites/{sitesId}",
+              "httpMethod": "GET",
+              "id": "adsense.accounts.sites.get",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "Required. Name of the site. Format: accounts/{account}/sites/{site}",
+                  "location": "path",
+                  "pattern": "^accounts/[^/]+/sites/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v2/{+name}",
+              "response": {
+                "$ref": "Site"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/adsense",
+                "https://www.googleapis.com/auth/adsense.readonly"
+              ]
+            },
+            "list": {
+              "description": "Lists all the sites available in an account.",
+              "flatPath": "v2/accounts/{accountsId}/sites",
+              "httpMethod": "GET",
+              "id": "adsense.accounts.sites.list",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "pageSize": {
+                  "description": "The maximum number of sites to include in the response, used for paging. If unspecified, at most 10000 sites will be returned. The maximum value is 10000; values above 10000 will be coerced to 10000.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "pageToken": {
+                  "description": "A page token, received from a previous `ListSites` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListSites` must match the call that provided the page token.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "parent": {
+                  "description": "Required. The account which owns the collection of sites. Format: accounts/{account}",
+                  "location": "path",
+                  "pattern": "^accounts/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v2/{+parent}/sites",
+              "response": {
+                "$ref": "ListSitesResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/adsense",
+                "https://www.googleapis.com/auth/adsense.readonly"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230403",
+  "rootUrl": "https://adsense.googleapis.com/",
+  "schemas": {
+    "Account": {
+      "description": "Representation of an account.",
+      "id": "Account",
+      "properties": {
+        "createTime": {
+          "description": "Output only. Creation time of the account.",
+          "format": "google-datetime",
+          "readOnly": true,
+          "type": "string"
+        },
+        "displayName": {
+          "description": "Output only. Display name of this account.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "name": {
+          "description": "Output only. Resource name of the account. Format: accounts/pub-[0-9]+",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pendingTasks": {
+          "description": "Output only. Outstanding tasks that need to be completed as part of the sign-up process for a new account. e.g. \"billing-profile-creation\", \"phone-pin-verification\".",
+          "items": {
+            "type": "string"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "premium": {
+          "description": "Output only. Whether this account is premium.",
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "state": {
+          "description": "Output only. State of the account.",
+          "enum": [
+            "STATE_UNSPECIFIED",
+            "READY",
+            "NEEDS_ATTENTION",
+            "CLOSED"
+          ],
+          "enumDescriptions": [
+            "State unspecified.",
+            "The account is open and ready to serve ads.",
+            "There are some issues with this account. Publishers should visit AdSense in order to fix the account.",
+            "The account is closed and can't serve ads."
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "timeZone": {
+          "$ref": "TimeZone",
+          "description": "The account time zone, as used by reporting. For more information, see [changing the time zone of your reports](https://support.google.com/adsense/answer/9830725)."
+        }
+      },
+      "type": "object"
+    },
+    "AdBlockingRecoveryTag": {
+      "description": "Representation of an ad blocking recovery tag. See https://support.google.com/adsense/answer/11575177.",
+      "id": "AdBlockingRecoveryTag",
+      "properties": {
+        "errorProtectionCode": {
+          "description": "Error protection code that can be used in conjunction with the tag. It'll display a message to users if an [ad blocking extension blocks their access to your site](https://support.google.com/adsense/answer/11575480).",
+          "type": "string"
+        },
+        "tag": {
+          "description": "The ad blocking recovery tag. Note that the message generated by the tag can be blocked by an ad blocking extension. If this is not your desired outcome, then you'll need to use it in conjunction with the error protection code.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AdClient": {
+      "description": "Representation of an ad client. An ad client represents a user's subscription with a specific AdSense product.",
+      "id": "AdClient",
+      "properties": {
+        "name": {
+          "description": "Output only. Resource name of the ad client. Format: accounts/{account}/adclients/{adclient}",
+          "readOnly": true,
+          "type": "string"
+        },
+        "productCode": {
+          "description": "Output only. Reporting product code of the ad client. For example, \"AFC\" for AdSense for Content. Corresponds to the `PRODUCT_CODE` dimension, and present only if the ad client supports reporting.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "reportingDimensionId": {
+          "description": "Output only. Unique ID of the ad client as used in the `AD_CLIENT_ID` reporting dimension. Present only if the ad client supports reporting.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "state": {
+          "description": "Output only. State of the ad client.",
+          "enum": [
+            "STATE_UNSPECIFIED",
+            "READY",
+            "GETTING_READY",
+            "REQUIRES_REVIEW"
+          ],
+          "enumDescriptions": [
+            "State unspecified.",
+            "The ad client is ready to show ads.",
+            "Running some checks on the ad client before it is ready to serve ads.",
+            "The ad client hasn't been checked yet. There are tasks pending before AdSense will start the review."
+          ],
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AdClientAdCode": {
+      "description": "Representation of the AdSense code for a given ad client. For more information, see [About the AdSense code](https://support.google.com/adsense/answer/9274634).",
+      "id": "AdClientAdCode",
+      "properties": {
+        "adCode": {
+          "description": "Output only. The AdSense code snippet to add to the head of an HTML page.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "ampBody": {
+          "description": "Output only. The AdSense code snippet to add to the body of an AMP page.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "ampHead": {
+          "description": "Output only. The AdSense code snippet to add to the head of an AMP page.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AdUnit": {
+      "description": "Representation of an ad unit. An ad unit represents a saved ad unit with a specific set of ad settings that have been customized within an account.",
+      "id": "AdUnit",
+      "properties": {
+        "contentAdsSettings": {
+          "$ref": "ContentAdsSettings",
+          "description": "Required. Settings specific to content ads (AFC)."
+        },
+        "displayName": {
+          "description": "Required. Display name of the ad unit, as provided when the ad unit was created.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Output only. Resource name of the ad unit. Format: accounts/{account}/adclients/{adclient}/adunits/{adunit}",
+          "readOnly": true,
+          "type": "string"
+        },
+        "reportingDimensionId": {
+          "description": "Output only. Unique ID of the ad unit as used in the `AD_UNIT_ID` reporting dimension.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "state": {
+          "description": "State of the ad unit.",
+          "enum": [
+            "STATE_UNSPECIFIED",
+            "ACTIVE",
+            "ARCHIVED"
+          ],
+          "enumDescriptions": [
+            "State unspecified.",
+            "Ad unit has been activated by the user.",
+            "Ad unit has been archived by the user. Note that archived ad units are only removed from the default view in the UI. Archived ad units can still serve ads."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AdUnitAdCode": {
+      "description": "Representation of the ad unit code for a given ad unit. For more information, see [About the AdSense code](https://support.google.com/adsense/answer/9274634) and [Where to place the ad code in your HTML](https://support.google.com/adsense/answer/9190028).",
+      "id": "AdUnitAdCode",
+      "properties": {
+        "adCode": {
+          "description": "Output only. The code snippet to add to the body of an HTML page.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Alert": {
+      "description": "Representation of an alert.",
+      "id": "Alert",
+      "properties": {
+        "message": {
+          "description": "Output only. The localized alert message. This may contain HTML markup, such as phrase elements or links.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "name": {
+          "description": "Output only. Resource name of the alert. Format: accounts/{account}/alerts/{alert}",
+          "readOnly": true,
+          "type": "string"
+        },
+        "severity": {
+          "description": "Output only. Severity of this alert.",
+          "enum": [
+            "SEVERITY_UNSPECIFIED",
+            "INFO",
+            "WARNING",
+            "SEVERE"
+          ],
+          "enumDescriptions": [
+            "Unspecified severity.",
+            "Info.",
+            "Warning.",
+            "Severe."
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "type": {
+          "description": "Output only. Type of alert. This identifies the broad type of this alert, and provides a stable machine-readable identifier that will not be translated. For example, \"payment-hold\".",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Cell": {
+      "description": "Cell representation.",
+      "id": "Cell",
+      "properties": {
+        "value": {
+          "description": "Value in the cell. The dimension cells contain strings, and the metric cells contain numbers.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ContentAdsSettings": {
+      "description": "Settings specific to content ads (AFC).",
+      "id": "ContentAdsSettings",
+      "properties": {
+        "size": {
+          "description": "Required. Size of the ad unit. e.g. \"728x90\", \"1x3\" (for responsive ad units).",
+          "type": "string"
+        },
+        "type": {
+          "description": "Required. Type of the ad unit.",
+          "enum": [
+            "TYPE_UNSPECIFIED",
+            "DISPLAY",
+            "FEED",
+            "ARTICLE",
+            "MATCHED_CONTENT",
+            "LINK"
+          ],
+          "enumDescriptions": [
+            "Unspecified ad unit type.",
+            "Display ad unit.",
+            "In-feed ad unit.",
+            "In-article ad unit.",
+            "Matched content unit.",
+            "Link ad unit. Note that link ad units have now been retired, see https://support.google.com/adsense/answer/9987221."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CustomChannel": {
+      "description": "Representation of a custom channel.",
+      "id": "CustomChannel",
+      "properties": {
+        "active": {
+          "description": "Whether the custom channel is active and collecting data. See https://support.google.com/adsense/answer/10077192.",
+          "type": "boolean"
+        },
+        "displayName": {
+          "description": "Required. Display name of the custom channel.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Output only. Resource name of the custom channel. Format: accounts/{account}/adclients/{adclient}/customchannels/{customchannel}",
+          "readOnly": true,
+          "type": "string"
+        },
+        "reportingDimensionId": {
+          "description": "Output only. Unique ID of the custom channel as used in the `CUSTOM_CHANNEL_ID` reporting dimension.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Date": {
+      "description": "Represents a whole or partial calendar date, such as a birthday. The time of day and time zone are either specified elsewhere or are insignificant. The date is relative to the Gregorian Calendar. This can represent one of the following: * A full date, with non-zero year, month, and day values. * A month and day, with a zero year (for example, an anniversary). * A year on its own, with a zero month and a zero day. * A year and month, with a zero day (for example, a credit card expiration date). Related types: * google.type.TimeOfDay * google.type.DateTime * google.protobuf.Timestamp",
+      "id": "Date",
+      "properties": {
+        "day": {
+          "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "month": {
+          "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "year": {
+          "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Empty": {
+      "description": "A generic empty message that you can re-use to avoid defining duplicated empty messages in your APIs. A typical example is to use it as the request or the response type of an API method. For instance: service Foo { rpc Bar(google.protobuf.Empty) returns (google.protobuf.Empty); }",
+      "id": "Empty",
+      "properties": {},
+      "type": "object"
+    },
+    "Header": {
+      "description": "The header information of the columns requested in the report.",
+      "id": "Header",
+      "properties": {
+        "currencyCode": {
+          "description": "The [ISO-4217 currency code](https://en.wikipedia.org/wiki/ISO_4217) of this column. Only present if the header type is METRIC_CURRENCY.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Required. Name of the header.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Required. Type of the header.",
+          "enum": [
+            "HEADER_TYPE_UNSPECIFIED",
+            "DIMENSION",
+            "METRIC_TALLY",
+            "METRIC_RATIO",
+            "METRIC_CURRENCY",
+            "METRIC_MILLISECONDS",
+            "METRIC_DECIMAL"
+          ],
+          "enumDescriptions": [
+            "Unspecified header.",
+            "Dimension header type.",
+            "Tally header type.",
+            "Ratio header type.",
+            "Currency header type.",
+            "Milliseconds header type.",
+            "Decimal header type."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "HttpBody": {
+      "description": "Message that represents an arbitrary HTTP body. It should only be used for payload formats that can't be represented as JSON, such as raw binary or an HTML page. This message can be used both in streaming and non-streaming API methods in the request as well as the response. It can be used as a top-level request field, which is convenient if one wants to extract parameters from either the URL or HTTP template into the request fields and also want access to the raw HTTP body. Example: message GetResourceRequest { // A unique request id. string request_id = 1; // The raw HTTP body is bound to this field. google.api.HttpBody http_body = 2; } service ResourceService { rpc GetResource(GetResourceRequest) returns (google.api.HttpBody); rpc UpdateResource(google.api.HttpBody) returns (google.protobuf.Empty); } Example with streaming methods: service CaldavService { rpc GetCalendar(stream google.api.HttpBody) returns (stream google.api.HttpBody); rpc UpdateCalendar(stream google.api.HttpBody) returns (stream google.api.HttpBody); } Use of this type only changes how the request and response bodies are handled, all other features will continue to work unchanged.",
+      "id": "HttpBody",
+      "properties": {
+        "contentType": {
+          "description": "The HTTP Content-Type header value specifying the content type of the body.",
+          "type": "string"
+        },
+        "data": {
+          "description": "The HTTP request/response body as raw binary.",
+          "format": "byte",
+          "type": "string"
+        },
+        "extensions": {
+          "description": "Application specific response metadata. Must be set in the first response for streaming APIs.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListAccountsResponse": {
+      "description": "Response definition for the account list rpc.",
+      "id": "ListAccountsResponse",
+      "properties": {
+        "accounts": {
+          "description": "The accounts returned in this list response.",
+          "items": {
+            "$ref": "Account"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Continuation token used to page through accounts. To retrieve the next page of the results, set the next request's \"page_token\" value to this.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListAdClientsResponse": {
+      "description": "Response definition for the ad client list rpc.",
+      "id": "ListAdClientsResponse",
+      "properties": {
+        "adClients": {
+          "description": "The ad clients returned in this list response.",
+          "items": {
+            "$ref": "AdClient"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Continuation token used to page through ad clients. To retrieve the next page of the results, set the next request's \"page_token\" value to this.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListAdUnitsResponse": {
+      "description": "Response definition for the adunit list rpc.",
+      "id": "ListAdUnitsResponse",
+      "properties": {
+        "adUnits": {
+          "description": "The ad units returned in the list response.",
+          "items": {
+            "$ref": "AdUnit"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Continuation token used to page through ad units. To retrieve the next page of the results, set the next request's \"page_token\" value to this.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListAlertsResponse": {
+      "description": "Response definition for the alerts list rpc.",
+      "id": "ListAlertsResponse",
+      "properties": {
+        "alerts": {
+          "description": "The alerts returned in this list response.",
+          "items": {
+            "$ref": "Alert"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListChildAccountsResponse": {
+      "description": "Response definition for the child account list rpc.",
+      "id": "ListChildAccountsResponse",
+      "properties": {
+        "accounts": {
+          "description": "The accounts returned in this list response.",
+          "items": {
+            "$ref": "Account"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Continuation token used to page through accounts. To retrieve the next page of the results, set the next request's \"page_token\" value to this.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListCustomChannelsResponse": {
+      "description": "Response definition for the custom channel list rpc.",
+      "id": "ListCustomChannelsResponse",
+      "properties": {
+        "customChannels": {
+          "description": "The custom channels returned in this list response.",
+          "items": {
+            "$ref": "CustomChannel"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Continuation token used to page through alerts. To retrieve the next page of the results, set the next request's \"page_token\" value to this.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListLinkedAdUnitsResponse": {
+      "description": "Response definition for the ad units linked to a custom channel list rpc.",
+      "id": "ListLinkedAdUnitsResponse",
+      "properties": {
+        "adUnits": {
+          "description": "The ad units returned in the list response.",
+          "items": {
+            "$ref": "AdUnit"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Continuation token used to page through ad units. To retrieve the next page of the results, set the next request's \"page_token\" value to this.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListLinkedCustomChannelsResponse": {
+      "description": "Response definition for the custom channels linked to an adunit list rpc.",
+      "id": "ListLinkedCustomChannelsResponse",
+      "properties": {
+        "customChannels": {
+          "description": "The custom channels returned in this list response.",
+          "items": {
+            "$ref": "CustomChannel"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Continuation token used to page through alerts. To retrieve the next page of the results, set the next request's \"page_token\" value to this.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListPaymentsResponse": {
+      "description": "Response definition for the payments list rpc.",
+      "id": "ListPaymentsResponse",
+      "properties": {
+        "payments": {
+          "description": "The payments returned in this list response.",
+          "items": {
+            "$ref": "Payment"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListSavedReportsResponse": {
+      "description": "Response definition for the saved reports list rpc.",
+      "id": "ListSavedReportsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "Continuation token used to page through reports. To retrieve the next page of the results, set the next request's \"page_token\" value to this.",
+          "type": "string"
+        },
+        "savedReports": {
+          "description": "The reports returned in this list response.",
+          "items": {
+            "$ref": "SavedReport"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListSitesResponse": {
+      "description": "Response definition for the sites list rpc.",
+      "id": "ListSitesResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "Continuation token used to page through sites. To retrieve the next page of the results, set the next request's \"page_token\" value to this.",
+          "type": "string"
+        },
+        "sites": {
+          "description": "The sites returned in this list response.",
+          "items": {
+            "$ref": "Site"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListUrlChannelsResponse": {
+      "description": "Response definition for the url channels list rpc.",
+      "id": "ListUrlChannelsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "Continuation token used to page through url channels. To retrieve the next page of the results, set the next request's \"page_token\" value to this.",
+          "type": "string"
+        },
+        "urlChannels": {
+          "description": "The url channels returned in this list response.",
+          "items": {
+            "$ref": "UrlChannel"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Payment": {
+      "description": "Representation of an unpaid or paid payment. See [Payment timelines for AdSense](https://support.google.com/adsense/answer/7164703) for more information about payments and the [YouTube homepage and payments account](https://support.google.com/adsense/answer/11622510) article for information about dedicated payments accounts for YouTube.",
+      "id": "Payment",
+      "properties": {
+        "amount": {
+          "description": "Output only. The amount of unpaid or paid earnings, as a formatted string, including the currency. E.g. \"\u00a51,235 JPY\", \"$1,234.57\", \"\u00a387.65\".",
+          "readOnly": true,
+          "type": "string"
+        },
+        "date": {
+          "$ref": "Date",
+          "description": "Output only. For paid earnings, the date that the payment was credited. For unpaid earnings, this field is empty. Payment dates are always returned in the billing timezone (America/Los_Angeles).",
+          "readOnly": true
+        },
+        "name": {
+          "description": "Output only. Resource name of the payment. Format: - accounts/{account}/payments/unpaid for unpaid (current) AdSense earnings. - accounts/{account}/payments/youtube-unpaid for unpaid (current) YouTube earnings. - accounts/{account}/payments/yyyy-MM-dd for paid AdSense earnings. - accounts/{account}/payments/youtube-yyyy-MM-dd for paid YouTube earnings.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ReportResult": {
+      "description": "Result of a generated report.",
+      "id": "ReportResult",
+      "properties": {
+        "averages": {
+          "$ref": "Row",
+          "description": "The averages of the report. This is the same length as any other row in the report; cells corresponding to dimension columns are empty."
+        },
+        "endDate": {
+          "$ref": "Date",
+          "description": "Required. End date of the range (inclusive)."
+        },
+        "headers": {
+          "description": "The header information; one for each dimension in the request, followed by one for each metric in the request.",
+          "items": {
+            "$ref": "Header"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "description": "The output rows of the report. Each row is a list of cells; one for each dimension in the request, followed by one for each metric in the request.",
+          "items": {
+            "$ref": "Row"
+          },
+          "type": "array"
+        },
+        "startDate": {
+          "$ref": "Date",
+          "description": "Required. Start date of the range (inclusive)."
+        },
+        "totalMatchedRows": {
+          "description": "The total number of rows matched by the report request.",
+          "format": "int64",
+          "type": "string"
+        },
+        "totals": {
+          "$ref": "Row",
+          "description": "The totals of the report. This is the same length as any other row in the report; cells corresponding to dimension columns are empty."
+        },
+        "warnings": {
+          "description": "Any warnings associated with generation of the report. These warnings are always returned in English.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Row": {
+      "description": "Row representation.",
+      "id": "Row",
+      "properties": {
+        "cells": {
+          "description": "Cells in the row.",
+          "items": {
+            "$ref": "Cell"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "SavedReport": {
+      "description": "Representation of a saved report.",
+      "id": "SavedReport",
+      "properties": {
+        "name": {
+          "description": "Output only. Resource name of the report. Format: accounts/{account}/reports/{report}",
+          "readOnly": true,
+          "type": "string"
+        },
+        "title": {
+          "description": "Report title as specified by publisher.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Site": {
+      "description": "Representation of a Site.",
+      "id": "Site",
+      "properties": {
+        "autoAdsEnabled": {
+          "description": "Whether auto ads is turned on for the site.",
+          "type": "boolean"
+        },
+        "domain": {
+          "description": "Domain (or subdomain) of the site, e.g. \"example.com\" or \"www.example.com\". This is used in the `OWNED_SITE_DOMAIN_NAME` reporting dimension.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Output only. Resource name of a site. Format: accounts/{account}/sites/{site}",
+          "readOnly": true,
+          "type": "string"
+        },
+        "reportingDimensionId": {
+          "description": "Output only. Unique ID of the site as used in the `OWNED_SITE_ID` reporting dimension.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "state": {
+          "description": "Output only. State of a site.",
+          "enum": [
+            "STATE_UNSPECIFIED",
+            "REQUIRES_REVIEW",
+            "GETTING_READY",
+            "READY",
+            "NEEDS_ATTENTION"
+          ],
+          "enumDescriptions": [
+            "State unspecified.",
+            "Either: * The site hasn't been checked yet. * The site is inactive and needs another review before it can show ads again. Learn how to [request a review for an inactive site](https://support.google.com/adsense/answer/9393996).",
+            "Google is running some checks on the site. This usually takes a few days, but in some cases it can take two to four weeks.",
+            "The site is ready to show ads. Learn how to [set up ads on the site](https://support.google.com/adsense/answer/7037624).",
+            "Publisher needs to fix some issues before the site is ready to show ads. Learn what to do [if a new site isn't ready](https://support.google.com/adsense/answer/9061852)."
+          ],
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TimeZone": {
+      "description": "Represents a time zone from the [IANA Time Zone Database](https://www.iana.org/time-zones).",
+      "id": "TimeZone",
+      "properties": {
+        "id": {
+          "description": "IANA Time Zone Database time zone, e.g. \"America/New_York\".",
+          "type": "string"
+        },
+        "version": {
+          "description": "Optional. IANA Time Zone Database version number, e.g. \"2019a\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "UrlChannel": {
+      "description": "Representation of a URL channel. URL channels allow you to track the performance of particular pages in your site; see [URL channels](https://support.google.com/adsense/answer/2923836) for more information.",
+      "id": "UrlChannel",
+      "properties": {
+        "name": {
+          "description": "Output only. Resource name of the URL channel. Format: accounts/{account}/adclients/{adclient}/urlchannels/{urlchannel}",
+          "readOnly": true,
+          "type": "string"
+        },
+        "reportingDimensionId": {
+          "description": "Output only. Unique ID of the custom channel as used in the `URL_CHANNEL_ID` reporting dimension.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "uriPattern": {
+          "description": "URI pattern of the channel. Does not include \"http://\" or \"https://\". Example: www.example.com/home",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "AdSense Management API",
+  "version": "v2",
+  "version_module": true
+}

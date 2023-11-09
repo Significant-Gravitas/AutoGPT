@@ -1,0 +1,3921 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "See, edit, configure, and delete your Google Cloud data and see the email address for your Google Account."
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://toolresults.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Tool Results",
+  "description": "API to publish and access results from developer tools.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://firebase.google.com/docs/test-lab/",
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "toolresults:v1beta3",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://toolresults.mtls.googleapis.com/",
+  "name": "toolresults",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "projects": {
+      "methods": {
+        "getSettings": {
+          "description": "Gets the Tool Results settings for a project. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to read from project",
+          "flatPath": "toolresults/v1beta3/projects/{projectId}/settings",
+          "httpMethod": "GET",
+          "id": "toolresults.projects.getSettings",
+          "parameterOrder": [
+            "projectId"
+          ],
+          "parameters": {
+            "projectId": {
+              "description": "A Project id. Required.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "toolresults/v1beta3/projects/{projectId}/settings",
+          "response": {
+            "$ref": "ProjectSettings"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform"
+          ]
+        },
+        "initializeSettings": {
+          "description": "Creates resources for settings which have not yet been set. Currently, this creates a single resource: a Google Cloud Storage bucket, to be used as the default bucket for this project. The bucket is created in an FTL-own storage project. Except for in rare cases, calling this method in parallel from multiple clients will only create a single bucket. In order to avoid unnecessary storage charges, the bucket is configured to automatically delete objects older than 90 days. The bucket is created with the following permissions: - Owner access for owners of central storage project (FTL-owned) - Writer access for owners/editors of customer project - Reader access for viewers of customer project The default ACL on objects created in the bucket is: - Owner access for owners of central storage project - Reader access for owners/editors/viewers of customer project See Google Cloud Storage documentation for more details. If there is already a default bucket set and the project can access the bucket, this call does nothing. However, if the project doesn't have the permission to access the bucket or the bucket is deleted, a new bucket will be created. May return any canonical error codes, including the following: - PERMISSION_DENIED - if the user is not authorized to write to project - Any error code raised by Google Cloud Storage",
+          "flatPath": "toolresults/v1beta3/projects/{projectId}:initializeSettings",
+          "httpMethod": "POST",
+          "id": "toolresults.projects.initializeSettings",
+          "parameterOrder": [
+            "projectId"
+          ],
+          "parameters": {
+            "projectId": {
+              "description": "A Project id. Required.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "toolresults/v1beta3/projects/{projectId}:initializeSettings",
+          "response": {
+            "$ref": "ProjectSettings"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform"
+          ]
+        }
+      },
+      "resources": {
+        "histories": {
+          "methods": {
+            "create": {
+              "description": "Creates a History. The returned History will have the id set. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to write to project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the containing project does not exist",
+              "flatPath": "toolresults/v1beta3/projects/{projectId}/histories",
+              "httpMethod": "POST",
+              "id": "toolresults.projects.histories.create",
+              "parameterOrder": [
+                "projectId"
+              ],
+              "parameters": {
+                "projectId": {
+                  "description": "A Project id. Required.",
+                  "location": "path",
+                  "required": true,
+                  "type": "string"
+                },
+                "requestId": {
+                  "description": "A unique request ID for server to detect duplicated requests. For example, a UUID. Optional, but strongly recommended.",
+                  "location": "query",
+                  "type": "string"
+                }
+              },
+              "path": "toolresults/v1beta3/projects/{projectId}/histories",
+              "request": {
+                "$ref": "History"
+              },
+              "response": {
+                "$ref": "History"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "get": {
+              "description": "Gets a History. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to read project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the History does not exist",
+              "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}",
+              "httpMethod": "GET",
+              "id": "toolresults.projects.histories.get",
+              "parameterOrder": [
+                "projectId",
+                "historyId"
+              ],
+              "parameters": {
+                "historyId": {
+                  "description": "A History id. Required.",
+                  "location": "path",
+                  "required": true,
+                  "type": "string"
+                },
+                "projectId": {
+                  "description": "A Project id. Required.",
+                  "location": "path",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}",
+              "response": {
+                "$ref": "History"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "list": {
+              "description": "Lists Histories for a given Project. The histories are sorted by modification time in descending order. The history_id key will be used to order the history with the same modification time. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to read project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the History does not exist",
+              "flatPath": "toolresults/v1beta3/projects/{projectId}/histories",
+              "httpMethod": "GET",
+              "id": "toolresults.projects.histories.list",
+              "parameterOrder": [
+                "projectId"
+              ],
+              "parameters": {
+                "filterByName": {
+                  "description": "If set, only return histories with the given name. Optional.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "pageSize": {
+                  "description": "The maximum number of Histories to fetch. Default value: 20. The server will use this default if the field is not set or has a value of 0. Any value greater than 100 will be treated as 100. Optional.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "pageToken": {
+                  "description": "A continuation token to resume the query at the next item. Optional.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "projectId": {
+                  "description": "A Project id. Required.",
+                  "location": "path",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "toolresults/v1beta3/projects/{projectId}/histories",
+              "response": {
+                "$ref": "ListHistoriesResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            }
+          },
+          "resources": {
+            "executions": {
+              "methods": {
+                "create": {
+                  "description": "Creates an Execution. The returned Execution will have the id set. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to write to project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the containing History does not exist",
+                  "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions",
+                  "httpMethod": "POST",
+                  "id": "toolresults.projects.histories.executions.create",
+                  "parameterOrder": [
+                    "projectId",
+                    "historyId"
+                  ],
+                  "parameters": {
+                    "historyId": {
+                      "description": "A History id. Required.",
+                      "location": "path",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "description": "A Project id. Required.",
+                      "location": "path",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "description": "A unique request ID for server to detect duplicated requests. For example, a UUID. Optional, but strongly recommended.",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions",
+                  "request": {
+                    "$ref": "Execution"
+                  },
+                  "response": {
+                    "$ref": "Execution"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "get": {
+                  "description": "Gets an Execution. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to write to project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the Execution does not exist",
+                  "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}",
+                  "httpMethod": "GET",
+                  "id": "toolresults.projects.histories.executions.get",
+                  "parameterOrder": [
+                    "projectId",
+                    "historyId",
+                    "executionId"
+                  ],
+                  "parameters": {
+                    "executionId": {
+                      "description": "An Execution id. Required.",
+                      "location": "path",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "historyId": {
+                      "description": "A History id. Required.",
+                      "location": "path",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "description": "A Project id. Required.",
+                      "location": "path",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}",
+                  "response": {
+                    "$ref": "Execution"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "list": {
+                  "description": "Lists Executions for a given History. The executions are sorted by creation_time in descending order. The execution_id key will be used to order the executions with the same creation_time. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to read project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the containing History does not exist",
+                  "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions",
+                  "httpMethod": "GET",
+                  "id": "toolresults.projects.histories.executions.list",
+                  "parameterOrder": [
+                    "projectId",
+                    "historyId"
+                  ],
+                  "parameters": {
+                    "historyId": {
+                      "description": "A History id. Required.",
+                      "location": "path",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "pageSize": {
+                      "description": "The maximum number of Executions to fetch. Default value: 25. The server will use this default if the field is not set or has a value of 0. Optional.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "A continuation token to resume the query at the next item. Optional.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "description": "A Project id. Required.",
+                      "location": "path",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions",
+                  "response": {
+                    "$ref": "ListExecutionsResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "patch": {
+                  "description": "Updates an existing Execution with the supplied partial entity. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to write to project - INVALID_ARGUMENT - if the request is malformed - FAILED_PRECONDITION - if the requested state transition is illegal - NOT_FOUND - if the containing History does not exist",
+                  "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}",
+                  "httpMethod": "PATCH",
+                  "id": "toolresults.projects.histories.executions.patch",
+                  "parameterOrder": [
+                    "projectId",
+                    "historyId",
+                    "executionId"
+                  ],
+                  "parameters": {
+                    "executionId": {
+                      "description": "Required.",
+                      "location": "path",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "historyId": {
+                      "description": "Required.",
+                      "location": "path",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "projectId": {
+                      "description": "A Project id. Required.",
+                      "location": "path",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "description": "A unique request ID for server to detect duplicated requests. For example, a UUID. Optional, but strongly recommended.",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}",
+                  "request": {
+                    "$ref": "Execution"
+                  },
+                  "response": {
+                    "$ref": "Execution"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                }
+              },
+              "resources": {
+                "clusters": {
+                  "methods": {
+                    "get": {
+                      "description": "Retrieves a single screenshot cluster by its ID",
+                      "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/clusters/{clusterId}",
+                      "httpMethod": "GET",
+                      "id": "toolresults.projects.histories.executions.clusters.get",
+                      "parameterOrder": [
+                        "projectId",
+                        "historyId",
+                        "executionId",
+                        "clusterId"
+                      ],
+                      "parameters": {
+                        "clusterId": {
+                          "description": "A Cluster id Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "executionId": {
+                          "description": "An Execution id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "historyId": {
+                          "description": "A History id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "description": "A Project id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/clusters/{clusterId}",
+                      "response": {
+                        "$ref": "ScreenshotCluster"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists Screenshot Clusters Returns the list of screenshot clusters corresponding to an execution. Screenshot clusters are created after the execution is finished. Clusters are created from a set of screenshots. Between any two screenshots, a matching score is calculated based off their metadata that determines how similar they are. Screenshots are placed in the cluster that has screens which have the highest matching scores.",
+                      "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/clusters",
+                      "httpMethod": "GET",
+                      "id": "toolresults.projects.histories.executions.clusters.list",
+                      "parameterOrder": [
+                        "projectId",
+                        "historyId",
+                        "executionId"
+                      ],
+                      "parameters": {
+                        "executionId": {
+                          "description": "An Execution id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "historyId": {
+                          "description": "A History id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "description": "A Project id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/clusters",
+                      "response": {
+                        "$ref": "ListScreenshotClustersResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                },
+                "environments": {
+                  "methods": {
+                    "get": {
+                      "description": "Gets an Environment. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to read project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the Environment does not exist",
+                      "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/environments/{environmentId}",
+                      "httpMethod": "GET",
+                      "id": "toolresults.projects.histories.executions.environments.get",
+                      "parameterOrder": [
+                        "projectId",
+                        "historyId",
+                        "executionId",
+                        "environmentId"
+                      ],
+                      "parameters": {
+                        "environmentId": {
+                          "description": "Required. An Environment id.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "executionId": {
+                          "description": "Required. An Execution id.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "historyId": {
+                          "description": "Required. A History id.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "description": "Required. A Project id.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/environments/{environmentId}",
+                      "response": {
+                        "$ref": "Environment"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists Environments for a given Execution. The Environments are sorted by display name. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to read project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the containing Execution does not exist",
+                      "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/environments",
+                      "httpMethod": "GET",
+                      "id": "toolresults.projects.histories.executions.environments.list",
+                      "parameterOrder": [
+                        "projectId",
+                        "historyId",
+                        "executionId"
+                      ],
+                      "parameters": {
+                        "executionId": {
+                          "description": "Required. An Execution id.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "historyId": {
+                          "description": "Required. A History id.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "The maximum number of Environments to fetch. Default value: 25. The server will use this default if the field is not set or has a value of 0.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "A continuation token to resume the query at the next item.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "description": "Required. A Project id.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/environments",
+                      "response": {
+                        "$ref": "ListEnvironmentsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                },
+                "steps": {
+                  "methods": {
+                    "accessibilityClusters": {
+                      "description": "Lists accessibility clusters for a given Step May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to read project - INVALID_ARGUMENT - if the request is malformed - FAILED_PRECONDITION - if an argument in the request happens to be invalid; e.g. if the locale format is incorrect - NOT_FOUND - if the containing Step does not exist",
+                      "flatPath": "toolresults/v1beta3/projects/{projectsId}/histories/{historiesId}/executions/{executionsId}/steps/{stepsId}:accessibilityClusters",
+                      "httpMethod": "GET",
+                      "id": "toolresults.projects.histories.executions.steps.accessibilityClusters",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "locale": {
+                          "description": "The accepted format is the canonical Unicode format with hyphen as a delimiter. Language must be lowercase, Language Script - Capitalized, Region - UPPERCASE. See http://www.unicode.org/reports/tr35/#Unicode_locale_identifier for details. Required.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "A full resource name of the step. For example, projects/my-project/histories/bh.1234567890abcdef/executions/ 1234567890123456789/steps/bs.1234567890abcdef Required.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/histories/[^/]+/executions/[^/]+/steps/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/{+name}:accessibilityClusters",
+                      "response": {
+                        "$ref": "ListStepAccessibilityClustersResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "create": {
+                      "description": "Creates a Step. The returned Step will have the id set. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to write to project - INVALID_ARGUMENT - if the request is malformed - FAILED_PRECONDITION - if the step is too large (more than 10Mib) - NOT_FOUND - if the containing Execution does not exist",
+                      "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps",
+                      "httpMethod": "POST",
+                      "id": "toolresults.projects.histories.executions.steps.create",
+                      "parameterOrder": [
+                        "projectId",
+                        "historyId",
+                        "executionId"
+                      ],
+                      "parameters": {
+                        "executionId": {
+                          "description": "Required. An Execution id.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "historyId": {
+                          "description": "Required. A History id.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "description": "Required. A Project id.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "description": "A unique request ID for server to detect duplicated requests. For example, a UUID. Optional, but strongly recommended.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps",
+                      "request": {
+                        "$ref": "Step"
+                      },
+                      "response": {
+                        "$ref": "Step"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "get": {
+                      "description": "Gets a Step. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to read project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the Step does not exist",
+                      "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}",
+                      "httpMethod": "GET",
+                      "id": "toolresults.projects.histories.executions.steps.get",
+                      "parameterOrder": [
+                        "projectId",
+                        "historyId",
+                        "executionId",
+                        "stepId"
+                      ],
+                      "parameters": {
+                        "executionId": {
+                          "description": "A Execution id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "historyId": {
+                          "description": "A History id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "description": "A Project id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "stepId": {
+                          "description": "A Step id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}",
+                      "response": {
+                        "$ref": "Step"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "getPerfMetricsSummary": {
+                      "description": "Retrieves a PerfMetricsSummary. May return any of the following error code(s): - NOT_FOUND - The specified PerfMetricsSummary does not exist",
+                      "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfMetricsSummary",
+                      "httpMethod": "GET",
+                      "id": "toolresults.projects.histories.executions.steps.getPerfMetricsSummary",
+                      "parameterOrder": [
+                        "projectId",
+                        "historyId",
+                        "executionId",
+                        "stepId"
+                      ],
+                      "parameters": {
+                        "executionId": {
+                          "description": "A tool results execution ID.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "historyId": {
+                          "description": "A tool results history ID.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "description": "The cloud project",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "stepId": {
+                          "description": "A tool results step ID.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfMetricsSummary",
+                      "response": {
+                        "$ref": "PerfMetricsSummary"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists Steps for a given Execution. The steps are sorted by creation_time in descending order. The step_id key will be used to order the steps with the same creation_time. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to read project - INVALID_ARGUMENT - if the request is malformed - FAILED_PRECONDITION - if an argument in the request happens to be invalid; e.g. if an attempt is made to list the children of a nonexistent Step - NOT_FOUND - if the containing Execution does not exist",
+                      "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps",
+                      "httpMethod": "GET",
+                      "id": "toolresults.projects.histories.executions.steps.list",
+                      "parameterOrder": [
+                        "projectId",
+                        "historyId",
+                        "executionId"
+                      ],
+                      "parameters": {
+                        "executionId": {
+                          "description": "A Execution id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "historyId": {
+                          "description": "A History id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "The maximum number of Steps to fetch. Default value: 25. The server will use this default if the field is not set or has a value of 0. Optional.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "A continuation token to resume the query at the next item. Optional.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "description": "A Project id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps",
+                      "response": {
+                        "$ref": "ListStepsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "patch": {
+                      "description": "Updates an existing Step with the supplied partial entity. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to write project - INVALID_ARGUMENT - if the request is malformed - FAILED_PRECONDITION - if the requested state transition is illegal (e.g try to upload a duplicate xml file), if the updated step is too large (more than 10Mib) - NOT_FOUND - if the containing Execution does not exist",
+                      "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}",
+                      "httpMethod": "PATCH",
+                      "id": "toolresults.projects.histories.executions.steps.patch",
+                      "parameterOrder": [
+                        "projectId",
+                        "historyId",
+                        "executionId",
+                        "stepId"
+                      ],
+                      "parameters": {
+                        "executionId": {
+                          "description": "A Execution id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "historyId": {
+                          "description": "A History id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "description": "A Project id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "requestId": {
+                          "description": "A unique request ID for server to detect duplicated requests. For example, a UUID. Optional, but strongly recommended.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "stepId": {
+                          "description": "A Step id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}",
+                      "request": {
+                        "$ref": "Step"
+                      },
+                      "response": {
+                        "$ref": "Step"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "publishXunitXmlFiles": {
+                      "description": "Publish xml files to an existing Step. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to write project - INVALID_ARGUMENT - if the request is malformed - FAILED_PRECONDITION - if the requested state transition is illegal, e.g. try to upload a duplicate xml file or a file too large. - NOT_FOUND - if the containing Execution does not exist",
+                      "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}:publishXunitXmlFiles",
+                      "httpMethod": "POST",
+                      "id": "toolresults.projects.histories.executions.steps.publishXunitXmlFiles",
+                      "parameterOrder": [
+                        "projectId",
+                        "historyId",
+                        "executionId",
+                        "stepId"
+                      ],
+                      "parameters": {
+                        "executionId": {
+                          "description": "A Execution id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "historyId": {
+                          "description": "A History id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "description": "A Project id. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "stepId": {
+                          "description": "A Step id. Note: This step must include a TestExecutionStep. Required.",
+                          "location": "path",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}:publishXunitXmlFiles",
+                      "request": {
+                        "$ref": "PublishXunitXmlFilesRequest"
+                      },
+                      "response": {
+                        "$ref": "Step"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  },
+                  "resources": {
+                    "perfMetricsSummary": {
+                      "methods": {
+                        "create": {
+                          "description": "Creates a PerfMetricsSummary resource. Returns the existing one if it has already been created. May return any of the following error code(s): - NOT_FOUND - The containing Step does not exist",
+                          "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfMetricsSummary",
+                          "httpMethod": "POST",
+                          "id": "toolresults.projects.histories.executions.steps.perfMetricsSummary.create",
+                          "parameterOrder": [
+                            "projectId",
+                            "historyId",
+                            "executionId",
+                            "stepId"
+                          ],
+                          "parameters": {
+                            "executionId": {
+                              "description": "A tool results execution ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "historyId": {
+                              "description": "A tool results history ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "projectId": {
+                              "description": "The cloud project",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "stepId": {
+                              "description": "A tool results step ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfMetricsSummary",
+                          "request": {
+                            "$ref": "PerfMetricsSummary"
+                          },
+                          "response": {
+                            "$ref": "PerfMetricsSummary"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      }
+                    },
+                    "perfSampleSeries": {
+                      "methods": {
+                        "create": {
+                          "description": "Creates a PerfSampleSeries. May return any of the following error code(s): - ALREADY_EXISTS - PerfMetricSummary already exists for the given Step - NOT_FOUND - The containing Step does not exist",
+                          "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfSampleSeries",
+                          "httpMethod": "POST",
+                          "id": "toolresults.projects.histories.executions.steps.perfSampleSeries.create",
+                          "parameterOrder": [
+                            "projectId",
+                            "historyId",
+                            "executionId",
+                            "stepId"
+                          ],
+                          "parameters": {
+                            "executionId": {
+                              "description": "A tool results execution ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "historyId": {
+                              "description": "A tool results history ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "projectId": {
+                              "description": "The cloud project",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "stepId": {
+                              "description": "A tool results step ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfSampleSeries",
+                          "request": {
+                            "$ref": "PerfSampleSeries"
+                          },
+                          "response": {
+                            "$ref": "PerfSampleSeries"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "get": {
+                          "description": "Gets a PerfSampleSeries. May return any of the following error code(s): - NOT_FOUND - The specified PerfSampleSeries does not exist",
+                          "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfSampleSeries/{sampleSeriesId}",
+                          "httpMethod": "GET",
+                          "id": "toolresults.projects.histories.executions.steps.perfSampleSeries.get",
+                          "parameterOrder": [
+                            "projectId",
+                            "historyId",
+                            "executionId",
+                            "stepId",
+                            "sampleSeriesId"
+                          ],
+                          "parameters": {
+                            "executionId": {
+                              "description": "A tool results execution ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "historyId": {
+                              "description": "A tool results history ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "projectId": {
+                              "description": "The cloud project",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "sampleSeriesId": {
+                              "description": "A sample series id",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "stepId": {
+                              "description": "A tool results step ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfSampleSeries/{sampleSeriesId}",
+                          "response": {
+                            "$ref": "PerfSampleSeries"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "list": {
+                          "description": "Lists PerfSampleSeries for a given Step. The request provides an optional filter which specifies one or more PerfMetricsType to include in the result; if none returns all. The resulting PerfSampleSeries are sorted by ids. May return any of the following canonical error codes: - NOT_FOUND - The containing Step does not exist",
+                          "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfSampleSeries",
+                          "httpMethod": "GET",
+                          "id": "toolresults.projects.histories.executions.steps.perfSampleSeries.list",
+                          "parameterOrder": [
+                            "projectId",
+                            "historyId",
+                            "executionId",
+                            "stepId"
+                          ],
+                          "parameters": {
+                            "executionId": {
+                              "description": "A tool results execution ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "filter": {
+                              "description": "Specify one or more PerfMetricType values such as CPU to filter the result",
+                              "enum": [
+                                "perfMetricTypeUnspecified",
+                                "memory",
+                                "cpu",
+                                "network",
+                                "graphics"
+                              ],
+                              "enumDescriptions": [
+                                "",
+                                "",
+                                "",
+                                "",
+                                ""
+                              ],
+                              "location": "query",
+                              "repeated": true,
+                              "type": "string"
+                            },
+                            "historyId": {
+                              "description": "A tool results history ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "projectId": {
+                              "description": "The cloud project",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "stepId": {
+                              "description": "A tool results step ID.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfSampleSeries",
+                          "response": {
+                            "$ref": "ListPerfSampleSeriesResponse"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      },
+                      "resources": {
+                        "samples": {
+                          "methods": {
+                            "batchCreate": {
+                              "description": "Creates a batch of PerfSamples - a client can submit multiple batches of Perf Samples through repeated calls to this method in order to split up a large request payload - duplicates and existing timestamp entries will be ignored. - the batch operation may partially succeed - the set of elements successfully inserted is returned in the response (omits items which already existed in the database). May return any of the following canonical error codes: - NOT_FOUND - The containing PerfSampleSeries does not exist",
+                              "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfSampleSeries/{sampleSeriesId}/samples:batchCreate",
+                              "httpMethod": "POST",
+                              "id": "toolresults.projects.histories.executions.steps.perfSampleSeries.samples.batchCreate",
+                              "parameterOrder": [
+                                "projectId",
+                                "historyId",
+                                "executionId",
+                                "stepId",
+                                "sampleSeriesId"
+                              ],
+                              "parameters": {
+                                "executionId": {
+                                  "description": "A tool results execution ID.",
+                                  "location": "path",
+                                  "required": true,
+                                  "type": "string"
+                                },
+                                "historyId": {
+                                  "description": "A tool results history ID.",
+                                  "location": "path",
+                                  "required": true,
+                                  "type": "string"
+                                },
+                                "projectId": {
+                                  "description": "The cloud project",
+                                  "location": "path",
+                                  "required": true,
+                                  "type": "string"
+                                },
+                                "sampleSeriesId": {
+                                  "description": "A sample series id",
+                                  "location": "path",
+                                  "required": true,
+                                  "type": "string"
+                                },
+                                "stepId": {
+                                  "description": "A tool results step ID.",
+                                  "location": "path",
+                                  "required": true,
+                                  "type": "string"
+                                }
+                              },
+                              "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfSampleSeries/{sampleSeriesId}/samples:batchCreate",
+                              "request": {
+                                "$ref": "BatchCreatePerfSamplesRequest"
+                              },
+                              "response": {
+                                "$ref": "BatchCreatePerfSamplesResponse"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            },
+                            "list": {
+                              "description": "Lists the Performance Samples of a given Sample Series - The list results are sorted by timestamps ascending - The default page size is 500 samples; and maximum size allowed 5000 - The response token indicates the last returned PerfSample timestamp - When the results size exceeds the page size, submit a subsequent request including the page token to return the rest of the samples up to the page limit May return any of the following canonical error codes: - OUT_OF_RANGE - The specified request page_token is out of valid range - NOT_FOUND - The containing PerfSampleSeries does not exist",
+                              "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfSampleSeries/{sampleSeriesId}/samples",
+                              "httpMethod": "GET",
+                              "id": "toolresults.projects.histories.executions.steps.perfSampleSeries.samples.list",
+                              "parameterOrder": [
+                                "projectId",
+                                "historyId",
+                                "executionId",
+                                "stepId",
+                                "sampleSeriesId"
+                              ],
+                              "parameters": {
+                                "executionId": {
+                                  "description": "A tool results execution ID.",
+                                  "location": "path",
+                                  "required": true,
+                                  "type": "string"
+                                },
+                                "historyId": {
+                                  "description": "A tool results history ID.",
+                                  "location": "path",
+                                  "required": true,
+                                  "type": "string"
+                                },
+                                "pageSize": {
+                                  "description": "The default page size is 500 samples, and the maximum size is 5000. If the page_size is greater than 5000, the effective page size will be 5000",
+                                  "format": "int32",
+                                  "location": "query",
+                                  "type": "integer"
+                                },
+                                "pageToken": {
+                                  "description": "Optional, the next_page_token returned in the previous response",
+                                  "location": "query",
+                                  "type": "string"
+                                },
+                                "projectId": {
+                                  "description": "The cloud project",
+                                  "location": "path",
+                                  "required": true,
+                                  "type": "string"
+                                },
+                                "sampleSeriesId": {
+                                  "description": "A sample series id",
+                                  "location": "path",
+                                  "required": true,
+                                  "type": "string"
+                                },
+                                "stepId": {
+                                  "description": "A tool results step ID.",
+                                  "location": "path",
+                                  "required": true,
+                                  "type": "string"
+                                }
+                              },
+                              "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/perfSampleSeries/{sampleSeriesId}/samples",
+                              "response": {
+                                "$ref": "ListPerfSamplesResponse"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "testCases": {
+                      "methods": {
+                        "get": {
+                          "description": "Gets details of a Test Case for a Step. Experimental test cases API. Still in active development. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to write to project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the containing Test Case does not exist",
+                          "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/testCases/{testCaseId}",
+                          "httpMethod": "GET",
+                          "id": "toolresults.projects.histories.executions.steps.testCases.get",
+                          "parameterOrder": [
+                            "projectId",
+                            "historyId",
+                            "executionId",
+                            "stepId",
+                            "testCaseId"
+                          ],
+                          "parameters": {
+                            "executionId": {
+                              "description": "A Execution id Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "historyId": {
+                              "description": "A History id. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "projectId": {
+                              "description": "A Project id. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "stepId": {
+                              "description": "A Step id. Note: This step must include a TestExecutionStep. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "testCaseId": {
+                              "description": "A Test Case id. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/testCases/{testCaseId}",
+                          "response": {
+                            "$ref": "TestCase"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "list": {
+                          "description": "Lists Test Cases attached to a Step. Experimental test cases API. Still in active development. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to write to project - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the containing Step does not exist",
+                          "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/testCases",
+                          "httpMethod": "GET",
+                          "id": "toolresults.projects.histories.executions.steps.testCases.list",
+                          "parameterOrder": [
+                            "projectId",
+                            "historyId",
+                            "executionId",
+                            "stepId"
+                          ],
+                          "parameters": {
+                            "executionId": {
+                              "description": "A Execution id Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "historyId": {
+                              "description": "A History id. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "pageSize": {
+                              "description": "The maximum number of TestCases to fetch. Default value: 100. The server will use this default if the field is not set or has a value of 0. Optional.",
+                              "format": "int32",
+                              "location": "query",
+                              "type": "integer"
+                            },
+                            "pageToken": {
+                              "description": "A continuation token to resume the query at the next item. Optional.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "projectId": {
+                              "description": "A Project id. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "stepId": {
+                              "description": "A Step id. Note: This step must include a TestExecutionStep. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/testCases",
+                          "response": {
+                            "$ref": "ListTestCasesResponse"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      }
+                    },
+                    "thumbnails": {
+                      "methods": {
+                        "list": {
+                          "description": "Lists thumbnails of images attached to a step. May return any of the following canonical error codes: - PERMISSION_DENIED - if the user is not authorized to read from the project, or from any of the images - INVALID_ARGUMENT - if the request is malformed - NOT_FOUND - if the step does not exist, or if any of the images do not exist",
+                          "flatPath": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/thumbnails",
+                          "httpMethod": "GET",
+                          "id": "toolresults.projects.histories.executions.steps.thumbnails.list",
+                          "parameterOrder": [
+                            "projectId",
+                            "historyId",
+                            "executionId",
+                            "stepId"
+                          ],
+                          "parameters": {
+                            "executionId": {
+                              "description": "An Execution id. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "historyId": {
+                              "description": "A History id. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "pageSize": {
+                              "description": "The maximum number of thumbnails to fetch. Default value: 50. The server will use this default if the field is not set or has a value of 0. Optional.",
+                              "format": "int32",
+                              "location": "query",
+                              "type": "integer"
+                            },
+                            "pageToken": {
+                              "description": "A continuation token to resume the query at the next item. Optional.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "projectId": {
+                              "description": "A Project id. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "stepId": {
+                              "description": "A Step id. Required.",
+                              "location": "path",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "toolresults/v1beta3/projects/{projectId}/histories/{historyId}/executions/{executionId}/steps/{stepId}/thumbnails",
+                          "response": {
+                            "$ref": "ListStepThumbnailsResponse"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230403",
+  "rootUrl": "https://toolresults.googleapis.com/",
+  "schemas": {
+    "ANR": {
+      "description": "Additional details for an ANR crash.",
+      "id": "ANR",
+      "properties": {
+        "stackTrace": {
+          "$ref": "StackTrace",
+          "description": "The stack trace of the ANR crash. Optional."
+        }
+      },
+      "type": "object"
+    },
+    "AndroidAppInfo": {
+      "description": "Android app information.",
+      "id": "AndroidAppInfo",
+      "properties": {
+        "name": {
+          "description": "The name of the app. Optional",
+          "type": "string"
+        },
+        "packageName": {
+          "description": "The package name of the app. Required.",
+          "type": "string"
+        },
+        "versionCode": {
+          "description": "The internal version code of the app. Optional.",
+          "type": "string"
+        },
+        "versionName": {
+          "description": "The version name of the app. Optional.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AndroidInstrumentationTest": {
+      "description": "A test of an Android application that can control an Android component independently of its normal lifecycle. See for more information on types of Android tests.",
+      "id": "AndroidInstrumentationTest",
+      "properties": {
+        "testPackageId": {
+          "description": "The java package for the test to be executed. Required",
+          "type": "string"
+        },
+        "testRunnerClass": {
+          "description": "The InstrumentationTestRunner class. Required",
+          "type": "string"
+        },
+        "testTargets": {
+          "description": "Each target must be fully qualified with the package name or class name, in one of these formats: - \"package package_name\" - \"class package_name.class_name\" - \"class package_name.class_name#method_name\" If empty, all targets in the module will be run.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "useOrchestrator": {
+          "description": "The flag indicates whether Android Test Orchestrator will be used to run test or not.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AndroidRoboTest": {
+      "description": "A test of an android application that explores the application on a virtual or physical Android device, finding culprits and crashes as it goes.",
+      "id": "AndroidRoboTest",
+      "properties": {
+        "appInitialActivity": {
+          "description": "The initial activity that should be used to start the app. Optional",
+          "type": "string"
+        },
+        "bootstrapPackageId": {
+          "description": "The java package for the bootstrap. Optional",
+          "type": "string"
+        },
+        "bootstrapRunnerClass": {
+          "description": "The runner class for the bootstrap. Optional",
+          "type": "string"
+        },
+        "maxDepth": {
+          "description": "The max depth of the traversal stack Robo can explore. Optional",
+          "format": "int32",
+          "type": "integer"
+        },
+        "maxSteps": {
+          "description": "The max number of steps/actions Robo can execute. Default is no limit (0). Optional",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "AndroidTest": {
+      "description": "An Android mobile test specification.",
+      "id": "AndroidTest",
+      "properties": {
+        "androidAppInfo": {
+          "$ref": "AndroidAppInfo",
+          "description": "Information about the application under test."
+        },
+        "androidInstrumentationTest": {
+          "$ref": "AndroidInstrumentationTest",
+          "description": "An Android instrumentation test."
+        },
+        "androidRoboTest": {
+          "$ref": "AndroidRoboTest",
+          "description": "An Android robo test."
+        },
+        "androidTestLoop": {
+          "$ref": "AndroidTestLoop",
+          "description": "An Android test loop."
+        },
+        "testTimeout": {
+          "$ref": "Duration",
+          "description": "Max time a test is allowed to run before it is automatically cancelled."
+        }
+      },
+      "type": "object"
+    },
+    "AndroidTestLoop": {
+      "description": "Test Loops are tests that can be launched by the app itself, determining when to run by listening for an intent.",
+      "id": "AndroidTestLoop",
+      "properties": {},
+      "type": "object"
+    },
+    "Any": {
+      "description": " `Any` contains an arbitrary serialized protocol buffer message along with a URL that describes the type of the serialized message. Protobuf library provides support to pack/unpack Any values in the form of utility functions or additional generated methods of the Any type. Example 1: Pack and unpack a message in C++. Foo foo = ...; Any any; any.PackFrom(foo); ... if (any.UnpackTo(&foo)) { ... } Example 2: Pack and unpack a message in Java. Foo foo = ...; Any any = Any.pack(foo); ... if (any.is(Foo.class)) { foo = any.unpack(Foo.class); } Example 3: Pack and unpack a message in Python. foo = Foo(...) any = Any() any.Pack(foo) ... if any.Is(Foo.DESCRIPTOR): any.Unpack(foo) ... Example 4: Pack and unpack a message in Go foo := &pb.Foo{...} any, err := ptypes.MarshalAny(foo) ... foo := &pb.Foo{} if err := ptypes.UnmarshalAny(any, foo); err != nil { ... } The pack methods provided by protobuf library will by default use 'type.googleapis.com/full.type.name' as the type URL and the unpack methods only use the fully qualified type name after the last '/' in the type URL, for example \"foo.bar.com/x/y.z\" will yield type name \"y.z\". # JSON The JSON representation of an `Any` value uses the regular representation of the deserialized, embedded message, with an additional field `@type` which contains the type URL. Example: package google.profile; message Person { string first_name = 1; string last_name = 2; } { \"@type\": \"type.googleapis.com/google.profile.Person\", \"firstName\": , \"lastName\": } If the embedded message type is well-known and has a custom JSON representation, that representation will be embedded adding a field `value` which holds the custom JSON in addition to the `@type` field. Example (for message google.protobuf.Duration): { \"@type\": \"type.googleapis.com/google.protobuf.Duration\", \"value\": \"1.212s\" }",
+      "id": "Any",
+      "properties": {
+        "typeUrl": {
+          "description": "A URL/resource name that uniquely identifies the type of the serialized protocol buffer message. This string must contain at least one \"/\" character. The last segment of the URL's path must represent the fully qualified name of the type (as in `path/google.protobuf.Duration`). The name should be in a canonical form (e.g., leading \".\" is not accepted). In practice, teams usually precompile into the binary all types that they expect it to use in the context of Any. However, for URLs which use the scheme `http`, `https`, or no scheme, one can optionally set up a type server that maps type URLs to message definitions as follows: * If no scheme is provided, `https` is assumed. * An HTTP GET on the URL must yield a google.protobuf.Type value in binary format, or produce an error. * Applications are allowed to cache lookup results based on the URL, or have them precompiled into a binary to avoid any lookup. Therefore, binary compatibility needs to be preserved on changes to types. (Use versioned type names to manage breaking changes.) Note: this functionality is not currently available in the official protobuf release, and it is not used for type URLs beginning with type.googleapis.com. Schemes other than `http`, `https` (or the empty scheme) might be used with implementation specific semantics.",
+          "type": "string"
+        },
+        "value": {
+          "description": "Must be a valid serialized protocol buffer of the above specified type.",
+          "format": "byte",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AppStartTime": {
+      "id": "AppStartTime",
+      "properties": {
+        "fullyDrawnTime": {
+          "$ref": "Duration",
+          "description": "Optional. The time from app start to reaching the developer-reported \"fully drawn\" time. This is only stored if the app includes a call to Activity.reportFullyDrawn(). See https://developer.android.com/topic/performance/launch-time.html#time-full"
+        },
+        "initialDisplayTime": {
+          "$ref": "Duration",
+          "description": "The time from app start to the first displayed activity being drawn, as reported in Logcat. See https://developer.android.com/topic/performance/launch-time.html#time-initial"
+        }
+      },
+      "type": "object"
+    },
+    "AvailableDeepLinks": {
+      "description": "A suggestion to use deep links for a Robo run.",
+      "id": "AvailableDeepLinks",
+      "properties": {},
+      "type": "object"
+    },
+    "BasicPerfSampleSeries": {
+      "description": "Encapsulates the metadata for basic sample series represented by a line chart",
+      "id": "BasicPerfSampleSeries",
+      "properties": {
+        "perfMetricType": {
+          "enum": [
+            "perfMetricTypeUnspecified",
+            "memory",
+            "cpu",
+            "network",
+            "graphics"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
+        "perfUnit": {
+          "enum": [
+            "perfUnitUnspecified",
+            "kibibyte",
+            "percent",
+            "bytesPerSecond",
+            "framesPerSecond",
+            "byte"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
+        "sampleSeriesLabel": {
+          "enum": [
+            "sampleSeriesTypeUnspecified",
+            "memoryRssPrivate",
+            "memoryRssShared",
+            "memoryRssTotal",
+            "memoryTotal",
+            "cpuUser",
+            "cpuKernel",
+            "cpuTotal",
+            "ntBytesTransferred",
+            "ntBytesReceived",
+            "networkSent",
+            "networkReceived",
+            "graphicsFrameRate"
+          ],
+          "enumDescriptions": [
+            "",
+            "Memory sample series",
+            "",
+            "",
+            "",
+            "CPU sample series",
+            "",
+            "",
+            "Network sample series",
+            "",
+            "",
+            "",
+            "Graphics sample series"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BatchCreatePerfSamplesRequest": {
+      "description": "The request must provide up to a maximum of 5000 samples to be created; a larger sample size will cause an INVALID_ARGUMENT error",
+      "id": "BatchCreatePerfSamplesRequest",
+      "properties": {
+        "perfSamples": {
+          "description": "The set of PerfSamples to create should not include existing timestamps",
+          "items": {
+            "$ref": "PerfSample"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "BatchCreatePerfSamplesResponse": {
+      "id": "BatchCreatePerfSamplesResponse",
+      "properties": {
+        "perfSamples": {
+          "items": {
+            "$ref": "PerfSample"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "BlankScreen": {
+      "description": "A warning that Robo encountered a screen that was mostly blank; this may indicate a problem with the app.",
+      "id": "BlankScreen",
+      "properties": {
+        "screenId": {
+          "description": "The screen id of the element",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CPUInfo": {
+      "id": "CPUInfo",
+      "properties": {
+        "cpuProcessor": {
+          "description": "description of the device processor ie '1.8 GHz hexa core 64-bit ARMv8-A'",
+          "type": "string"
+        },
+        "cpuSpeedInGhz": {
+          "description": "the CPU clock speed in GHz",
+          "format": "float",
+          "type": "number"
+        },
+        "numberOfCores": {
+          "description": "the number of CPU cores",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "CrashDialogError": {
+      "description": "Crash dialog was detected during the test execution",
+      "id": "CrashDialogError",
+      "properties": {
+        "crashPackage": {
+          "description": "The name of the package that caused the dialog.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DetectedAppSplashScreen": {
+      "description": "A notification that Robo detected a splash screen provided by app (vs. Android OS splash screen).",
+      "id": "DetectedAppSplashScreen",
+      "properties": {},
+      "type": "object"
+    },
+    "DeviceOutOfMemory": {
+      "description": "A warning that device ran out of memory",
+      "id": "DeviceOutOfMemory",
+      "properties": {},
+      "type": "object"
+    },
+    "Duration": {
+      "description": " A Duration represents a signed, fixed-length span of time represented as a count of seconds and fractions of seconds at nanosecond resolution. It is independent of any calendar and concepts like \"day\" or \"month\". It is related to Timestamp in that the difference between two Timestamp values is a Duration and it can be added or subtracted from a Timestamp. Range is approximately +-10,000 years.",
+      "id": "Duration",
+      "properties": {
+        "nanos": {
+          "description": "Signed fractions of a second at nanosecond resolution of the span of time. Durations less than one second are represented with a 0 `seconds` field and a positive or negative `nanos` field. For durations of one second or more, a non-zero value for the `nanos` field must be of the same sign as the `seconds` field. Must be from -999,999,999 to +999,999,999 inclusive.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "seconds": {
+          "description": "Signed seconds of the span of time. Must be from -315,576,000,000 to +315,576,000,000 inclusive. Note: these bounds are computed from: 60 sec/min * 60 min/hr * 24 hr/day * 365.25 days/year * 10000 years",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "EncounteredLoginScreen": {
+      "description": "Additional details about encountered login screens.",
+      "id": "EncounteredLoginScreen",
+      "properties": {
+        "distinctScreens": {
+          "description": "Number of encountered distinct login screens.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "screenIds": {
+          "description": "Subset of login screens.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "EncounteredNonAndroidUiWidgetScreen": {
+      "description": "Additional details about encountered screens with elements that are not Android UI widgets.",
+      "id": "EncounteredNonAndroidUiWidgetScreen",
+      "properties": {
+        "distinctScreens": {
+          "description": "Number of encountered distinct screens with non Android UI widgets.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "screenIds": {
+          "description": "Subset of screens which contain non Android UI widgets.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Environment": {
+      "description": "An Environment represents the set of test runs (Steps) from the parent Execution that are configured with the same set of dimensions (Model, Version, Locale, and Orientation). Multiple such runs occur particularly because of features like sharding (splitting up a test suite to run in parallel across devices) and reruns (running a test multiple times to check for different outcomes).",
+      "id": "Environment",
+      "properties": {
+        "completionTime": {
+          "$ref": "Timestamp",
+          "description": "Output only. The time when the Environment status was set to complete. This value will be set automatically when state transitions to COMPLETE."
+        },
+        "creationTime": {
+          "$ref": "Timestamp",
+          "description": "Output only. The time when the Environment was created."
+        },
+        "dimensionValue": {
+          "description": "Dimension values describing the environment. Dimension values always consist of \"Model\", \"Version\", \"Locale\", and \"Orientation\". - In response: always set - In create request: always set - In update request: never set",
+          "items": {
+            "$ref": "EnvironmentDimensionValueEntry"
+          },
+          "type": "array"
+        },
+        "displayName": {
+          "description": "A short human-readable name to display in the UI. Maximum of 100 characters. For example: Nexus 5, API 27.",
+          "type": "string"
+        },
+        "environmentId": {
+          "description": "Output only. An Environment id.",
+          "type": "string"
+        },
+        "environmentResult": {
+          "$ref": "MergedResult",
+          "description": "Merged result of the environment."
+        },
+        "executionId": {
+          "description": "Output only. An Execution id.",
+          "type": "string"
+        },
+        "historyId": {
+          "description": "Output only. A History id.",
+          "type": "string"
+        },
+        "projectId": {
+          "description": "Output only. A Project id.",
+          "type": "string"
+        },
+        "resultsStorage": {
+          "$ref": "ResultsStorage",
+          "description": "The location where output files are stored in the user bucket."
+        },
+        "shardSummaries": {
+          "description": "Output only. Summaries of shards. Only one shard will present unless sharding feature is enabled in TestExecutionService.",
+          "items": {
+            "$ref": "ShardSummary"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "EnvironmentDimensionValueEntry": {
+      "id": "EnvironmentDimensionValueEntry",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Execution": {
+      "description": "An Execution represents a collection of Steps. For instance, it could represent: - a mobile test executed across a range of device configurations - a jenkins job with a build step followed by a test step The maximum size of an execution message is 1 MiB. An Execution can be updated until its state is set to COMPLETE at which point it becomes immutable. Next tag: 16",
+      "id": "Execution",
+      "properties": {
+        "completionTime": {
+          "$ref": "Timestamp",
+          "description": "The time when the Execution status transitioned to COMPLETE. This value will be set automatically when state transitions to COMPLETE. - In response: set if the execution state is COMPLETE. - In create/update request: never set"
+        },
+        "creationTime": {
+          "$ref": "Timestamp",
+          "description": "The time when the Execution was created. This value will be set automatically when CreateExecution is called. - In response: always set - In create/update request: never set"
+        },
+        "dimensionDefinitions": {
+          "description": "The dimensions along which different steps in this execution may vary. This must remain fixed over the life of the execution. Returns INVALID_ARGUMENT if this field is set in an update request. Returns INVALID_ARGUMENT if the same name occurs in more than one dimension_definition. Returns INVALID_ARGUMENT if the size of the list is over 100. - In response: present if set by create - In create request: optional - In update request: never set",
+          "items": {
+            "$ref": "MatrixDimensionDefinition"
+          },
+          "type": "array"
+        },
+        "executionId": {
+          "description": "A unique identifier within a History for this Execution. Returns INVALID_ARGUMENT if this field is set or overwritten by the caller. - In response always set - In create/update request: never set",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "Outcome",
+          "description": "Classify the result, for example into SUCCESS or FAILURE - In response: present if set by create/update request - In create/update request: optional"
+        },
+        "specification": {
+          "$ref": "Specification",
+          "description": "Lightweight information about execution request. - In response: present if set by create - In create: optional - In update: optional"
+        },
+        "state": {
+          "description": "The initial state is IN_PROGRESS. The only legal state transitions is from IN_PROGRESS to COMPLETE. A PRECONDITION_FAILED will be returned if an invalid transition is requested. The state can only be set to COMPLETE once. A FAILED_PRECONDITION will be returned if the state is set to COMPLETE multiple times. If the state is set to COMPLETE, all the in-progress steps within the execution will be set as COMPLETE. If the outcome of the step is not set, the outcome will be set to INCONCLUSIVE. - In response always set - In create/update request: optional",
+          "enum": [
+            "unknownState",
+            "pending",
+            "inProgress",
+            "complete"
+          ],
+          "enumDescriptions": [
+            "Should never be in this state. Exists for proto deserialization backward compatibility.",
+            "The Execution/Step is created, ready to run, but not running yet. If an Execution/Step is created without initial state, it is assumed that the Execution/Step is in PENDING state.",
+            "The Execution/Step is in progress.",
+            "The finalized, immutable state. Steps/Executions in this state cannot be modified."
+          ],
+          "type": "string"
+        },
+        "testExecutionMatrixId": {
+          "description": "TestExecution Matrix ID that the TestExecutionService uses. - In response: present if set by create - In create: optional - In update: never set",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FailedToInstall": {
+      "description": "Failed to install the APK.",
+      "id": "FailedToInstall",
+      "properties": {},
+      "type": "object"
+    },
+    "FailureDetail": {
+      "description": "Details for an outcome with a FAILURE outcome summary.",
+      "id": "FailureDetail",
+      "properties": {
+        "crashed": {
+          "description": "If the failure was severe because the system (app) under test crashed.",
+          "type": "boolean"
+        },
+        "deviceOutOfMemory": {
+          "description": "If the device ran out of memory during a test, causing the test to crash.",
+          "type": "boolean"
+        },
+        "failedRoboscript": {
+          "description": "If the Roboscript failed to complete successfully, e.g., because a Roboscript action or assertion failed or a Roboscript action could not be matched during the entire crawl.",
+          "type": "boolean"
+        },
+        "notInstalled": {
+          "description": "If an app is not installed and thus no test can be run with the app. This might be caused by trying to run a test on an unsupported platform.",
+          "type": "boolean"
+        },
+        "otherNativeCrash": {
+          "description": "If a native process (including any other than the app) crashed.",
+          "type": "boolean"
+        },
+        "timedOut": {
+          "description": "If the test overran some time limit, and that is why it failed.",
+          "type": "boolean"
+        },
+        "unableToCrawl": {
+          "description": "If the robo was unable to crawl the app; perhaps because the app did not start.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "FatalException": {
+      "description": "Additional details for a fatal exception.",
+      "id": "FatalException",
+      "properties": {
+        "stackTrace": {
+          "$ref": "StackTrace",
+          "description": "The stack trace of the fatal exception. Optional."
+        }
+      },
+      "type": "object"
+    },
+    "FileReference": {
+      "description": "A reference to a file.",
+      "id": "FileReference",
+      "properties": {
+        "fileUri": {
+          "description": "The URI of a file stored in Google Cloud Storage. For example: http://storage.googleapis.com/mybucket/path/to/test.xml or in gsutil format: gs://mybucket/path/to/test.xml with version-specific info, gs://mybucket/path/to/test.xml#1360383693690000 An INVALID_ARGUMENT error will be returned if the URI format is not supported. - In response: always set - In create/update request: always set",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GraphicsStats": {
+      "description": "Graphics statistics for the App. The information is collected from 'adb shell dumpsys graphicsstats'. For more info see: https://developer.android.com/training/testing/performance.html Statistics will only be present for API 23+.",
+      "id": "GraphicsStats",
+      "properties": {
+        "buckets": {
+          "description": "Histogram of frame render times. There should be 154 buckets ranging from [5ms, 6ms) to [4950ms, infinity)",
+          "items": {
+            "$ref": "GraphicsStatsBucket"
+          },
+          "type": "array"
+        },
+        "highInputLatencyCount": {
+          "description": "Total \"high input latency\" events.",
+          "format": "int64",
+          "type": "string"
+        },
+        "jankyFrames": {
+          "description": "Total frames with slow render time. Should be <= total_frames.",
+          "format": "int64",
+          "type": "string"
+        },
+        "missedVsyncCount": {
+          "description": "Total \"missed vsync\" events.",
+          "format": "int64",
+          "type": "string"
+        },
+        "p50Millis": {
+          "description": "50th percentile frame render time in milliseconds.",
+          "format": "int64",
+          "type": "string"
+        },
+        "p90Millis": {
+          "description": "90th percentile frame render time in milliseconds.",
+          "format": "int64",
+          "type": "string"
+        },
+        "p95Millis": {
+          "description": "95th percentile frame render time in milliseconds.",
+          "format": "int64",
+          "type": "string"
+        },
+        "p99Millis": {
+          "description": "99th percentile frame render time in milliseconds.",
+          "format": "int64",
+          "type": "string"
+        },
+        "slowBitmapUploadCount": {
+          "description": "Total \"slow bitmap upload\" events.",
+          "format": "int64",
+          "type": "string"
+        },
+        "slowDrawCount": {
+          "description": "Total \"slow draw\" events.",
+          "format": "int64",
+          "type": "string"
+        },
+        "slowUiThreadCount": {
+          "description": "Total \"slow UI thread\" events.",
+          "format": "int64",
+          "type": "string"
+        },
+        "totalFrames": {
+          "description": "Total frames rendered by package.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GraphicsStatsBucket": {
+      "id": "GraphicsStatsBucket",
+      "properties": {
+        "frameCount": {
+          "description": "Number of frames in the bucket.",
+          "format": "int64",
+          "type": "string"
+        },
+        "renderMillis": {
+          "description": "Lower bound of render time in milliseconds.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "History": {
+      "description": "A History represents a sorted list of Executions ordered by the start_timestamp_millis field (descending). It can be used to group all the Executions of a continuous build. Note that the ordering only operates on one-dimension. If a repository has multiple branches, it means that multiple histories will need to be used in order to order Executions per branch.",
+      "id": "History",
+      "properties": {
+        "displayName": {
+          "description": "A short human-readable (plain text) name to display in the UI. Maximum of 100 characters. - In response: present if set during create. - In create request: optional",
+          "type": "string"
+        },
+        "historyId": {
+          "description": "A unique identifier within a project for this History. Returns INVALID_ARGUMENT if this field is set or overwritten by the caller. - In response always set - In create request: never set",
+          "type": "string"
+        },
+        "name": {
+          "description": "A name to uniquely identify a history within a project. Maximum of 200 characters. - In response always set - In create request: always set",
+          "type": "string"
+        },
+        "testPlatform": {
+          "description": "The platform of the test history. - In response: always set. Returns the platform of the last execution if unknown.",
+          "enum": [
+            "unknownPlatform",
+            "android",
+            "ios"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Image": {
+      "description": "An image, with a link to the main image and a thumbnail.",
+      "id": "Image",
+      "properties": {
+        "error": {
+          "$ref": "Status",
+          "description": "An error explaining why the thumbnail could not be rendered."
+        },
+        "sourceImage": {
+          "$ref": "ToolOutputReference",
+          "description": "A reference to the full-size, original image. This is the same as the tool_outputs entry for the image under its Step. Always set."
+        },
+        "stepId": {
+          "description": "The step to which the image is attached. Always set.",
+          "type": "string"
+        },
+        "thumbnail": {
+          "$ref": "Thumbnail",
+          "description": "The thumbnail."
+        }
+      },
+      "type": "object"
+    },
+    "InAppPurchasesFound": {
+      "description": "Additional details of in-app purchases encountered during the crawl.",
+      "id": "InAppPurchasesFound",
+      "properties": {
+        "inAppPurchasesFlowsExplored": {
+          "description": "The total number of in-app purchases flows explored: how many times the robo tries to buy a SKU.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "inAppPurchasesFlowsStarted": {
+          "description": "The total number of in-app purchases flows started.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "InconclusiveDetail": {
+      "description": "Details for an outcome with an INCONCLUSIVE outcome summary.",
+      "id": "InconclusiveDetail",
+      "properties": {
+        "abortedByUser": {
+          "description": "If the end user aborted the test execution before a pass or fail could be determined. For example, the user pressed ctrl-c which sent a kill signal to the test runner while the test was running.",
+          "type": "boolean"
+        },
+        "hasErrorLogs": {
+          "description": "If results are being provided to the user in certain cases of infrastructure failures",
+          "type": "boolean"
+        },
+        "infrastructureFailure": {
+          "description": "If the test runner could not determine success or failure because the test depends on a component other than the system under test which failed. For example, a mobile test requires provisioning a device where the test executes, and that provisioning can fail.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "IndividualOutcome": {
+      "description": "Step Id and outcome of each individual step that was run as a group with other steps with the same configuration.",
+      "id": "IndividualOutcome",
+      "properties": {
+        "multistepNumber": {
+          "description": "Unique int given to each step. Ranges from 0(inclusive) to total number of steps(exclusive). The primary step is 0.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "outcomeSummary": {
+          "enum": [
+            "unset",
+            "success",
+            "failure",
+            "inconclusive",
+            "skipped",
+            "flaky"
+          ],
+          "enumDescriptions": [
+            "Do not use. For proto versioning only.",
+            "The test matrix run was successful, for instance: - All the test cases passed. - Robo did not detect a crash of the application under test.",
+            "A run failed, for instance: - One or more test case failed. - A test timed out. - The application under test crashed.",
+            "Something unexpected happened. The run should still be considered unsuccessful but this is likely a transient problem and re-running the test might be successful.",
+            "All tests were skipped, for instance: - All device configurations were incompatible.",
+            "A group of steps that were run with the same configuration had both failure and success outcomes."
+          ],
+          "type": "string"
+        },
+        "runDuration": {
+          "$ref": "Duration",
+          "description": "How long it took for this step to run."
+        },
+        "stepId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "InsufficientCoverage": {
+      "description": "A warning that Robo did not crawl potentially important parts of the app.",
+      "id": "InsufficientCoverage",
+      "properties": {},
+      "type": "object"
+    },
+    "IosAppCrashed": {
+      "description": "Additional details for an iOS app crash.",
+      "id": "IosAppCrashed",
+      "properties": {
+        "stackTrace": {
+          "$ref": "StackTrace",
+          "description": "The stack trace, if one is available. Optional."
+        }
+      },
+      "type": "object"
+    },
+    "IosAppInfo": {
+      "description": "iOS app information",
+      "id": "IosAppInfo",
+      "properties": {
+        "name": {
+          "description": "The name of the app. Required",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "IosRoboTest": {
+      "description": "A Robo test for an iOS application.",
+      "id": "IosRoboTest",
+      "properties": {},
+      "type": "object"
+    },
+    "IosTest": {
+      "description": "A iOS mobile test specification",
+      "id": "IosTest",
+      "properties": {
+        "iosAppInfo": {
+          "$ref": "IosAppInfo",
+          "description": "Information about the application under test."
+        },
+        "iosRoboTest": {
+          "$ref": "IosRoboTest",
+          "description": "An iOS Robo test."
+        },
+        "iosTestLoop": {
+          "$ref": "IosTestLoop",
+          "description": "An iOS test loop."
+        },
+        "iosXcTest": {
+          "$ref": "IosXcTest",
+          "description": "An iOS XCTest."
+        },
+        "testTimeout": {
+          "$ref": "Duration",
+          "description": "Max time a test is allowed to run before it is automatically cancelled."
+        }
+      },
+      "type": "object"
+    },
+    "IosTestLoop": {
+      "description": "A game loop test of an iOS application.",
+      "id": "IosTestLoop",
+      "properties": {
+        "bundleId": {
+          "description": "Bundle ID of the app.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "IosXcTest": {
+      "description": "A test of an iOS application that uses the XCTest framework.",
+      "id": "IosXcTest",
+      "properties": {
+        "bundleId": {
+          "description": "Bundle ID of the app.",
+          "type": "string"
+        },
+        "xcodeVersion": {
+          "description": "Xcode version that the test was run with.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "LauncherActivityNotFound": {
+      "description": "Failed to find the launcher activity of an app.",
+      "id": "LauncherActivityNotFound",
+      "properties": {},
+      "type": "object"
+    },
+    "ListEnvironmentsResponse": {
+      "description": "Response message for EnvironmentService.ListEnvironments.",
+      "id": "ListEnvironmentsResponse",
+      "properties": {
+        "environments": {
+          "description": "Environments. Always set.",
+          "items": {
+            "$ref": "Environment"
+          },
+          "type": "array"
+        },
+        "executionId": {
+          "description": "A Execution id Always set.",
+          "type": "string"
+        },
+        "historyId": {
+          "description": "A History id. Always set.",
+          "type": "string"
+        },
+        "nextPageToken": {
+          "description": "A continuation token to resume the query at the next item. Will only be set if there are more Environments to fetch.",
+          "type": "string"
+        },
+        "projectId": {
+          "description": "A Project id. Always set.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListExecutionsResponse": {
+      "id": "ListExecutionsResponse",
+      "properties": {
+        "executions": {
+          "description": "Executions. Always set.",
+          "items": {
+            "$ref": "Execution"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A continuation token to resume the query at the next item. Will only be set if there are more Executions to fetch.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListHistoriesResponse": {
+      "description": "Response message for HistoryService.List",
+      "id": "ListHistoriesResponse",
+      "properties": {
+        "histories": {
+          "description": "Histories.",
+          "items": {
+            "$ref": "History"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A continuation token to resume the query at the next item. Will only be set if there are more histories to fetch. Tokens are valid for up to one hour from the time of the first list request. For instance, if you make a list request at 1PM and use the token from this first request 10 minutes later, the token from this second response will only be valid for 50 minutes.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListPerfSampleSeriesResponse": {
+      "id": "ListPerfSampleSeriesResponse",
+      "properties": {
+        "perfSampleSeries": {
+          "description": "The resulting PerfSampleSeries sorted by id",
+          "items": {
+            "$ref": "PerfSampleSeries"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListPerfSamplesResponse": {
+      "id": "ListPerfSamplesResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "Optional, returned if result size exceeds the page size specified in the request (or the default page size, 500, if unspecified). It indicates the last sample timestamp to be used as page_token in subsequent request",
+          "type": "string"
+        },
+        "perfSamples": {
+          "items": {
+            "$ref": "PerfSample"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListScreenshotClustersResponse": {
+      "id": "ListScreenshotClustersResponse",
+      "properties": {
+        "clusters": {
+          "description": "The set of clusters associated with an execution Always set",
+          "items": {
+            "$ref": "ScreenshotCluster"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListStepAccessibilityClustersResponse": {
+      "description": "Response message for AccessibilityService.ListStepAccessibilityClusters.",
+      "id": "ListStepAccessibilityClustersResponse",
+      "properties": {
+        "clusters": {
+          "description": "A sequence of accessibility suggestions, grouped into clusters. Within the sequence, clusters that belong to the same SuggestionCategory should be adjacent. Within each category, clusters should be ordered by their SuggestionPriority (ERRORs first). The categories should be ordered by their highest priority cluster.",
+          "items": {
+            "$ref": "SuggestionClusterProto"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "A full resource name of the step. For example, projects/my-project/histories/bh.1234567890abcdef/executions/ 1234567890123456789/steps/bs.1234567890abcdef Always presents.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListStepThumbnailsResponse": {
+      "description": "A response containing the thumbnails in a step.",
+      "id": "ListStepThumbnailsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A continuation token to resume the query at the next item. If set, indicates that there are more thumbnails to read, by calling list again with this value in the page_token field.",
+          "type": "string"
+        },
+        "thumbnails": {
+          "description": "A list of image data. Images are returned in a deterministic order; they are ordered by these factors, in order of importance: * First, by their associated test case. Images without a test case are considered greater than images with one. * Second, by their creation time. Images without a creation time are greater than images with one. * Third, by the order in which they were added to the step (by calls to CreateStep or UpdateStep).",
+          "items": {
+            "$ref": "Image"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListStepsResponse": {
+      "description": "Response message for StepService.List.",
+      "id": "ListStepsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A continuation token to resume the query at the next item. If set, indicates that there are more steps to read, by calling list again with this value in the page_token field.",
+          "type": "string"
+        },
+        "steps": {
+          "description": "Steps.",
+          "items": {
+            "$ref": "Step"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListTestCasesResponse": {
+      "description": "Response message for StepService.ListTestCases.",
+      "id": "ListTestCasesResponse",
+      "properties": {
+        "nextPageToken": {
+          "type": "string"
+        },
+        "testCases": {
+          "description": "List of test cases.",
+          "items": {
+            "$ref": "TestCase"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "LogcatCollectionError": {
+      "description": "A warning that there were issues in logcat collection.",
+      "id": "LogcatCollectionError",
+      "properties": {},
+      "type": "object"
+    },
+    "MatrixDimensionDefinition": {
+      "description": "One dimension of the matrix of different runs of a step.",
+      "id": "MatrixDimensionDefinition",
+      "properties": {},
+      "type": "object"
+    },
+    "MemoryInfo": {
+      "id": "MemoryInfo",
+      "properties": {
+        "memoryCapInKibibyte": {
+          "description": "Maximum memory that can be allocated to the process in KiB",
+          "format": "int64",
+          "type": "string"
+        },
+        "memoryTotalInKibibyte": {
+          "description": "Total memory available on the device in KiB",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "MergedResult": {
+      "description": "Merged test result for environment. If the environment has only one step (no reruns or shards), then the merged result is the same as the step result. If the environment has multiple shards and/or reruns, then the results of shards and reruns that belong to the same environment are merged into one environment result.",
+      "id": "MergedResult",
+      "properties": {
+        "outcome": {
+          "$ref": "Outcome",
+          "description": "Outcome of the resource"
+        },
+        "state": {
+          "description": "State of the resource",
+          "enum": [
+            "unknownState",
+            "pending",
+            "inProgress",
+            "complete"
+          ],
+          "enumDescriptions": [
+            "Should never be in this state. Exists for proto deserialization backward compatibility.",
+            "The Execution/Step is created, ready to run, but not running yet. If an Execution/Step is created without initial state, it is assumed that the Execution/Step is in PENDING state.",
+            "The Execution/Step is in progress.",
+            "The finalized, immutable state. Steps/Executions in this state cannot be modified."
+          ],
+          "type": "string"
+        },
+        "testSuiteOverviews": {
+          "description": "The combined and rolled-up result of each test suite that was run as part of this environment. Combining: When the test cases from a suite are run in different steps (sharding), the results are added back together in one overview. (e.g., if shard1 has 2 failures and shard2 has 1 failure than the overview failure_count = 3). Rollup: When test cases from the same suite are run multiple times (flaky), the results are combined (e.g., if testcase1.run1 fails, testcase1.run2 passes, and both testcase2.run1 and testcase2.run2 fail then the overview flaky_count = 1 and failure_count = 1).",
+          "items": {
+            "$ref": "TestSuiteOverview"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "MultiStep": {
+      "description": "Details when multiple steps are run with the same configuration as a group.",
+      "id": "MultiStep",
+      "properties": {
+        "multistepNumber": {
+          "description": "Unique int given to each step. Ranges from 0(inclusive) to total number of steps(exclusive). The primary step is 0.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "primaryStep": {
+          "$ref": "PrimaryStep",
+          "description": "Present if it is a primary (original) step."
+        },
+        "primaryStepId": {
+          "description": "Step Id of the primary (original) step, which might be this step.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "NativeCrash": {
+      "description": "Additional details for a native crash.",
+      "id": "NativeCrash",
+      "properties": {
+        "stackTrace": {
+          "$ref": "StackTrace",
+          "description": "The stack trace of the native crash. Optional."
+        }
+      },
+      "type": "object"
+    },
+    "NonSdkApi": {
+      "description": "A non-sdk API and examples of it being called along with other metadata See https://developer.android.com/distribute/best-practices/develop/restrictions-non-sdk-interfaces",
+      "id": "NonSdkApi",
+      "properties": {
+        "apiSignature": {
+          "description": "The signature of the Non-SDK API",
+          "type": "string"
+        },
+        "exampleStackTraces": {
+          "description": "Example stack traces of this API being called.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "insights": {
+          "description": "Optional debugging insights for non-SDK API violations.",
+          "items": {
+            "$ref": "NonSdkApiInsight"
+          },
+          "type": "array"
+        },
+        "invocationCount": {
+          "description": "The total number of times this API was observed to have been called.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "list": {
+          "description": "Which list this API appears on",
+          "enum": [
+            "NONE",
+            "WHITE",
+            "BLACK",
+            "GREY",
+            "GREY_MAX_O",
+            "GREY_MAX_P",
+            "GREY_MAX_Q",
+            "GREY_MAX_R"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "NonSdkApiInsight": {
+      "description": "Non-SDK API insights (to address debugging solutions).",
+      "id": "NonSdkApiInsight",
+      "properties": {
+        "exampleTraceMessages": {
+          "description": "Optional sample stack traces, for which this insight applies (there should be at least one).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "matcherId": {
+          "description": "A unique ID, to be used for determining the effectiveness of this particular insight in the context of a matcher. (required)",
+          "type": "string"
+        },
+        "pendingGoogleUpdateInsight": {
+          "$ref": "PendingGoogleUpdateInsight",
+          "description": "An insight indicating that the hidden API usage originates from a Google-provided library."
+        },
+        "upgradeInsight": {
+          "$ref": "UpgradeInsight",
+          "description": "An insight indicating that the hidden API usage originates from the use of a library that needs to be upgraded."
+        }
+      },
+      "type": "object"
+    },
+    "NonSdkApiUsageViolation": {
+      "description": "Additional details for a non-sdk API usage violation.",
+      "id": "NonSdkApiUsageViolation",
+      "properties": {
+        "apiSignatures": {
+          "description": "Signatures of a subset of those hidden API's.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "uniqueApis": {
+          "description": "Total number of unique hidden API's accessed.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "NonSdkApiUsageViolationReport": {
+      "description": "Contains a summary and examples of non-sdk API usage violations.",
+      "id": "NonSdkApiUsageViolationReport",
+      "properties": {
+        "exampleApis": {
+          "description": "Examples of the detected API usages.",
+          "items": {
+            "$ref": "NonSdkApi"
+          },
+          "type": "array"
+        },
+        "minSdkVersion": {
+          "description": "Minimum API level required for the application to run.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "targetSdkVersion": {
+          "description": "Specifies the API Level on which the application is designed to run.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "uniqueApis": {
+          "description": "Total number of unique Non-SDK API's accessed.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Outcome": {
+      "description": "Interprets a result so that humans and machines can act on it.",
+      "id": "Outcome",
+      "properties": {
+        "failureDetail": {
+          "$ref": "FailureDetail",
+          "description": "More information about a FAILURE outcome. Returns INVALID_ARGUMENT if this field is set but the summary is not FAILURE. Optional"
+        },
+        "inconclusiveDetail": {
+          "$ref": "InconclusiveDetail",
+          "description": "More information about an INCONCLUSIVE outcome. Returns INVALID_ARGUMENT if this field is set but the summary is not INCONCLUSIVE. Optional"
+        },
+        "skippedDetail": {
+          "$ref": "SkippedDetail",
+          "description": "More information about a SKIPPED outcome. Returns INVALID_ARGUMENT if this field is set but the summary is not SKIPPED. Optional"
+        },
+        "successDetail": {
+          "$ref": "SuccessDetail",
+          "description": "More information about a SUCCESS outcome. Returns INVALID_ARGUMENT if this field is set but the summary is not SUCCESS. Optional"
+        },
+        "summary": {
+          "description": "The simplest way to interpret a result. Required",
+          "enum": [
+            "unset",
+            "success",
+            "failure",
+            "inconclusive",
+            "skipped",
+            "flaky"
+          ],
+          "enumDescriptions": [
+            "Do not use. For proto versioning only.",
+            "The test matrix run was successful, for instance: - All the test cases passed. - Robo did not detect a crash of the application under test.",
+            "A run failed, for instance: - One or more test case failed. - A test timed out. - The application under test crashed.",
+            "Something unexpected happened. The run should still be considered unsuccessful but this is likely a transient problem and re-running the test might be successful.",
+            "All tests were skipped, for instance: - All device configurations were incompatible.",
+            "A group of steps that were run with the same configuration had both failure and success outcomes."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "OverlappingUIElements": {
+      "description": "A warning that Robo encountered a screen that has overlapping clickable elements; this may indicate a potential UI issue.",
+      "id": "OverlappingUIElements",
+      "properties": {
+        "resourceName": {
+          "description": "Resource names of the overlapping screen elements",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "screenId": {
+          "description": "The screen id of the elements",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PendingGoogleUpdateInsight": {
+      "description": "This insight indicates that the hidden API usage originates from a Google-provided library. Users need not take any action.",
+      "id": "PendingGoogleUpdateInsight",
+      "properties": {
+        "nameOfGoogleLibrary": {
+          "description": "The name of the Google-provided library with the non-SDK API dependency.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PerfEnvironment": {
+      "description": "Encapsulates performance environment info",
+      "id": "PerfEnvironment",
+      "properties": {
+        "cpuInfo": {
+          "$ref": "CPUInfo",
+          "description": "CPU related environment info"
+        },
+        "memoryInfo": {
+          "$ref": "MemoryInfo",
+          "description": "Memory related environment info"
+        }
+      },
+      "type": "object"
+    },
+    "PerfMetricsSummary": {
+      "description": "A summary of perf metrics collected and performance environment info",
+      "id": "PerfMetricsSummary",
+      "properties": {
+        "appStartTime": {
+          "$ref": "AppStartTime"
+        },
+        "executionId": {
+          "description": "A tool results execution ID. @OutputOnly",
+          "type": "string"
+        },
+        "graphicsStats": {
+          "$ref": "GraphicsStats",
+          "description": "Graphics statistics for the entire run. Statistics are reset at the beginning of the run and collected at the end of the run."
+        },
+        "historyId": {
+          "description": "A tool results history ID. @OutputOnly",
+          "type": "string"
+        },
+        "perfEnvironment": {
+          "$ref": "PerfEnvironment",
+          "description": "Describes the environment in which the performance metrics were collected"
+        },
+        "perfMetrics": {
+          "description": "Set of resource collected",
+          "items": {
+            "enum": [
+              "perfMetricTypeUnspecified",
+              "memory",
+              "cpu",
+              "network",
+              "graphics"
+            ],
+            "enumDescriptions": [
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "projectId": {
+          "description": "The cloud project @OutputOnly",
+          "type": "string"
+        },
+        "stepId": {
+          "description": "A tool results step ID. @OutputOnly",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PerfSample": {
+      "description": "Resource representing a single performance measure or data point",
+      "id": "PerfSample",
+      "properties": {
+        "sampleTime": {
+          "$ref": "Timestamp",
+          "description": "Timestamp of collection."
+        },
+        "value": {
+          "description": "Value observed",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "PerfSampleSeries": {
+      "description": "Resource representing a collection of performance samples (or data points)",
+      "id": "PerfSampleSeries",
+      "properties": {
+        "basicPerfSampleSeries": {
+          "$ref": "BasicPerfSampleSeries",
+          "description": "Basic series represented by a line chart"
+        },
+        "executionId": {
+          "description": "A tool results execution ID. @OutputOnly",
+          "type": "string"
+        },
+        "historyId": {
+          "description": "A tool results history ID. @OutputOnly",
+          "type": "string"
+        },
+        "projectId": {
+          "description": "The cloud project @OutputOnly",
+          "type": "string"
+        },
+        "sampleSeriesId": {
+          "description": "A sample series id @OutputOnly",
+          "type": "string"
+        },
+        "stepId": {
+          "description": "A tool results step ID. @OutputOnly",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PerformedGoogleLogin": {
+      "description": "A notification that Robo signed in with Google.",
+      "id": "PerformedGoogleLogin",
+      "properties": {},
+      "type": "object"
+    },
+    "PerformedMonkeyActions": {
+      "description": "A notification that Robo performed some monkey actions.",
+      "id": "PerformedMonkeyActions",
+      "properties": {
+        "totalActions": {
+          "description": "The total number of monkey actions performed during the crawl.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "PrimaryStep": {
+      "description": "Stores rollup test status of multiple steps that were run as a group and outcome of each individual step.",
+      "id": "PrimaryStep",
+      "properties": {
+        "individualOutcome": {
+          "description": "Step Id and outcome of each individual step.",
+          "items": {
+            "$ref": "IndividualOutcome"
+          },
+          "type": "array"
+        },
+        "rollUp": {
+          "description": "Rollup test status of multiple steps that were run with the same configuration as a group.",
+          "enum": [
+            "unset",
+            "success",
+            "failure",
+            "inconclusive",
+            "skipped",
+            "flaky"
+          ],
+          "enumDescriptions": [
+            "Do not use. For proto versioning only.",
+            "The test matrix run was successful, for instance: - All the test cases passed. - Robo did not detect a crash of the application under test.",
+            "A run failed, for instance: - One or more test case failed. - A test timed out. - The application under test crashed.",
+            "Something unexpected happened. The run should still be considered unsuccessful but this is likely a transient problem and re-running the test might be successful.",
+            "All tests were skipped, for instance: - All device configurations were incompatible.",
+            "A group of steps that were run with the same configuration had both failure and success outcomes."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ProjectSettings": {
+      "description": "Per-project settings for the Tool Results service.",
+      "id": "ProjectSettings",
+      "properties": {
+        "defaultBucket": {
+          "description": "The name of the Google Cloud Storage bucket to which results are written. By default, this is unset. In update request: optional In response: optional",
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of the project's settings. Always of the form: projects/{project-id}/settings In update request: never set In response: always set",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PublishXunitXmlFilesRequest": {
+      "description": "Request message for StepService.PublishXunitXmlFiles.",
+      "id": "PublishXunitXmlFilesRequest",
+      "properties": {
+        "xunitXmlFiles": {
+          "description": "URI of the Xunit XML files to publish. The maximum size of the file this reference is pointing to is 50MB. Required.",
+          "items": {
+            "$ref": "FileReference"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "RegionProto": {
+      "description": "A rectangular region.",
+      "id": "RegionProto",
+      "properties": {
+        "heightPx": {
+          "description": "The height, in pixels. Always set.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "leftPx": {
+          "description": "The left side of the rectangle, in pixels. Always set.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "topPx": {
+          "description": "The top of the rectangle, in pixels. Always set.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "widthPx": {
+          "description": "The width, in pixels. Always set.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ResultsStorage": {
+      "description": "The storage for test results.",
+      "id": "ResultsStorage",
+      "properties": {
+        "resultsStoragePath": {
+          "$ref": "FileReference",
+          "description": "The root directory for test results."
+        },
+        "xunitXmlFile": {
+          "$ref": "FileReference",
+          "description": "The path to the Xunit XML file."
+        }
+      },
+      "type": "object"
+    },
+    "RoboScriptExecution": {
+      "description": "Execution stats for a user-provided Robo script.",
+      "id": "RoboScriptExecution",
+      "properties": {
+        "successfulActions": {
+          "description": "The number of Robo script actions executed successfully.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "totalActions": {
+          "description": "The total number of actions in the Robo script.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "SafeHtmlProto": {
+      "description": "IMPORTANT: It is unsafe to accept this message from an untrusted source, since it's trivial for an attacker to forge serialized messages that don't fulfill the type's safety contract -- for example, it could contain attacker controlled script. A system which receives a SafeHtmlProto implicitly trusts the producer of the SafeHtmlProto. So, it's generally safe to return this message in RPC responses, but generally unsafe to accept it in RPC requests.",
+      "id": "SafeHtmlProto",
+      "properties": {
+        "privateDoNotAccessOrElseSafeHtmlWrappedValue": {
+          "description": "IMPORTANT: Never set or read this field, even from tests, it is private. See documentation at the top of .proto file for programming language packages with which to create or read this message.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Screen": {
+      "id": "Screen",
+      "properties": {
+        "fileReference": {
+          "description": "File reference of the png file. Required.",
+          "type": "string"
+        },
+        "locale": {
+          "description": "Locale of the device that the screenshot was taken on. Required.",
+          "type": "string"
+        },
+        "model": {
+          "description": "Model of the device that the screenshot was taken on. Required.",
+          "type": "string"
+        },
+        "version": {
+          "description": "OS version of the device that the screenshot was taken on. Required.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ScreenshotCluster": {
+      "id": "ScreenshotCluster",
+      "properties": {
+        "activity": {
+          "description": "A string that describes the activity of every screen in the cluster.",
+          "type": "string"
+        },
+        "clusterId": {
+          "description": "A unique identifier for the cluster. @OutputOnly",
+          "type": "string"
+        },
+        "keyScreen": {
+          "$ref": "Screen",
+          "description": "A singular screen that represents the cluster as a whole. This screen will act as the \"cover\" of the entire cluster. When users look at the clusters, only the key screen from each cluster will be shown. Which screen is the key screen is determined by the ClusteringAlgorithm"
+        },
+        "screens": {
+          "description": "Full list of screens.",
+          "items": {
+            "$ref": "Screen"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ShardSummary": {
+      "description": "Result summary for a shard in an environment.",
+      "id": "ShardSummary",
+      "properties": {
+        "runs": {
+          "description": "Summaries of the steps belonging to the shard. With flaky_test_attempts enabled from TestExecutionService, more than one run (Step) can present. And the runs will be sorted by multistep_number.",
+          "items": {
+            "$ref": "StepSummary"
+          },
+          "type": "array"
+        },
+        "shardResult": {
+          "$ref": "MergedResult",
+          "description": "Merged result of the shard."
+        }
+      },
+      "type": "object"
+    },
+    "SkippedDetail": {
+      "description": "Details for an outcome with a SKIPPED outcome summary.",
+      "id": "SkippedDetail",
+      "properties": {
+        "incompatibleAppVersion": {
+          "description": "If the App doesn't support the specific API level.",
+          "type": "boolean"
+        },
+        "incompatibleArchitecture": {
+          "description": "If the App doesn't run on the specific architecture, for example, x86.",
+          "type": "boolean"
+        },
+        "incompatibleDevice": {
+          "description": "If the requested OS version doesn't run on the specific device model.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Specification": {
+      "description": "The details about how to run the execution.",
+      "id": "Specification",
+      "properties": {
+        "androidTest": {
+          "$ref": "AndroidTest",
+          "description": "An Android mobile test execution specification."
+        },
+        "iosTest": {
+          "$ref": "IosTest",
+          "description": "An iOS mobile test execution specification."
+        }
+      },
+      "type": "object"
+    },
+    "StackTrace": {
+      "description": "A stacktrace.",
+      "id": "StackTrace",
+      "properties": {
+        "exception": {
+          "description": "The stack trace message. Required",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "StartActivityNotFound": {
+      "description": "User provided intent failed to resolve to an activity.",
+      "id": "StartActivityNotFound",
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "uri": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Status": {
+      "description": "The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).",
+      "id": "Status",
+      "properties": {
+        "code": {
+          "description": "The status code, which should be an enum value of google.rpc.Code.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "details": {
+          "description": "A list of messages that carry the error details. There is a common set of message types for APIs to use.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "message": {
+          "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the google.rpc.Status.details field, or localized by the client.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Step": {
+      "description": "A Step represents a single operation performed as part of Execution. A step can be used to represent the execution of a tool ( for example a test runner execution or an execution of a compiler). Steps can overlap (for instance two steps might have the same start time if some operations are done in parallel). Here is an example, let's consider that we have a continuous build is executing a test runner for each iteration. The workflow would look like: - user creates a Execution with id 1 - user creates a TestExecutionStep with id 100 for Execution 1 - user update TestExecutionStep with id 100 to add a raw xml log + the service parses the xml logs and returns a TestExecutionStep with updated TestResult(s). - user update the status of TestExecutionStep with id 100 to COMPLETE A Step can be updated until its state is set to COMPLETE at which points it becomes immutable. Next tag: 27",
+      "id": "Step",
+      "properties": {
+        "completionTime": {
+          "$ref": "Timestamp",
+          "description": "The time when the step status was set to complete. This value will be set automatically when state transitions to COMPLETE. - In response: set if the execution state is COMPLETE. - In create/update request: never set"
+        },
+        "creationTime": {
+          "$ref": "Timestamp",
+          "description": "The time when the step was created. - In response: always set - In create/update request: never set"
+        },
+        "description": {
+          "description": "A description of this tool For example: mvn clean package -D skipTests=true - In response: present if set by create/update request - In create/update request: optional",
+          "type": "string"
+        },
+        "deviceUsageDuration": {
+          "$ref": "Duration",
+          "description": "How much the device resource is used to perform the test. This is the device usage used for billing purpose, which is different from the run_duration, for example, infrastructure failure won't be charged for device usage. PRECONDITION_FAILED will be returned if one attempts to set a device_usage on a step which already has this field set. - In response: present if previously set. - In create request: optional - In update request: optional"
+        },
+        "dimensionValue": {
+          "description": "If the execution containing this step has any dimension_definition set, then this field allows the child to specify the values of the dimensions. The keys must exactly match the dimension_definition of the execution. For example, if the execution has `dimension_definition = ['attempt', 'device']` then a step must define values for those dimensions, eg. `dimension_value = ['attempt': '1', 'device': 'Nexus 6']` If a step does not participate in one dimension of the matrix, the value for that dimension should be empty string. For example, if one of the tests is executed by a runner which does not support retries, the step could have `dimension_value = ['attempt': '', 'device': 'Nexus 6']` If the step does not participate in any dimensions of the matrix, it may leave dimension_value unset. A PRECONDITION_FAILED will be returned if any of the keys do not exist in the dimension_definition of the execution. A PRECONDITION_FAILED will be returned if another step in this execution already has the same name and dimension_value, but differs on other data fields, for example, step field is different. A PRECONDITION_FAILED will be returned if dimension_value is set, and there is a dimension_definition in the execution which is not specified as one of the keys. - In response: present if set by create - In create request: optional - In update request: never set",
+          "items": {
+            "$ref": "StepDimensionValueEntry"
+          },
+          "type": "array"
+        },
+        "hasImages": {
+          "description": "Whether any of the outputs of this step are images whose thumbnails can be fetched with ListThumbnails. - In response: always set - In create/update request: never set",
+          "type": "boolean"
+        },
+        "labels": {
+          "description": "Arbitrary user-supplied key/value pairs that are associated with the step. Users are responsible for managing the key namespace such that keys don't accidentally collide. An INVALID_ARGUMENT will be returned if the number of labels exceeds 100 or if the length of any of the keys or values exceeds 100 characters. - In response: always set - In create request: optional - In update request: optional; any new key/value pair will be added to the map, and any new value for an existing key will update that key's value",
+          "items": {
+            "$ref": "StepLabelsEntry"
+          },
+          "type": "array"
+        },
+        "multiStep": {
+          "$ref": "MultiStep",
+          "description": "Details when multiple steps are run with the same configuration as a group. These details can be used identify which group this step is part of. It also identifies the groups 'primary step' which indexes all the group members. - In response: present if previously set. - In create request: optional, set iff this step was performed more than once. - In update request: optional"
+        },
+        "name": {
+          "description": "A short human-readable name to display in the UI. Maximum of 100 characters. For example: Clean build A PRECONDITION_FAILED will be returned upon creating a new step if it shares its name and dimension_value with an existing step. If two steps represent a similar action, but have different dimension values, they should share the same name. For instance, if the same set of tests is run on two different platforms, the two steps should have the same name. - In response: always set - In create request: always set - In update request: never set",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "Outcome",
+          "description": "Classification of the result, for example into SUCCESS or FAILURE - In response: present if set by create/update request - In create/update request: optional"
+        },
+        "runDuration": {
+          "$ref": "Duration",
+          "description": "How long it took for this step to run. If unset, this is set to the difference between creation_time and completion_time when the step is set to the COMPLETE state. In some cases, it is appropriate to set this value separately: For instance, if a step is created, but the operation it represents is queued for a few minutes before it executes, it would be appropriate not to include the time spent queued in its run_duration. PRECONDITION_FAILED will be returned if one attempts to set a run_duration on a step which already has this field set. - In response: present if previously set; always present on COMPLETE step - In create request: optional - In update request: optional"
+        },
+        "state": {
+          "description": "The initial state is IN_PROGRESS. The only legal state transitions are * IN_PROGRESS -> COMPLETE A PRECONDITION_FAILED will be returned if an invalid transition is requested. It is valid to create Step with a state set to COMPLETE. The state can only be set to COMPLETE once. A PRECONDITION_FAILED will be returned if the state is set to COMPLETE multiple times. - In response: always set - In create/update request: optional",
+          "enum": [
+            "unknownState",
+            "pending",
+            "inProgress",
+            "complete"
+          ],
+          "enumDescriptions": [
+            "Should never be in this state. Exists for proto deserialization backward compatibility.",
+            "The Execution/Step is created, ready to run, but not running yet. If an Execution/Step is created without initial state, it is assumed that the Execution/Step is in PENDING state.",
+            "The Execution/Step is in progress.",
+            "The finalized, immutable state. Steps/Executions in this state cannot be modified."
+          ],
+          "type": "string"
+        },
+        "stepId": {
+          "description": "A unique identifier within a Execution for this Step. Returns INVALID_ARGUMENT if this field is set or overwritten by the caller. - In response: always set - In create/update request: never set",
+          "type": "string"
+        },
+        "testExecutionStep": {
+          "$ref": "TestExecutionStep",
+          "description": "An execution of a test runner."
+        },
+        "toolExecutionStep": {
+          "$ref": "ToolExecutionStep",
+          "description": "An execution of a tool (used for steps we don't explicitly support)."
+        }
+      },
+      "type": "object"
+    },
+    "StepDimensionValueEntry": {
+      "id": "StepDimensionValueEntry",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "StepLabelsEntry": {
+      "id": "StepLabelsEntry",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "StepSummary": {
+      "description": "Lightweight summary of a step within this execution.",
+      "id": "StepSummary",
+      "properties": {},
+      "type": "object"
+    },
+    "SuccessDetail": {
+      "description": "Details for an outcome with a SUCCESS outcome summary. LINT.IfChange",
+      "id": "SuccessDetail",
+      "properties": {
+        "otherNativeCrash": {
+          "description": "If a native process other than the app crashed.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "SuggestionClusterProto": {
+      "description": "A set of similar suggestions that we suspect are closely related. This proto and most of the nested protos are branched from foxandcrown.prelaunchreport.service.SuggestionClusterProto, replacing PLR's dependencies with FTL's.",
+      "id": "SuggestionClusterProto",
+      "properties": {
+        "category": {
+          "description": "Category in which these types of suggestions should appear. Always set.",
+          "enum": [
+            "unknownCategory",
+            "contentLabeling",
+            "touchTargetSize",
+            "lowContrast",
+            "implementation"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
+        "suggestions": {
+          "description": "A sequence of suggestions. All of the suggestions within a cluster must have the same SuggestionPriority and belong to the same SuggestionCategory. Suggestions with the same screenshot URL should be adjacent.",
+          "items": {
+            "$ref": "SuggestionProto"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "SuggestionProto": {
+      "id": "SuggestionProto",
+      "properties": {
+        "helpUrl": {
+          "description": "Reference to a help center article concerning this type of suggestion. Always set.",
+          "type": "string"
+        },
+        "longMessage": {
+          "$ref": "SafeHtmlProto",
+          "description": "Message, in the user's language, explaining the suggestion, which may contain markup. Always set."
+        },
+        "priority": {
+          "description": "Relative importance of a suggestion. Always set.",
+          "enum": [
+            "unknownPriority",
+            "error",
+            "warning",
+            "info"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
+        "pseudoResourceId": {
+          "description": "A somewhat human readable identifier of the source view, if it does not have a resource_name. This is a path within the accessibility hierarchy, an element with resource name; similar to an XPath.",
+          "type": "string"
+        },
+        "region": {
+          "$ref": "RegionProto",
+          "description": "Region within the screenshot that is relevant to this suggestion. Optional."
+        },
+        "resourceName": {
+          "description": "Reference to a view element, identified by its resource name, if it has one.",
+          "type": "string"
+        },
+        "screenId": {
+          "description": "ID of the screen for the suggestion. It is used for getting the corresponding screenshot path. For example, screen_id \"1\" corresponds to \"1.png\" file in GCS. Always set.",
+          "type": "string"
+        },
+        "secondaryPriority": {
+          "description": "Relative importance of a suggestion as compared with other suggestions that have the same priority and category. This is a meaningless value that can be used to order suggestions that are in the same category and have the same priority. The larger values have higher priority (i.e., are more important). Optional.",
+          "format": "double",
+          "type": "number"
+        },
+        "shortMessage": {
+          "$ref": "SafeHtmlProto",
+          "description": "Concise message, in the user's language, representing the suggestion, which may contain markup. Always set."
+        },
+        "title": {
+          "description": "General title for the suggestion, in the user's language, without markup. Always set.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TestCase": {
+      "id": "TestCase",
+      "properties": {
+        "elapsedTime": {
+          "$ref": "Duration",
+          "description": "The elapsed run time of the test case. Required."
+        },
+        "endTime": {
+          "$ref": "Timestamp",
+          "description": "The end time of the test case."
+        },
+        "skippedMessage": {
+          "description": "Why the test case was skipped. Present only for skipped test case",
+          "type": "string"
+        },
+        "stackTraces": {
+          "description": "The stack trace details if the test case failed or encountered an error. The maximum size of the stack traces is 100KiB, beyond which the stack track will be truncated. Zero if the test case passed.",
+          "items": {
+            "$ref": "StackTrace"
+          },
+          "type": "array"
+        },
+        "startTime": {
+          "$ref": "Timestamp",
+          "description": "The start time of the test case."
+        },
+        "status": {
+          "description": "The status of the test case. Required.",
+          "enum": [
+            "passed",
+            "failed",
+            "error",
+            "skipped",
+            "flaky"
+          ],
+          "enumDescriptions": [
+            "Test passed.",
+            "Test failed.",
+            "Test encountered an error",
+            "Test skipped",
+            "Test flaked. Present only for rollup test cases; test cases from steps that were run with the same configuration had both failure and success outcomes."
+          ],
+          "type": "string"
+        },
+        "testCaseId": {
+          "description": "A unique identifier within a Step for this Test Case.",
+          "type": "string"
+        },
+        "testCaseReference": {
+          "$ref": "TestCaseReference",
+          "description": "Test case reference, e.g. name, class name and test suite name. Required."
+        },
+        "toolOutputs": {
+          "description": "References to opaque files of any format output by the tool execution. @OutputOnly",
+          "items": {
+            "$ref": "ToolOutputReference"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "TestCaseReference": {
+      "description": "A reference to a test case. Test case references are canonically ordered lexicographically by these three factors: * First, by test_suite_name. * Second, by class_name. * Third, by name.",
+      "id": "TestCaseReference",
+      "properties": {
+        "className": {
+          "description": "The name of the class.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of the test case. Required.",
+          "type": "string"
+        },
+        "testSuiteName": {
+          "description": "The name of the test suite to which this test case belongs.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TestExecutionStep": {
+      "description": "A step that represents running tests. It accepts ant-junit xml files which will be parsed into structured test results by the service. Xml file paths are updated in order to append more files, however they can't be deleted. Users can also add test results manually by using the test_result field.",
+      "id": "TestExecutionStep",
+      "properties": {
+        "testIssues": {
+          "description": "Issues observed during the test execution. For example, if the mobile app under test crashed during the test, the error message and the stack trace content can be recorded here to assist debugging. - In response: present if set by create or update - In create/update request: optional",
+          "items": {
+            "$ref": "TestIssue"
+          },
+          "type": "array"
+        },
+        "testSuiteOverviews": {
+          "description": "List of test suite overview contents. This could be parsed from xUnit XML log by server, or uploaded directly by user. This references should only be called when test suites are fully parsed or uploaded. The maximum allowed number of test suite overviews per step is 1000. - In response: always set - In create request: optional - In update request: never (use publishXunitXmlFiles custom method instead)",
+          "items": {
+            "$ref": "TestSuiteOverview"
+          },
+          "type": "array"
+        },
+        "testTiming": {
+          "$ref": "TestTiming",
+          "description": "The timing break down of the test execution. - In response: present if set by create or update - In create/update request: optional"
+        },
+        "toolExecution": {
+          "$ref": "ToolExecution",
+          "description": "Represents the execution of the test runner. The exit code of this tool will be used to determine if the test passed. - In response: always set - In create/update request: optional"
+        }
+      },
+      "type": "object"
+    },
+    "TestIssue": {
+      "description": "An issue detected occurring during a test execution.",
+      "id": "TestIssue",
+      "properties": {
+        "category": {
+          "description": "Category of issue. Required.",
+          "enum": [
+            "unspecifiedCategory",
+            "common",
+            "robo"
+          ],
+          "enumDescriptions": [
+            "Default unspecified category. Do not use. For versioning only.",
+            "Issue is not specific to a particular test kind (e.g., a native crash).",
+            "Issue is specific to Robo run."
+          ],
+          "type": "string"
+        },
+        "errorMessage": {
+          "description": "A brief human-readable message describing the issue. Required.",
+          "type": "string"
+        },
+        "severity": {
+          "description": "Severity of issue. Required.",
+          "enum": [
+            "unspecifiedSeverity",
+            "info",
+            "suggestion",
+            "warning",
+            "severe"
+          ],
+          "enumDescriptions": [
+            "Default unspecified severity. Do not use. For versioning only.",
+            "Non critical issue, providing users with some info about the test run.",
+            "Non critical issue, providing users with some hints on improving their testing experience, e.g., suggesting to use Game Loops.",
+            "Potentially critical issue.",
+            "Critical issue."
+          ],
+          "type": "string"
+        },
+        "stackTrace": {
+          "$ref": "StackTrace",
+          "description": "Deprecated in favor of stack trace fields inside specific warnings."
+        },
+        "type": {
+          "description": "Type of issue. Required.",
+          "enum": [
+            "unspecifiedType",
+            "fatalException",
+            "nativeCrash",
+            "anr",
+            "unusedRoboDirective",
+            "compatibleWithOrchestrator",
+            "launcherActivityNotFound",
+            "startActivityNotFound",
+            "incompleteRoboScriptExecution",
+            "completeRoboScriptExecution",
+            "failedToInstall",
+            "availableDeepLinks",
+            "nonSdkApiUsageViolation",
+            "nonSdkApiUsageReport",
+            "encounteredNonAndroidUiWidgetScreen",
+            "encounteredLoginScreen",
+            "performedGoogleLogin",
+            "iosException",
+            "iosCrash",
+            "performedMonkeyActions",
+            "usedRoboDirective",
+            "usedRoboIgnoreDirective",
+            "insufficientCoverage",
+            "inAppPurchases",
+            "crashDialogError",
+            "uiElementsTooDeep",
+            "blankScreen",
+            "overlappingUiElements",
+            "unityException",
+            "deviceOutOfMemory",
+            "logcatCollectionError",
+            "detectedAppSplashScreen"
+          ],
+          "enumDescriptions": [
+            "Default unspecified type. Do not use. For versioning only.",
+            "Issue is a fatal exception.",
+            "Issue is a native crash.",
+            "Issue is an ANR crash.",
+            "Issue is an unused robo directive.",
+            "Issue is a suggestion to use orchestrator.",
+            "Issue with finding a launcher activity",
+            "Issue with resolving a user-provided intent to start an activity",
+            "A Robo script was not fully executed.",
+            "A Robo script was fully and successfully executed.",
+            "The APK failed to install.",
+            "The app-under-test has deep links, but none were provided to Robo.",
+            "App accessed a non-sdk Api.",
+            "App accessed a non-sdk Api (new detailed report)",
+            "Robo crawl encountered at least one screen with elements that are not Android UI widgets.",
+            "Robo crawl encountered at least one probable login screen.",
+            "Robo signed in with Google.",
+            "iOS App crashed with an exception.",
+            "iOS App crashed without an exception (e.g. killed).",
+            "Robo crawl involved performing some monkey actions.",
+            "Robo crawl used a Robo directive.",
+            "Robo crawl used a Robo directive to ignore an UI element.",
+            "Robo did not crawl some potentially important parts of the app.",
+            "Robo crawl involved some in-app purchases.",
+            "Crash dialog was detected during the test execution",
+            "UI element depth is greater than the threshold",
+            "Blank screen is found in the Robo crawl",
+            "Overlapping UI elements are found in the Robo crawl",
+            "An uncaught Unity exception was detected (these don't crash apps).",
+            "Device running out of memory was detected",
+            "Problems detected while collecting logcat",
+            "Robo detected a splash screen provided by app (vs. Android OS splash screen)."
+          ],
+          "type": "string"
+        },
+        "warning": {
+          "$ref": "Any",
+          "description": "Warning message with additional details of the issue. Should always be a message from com.google.devtools.toolresults.v1.warnings"
+        }
+      },
+      "type": "object"
+    },
+    "TestSuiteOverview": {
+      "description": "A summary of a test suite result either parsed from XML or uploaded directly by a user. Note: the API related comments are for StepService only. This message is also being used in ExecutionService in a read only mode for the corresponding step.",
+      "id": "TestSuiteOverview",
+      "properties": {
+        "elapsedTime": {
+          "$ref": "Duration",
+          "description": "Elapsed time of test suite."
+        },
+        "errorCount": {
+          "description": "Number of test cases in error, typically set by the service by parsing the xml_source. - In create/response: always set - In update request: never",
+          "format": "int32",
+          "type": "integer"
+        },
+        "failureCount": {
+          "description": "Number of failed test cases, typically set by the service by parsing the xml_source. May also be set by the user. - In create/response: always set - In update request: never",
+          "format": "int32",
+          "type": "integer"
+        },
+        "flakyCount": {
+          "description": "Number of flaky test cases, set by the service by rolling up flaky test attempts. Present only for rollup test suite overview at environment level. A step cannot have flaky test cases.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "name": {
+          "description": "The name of the test suite. - In create/response: always set - In update request: never",
+          "type": "string"
+        },
+        "skippedCount": {
+          "description": "Number of test cases not run, typically set by the service by parsing the xml_source. - In create/response: always set - In update request: never",
+          "format": "int32",
+          "type": "integer"
+        },
+        "totalCount": {
+          "description": "Number of test cases, typically set by the service by parsing the xml_source. - In create/response: always set - In update request: never",
+          "format": "int32",
+          "type": "integer"
+        },
+        "xmlSource": {
+          "$ref": "FileReference",
+          "description": "If this test suite was parsed from XML, this is the URI where the original XML file is stored. Note: Multiple test suites can share the same xml_source Returns INVALID_ARGUMENT if the uri format is not supported. - In create/response: optional - In update request: never"
+        }
+      },
+      "type": "object"
+    },
+    "TestTiming": {
+      "description": "Testing timing break down to know phases.",
+      "id": "TestTiming",
+      "properties": {
+        "testProcessDuration": {
+          "$ref": "Duration",
+          "description": "How long it took to run the test process. - In response: present if previously set. - In create/update request: optional"
+        }
+      },
+      "type": "object"
+    },
+    "Thumbnail": {
+      "description": "A single thumbnail, with its size and format.",
+      "id": "Thumbnail",
+      "properties": {
+        "contentType": {
+          "description": "The thumbnail's content type, i.e. \"image/png\". Always set.",
+          "type": "string"
+        },
+        "data": {
+          "description": "The thumbnail file itself. That is, the bytes here are precisely the bytes that make up the thumbnail file; they can be served as an image as-is (with the appropriate content type.) Always set.",
+          "format": "byte",
+          "type": "string"
+        },
+        "heightPx": {
+          "description": "The height of the thumbnail, in pixels. Always set.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "widthPx": {
+          "description": "The width of the thumbnail, in pixels. Always set.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Timestamp": {
+      "description": "A Timestamp represents a point in time independent of any time zone or local calendar, encoded as a count of seconds and fractions of seconds at nanosecond resolution. The count is relative to an epoch at UTC midnight on January 1, 1970, in the proleptic Gregorian calendar which extends the Gregorian calendar backwards to year one. All minutes are 60 seconds long. Leap seconds are \"smeared\" so that no leap second table is needed for interpretation, using a [24-hour linear smear](https://developers.google.com/time/smear). The range is from 0001-01-01T00:00:00Z to 9999-12-31T23:59:59.999999999Z. By restricting to that range, we ensure that we can convert to and from [RFC 3339](https://www.ietf.org/rfc/rfc3339.txt) date strings.",
+      "id": "Timestamp",
+      "properties": {
+        "nanos": {
+          "description": "Non-negative fractions of a second at nanosecond resolution. Negative second values with fractions must still have non-negative nanos values that count forward in time. Must be from 0 to 999,999,999 inclusive.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "seconds": {
+          "description": "Represents seconds of UTC time since Unix epoch 1970-01-01T00:00:00Z. Must be from 0001-01-01T00:00:00Z to 9999-12-31T23:59:59Z inclusive.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ToolExecution": {
+      "description": "An execution of an arbitrary tool. It could be a test runner or a tool copying artifacts or deploying code.",
+      "id": "ToolExecution",
+      "properties": {
+        "commandLineArguments": {
+          "description": "The full tokenized command line including the program name (equivalent to argv in a C program). - In response: present if set by create request - In create request: optional - In update request: never set",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "exitCode": {
+          "$ref": "ToolExitCode",
+          "description": "Tool execution exit code. This field will be set once the tool has exited. - In response: present if set by create/update request - In create request: optional - In update request: optional, a FAILED_PRECONDITION error will be returned if an exit_code is already set."
+        },
+        "toolLogs": {
+          "description": "References to any plain text logs output the tool execution. This field can be set before the tool has exited in order to be able to have access to a live view of the logs while the tool is running. The maximum allowed number of tool logs per step is 1000. - In response: present if set by create/update request - In create request: optional - In update request: optional, any value provided will be appended to the existing list",
+          "items": {
+            "$ref": "FileReference"
+          },
+          "type": "array"
+        },
+        "toolOutputs": {
+          "description": "References to opaque files of any format output by the tool execution. The maximum allowed number of tool outputs per step is 1000. - In response: present if set by create/update request - In create request: optional - In update request: optional, any value provided will be appended to the existing list",
+          "items": {
+            "$ref": "ToolOutputReference"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ToolExecutionStep": {
+      "description": "Generic tool step to be used for binaries we do not explicitly support. For example: running cp to copy artifacts from one location to another.",
+      "id": "ToolExecutionStep",
+      "properties": {
+        "toolExecution": {
+          "$ref": "ToolExecution",
+          "description": "A Tool execution. - In response: present if set by create/update request - In create/update request: optional"
+        }
+      },
+      "type": "object"
+    },
+    "ToolExitCode": {
+      "description": "Exit code from a tool execution.",
+      "id": "ToolExitCode",
+      "properties": {
+        "number": {
+          "description": "Tool execution exit code. A value of 0 means that the execution was successful. - In response: always set - In create/update request: always set",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ToolOutputReference": {
+      "description": "A reference to a ToolExecution output file.",
+      "id": "ToolOutputReference",
+      "properties": {
+        "creationTime": {
+          "$ref": "Timestamp",
+          "description": "The creation time of the file. - In response: present if set by create/update request - In create/update request: optional"
+        },
+        "output": {
+          "$ref": "FileReference",
+          "description": "A FileReference to an output file. - In response: always set - In create/update request: always set"
+        },
+        "testCase": {
+          "$ref": "TestCaseReference",
+          "description": "The test case to which this output file belongs. - In response: present if set by create/update request - In create/update request: optional"
+        }
+      },
+      "type": "object"
+    },
+    "UIElementTooDeep": {
+      "description": "A warning that the screen hierarchy is deeper than the recommended threshold.",
+      "id": "UIElementTooDeep",
+      "properties": {
+        "depth": {
+          "description": "The depth of the screen element",
+          "format": "int32",
+          "type": "integer"
+        },
+        "screenId": {
+          "description": "The screen id of the element",
+          "type": "string"
+        },
+        "screenStateId": {
+          "description": "The screen state id of the element",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "UnspecifiedWarning": {
+      "description": "Default unspecified warning.",
+      "id": "UnspecifiedWarning",
+      "properties": {},
+      "type": "object"
+    },
+    "UnusedRoboDirective": {
+      "description": "Additional details of an unused robodirective.",
+      "id": "UnusedRoboDirective",
+      "properties": {
+        "resourceName": {
+          "description": "The name of the resource that was unused.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "UpgradeInsight": {
+      "description": "This insight is a recommendation to upgrade a given library to the specified version, in order to avoid dependencies on non-SDK APIs.",
+      "id": "UpgradeInsight",
+      "properties": {
+        "packageName": {
+          "description": "The name of the package to be upgraded.",
+          "type": "string"
+        },
+        "upgradeToVersion": {
+          "description": "The suggested version to upgrade to. Optional: In case we are not sure which version solves this problem",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "UsedRoboDirective": {
+      "description": "Additional details of a used Robo directive.",
+      "id": "UsedRoboDirective",
+      "properties": {
+        "resourceName": {
+          "description": "The name of the resource that was used.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "UsedRoboIgnoreDirective": {
+      "description": "Additional details of a used Robo directive with an ignore action. Note: This is a different scenario than unused directive.",
+      "id": "UsedRoboIgnoreDirective",
+      "properties": {
+        "resourceName": {
+          "description": "The name of the resource that was ignored.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Cloud Tool Results API",
+  "version": "v1beta3"
+}

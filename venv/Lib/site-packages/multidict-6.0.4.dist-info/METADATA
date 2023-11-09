@@ -1,0 +1,130 @@
+Metadata-Version: 2.1
+Name: multidict
+Version: 6.0.4
+Summary: multidict implementation
+Home-page: https://github.com/aio-libs/multidict
+Author: Andrew Svetlov
+Author-email: andrew.svetlov@gmail.com
+License: Apache 2
+Project-URL: Chat: Gitter, https://gitter.im/aio-libs/Lobby
+Project-URL: CI: GitHub, https://github.com/aio-libs/multidict/actions
+Project-URL: Coverage: codecov, https://codecov.io/github/aio-libs/multidict
+Project-URL: Docs: RTD, https://multidict.readthedocs.io
+Project-URL: GitHub: issues, https://github.com/aio-libs/multidict/issues
+Project-URL: GitHub: repo, https://github.com/aio-libs/multidict
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Development Status :: 5 - Production/Stable
+Requires-Python: >=3.7
+License-File: LICENSE
+
+=========
+multidict
+=========
+
+.. image:: https://github.com/aio-libs/multidict/workflows/CI/badge.svg
+   :target: https://github.com/aio-libs/multidict/actions?query=workflow%3ACI
+   :alt: GitHub status for master branch
+
+.. image:: https://codecov.io/gh/aio-libs/multidict/branch/master/graph/badge.svg
+   :target: https://codecov.io/gh/aio-libs/multidict
+   :alt: Coverage metrics
+
+.. image:: https://img.shields.io/pypi/v/multidict.svg
+   :target: https://pypi.org/project/multidict
+   :alt: PyPI
+
+.. image:: https://readthedocs.org/projects/multidict/badge/?version=latest
+   :target: http://multidict.readthedocs.org/en/latest/?badge=latest
+   :alt: Documentationb
+
+.. image:: https://img.shields.io/pypi/pyversions/multidict.svg
+   :target: https://pypi.org/project/multidict
+   :alt: Python versions
+
+.. image:: https://badges.gitter.im/Join%20Chat.svg
+   :target: https://gitter.im/aio-libs/Lobby
+   :alt: Chat on Gitter
+
+Multidict is dict-like collection of *key-value pairs* where key
+might occur more than once in the container.
+
+Introduction
+------------
+
+*HTTP Headers* and *URL query string* require specific data structure:
+*multidict*. It behaves mostly like a regular ``dict`` but it may have
+several *values* for the same *key* and *preserves insertion ordering*.
+
+The *key* is ``str`` (or ``istr`` for case-insensitive dictionaries).
+
+``multidict`` has four multidict classes:
+``MultiDict``, ``MultiDictProxy``, ``CIMultiDict``
+and ``CIMultiDictProxy``.
+
+Immutable proxies (``MultiDictProxy`` and
+``CIMultiDictProxy``) provide a dynamic view for the
+proxied multidict, the view reflects underlying collection changes. They
+implement the ``collections.abc.Mapping`` interface.
+
+Regular mutable (``MultiDict`` and ``CIMultiDict``) classes
+implement ``collections.abc.MutableMapping`` and allows them to change
+their own content.
+
+
+*Case insensitive* (``CIMultiDict`` and
+``CIMultiDictProxy``) assume the *keys* are case
+insensitive, e.g.::
+
+   >>> dct = CIMultiDict(key='val')
+   >>> 'Key' in dct
+   True
+   >>> dct['Key']
+   'val'
+
+*Keys* should be ``str`` or ``istr`` instances.
+
+The library has optional C Extensions for speed.
+
+
+License
+-------
+
+Apache 2
+
+Library Installation
+--------------------
+
+.. code-block:: bash
+
+   $ pip install multidict
+
+The library is Python 3 only!
+
+PyPI contains binary wheels for Linux, Windows and MacOS.  If you want to install
+``multidict`` on another operating system (or *Alpine Linux* inside a Docker) the
+tarball will be used to compile the library from source.  It requires a C compiler and
+Python headers to be installed.
+
+To skip the compilation, please use the `MULTIDICT_NO_EXTENSIONS` environment variable,
+e.g.:
+
+.. code-block:: bash
+
+   $ MULTIDICT_NO_EXTENSIONS=1 pip install multidict
+
+Please note, the pure Python (uncompiled) version is about 20-50 times slower depending on
+the usage scenario!!!
+
+
+
+Changelog
+---------
+See `RTD page <http://multidict.readthedocs.org/en/latest/changes.html>`_.

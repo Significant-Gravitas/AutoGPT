@@ -1,0 +1,38 @@
+<HTML>
+<BODY>
+
+<H1>
+  <MARQUEE NAME="Marquee1" DIRECTION=LEFT BEHAVIOR=SCROLL SCROLLAMOUNT=10 SCROLLDELAY=200
+  >Python ActiveX Scripting Demonstation
+  </MARQUEE> 
+</H1>
+
+<p>Congratulations on installing the Python ActiveX Scripting Engine</p>
+
+<p>Be warned that there is a <a href="http://starship.python.net/crew/mhammond/win32/PrivacyProblem.html">privacy
+concern</a> with this engine.  Please read this information, including how to disable the feature.</p>
+
+
+<H3>Object model</H3>
+<P>Except as described below, the object module exposed should be similar to that exposed
+by Visual Basic, etc.  Due to the nature of ActiveX Scripting, the details for each
+host are different, but Python should work "correctly".
+
+<P>The object model exposed via Python for MSIE is not as seamless as VB.  The biggest limitation is 
+the concept of a "local" namespace.  For example, in VB, you can
+code <code>text="Hi there"</code>, but in Python, you must code 
+<code>MyForm.ThisButton.Text="Hi There"</code>.  See the <A HREF="foo2.htm">foo2</A> sample 
+for futher details.
+
+<H3>Known bugs and problems</H3>
+<UL>
+<LI><P>This release seems to have broken Aaron's mouse-trace sample.  No idea why, and Im supposed to be looking into it.
+<LI><P>Builtin objects such as MARQUEE are giving me grief.  Objects accessed via forms are generally
+no problem.
+<LI><P>If you are trying to use Python with the Windows Scripting Host, note that
+.pys files are not correct registered - you will need to explicitely
+specify either cscript.exe or wscript.exe on the command line.
+</UL>
+
+</BODY></HTML>
+

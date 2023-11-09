@@ -1,0 +1,42 @@
+<HTML>
+<H1>Engine Registration</H1>
+
+<BODY>
+
+<p>The Python ActiveX Scripting Engine is not currently registered.<p>
+
+<p>Due to a <a href="http://starship.python.net/crew/mhammond/win32/PrivacyProblem.html">privacy
+concern</a> discovered in the engine, the use of Python inside IE has been disabled.</p>
+
+Before any of the supplied demos will work, the engine must be successfully registered.
+
+<P>To install a version of the engine, that does work with IE, you can execute the Python program 
+<CODE>win32com\axscript\client\pyscript_rexec.py</CODE> must be run.  You can either do this manually, or follow the instructions below.</p>
+
+<H2>Register the engine now!</H2>
+
+<p>If you have read about the <a href="http://starship.python.net/crew/mhammond/win32/PrivacyProblem.html">privacy
+concern</a> and still wish to register the engine, just follow the process outlined below:</p>
+<OL>
+  <LI>Click on the link below
+  <LI><B>A dialog will be presented asking if the file should be opened or saved to disk.  Select "Open it".</B>
+  <LI>A Console program will briefly open, while the server is registered.
+</OL>
+
+<P><A HREF="..\..\..\client\pyscript_rexec.py">Register the engine now</A>
+
+<H2>Checking the registration</H2>
+After the registration is complete, simply hit the Reload button.  If the 
+registration was successful, the page will change to the Python/AvtiveX Demo Page.
+
+
+<SCRIPT LANGUAGE="Python">
+try:
+	window.open("demo_intro.htm", "Body")
+except:
+	history.back()
+</SCRIPT>
+</BODY></HTML>
+
+
+

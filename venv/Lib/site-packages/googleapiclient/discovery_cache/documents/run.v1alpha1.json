@@ -1,0 +1,1286 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "See, edit, configure, and delete your Google Cloud data and see the email address for your Google Account."
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://run.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Cloud Run",
+  "description": "Deploy and manage user provided container images that scale automatically based on incoming requests. The Cloud Run Admin API v1 follows the Knative Serving API specification, while v2 is aligned with Google Cloud AIP-based API standards, as described in https://google.aip.dev/.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://cloud.google.com/run/",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "run:v1alpha1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://run.mtls.googleapis.com/",
+  "name": "run",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "namespaces": {
+      "resources": {
+        "jobs": {
+          "methods": {
+            "create": {
+              "description": "Create a job.",
+              "flatPath": "apis/run.googleapis.com/v1alpha1/namespaces/{namespacesId}/jobs",
+              "httpMethod": "POST",
+              "id": "run.namespaces.jobs.create",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "parent": {
+                  "description": "Required. The namespace in which the job should be created. Replace {namespace_id} with the project ID or number.",
+                  "location": "path",
+                  "pattern": "^namespaces/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "apis/run.googleapis.com/v1alpha1/{+parent}/jobs",
+              "request": {
+                "$ref": "Job"
+              },
+              "response": {
+                "$ref": "Job"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "delete": {
+              "description": "Delete a job.",
+              "flatPath": "apis/run.googleapis.com/v1alpha1/namespaces/{namespacesId}/jobs/{jobsId}",
+              "httpMethod": "DELETE",
+              "id": "run.namespaces.jobs.delete",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "apiVersion": {
+                  "description": "Optional. Cloud Run currently ignores this parameter.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "Optional. Cloud Run currently ignores this parameter.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "Required. The name of the job to delete. For Cloud Run (fully managed), replace {namespace_id} with the project ID or number.",
+                  "location": "path",
+                  "pattern": "^namespaces/[^/]+/jobs/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                },
+                "propagationPolicy": {
+                  "description": "Optional. Specifies the propagation policy of delete. Cloud Run currently ignores this setting, and deletes in the background. Please see kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/ for more information.",
+                  "location": "query",
+                  "type": "string"
+                }
+              },
+              "path": "apis/run.googleapis.com/v1alpha1/{+name}",
+              "response": {
+                "$ref": "Empty"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "get": {
+              "description": "Get information about a job.",
+              "flatPath": "apis/run.googleapis.com/v1alpha1/namespaces/{namespacesId}/jobs/{jobsId}",
+              "httpMethod": "GET",
+              "id": "run.namespaces.jobs.get",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "Required. The name of the job to retrieve. For Cloud Run (fully managed), replace {namespace_id} with the project ID or number.",
+                  "location": "path",
+                  "pattern": "^namespaces/[^/]+/jobs/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "apis/run.googleapis.com/v1alpha1/{+name}",
+              "response": {
+                "$ref": "Job"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "list": {
+              "description": "List jobs.",
+              "flatPath": "apis/run.googleapis.com/v1alpha1/namespaces/{namespacesId}/jobs",
+              "httpMethod": "GET",
+              "id": "run.namespaces.jobs.list",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "continue": {
+                  "description": "Optional. Optional encoded string to continue paging.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "fieldSelector": {
+                  "description": "Optional. Allows to filter resources based on a specific value for a field name. Send this in a query string format. i.e. 'metadata.name%3Dlorem'. Not currently used by Cloud Run.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "includeUninitialized": {
+                  "description": "Optional. Not currently used by Cloud Run.",
+                  "location": "query",
+                  "type": "boolean"
+                },
+                "labelSelector": {
+                  "description": "Optional. Allows to filter resources based on a label. Supported operations are =, !=, exists, in, and notIn.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "limit": {
+                  "description": "Optional. The maximum number of records that should be returned.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "parent": {
+                  "description": "Required. The namespace from which the jobs should be listed. Replace {namespace_id} with the project ID or number.",
+                  "location": "path",
+                  "pattern": "^namespaces/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                },
+                "resourceVersion": {
+                  "description": "Optional. The baseline resource version from which the list or watch operation should start. Not currently used by Cloud Run.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "watch": {
+                  "description": "Optional. Flag that indicates that the client expects to watch this resource as well. Not currently used by Cloud Run.",
+                  "location": "query",
+                  "type": "boolean"
+                }
+              },
+              "path": "apis/run.googleapis.com/v1alpha1/{+parent}/jobs",
+              "response": {
+                "$ref": "ListJobsResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20220710",
+  "rootUrl": "https://run.googleapis.com/",
+  "schemas": {
+    "ConfigMapEnvSource": {
+      "description": "Not supported by Cloud Run ConfigMapEnvSource selects a ConfigMap to populate the environment variables with. The contents of the target ConfigMap's Data field will represent the key-value pairs as environment variables.",
+      "id": "ConfigMapEnvSource",
+      "properties": {
+        "localObjectReference": {
+          "$ref": "LocalObjectReference",
+          "description": "This field should not be used directly as it is meant to be inlined directly into the message. Use the \"name\" field instead."
+        },
+        "name": {
+          "description": "The ConfigMap to select from.",
+          "type": "string"
+        },
+        "optional": {
+          "description": "(Optional) Specify whether the ConfigMap must be defined",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigMapKeySelector": {
+      "description": "Not supported by Cloud Run Selects a key from a ConfigMap.",
+      "id": "ConfigMapKeySelector",
+      "properties": {
+        "key": {
+          "description": "The key to select.",
+          "type": "string"
+        },
+        "localObjectReference": {
+          "$ref": "LocalObjectReference",
+          "description": "This field should not be used directly as it is meant to be inlined directly into the message. Use the \"name\" field instead."
+        },
+        "name": {
+          "description": "The ConfigMap to select from.",
+          "type": "string"
+        },
+        "optional": {
+          "description": "(Optional) Specify whether the ConfigMap or its key must be defined",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigMapVolumeSource": {
+      "description": "Not supported by Cloud Run Adapts a ConfigMap into a volume. The contents of the target ConfigMap's Data field will be presented in a volume as files using the keys in the Data field as the file names, unless the items element is populated with specific mappings of keys to paths.",
+      "id": "ConfigMapVolumeSource",
+      "properties": {
+        "defaultMode": {
+          "description": "(Optional) Integer representation of mode bits to use on created files by default. Must be a value between 01 and 0777 (octal). If 0 or not set, it will default to 0644. Directories within the path are not affected by this setting. Notes * Internally, a umask of 0222 will be applied to any non-zero value. * This is an integer representation of the mode bits. So, the octal integer value should look exactly as the chmod numeric notation with a leading zero. Some examples: for chmod 777 (a=rwx), set to 0777 (octal) or 511 (base-10). For chmod 640 (u=rw,g=r), set to 0640 (octal) or 416 (base-10). For chmod 755 (u=rwx,g=rx,o=rx), set to 0755 (octal) or 493 (base-10). * This might be in conflict with other options that affect the file mode, like fsGroup, and the result can be other mode bits set.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "items": {
+          "description": "(Optional) If unspecified, each key-value pair in the Data field of the referenced Secret will be projected into the volume as a file whose name is the key and content is the value. If specified, the listed keys will be projected into the specified paths, and unlisted keys will not be present. If a key is specified that is not present in the Secret, the volume setup will error unless it is marked optional.",
+          "items": {
+            "$ref": "KeyToPath"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Name of the config.",
+          "type": "string"
+        },
+        "optional": {
+          "description": "(Optional) Specify whether the Secret or its keys must be defined.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Container": {
+      "description": "A single application container. This specifies both the container to run, the command to run in the container and the arguments to supply to it. Note that additional arguments may be supplied by the system to the container at runtime.",
+      "id": "Container",
+      "properties": {
+        "args": {
+          "description": "(Optional) Arguments to the entrypoint. The docker image's CMD is used if this is not provided. Variable references $(VAR_NAME) are expanded using the container's environment. If a variable cannot be resolved, the reference in the input string will be unchanged. The $(VAR_NAME) syntax can be escaped with a double $$, ie: $$(VAR_NAME). Escaped references will never be expanded, regardless of whether the variable exists or not. More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "env": {
+          "description": "(Optional) List of environment variables to set in the container.",
+          "items": {
+            "$ref": "EnvVar"
+          },
+          "type": "array"
+        },
+        "envFrom": {
+          "description": "(Optional) List of sources to populate environment variables in the container. The keys defined within a source must be a C_IDENTIFIER. All invalid keys will be reported as an event when the container is starting. When a key exists in multiple sources, the value associated with the last source will take precedence. Values defined by an Env with a duplicate key will take precedence. Cannot be updated.",
+          "items": {
+            "$ref": "EnvFromSource"
+          },
+          "type": "array"
+        },
+        "image": {
+          "description": "Only supports containers from Google Container Registry or Artifact Registry URL of the Container image. More info: https://kubernetes.io/docs/concepts/containers/images",
+          "type": "string"
+        },
+        "imagePullPolicy": {
+          "description": "(Optional) Image pull policy. One of Always, Never, IfNotPresent. Defaults to Always if :latest tag is specified, or IfNotPresent otherwise. More info: https://kubernetes.io/docs/concepts/containers/images#updating-images",
+          "type": "string"
+        },
+        "livenessProbe": {
+          "$ref": "Probe",
+          "description": "(Optional) Periodic probe of container liveness. Container will be restarted if the probe fails. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes"
+        },
+        "name": {
+          "description": "(Optional) Name of the container specified as a DNS_LABEL. Currently unused in Cloud Run. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-label-names",
+          "type": "string"
+        },
+        "ports": {
+          "description": "(Optional) List of ports to expose from the container. Only a single port can be specified. The specified ports must be listening on all interfaces (0.0.0.0) within the container to be accessible. If omitted, a port number will be chosen and passed to the container through the PORT environment variable for the container to listen on.",
+          "items": {
+            "$ref": "ContainerPort"
+          },
+          "type": "array"
+        },
+        "readinessProbe": {
+          "$ref": "Probe",
+          "description": "(Optional) Periodic probe of container service readiness. Container will be removed from service endpoints if the probe fails. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes"
+        },
+        "resources": {
+          "$ref": "ResourceRequirements",
+          "description": "(Optional) Compute Resources required by this container. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources"
+        },
+        "securityContext": {
+          "$ref": "SecurityContext",
+          "description": "(Optional) Security options the pod should run with. More info: https://kubernetes.io/docs/concepts/policy/security-context/ More info: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/"
+        },
+        "startupProbe": {
+          "$ref": "Probe",
+          "description": "(Optional) Startup probe of application within the container. All other probes are disabled if a startup probe is provided, until it succeeds. Container will not be added to service endpoints if the probe fails. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes"
+        },
+        "terminationMessagePath": {
+          "description": "(Optional) Path at which the file to which the container's termination message will be written is mounted into the container's filesystem. Message written is intended to be brief final status, such as an assertion failure message. Will be truncated by the node if greater than 4096 bytes. The total message length across all containers will be limited to 12kb. Defaults to /dev/termination-log.",
+          "type": "string"
+        },
+        "terminationMessagePolicy": {
+          "description": "(Optional) Indicate how the termination message should be populated. File will use the contents of terminationMessagePath to populate the container status message on both success and failure. FallbackToLogsOnError will use the last chunk of container log output if the termination message file is empty and the container exited with an error. The log output is limited to 2048 bytes or 80 lines, whichever is smaller. Defaults to File. Cannot be updated.",
+          "type": "string"
+        },
+        "volumeMounts": {
+          "description": "(Optional) Volume to mount into the container's filesystem. Only supports SecretVolumeSources. Pod volumes to mount into the container's filesystem.",
+          "items": {
+            "$ref": "VolumeMount"
+          },
+          "type": "array"
+        },
+        "workingDir": {
+          "description": "(Optional) Container's working directory. If not specified, the container runtime's default will be used, which might be configured in the container image.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ContainerPort": {
+      "description": "ContainerPort represents a network port in a single container.",
+      "id": "ContainerPort",
+      "properties": {
+        "containerPort": {
+          "description": "(Optional) Port number the container listens on. This must be a valid port number, 0 < x < 65536.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "name": {
+          "description": "(Optional) If specified, used to specify which protocol to use. Allowed values are \"http1\" and \"h2c\".",
+          "type": "string"
+        },
+        "protocol": {
+          "description": "(Optional) Protocol for port. Must be \"TCP\". Defaults to \"TCP\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Empty": {
+      "description": "A generic empty message that you can re-use to avoid defining duplicated empty messages in your APIs. A typical example is to use it as the request or the response type of an API method. For instance: service Foo { rpc Bar(google.protobuf.Empty) returns (google.protobuf.Empty); }",
+      "id": "Empty",
+      "properties": {},
+      "type": "object"
+    },
+    "EnvFromSource": {
+      "description": "Not supported by Cloud Run EnvFromSource represents the source of a set of ConfigMaps",
+      "id": "EnvFromSource",
+      "properties": {
+        "configMapRef": {
+          "$ref": "ConfigMapEnvSource",
+          "description": "(Optional) The ConfigMap to select from"
+        },
+        "prefix": {
+          "description": "(Optional) An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.",
+          "type": "string"
+        },
+        "secretRef": {
+          "$ref": "SecretEnvSource",
+          "description": "(Optional) The Secret to select from"
+        }
+      },
+      "type": "object"
+    },
+    "EnvVar": {
+      "description": "EnvVar represents an environment variable present in a Container.",
+      "id": "EnvVar",
+      "properties": {
+        "name": {
+          "description": "Name of the environment variable. Must be a C_IDENTIFIER.",
+          "type": "string"
+        },
+        "value": {
+          "description": "(Optional) Variable references $(VAR_NAME) are expanded using the previous defined environment variables in the container and any route environment variables. If a variable cannot be resolved, the reference in the input string will be unchanged. The $(VAR_NAME) syntax can be escaped with a double $$, ie: $$(VAR_NAME). Escaped references will never be expanded, regardless of whether the variable exists or not. Defaults to \"\".",
+          "type": "string"
+        },
+        "valueFrom": {
+          "$ref": "EnvVarSource",
+          "description": "(Optional) Source for the environment variable's value. Only supports secret_key_ref. Source for the environment variable's value. Cannot be used if value is not empty."
+        }
+      },
+      "type": "object"
+    },
+    "EnvVarSource": {
+      "description": "EnvVarSource represents a source for the value of an EnvVar.",
+      "id": "EnvVarSource",
+      "properties": {
+        "configMapKeyRef": {
+          "$ref": "ConfigMapKeySelector",
+          "description": "(Optional) Not supported by Cloud Run Selects a key of a ConfigMap."
+        },
+        "secretKeyRef": {
+          "$ref": "SecretKeySelector",
+          "description": "(Optional) Selects a key (version) of a secret in Secret Manager."
+        }
+      },
+      "type": "object"
+    },
+    "ExecAction": {
+      "description": "Not supported by Cloud Run ExecAction describes a \"run in container\" action.",
+      "id": "ExecAction",
+      "properties": {
+        "command": {
+          "description": "(Optional) Command is the command line to execute inside the container, the working directory for the command is root ('/') in the container's filesystem. The command is simply exec'd, it is not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use a shell, you need to explicitly call out to that shell. Exit status of 0 is treated as live/healthy and non-zero is unhealthy.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GRPCAction": {
+      "description": "Not supported by Cloud Run GRPCAction describes an action involving a GRPC port.",
+      "id": "GRPCAction",
+      "properties": {
+        "port": {
+          "description": "Port number of the gRPC service. Number must be in the range 1 to 65535.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "service": {
+          "description": "Service is the name of the service to place in the gRPC HealthCheckRequest (see https://github.com/grpc/grpc/blob/master/doc/health-checking.md). If this is not specified, the default behavior is defined by gRPC.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleRpcStatus": {
+      "description": "The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).",
+      "id": "GoogleRpcStatus",
+      "properties": {
+        "code": {
+          "description": "The status code, which should be an enum value of google.rpc.Code.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "details": {
+          "description": "A list of messages that carry the error details. There is a common set of message types for APIs to use.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "message": {
+          "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the google.rpc.Status.details field, or localized by the client.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "HTTPGetAction": {
+      "description": "Not supported by Cloud Run HTTPGetAction describes an action based on HTTP Get requests.",
+      "id": "HTTPGetAction",
+      "properties": {
+        "host": {
+          "description": "(Optional) Host name to connect to, defaults to the pod IP. You probably want to set \"Host\" in httpHeaders instead.",
+          "type": "string"
+        },
+        "httpHeaders": {
+          "description": "(Optional) Custom headers to set in the request. HTTP allows repeated headers.",
+          "items": {
+            "$ref": "HTTPHeader"
+          },
+          "type": "array"
+        },
+        "path": {
+          "description": "(Optional) Path to access on the HTTP server.",
+          "type": "string"
+        },
+        "scheme": {
+          "description": "(Optional) Scheme to use for connecting to the host. Defaults to HTTP.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "HTTPHeader": {
+      "description": "Not supported by Cloud Run HTTPHeader describes a custom header to be used in HTTP probes",
+      "id": "HTTPHeader",
+      "properties": {
+        "name": {
+          "description": "The header field name",
+          "type": "string"
+        },
+        "value": {
+          "description": "The header field value",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "InstanceAttemptResult": {
+      "description": "Result of an instance attempt.",
+      "id": "InstanceAttemptResult",
+      "properties": {
+        "exitCode": {
+          "description": "Optional. The exit code of this attempt. This may be unset if the container was unable to exit cleanly with a code due to some other failure. See status field for possible failure details.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "GoogleRpcStatus",
+          "description": "Optional. The status of this attempt. If the status code is OK, then the attempt succeeded."
+        }
+      },
+      "type": "object"
+    },
+    "InstanceSpec": {
+      "description": "InstanceSpec is a description of an instance.",
+      "id": "InstanceSpec",
+      "properties": {
+        "activeDeadlineSeconds": {
+          "description": "Optional. Optional duration in seconds the instance may be active relative to StartTime before the system will actively try to mark it failed and kill associated containers. If set to zero, the system will never attempt to kill an instance based on time. Otherwise, value must be a positive integer. +optional",
+          "format": "int64",
+          "type": "string"
+        },
+        "containers": {
+          "description": "Optional. List of containers belonging to the instance. We disallow a number of fields on this Container. Only a single container may be provided.",
+          "items": {
+            "$ref": "Container"
+          },
+          "type": "array"
+        },
+        "restartPolicy": {
+          "description": "Optional. Restart policy for all containers within the instance. Allowed values are: - OnFailure: Instances will always be restarted on failure if the backoffLimit has not been reached. - Never: Instances are never restarted and all failures are permanent. Cannot be used if backoffLimit is set. +optional",
+          "type": "string"
+        },
+        "serviceAccountName": {
+          "description": "Optional. Email address of the IAM service account associated with the instance of a Job. The service account represents the identity of the running instance, and determines what permissions the instance has. If not provided, the instance will use the project's default service account. +optional",
+          "type": "string"
+        },
+        "terminationGracePeriodSeconds": {
+          "description": "Optional. Optional duration in seconds the instance needs to terminate gracefully. Value must be non-negative integer. The value zero indicates delete immediately. The grace period is the duration in seconds after the processes running in the instance are sent a termination signal and the time when the processes are forcibly halted with a kill signal. Set this value longer than the expected cleanup time for your process. +optional",
+          "format": "int64",
+          "type": "string"
+        },
+        "volumes": {
+          "description": "Optional. List of volumes that can be mounted by containers belonging to the instance. More info: https://kubernetes.io/docs/concepts/storage/volumes +optional",
+          "items": {
+            "$ref": "Volume"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "InstanceStatus": {
+      "description": "Instance represents the status of an instance of a Job.",
+      "id": "InstanceStatus",
+      "properties": {
+        "completionTime": {
+          "description": "Optional. Represents time when the instance was completed. It is not guaranteed to be set in happens-before order across separate operations. It is represented in RFC3339 form and is in UTC. +optional",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "failed": {
+          "description": "Optional. The number of times this instance exited with code > 0; +optional",
+          "format": "int32",
+          "type": "integer"
+        },
+        "index": {
+          "description": "Required. Index of the instance, unique per Job, and beginning at 0.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "lastAttemptResult": {
+          "$ref": "InstanceAttemptResult",
+          "description": "Optional. Result of the last attempt of this instance. +optional"
+        },
+        "lastExitCode": {
+          "description": "Optional. Last exit code seen for this instance. +optional",
+          "format": "int32",
+          "type": "integer"
+        },
+        "restarted": {
+          "description": "Optional. The number of times this instance was restarted. Instances are restarted according the restartPolicy configured in the Job template. +optional",
+          "format": "int32",
+          "type": "integer"
+        },
+        "startTime": {
+          "description": "Optional. Represents time when the instance was created by the job controller. It is not guaranteed to be set in happens-before order across separate operations. It is represented in RFC3339 form and is in UTC. +optional",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "succeeded": {
+          "description": "Optional. The number of times this instance exited with code == 0. +optional",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "InstanceTemplateSpec": {
+      "description": "InstanceTemplateSpec describes the data an instance should have when created from a template.",
+      "id": "InstanceTemplateSpec",
+      "properties": {
+        "spec": {
+          "$ref": "InstanceSpec",
+          "description": "Optional. Specification of the desired behavior of the instance. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status +optional"
+        }
+      },
+      "type": "object"
+    },
+    "Job": {
+      "description": "Job represents the configuration of a single job. A job an immutable resource that references a container image which is run to completion.",
+      "id": "Job",
+      "properties": {
+        "apiVersion": {
+          "description": "Optional. APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources +optional",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Optional. Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds +optional",
+          "type": "string"
+        },
+        "metadata": {
+          "$ref": "ObjectMeta",
+          "description": "Optional. Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata +optional"
+        },
+        "spec": {
+          "$ref": "JobSpec",
+          "description": "Optional. Specification of the desired behavior of a job. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status +optional"
+        },
+        "status": {
+          "$ref": "JobStatus",
+          "description": "Optional. Current status of a job. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status +optional"
+        }
+      },
+      "type": "object"
+    },
+    "JobCondition": {
+      "description": "JobCondition defines a readiness condition for a Revision.",
+      "id": "JobCondition",
+      "properties": {
+        "lastTransitionTime": {
+          "description": "Optional. Last time the condition transitioned from one status to another.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "message": {
+          "description": "Optional. Human readable message indicating details about the current status.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Optional. One-word CamelCase reason for the condition's last transition.",
+          "type": "string"
+        },
+        "severity": {
+          "description": "Optional. How to interpret failures of this condition, one of Error, Warning, Info",
+          "type": "string"
+        },
+        "status": {
+          "description": "Required. Status of the condition, one of True, False, Unknown.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Required. Type is used to communicate the status of the reconciliation process. See also: https://github.com/knative/serving/blob/main/docs/spec/errors.md#error-conditions-and-reporting Types include: * \"Completed\": True when the Job has successfully completed. * \"Started\": True when the Job has successfully started running. * \"ResourcesAvailable\": True when underlying resources have been provisioned.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "JobSpec": {
+      "description": "JobSpec describes how the job execution will look like.",
+      "id": "JobSpec",
+      "properties": {
+        "activeDeadlineSeconds": {
+          "description": "Optional. Not supported. Specifies the duration in seconds relative to the startTime that the job may be active before the system tries to terminate it. If set to zero, the system will never attempt to terminate the job based on time. Otherwise, the value must be positive integer. +optional",
+          "format": "int64",
+          "type": "string"
+        },
+        "backoffLimit": {
+          "description": "Optional. Specifies the number of retries per instance, before marking this job failed. If set to zero, instances will never retry on failure. +optional",
+          "format": "int32",
+          "type": "integer"
+        },
+        "completions": {
+          "description": "Optional. Specifies the desired number of successfully finished instances the job should be run with. Setting to 1 means that parallelism is limited to 1 and the success of that instance signals the success of the job. More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/ +optional",
+          "format": "int32",
+          "type": "integer"
+        },
+        "parallelism": {
+          "description": "Optional. Specifies the maximum desired number of instances the job should run at any given time. Must be <= completions. The actual number of instances running in steady state will be less than this number when ((.spec.completions - .status.successful) < .spec.parallelism), i.e. when the work left to do is less than max parallelism. More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/ +optional",
+          "format": "int32",
+          "type": "integer"
+        },
+        "template": {
+          "$ref": "InstanceTemplateSpec",
+          "description": "Optional. Describes the instance that will be created when executing a job."
+        },
+        "ttlSecondsAfterFinished": {
+          "description": "Optional. Not supported. ttlSecondsAfterFinished limits the lifetime of a Job that has finished execution (either Complete or Failed). If this field is set, ttlSecondsAfterFinished after the Job finishes, it is eligible to be automatically deleted. When the Job is being deleted, its lifecycle guarantees (e.g. finalizers) will be honored. If this field is set to zero, the Job won't be automatically deleted. +optional",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "JobStatus": {
+      "description": "JobStatus represents the current state of a Job.",
+      "id": "JobStatus",
+      "properties": {
+        "active": {
+          "description": "Optional. The number of actively running instances. +optional",
+          "format": "int32",
+          "type": "integer"
+        },
+        "completionTime": {
+          "description": "Optional. Represents time when the job was completed. It is not guaranteed to be set in happens-before order across separate operations. It is represented in RFC3339 form and is in UTC. +optional",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "conditions": {
+          "description": "Optional. The latest available observations of a job's current state. More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/ +optional",
+          "items": {
+            "$ref": "JobCondition"
+          },
+          "type": "array"
+        },
+        "failed": {
+          "description": "Optional. The number of instances which reached phase Failed. +optional",
+          "format": "int32",
+          "type": "integer"
+        },
+        "imageDigest": {
+          "description": "Optional. ImageDigest holds the resolved digest for the image specified within .Spec.Template.Spec.Container.Image. The digest is resolved during the creation of the Job. This field holds the digest value regardless of whether a tag or digest was originally specified in the Container object.",
+          "type": "string"
+        },
+        "instances": {
+          "description": "Optional. Status of completed, failed, and running instances. +optional",
+          "items": {
+            "$ref": "InstanceStatus"
+          },
+          "type": "array"
+        },
+        "observedGeneration": {
+          "description": "Optional. The 'generation' of the job that was last processed by the controller.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "startTime": {
+          "description": "Optional. Represents time when the job was acknowledged by the job controller. It is not guaranteed to be set in happens-before order across separate operations. It is represented in RFC3339 form and is in UTC. +optional",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "succeeded": {
+          "description": "Optional. The number of instances which reached phase Succeeded. +optional",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "KeyToPath": {
+      "description": "Maps a string key to a path within a volume.",
+      "id": "KeyToPath",
+      "properties": {
+        "key": {
+          "description": "The Cloud Secret Manager secret version. Can be 'latest' for the latest value or an integer for a specific version. The key to project.",
+          "type": "string"
+        },
+        "mode": {
+          "description": "(Optional) Mode bits to use on this file, must be a value between 01 and 0777 (octal). If 0 or not set, the Volume's default mode will be used. Notes * Internally, a umask of 0222 will be applied to any non-zero value. * This is an integer representation of the mode bits. So, the octal integer value should look exactly as the chmod numeric notation with a leading zero. Some examples: for chmod 777 (a=rwx), set to 0777 (octal) or 511 (base-10). For chmod 640 (u=rw,g=r), set to 0640 (octal) or 416 (base-10). For chmod 755 (u=rwx,g=rx,o=rx), set to 0755 (octal) or 493 (base-10). * This might be in conflict with other options that affect the file mode, like fsGroup, and the result can be other mode bits set.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "path": {
+          "description": "The relative path of the file to map the key to. May not be an absolute path. May not contain the path element '..'. May not start with the string '..'.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListJobsResponse": {
+      "description": "ListJobsResponse is a list of Jobs resources.",
+      "id": "ListJobsResponse",
+      "properties": {
+        "apiVersion": {
+          "description": "The API version for this call such as \"run.googleapis.com/v1alpha1\".",
+          "type": "string"
+        },
+        "items": {
+          "description": "List of Jobs.",
+          "items": {
+            "$ref": "Job"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "description": "The kind of this resource, in this case \"JobsList\".",
+          "type": "string"
+        },
+        "metadata": {
+          "$ref": "ListMeta",
+          "description": "Metadata associated with this jobs list."
+        },
+        "nextPageToken": {
+          "description": "This field is equivalent to the metadata.continue field and is provided as a convenience for compatibility with https://google.aip.dev/158. The value is opaque and may be used to issue another request to the endpoint that served this list to retrieve the next set of available objects. Continuing a list may not be possible if the server configuration has changed or more than a few minutes have passed. The metadata.resourceVersion field returned when using this field will be identical to the value in the first response.",
+          "type": "string"
+        },
+        "unreachable": {
+          "description": "Locations that could not be reached.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListMeta": {
+      "description": "ListMeta describes metadata that synthetic resources must have, including lists and various status objects. A resource may have only one of {ObjectMeta, ListMeta}.",
+      "id": "ListMeta",
+      "properties": {
+        "continue": {
+          "description": "continue may be set if the user set a limit on the number of items returned, and indicates that the server has more data available. The value is opaque and may be used to issue another request to the endpoint that served this list to retrieve the next set of available objects. Continuing a list may not be possible if the server configuration has changed or more than a few minutes have passed. The resourceVersion field returned when using this continue value will be identical to the value in the first response.",
+          "type": "string"
+        },
+        "resourceVersion": {
+          "description": "String that identifies the server's internal version of this object that can be used by clients to determine when objects have changed. Value must be treated as opaque by clients and passed unmodified back to the server. Populated by the system. Read-only. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#concurrency-control-and-consistency +optional",
+          "type": "string"
+        },
+        "selfLink": {
+          "description": "SelfLink is a URL representing this object. Populated by the system. Read-only. +optional",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "LocalObjectReference": {
+      "description": "Not supported by Cloud Run LocalObjectReference contains enough information to let you locate the referenced object inside the same namespace.",
+      "id": "LocalObjectReference",
+      "properties": {
+        "name": {
+          "description": "(Optional) Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ObjectMeta": {
+      "description": "k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta is metadata that all persisted resources must have, which includes all objects users must create.",
+      "id": "ObjectMeta",
+      "properties": {
+        "annotations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "(Optional) Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: https://kubernetes.io/docs/user-guide/annotations",
+          "type": "object"
+        },
+        "clusterName": {
+          "description": "(Optional) Not supported by Cloud Run The name of the cluster which the object belongs to. This is used to distinguish resources with same name and namespace in different clusters. This field is not set anywhere right now and apiserver is going to ignore it if set in create or update request.",
+          "type": "string"
+        },
+        "creationTimestamp": {
+          "description": "(Optional) CreationTimestamp is a timestamp representing the server time when this object was created. It is not guaranteed to be set in happens-before order across separate operations. Clients may not set this value. It is represented in RFC3339 form and is in UTC. Populated by the system. Read-only. Null for lists. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "deletionGracePeriodSeconds": {
+          "description": "(Optional) Not supported by Cloud Run Number of seconds allowed for this object to gracefully terminate before it will be removed from the system. Only set when deletionTimestamp is also set. May only be shortened. Read-only.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "deletionTimestamp": {
+          "description": "(Optional) Not supported by Cloud Run DeletionTimestamp is RFC 3339 date and time at which this resource will be deleted. This field is set by the server when a graceful deletion is requested by the user, and is not directly settable by a client. The resource is expected to be deleted (no longer visible from resource lists, and not reachable by name) after the time in this field, once the finalizers list is empty. As long as the finalizers list contains items, deletion is blocked. Once the deletionTimestamp is set, this value may not be unset or be set further into the future, although it may be shortened or the resource may be deleted prior to this time. For example, a user may request that a pod is deleted in 30 seconds. The Kubelet will react by sending a graceful termination signal to the containers in the pod. After that 30 seconds, the Kubelet will send a hard termination signal (SIGKILL) to the container and after cleanup, remove the pod from the API. In the presence of network partitions, this object may still exist after this timestamp, until an administrator or automated process can determine the resource is fully terminated. If not set, graceful deletion of the object has not been requested. Populated by the system when a graceful deletion is requested. Read-only. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "finalizers": {
+          "description": "(Optional) Not supported by Cloud Run Must be empty before the object is deleted from the registry. Each entry is an identifier for the responsible component that will remove the entry from the list. If the deletionTimestamp of the object is non-nil, entries in this list can only be removed. +patchStrategy=merge",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "generateName": {
+          "description": "(Optional) Not supported by Cloud Run GenerateName is an optional prefix, used by the server, to generate a unique name ONLY IF the Name field has not been provided. If this field is used, the name returned to the client will be different than the name passed. This value will also be combined with a unique suffix. The provided value has the same validation rules as the Name field, and may be truncated by the length of the suffix required to make the value unique on the server. If this field is specified and the generated name exists, the server will NOT return a 409 - instead, it will either return 201 Created or 500 with Reason ServerTimeout indicating a unique name could not be found in the time allotted, and the client should retry (optionally after the time indicated in the Retry-After header). Applied only if Name is not specified. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#idempotency string generateName = 2;",
+          "type": "string"
+        },
+        "generation": {
+          "description": "(Optional) A sequence number representing a specific generation of the desired state. Populated by the system. Read-only.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "(Optional) Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and routes. More info: https://kubernetes.io/docs/user-guide/labels",
+          "type": "object"
+        },
+        "name": {
+          "description": "Name must be unique within a namespace, within a Cloud Run region. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: https://kubernetes.io/docs/user-guide/identifiers#names +optional",
+          "type": "string"
+        },
+        "namespace": {
+          "description": "Namespace defines the space within each name must be unique, within a Cloud Run region. In Cloud Run the namespace must be equal to either the project ID or project number.",
+          "type": "string"
+        },
+        "ownerReferences": {
+          "description": "(Optional) Not supported by Cloud Run List of objects that own this object. If ALL objects in the list have been deleted, this object will be garbage collected.",
+          "items": {
+            "$ref": "OwnerReference"
+          },
+          "type": "array"
+        },
+        "resourceVersion": {
+          "description": "Optional. An opaque value that represents the internal version of this object that can be used by clients to determine when objects have changed. May be used for optimistic concurrency, change detection, and the watch operation on a resource or set of resources. Clients must treat these values as opaque and passed unmodified back to the server or omit the value to disable conflict-detection. They may only be valid for a particular resource or set of resources. Populated by the system. Read-only. Value must be treated as opaque by clients or omitted. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency",
+          "type": "string"
+        },
+        "selfLink": {
+          "description": "(Optional) SelfLink is a URL representing this object. Populated by the system. Read-only. string selfLink = 4;",
+          "type": "string"
+        },
+        "uid": {
+          "description": "(Optional) UID is the unique in time and space value for this object. It is typically generated by the server on successful creation of a resource and is not allowed to change on PUT operations. Populated by the system. Read-only. More info: https://kubernetes.io/docs/user-guide/identifiers#uids",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "OwnerReference": {
+      "description": "OwnerReference contains enough information to let you identify an owning object. Currently, an owning object must be in the same namespace, so there is no namespace field.",
+      "id": "OwnerReference",
+      "properties": {
+        "apiVersion": {
+          "description": "API version of the referent.",
+          "type": "string"
+        },
+        "blockOwnerDeletion": {
+          "description": "If true, AND if the owner has the \"foregroundDeletion\" finalizer, then the owner cannot be deleted from the key-value store until this reference is removed. Defaults to false. To set this field, a user needs \"delete\" permission of the owner, otherwise 422 (Unprocessable Entity) will be returned. +optional",
+          "type": "boolean"
+        },
+        "controller": {
+          "description": "If true, this reference points to the managing controller. +optional",
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the referent. More info: https://kubernetes.io/docs/user-guide/identifiers#names",
+          "type": "string"
+        },
+        "uid": {
+          "description": "UID of the referent. More info: https://kubernetes.io/docs/user-guide/identifiers#uids",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Probe": {
+      "description": "Not supported by Cloud Run Probe describes a health check to be performed against a container to determine whether it is alive or ready to receive traffic.",
+      "id": "Probe",
+      "properties": {
+        "exec": {
+          "$ref": "ExecAction",
+          "description": "(Optional) Not supported by Cloud Run One and only one of the following should be specified. Exec specifies the action to take. A field inlined from the Handler message."
+        },
+        "failureThreshold": {
+          "description": "(Optional) Minimum consecutive failures for the probe to be considered failed after having succeeded. Defaults to 3. Minimum value is 1.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "grpc": {
+          "$ref": "GRPCAction",
+          "description": "(Optional) GRPCAction specifies an action involving a GRPC port. A field inlined from the Handler message."
+        },
+        "httpGet": {
+          "$ref": "HTTPGetAction",
+          "description": "(Optional) HTTPGet specifies the http request to perform. A field inlined from the Handler message."
+        },
+        "initialDelaySeconds": {
+          "description": "(Optional) Number of seconds after the container has started before the probe is initiated. Defaults to 0 seconds. Minimum value is 0. Maximum value for liveness probe is 3600. Maximum value for startup probe is 240. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
+          "format": "int32",
+          "type": "integer"
+        },
+        "periodSeconds": {
+          "description": "(Optional) How often (in seconds) to perform the probe. Default to 10 seconds. Minimum value is 1. Maximum value for liveness probe is 3600. Maximum value for startup probe is 240. Must be greater or equal than timeout_seconds.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "successThreshold": {
+          "description": "(Optional) Minimum consecutive successes for the probe to be considered successful after having failed. Must be 1 if set.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "tcpSocket": {
+          "$ref": "TCPSocketAction",
+          "description": "(Optional) TCPSocket specifies an action involving a TCP port. TCP hooks not yet supported A field inlined from the Handler message."
+        },
+        "timeoutSeconds": {
+          "description": "(Optional) Number of seconds after which the probe times out. Defaults to 1 second. Minimum value is 1. Maximum value is 3600. Must be smaller than period_seconds. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ResourceRequirements": {
+      "description": "ResourceRequirements describes the compute resource requirements.",
+      "id": "ResourceRequirements",
+      "properties": {
+        "limits": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "(Optional) Only memory and CPU are supported. Limits describes the maximum amount of compute resources allowed. The values of the map is string form of the 'quantity' k8s type: https://github.com/kubernetes/kubernetes/blob/master/staging/src/k8s.io/apimachinery/pkg/api/resource/quantity.go",
+          "type": "object"
+        },
+        "requests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "(Optional) Only memory and CPU are supported. Requests describes the minimum amount of compute resources required. If Requests is omitted for a container, it defaults to Limits if that is explicitly specified, otherwise to an implementation-defined value. The values of the map is string form of the 'quantity' k8s type: https://github.com/kubernetes/kubernetes/blob/master/staging/src/k8s.io/apimachinery/pkg/api/resource/quantity.go",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "SecretEnvSource": {
+      "description": "Not supported by Cloud Run SecretEnvSource selects a Secret to populate the environment variables with. The contents of the target Secret's Data field will represent the key-value pairs as environment variables.",
+      "id": "SecretEnvSource",
+      "properties": {
+        "localObjectReference": {
+          "$ref": "LocalObjectReference",
+          "description": "This field should not be used directly as it is meant to be inlined directly into the message. Use the \"name\" field instead."
+        },
+        "name": {
+          "description": "The Secret to select from.",
+          "type": "string"
+        },
+        "optional": {
+          "description": "(Optional) Specify whether the Secret must be defined",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "SecretKeySelector": {
+      "description": "SecretKeySelector selects a key of a Secret.",
+      "id": "SecretKeySelector",
+      "properties": {
+        "key": {
+          "description": "A Cloud Secret Manager secret version. Must be 'latest' for the latest version or an integer for a specific version. The key of the secret to select from. Must be a valid secret key.",
+          "type": "string"
+        },
+        "localObjectReference": {
+          "$ref": "LocalObjectReference",
+          "description": "This field should not be used directly as it is meant to be inlined directly into the message. Use the \"name\" field instead."
+        },
+        "name": {
+          "description": "The name of the secret in Cloud Secret Manager. By default, the secret is assumed to be in the same project. If the secret is in another project, you must define an alias. An alias definition has the form: :projects//secrets/. If multiple alias definitions are needed, they must be separated by commas. The alias definitions must be set on the run.googleapis.com/secrets annotation. The name of the secret in the pod's namespace to select from.",
+          "type": "string"
+        },
+        "optional": {
+          "description": "(Optional) Specify whether the Secret or its key must be defined",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "SecretVolumeSource": {
+      "description": "The secret's value will be presented as the content of a file whose name is defined in the item path. If no items are defined, the name of the file is the secret_name. The contents of the target Secret's Data field will be presented in a volume as files using the keys in the Data field as the file names.",
+      "id": "SecretVolumeSource",
+      "properties": {
+        "defaultMode": {
+          "description": "Integer representation of mode bits to use on created files by default. Must be a value between 01 and 0777 (octal). If 0 or not set, it will default to 0444. Directories within the path are not affected by this setting. Notes * Internally, a umask of 0222 will be applied to any non-zero value. * This is an integer representation of the mode bits. So, the octal integer value should look exactly as the chmod numeric notation with a leading zero. Some examples: for chmod 777 (a=rwx), set to 0777 (octal) or 511 (base-10). For chmod 640 (u=rw,g=r), set to 0640 (octal) or 416 (base-10). For chmod 755 (u=rwx,g=rx,o=rx), set to 0755 (octal) or 493 (base-10). * This might be in conflict with other options that affect the file mode, like fsGroup, and the result can be other mode bits set.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "items": {
+          "description": "(Optional) If unspecified, the volume will expose a file whose name is the secret_name. If specified, the key will be used as the version to fetch from Cloud Secret Manager and the path will be the name of the file exposed in the volume. When items are defined, they must specify a key and a path. If unspecified, each key-value pair in the Data field of the referenced Secret will be projected into the volume as a file whose name is the key and content is the value. If specified, the listed keys will be projected into the specified paths, and unlisted keys will not be present. If a key is specified that is not present in the Secret, the volume setup will error unless it is marked optional.",
+          "items": {
+            "$ref": "KeyToPath"
+          },
+          "type": "array"
+        },
+        "optional": {
+          "description": "(Optional) Specify whether the Secret or its keys must be defined.",
+          "type": "boolean"
+        },
+        "secretName": {
+          "description": "The name of the secret in Cloud Secret Manager. By default, the secret is assumed to be in the same project. If the secret is in another project, you must define an alias. An alias definition has the form: :projects//secrets/. If multiple alias definitions are needed, they must be separated by commas. The alias definitions must be set on the run.googleapis.com/secrets annotation. Name of the secret in the container's namespace to use.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SecurityContext": {
+      "description": "Not supported by Cloud Run SecurityContext holds security configuration that will be applied to a container. Some fields are present in both SecurityContext and PodSecurityContext. When both are set, the values in SecurityContext take precedence.",
+      "id": "SecurityContext",
+      "properties": {
+        "runAsUser": {
+          "description": "(Optional) The UID to run the entrypoint of the container process. Defaults to user specified in image metadata if unspecified. May also be set in PodSecurityContext. If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "TCPSocketAction": {
+      "description": "Not supported by Cloud Run TCPSocketAction describes an action based on opening a socket",
+      "id": "TCPSocketAction",
+      "properties": {
+        "host": {
+          "description": "(Optional) Optional: Host name to connect to, defaults to the pod IP.",
+          "type": "string"
+        },
+        "port": {
+          "description": "Number or name of the port to access on the container. Number must be in the range 1 to 65535. Name must be an IANA_SVC_NAME. This field is currently limited to integer types only because of proto's inability to properly support the IntOrString golang type.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Volume": {
+      "description": "Volume represents a named volume in a container.",
+      "id": "Volume",
+      "properties": {
+        "configMap": {
+          "$ref": "ConfigMapVolumeSource"
+        },
+        "name": {
+          "description": "Volume's name. In Cloud Run Fully Managed, the name 'cloudsql' is reserved.",
+          "type": "string"
+        },
+        "secret": {
+          "$ref": "SecretVolumeSource"
+        }
+      },
+      "type": "object"
+    },
+    "VolumeMount": {
+      "description": "VolumeMount describes a mounting of a Volume within a container.",
+      "id": "VolumeMount",
+      "properties": {
+        "mountPath": {
+          "description": "Path within the container at which the volume should be mounted. Must not contain ':'.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of the volume. There must be a corresponding Volume with the same name.",
+          "type": "string"
+        },
+        "readOnly": {
+          "description": "(Optional) Only true is accepted. Defaults to true.",
+          "type": "boolean"
+        },
+        "subPath": {
+          "description": "(Optional) Path within the volume from which the container's volume should be mounted. Defaults to \"\" (volume's root).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Cloud Run Admin API",
+  "version": "v1alpha1",
+  "version_module": true
+}

@@ -1,0 +1,14 @@
+certifi-2022.12.7.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+certifi-2022.12.7.dist-info/LICENSE,sha256=oC9sY4-fuE0G93ZMOrCF2K9-2luTwWbaVDEkeQd8b7A,1052
+certifi-2022.12.7.dist-info/METADATA,sha256=chFpcxKhCPEQ3d8-Vz36zr2Micf1eQhKkFFk7_JvJNo,2911
+certifi-2022.12.7.dist-info/RECORD,,
+certifi-2022.12.7.dist-info/WHEEL,sha256=ewwEueio1C2XeHTvT17n8dZUJgOvyCWCt0WVNLClP9o,92
+certifi-2022.12.7.dist-info/top_level.txt,sha256=KMu4vUCfsjLrkPbSNdgdekS-pVJzBAJFO__nI8NF6-U,8
+certifi/__init__.py,sha256=bK_nm9bLJzNvWZc2oZdiTwg2KWD4HSPBWGaM0zUDvMw,94
+certifi/__main__.py,sha256=xBBoj905TUWBLRGANOcf7oi6e-3dMP4cEoG9OyMs11g,243
+certifi/__pycache__/__init__.cpython-311.pyc,,
+certifi/__pycache__/__main__.cpython-311.pyc,,
+certifi/__pycache__/core.cpython-311.pyc,,
+certifi/cacert.pem,sha256=LBHDzgj_xA05AxnHK8ENT5COnGNElNZe0svFUHMf1SQ,275233
+certifi/core.py,sha256=lhewz0zFb2b4ULsQurElmloYwQoecjWzPqY67P8T7iM,4219
+certifi/py.typed,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0

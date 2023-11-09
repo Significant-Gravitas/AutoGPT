@@ -1,0 +1,116 @@
+<HTML>
+<HEAD><TITLE>Python Script sample:  Calculator</TITLE></HEAD>
+<BODY><FONT FACE=ARIAL SIZE=3> <!-- global default -->
+<SCRIPT LANGUAGE="Python">
+# globals
+Accum = 0.0	  # Previous number (operand) awaiting operation
+FlagNewNum = 1    # Flag to indicate a new number (operand) is being entered
+NullOp = lambda x,y: y
+PendingOp = NullOp# Pending operation waiting for completion of second operand
+numberButNames = ['Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine']
+
+def NumPressed(Num):
+	print "NumPressed", Num
+	global FlagNewNum
+	if FlagNewNum:
+		ax.document.Keypad.ReadOut.Value = Num
+		FlagNewNum = None
+	else:
+		if ax.document.Keypad.ReadOut.Value == "0":
+			ax.document.Keypad.ReadOut.Value = str(Num)
+		else:
+			ax.document.Keypad.ReadOut.Value= ax.document.Keypad.ReadOut.Value + str(Num)
+
+# Dynamically create handlers for all the decimal buttons.
+# (ie, this will dynamically create "One_OnClick()"... etc handlers
+for i in range(len(numberButNames)):
+	exec "def %s_OnClick():\tNumPressed(%d)\n" % (numberButNames[i],i)
+
+def Decimal_OnClick():
+	global curReadOut, FlagNewNum
+	curReadOut = ax.document.Keypad.ReadOut.Value
+	if FlagNewNum:
+		curReadOut = "0."
+		FlagNewNum = None
+	else:
+		if not ("." in curReadOut):
+			curReadOut = curReadOut + "."
+	ax.document.Keypad.ReadOut.Value = curReadOut
+
+import sys, string
+
+def Operation(Op, fn):
+	global FlagNewNum, PendingOp, Accum
+	ReadOut = ax.document.Keypad.ReadOut.Value
+	print "Operation", Op, ReadOut, PendingOp, Accum
+	if FlagNewNum:
+		# User is hitting op keys repeatedly, so don't do anything
+		PendingOp = NullOp
+	else:
+		FlagNewNum = 1
+		Accum = PendingOp( Accum, string.atof(ReadOut) )
+	ax.document.Keypad.ReadOut.Value = str(Accum)
+	PendingOp = fn
+
+def ClearEntry_OnClick():
+	# Remove current number and reset state
+	global FlagNewNum
+	ax.document.Keypad.ReadOut.Value = "0"
+	FlagNewNum = 1
+
+def Clear_OnClick():
+	global Accum, PendingOp
+	Accum = 0
+	PendingOp = NullOp
+	ClearEntry_OnClick()
+
+def Neg_OnClick():
+	ax.document.Keypad.ReadOut.Value = str(-string.atof(ax.document.Keypad.ReadOut.Value))
+</SCRIPT>
+
+
+<form action="" Name="Keypad">
+<TABLE>
+<B>
+<TABLE BORDER=2 WIDTH=50 HEIGHT=60 CELLPADDING=1 CELLSPACING=5>
+<CAPTION ALIGN=top> <b>Calculator</b><p> </CAPTION>
+<TR>
+ <TD COLSPAN=3 ALIGN=MIDDLE><INPUT NAME="ReadOut" TYPE="Text" SIZE=24 VALUE="0" WIDTH=100%></TD>
+ <TD></TD>
+ <TD><INPUT NAME="Clear" TYPE="Button" VALUE="  C  " ></TD>
+ <TD><INPUT NAME="ClearEntry" TYPE="Button" VALUE="  CE " ></TD>
+</TR>
+<TR>
+ <TD><INPUT NAME="Seven" TYPE="Button" VALUE="  7  " ></TD>
+ <TD><INPUT NAME="Eight" TYPE="Button" VALUE="  8  " ></TD>
+ <TD><INPUT NAME="Nine" TYPE="Button" VALUE="  9  " ></TD>
+ <TD></TD>
+ <TD><INPUT NAME="Neg" TYPE="Button" VALUE=" +/- " ></TD>
+ <TD><INPUT NAME="Percent" TYPE="Button" VALUE="  % " OnClick="Operation('%', lambda x,y: x*y/100.0)"></TD>
+</TR>
+
+<TR>
+ <TD><INPUT NAME="Four" TYPE="Button" VALUE="  4  " ></TD>
+ <TD><INPUT NAME="Five" TYPE="Button" VALUE="  5  " ></TD>
+ <TD><INPUT NAME="Six" TYPE="Button" VALUE="  6  " ></TD>
+ <TD></TD>
+ <TD ALIGN=MIDDLE><INPUT NAME="Plus" TYPE="Button" VALUE="  +  " OnClick="Operation('+', lambda x,y: x+y)"></TD>
+ <TD ALIGN=MIDDLE><INPUT NAME="Minus" TYPE="Button" VALUE="   -   " OnClick="Operation('-', lambda x,y: x-y)"></TD>
+</TR>
+<TR>
+ <TD><INPUT NAME="One" TYPE="Button" VALUE="  1  " ></TD>
+ <TD><INPUT NAME="Two" TYPE="Button" VALUE="  2  " ></TD>
+ <TD><INPUT NAME="Three" TYPE="Button" VALUE="  3  " ></TD>
+ <TD></TD>
+ <TD ALIGN=MIDDLE><INPUT NAME="Multiply" TYPE="Button" VALUE="  *  " OnClick="Operation('*', lambda x,y: x*y)" ></TD>
+ <TD ALIGN=MIDDLE><INPUT NAME="Divide" TYPE="Button" VALUE="   /   " OnClick="Operation('/', lambda x,y: x/y)" ></TD>
+</TR>
+<TR>
+ <TD><INPUT NAME="Zero" TYPE="Button" VALUE="  0  " ></TD>
+ <TD><INPUT NAME="Decimal" TYPE="Button" VALUE="   .  " ></TD>
+ <TD COLSPAN=3></TD>
+ <TD><INPUT NAME="Equals" TYPE="Button" VALUE="  =  " OnClick="Operation('=', lambda x,y: x)"></TD>
+</TR></TABLE></TABLE></B>
+</FORM>
+</FONT></BODY></HTML>
+

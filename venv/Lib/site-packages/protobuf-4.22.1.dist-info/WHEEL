@@ -1,0 +1,4 @@
+Wheel-Version: 1.0
+Generator: bazel-wheelmaker 1.0
+Root-Is-Purelib: false
+Tag: cp310-abi3-win_amd64

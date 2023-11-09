@@ -1,0 +1,216 @@
+//Microsoft Developer Studio generated resource script.
+//
+#include "test.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (Australia) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENA)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_AUS
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "test.h\0"
+END
+
+2 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_TEST_DIALOG1 DIALOG DISCARDABLE  0, 0, 186, 95
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Test Dialog"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,129,7,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,129,24,50,14
+    ICON            IDI_PYTHON,IDC_STATIC,142,47,21,20
+    LTEXT           "An icon",IDC_STATIC,140,70,34,9
+END
+
+IDD_TEST_DIALOG2 DIALOG DISCARDABLE  0, 0, 186, 95
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Test Dialog"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,129,7,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,129,24,50,14,NOT WS_TABSTOP
+    CONTROL         103,IDC_STATIC,"Static",SS_BITMAP,139,49,32,32
+    LTEXT           "A bitmap",IDC_STATIC,135,72,34,9
+    EDITTEXT        IDC_EDIT1,59,7,59,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT2,59,31,60,15,ES_AUTOHSCROLL | NOT WS_TABSTOP
+    LTEXT           "Tabstop",IDC_STATIC,7,9,43,10
+    LTEXT           "Not Tabstop",IDC_STATIC,7,33,43,10
+END
+
+IDD_TEST_DIALOG3 DIALOGEX 0, 0, 232, 310
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Dialog"
+FONT 8, "MS Sans Serif", 0, 0, 0x1
+BEGIN
+    GROUPBOX        "Frame",IDC_STATIC,7,7,218,41
+    LTEXT           "Left Static",IDC_STATIC,16,17,73,11
+    EDITTEXT        IDC_EDIT1,103,15,112,12,ES_AUTOHSCROLL
+    LTEXT           "Right Static",IDC_STATIC,16,30,73,11,0,WS_EX_RIGHT
+    CONTROL         "",IDC_RICHEDIT1,"RICHEDIT",ES_AUTOHSCROLL | WS_BORDER | 
+                    WS_TABSTOP,103,31,113,14
+    CONTROL         "Check1",IDC_CHECK1,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,52,68,12
+    COMBOBOX        IDC_COMBO1,85,52,82,35,CBS_DROPDOWNLIST | CBS_SORT | 
+                    WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Spin1",IDC_SPIN1,"msctls_updown32",UDS_ARROWKEYS,7,71,
+                    14,22
+    CONTROL         "Progress1",IDC_PROGRESS1,"msctls_progress32",WS_BORDER,
+                    39,72,153,13
+    SCROLLBAR       IDC_SCROLLBAR2,207,55,13,57,SBS_VERT
+    CONTROL         "Slider1",IDC_SLIDER1,"msctls_trackbar32",TBS_BOTH | 
+                    TBS_NOTICKS | WS_TABSTOP,35,91,159,7
+    SCROLLBAR       IDC_SCROLLBAR1,37,102,155,11
+    CONTROL         "Tab1",IDC_TAB1,"SysTabControl32",0x0,7,120,217,43
+    CONTROL         "Animate1",IDC_ANIMATE1,"SysAnimate32",WS_BORDER | 
+                    WS_TABSTOP,7,171,46,42
+    CONTROL         "List1",IDC_LIST1,"SysListView32",WS_BORDER | WS_TABSTOP,
+                    63,171,53,43
+    CONTROL         "Tree1",IDC_TREE1,"SysTreeView32",WS_BORDER | WS_TABSTOP,
+                    126,171,50,43
+    CONTROL         "MonthCalendar1",IDC_MONTHCALENDAR1,"SysMonthCal32",
+                    MCS_NOTODAY | WS_TABSTOP,7,219,140,84
+    CONTROL         "DateTimePicker1",IDC_DATETIMEPICKER1,"SysDateTimePick32",
+                    DTS_RIGHTALIGN | WS_TABSTOP,174,221,51,15
+    DEFPUSHBUTTON   "OK",IDOK,175,289,50,14
+    PUSHBUTTON      "Hello",IDC_HELLO,175,271,50,14
+    PUSHBUTTON      "Hello",IDC_HELLO2,175,240,50,26,BS_ICON
+    LISTBOX         IDC_LIST2,184,171,40,45,LBS_SORT | LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_TABSTOP
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO DISCARDABLE 
+BEGIN
+    IDD_TEST_DIALOG1, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 179
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 88
+    END
+
+    IDD_TEST_DIALOG2, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 179
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 88
+    END
+
+    IDD_TEST_DIALOG3, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 225
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 303
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_PYTHON              ICON    DISCARDABLE     "python.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Bitmap
+//
+
+IDB_PYTHON              BITMAP  DISCARDABLE     "python.bmp"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_TEST_DIALOG3 DLGINIT
+BEGIN
+    IDC_COMBO1, 0x403, 6, 0
+0x7449, 0x6d65, 0x0031, 
+    IDC_COMBO1, 0x403, 6, 0
+0x7449, 0x6d65, 0x0032, 
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_TEST_STRING1        "Test ""quoted"" string"
+    IDS_TEST_STRING2        "Test string"
+    IDS_TEST_STRING3        "String with single "" quote"
+    IDS_TEST_STRING4        "Test 'single quoted' string"
+END
+
+#endif    // English (Australia) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

@@ -1,0 +1,521 @@
+{
+  "basePath": "",
+  "baseUrl": "https://chromeuxreport.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Chrome UX Report",
+  "description": "The Chrome UX Report API lets you view real user experience data for millions of websites. ",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://developers.google.com/web/tools/chrome-user-experience-report/api/reference",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "chromeuxreport:v1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://chromeuxreport.mtls.googleapis.com/",
+  "name": "chromeuxreport",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "records": {
+      "methods": {
+        "queryHistoryRecord": {
+          "description": "Queries the Chrome User Experience Report for a timeseries `history record` for a given site. Returns a `history record` that contains one or more `metric timeseries` corresponding to performance data about the requested site.",
+          "flatPath": "v1/records:queryHistoryRecord",
+          "httpMethod": "POST",
+          "id": "chromeuxreport.records.queryHistoryRecord",
+          "parameterOrder": [],
+          "parameters": {},
+          "path": "v1/records:queryHistoryRecord",
+          "request": {
+            "$ref": "QueryHistoryRequest"
+          },
+          "response": {
+            "$ref": "QueryHistoryResponse"
+          }
+        },
+        "queryRecord": {
+          "description": "Queries the Chrome User Experience for a single `record` for a given site. Returns a `record` that contains one or more `metrics` corresponding to performance data about the requested site.",
+          "flatPath": "v1/records:queryRecord",
+          "httpMethod": "POST",
+          "id": "chromeuxreport.records.queryRecord",
+          "parameterOrder": [],
+          "parameters": {},
+          "path": "v1/records:queryRecord",
+          "request": {
+            "$ref": "QueryRequest"
+          },
+          "response": {
+            "$ref": "QueryResponse"
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230330",
+  "rootUrl": "https://chromeuxreport.googleapis.com/",
+  "schemas": {
+    "Bin": {
+      "description": "A bin is a discrete portion of data spanning from start to end, or if no end is given, then from start to +inf. A bin's start and end values are given in the value type of the metric it represents. For example, \"first contentful paint\" is measured in milliseconds and exposed as ints, therefore its metric bins will use int32s for its start and end types. However, \"cumulative layout shift\" is measured in unitless decimals and is exposed as a decimal encoded as a string, therefore its metric bins will use strings for its value type.",
+      "id": "Bin",
+      "properties": {
+        "density": {
+          "description": "The proportion of users that experienced this bin's value for the given metric.",
+          "format": "double",
+          "type": "number"
+        },
+        "end": {
+          "description": "End is the end of the data bin. If end is not populated, then the bin has no end and is valid from start to +inf.",
+          "type": "any"
+        },
+        "start": {
+          "description": "Start is the beginning of the data bin.",
+          "type": "any"
+        }
+      },
+      "type": "object"
+    },
+    "CollectionPeriod": {
+      "description": "The collection period is a date range which includes the `first` and `last` day.",
+      "id": "CollectionPeriod",
+      "properties": {
+        "firstDate": {
+          "$ref": "Date",
+          "description": "The first day in the collection period, inclusive."
+        },
+        "lastDate": {
+          "$ref": "Date",
+          "description": "The last day in the collection period, inclusive."
+        }
+      },
+      "type": "object"
+    },
+    "Date": {
+      "description": "Represents a whole or partial calendar date, such as a birthday. The time of day and time zone are either specified elsewhere or are insignificant. The date is relative to the Gregorian Calendar. This can represent one of the following: * A full date, with non-zero year, month, and day values. * A month and day, with a zero year (for example, an anniversary). * A year on its own, with a zero month and a zero day. * A year and month, with a zero day (for example, a credit card expiration date). Related types: * google.type.TimeOfDay * google.type.DateTime * google.protobuf.Timestamp",
+      "id": "Date",
+      "properties": {
+        "day": {
+          "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "month": {
+          "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "year": {
+          "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "HistoryKey": {
+      "description": "Key defines all the dimensions that identify this record as unique.",
+      "id": "HistoryKey",
+      "properties": {
+        "formFactor": {
+          "description": "The form factor is the device class that all users used to access the site for this record. If the form factor is unspecified, then aggregated data over all form factors will be returned.",
+          "enum": [
+            "ALL_FORM_FACTORS",
+            "PHONE",
+            "DESKTOP",
+            "TABLET"
+          ],
+          "enumDescriptions": [
+            "The default value, representing all device classes.",
+            "The device class representing a \"mobile\"/\"phone\" sized client.",
+            "The device class representing a \"desktop\"/\"laptop\" type full size client.",
+            "The device class representing a \"tablet\" type client."
+          ],
+          "type": "string"
+        },
+        "origin": {
+          "description": "Origin specifies the origin that this record is for. Note: When specifying an origin, data for loads under this origin over all pages are aggregated into origin level user experience data.",
+          "type": "string"
+        },
+        "url": {
+          "description": "Url specifies a specific url that this record is for. This url should be normalized, following the normalization actions taken in the request to increase the chances of successful lookup. Note: When specifying a \"url\" only data for that specific url will be aggregated.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "HistoryRecord": {
+      "description": "HistoryRecord is a timeseries of Chrome UX Report data. It contains user experience statistics for a single url pattern and a set of dimensions.",
+      "id": "HistoryRecord",
+      "properties": {
+        "collectionPeriods": {
+          "description": "The collection periods indicate when each of the data points reflected in the time series data in metrics was collected. Note that all the time series share the same collection periods, and it is enforced in the CrUX pipeline that every time series has the same number of data points.",
+          "items": {
+            "$ref": "CollectionPeriod"
+          },
+          "type": "array"
+        },
+        "key": {
+          "$ref": "HistoryKey",
+          "description": "Key defines all of the unique querying parameters needed to look up a user experience history record."
+        },
+        "metrics": {
+          "additionalProperties": {
+            "$ref": "MetricTimeseries"
+          },
+          "description": "Metrics is the map of user experience time series data available for the record defined in the key field. Metrics are keyed on the metric name. Allowed key values: [\"first_contentful_paint\", \"first_input_delay\", \"largest_contentful_paint\", \"cumulative_layout_shift\", \"experimental_time_to_first_byte\", \"experimental_interaction_to_next_paint\"]",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "Key": {
+      "description": "Key defines all the dimensions that identify this record as unique.",
+      "id": "Key",
+      "properties": {
+        "effectiveConnectionType": {
+          "description": "The effective connection type is the general connection class that all users experienced for this record. This field uses the values [\"offline\", \"slow-2G\", \"2G\", \"3G\", \"4G\"] as specified in: https://wicg.github.io/netinfo/#effective-connection-types If the effective connection type is unspecified, then aggregated data over all effective connection types will be returned.",
+          "type": "string"
+        },
+        "formFactor": {
+          "description": "The form factor is the device class that all users used to access the site for this record. If the form factor is unspecified, then aggregated data over all form factors will be returned.",
+          "enum": [
+            "ALL_FORM_FACTORS",
+            "PHONE",
+            "DESKTOP",
+            "TABLET"
+          ],
+          "enumDescriptions": [
+            "The default value, representing all device classes.",
+            "The device class representing a \"mobile\"/\"phone\" sized client.",
+            "The device class representing a \"desktop\"/\"laptop\" type full size client.",
+            "The device class representing a \"tablet\" type client."
+          ],
+          "type": "string"
+        },
+        "origin": {
+          "description": "Origin specifies the origin that this record is for. Note: When specifying an origin, data for loads under this origin over all pages are aggregated into origin level user experience data.",
+          "type": "string"
+        },
+        "url": {
+          "description": "Url specifies a specific url that this record is for. Note: When specifying a \"url\" only data for that specific url will be aggregated.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Metric": {
+      "description": "A `metric` is a set of user experience data for a single web performance metric, like \"first contentful paint\". It contains a summary histogram of real world Chrome usage as a series of `bins`.",
+      "id": "Metric",
+      "properties": {
+        "histogram": {
+          "description": "The histogram of user experiences for a metric. The histogram will have at least one bin and the densities of all bins will add up to ~1.",
+          "items": {
+            "$ref": "Bin"
+          },
+          "type": "array"
+        },
+        "percentiles": {
+          "$ref": "Percentiles",
+          "description": "Commonly useful percentiles of the Metric. The value type for the percentiles will be the same as the value types given for the Histogram bins."
+        }
+      },
+      "type": "object"
+    },
+    "MetricTimeseries": {
+      "description": "A `metric timeseries` is a set of user experience data for a single web performance metric, like \"first contentful paint\". It contains a summary histogram of real world Chrome usage as a series of `bins`, where each bin has density values for a particular time period.",
+      "id": "MetricTimeseries",
+      "properties": {
+        "histogramTimeseries": {
+          "description": "The histogram of user experiences for a metric. The histogram will have at least one bin and the densities of all bins will add up to ~1, for each timeseries entry.",
+          "items": {
+            "$ref": "TimeseriesBin"
+          },
+          "type": "array"
+        },
+        "percentilesTimeseries": {
+          "$ref": "TimeseriesPercentiles",
+          "description": "Commonly useful percentiles of the Metric. The value type for the percentiles will be the same as the value types given for the Histogram bins."
+        }
+      },
+      "type": "object"
+    },
+    "Percentiles": {
+      "description": "Percentiles contains synthetic values of a metric at a given statistical percentile. These are used for estimating a metric's value as experienced by a percentage of users out of the total number of users.",
+      "id": "Percentiles",
+      "properties": {
+        "p75": {
+          "description": "75% of users experienced the given metric at or below this value.",
+          "type": "any"
+        }
+      },
+      "type": "object"
+    },
+    "QueryHistoryRequest": {
+      "description": "Request payload sent by a physical web client. This request includes all necessary context to load a particular user experience history record.",
+      "id": "QueryHistoryRequest",
+      "properties": {
+        "formFactor": {
+          "description": "The form factor is a query dimension that specifies the device class that the record's data should belong to. Note: If no form factor is specified, then a special record with aggregated data over all form factors will be returned.",
+          "enum": [
+            "ALL_FORM_FACTORS",
+            "PHONE",
+            "DESKTOP",
+            "TABLET"
+          ],
+          "enumDescriptions": [
+            "The default value, representing all device classes.",
+            "The device class representing a \"mobile\"/\"phone\" sized client.",
+            "The device class representing a \"desktop\"/\"laptop\" type full size client.",
+            "The device class representing a \"tablet\" type client."
+          ],
+          "type": "string"
+        },
+        "metrics": {
+          "description": "The metrics that should be included in the response. If none are specified then any metrics found will be returned. Allowed values: [\"first_contentful_paint\", \"first_input_delay\", \"largest_contentful_paint\", \"cumulative_layout_shift\", \"experimental_time_to_first_byte\", \"experimental_interaction_to_next_paint\"]",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "origin": {
+          "description": "The url pattern \"origin\" refers to a url pattern that is the origin of a website. Examples: \"https://example.com\", \"https://cloud.google.com\"",
+          "type": "string"
+        },
+        "url": {
+          "description": "The url pattern \"url\" refers to a url pattern that is any arbitrary url. Examples: \"https://example.com/\", \"https://cloud.google.com/why-google-cloud/\"",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "QueryHistoryResponse": {
+      "description": "Response payload sent back to a physical web client. This response contains the record found based on the identiers present in a `QueryHistoryRequest`. The returned response will have a history record, and sometimes details on normalization actions taken on the request that were necessary to make the request successful.",
+      "id": "QueryHistoryResponse",
+      "properties": {
+        "record": {
+          "$ref": "HistoryRecord",
+          "description": "The record that was found."
+        },
+        "urlNormalizationDetails": {
+          "$ref": "UrlNormalization",
+          "description": "These are details about automated normalization actions that were taken in order to make the requested `url_pattern` valid."
+        }
+      },
+      "type": "object"
+    },
+    "QueryRequest": {
+      "description": "Request payload sent by a physical web client. This request includes all necessary context to load a particular user experience record.",
+      "id": "QueryRequest",
+      "properties": {
+        "effectiveConnectionType": {
+          "description": "The effective connection type is a query dimension that specifies the effective network class that the record's data should belong to. This field uses the values [\"offline\", \"slow-2G\", \"2G\", \"3G\", \"4G\"] as specified in: https://wicg.github.io/netinfo/#effective-connection-types Note: If no effective connection type is specified, then a special record with aggregated data over all effective connection types will be returned.",
+          "type": "string"
+        },
+        "formFactor": {
+          "description": "The form factor is a query dimension that specifies the device class that the record's data should belong to. Note: If no form factor is specified, then a special record with aggregated data over all form factors will be returned.",
+          "enum": [
+            "ALL_FORM_FACTORS",
+            "PHONE",
+            "DESKTOP",
+            "TABLET"
+          ],
+          "enumDescriptions": [
+            "The default value, representing all device classes.",
+            "The device class representing a \"mobile\"/\"phone\" sized client.",
+            "The device class representing a \"desktop\"/\"laptop\" type full size client.",
+            "The device class representing a \"tablet\" type client."
+          ],
+          "type": "string"
+        },
+        "metrics": {
+          "description": "The metrics that should be included in the response. If none are specified then any metrics found will be returned. Allowed values: [\"first_contentful_paint\", \"first_input_delay\", \"largest_contentful_paint\", \"cumulative_layout_shift\", \"experimental_time_to_first_byte\", \"experimental_interaction_to_next_paint\"]",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "origin": {
+          "description": "The url pattern \"origin\" refers to a url pattern that is the origin of a website. Examples: \"https://example.com\", \"https://cloud.google.com\"",
+          "type": "string"
+        },
+        "url": {
+          "description": "The url pattern \"url\" refers to a url pattern that is any arbitrary url. Examples: \"https://example.com/\", \"https://cloud.google.com/why-google-cloud/\"",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "QueryResponse": {
+      "description": "Response payload sent back to a physical web client. This response contains the record found based on the identiers present in a `QueryRequest`. The returned response will have a record, and sometimes details on normalization actions taken on the request that were necessary to make the request successful.",
+      "id": "QueryResponse",
+      "properties": {
+        "record": {
+          "$ref": "Record",
+          "description": "The record that was found."
+        },
+        "urlNormalizationDetails": {
+          "$ref": "UrlNormalization",
+          "description": "These are details about automated normalization actions that were taken in order to make the requested `url_pattern` valid."
+        }
+      },
+      "type": "object"
+    },
+    "Record": {
+      "description": "Record is a single Chrome UX report data record. It contains use experience statistics for a single url pattern and set of dimensions.",
+      "id": "Record",
+      "properties": {
+        "collectionPeriod": {
+          "$ref": "CollectionPeriod",
+          "description": "The collection period indicates when the data reflected in this record was collected."
+        },
+        "key": {
+          "$ref": "Key",
+          "description": "Key defines all of the unique querying parameters needed to look up a user experience record."
+        },
+        "metrics": {
+          "additionalProperties": {
+            "$ref": "Metric"
+          },
+          "description": "Metrics is the map of user experience data available for the record defined in the key field. Metrics are keyed on the metric name. Allowed key values: [\"first_contentful_paint\", \"first_input_delay\", \"largest_contentful_paint\", \"cumulative_layout_shift\", \"experimental_time_to_first_byte\", \"experimental_interaction_to_next_paint\"]",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "TimeseriesBin": {
+      "description": "A bin is a discrete portion of data spanning from start to end, or if no end is given, then from start to +inf. A bin's start and end values are given in the value type of the metric it represents. For example, \"first contentful paint\" is measured in milliseconds and exposed as ints, therefore its metric bins will use int32s for its start and end types. However, \"cumulative layout shift\" is measured in unitless decimals and is exposed as a decimal encoded as a string, therefore its metric bins will use strings for its value type.",
+      "id": "TimeseriesBin",
+      "properties": {
+        "densities": {
+          "description": "The proportion of users that experienced this bin's value for the given metric in a given collection period; the index for each of these entries corresponds to an entry in the CollectionPeriods field in the HistoryRecord message, which describes when the density was observed in the field. Thus, the length of this list of densities is equal to the length of the CollectionPeriods field in the HistoryRecord message.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "end": {
+          "description": "End is the end of the data bin. If end is not populated, then the bin has no end and is valid from start to +inf.",
+          "type": "any"
+        },
+        "start": {
+          "description": "Start is the beginning of the data bin.",
+          "type": "any"
+        }
+      },
+      "type": "object"
+    },
+    "TimeseriesPercentiles": {
+      "description": "Percentiles contains synthetic values of a metric at a given statistical percentile. These are used for estimating a metric's value as experienced by a percentage of users out of the total number of users.",
+      "id": "TimeseriesPercentiles",
+      "properties": {
+        "p75s": {
+          "description": "75% of users experienced the given metric at or below this value. The length of this list of densities is equal to the length of the CollectionPeriods field in the HistoryRecord message, which describes when the density was observed in the field.",
+          "items": {
+            "type": "any"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "UrlNormalization": {
+      "description": "Object representing the normalization actions taken to normalize a url to achieve a higher chance of successful lookup. These are simple automated changes that are taken when looking up the provided `url_patten` would be known to fail. Complex actions like following redirects are not handled.",
+      "id": "UrlNormalization",
+      "properties": {
+        "normalizedUrl": {
+          "description": "The URL after any normalization actions. This is a valid user experience URL that could reasonably be looked up.",
+          "type": "string"
+        },
+        "originalUrl": {
+          "description": "The original requested URL prior to any normalization actions.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Chrome UX Report API",
+  "version": "v1",
+  "version_module": true
+}

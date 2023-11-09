@@ -1,0 +1,66 @@
+// TestServer.idl : IDL source for TestServer.dll
+//
+
+// This file will be processed by the MIDL tool to
+// produce the type library (TestServer.tlb) and marshalling code.
+
+import "oaidl.idl";
+import "ocidl.idl";
+	[
+		object,
+		uuid(50086EE8-F535-464B-806E-365ADBB727CF),
+		dual,
+		helpstring("ITestServerApp Interface"),
+		pointer_default(unique)
+	]
+	interface ITestServerApp : IDispatch
+	{
+		[id(1), helpstring("method Test1")] HRESULT Test1([out, retval] ITestServerApp **pVal);
+		[id(2), helpstring("method Test2")] HRESULT Test2([out, retval] VARIANT *pVar);
+		[propget, id(3), helpstring("property MyProp1")] HRESULT MyProp1([out, retval] long *pVal);
+	};
+	[
+		object,
+		uuid(618DB2A3-D5BD-4850-B66A-828727EB37E5),
+		dual,
+		helpstring("IPippo Interface"),
+		pointer_default(unique)
+	]
+	interface IPippo : IDispatch
+	{		
+		[id(1), helpstring("method Method1")] HRESULT Method1([out, retval] IPippo **val);
+		[propget, id(2), helpstring("property MyProp1")] HRESULT MyProp1([out, retval] long *pVal);
+		[id(3), helpstring("method Method2")] HRESULT Method2([in] long in1, [in, out] long *inout1,
+		                                                      [out, retval] long *val);
+		[id(4), helpstring("method Method3")] HRESULT Method3([in] VARIANT in1,
+		                                                      [out, retval] VARIANT *val);
+	};
+
+[
+	uuid(7783054E-9A20-4584-8C62-6ED2A08F6AC6),
+	version(1.0),
+	helpstring("TestServer 1.0 Type Library")
+]
+library TESTSERVERLib
+{
+	importlib("stdole32.tlb");
+	importlib("stdole2.tlb");
+	importlib("msado15.dll");
+
+	[
+		uuid(49E44E89-5A72-4456-B1D5-68268A19E798),
+		helpstring("TestServerApp Class")
+	]
+	coclass TestServerApp
+	{
+		[default] interface ITestServerApp;
+	};
+	[
+		uuid(1F0F75D6-BD63-41B9-9F88-2D9D2E1AA5C3),
+		helpstring("Pippo Class")
+	]
+	coclass Pippo
+	{
+		[default] interface IPippo;
+	};
+};

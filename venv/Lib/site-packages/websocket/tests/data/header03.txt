@@ -1,0 +1,8 @@
+HTTP/1.1 101 WebSocket Protocol Handshake
+Connection: Upgrade, Keep-Alive
+Upgrade: WebSocket
+Sec-WebSocket-Accept: Kxep+hNu9n51529fGidYu7a3wO0=
+Set-Cookie: Token=ABCDE
+Set-Cookie: Token=FGHIJ
+some_header: something
+

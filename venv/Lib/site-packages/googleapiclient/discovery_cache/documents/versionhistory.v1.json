@@ -1,0 +1,499 @@
+{
+  "basePath": "",
+  "baseUrl": "https://versionhistory.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Version History",
+  "description": "Version History API - Prod",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://developers.chrome.com/versionhistory",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "versionhistory:v1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://versionhistory.mtls.googleapis.com/",
+  "name": "versionhistory",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "platforms": {
+      "methods": {
+        "list": {
+          "description": "Returns list of platforms that are available for a given product. The resource \"product\" has no resource name in its name.",
+          "flatPath": "v1/{v1Id}/platforms",
+          "httpMethod": "GET",
+          "id": "versionhistory.platforms.list",
+          "parameterOrder": [
+            "parent"
+          ],
+          "parameters": {
+            "pageSize": {
+              "description": "Optional. Optional limit on the number of channels to include in the response. If unspecified, the server will pick an appropriate default.",
+              "format": "int32",
+              "location": "query",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "Optional. A page token, received from a previous `ListChannels` call. Provide this to retrieve the subsequent page.",
+              "location": "query",
+              "type": "string"
+            },
+            "parent": {
+              "description": "Required. The product, which owns this collection of platforms. Format: {product}",
+              "location": "path",
+              "pattern": "^[^/]+$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v1/{+parent}/platforms",
+          "response": {
+            "$ref": "ListPlatformsResponse"
+          }
+        }
+      },
+      "resources": {
+        "channels": {
+          "methods": {
+            "list": {
+              "description": "Returns list of channels that are available for a given platform.",
+              "flatPath": "v1/{v1Id}/platforms/{platformsId}/channels",
+              "httpMethod": "GET",
+              "id": "versionhistory.platforms.channels.list",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "pageSize": {
+                  "description": "Optional. Optional limit on the number of channels to include in the response. If unspecified, the server will pick an appropriate default.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "pageToken": {
+                  "description": "Optional. A page token, received from a previous `ListChannels` call. Provide this to retrieve the subsequent page.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "parent": {
+                  "description": "Required. The platform, which owns this collection of channels. Format: {product}/platforms/{platform}",
+                  "location": "path",
+                  "pattern": "^[^/]+/platforms/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+parent}/channels",
+              "response": {
+                "$ref": "ListChannelsResponse"
+              }
+            }
+          },
+          "resources": {
+            "versions": {
+              "methods": {
+                "list": {
+                  "description": "Returns list of version for the given platform/channel.",
+                  "flatPath": "v1/{v1Id}/platforms/{platformsId}/channels/{channelsId}/versions",
+                  "httpMethod": "GET",
+                  "id": "versionhistory.platforms.channels.versions.list",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "filter": {
+                      "description": "Optional. Filter string. Format is a comma separated list of All comma separated filter clauses are conjoined with a logical \"and\". Valid field_names are \"version\", \"name\", \"platform\", and \"channel\". Valid operators are \"<\", \"<=\", \"=\", \">=\", and \">\". Channel comparison is done by distance from stable. Ex) stable < beta, beta < dev, canary < canary_asan. Version comparison is done numerically. If version is not entirely written, the version will be appended with 0 in missing fields. Ex) version > 80 becoms version > 80.0.0.0 Name and platform are filtered by string comparison. Ex) \"...?filter=channel<=beta, version >= 80 Ex) \"...?filter=version > 80, version < 81",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "orderBy": {
+                      "description": "Optional. Ordering string. Valid order_by strings are \"version\", \"name\", \"platform\", and \"channel\". Optionally, you can append \" desc\" or \" asc\" to specify the sorting order. Multiple order_by strings can be used in a comma separated list. Ordering by channel will sort by distance from the stable channel (not alphabetically). A list of channels sorted in this order is: stable, beta, dev, canary, and canary_asan. Sorting by name may cause unexpected behaviour as it is a naive string sort. For example, 1.0.0.8 will be before 1.0.0.10 in descending order. If order_by is not specified the response will be sorted by version in descending order. Ex) \"...?order_by=version asc\" Ex) \"...?order_by=platform desc, channel, version\"",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "pageSize": {
+                      "description": "Optional. Optional limit on the number of versions to include in the response. If unspecified, the server will pick an appropriate default.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "Optional. A page token, received from a previous `ListVersions` call. Provide this to retrieve the subsequent page.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The channel, which owns this collection of versions. Format: {product}/platforms/{platform}/channels/{channel}",
+                      "location": "path",
+                      "pattern": "^[^/]+/platforms/[^/]+/channels/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1/{+parent}/versions",
+                  "response": {
+                    "$ref": "ListVersionsResponse"
+                  }
+                }
+              },
+              "resources": {
+                "releases": {
+                  "methods": {
+                    "list": {
+                      "description": "Returns list of releases of the given version.",
+                      "flatPath": "v1/{v1Id}/platforms/{platformsId}/channels/{channelsId}/versions/{versionsId}/releases",
+                      "httpMethod": "GET",
+                      "id": "versionhistory.platforms.channels.versions.releases.list",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "filter": {
+                          "description": "Optional. Filter string. Format is a comma separated list of All comma separated filter clauses are conjoined with a logical \"and\". Valid field_names are \"version\", \"name\", \"platform\", \"channel\", \"fraction\" \"starttime\", and \"endtime\". Valid operators are \"<\", \"<=\", \"=\", \">=\", and \">\". Channel comparison is done by distance from stable. must be a valid channel when filtering by channel. Ex) stable < beta, beta < dev, canary < canary_asan. Version comparison is done numerically. Ex) 1.0.0.8 < 1.0.0.10. If version is not entirely written, the version will be appended with 0 for the missing fields. Ex) version > 80 becoms version > 80.0.0.0 When filtering by starttime or endtime, string must be in RFC 3339 date string format. Name and platform are filtered by string comparison. Ex) \"...?filter=channel<=beta, version >= 80 Ex) \"...?filter=version > 80, version < 81 Ex) \"...?filter=starttime>2020-01-01T00:00:00Z",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "orderBy": {
+                          "description": "Optional. Ordering string. Valid order_by strings are \"version\", \"name\", \"starttime\", \"endtime\", \"platform\", \"channel\", and \"fraction\". Optionally, you can append \"desc\" or \"asc\" to specify the sorting order. Multiple order_by strings can be used in a comma separated list. Ordering by channel will sort by distance from the stable channel (not alphabetically). A list of channels sorted in this order is: stable, beta, dev, canary, and canary_asan. Sorting by name may cause unexpected behaviour as it is a naive string sort. For example, 1.0.0.8 will be before 1.0.0.10 in descending order. If order_by is not specified the response will be sorted by starttime in descending order. Ex) \"...?order_by=starttime asc\" Ex) \"...?order_by=platform desc, channel, startime desc\"",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "Optional. Optional limit on the number of releases to include in the response. If unspecified, the server will pick an appropriate default.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Optional. A page token, received from a previous `ListReleases` call. Provide this to retrieve the subsequent page.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "parent": {
+                          "description": "Required. The version, which owns this collection of releases. Format: {product}/platforms/{platform}/channels/{channel}/versions/{version}",
+                          "location": "path",
+                          "pattern": "^[^/]+/platforms/[^/]+/channels/[^/]+/versions/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1/{+parent}/releases",
+                      "response": {
+                        "$ref": "ListReleasesResponse"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230402",
+  "rootUrl": "https://versionhistory.googleapis.com/",
+  "schemas": {
+    "Channel": {
+      "description": "Each Channel is owned by a Platform and owns a collection of versions. Possible Channels are listed in the Channel enum below. Not all Channels are available for every Platform (e.g. CANARY does not exist for LINUX).",
+      "id": "Channel",
+      "properties": {
+        "channelType": {
+          "description": "Type of channel.",
+          "enum": [
+            "CHANNEL_TYPE_UNSPECIFIED",
+            "STABLE",
+            "BETA",
+            "DEV",
+            "CANARY",
+            "CANARY_ASAN",
+            "ALL",
+            "EXTENDED"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "Channel name. Format is \"{product}/platforms/{platform}/channels/{channel}\"",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Interval": {
+      "description": "Represents a time interval, encoded as a Timestamp start (inclusive) and a Timestamp end (exclusive). The start must be less than or equal to the end. When the start equals the end, the interval is empty (matches no time). When both start and end are unspecified, the interval matches any time.",
+      "id": "Interval",
+      "properties": {
+        "endTime": {
+          "description": "Optional. Exclusive end of the interval. If specified, a Timestamp matching this interval will have to be before the end.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "startTime": {
+          "description": "Optional. Inclusive start of the interval. If specified, a Timestamp matching this interval will have to be the same or after the start.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListChannelsResponse": {
+      "description": "Response message for ListChannels.",
+      "id": "ListChannelsResponse",
+      "properties": {
+        "channels": {
+          "description": "The list of channels.",
+          "items": {
+            "$ref": "Channel"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListPlatformsResponse": {
+      "description": "Response message for ListPlatforms.",
+      "id": "ListPlatformsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "platforms": {
+          "description": "The list of platforms.",
+          "items": {
+            "$ref": "Platform"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListReleasesResponse": {
+      "description": "Response message for ListReleases.",
+      "id": "ListReleasesResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "releases": {
+          "description": "The list of releases.",
+          "items": {
+            "$ref": "Release"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListVersionsResponse": {
+      "description": "Response message for ListVersions.",
+      "id": "ListVersionsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "versions": {
+          "description": "The list of versions.",
+          "items": {
+            "$ref": "Version"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Platform": {
+      "description": "Each Platform is owned by a Product and owns a collection of channels. Available platforms are listed in Platform enum below. Not all Channels are available for every Platform (e.g. CANARY does not exist for LINUX).",
+      "id": "Platform",
+      "properties": {
+        "name": {
+          "description": "Platform name. Format is \"{product}/platforms/{platform}\"",
+          "type": "string"
+        },
+        "platformType": {
+          "description": "Type of platform.",
+          "enum": [
+            "PLATFORM_TYPE_UNSPECIFIED",
+            "WIN",
+            "WIN64",
+            "MAC",
+            "LINUX",
+            "ANDROID",
+            "WEBVIEW",
+            "IOS",
+            "ALL",
+            "MAC_ARM64",
+            "LACROS",
+            "LACROS_ARM32",
+            "CHROMEOS",
+            "LACROS_ARM64",
+            "FUCHSIA"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Release": {
+      "description": "A Release is owned by a Version. A Release contains information about the release(s) of its parent version. This includes when the release began and ended, as well as what percentage it was released at. If the version is released again, or if the serving percentage changes, it will create another release under the version.",
+      "id": "Release",
+      "properties": {
+        "fraction": {
+          "description": "Rollout fraction. This fraction indicates the fraction of people that should receive this version in this release. If the fraction is not specified in ReleaseManager, the API will assume fraction is 1.",
+          "format": "double",
+          "type": "number"
+        },
+        "fractionGroup": {
+          "description": "Rollout fraction group. Only fractions with the same fraction_group are statistically comparable: there may be non-fractional differences between different fraction groups.",
+          "format": "int64",
+          "type": "string"
+        },
+        "name": {
+          "description": "Release name. Format is \"{product}/platforms/{platform}/channels/{channel}/versions/{version}/releases/{release}\"",
+          "type": "string"
+        },
+        "serving": {
+          "$ref": "Interval",
+          "description": "Timestamp interval of when the release was live. If end_time is unspecified, the release is currently live."
+        },
+        "version": {
+          "description": "String containing just the version number. e.g. \"84.0.4147.38\"",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Version": {
+      "description": "Each Version is owned by a Channel. A Version only displays the Version number (e.g. 84.0.4147.38). A Version owns a collection of releases.",
+      "id": "Version",
+      "properties": {
+        "name": {
+          "description": "Version name. Format is \"{product}/platforms/{platform}/channels/{channel}/versions/{version}\" e.g. \"chrome/platforms/win/channels/beta/versions/84.0.4147.38\"",
+          "type": "string"
+        },
+        "version": {
+          "description": "String containing just the version number. e.g. \"84.0.4147.38\"",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "versionhistory.googleapis.com API",
+  "version": "v1",
+  "version_module": true
+}

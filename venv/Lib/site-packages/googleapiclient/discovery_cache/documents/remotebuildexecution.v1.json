@@ -1,0 +1,2103 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "See, edit, configure, and delete your Google Cloud Platform data"
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://remotebuildexecution.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Remote Build Execution",
+  "description": "Supplies a Remote Execution API service for tools such as bazel.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://cloud.google.com/remote-build-execution/docs/",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "remotebuildexecution:v1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://remotebuildexecution.mtls.googleapis.com/",
+  "name": "remotebuildexecution",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "media": {
+      "methods": {
+        "download": {
+          "description": "Downloads media. Download is supported on the URI `/v1/media/{+name}?alt=media`.",
+          "flatPath": "v1/media/{mediaId}",
+          "httpMethod": "GET",
+          "id": "remotebuildexecution.media.download",
+          "parameterOrder": [
+            "resourceName"
+          ],
+          "parameters": {
+            "resourceName": {
+              "description": "Name of the media that is being downloaded. See ReadRequest.resource_name.",
+              "location": "path",
+              "pattern": "^.*$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v1/media/{+resourceName}",
+          "response": {
+            "$ref": "GoogleBytestreamMedia"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform"
+          ],
+          "supportsMediaDownload": true
+        },
+        "upload": {
+          "description": "Uploads media. Upload is supported on the URI `/upload/v1/media/{+name}`.",
+          "flatPath": "v1/media/{mediaId}",
+          "httpMethod": "POST",
+          "id": "remotebuildexecution.media.upload",
+          "mediaUpload": {
+            "accept": [
+              "*/*"
+            ],
+            "protocols": {
+              "simple": {
+                "multipart": true,
+                "path": "/upload/v1/media/{+resourceName}"
+              }
+            }
+          },
+          "parameterOrder": [
+            "resourceName"
+          ],
+          "parameters": {
+            "resourceName": {
+              "description": "Name of the media that is being downloaded. See ReadRequest.resource_name.",
+              "location": "path",
+              "pattern": "^.*$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v1/media/{+resourceName}",
+          "request": {
+            "$ref": "GoogleBytestreamMedia"
+          },
+          "response": {
+            "$ref": "GoogleBytestreamMedia"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform"
+          ],
+          "supportsMediaUpload": true
+        }
+      }
+    },
+    "operations": {
+      "methods": {
+        "cancel": {
+          "description": "Starts asynchronous cancellation on a long-running operation. The server makes a best effort to cancel the operation, but success is not guaranteed. If the server doesn't support this method, it returns `google.rpc.Code.UNIMPLEMENTED`. Clients can use Operations.GetOperation or other methods to check whether the cancellation succeeded or whether the operation completed despite cancellation. On successful cancellation, the operation is not deleted; instead, it becomes an operation with an Operation.error value with a google.rpc.Status.code of 1, corresponding to `Code.CANCELLED`.",
+          "flatPath": "v1/operations/{operationsId}:cancel",
+          "httpMethod": "POST",
+          "id": "remotebuildexecution.operations.cancel",
+          "parameterOrder": [
+            "name"
+          ],
+          "parameters": {
+            "name": {
+              "description": "The name of the operation resource to be cancelled.",
+              "location": "path",
+              "pattern": "^operations/.*$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v1/{+name}:cancel",
+          "request": {
+            "$ref": "GoogleLongrunningCancelOperationRequest"
+          },
+          "response": {
+            "$ref": "GoogleProtobufEmpty"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform"
+          ]
+        },
+        "delete": {
+          "description": "Deletes a long-running operation. This method indicates that the client is no longer interested in the operation result. It does not cancel the operation. If the server doesn't support this method, it returns `google.rpc.Code.UNIMPLEMENTED`.",
+          "flatPath": "v1/operations/{operationsId}",
+          "httpMethod": "DELETE",
+          "id": "remotebuildexecution.operations.delete",
+          "parameterOrder": [
+            "name"
+          ],
+          "parameters": {
+            "name": {
+              "description": "The name of the operation resource to be deleted.",
+              "location": "path",
+              "pattern": "^operations/.*$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v1/{+name}",
+          "response": {
+            "$ref": "GoogleProtobufEmpty"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform"
+          ]
+        },
+        "list": {
+          "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`. NOTE: the `name` binding allows API services to override the binding to use different resource name schemes, such as `users/*/operations`. To override the binding, API services can add a binding such as `\"/v1/{name=users/*}/operations\"` to their service configuration. For backwards compatibility, the default name includes the operations collection id, however overriding users must ensure the name binding is the parent resource, without the operations collection id.",
+          "flatPath": "v1/operations",
+          "httpMethod": "GET",
+          "id": "remotebuildexecution.operations.list",
+          "parameterOrder": [
+            "name"
+          ],
+          "parameters": {
+            "filter": {
+              "description": "The standard list filter.",
+              "location": "query",
+              "type": "string"
+            },
+            "name": {
+              "description": "The name of the operation's parent resource.",
+              "location": "path",
+              "pattern": "^operations$",
+              "required": true,
+              "type": "string"
+            },
+            "pageSize": {
+              "description": "The standard list page size.",
+              "format": "int32",
+              "location": "query",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "The standard list page token.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v1/{+name}",
+          "response": {
+            "$ref": "GoogleLongrunningListOperationsResponse"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform"
+          ]
+        }
+      }
+    },
+    "projects": {
+      "resources": {
+        "operations": {
+          "methods": {
+            "get": {
+              "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+              "flatPath": "v1/projects/{projectsId}/operations/{operationsId}",
+              "httpMethod": "GET",
+              "id": "remotebuildexecution.projects.operations.get",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "The name of the operation resource.",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/operations/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+name}",
+              "response": {
+                "$ref": "GoogleLongrunningOperation"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20210712",
+  "rootUrl": "https://remotebuildexecution.googleapis.com/",
+  "schemas": {
+    "BuildBazelRemoteExecutionV2Action": {
+      "description": "An `Action` captures all the information about an execution which is required to reproduce it. `Action`s are the core component of the [Execution] service. A single `Action` represents a repeatable action that can be performed by the execution service. `Action`s can be succinctly identified by the digest of their wire format encoding and, once an `Action` has been executed, will be cached in the action cache. Future requests can then use the cached result rather than needing to run afresh. When a server completes execution of an Action, it MAY choose to cache the result in the ActionCache unless `do_not_cache` is `true`. Clients SHOULD expect the server to do so. By default, future calls to Execute the same `Action` will also serve their results from the cache. Clients must take care to understand the caching behaviour. Ideally, all `Action`s will be reproducible so that serving a result from cache is always desirable and correct.",
+      "id": "BuildBazelRemoteExecutionV2Action",
+      "properties": {
+        "commandDigest": {
+          "$ref": "BuildBazelRemoteExecutionV2Digest",
+          "description": "The digest of the Command to run, which MUST be present in the ContentAddressableStorage."
+        },
+        "doNotCache": {
+          "description": "If true, then the `Action`'s result cannot be cached, and in-flight requests for the same `Action` may not be merged.",
+          "type": "boolean"
+        },
+        "inputRootDigest": {
+          "$ref": "BuildBazelRemoteExecutionV2Digest",
+          "description": "The digest of the root Directory for the input files. The files in the directory tree are available in the correct location on the build machine before the command is executed. The root directory, as well as every subdirectory and content blob referred to, MUST be in the ContentAddressableStorage."
+        },
+        "platform": {
+          "$ref": "BuildBazelRemoteExecutionV2Platform",
+          "description": "The optional platform requirements for the execution environment. The server MAY choose to execute the action on any worker satisfying the requirements, so the client SHOULD ensure that running the action on any such worker will have the same result. A detailed lexicon for this can be found in the accompanying platform.md. New in version 2.2: clients SHOULD set these platform properties as well as those in the Command. Servers SHOULD prefer those set here."
+        },
+        "salt": {
+          "description": "An optional additional salt value used to place this `Action` into a separate cache namespace from other instances having the same field contents. This salt typically comes from operational configuration specific to sources such as repo and service configuration, and allows disowning an entire set of ActionResults that might have been poisoned by buggy software or tool failures.",
+          "format": "byte",
+          "type": "string"
+        },
+        "timeout": {
+          "description": "A timeout after which the execution should be killed. If the timeout is absent, then the client is specifying that the execution should continue as long as the server will let it. The server SHOULD impose a timeout if the client does not specify one, however, if the client does specify a timeout that is longer than the server's maximum timeout, the server MUST reject the request. The timeout is a part of the Action message, and therefore two `Actions` with different timeouts are different, even if they are otherwise identical. This is because, if they were not, running an `Action` with a lower timeout than is required might result in a cache hit from an execution run with a longer timeout, hiding the fact that the timeout is too short. By encoding it directly in the `Action`, a lower timeout will result in a cache miss and the execution timeout will fail immediately, rather than whenever the cache entry gets evicted.",
+          "format": "google-duration",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2ActionResult": {
+      "description": "An ActionResult represents the result of an Action being run. It is advised that at least one field (for example `ActionResult.execution_metadata.Worker`) have a non-default value, to ensure that the serialized value is non-empty, which can then be used as a basic data sanity check.",
+      "id": "BuildBazelRemoteExecutionV2ActionResult",
+      "properties": {
+        "executionMetadata": {
+          "$ref": "BuildBazelRemoteExecutionV2ExecutedActionMetadata",
+          "description": "The details of the execution that originally produced this result."
+        },
+        "exitCode": {
+          "description": "The exit code of the command.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "outputDirectories": {
+          "description": "The output directories of the action. For each output directory requested in the `output_directories` or `output_paths` field of the Action, if the corresponding directory existed after the action completed, a single entry will be present in the output list, which will contain the digest of a Tree message containing the directory tree, and the path equal exactly to the corresponding Action output_directories member. As an example, suppose the Action had an output directory `a/b/dir` and the execution produced the following contents in `a/b/dir`: a file named `bar` and a directory named `foo` with an executable file named `baz`. Then, output_directory will contain (hashes shortened for readability): ```json // OutputDirectory proto: { path: \"a/b/dir\" tree_digest: { hash: \"4a73bc9d03...\", size: 55 } } // Tree proto with hash \"4a73bc9d03...\" and size 55: { root: { files: [ { name: \"bar\", digest: { hash: \"4a73bc9d03...\", size: 65534 } } ], directories: [ { name: \"foo\", digest: { hash: \"4cf2eda940...\", size: 43 } } ] } children : { // (Directory proto with hash \"4cf2eda940...\" and size 43) files: [ { name: \"baz\", digest: { hash: \"b2c941073e...\", size: 1294, }, is_executable: true } ] } } ``` If an output of the same name as listed in `output_files` of the Command was found in `output_directories`, but was not a directory, the server will return a FAILED_PRECONDITION.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2OutputDirectory"
+          },
+          "type": "array"
+        },
+        "outputDirectorySymlinks": {
+          "description": "The output directories of the action that are symbolic links to other directories. Those may be links to other output directories, or input directories, or even absolute paths outside of the working directory, if the server supports SymlinkAbsolutePathStrategy.ALLOWED. For each output directory requested in the `output_directories` field of the Action, if the directory existed after the action completed, a single entry will be present either in this field, or in the `output_directories` field, if the directory was not a symbolic link. If an output of the same name was found, but was a symbolic link to a file instead of a directory, the server will return a FAILED_PRECONDITION. If the action does not produce the requested output, then that output will be omitted from the list. The server is free to arrange the output list as desired; clients MUST NOT assume that the output list is sorted. DEPRECATED as of v2.1. Servers that wish to be compatible with v2.0 API should still populate this field in addition to `output_symlinks`.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2OutputSymlink"
+          },
+          "type": "array"
+        },
+        "outputFileSymlinks": {
+          "description": "The output files of the action that are symbolic links to other files. Those may be links to other output files, or input files, or even absolute paths outside of the working directory, if the server supports SymlinkAbsolutePathStrategy.ALLOWED. For each output file requested in the `output_files` or `output_paths` field of the Action, if the corresponding file existed after the action completed, a single entry will be present either in this field, or in the `output_files` field, if the file was not a symbolic link. If an output symbolic link of the same name as listed in `output_files` of the Command was found, but its target type was not a regular file, the server will return a FAILED_PRECONDITION. If the action does not produce the requested output, then that output will be omitted from the list. The server is free to arrange the output list as desired; clients MUST NOT assume that the output list is sorted. DEPRECATED as of v2.1. Servers that wish to be compatible with v2.0 API should still populate this field in addition to `output_symlinks`.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2OutputSymlink"
+          },
+          "type": "array"
+        },
+        "outputFiles": {
+          "description": "The output files of the action. For each output file requested in the `output_files` or `output_paths` field of the Action, if the corresponding file existed after the action completed, a single entry will be present either in this field, or the `output_file_symlinks` field if the file was a symbolic link to another file (`output_symlinks` field after v2.1). If an output listed in `output_files` was found, but was a directory rather than a regular file, the server will return a FAILED_PRECONDITION. If the action does not produce the requested output, then that output will be omitted from the list. The server is free to arrange the output list as desired; clients MUST NOT assume that the output list is sorted.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2OutputFile"
+          },
+          "type": "array"
+        },
+        "outputSymlinks": {
+          "description": "New in v2.1: this field will only be populated if the command `output_paths` field was used, and not the pre v2.1 `output_files` or `output_directories` fields. The output paths of the action that are symbolic links to other paths. Those may be links to other outputs, or inputs, or even absolute paths outside of the working directory, if the server supports SymlinkAbsolutePathStrategy.ALLOWED. A single entry for each output requested in `output_paths` field of the Action, if the corresponding path existed after the action completed and was a symbolic link. If the action does not produce a requested output, then that output will be omitted from the list. The server is free to arrange the output list as desired; clients MUST NOT assume that the output list is sorted.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2OutputSymlink"
+          },
+          "type": "array"
+        },
+        "stderrDigest": {
+          "$ref": "BuildBazelRemoteExecutionV2Digest",
+          "description": "The digest for a blob containing the standard error of the action, which can be retrieved from the ContentAddressableStorage."
+        },
+        "stderrRaw": {
+          "description": "The standard error buffer of the action. The server SHOULD NOT inline stderr unless requested by the client in the GetActionResultRequest message. The server MAY omit inlining, even if requested, and MUST do so if inlining would cause the response to exceed message size limits.",
+          "format": "byte",
+          "type": "string"
+        },
+        "stdoutDigest": {
+          "$ref": "BuildBazelRemoteExecutionV2Digest",
+          "description": "The digest for a blob containing the standard output of the action, which can be retrieved from the ContentAddressableStorage."
+        },
+        "stdoutRaw": {
+          "description": "The standard output buffer of the action. The server SHOULD NOT inline stdout unless requested by the client in the GetActionResultRequest message. The server MAY omit inlining, even if requested, and MUST do so if inlining would cause the response to exceed message size limits.",
+          "format": "byte",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2Command": {
+      "description": "A `Command` is the actual command executed by a worker running an Action and specifications of its environment. Except as otherwise required, the environment (such as which system libraries or binaries are available, and what filesystems are mounted where) is defined by and specific to the implementation of the remote execution API.",
+      "id": "BuildBazelRemoteExecutionV2Command",
+      "properties": {
+        "arguments": {
+          "description": "The arguments to the command. The first argument must be the path to the executable, which must be either a relative path, in which case it is evaluated with respect to the input root, or an absolute path.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "environmentVariables": {
+          "description": "The environment variables to set when running the program. The worker may provide its own default environment variables; these defaults can be overridden using this field. Additional variables can also be specified. In order to ensure that equivalent Commands always hash to the same value, the environment variables MUST be lexicographically sorted by name. Sorting of strings is done by code point, equivalently, by the UTF-8 bytes.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2CommandEnvironmentVariable"
+          },
+          "type": "array"
+        },
+        "outputDirectories": {
+          "description": "A list of the output directories that the client expects to retrieve from the action. Only the listed directories will be returned (an entire directory structure will be returned as a Tree message digest, see OutputDirectory), as well as files listed in `output_files`. Other files or directories that may be created during command execution are discarded. The paths are relative to the working directory of the action execution. The paths are specified using a single forward slash (`/`) as a path separator, even if the execution platform natively uses a different separator. The path MUST NOT include a trailing slash, nor a leading slash, being a relative path. The special value of empty string is allowed, although not recommended, and can be used to capture the entire working directory tree, including inputs. In order to ensure consistent hashing of the same Action, the output paths MUST be sorted lexicographically by code point (or, equivalently, by UTF-8 bytes). An output directory cannot be duplicated or have the same path as any of the listed output files. An output directory is allowed to be a parent of another output directory. Directories leading up to the output directories (but not the output directories themselves) are created by the worker prior to execution, even if they are not explicitly part of the input root. DEPRECATED since 2.1: Use `output_paths` instead.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "outputFiles": {
+          "description": "A list of the output files that the client expects to retrieve from the action. Only the listed files, as well as directories listed in `output_directories`, will be returned to the client as output. Other files or directories that may be created during command execution are discarded. The paths are relative to the working directory of the action execution. The paths are specified using a single forward slash (`/`) as a path separator, even if the execution platform natively uses a different separator. The path MUST NOT include a trailing slash, nor a leading slash, being a relative path. In order to ensure consistent hashing of the same Action, the output paths MUST be sorted lexicographically by code point (or, equivalently, by UTF-8 bytes). An output file cannot be duplicated, be a parent of another output file, or have the same path as any of the listed output directories. Directories leading up to the output files are created by the worker prior to execution, even if they are not explicitly part of the input root. DEPRECATED since v2.1: Use `output_paths` instead.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "outputNodeProperties": {
+          "description": "A list of keys for node properties the client expects to retrieve for output files and directories. Keys are either names of string-based NodeProperty or names of fields in NodeProperties. In order to ensure that equivalent `Action`s always hash to the same value, the node properties MUST be lexicographically sorted by name. Sorting of strings is done by code point, equivalently, by the UTF-8 bytes. The interpretation of string-based properties is server-dependent. If a property is not recognized by the server, the server will return an `INVALID_ARGUMENT`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "outputPaths": {
+          "description": "A list of the output paths that the client expects to retrieve from the action. Only the listed paths will be returned to the client as output. The type of the output (file or directory) is not specified, and will be determined by the server after action execution. If the resulting path is a file, it will be returned in an OutputFile) typed field. If the path is a directory, the entire directory structure will be returned as a Tree message digest, see OutputDirectory) Other files or directories that may be created during command execution are discarded. The paths are relative to the working directory of the action execution. The paths are specified using a single forward slash (`/`) as a path separator, even if the execution platform natively uses a different separator. The path MUST NOT include a trailing slash, nor a leading slash, being a relative path. In order to ensure consistent hashing of the same Action, the output paths MUST be deduplicated and sorted lexicographically by code point (or, equivalently, by UTF-8 bytes). Directories leading up to the output paths are created by the worker prior to execution, even if they are not explicitly part of the input root. New in v2.1: this field supersedes the DEPRECATED `output_files` and `output_directories` fields. If `output_paths` is used, `output_files` and `output_directories` will be ignored!",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "platform": {
+          "$ref": "BuildBazelRemoteExecutionV2Platform",
+          "description": "The platform requirements for the execution environment. The server MAY choose to execute the action on any worker satisfying the requirements, so the client SHOULD ensure that running the action on any such worker will have the same result. A detailed lexicon for this can be found in the accompanying platform.md. DEPRECATED as of v2.2: platform properties are now specified directly in the action. See documentation note in the Action for migration."
+        },
+        "workingDirectory": {
+          "description": "The working directory, relative to the input root, for the command to run in. It must be a directory which exists in the input tree. If it is left empty, then the action is run in the input root.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2CommandEnvironmentVariable": {
+      "description": "An `EnvironmentVariable` is one variable to set in the running program's environment.",
+      "id": "BuildBazelRemoteExecutionV2CommandEnvironmentVariable",
+      "properties": {
+        "name": {
+          "description": "The variable name.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The variable value.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2Digest": {
+      "description": "A content digest. A digest for a given blob consists of the size of the blob and its hash. The hash algorithm to use is defined by the server. The size is considered to be an integral part of the digest and cannot be separated. That is, even if the `hash` field is correctly specified but `size_bytes` is not, the server MUST reject the request. The reason for including the size in the digest is as follows: in a great many cases, the server needs to know the size of the blob it is about to work with prior to starting an operation with it, such as flattening Merkle tree structures or streaming it to a worker. Technically, the server could implement a separate metadata store, but this results in a significantly more complicated implementation as opposed to having the client specify the size up-front (or storing the size along with the digest in every message where digests are embedded). This does mean that the API leaks some implementation details of (what we consider to be) a reasonable server implementation, but we consider this to be a worthwhile tradeoff. When a `Digest` is used to refer to a proto message, it always refers to the message in binary encoded form. To ensure consistent hashing, clients and servers MUST ensure that they serialize messages according to the following rules, even if there are alternate valid encodings for the same message: * Fields are serialized in tag order. * There are no unknown fields. * There are no duplicate fields. * Fields are serialized according to the default semantics for their type. Most protocol buffer implementations will always follow these rules when serializing, but care should be taken to avoid shortcuts. For instance, concatenating two messages to merge them may produce duplicate fields.",
+      "id": "BuildBazelRemoteExecutionV2Digest",
+      "properties": {
+        "hash": {
+          "description": "The hash. In the case of SHA-256, it will always be a lowercase hex string exactly 64 characters long.",
+          "type": "string"
+        },
+        "sizeBytes": {
+          "description": "The size of the blob, in bytes.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2Directory": {
+      "description": "A `Directory` represents a directory node in a file tree, containing zero or more children FileNodes, DirectoryNodes and SymlinkNodes. Each `Node` contains its name in the directory, either the digest of its content (either a file blob or a `Directory` proto) or a symlink target, as well as possibly some metadata about the file or directory. In order to ensure that two equivalent directory trees hash to the same value, the following restrictions MUST be obeyed when constructing a a `Directory`: * Every child in the directory must have a path of exactly one segment. Multiple levels of directory hierarchy may not be collapsed. * Each child in the directory must have a unique path segment (file name). Note that while the API itself is case-sensitive, the environment where the Action is executed may or may not be case-sensitive. That is, it is legal to call the API with a Directory that has both \"Foo\" and \"foo\" as children, but the Action may be rejected by the remote system upon execution. * The files, directories and symlinks in the directory must each be sorted in lexicographical order by path. The path strings must be sorted by code point, equivalently, by UTF-8 bytes. * The NodeProperties of files, directories, and symlinks must be sorted in lexicographical order by property name. A `Directory` that obeys the restrictions is said to be in canonical form. As an example, the following could be used for a file named `bar` and a directory named `foo` with an executable file named `baz` (hashes shortened for readability): ```json // (Directory proto) { files: [ { name: \"bar\", digest: { hash: \"4a73bc9d03...\", size: 65534 }, node_properties: [ { \"name\": \"MTime\", \"value\": \"2017-01-15T01:30:15.01Z\" } ] } ], directories: [ { name: \"foo\", digest: { hash: \"4cf2eda940...\", size: 43 } } ] } // (Directory proto with hash \"4cf2eda940...\" and size 43) { files: [ { name: \"baz\", digest: { hash: \"b2c941073e...\", size: 1294, }, is_executable: true } ] } ```",
+      "id": "BuildBazelRemoteExecutionV2Directory",
+      "properties": {
+        "directories": {
+          "description": "The subdirectories in the directory.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2DirectoryNode"
+          },
+          "type": "array"
+        },
+        "files": {
+          "description": "The files in the directory.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2FileNode"
+          },
+          "type": "array"
+        },
+        "nodeProperties": {
+          "$ref": "BuildBazelRemoteExecutionV2NodeProperties"
+        },
+        "symlinks": {
+          "description": "The symlinks in the directory.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2SymlinkNode"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2DirectoryNode": {
+      "description": "A `DirectoryNode` represents a child of a Directory which is itself a `Directory` and its associated metadata.",
+      "id": "BuildBazelRemoteExecutionV2DirectoryNode",
+      "properties": {
+        "digest": {
+          "$ref": "BuildBazelRemoteExecutionV2Digest",
+          "description": "The digest of the Directory object represented. See Digest for information about how to take the digest of a proto message."
+        },
+        "name": {
+          "description": "The name of the directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2ExecuteOperationMetadata": {
+      "description": "Metadata about an ongoing execution, which will be contained in the metadata field of the Operation.",
+      "id": "BuildBazelRemoteExecutionV2ExecuteOperationMetadata",
+      "properties": {
+        "actionDigest": {
+          "$ref": "BuildBazelRemoteExecutionV2Digest",
+          "description": "The digest of the Action being executed."
+        },
+        "stage": {
+          "description": "The current stage of execution.",
+          "enum": [
+            "UNKNOWN",
+            "CACHE_CHECK",
+            "QUEUED",
+            "EXECUTING",
+            "COMPLETED"
+          ],
+          "enumDescriptions": [
+            "Invalid value.",
+            "Checking the result against the cache.",
+            "Currently idle, awaiting a free machine to execute.",
+            "Currently being executed by a worker.",
+            "Finished execution."
+          ],
+          "type": "string"
+        },
+        "stderrStreamName": {
+          "description": "If set, the client can use this resource name with ByteStream.Read to stream the standard error from the endpoint hosting streamed responses.",
+          "type": "string"
+        },
+        "stdoutStreamName": {
+          "description": "If set, the client can use this resource name with ByteStream.Read to stream the standard output from the endpoint hosting streamed responses.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2ExecuteResponse": {
+      "description": "The response message for Execution.Execute, which will be contained in the response field of the Operation.",
+      "id": "BuildBazelRemoteExecutionV2ExecuteResponse",
+      "properties": {
+        "cachedResult": {
+          "description": "True if the result was served from cache, false if it was executed.",
+          "type": "boolean"
+        },
+        "message": {
+          "description": "Freeform informational message with details on the execution of the action that may be displayed to the user upon failure or when requested explicitly.",
+          "type": "string"
+        },
+        "result": {
+          "$ref": "BuildBazelRemoteExecutionV2ActionResult",
+          "description": "The result of the action."
+        },
+        "serverLogs": {
+          "additionalProperties": {
+            "$ref": "BuildBazelRemoteExecutionV2LogFile"
+          },
+          "description": "An optional list of additional log outputs the server wishes to provide. A server can use this to return execution-specific logs however it wishes. This is intended primarily to make it easier for users to debug issues that may be outside of the actual job execution, such as by identifying the worker executing the action or by providing logs from the worker's setup phase. The keys SHOULD be human readable so that a client can display them to a user.",
+          "type": "object"
+        },
+        "status": {
+          "$ref": "GoogleRpcStatus",
+          "description": "If the status has a code other than `OK`, it indicates that the action did not finish execution. For example, if the operation times out during execution, the status will have a `DEADLINE_EXCEEDED` code. Servers MUST use this field for errors in execution, rather than the error field on the `Operation` object. If the status code is other than `OK`, then the result MUST NOT be cached. For an error status, the `result` field is optional; the server may populate the output-, stdout-, and stderr-related fields if it has any information available, such as the stdout and stderr of a timed-out action."
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2ExecutedActionMetadata": {
+      "description": "ExecutedActionMetadata contains details about a completed execution.",
+      "id": "BuildBazelRemoteExecutionV2ExecutedActionMetadata",
+      "properties": {
+        "auxiliaryMetadata": {
+          "description": "Details that are specific to the kind of worker used. For example, on POSIX-like systems this could contain a message with getrusage(2) statistics.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "executionCompletedTimestamp": {
+          "description": "When the worker completed executing the action command.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "executionStartTimestamp": {
+          "description": "When the worker started executing the action command.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "inputFetchCompletedTimestamp": {
+          "description": "When the worker finished fetching action inputs.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "inputFetchStartTimestamp": {
+          "description": "When the worker started fetching action inputs.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "outputUploadCompletedTimestamp": {
+          "description": "When the worker finished uploading action outputs.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "outputUploadStartTimestamp": {
+          "description": "When the worker started uploading action outputs.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "queuedTimestamp": {
+          "description": "When was the action added to the queue.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "worker": {
+          "description": "The name of the worker which ran the execution.",
+          "type": "string"
+        },
+        "workerCompletedTimestamp": {
+          "description": "When the worker completed the action, including all stages.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "workerStartTimestamp": {
+          "description": "When the worker received the action.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2FileNode": {
+      "description": "A `FileNode` represents a single file and associated metadata.",
+      "id": "BuildBazelRemoteExecutionV2FileNode",
+      "properties": {
+        "digest": {
+          "$ref": "BuildBazelRemoteExecutionV2Digest",
+          "description": "The digest of the file's content."
+        },
+        "isExecutable": {
+          "description": "True if file is executable, false otherwise.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "The name of the file.",
+          "type": "string"
+        },
+        "nodeProperties": {
+          "$ref": "BuildBazelRemoteExecutionV2NodeProperties"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2LogFile": {
+      "description": "A `LogFile` is a log stored in the CAS.",
+      "id": "BuildBazelRemoteExecutionV2LogFile",
+      "properties": {
+        "digest": {
+          "$ref": "BuildBazelRemoteExecutionV2Digest",
+          "description": "The digest of the log contents."
+        },
+        "humanReadable": {
+          "description": "This is a hint as to the purpose of the log, and is set to true if the log is human-readable text that can be usefully displayed to a user, and false otherwise. For instance, if a command-line client wishes to print the server logs to the terminal for a failed action, this allows it to avoid displaying a binary file.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2NodeProperties": {
+      "description": "Node properties for FileNodes, DirectoryNodes, and SymlinkNodes. The server is responsible for specifying the properties that it accepts.",
+      "id": "BuildBazelRemoteExecutionV2NodeProperties",
+      "properties": {
+        "mtime": {
+          "description": "The file's last modification timestamp.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "properties": {
+          "description": "A list of string-based NodeProperties.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2NodeProperty"
+          },
+          "type": "array"
+        },
+        "unixMode": {
+          "description": "The UNIX file mode, e.g., 0755.",
+          "format": "uint32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2NodeProperty": {
+      "description": "A single property for FileNodes, DirectoryNodes, and SymlinkNodes. The server is responsible for specifying the property `name`s that it accepts. If permitted by the server, the same `name` may occur multiple times.",
+      "id": "BuildBazelRemoteExecutionV2NodeProperty",
+      "properties": {
+        "name": {
+          "description": "The property name.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The property value.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2OutputDirectory": {
+      "description": "An `OutputDirectory` is the output in an `ActionResult` corresponding to a directory's full contents rather than a single file.",
+      "id": "BuildBazelRemoteExecutionV2OutputDirectory",
+      "properties": {
+        "path": {
+          "description": "The full path of the directory relative to the working directory. The path separator is a forward slash `/`. Since this is a relative path, it MUST NOT begin with a leading forward slash. The empty string value is allowed, and it denotes the entire working directory.",
+          "type": "string"
+        },
+        "treeDigest": {
+          "$ref": "BuildBazelRemoteExecutionV2Digest",
+          "description": "The digest of the encoded Tree proto containing the directory's contents."
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2OutputFile": {
+      "description": "An `OutputFile` is similar to a FileNode, but it is used as an output in an `ActionResult`. It allows a full file path rather than only a name.",
+      "id": "BuildBazelRemoteExecutionV2OutputFile",
+      "properties": {
+        "contents": {
+          "description": "The contents of the file if inlining was requested. The server SHOULD NOT inline file contents unless requested by the client in the GetActionResultRequest message. The server MAY omit inlining, even if requested, and MUST do so if inlining would cause the response to exceed message size limits.",
+          "format": "byte",
+          "type": "string"
+        },
+        "digest": {
+          "$ref": "BuildBazelRemoteExecutionV2Digest",
+          "description": "The digest of the file's content."
+        },
+        "isExecutable": {
+          "description": "True if file is executable, false otherwise.",
+          "type": "boolean"
+        },
+        "nodeProperties": {
+          "$ref": "BuildBazelRemoteExecutionV2NodeProperties"
+        },
+        "path": {
+          "description": "The full path of the file relative to the working directory, including the filename. The path separator is a forward slash `/`. Since this is a relative path, it MUST NOT begin with a leading forward slash.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2OutputSymlink": {
+      "description": "An `OutputSymlink` is similar to a Symlink, but it is used as an output in an `ActionResult`. `OutputSymlink` is binary-compatible with `SymlinkNode`.",
+      "id": "BuildBazelRemoteExecutionV2OutputSymlink",
+      "properties": {
+        "nodeProperties": {
+          "$ref": "BuildBazelRemoteExecutionV2NodeProperties"
+        },
+        "path": {
+          "description": "The full path of the symlink relative to the working directory, including the filename. The path separator is a forward slash `/`. Since this is a relative path, it MUST NOT begin with a leading forward slash.",
+          "type": "string"
+        },
+        "target": {
+          "description": "The target path of the symlink. The path separator is a forward slash `/`. The target path can be relative to the parent directory of the symlink or it can be an absolute path starting with `/`. Support for absolute paths can be checked using the Capabilities API. `..` components are allowed anywhere in the target path.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2Platform": {
+      "description": "A `Platform` is a set of requirements, such as hardware, operating system, or compiler toolchain, for an Action's execution environment. A `Platform` is represented as a series of key-value pairs representing the properties that are required of the platform.",
+      "id": "BuildBazelRemoteExecutionV2Platform",
+      "properties": {
+        "properties": {
+          "description": "The properties that make up this platform. In order to ensure that equivalent `Platform`s always hash to the same value, the properties MUST be lexicographically sorted by name, and then by value. Sorting of strings is done by code point, equivalently, by the UTF-8 bytes.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2PlatformProperty"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2PlatformProperty": {
+      "description": "A single property for the environment. The server is responsible for specifying the property `name`s that it accepts. If an unknown `name` is provided in the requirements for an Action, the server SHOULD reject the execution request. If permitted by the server, the same `name` may occur multiple times. The server is also responsible for specifying the interpretation of property `value`s. For instance, a property describing how much RAM must be available may be interpreted as allowing a worker with 16GB to fulfill a request for 8GB, while a property describing the OS environment on which the action must be performed may require an exact match with the worker's OS. The server MAY use the `value` of one or more properties to determine how it sets up the execution environment, such as by making specific system files available to the worker. Both names and values are typically case-sensitive. Note that the platform is implicitly part of the action digest, so even tiny changes in the names or values (like changing case) may result in different action cache entries.",
+      "id": "BuildBazelRemoteExecutionV2PlatformProperty",
+      "properties": {
+        "name": {
+          "description": "The property name.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The property value.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2RequestMetadata": {
+      "description": "An optional Metadata to attach to any RPC request to tell the server about an external context of the request. The server may use this for logging or other purposes. To use it, the client attaches the header to the call using the canonical proto serialization: * name: `build.bazel.remote.execution.v2.requestmetadata-bin` * contents: the base64 encoded binary `RequestMetadata` message. Note: the gRPC library serializes binary headers encoded in base 64 by default (https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests). Therefore, if the gRPC library is used to pass/retrieve this metadata, the user may ignore the base64 encoding and assume it is simply serialized as a binary message.",
+      "id": "BuildBazelRemoteExecutionV2RequestMetadata",
+      "properties": {
+        "actionId": {
+          "description": "An identifier that ties multiple requests to the same action. For example, multiple requests to the CAS, Action Cache, and Execution API are used in order to compile foo.cc.",
+          "type": "string"
+        },
+        "actionMnemonic": {
+          "description": "A brief description of the kind of action, for example, CppCompile or GoLink. There is no standard agreed set of values for this, and they are expected to vary between different client tools.",
+          "type": "string"
+        },
+        "configurationId": {
+          "description": "An identifier for the configuration in which the target was built, e.g. for differentiating building host tools or different target platforms. There is no expectation that this value will have any particular structure, or equality across invocations, though some client tools may offer these guarantees.",
+          "type": "string"
+        },
+        "correlatedInvocationsId": {
+          "description": "An identifier to tie multiple tool invocations together. For example, runs of foo_test, bar_test and baz_test on a post-submit of a given patch.",
+          "type": "string"
+        },
+        "targetId": {
+          "description": "An identifier for the target which produced this action. No guarantees are made around how many actions may relate to a single target.",
+          "type": "string"
+        },
+        "toolDetails": {
+          "$ref": "BuildBazelRemoteExecutionV2ToolDetails",
+          "description": "The details for the tool invoking the requests."
+        },
+        "toolInvocationId": {
+          "description": "An identifier that ties multiple actions together to a final result. For example, multiple actions are required to build and run foo_test.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2SymlinkNode": {
+      "description": "A `SymlinkNode` represents a symbolic link.",
+      "id": "BuildBazelRemoteExecutionV2SymlinkNode",
+      "properties": {
+        "name": {
+          "description": "The name of the symlink.",
+          "type": "string"
+        },
+        "nodeProperties": {
+          "$ref": "BuildBazelRemoteExecutionV2NodeProperties"
+        },
+        "target": {
+          "description": "The target path of the symlink. The path separator is a forward slash `/`. The target path can be relative to the parent directory of the symlink or it can be an absolute path starting with `/`. Support for absolute paths can be checked using the Capabilities API. `..` components are allowed anywhere in the target path as logical canonicalization may lead to different behavior in the presence of directory symlinks (e.g. `foo/../bar` may not be the same as `bar`). To reduce potential cache misses, canonicalization is still recommended where this is possible without impacting correctness.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2ToolDetails": {
+      "description": "Details for the tool used to call the API.",
+      "id": "BuildBazelRemoteExecutionV2ToolDetails",
+      "properties": {
+        "toolName": {
+          "description": "Name of the tool, e.g. bazel.",
+          "type": "string"
+        },
+        "toolVersion": {
+          "description": "Version of the tool used for the request, e.g. 5.0.3.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BuildBazelRemoteExecutionV2Tree": {
+      "description": "A `Tree` contains all the Directory protos in a single directory Merkle tree, compressed into one message.",
+      "id": "BuildBazelRemoteExecutionV2Tree",
+      "properties": {
+        "children": {
+          "description": "All the child directories: the directories referred to by the root and, recursively, all its children. In order to reconstruct the directory tree, the client must take the digests of each of the child directories and then build up a tree starting from the `root`.",
+          "items": {
+            "$ref": "BuildBazelRemoteExecutionV2Directory"
+          },
+          "type": "array"
+        },
+        "root": {
+          "$ref": "BuildBazelRemoteExecutionV2Directory",
+          "description": "The root directory in the tree."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleBytestreamMedia": {
+      "description": "Media resource.",
+      "id": "GoogleBytestreamMedia",
+      "properties": {
+        "resourceName": {
+          "description": "Name of the media resource.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildbotCommandDurations": {
+      "description": "CommandDuration contains the various duration metrics tracked when a bot performs a command.",
+      "id": "GoogleDevtoolsRemotebuildbotCommandDurations",
+      "properties": {
+        "casRelease": {
+          "description": "The time spent to release the CAS blobs used by the task.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "cmWaitForAssignment": {
+          "description": "The time spent waiting for Container Manager to assign an asynchronous container for execution.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "dockerPrep": {
+          "description": "The time spent preparing the command to be run in a Docker container (includes pulling the Docker image, if necessary).",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "dockerPrepStartTime": {
+          "description": "The timestamp when docker preparation begins.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "download": {
+          "description": "The time spent downloading the input files and constructing the working directory.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "downloadStartTime": {
+          "description": "The timestamp when downloading the input files begins.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "execStartTime": {
+          "description": "The timestamp when execution begins.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "execution": {
+          "description": "The time spent executing the command (i.e., doing useful work).",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "isoPrepDone": {
+          "description": "The timestamp when preparation is done and bot starts downloading files.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "overall": {
+          "description": "The time spent completing the command, in total.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "stdout": {
+          "description": "The time spent uploading the stdout logs.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "upload": {
+          "description": "The time spent uploading the output files.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "uploadStartTime": {
+          "description": "The timestamp when uploading the output files begins.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildbotCommandEvents": {
+      "description": "CommandEvents contains counters for the number of warnings and errors that occurred during the execution of a command.",
+      "id": "GoogleDevtoolsRemotebuildbotCommandEvents",
+      "properties": {
+        "cmUsage": {
+          "description": "Indicates if and how Container Manager is being used for task execution.",
+          "enum": [
+            "CONFIG_NONE",
+            "CONFIG_MATCH",
+            "CONFIG_MISMATCH"
+          ],
+          "enumDescriptions": [
+            "Container Manager is disabled or not running for this execution.",
+            "Container Manager is enabled and there was a matching container available for use during execution.",
+            "Container Manager is enabled, but there was no matching container available for execution."
+          ],
+          "type": "string"
+        },
+        "dockerCacheHit": {
+          "description": "Indicates whether we are using a cached Docker image (true) or had to pull the Docker image (false) for this command.",
+          "type": "boolean"
+        },
+        "dockerImageName": {
+          "description": "Docker Image name.",
+          "type": "string"
+        },
+        "inputCacheMiss": {
+          "description": "The input cache miss ratio.",
+          "format": "float",
+          "type": "number"
+        },
+        "numErrors": {
+          "description": "The number of errors reported.",
+          "format": "uint64",
+          "type": "string"
+        },
+        "numWarnings": {
+          "description": "The number of warnings reported.",
+          "format": "uint64",
+          "type": "string"
+        },
+        "outputLocation": {
+          "description": "Indicates whether output files and/or output directories were found relative to the execution root or to the user provided work directory or both or none.",
+          "enum": [
+            "LOCATION_UNDEFINED",
+            "LOCATION_NONE",
+            "LOCATION_EXEC_ROOT_RELATIVE",
+            "LOCATION_WORKING_DIR_RELATIVE",
+            "LOCATION_EXEC_ROOT_AND_WORKING_DIR_RELATIVE",
+            "LOCATION_EXEC_ROOT_RELATIVE_OUTPUT_OUTSIDE_WORKING_DIR",
+            "LOCATION_EXEC_ROOT_AND_WORKING_DIR_RELATIVE_OUTPUT_OUTSIDE_WORKING_DIR"
+          ],
+          "enumDescriptions": [
+            "Location is set to LOCATION_UNDEFINED for tasks where the working directorty is not specified or is identical to the execution root directory.",
+            "No output files or directories were found neither relative to the execution root directory nor relative to the working directory.",
+            "Output files or directories were found relative to the execution root directory but not relative to the working directory.",
+            "Output files or directories were found relative to the working directory but not relative to the execution root directory.",
+            "Output files or directories were found both relative to the execution root directory and relative to the working directory.",
+            "Output files or directories were found relative to the execution root directory but not relative to the working directory. In addition at least one output file or directory was found outside of the working directory such that a working-directory-relative-path would have needed to start with a `..`.",
+            "Output files or directories were found both relative to the execution root directory and relative to the working directory. In addition at least one exec-root-relative output file or directory was found outside of the working directory such that a working-directory-relative-path would have needed to start with a `..`."
+          ],
+          "type": "string"
+        },
+        "usedAsyncContainer": {
+          "description": "Indicates whether an asynchronous container was used for execution.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildbotCommandStatus": {
+      "description": "The internal status of the command result.",
+      "id": "GoogleDevtoolsRemotebuildbotCommandStatus",
+      "properties": {
+        "code": {
+          "description": "The status code.",
+          "enum": [
+            "OK",
+            "INVALID_ARGUMENT",
+            "DEADLINE_EXCEEDED",
+            "NOT_FOUND",
+            "PERMISSION_DENIED",
+            "INTERNAL",
+            "ABORTED",
+            "FAILED_PRECONDITION",
+            "CLEANUP_ERROR",
+            "DOWNLOAD_INPUTS_ERROR",
+            "UNKNOWN",
+            "UPLOAD_OUTPUTS_ERROR",
+            "UPLOAD_OUTPUTS_BYTES_LIMIT_EXCEEDED",
+            "DOCKER_LOGIN_ERROR",
+            "DOCKER_IMAGE_PULL_ERROR",
+            "DOCKER_IMAGE_EXIST_ERROR",
+            "DUPLICATE_INPUTS",
+            "DOCKER_IMAGE_PERMISSION_DENIED",
+            "DOCKER_IMAGE_NOT_FOUND",
+            "WORKING_DIR_NOT_FOUND",
+            "WORKING_DIR_NOT_IN_BASE_DIR",
+            "DOCKER_UNAVAILABLE",
+            "NO_CUDA_CAPABLE_DEVICE",
+            "REMOTE_CAS_DOWNLOAD_ERROR",
+            "REMOTE_CAS_UPLOAD_ERROR",
+            "LOCAL_CASPROXY_NOT_RUNNING",
+            "DOCKER_CREATE_CONTAINER_ERROR",
+            "DOCKER_INVALID_ULIMIT",
+            "DOCKER_UNKNOWN_RUNTIME",
+            "DOCKER_UNKNOWN_CAPABILITY",
+            "DOCKER_UNKNOWN_ERROR",
+            "DOCKER_CREATE_COMPUTE_SYSTEM_ERROR",
+            "DOCKER_PREPARELAYER_ERROR",
+            "DOCKER_INCOMPATIBLE_OS_ERROR",
+            "DOCKER_CREATE_RUNTIME_FILE_NOT_FOUND",
+            "DOCKER_CREATE_RUNTIME_PERMISSION_DENIED",
+            "DOCKER_CREATE_PROCESS_FILE_NOT_FOUND",
+            "DOCKER_CREATE_COMPUTE_SYSTEM_INCORRECT_PARAMETER_ERROR",
+            "DOCKER_TOO_MANY_SYMBOLIC_LINK_LEVELS",
+            "LOCAL_CONTAINER_MANAGER_NOT_RUNNING",
+            "DOCKER_IMAGE_VPCSC_PERMISSION_DENIED",
+            "WORKING_DIR_NOT_RELATIVE",
+            "DOCKER_MISSING_CONTAINER"
+          ],
+          "enumDescriptions": [
+            "The command succeeded.",
+            "The command input was invalid.",
+            "The command had passed its expiry time while it was still running.",
+            "The resources requested by the command were not found.",
+            "The command failed due to permission errors.",
+            "The command failed because of some invariants expected by the underlying system have been broken. This usually indicates a bug wit the system.",
+            "The command was aborted.",
+            "The command failed because the system is not in a state required for the command, e.g. the command inputs cannot be found on the server.",
+            "The bot failed to do the cleanup, e.g. unable to delete the command working directory or the command process.",
+            "The bot failed to download the inputs.",
+            "Unknown error.",
+            "The bot failed to upload the outputs.",
+            "The bot tried to upload files having a total size that is too large.",
+            "The bot failed to login to docker.",
+            "The bot failed to pull docker image.",
+            "The bot failed to check docker images.",
+            "The inputs contain duplicate files.",
+            "The bot doesn't have the permissions to pull docker images.",
+            "The docker image cannot be found.",
+            "Working directory is not found.",
+            "Working directory is not under the base directory",
+            "There are issues with docker service/runtime.",
+            "The command failed with \"no cuda-capable device is detected\" error.",
+            "The bot encountered errors from remote CAS when downloading blobs.",
+            "The bot encountered errors from remote CAS when uploading blobs.",
+            "The local casproxy is not running.",
+            "The bot couldn't start the container.",
+            "The docker ulimit is not valid.",
+            "The docker runtime is unknown.",
+            "The docker capability is unknown.",
+            "The command failed with unknown docker errors.",
+            "Docker failed to run containers with CreateComputeSystem error.",
+            "Docker failed to run containers with hcsshim::PrepareLayer error.",
+            "Docker incompatible operating system error.",
+            "Docker failed to create OCI runtime because of file not found.",
+            "Docker failed to create OCI runtime because of permission denied.",
+            "Docker failed to create process because of file not found.",
+            "Docker failed to run containers with CreateComputeSystem error that involves an incorrect parameter (more specific version of DOCKER_CREATE_COMPUTE_SYSTEM_ERROR that is user-caused).",
+            "Docker failed to create an overlay mount because of too many levels of symbolic links.",
+            "The local Container Manager is not running.",
+            "Docker failed because a request was denied by the organization's policy.",
+            "Working directory is not relative",
+            "Docker cannot find the container specified in the command. This error is likely to only occur if an asynchronous container is not running when the command is run."
+          ],
+          "type": "string"
+        },
+        "message": {
+          "description": "The error message.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildbotResourceUsage": {
+      "description": "ResourceUsage is the system resource usage of the host machine.",
+      "id": "GoogleDevtoolsRemotebuildbotResourceUsage",
+      "properties": {
+        "cpuUsedPercent": {
+          "format": "double",
+          "type": "number"
+        },
+        "diskUsage": {
+          "$ref": "GoogleDevtoolsRemotebuildbotResourceUsageStat"
+        },
+        "memoryUsage": {
+          "$ref": "GoogleDevtoolsRemotebuildbotResourceUsageStat"
+        },
+        "totalDiskIoStats": {
+          "$ref": "GoogleDevtoolsRemotebuildbotResourceUsageIOStats"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildbotResourceUsageIOStats": {
+      "id": "GoogleDevtoolsRemotebuildbotResourceUsageIOStats",
+      "properties": {
+        "readBytesCount": {
+          "format": "uint64",
+          "type": "string"
+        },
+        "readCount": {
+          "format": "uint64",
+          "type": "string"
+        },
+        "readTimeMs": {
+          "format": "uint64",
+          "type": "string"
+        },
+        "writeBytesCount": {
+          "format": "uint64",
+          "type": "string"
+        },
+        "writeCount": {
+          "format": "uint64",
+          "type": "string"
+        },
+        "writeTimeMs": {
+          "format": "uint64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildbotResourceUsageStat": {
+      "id": "GoogleDevtoolsRemotebuildbotResourceUsageStat",
+      "properties": {
+        "total": {
+          "format": "uint64",
+          "type": "string"
+        },
+        "used": {
+          "format": "uint64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaAcceleratorConfig": {
+      "description": "AcceleratorConfig defines the accelerator cards to attach to the VM.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaAcceleratorConfig",
+      "properties": {
+        "acceleratorCount": {
+          "description": "The number of guest accelerator cards exposed to each VM.",
+          "format": "int64",
+          "type": "string"
+        },
+        "acceleratorType": {
+          "description": "The type of accelerator to attach to each VM, e.g. \"nvidia-tesla-k80\" for nVidia Tesla K80.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaAutoscale": {
+      "description": "Autoscale defines the autoscaling policy of a worker pool.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaAutoscale",
+      "properties": {
+        "maxSize": {
+          "description": "The maximal number of workers. Must be equal to or greater than min_size.",
+          "format": "int64",
+          "type": "string"
+        },
+        "minSize": {
+          "description": "The minimal number of workers. Must be greater than 0.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaCreateInstanceRequest": {
+      "description": "The request used for `CreateInstance`.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaCreateInstanceRequest",
+      "properties": {
+        "instance": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaInstance",
+          "description": "Specifies the instance to create. The name in the instance, if specified in the instance, is ignored."
+        },
+        "instanceId": {
+          "description": "ID of the created instance. A valid `instance_id` must: be 6-50 characters long, contain only lowercase letters, digits, hyphens and underscores, start with a lowercase letter, and end with a lowercase letter or a digit.",
+          "type": "string"
+        },
+        "parent": {
+          "description": "Resource name of the project containing the instance. Format: `projects/[PROJECT_ID]`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaCreateWorkerPoolRequest": {
+      "description": "The request used for `CreateWorkerPool`.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaCreateWorkerPoolRequest",
+      "properties": {
+        "parent": {
+          "description": "Resource name of the instance in which to create the new worker pool. Format: `projects/[PROJECT_ID]/instances/[INSTANCE_ID]`.",
+          "type": "string"
+        },
+        "poolId": {
+          "description": "ID of the created worker pool. A valid pool ID must: be 6-50 characters long, contain only lowercase letters, digits, hyphens and underscores, start with a lowercase letter, and end with a lowercase letter or a digit.",
+          "type": "string"
+        },
+        "workerPool": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaWorkerPool",
+          "description": "Specifies the worker pool to create. The name in the worker pool, if specified, is ignored."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaDeleteInstanceRequest": {
+      "description": "The request used for `DeleteInstance`.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaDeleteInstanceRequest",
+      "properties": {
+        "name": {
+          "description": "Name of the instance to delete. Format: `projects/[PROJECT_ID]/instances/[INSTANCE_ID]`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaDeleteWorkerPoolRequest": {
+      "description": "The request used for DeleteWorkerPool.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaDeleteWorkerPoolRequest",
+      "properties": {
+        "name": {
+          "description": "Name of the worker pool to delete. Format: `projects/[PROJECT_ID]/instances/[INSTANCE_ID]/workerpools/[POOL_ID]`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicy": {
+      "description": "FeaturePolicy defines features allowed to be used on RBE instances, as well as instance-wide behavior changes that take effect without opt-in or opt-out at usage time.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicy",
+      "properties": {
+        "containerImageSources": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicyFeature",
+          "description": "Which container image sources are allowed. Currently only RBE-supported registry (gcr.io) is allowed. One can allow all repositories under a project or one specific repository only. E.g. container_image_sources { policy: RESTRICTED allowed_values: [ \"gcr.io/project-foo\", \"gcr.io/project-bar/repo-baz\", ] } will allow any repositories under \"gcr.io/project-foo\" plus the repository \"gcr.io/project-bar/repo-baz\". Default (UNSPECIFIED) is equivalent to any source is allowed."
+        },
+        "dockerAddCapabilities": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicyFeature",
+          "description": "Whether dockerAddCapabilities can be used or what capabilities are allowed."
+        },
+        "dockerChrootPath": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicyFeature",
+          "description": "Whether dockerChrootPath can be used."
+        },
+        "dockerNetwork": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicyFeature",
+          "description": "Whether dockerNetwork can be used or what network modes are allowed. E.g. one may allow `off` value only via `allowed_values`."
+        },
+        "dockerPrivileged": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicyFeature",
+          "description": "Whether dockerPrivileged can be used."
+        },
+        "dockerRunAsRoot": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicyFeature",
+          "description": "Whether dockerRunAsRoot can be used."
+        },
+        "dockerRuntime": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicyFeature",
+          "description": "Whether dockerRuntime is allowed to be set or what runtimes are allowed. Note linux_isolation takes precedence, and if set, docker_runtime values may be rejected if they are incompatible with the selected isolation."
+        },
+        "dockerSiblingContainers": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicyFeature",
+          "description": "Whether dockerSiblingContainers can be used."
+        },
+        "linuxIsolation": {
+          "description": "linux_isolation allows overriding the docker runtime used for containers started on Linux.",
+          "enum": [
+            "LINUX_ISOLATION_UNSPECIFIED",
+            "GVISOR",
+            "OFF"
+          ],
+          "enumDescriptions": [
+            "Default value. Will be using Linux default runtime.",
+            "Use gVisor runsc runtime.",
+            "Use stardard Linux runtime. This has the same behaviour as unspecified, but it can be used to revert back from gVisor."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicyFeature": {
+      "description": "Defines whether a feature can be used or what values are accepted.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicyFeature",
+      "properties": {
+        "allowedValues": {
+          "description": "A list of acceptable values. Only effective when the policy is `RESTRICTED`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "policy": {
+          "description": "The policy of the feature.",
+          "enum": [
+            "POLICY_UNSPECIFIED",
+            "ALLOWED",
+            "FORBIDDEN",
+            "RESTRICTED"
+          ],
+          "enumDescriptions": [
+            "Default value, if not explicitly set. Equivalent to FORBIDDEN, unless otherwise documented on a specific Feature.",
+            "Feature is explicitly allowed.",
+            "Feature is forbidden. Requests attempting to leverage it will get an FailedPrecondition error, with a message like: \"Feature forbidden by FeaturePolicy: Feature on instance \"",
+            "Only the values specified in the `allowed_values` are allowed."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaGetInstanceRequest": {
+      "description": "The request used for `GetInstance`.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaGetInstanceRequest",
+      "properties": {
+        "name": {
+          "description": "Name of the instance to retrieve. Format: `projects/[PROJECT_ID]/instances/[INSTANCE_ID]`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaGetWorkerPoolRequest": {
+      "description": "The request used for GetWorkerPool.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaGetWorkerPoolRequest",
+      "properties": {
+        "name": {
+          "description": "Name of the worker pool to retrieve. Format: `projects/[PROJECT_ID]/instances/[INSTANCE_ID]/workerpools/[POOL_ID]`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaInstance": {
+      "description": "Instance conceptually encapsulates all Remote Build Execution resources for remote builds. An instance consists of storage and compute resources (for example, `ContentAddressableStorage`, `ActionCache`, `WorkerPools`) used for running remote builds. All Remote Build Execution API calls are scoped to an instance.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaInstance",
+      "properties": {
+        "featurePolicy": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaFeaturePolicy",
+          "description": "The policy to define whether or not RBE features can be used or how they can be used."
+        },
+        "location": {
+          "description": "The location is a GCP region. Currently only `us-central1` is supported.",
+          "type": "string"
+        },
+        "loggingEnabled": {
+          "description": "Output only. Whether stack driver logging is enabled for the instance.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Output only. Instance resource name formatted as: `projects/[PROJECT_ID]/instances/[INSTANCE_ID]`. Name should not be populated when creating an instance since it is provided in the `instance_id` field.",
+          "type": "string"
+        },
+        "state": {
+          "description": "Output only. State of the instance.",
+          "enum": [
+            "STATE_UNSPECIFIED",
+            "CREATING",
+            "RUNNING",
+            "INACTIVE"
+          ],
+          "enumDescriptions": [
+            "Not a valid state, but the default value of the enum.",
+            "The instance is in state `CREATING` once `CreateInstance` is called and before the instance is ready for use.",
+            "The instance is in state `RUNNING` when it is ready for use.",
+            "An `INACTIVE` instance indicates that there is a problem that needs to be fixed. Such instances cannot be used for execution and instances that remain in this state for a significant period of time will be removed permanently."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaListInstancesRequest": {
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaListInstancesRequest",
+      "properties": {
+        "parent": {
+          "description": "Resource name of the project. Format: `projects/[PROJECT_ID]`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaListInstancesResponse": {
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaListInstancesResponse",
+      "properties": {
+        "instances": {
+          "description": "The list of instances in a given project.",
+          "items": {
+            "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaInstance"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaListWorkerPoolsRequest": {
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaListWorkerPoolsRequest",
+      "properties": {
+        "filter": {
+          "description": "Optional. A filter expression that filters resources listed in the response. The expression must specify the field name, a comparison operator, and the value that you want to use for filtering. The value must be a string, a number, or a boolean. String values are case-insensitive. The comparison operator must be either `:`, `=`, `!=`, `>`, `>=`, `<=` or `<`. The `:` operator can be used with string fields to match substrings. For non-string fields it is equivalent to the `=` operator. The `:*` comparison can be used to test whether a key has been defined. You can also filter on nested fields. To filter on multiple expressions, you can separate expression using `AND` and `OR` operators, using parentheses to specify precedence. If neither operator is specified, `AND` is assumed. Examples: Include only pools with more than 100 reserved workers: `(worker_count > 100) (worker_config.reserved = true)` Include only pools with a certain label or machines of the e2-standard family: `worker_config.labels.key1 : * OR worker_config.machine_type: e2-standard`",
+          "type": "string"
+        },
+        "parent": {
+          "description": "Resource name of the instance. Format: `projects/[PROJECT_ID]/instances/[INSTANCE_ID]`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaListWorkerPoolsResponse": {
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaListWorkerPoolsResponse",
+      "properties": {
+        "workerPools": {
+          "description": "The list of worker pools in a given instance.",
+          "items": {
+            "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaWorkerPool"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaUpdateInstanceRequest": {
+      "description": "The request used for `UpdateInstance`.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaUpdateInstanceRequest",
+      "properties": {
+        "instance": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaInstance",
+          "description": "Specifies the instance to update."
+        },
+        "loggingEnabled": {
+          "description": "Deprecated, use instance.logging_enabled instead. Whether to enable Stackdriver logging for this instance.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Deprecated, use instance.Name instead. Name of the instance to update. Format: `projects/[PROJECT_ID]/instances/[INSTANCE_ID]`.",
+          "type": "string"
+        },
+        "updateMask": {
+          "description": "The update mask applies to instance. For the `FieldMask` definition, see https://developers.google.com/protocol-buffers/docs/reference/google.protobuf#fieldmask If an empty update_mask is provided, only the non-default valued field in the worker pool field will be updated. Note that in order to update a field to the default value (zero, false, empty string) an explicit update_mask must be provided.",
+          "format": "google-fieldmask",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaUpdateWorkerPoolRequest": {
+      "description": "The request used for UpdateWorkerPool.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaUpdateWorkerPoolRequest",
+      "properties": {
+        "updateMask": {
+          "description": "The update mask applies to worker_pool. For the `FieldMask` definition, see https://developers.google.com/protocol-buffers/docs/reference/google.protobuf#fieldmask If an empty update_mask is provided, only the non-default valued field in the worker pool field will be updated. Note that in order to update a field to the default value (zero, false, empty string) an explicit update_mask must be provided.",
+          "format": "google-fieldmask",
+          "type": "string"
+        },
+        "workerPool": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaWorkerPool",
+          "description": "Specifies the worker pool to update."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaWorkerConfig": {
+      "description": "Defines the configuration to be used for creating workers in the worker pool.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaWorkerConfig",
+      "properties": {
+        "accelerator": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaAcceleratorConfig",
+          "description": "The accelerator card attached to each VM."
+        },
+        "diskSizeGb": {
+          "description": "Required. Size of the disk attached to the worker, in GB. See https://cloud.google.com/compute/docs/disks/",
+          "format": "int64",
+          "type": "string"
+        },
+        "diskType": {
+          "description": "Required. Disk Type to use for the worker. See [Storage options](https://cloud.google.com/compute/docs/disks/#introduction). Currently only `pd-standard` and `pd-ssd` are supported.",
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Labels associated with the workers. Label keys and values can be no longer than 63 characters, can only contain lowercase letters, numeric characters, underscores and dashes. International letters are permitted. Label keys must start with a letter. Label values are optional. There can not be more than 64 labels per resource.",
+          "type": "object"
+        },
+        "machineType": {
+          "description": "Required. Machine type of the worker, such as `e2-standard-2`. See https://cloud.google.com/compute/docs/machine-types for a list of supported machine types. Note that `f1-micro` and `g1-small` are not yet supported.",
+          "type": "string"
+        },
+        "maxConcurrentActions": {
+          "description": "The maximum number of actions a worker can execute concurrently.",
+          "format": "int64",
+          "type": "string"
+        },
+        "minCpuPlatform": {
+          "description": "Minimum CPU platform to use when creating the worker. See [CPU Platforms](https://cloud.google.com/compute/docs/cpu-platforms).",
+          "type": "string"
+        },
+        "networkAccess": {
+          "description": "Determines the type of network access granted to workers. Possible values: - \"public\": Workers can connect to the public internet. - \"private\": Workers can only connect to Google APIs and services. - \"restricted-private\": Workers can only connect to Google APIs that are reachable through `restricted.googleapis.com` (`199.36.153.4/30`).",
+          "type": "string"
+        },
+        "reserved": {
+          "description": "Determines whether the worker is reserved (equivalent to a Compute Engine on-demand VM and therefore won't be preempted). See [Preemptible VMs](https://cloud.google.com/preemptible-vms/) for more details.",
+          "type": "boolean"
+        },
+        "soleTenantNodeType": {
+          "description": "The node type name to be used for sole-tenant nodes.",
+          "type": "string"
+        },
+        "vmImage": {
+          "description": "The name of the image used by each VM.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemotebuildexecutionAdminV1alphaWorkerPool": {
+      "description": "A worker pool resource in the Remote Build Execution API.",
+      "id": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaWorkerPool",
+      "properties": {
+        "autoscale": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaAutoscale",
+          "description": "The autoscale policy to apply on a pool."
+        },
+        "channel": {
+          "description": "Channel specifies the release channel of the pool.",
+          "type": "string"
+        },
+        "name": {
+          "description": "WorkerPool resource name formatted as: `projects/[PROJECT_ID]/instances/[INSTANCE_ID]/workerpools/[POOL_ID]`. name should not be populated when creating a worker pool since it is provided in the `poolId` field.",
+          "type": "string"
+        },
+        "state": {
+          "description": "Output only. State of the worker pool.",
+          "enum": [
+            "STATE_UNSPECIFIED",
+            "CREATING",
+            "RUNNING",
+            "UPDATING",
+            "DELETING",
+            "INACTIVE"
+          ],
+          "enumDescriptions": [
+            "Not a valid state, but the default value of the enum.",
+            "The worker pool is in state `CREATING` once `CreateWorkerPool` is called and before all requested workers are ready.",
+            "The worker pool is in state `RUNNING` when all its workers are ready for use.",
+            "The worker pool is in state `UPDATING` once `UpdateWorkerPool` is called and before the new configuration has all the requested workers ready for use, and no older configuration has any workers. At that point the state transitions to `RUNNING`.",
+            "The worker pool is in state `DELETING` once the `Delete` method is called and before the deletion completes.",
+            "The worker pool is in state `INACTIVE` when the instance hosting the worker pool in not running."
+          ],
+          "type": "string"
+        },
+        "workerConfig": {
+          "$ref": "GoogleDevtoolsRemotebuildexecutionAdminV1alphaWorkerConfig",
+          "description": "Specifies the properties, such as machine type and disk size, used for creating workers in a worker pool."
+        },
+        "workerCount": {
+          "description": "The desired number of workers in the worker pool. Must be a value between 0 and 15000.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2AdminTemp": {
+      "description": "AdminTemp is a prelimiary set of administration tasks. It's called \"Temp\" because we do not yet know the best way to represent admin tasks; it's possible that this will be entirely replaced in later versions of this API. If this message proves to be sufficient, it will be renamed in the alpha or beta release of this API. This message (suitably marshalled into a protobuf.Any) can be used as the inline_assignment field in a lease; the lease assignment field should simply be `\"admin\"` in these cases. This message is heavily based on Swarming administration tasks from the LUCI project (http://github.com/luci/luci-py/appengine/swarming).",
+      "id": "GoogleDevtoolsRemoteworkersV1test2AdminTemp",
+      "properties": {
+        "arg": {
+          "description": "The argument to the admin action; see `Command` for semantics.",
+          "type": "string"
+        },
+        "command": {
+          "description": "The admin action; see `Command` for legal values.",
+          "enum": [
+            "UNSPECIFIED",
+            "BOT_UPDATE",
+            "BOT_RESTART",
+            "BOT_TERMINATE",
+            "HOST_RESTART"
+          ],
+          "enumDescriptions": [
+            "Illegal value.",
+            "Download and run a new version of the bot. `arg` will be a resource accessible via `ByteStream.Read` to obtain the new bot code.",
+            "Restart the bot without downloading a new version. `arg` will be a message to log.",
+            "Shut down the bot. `arg` will be a task resource name (similar to those in tasks.proto) that the bot can use to tell the server that it is terminating.",
+            "Restart the host computer. `arg` will be a message to log."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2Blob": {
+      "description": "Describes a blob of binary content with its digest.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2Blob",
+      "properties": {
+        "contents": {
+          "description": "The contents of the blob.",
+          "format": "byte",
+          "type": "string"
+        },
+        "digest": {
+          "$ref": "GoogleDevtoolsRemoteworkersV1test2Digest",
+          "description": "The digest of the blob. This should be verified by the receiver."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2CommandOutputs": {
+      "description": "DEPRECATED - use CommandResult instead. Describes the actual outputs from the task.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2CommandOutputs",
+      "properties": {
+        "exitCode": {
+          "description": "exit_code is only fully reliable if the status' code is OK. If the task exceeded its deadline or was cancelled, the process may still produce an exit code as it is cancelled, and this will be populated, but a successful (zero) is unlikely to be correct unless the status code is OK.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "outputs": {
+          "$ref": "GoogleDevtoolsRemoteworkersV1test2Digest",
+          "description": "The output files. The blob referenced by the digest should contain one of the following (implementation-dependent): * A marshalled DirectoryMetadata of the returned filesystem * A LUCI-style .isolated file"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2CommandOverhead": {
+      "description": "DEPRECATED - use CommandResult instead. Can be used as part of CompleteRequest.metadata, or are part of a more sophisticated message.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2CommandOverhead",
+      "properties": {
+        "duration": {
+          "description": "The elapsed time between calling Accept and Complete. The server will also have its own idea of what this should be, but this excludes the overhead of the RPCs and the bot response time.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "overhead": {
+          "description": "The amount of time *not* spent executing the command (ie uploading/downloading files).",
+          "format": "google-duration",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2CommandResult": {
+      "description": "All information about the execution of a command, suitable for providing as the Bots interface's `Lease.result` field.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2CommandResult",
+      "properties": {
+        "duration": {
+          "description": "The elapsed time between calling Accept and Complete. The server will also have its own idea of what this should be, but this excludes the overhead of the RPCs and the bot response time.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "exitCode": {
+          "description": "The exit code of the process. An exit code of \"0\" should only be trusted if `status` has a code of OK (otherwise it may simply be unset).",
+          "format": "int32",
+          "type": "integer"
+        },
+        "metadata": {
+          "description": "Implementation-dependent metadata about the task. Both servers and bots may define messages which can be encoded here; bots are free to provide metadata in multiple formats, and servers are free to choose one or more of the values to process and ignore others. In particular, it is *not* considered an error for the bot to provide the server with a field that it doesn't know about.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "outputs": {
+          "$ref": "GoogleDevtoolsRemoteworkersV1test2Digest",
+          "description": "The output files. The blob referenced by the digest should contain one of the following (implementation-dependent): * A marshalled DirectoryMetadata of the returned filesystem * A LUCI-style .isolated file"
+        },
+        "overhead": {
+          "description": "The amount of time *not* spent executing the command (ie uploading/downloading files).",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "GoogleRpcStatus",
+          "description": "An overall status for the command. For example, if the command timed out, this might have a code of DEADLINE_EXCEEDED; if it was killed by the OS for memory exhaustion, it might have a code of RESOURCE_EXHAUSTED."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2CommandTask": {
+      "description": "Describes a shell-style task to execute, suitable for providing as the Bots interface's `Lease.payload` field.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2CommandTask",
+      "properties": {
+        "expectedOutputs": {
+          "$ref": "GoogleDevtoolsRemoteworkersV1test2CommandTaskOutputs",
+          "description": "The expected outputs from the task."
+        },
+        "inputs": {
+          "$ref": "GoogleDevtoolsRemoteworkersV1test2CommandTaskInputs",
+          "description": "The inputs to the task."
+        },
+        "timeouts": {
+          "$ref": "GoogleDevtoolsRemoteworkersV1test2CommandTaskTimeouts",
+          "description": "The timeouts of this task."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2CommandTaskInputs": {
+      "description": "Describes the inputs to a shell-style task.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2CommandTaskInputs",
+      "properties": {
+        "arguments": {
+          "description": "The command itself to run (e.g., argv). This field should be passed directly to the underlying operating system, and so it must be sensible to that operating system. For example, on Windows, the first argument might be \"C:\\Windows\\System32\\ping.exe\" - that is, using drive letters and backslashes. A command for a *nix system, on the other hand, would use forward slashes. All other fields in the RWAPI must consistently use forward slashes, since those fields may be interpretted by both the service and the bot.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "environmentVariables": {
+          "description": "All environment variables required by the task.",
+          "items": {
+            "$ref": "GoogleDevtoolsRemoteworkersV1test2CommandTaskInputsEnvironmentVariable"
+          },
+          "type": "array"
+        },
+        "files": {
+          "description": "The input filesystem to be set up prior to the task beginning. The contents should be a repeated set of FileMetadata messages though other formats are allowed if better for the implementation (eg, a LUCI-style .isolated file). This field is repeated since implementations might want to cache the metadata, in which case it may be useful to break up portions of the filesystem that change frequently (eg, specific input files) from those that don't (eg, standard header files).",
+          "items": {
+            "$ref": "GoogleDevtoolsRemoteworkersV1test2Digest"
+          },
+          "type": "array"
+        },
+        "inlineBlobs": {
+          "description": "Inline contents for blobs expected to be needed by the bot to execute the task. For example, contents of entries in `files` or blobs that are indirectly referenced by an entry there. The bot should check against this list before downloading required task inputs to reduce the number of communications between itself and the remote CAS server.",
+          "items": {
+            "$ref": "GoogleDevtoolsRemoteworkersV1test2Blob"
+          },
+          "type": "array"
+        },
+        "workingDirectory": {
+          "description": "Directory from which a command is executed. It is a relative directory with respect to the bot's working directory (i.e., \"./\"). If it is non-empty, then it must exist under \"./\". Otherwise, \"./\" will be used.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2CommandTaskInputsEnvironmentVariable": {
+      "description": "An environment variable required by this task.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2CommandTaskInputsEnvironmentVariable",
+      "properties": {
+        "name": {
+          "description": "The envvar name.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The envvar value.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2CommandTaskOutputs": {
+      "description": "Describes the expected outputs of the command.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2CommandTaskOutputs",
+      "properties": {
+        "directories": {
+          "description": "A list of expected directories, relative to the execution root. All paths MUST be delimited by forward slashes.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "files": {
+          "description": "A list of expected files, relative to the execution root. All paths MUST be delimited by forward slashes.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "stderrDestination": {
+          "description": "The destination to which any stderr should be sent. The method by which the bot should send the stream contents to that destination is not defined in this API. As examples, the destination could be a file referenced in the `files` field in this message, or it could be a URI that must be written via the ByteStream API.",
+          "type": "string"
+        },
+        "stdoutDestination": {
+          "description": "The destination to which any stdout should be sent. The method by which the bot should send the stream contents to that destination is not defined in this API. As examples, the destination could be a file referenced in the `files` field in this message, or it could be a URI that must be written via the ByteStream API.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2CommandTaskTimeouts": {
+      "description": "Describes the timeouts associated with this task.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2CommandTaskTimeouts",
+      "properties": {
+        "execution": {
+          "description": "This specifies the maximum time that the task can run, excluding the time required to download inputs or upload outputs. That is, the worker will terminate the task if it runs longer than this.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "idle": {
+          "description": "This specifies the maximum amount of time the task can be idle - that is, go without generating some output in either stdout or stderr. If the process is silent for more than the specified time, the worker will terminate the task.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "shutdown": {
+          "description": "If the execution or IO timeouts are exceeded, the worker will try to gracefully terminate the task and return any existing logs. However, tasks may be hard-frozen in which case this process will fail. This timeout specifies how long to wait for a terminated task to shut down gracefully (e.g. via SIGTERM) before we bring down the hammer (e.g. SIGKILL on *nix, CTRL_BREAK_EVENT on Windows).",
+          "format": "google-duration",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2Digest": {
+      "description": "The CommandTask and CommandResult messages assume the existence of a service that can serve blobs of content, identified by a hash and size known as a \"digest.\" The method by which these blobs may be retrieved is not specified here, but a model implementation is in the Remote Execution API's \"ContentAddressibleStorage\" interface. In the context of the RWAPI, a Digest will virtually always refer to the contents of a file or a directory. The latter is represented by the byte-encoded Directory message.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2Digest",
+      "properties": {
+        "hash": {
+          "description": "A string-encoded hash (eg \"1a2b3c\", not the byte array [0x1a, 0x2b, 0x3c]) using an implementation-defined hash algorithm (eg SHA-256).",
+          "type": "string"
+        },
+        "sizeBytes": {
+          "description": "The size of the contents. While this is not strictly required as part of an identifier (after all, any given hash will have exactly one canonical size), it's useful in almost all cases when one might want to send or retrieve blobs of content and is included here for this reason.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2Directory": {
+      "description": "The contents of a directory. Similar to the equivalent message in the Remote Execution API.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2Directory",
+      "properties": {
+        "directories": {
+          "description": "Any subdirectories",
+          "items": {
+            "$ref": "GoogleDevtoolsRemoteworkersV1test2DirectoryMetadata"
+          },
+          "type": "array"
+        },
+        "files": {
+          "description": "The files in this directory",
+          "items": {
+            "$ref": "GoogleDevtoolsRemoteworkersV1test2FileMetadata"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2DirectoryMetadata": {
+      "description": "The metadata for a directory. Similar to the equivalent message in the Remote Execution API.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2DirectoryMetadata",
+      "properties": {
+        "digest": {
+          "$ref": "GoogleDevtoolsRemoteworkersV1test2Digest",
+          "description": "A pointer to the contents of the directory, in the form of a marshalled Directory message."
+        },
+        "path": {
+          "description": "The path of the directory, as in FileMetadata.path.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleDevtoolsRemoteworkersV1test2FileMetadata": {
+      "description": "The metadata for a file. Similar to the equivalent message in the Remote Execution API.",
+      "id": "GoogleDevtoolsRemoteworkersV1test2FileMetadata",
+      "properties": {
+        "contents": {
+          "description": "If the file is small enough, its contents may also or alternatively be listed here.",
+          "format": "byte",
+          "type": "string"
+        },
+        "digest": {
+          "$ref": "GoogleDevtoolsRemoteworkersV1test2Digest",
+          "description": "A pointer to the contents of the file. The method by which a client retrieves the contents from a CAS system is not defined here."
+        },
+        "isExecutable": {
+          "description": "Properties of the file",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "The path of this file. If this message is part of the CommandOutputs.outputs fields, the path is relative to the execution root and must correspond to an entry in CommandTask.outputs.files. If this message is part of a Directory message, then the path is relative to the root of that directory. All paths MUST be delimited by forward slashes.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleLongrunningCancelOperationRequest": {
+      "description": "The request message for Operations.CancelOperation.",
+      "id": "GoogleLongrunningCancelOperationRequest",
+      "properties": {},
+      "type": "object"
+    },
+    "GoogleLongrunningListOperationsResponse": {
+      "description": "The response message for Operations.ListOperations.",
+      "id": "GoogleLongrunningListOperationsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "The standard List next-page token.",
+          "type": "string"
+        },
+        "operations": {
+          "description": "A list of operations that matches the specified filter in the request.",
+          "items": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleLongrunningOperation": {
+      "description": "This resource represents a long-running operation that is the result of a network API call.",
+      "id": "GoogleLongrunningOperation",
+      "properties": {
+        "done": {
+          "description": "If the value is `false`, it means the operation is still in progress. If `true`, the operation is completed, and either `error` or `response` is available.",
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "GoogleRpcStatus",
+          "description": "The error result of the operation in case of failure or cancellation."
+        },
+        "metadata": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "Service-specific metadata associated with the operation. It typically contains progress information and common metadata such as create time. Some services might not provide such metadata. Any method that returns a long-running operation should document the metadata type, if any.",
+          "type": "object"
+        },
+        "name": {
+          "description": "The server-assigned name, which is only unique within the same service that originally returns it. If you use the default HTTP mapping, the `name` should be a resource name ending with `operations/{unique_id}`.",
+          "type": "string"
+        },
+        "response": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "The normal response of the operation in case of success. If the original method returns no data on success, such as `Delete`, the response is `google.protobuf.Empty`. If the original method is standard `Get`/`Create`/`Update`, the response should be the resource. For other methods, the response should have the type `XxxResponse`, where `Xxx` is the original method name. For example, if the original method name is `TakeSnapshot()`, the inferred response type is `TakeSnapshotResponse`.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleProtobufEmpty": {
+      "description": "A generic empty message that you can re-use to avoid defining duplicated empty messages in your APIs. A typical example is to use it as the request or the response type of an API method. For instance: service Foo { rpc Bar(google.protobuf.Empty) returns (google.protobuf.Empty); } The JSON representation for `Empty` is empty JSON object `{}`.",
+      "id": "GoogleProtobufEmpty",
+      "properties": {},
+      "type": "object"
+    },
+    "GoogleRpcStatus": {
+      "description": "The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).",
+      "id": "GoogleRpcStatus",
+      "properties": {
+        "code": {
+          "description": "The status code, which should be an enum value of google.rpc.Code.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "details": {
+          "description": "A list of messages that carry the error details. There is a common set of message types for APIs to use.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "message": {
+          "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the google.rpc.Status.details field, or localized by the client.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Remote Build Execution API",
+  "version": "v1",
+  "version_module": true
+}

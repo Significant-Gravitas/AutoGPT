@@ -1,0 +1,873 @@
+Metadata-Version: 2.1
+Name: yarl
+Version: 1.8.2
+Summary: Yet another URL library
+Home-page: https://github.com/aio-libs/yarl/
+Author: Andrew Svetlov
+Author-email: andrew.svetlov@gmail.com
+License: Apache 2
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Internet :: WWW/HTTP
+Requires-Python: >=3.7
+Description-Content-Type: text/x-rst
+License-File: LICENSE
+Requires-Dist: multidict (>=4.0)
+Requires-Dist: idna (>=2.0)
+Requires-Dist: typing-extensions (>=3.7.4) ; python_version < "3.8"
+
+yarl
+====
+
+.. image:: https://github.com/aio-libs/yarl/workflows/CI/badge.svg
+  :target: https://github.com/aio-libs/yarl/actions?query=workflow%3ACI
+  :align: right
+
+.. image:: https://codecov.io/gh/aio-libs/yarl/branch/master/graph/badge.svg
+  :target: https://codecov.io/gh/aio-libs/yarl
+
+.. image:: https://badge.fury.io/py/yarl.svg
+    :target: https://badge.fury.io/py/yarl
+
+
+.. image:: https://readthedocs.org/projects/yarl/badge/?version=latest
+    :target: https://yarl.readthedocs.io
+
+
+.. image:: https://img.shields.io/pypi/pyversions/yarl.svg
+    :target: https://pypi.python.org/pypi/yarl
+
+.. image:: https://badges.gitter.im/Join%20Chat.svg
+    :target: https://gitter.im/aio-libs/Lobby
+    :alt: Chat on Gitter
+
+Introduction
+------------
+
+Url is constructed from ``str``:
+
+.. code-block:: pycon
+
+   >>> from yarl import URL
+   >>> url = URL('https://www.python.org/~guido?arg=1#frag')
+   >>> url
+   URL('https://www.python.org/~guido?arg=1#frag')
+
+All url parts: *scheme*, *user*, *password*, *host*, *port*, *path*,
+*query* and *fragment* are accessible by properties:
+
+.. code-block:: pycon
+
+   >>> url.scheme
+   'https'
+   >>> url.host
+   'www.python.org'
+   >>> url.path
+   '/~guido'
+   >>> url.query_string
+   'arg=1'
+   >>> url.query
+   <MultiDictProxy('arg': '1')>
+   >>> url.fragment
+   'frag'
+
+All url manipulations produce a new url object:
+
+.. code-block:: pycon
+
+   >>> url = URL('https://www.python.org')
+   >>> url / 'foo' / 'bar'
+   URL('https://www.python.org/foo/bar')
+   >>> url / 'foo' % {'bar': 'baz'}
+   URL('https://www.python.org/foo?bar=baz')
+
+Strings passed to constructor and modification methods are
+automatically encoded giving canonical representation as result:
+
+.. code-block:: pycon
+
+   >>> url = URL('https://www.python.org/путь')
+   >>> url
+   URL('https://www.python.org/%D0%BF%D1%83%D1%82%D1%8C')
+
+Regular properties are *percent-decoded*, use ``raw_`` versions for
+getting *encoded* strings:
+
+.. code-block:: pycon
+
+   >>> url.path
+   '/путь'
+
+   >>> url.raw_path
+   '/%D0%BF%D1%83%D1%82%D1%8C'
+
+Human readable representation of URL is available as ``.human_repr()``:
+
+.. code-block:: pycon
+
+   >>> url.human_repr()
+   'https://www.python.org/путь'
+
+For full documentation please read https://yarl.readthedocs.org.
+
+
+Installation
+------------
+
+::
+
+   $ pip install yarl
+
+The library is Python 3 only!
+
+PyPI contains binary wheels for Linux, Windows and MacOS.  If you want to install
+``yarl`` on another operating system (like *Alpine Linux*, which is not
+manylinux-compliant because of the missing glibc and therefore, cannot be
+used with our wheels) the the tarball will be used to compile the library from
+the source code. It requires a C compiler and and Python headers installed.
+
+To skip the compilation you must explicitly opt-in by setting the `YARL_NO_EXTENSIONS`
+environment variable to a non-empty value, e.g.:
+
+.. code-block:: bash
+
+   $ YARL_NO_EXTENSIONS=1 pip install yarl
+
+Please note that the pure-Python (uncompiled) version is much slower. However,
+PyPy always uses a pure-Python implementation, and, as such, it is unaffected
+by this variable.
+
+Dependencies
+------------
+
+YARL requires multidict_ library.
+
+
+API documentation
+------------------
+
+The documentation is located at https://yarl.readthedocs.org
+
+
+Why isn't boolean supported by the URL query API?
+-------------------------------------------------
+
+There is no standard for boolean representation of boolean values.
+
+Some systems prefer ``true``/``false``, others like ``yes``/``no``, ``on``/``off``,
+``Y``/``N``, ``1``/``0``, etc.
+
+``yarl`` cannot make an unambiguous decision on how to serialize ``bool`` values because
+it is specific to how the end-user's application is built and would be different for
+different apps.  The library doesn't accept booleans in the API; a user should convert
+bools into strings using own preferred translation protocol.
+
+
+Comparison with other URL libraries
+------------------------------------
+
+* furl (https://pypi.python.org/pypi/furl)
+
+  The library has rich functionality but the ``furl`` object is mutable.
+
+  I'm afraid to pass this object into foreign code: who knows if the
+  code will modify my url in a terrible way while I just want to send URL
+  with handy helpers for accessing URL properties.
+
+  ``furl`` has other non-obvious tricky things but the main objection
+  is mutability.
+
+* URLObject (https://pypi.python.org/pypi/URLObject)
+
+  URLObject is immutable, that's pretty good.
+
+  Every URL change generates a new URL object.
+
+  But the library doesn't do any decode/encode transformations leaving the
+  end user to cope with these gory details.
+
+
+Source code
+-----------
+
+The project is hosted on GitHub_
+
+Please file an issue on the `bug tracker
+<https://github.com/aio-libs/yarl/issues>`_ if you have found a bug
+or have some suggestion in order to improve the library.
+
+The library uses `Azure Pipelines <https://dev.azure.com/aio-libs/yarl>`_ for
+Continuous Integration.
+
+Discussion list
+---------------
+
+*aio-libs* google group: https://groups.google.com/forum/#!forum/aio-libs
+
+Feel free to post your questions and ideas here.
+
+
+Authors and License
+-------------------
+
+The ``yarl`` package is written by Andrew Svetlov.
+
+It's *Apache 2* licensed and freely available.
+
+
+.. _GitHub: https://github.com/aio-libs/yarl
+
+.. _multidict: https://github.com/aio-libs/multidict
+
+
+=========
+Changelog
+=========
+
+..
+    You should *NOT* be adding new change log entries to this file, this
+    file is managed by towncrier. You *may* edit previous change logs to
+    fix problems like typo corrections or such.
+    To add a new change log entry, please see
+    https://pip.pypa.io/en/latest/development/#adding-a-news-entry
+    we named the news folder "changes".
+
+    WARNING: Don't drop the next directive!
+
+.. towncrier release notes start
+
+1.8.2 (2022-12-03)
+==================
+
+This is the first release that started shipping wheels for Python 3.11.
+
+
+1.8.1 (2022-08-01)
+==================
+
+Misc
+----
+
+- `#694 <https://github.com/aio-libs/yarl/issues/694>`_, `#699 <https://github.com/aio-libs/yarl/issues/699>`_, `#700 <https://github.com/aio-libs/yarl/issues/700>`_, `#701 <https://github.com/aio-libs/yarl/issues/701>`_, `#702 <https://github.com/aio-libs/yarl/issues/702>`_, `#703 <https://github.com/aio-libs/yarl/issues/703>`_, `#739 <https://github.com/aio-libs/yarl/issues/739>`_
+
+
+1.8.0 (2022-08-01)
+==================
+
+Features
+--------
+
+- Added ``URL.raw_suffix``, ``URL.suffix``, ``URL.raw_suffixes``, ``URL.suffixes``, ``URL.with_suffix``. (`#613 <https://github.com/aio-libs/yarl/issues/613>`_)
+
+
+Improved Documentation
+----------------------
+
+- Fixed broken internal references to ``(?P=rendered_text)``. (`#665 <https://github.com/aio-libs/yarl/issues/665>`_)
+- Fixed broken external references to ``(?P=rendered_text)`` docs. (`#665 <https://github.com/aio-libs/yarl/issues/665>`_)
+
+
+Deprecations and Removals
+-------------------------
+
+- Dropped Python 3.6 support. (`#672 <https://github.com/aio-libs/yarl/issues/672>`_)
+
+
+Misc
+----
+
+- `#646 <https://github.com/aio-libs/yarl/issues/646>`_, `#699 <https://github.com/aio-libs/yarl/issues/699>`_, `#701 <https://github.com/aio-libs/yarl/issues/701>`_
+
+
+1.7.2 (2021-11-01)
+==================
+
+Bugfixes
+--------
+
+- Changed call in ``with_port()`` to stop reencoding parts of the URL that were already encoded. (`#623 <https://github.com/aio-libs/yarl/issues/623>`_)
+
+
+1.7.1 (2021-10-07)
+==================
+
+Bugfixes
+--------
+
+- Fix 1.7.0 build error
+
+1.7.0 (2021-10-06)
+==================
+
+Features
+--------
+
+- Add `__bytes__()` magic method so that `bytes(url)` will work and use optimal ASCII encoding. (`#582 <https://github.com/aio-libs/yarl/issues/582>`_)
+- Started shipping platform-specific arm64 wheels for Apple Silicon. (`#622 <https://github.com/aio-libs/yarl/issues/622>`_)
+- Started shipping platform-specific wheels with the ``musl`` tag targeting typical Alpine Linux runtimes. (`#622 <https://github.com/aio-libs/yarl/issues/622>`_)
+- Added support for Python 3.10. (`#622 <https://github.com/aio-libs/yarl/issues/622>`_)
+
+
+1.6.3 (2020-11-14)
+==================
+
+Bugfixes
+--------
+
+- No longer loose characters when decoding incorrect percent-sequences (like ``%e2%82%f8``). All non-decodable percent-sequences are now preserved.
+  `#517 <https://github.com/aio-libs/yarl/issues/517>`_
+- Provide x86 Windows wheels.
+  `#535 <https://github.com/aio-libs/yarl/issues/535>`_
+
+
+----
+
+
+1.6.2 (2020-10-12)
+==================
+
+
+Bugfixes
+--------
+
+- Provide generated ``.c`` files in TarBall distribution.
+  `#530  <https://github.com/aio-libs/multidict/issues/530>`_
+
+1.6.1 (2020-10-12)
+==================
+
+Features
+--------
+
+- Provide wheels for ``aarch64``, ``i686``, ``ppc64le``, ``s390x`` architectures on
+  Linux as well as ``x86_64``.
+  `#507  <https://github.com/aio-libs/yarl/issues/507>`_
+- Provide wheels for Python 3.9.
+  `#526 <https://github.com/aio-libs/yarl/issues/526>`_
+
+Bugfixes
+--------
+
+- ``human_repr()`` now always produces valid representation equivalent to the original URL (if the original URL is valid).
+  `#511 <https://github.com/aio-libs/yarl/issues/511>`_
+- Fixed  requoting a single percent followed by a percent-encoded character in the Cython implementation.
+  `#514 <https://github.com/aio-libs/yarl/issues/514>`_
+- Fix ValueError when decoding ``%`` which is not followed by two hexadecimal digits.
+  `#516 <https://github.com/aio-libs/yarl/issues/516>`_
+- Fix decoding ``%`` followed by a space and hexadecimal digit.
+  `#520 <https://github.com/aio-libs/yarl/issues/520>`_
+- Fix annotation of ``with_query()``/``update_query()`` methods for ``key=[val1, val2]`` case.
+  `#528 <https://github.com/aio-libs/yarl/issues/528>`_
+
+Removal
+-------
+
+- Drop Python 3.5 support; Python 3.6 is the minimal supported Python version.
+
+
+----
+
+
+1.6.0 (2020-09-23)
+==================
+
+Features
+--------
+
+- Allow for int and float subclasses in query, while still denying bool.
+  `#492 <https://github.com/aio-libs/yarl/issues/492>`_
+
+
+Bugfixes
+--------
+
+- Do not requote arguments in ``URL.build()``, ``with_xxx()`` and in ``/`` operator.
+  `#502 <https://github.com/aio-libs/yarl/issues/502>`_
+- Keep IPv6 brackets in ``origin()``.
+  `#504 <https://github.com/aio-libs/yarl/issues/504>`_
+
+
+----
+
+
+1.5.1 (2020-08-01)
+==================
+
+Bugfixes
+--------
+
+- Fix including relocated internal ``yarl._quoting_c`` C-extension into published PyPI dists.
+  `#485 <https://github.com/aio-libs/yarl/issues/485>`_
+
+
+Misc
+----
+
+- `#484 <https://github.com/aio-libs/yarl/issues/484>`_
+
+
+----
+
+
+1.5.0 (2020-07-26)
+==================
+
+Features
+--------
+
+- Convert host to lowercase on URL building.
+  `#386 <https://github.com/aio-libs/yarl/issues/386>`_
+- Allow using ``mod`` operator (`%`) for updating query string (an alias for ``update_query()`` method).
+  `#435 <https://github.com/aio-libs/yarl/issues/435>`_
+- Allow use of sequences such as ``list`` and ``tuple`` in the values
+  of a mapping such as ``dict`` to represent that a key has many values::
+
+      url = URL("http://example.com")
+      assert url.with_query({"a": [1, 2]}) == URL("http://example.com/?a=1&a=2")
+
+  `#443 <https://github.com/aio-libs/yarl/issues/443>`_
+- Support URL.build() with scheme and path (creates a relative URL).
+  `#464 <https://github.com/aio-libs/yarl/issues/464>`_
+- Cache slow IDNA encode/decode calls.
+  `#476 <https://github.com/aio-libs/yarl/issues/476>`_
+- Add ``@final`` / ``Final`` type hints
+  `#477 <https://github.com/aio-libs/yarl/issues/477>`_
+- Support URL authority/raw_authority properties and authority argument of ``URL.build()`` method.
+  `#478 <https://github.com/aio-libs/yarl/issues/478>`_
+- Hide the library implementation details, make the exposed public list very clean.
+  `#483 <https://github.com/aio-libs/yarl/issues/483>`_
+
+
+Bugfixes
+--------
+
+- Fix tests with newer Python (3.7.6, 3.8.1 and 3.9.0+).
+  `#409 <https://github.com/aio-libs/yarl/issues/409>`_
+- Fix a bug where query component, passed in a form of mapping or sequence, is unquoted in unexpected way.
+  `#426 <https://github.com/aio-libs/yarl/issues/426>`_
+- Hide `Query` and `QueryVariable` type aliases in `__init__.pyi`, now they are prefixed with underscore.
+  `#431 <https://github.com/aio-libs/yarl/issues/431>`_
+- Keep ipv6 brackets after updating port/user/password.
+  `#451 <https://github.com/aio-libs/yarl/issues/451>`_
+
+
+----
+
+
+1.4.2 (2019-12-05)
+==================
+
+Features
+--------
+
+- Workaround for missing `str.isascii()` in Python 3.6
+  `#389 <https://github.com/aio-libs/yarl/issues/389>`_
+
+
+----
+
+
+1.4.1 (2019-11-29)
+==================
+
+* Fix regression, make the library work on Python 3.5 and 3.6 again.
+
+1.4.0 (2019-11-29)
+==================
+
+* Distinguish an empty password in URL from a password not provided at all (#262)
+
+* Fixed annotations for optional parameters of ``URL.build`` (#309)
+
+* Use None as default value of ``user`` parameter of ``URL.build`` (#309)
+
+* Enforce building C Accelerated modules when installing from source tarball, use
+  ``YARL_NO_EXTENSIONS`` environment variable for falling back to (slower) Pure Python
+  implementation (#329)
+
+* Drop Python 3.5 support
+
+* Fix quoting of plus in path by pure python version (#339)
+
+* Don't create a new URL if fragment is unchanged (#292)
+
+* Included in error msg the path that produces starting slash forbidden error (#376)
+
+* Skip slow IDNA encoding for ASCII-only strings (#387)
+
+
+1.3.0 (2018-12-11)
+==================
+
+* Fix annotations for ``query`` parameter (#207)
+
+* An incoming query sequence can have int variables (the same as for
+  Mapping type) (#208)
+
+* Add ``URL.explicit_port`` property (#218)
+
+* Give a friendlier error when port can't be converted to int (#168)
+
+* ``bool(URL())`` now returns ``False`` (#272)
+
+1.2.6 (2018-06-14)
+==================
+
+* Drop Python 3.4 trove classifier (#205)
+
+1.2.5 (2018-05-23)
+==================
+
+* Fix annotations for ``build`` (#199)
+
+1.2.4 (2018-05-08)
+==================
+
+* Fix annotations for ``cached_property`` (#195)
+
+1.2.3 (2018-05-03)
+==================
+
+* Accept ``str`` subclasses in ``URL`` constructor (#190)
+
+1.2.2 (2018-05-01)
+==================
+
+* Fix build
+
+1.2.1 (2018-04-30)
+==================
+
+* Pin minimal required Python to 3.5.3 (#189)
+
+1.2.0 (2018-04-30)
+==================
+
+* Forbid inheritance, replace ``__init__`` with ``__new__`` (#171)
+
+* Support PEP-561 (provide type hinting marker) (#182)
+
+1.1.1 (2018-02-17)
+==================
+
+* Fix performance regression: don't encode empty netloc (#170)
+
+1.1.0 (2018-01-21)
+==================
+
+* Make pure Python quoter consistent with Cython version (#162)
+
+1.0.0 (2018-01-15)
+==================
+
+* Use fast path if quoted string does not need requoting (#154)
+
+* Speed up quoting/unquoting by ``_Quoter`` and ``_Unquoter`` classes (#155)
+
+* Drop ``yarl.quote`` and ``yarl.unquote`` public functions (#155)
+
+* Add custom string writer, reuse static buffer if available (#157)
+  Code is 50-80 times faster than Pure Python version (was 4-5 times faster)
+
+* Don't recode IP zone (#144)
+
+* Support ``encoded=True`` in ``yarl.URL.build()`` (#158)
+
+* Fix updating query with multiple keys (#160)
+
+0.18.0 (2018-01-10)
+===================
+
+* Fallback to IDNA 2003 if domain name is not IDNA 2008 compatible (#152)
+
+0.17.0 (2017-12-30)
+===================
+
+* Use IDNA 2008 for domain name processing (#149)
+
+0.16.0 (2017-12-07)
+===================
+
+* Fix raising ``TypeError`` by ``url.query_string()`` after
+  ``url.with_query({})`` (empty mapping) (#141)
+
+0.15.0 (2017-11-23)
+===================
+
+* Add ``raw_path_qs`` attribute (#137)
+
+0.14.2 (2017-11-14)
+===================
+
+* Restore ``strict`` parameter as no-op in ``quote`` / ``unquote``
+
+0.14.1 (2017-11-13)
+===================
+
+* Restore ``strict`` parameter as no-op for sake of compatibility with
+  aiohttp 2.2
+
+0.14.0 (2017-11-11)
+===================
+
+* Drop strict mode (#123)
+
+* Fix ``"ValueError: Unallowed PCT %"`` when there's a ``"%"`` in the url (#124)
+
+0.13.0 (2017-10-01)
+===================
+
+* Document ``encoded`` parameter (#102)
+
+* Support relative urls like ``'?key=value'`` (#100)
+
+* Unsafe encoding for QS fixed. Encode ``;`` char in value param (#104)
+
+* Process passwords without user names (#95)
+
+0.12.0 (2017-06-26)
+===================
+
+* Properly support paths without leading slash in ``URL.with_path()`` (#90)
+
+* Enable type annotation checks
+
+0.11.0 (2017-06-26)
+===================
+
+* Normalize path (#86)
+
+* Clear query and fragment parts in ``.with_path()`` (#85)
+
+0.10.3 (2017-06-13)
+===================
+
+* Prevent double URL args unquoting (#83)
+
+0.10.2 (2017-05-05)
+===================
+
+* Unexpected hash behaviour (#75)
+
+
+0.10.1 (2017-05-03)
+===================
+
+* Unexpected compare behaviour (#73)
+
+* Do not quote or unquote + if not a query string. (#74)
+
+
+0.10.0 (2017-03-14)
+===================
+
+* Added ``URL.build`` class method (#58)
+
+* Added ``path_qs`` attribute (#42)
+
+
+0.9.8 (2017-02-16)
+==================
+
+* Do not quote ``:`` in path
+
+
+0.9.7 (2017-02-16)
+==================
+
+* Load from pickle without _cache (#56)
+
+* Percent-encoded pluses in path variables become spaces (#59)
+
+
+0.9.6 (2017-02-15)
+==================
+
+* Revert backward incompatible change (BaseURL)
+
+
+0.9.5 (2017-02-14)
+==================
+
+* Fix BaseURL rich comparison support
+
+
+0.9.4 (2017-02-14)
+==================
+
+* Use BaseURL
+
+
+0.9.3 (2017-02-14)
+==================
+
+* Added BaseURL
+
+
+0.9.2 (2017-02-08)
+==================
+
+* Remove debug print
+
+
+0.9.1 (2017-02-07)
+==================
+
+* Do not lose tail chars (#45)
+
+
+0.9.0 (2017-02-07)
+==================
+
+* Allow to quote ``%`` in non strict mode (#21)
+
+* Incorrect parsing of query parameters with %3B (;) inside (#34)
+
+* Fix core dumps (#41)
+
+* tmpbuf - compiling error (#43)
+
+* Added ``URL.update_path()`` method
+
+* Added ``URL.update_query()`` method (#47)
+
+
+0.8.1 (2016-12-03)
+==================
+
+* Fix broken aiohttp: revert back ``quote`` / ``unquote``.
+
+
+0.8.0 (2016-12-03)
+==================
+
+* Support more verbose error messages in ``.with_query()`` (#24)
+
+* Don't percent-encode ``@`` and ``:`` in path (#32)
+
+* Don't expose ``yarl.quote`` and ``yarl.unquote``, these functions are
+  part of private API
+
+0.7.1 (2016-11-18)
+==================
+
+* Accept not only ``str`` but all classes inherited from ``str`` also (#25)
+
+0.7.0 (2016-11-07)
+==================
+
+* Accept ``int`` as value for ``.with_query()``
+
+0.6.0 (2016-11-07)
+==================
+
+* Explicitly use UTF8 encoding in setup.py (#20)
+* Properly unquote non-UTF8 strings (#19)
+
+0.5.3 (2016-11-02)
+==================
+
+* Don't use namedtuple fields but indexes on URL construction
+
+0.5.2 (2016-11-02)
+==================
+
+* Inline ``_encode`` class method
+
+0.5.1 (2016-11-02)
+==================
+
+* Make URL construction faster by removing extra classmethod calls
+
+0.5.0 (2016-11-02)
+==================
+
+* Add cython optimization for quoting/unquoting
+* Provide binary wheels
+
+0.4.3 (2016-09-29)
+==================
+
+* Fix typing stubs
+
+0.4.2 (2016-09-29)
+==================
+
+* Expose ``quote()`` and ``unquote()`` as public API
+
+0.4.1 (2016-09-28)
+==================
+
+* Support empty values in query (``'/path?arg'``)
+
+0.4.0 (2016-09-27)
+==================
+
+* Introduce ``relative()`` (#16)
+
+0.3.2 (2016-09-27)
+==================
+
+* Typo fixes #15
+
+0.3.1 (2016-09-26)
+==================
+
+* Support sequence of pairs as ``with_query()`` parameter
+
+0.3.0 (2016-09-26)
+==================
+
+* Introduce ``is_default_port()``
+
+0.2.1 (2016-09-26)
+==================
+
+* Raise ValueError for URLs like 'http://:8080/'
+
+0.2.0 (2016-09-18)
+==================
+
+* Avoid doubling slashes when joining paths (#13)
+
+* Appending path starting from slash is forbidden (#12)
+
+0.1.4 (2016-09-09)
+==================
+
+* Add kwargs support for ``with_query()`` (#10)
+
+0.1.3 (2016-09-07)
+==================
+
+* Document ``with_query()``, ``with_fragment()`` and ``origin()``
+
+* Allow ``None`` for ``with_query()`` and ``with_fragment()``
+
+0.1.2 (2016-09-07)
+==================
+
+* Fix links, tune docs theme.
+
+0.1.1 (2016-09-06)
+==================
+
+* Update README, old version used obsolete API
+
+0.1.0 (2016-09-06)
+==================
+
+* The library was deeply refactored, bytes are gone away but all
+  accepted strings are encoded if needed.
+
+0.0.1 (2016-08-30)
+==================
+
+* The first release.

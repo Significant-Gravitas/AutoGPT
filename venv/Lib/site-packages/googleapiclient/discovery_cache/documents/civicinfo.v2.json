@@ -1,0 +1,2171 @@
+{
+  "basePath": "",
+  "baseUrl": "https://civicinfo.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Civic Info",
+  "description": "Provides polling places, early vote locations, contest data, election officials, and government representatives for U.S. residential addresses.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://developers.google.com/civic-information/",
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "civicinfo:v2",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://civicinfo.mtls.googleapis.com/",
+  "name": "civicinfo",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "divisions": {
+      "methods": {
+        "search": {
+          "description": "Searches for political divisions by their natural name or OCD ID.",
+          "flatPath": "civicinfo/v2/divisions",
+          "httpMethod": "GET",
+          "id": "civicinfo.divisions.search",
+          "parameterOrder": [],
+          "parameters": {
+            "query": {
+              "description": "The search query. Queries can cover any parts of a OCD ID or a human readable division name. All words given in the query are treated as required patterns. In addition to that, most query operators of the Apache Lucene library are supported. See http://lucene.apache.org/core/2_9_4/queryparsersyntax.html",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "civicinfo/v2/divisions",
+          "response": {
+            "$ref": "DivisionSearchResponse"
+          }
+        }
+      }
+    },
+    "elections": {
+      "methods": {
+        "electionQuery": {
+          "description": "List of available elections to query.",
+          "flatPath": "civicinfo/v2/elections",
+          "httpMethod": "GET",
+          "id": "civicinfo.elections.electionQuery",
+          "parameterOrder": [],
+          "parameters": {},
+          "path": "civicinfo/v2/elections",
+          "response": {
+            "$ref": "ElectionsQueryResponse"
+          }
+        },
+        "voterInfoQuery": {
+          "description": "Looks up information relevant to a voter based on the voter's registered address.",
+          "flatPath": "civicinfo/v2/voterinfo",
+          "httpMethod": "GET",
+          "id": "civicinfo.elections.voterInfoQuery",
+          "parameterOrder": [
+            "address"
+          ],
+          "parameters": {
+            "address": {
+              "description": "The registered address of the voter to look up.",
+              "location": "query",
+              "required": true,
+              "type": "string"
+            },
+            "electionId": {
+              "default": "0",
+              "description": "The unique ID of the election to look up. A list of election IDs can be obtained at https://www.googleapis.com/civicinfo/{version}/elections. If no election ID is specified in the query and there is more than one election with data for the given voter, the additional elections are provided in the otherElections response field.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "officialOnly": {
+              "default": "false",
+              "description": "If set to true, only data from official state sources will be returned.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "returnAllAvailableData": {
+              "default": "false",
+              "description": "If set to true, the query will return the success code and include any partial information when it is unable to determine a matching address or unable to determine the election for electionId=0 queries.",
+              "location": "query",
+              "type": "boolean"
+            }
+          },
+          "path": "civicinfo/v2/voterinfo",
+          "response": {
+            "$ref": "VoterInfoResponse"
+          }
+        }
+      }
+    },
+    "representatives": {
+      "methods": {
+        "representativeInfoByAddress": {
+          "description": "Looks up political geography and representative information for a single address.",
+          "flatPath": "civicinfo/v2/representatives",
+          "httpMethod": "GET",
+          "id": "civicinfo.representatives.representativeInfoByAddress",
+          "parameterOrder": [],
+          "parameters": {
+            "address": {
+              "description": "The address to look up. May only be specified if the field ocdId is not given in the URL",
+              "location": "query",
+              "type": "string"
+            },
+            "includeOffices": {
+              "default": "true",
+              "description": "Whether to return information about offices and officials. If false, only the top-level district information will be returned.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "levels": {
+              "description": "A list of office levels to filter by. Only offices that serve at least one of these levels will be returned. Divisions that don't contain a matching office will not be returned.",
+              "enum": [
+                "international",
+                "country",
+                "administrativeArea1",
+                "regional",
+                "administrativeArea2",
+                "locality",
+                "subLocality1",
+                "subLocality2",
+                "special"
+              ],
+              "enumDescriptions": [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
+            "roles": {
+              "description": "A list of office roles to filter by. Only offices fulfilling one of these roles will be returned. Divisions that don't contain a matching office will not be returned.",
+              "enum": [
+                "headOfState",
+                "headOfGovernment",
+                "deputyHeadOfGovernment",
+                "governmentOfficer",
+                "executiveCouncil",
+                "legislatorUpperBody",
+                "legislatorLowerBody",
+                "highestCourtJudge",
+                "judge",
+                "schoolBoard",
+                "specialPurposeOfficer",
+                "otherRole"
+              ],
+              "enumDescriptions": [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            }
+          },
+          "path": "civicinfo/v2/representatives",
+          "response": {
+            "$ref": "RepresentativeInfoResponse"
+          }
+        },
+        "representativeInfoByDivision": {
+          "description": "Looks up representative information for a single geographic division.",
+          "flatPath": "civicinfo/v2/representatives/{ocdId}",
+          "httpMethod": "GET",
+          "id": "civicinfo.representatives.representativeInfoByDivision",
+          "parameterOrder": [
+            "ocdId"
+          ],
+          "parameters": {
+            "levels": {
+              "description": "A list of office levels to filter by. Only offices that serve at least one of these levels will be returned. Divisions that don't contain a matching office will not be returned.",
+              "enum": [
+                "international",
+                "country",
+                "administrativeArea1",
+                "regional",
+                "administrativeArea2",
+                "locality",
+                "subLocality1",
+                "subLocality2",
+                "special"
+              ],
+              "enumDescriptions": [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
+            "ocdId": {
+              "description": "The Open Civic Data division identifier of the division to look up.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "recursive": {
+              "description": "If true, information about all divisions contained in the division requested will be included as well. For example, if querying ocd-division/country:us/district:dc, this would also return all DC's wards and ANCs.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "roles": {
+              "description": "A list of office roles to filter by. Only offices fulfilling one of these roles will be returned. Divisions that don't contain a matching office will not be returned.",
+              "enum": [
+                "headOfState",
+                "headOfGovernment",
+                "deputyHeadOfGovernment",
+                "governmentOfficer",
+                "executiveCouncil",
+                "legislatorUpperBody",
+                "legislatorLowerBody",
+                "highestCourtJudge",
+                "judge",
+                "schoolBoard",
+                "specialPurposeOfficer",
+                "otherRole"
+              ],
+              "enumDescriptions": [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            }
+          },
+          "path": "civicinfo/v2/representatives/{ocdId}",
+          "response": {
+            "$ref": "RepresentativeInfoData"
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230328",
+  "rootUrl": "https://civicinfo.googleapis.com/",
+  "schemas": {
+    "AdministrationRegion": {
+      "description": "Describes information about a regional election administrative area.",
+      "id": "AdministrationRegion",
+      "properties": {
+        "electionAdministrationBody": {
+          "$ref": "AdministrativeBody",
+          "description": "The election administration body for this area."
+        },
+        "local_jurisdiction": {
+          "$ref": "AdministrationRegion",
+          "description": "The city or county that provides election information for this voter. This object can have the same elements as state."
+        },
+        "name": {
+          "description": "The name of the jurisdiction.",
+          "type": "string"
+        },
+        "sources": {
+          "description": "A list of sources for this area. If multiple sources are listed the data has been aggregated from those sources.",
+          "items": {
+            "$ref": "Source"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AdministrativeBody": {
+      "description": "Information about an election administrative body (e.g. County Board of Elections).",
+      "id": "AdministrativeBody",
+      "properties": {
+        "absenteeVotingInfoUrl": {
+          "description": "A URL provided by this administrative body for information on absentee voting.",
+          "type": "string"
+        },
+        "ballotInfoUrl": {
+          "description": "A URL provided by this administrative body to give contest information to the voter.",
+          "type": "string"
+        },
+        "correspondenceAddress": {
+          "$ref": "SimpleAddressType",
+          "description": "The mailing address of this administrative body."
+        },
+        "electionInfoUrl": {
+          "description": "A URL provided by this administrative body for looking up general election information.",
+          "type": "string"
+        },
+        "electionNoticeText": {
+          "description": "A last minute or emergency notification text provided by this administrative body.",
+          "type": "string"
+        },
+        "electionNoticeUrl": {
+          "description": "A URL provided by this administrative body for additional information related to the last minute or emergency notification.",
+          "type": "string"
+        },
+        "electionOfficials": {
+          "description": "The election officials for this election administrative body.",
+          "items": {
+            "$ref": "ElectionOfficial"
+          },
+          "type": "array"
+        },
+        "electionRegistrationConfirmationUrl": {
+          "description": "A URL provided by this administrative body for confirming that the voter is registered to vote.",
+          "type": "string"
+        },
+        "electionRegistrationUrl": {
+          "description": "A URL provided by this administrative body for looking up how to register to vote.",
+          "type": "string"
+        },
+        "electionRulesUrl": {
+          "description": "A URL provided by this administrative body describing election rules to the voter.",
+          "type": "string"
+        },
+        "hoursOfOperation": {
+          "description": "A description of the hours of operation for this administrative body.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of this election administrative body.",
+          "type": "string"
+        },
+        "physicalAddress": {
+          "$ref": "SimpleAddressType",
+          "description": "The physical address of this administrative body."
+        },
+        "voter_services": {
+          "description": "A description of the services this administrative body may provide.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "votingLocationFinderUrl": {
+          "description": "A URL provided by this administrative body for looking up where to vote.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Candidate": {
+      "description": "Information about a candidate running for elected office.",
+      "id": "Candidate",
+      "properties": {
+        "candidateUrl": {
+          "description": "The URL for the candidate's campaign web site.",
+          "type": "string"
+        },
+        "channels": {
+          "description": "A list of known (social) media channels for this candidate.",
+          "items": {
+            "$ref": "Channel"
+          },
+          "type": "array"
+        },
+        "email": {
+          "description": "The email address for the candidate's campaign.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The candidate's name. If this is a joint ticket it will indicate the name of the candidate at the top of a ticket followed by a / and that name of candidate at the bottom of the ticket. e.g. \"Mitt Romney / Paul Ryan\"",
+          "type": "string"
+        },
+        "orderOnBallot": {
+          "description": "The order the candidate appears on the ballot for this contest.",
+          "format": "int64",
+          "type": "string"
+        },
+        "party": {
+          "description": "The full name of the party the candidate is a member of.",
+          "type": "string"
+        },
+        "phone": {
+          "description": "The voice phone number for the candidate's campaign office.",
+          "type": "string"
+        },
+        "photoUrl": {
+          "description": "A URL for a photo of the candidate.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Channel": {
+      "description": "A social media or web channel for a candidate.",
+      "id": "Channel",
+      "properties": {
+        "id": {
+          "description": "The unique public identifier for the candidate's channel.",
+          "type": "string"
+        },
+        "type": {
+          "description": "The type of channel. The following is a list of types of channels, but is not exhaustive. More channel types may be added at a later time. One of: GooglePlus, YouTube, Facebook, Twitter",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Contest": {
+      "description": "Information about a contest that appears on a voter's ballot.",
+      "id": "Contest",
+      "properties": {
+        "ballotPlacement": {
+          "description": "A number specifying the position of this contest on the voter's ballot.",
+          "format": "int64",
+          "type": "string"
+        },
+        "ballotTitle": {
+          "description": "The official title on the ballot for this contest, only where available.",
+          "type": "string"
+        },
+        "candidates": {
+          "description": "The candidate choices for this contest.",
+          "items": {
+            "$ref": "Candidate"
+          },
+          "type": "array"
+        },
+        "district": {
+          "$ref": "ElectoralDistrict",
+          "description": "Information about the electoral district that this contest is in."
+        },
+        "electorateSpecifications": {
+          "description": "A description of any additional eligibility requirements for voting in this contest.",
+          "type": "string"
+        },
+        "level": {
+          "description": "The levels of government of the office for this contest. There may be more than one in cases where a jurisdiction effectively acts at two different levels of government; for example, the mayor of the District of Columbia acts at \"locality\" level, but also effectively at both \"administrative-area-2\" and \"administrative-area-1\".",
+          "items": {
+            "enum": [
+              "international",
+              "country",
+              "administrativeArea1",
+              "regional",
+              "administrativeArea2",
+              "locality",
+              "subLocality1",
+              "subLocality2",
+              "special"
+            ],
+            "enumDescriptions": [
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "numberElected": {
+          "description": "The number of candidates that will be elected to office in this contest.",
+          "format": "int64",
+          "type": "string"
+        },
+        "numberVotingFor": {
+          "description": "The number of candidates that a voter may vote for in this contest.",
+          "format": "int64",
+          "type": "string"
+        },
+        "office": {
+          "description": "The name of the office for this contest.",
+          "type": "string"
+        },
+        "primaryParties": {
+          "description": "If this is a partisan election, the name of the party/parties it is for.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "referendumBallotResponses": {
+          "description": "The set of ballot responses for the referendum. A ballot response represents a line on the ballot. Common examples might include \"yes\" or \"no\" for referenda. This field is only populated for contests of type 'Referendum'.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "referendumBrief": {
+          "description": "Specifies a short summary of the referendum that is typically on the ballot below the title but above the text. This field is only populated for contests of type 'Referendum'.",
+          "type": "string"
+        },
+        "referendumConStatement": {
+          "description": "A statement in opposition to the referendum. It does not necessarily appear on the ballot. This field is only populated for contests of type 'Referendum'.",
+          "type": "string"
+        },
+        "referendumEffectOfAbstain": {
+          "description": "Specifies what effect abstaining (not voting) on the proposition will have (i.e. whether abstaining is considered a vote against it). This field is only populated for contests of type 'Referendum'.",
+          "type": "string"
+        },
+        "referendumPassageThreshold": {
+          "description": "The threshold of votes that the referendum needs in order to pass, e.g. \"two-thirds\". This field is only populated for contests of type 'Referendum'.",
+          "type": "string"
+        },
+        "referendumProStatement": {
+          "description": "A statement in favor of the referendum. It does not necessarily appear on the ballot. This field is only populated for contests of type 'Referendum'.",
+          "type": "string"
+        },
+        "referendumSubtitle": {
+          "description": "A brief description of the referendum. This field is only populated for contests of type 'Referendum'.",
+          "type": "string"
+        },
+        "referendumText": {
+          "description": "The full text of the referendum. This field is only populated for contests of type 'Referendum'.",
+          "type": "string"
+        },
+        "referendumTitle": {
+          "description": "The title of the referendum (e.g. 'Proposition 42'). This field is only populated for contests of type 'Referendum'.",
+          "type": "string"
+        },
+        "referendumUrl": {
+          "description": "A link to the referendum. This field is only populated for contests of type 'Referendum'.",
+          "type": "string"
+        },
+        "roles": {
+          "description": "The roles which this office fulfills.",
+          "items": {
+            "enum": [
+              "headOfState",
+              "headOfGovernment",
+              "deputyHeadOfGovernment",
+              "governmentOfficer",
+              "executiveCouncil",
+              "legislatorUpperBody",
+              "legislatorLowerBody",
+              "highestCourtJudge",
+              "judge",
+              "schoolBoard",
+              "specialPurposeOfficer",
+              "otherRole"
+            ],
+            "enumDescriptions": [
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sources": {
+          "description": "A list of sources for this contest. If multiple sources are listed, the data has been aggregated from those sources.",
+          "items": {
+            "$ref": "Source"
+          },
+          "type": "array"
+        },
+        "special": {
+          "description": "\"Yes\" or \"No\" depending on whether this a contest being held outside the normal election cycle.",
+          "type": "string"
+        },
+        "type": {
+          "description": "The type of contest. Usually this will be 'General', 'Primary', or 'Run-off' for contests with candidates. For referenda this will be 'Referendum'. For Retention contests this will typically be 'Retention'.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DivisionSearchResponse": {
+      "description": "The result of a division search query.",
+      "id": "DivisionSearchResponse",
+      "properties": {
+        "kind": {
+          "default": "civicinfo#divisionSearchResponse",
+          "description": "Identifies what kind of resource this is. Value: the fixed string \"civicinfo#divisionSearchResponse\".",
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "DivisionSearchResult"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "DivisionSearchResult": {
+      "description": "Represents a political geographic division that matches the requested query.",
+      "id": "DivisionSearchResult",
+      "properties": {
+        "aliases": {
+          "description": "Other Open Civic Data identifiers that refer to the same division -- for example, those that refer to other political divisions whose boundaries are defined to be coterminous with this one. For example, ocd-division/country:us/state:wy will include an alias of ocd-division/country:us/state:wy/cd:1, since Wyoming has only one Congressional district.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "The name of the division.",
+          "type": "string"
+        },
+        "ocdId": {
+          "description": "The unique Open Civic Data identifier for this division",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Election": {
+      "description": "Information about the election that was queried.",
+      "id": "Election",
+      "properties": {
+        "electionDay": {
+          "description": "Day of the election in YYYY-MM-DD format.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The unique ID of this election.",
+          "format": "int64",
+          "type": "string"
+        },
+        "name": {
+          "description": "A displayable name for the election.",
+          "type": "string"
+        },
+        "ocdDivisionId": {
+          "description": "The political division of the election. Represented as an OCD Division ID. Voters within these political jurisdictions are covered by this election. This is typically a state such as ocd-division/country:us/state:ca or for the midterms or general election the entire US (i.e. ocd-division/country:us).",
+          "type": "string"
+        },
+        "shapeLookupBehavior": {
+          "enum": [
+            "shapeLookupDefault",
+            "shapeLookupDisabled",
+            "shapeLookupEnabled"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ElectionOfficial": {
+      "description": "Information about individual election officials.",
+      "id": "ElectionOfficial",
+      "properties": {
+        "emailAddress": {
+          "description": "The email address of the election official.",
+          "type": "string"
+        },
+        "faxNumber": {
+          "description": "The fax number of the election official.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The full name of the election official.",
+          "type": "string"
+        },
+        "officePhoneNumber": {
+          "description": "The office phone number of the election official.",
+          "type": "string"
+        },
+        "title": {
+          "description": "The title of the election official.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ElectionsQueryResponse": {
+      "description": "The list of elections available for this version of the API.",
+      "id": "ElectionsQueryResponse",
+      "properties": {
+        "elections": {
+          "description": "A list of available elections",
+          "items": {
+            "$ref": "Election"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "civicinfo#electionsQueryResponse",
+          "description": "Identifies what kind of resource this is. Value: the fixed string \"civicinfo#electionsQueryResponse\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ElectoralDistrict": {
+      "description": "Describes the geographic scope of a contest.",
+      "id": "ElectoralDistrict",
+      "properties": {
+        "id": {
+          "description": "An identifier for this district, relative to its scope. For example, the 34th State Senate district would have id \"34\" and a scope of stateUpper.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of the district.",
+          "type": "string"
+        },
+        "scope": {
+          "description": "The geographic scope of this district. If unspecified the district's geography is not known. One of: national, statewide, congressional, stateUpper, stateLower, countywide, judicial, schoolBoard, cityWide, township, countyCouncil, cityCouncil, ward, special",
+          "enum": [
+            "statewide",
+            "congressional",
+            "stateUpper",
+            "stateLower",
+            "countywide",
+            "judicial",
+            "schoolBoard",
+            "citywide",
+            "special",
+            "countyCouncil",
+            "township",
+            "ward",
+            "cityCouncil",
+            "national"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FeatureIdProto": {
+      "description": "A globally unique identifier associated with each feature. We use 128-bit identifiers so that we have lots of bits available to distinguish between features. The feature id currently consists of a 64-bit \"cell id\" that **sometimes** corresponds to the approximate centroid of the feature, plus a 64-bit fingerprint of other identifying information. See more on each respective field in its comments. Feature ids are first assigned when the data is created in MapFacts. After initial creation of the feature, they are immutable. This means that the only properties that you should rely on are that they are unique, and that cell_ids often - but not always - preserve spatial locality. The degree of locality varies as the feature undergoes geometry changes, and should not in general be considered a firm guarantee of the location of any particular feature. In fact, some locationless features have randomized cell IDs! Consumers of FeatureProtos from Mapfacts are guaranteed that fprints in the id field of features will be globally unique. Using the fprint allows consumers who don't need the spatial benefit of cell ids to uniquely identify features in a 64-bit address space. This property is not guaranteed for other sources of FeatureProtos.",
+      "id": "FeatureIdProto",
+      "properties": {
+        "cellId": {
+          "description": "The S2CellId corresponding to the approximate location of this feature as of when it was first created. This can be of variable accuracy, ranging from the exact centroid of the feature at creation, a very large S2 Cell, or even being completely randomized for locationless features. Cell ids have the nice property that they follow a space-filling curve over the surface of the earth. (See s2cellid.h for details.) WARNING: Clients should only use cell IDs to perform spatial locality optimizations. There is no strict guarantee that the cell ID of a feature is related to the current geometry of the feature in any way.",
+          "format": "uint64",
+          "type": "string"
+        },
+        "fprint": {
+          "description": "A 64-bit fingerprint used to identify features. Most clients should rely on MapFacts or OneRing to choose fingerprints. If creating new fprints, the strategy should be chosen so that the chance of collision is remote or non-existent, and the distribution should be reasonably uniform. For example, if the source data assigns unique ids to features, then a fingerprint of the provider name, version, and source id is sufficient.",
+          "format": "uint64",
+          "type": "string"
+        },
+        "temporaryData": {
+          "$ref": "MessageSet",
+          "description": "A place for clients to attach arbitrary data to a feature ID. Never set in MapFacts."
+        }
+      },
+      "type": "object"
+    },
+    "GeocodingSummary": {
+      "description": "Detailed summary of the result from geocoding an address",
+      "id": "GeocodingSummary",
+      "properties": {
+        "addressUnderstood": {
+          "description": "Represents the best estimate of whether or not the input address was fully understood and the address is correctly componentized. Mirrors the same-name field in geostore.staging.AddressLinkupScoringProto.",
+          "type": "boolean"
+        },
+        "featureId": {
+          "$ref": "FeatureIdProto",
+          "description": "The ID of the FeatureProto returned by the geocoder"
+        },
+        "featureType": {
+          "description": "The feature type for the FeatureProto returned by the geocoder",
+          "enum": [
+            "typeAny",
+            "typeTransportation",
+            "typeRoute",
+            "typeDeprecatedHighwayDoNotUse",
+            "typeHighway",
+            "typeHighway1",
+            "typeHighway2",
+            "typeHighway3",
+            "typeHighway4",
+            "typeHighway5",
+            "typeHighway6",
+            "typeHighway7",
+            "typeHighway8",
+            "typeHighway9",
+            "typeBicycleRoute",
+            "typeTrail",
+            "typeSegment",
+            "typeRoad",
+            "typeRailway",
+            "typeStandardTrack",
+            "typeJrTrack",
+            "typeNarrowTrack",
+            "typeMonorailTrack",
+            "typeSubwayTrack",
+            "typeLightRailTrack",
+            "typeBroadTrack",
+            "typeHighSpeedRail",
+            "typeTrolleyTrack",
+            "typeFerry",
+            "typeFerryBoat",
+            "typeFerryTrain",
+            "typeVirtualSegment",
+            "typeIntersection",
+            "typeTransit",
+            "typeTransitStation",
+            "typeBusStation",
+            "typeTramwayStation",
+            "typeTrainStation",
+            "typeSubwayStation",
+            "typeFerryTerminal",
+            "typeAirport",
+            "typeAirportCivil",
+            "typeAirportMilitary",
+            "typeAirportMixed",
+            "typeHeliport",
+            "typeSeaplaneBase",
+            "typeAirstrip",
+            "typeCableCarStation",
+            "typeGondolaLiftStation",
+            "typeFunicularStation",
+            "typeSpecialStation",
+            "typeHorseCarriageStation",
+            "typeMonorailStation",
+            "typeSeaport",
+            "typeTransitStop",
+            "typeTransitTrip",
+            "typeTransitDeparture",
+            "typeTransitLeg",
+            "typeTransitLine",
+            "typeTransitAgencyDeprecatedValue",
+            "typeTransitTransfer",
+            "typeSegmentPath",
+            "typeRoadSign",
+            "typeIntersectionGroup",
+            "typePathway",
+            "typeRestrictionGroup",
+            "typeTollCluster",
+            "typePolitical",
+            "typeCountry",
+            "typeAdministrativeArea",
+            "typeAdministrativeArea1",
+            "typeUsState",
+            "typeGbCountry",
+            "typeJpTodoufuken",
+            "typeAdministrativeArea2",
+            "typeGbFormerPostalCounty",
+            "typeGbTraditionalCounty",
+            "typeAdministrativeArea3",
+            "typeAdministrativeArea4",
+            "typeAdministrativeArea5",
+            "typeAdministrativeArea6",
+            "typeAdministrativeArea7",
+            "typeAdministrativeArea8",
+            "typeAdministrativeArea9",
+            "typeColloquialArea",
+            "typeReservation",
+            "typeLocality",
+            "typeGbPostTown",
+            "typeJpGun",
+            "typeJpShikuchouson",
+            "typeJpSubShikuchouson",
+            "typeColloquialCity",
+            "typeSublocality",
+            "typeUsBorough",
+            "typeGbDependentLocality",
+            "typeJpOoaza",
+            "typeJpKoaza",
+            "typeJpGaiku",
+            "typeGbDoubleDependentLocality",
+            "typeJpChiban",
+            "typeJpEdaban",
+            "typeSublocality1",
+            "typeSublocality2",
+            "typeSublocality3",
+            "typeSublocality4",
+            "typeSublocality5",
+            "typeNeighborhood",
+            "typeConstituency",
+            "typeDesignatedMarketArea",
+            "typeSchoolDistrict",
+            "typeLandParcel",
+            "typeDisputedArea",
+            "typePoliceJurisdiction",
+            "typeStatisticalArea",
+            "typeConstituencyFuture",
+            "typePark",
+            "typeGolfCourse",
+            "typeLocalPark",
+            "typeNationalPark",
+            "typeUsNationalPark",
+            "typeUsNationalMonument",
+            "typeNationalForest",
+            "typeProvincialPark",
+            "typeProvincialForest",
+            "typeCampgrounds",
+            "typeHikingArea",
+            "typeBusiness",
+            "typeGovernment",
+            "typeBorderCrossing",
+            "typeCityHall",
+            "typeCourthouse",
+            "typeEmbassy",
+            "typeLibrary",
+            "typeSchool",
+            "typeUniversity",
+            "typeEmergency",
+            "typeHospital",
+            "typePharmacy",
+            "typePolice",
+            "typeFire",
+            "typeDoctor",
+            "typeDentist",
+            "typeVeterinarian",
+            "typeTravelService",
+            "typeLodging",
+            "typeRestaurant",
+            "typeGasStation",
+            "typeParking",
+            "typePostOffice",
+            "typeRestArea",
+            "typeCashMachine",
+            "typeCarRental",
+            "typeCarRepair",
+            "typeShopping",
+            "typeGrocery",
+            "typeTouristDestination",
+            "typeEcoTouristDestination",
+            "typeBirdWatching",
+            "typeFishing",
+            "typeHunting",
+            "typeNatureReserve",
+            "typeTemple",
+            "typeChurch",
+            "typeGurudwara",
+            "typeHinduTemple",
+            "typeMosque",
+            "typeSynagogue",
+            "typeStadium",
+            "typeBar",
+            "typeMovieRental",
+            "typeCoffee",
+            "typeGolf",
+            "typeBank",
+            "typeDoodle",
+            "typeGrounds",
+            "typeAirportGrounds",
+            "typeBuildingGrounds",
+            "typeCemetery",
+            "typeHospitalGrounds",
+            "typeIndustrial",
+            "typeMilitary",
+            "typeShoppingCenter",
+            "typeSportsComplex",
+            "typeUniversityGrounds",
+            "typeDeprecatedTarmac",
+            "typeEnclosedTrafficArea",
+            "typeParkingLot",
+            "typeParkingGarage",
+            "typeOffRoadArea",
+            "typeBorder",
+            "typeBuilding",
+            "typeGeocodedAddress",
+            "typeNaturalFeature",
+            "typeTerrain",
+            "typeSand",
+            "typeBeach",
+            "typeDune",
+            "typeRocky",
+            "typeIce",
+            "typeGlacier",
+            "typeBuiltUpArea",
+            "typeVegetation",
+            "typeShrubbery",
+            "typeWoods",
+            "typeAgricultural",
+            "typeGrassland",
+            "typeTundra",
+            "typeDesert",
+            "typeSaltFlat",
+            "typeWater",
+            "typeOcean",
+            "typeBay",
+            "typeBight",
+            "typeLagoon",
+            "typeSea",
+            "typeStrait",
+            "typeInlet",
+            "typeFjord",
+            "typeLake",
+            "typeSeasonalLake",
+            "typeReservoir",
+            "typePond",
+            "typeRiver",
+            "typeRapids",
+            "typeDistributary",
+            "typeConfluence",
+            "typeWaterfall",
+            "typeSpring",
+            "typeGeyser",
+            "typeHotSpring",
+            "typeSeasonalRiver",
+            "typeWadi",
+            "typeEstuary",
+            "typeWetland",
+            "typeWaterNavigation",
+            "typeFord",
+            "typeCanal",
+            "typeHarbor",
+            "typeChannel",
+            "typeReef",
+            "typeReefFlat",
+            "typeReefGrowth",
+            "typeReefExtent",
+            "typeReefRockSubmerged",
+            "typeIrrigation",
+            "typeDam",
+            "typeDrinkingWater",
+            "typeCurrent",
+            "typeWateringHole",
+            "typeTectonic",
+            "typeWateringHoleDeprecated",
+            "typeVolcano",
+            "typeLavaField",
+            "typeFissure",
+            "typeFault",
+            "typeLandMass",
+            "typeContinent",
+            "typeIsland",
+            "typeAtoll",
+            "typeOceanRockExposed",
+            "typeCay",
+            "typePeninsula",
+            "typeIsthmus",
+            "typeElevated",
+            "typePeak",
+            "typeNunatak",
+            "typeSpur",
+            "typePass",
+            "typePlateau",
+            "typeRidge",
+            "typeRavine",
+            "typeCrater",
+            "typeKarst",
+            "typeCliff",
+            "typeVista",
+            "typeDigitalElevationModel",
+            "typeUpland",
+            "typeTerrace",
+            "typeSlope",
+            "typeContourLine",
+            "typePan",
+            "typeUnstableHillside",
+            "typeMountainRange",
+            "typeUndersea",
+            "typeSubmarineSeamount",
+            "typeSubmarineRidge",
+            "typeSubmarineGap",
+            "typeSubmarinePlateau",
+            "typeSubmarineDeep",
+            "typeSubmarineValley",
+            "typeSubmarineBasin",
+            "typeSubmarineSlope",
+            "typeSubmarineCliff",
+            "typeSubmarinePlain",
+            "typeSubmarineFractureZone",
+            "typeCave",
+            "typeRock",
+            "typeArchipelago",
+            "typePostal",
+            "typePostalCode",
+            "typePostalCodePrefix",
+            "typePremise",
+            "typeSubPremise",
+            "typeSuite",
+            "typePostTown",
+            "typePostalRound",
+            "typeMetaFeature",
+            "typeDataSource",
+            "typeLocale",
+            "typeTimezone",
+            "typeBusinessChain",
+            "typePhoneNumberPrefix",
+            "typePhoneNumberAreaCode",
+            "typeBusinessCorridor",
+            "typeAddressTemplate",
+            "typeTransitAgency",
+            "typeFutureGeometry",
+            "typeEvent",
+            "typeEarthquake",
+            "typeHurricane",
+            "typeWeatherCondition",
+            "typeTransient",
+            "typeEntrance",
+            "typeCartographic",
+            "typeHighTension",
+            "typeSkiTrail",
+            "typeSkiLift",
+            "typeSkiBoundary",
+            "typeWatershedBoundary",
+            "typeTarmac",
+            "typeWall",
+            "typePicnicArea",
+            "typePlayGround",
+            "typeTrailHead",
+            "typeGolfTeeingGround",
+            "typeGolfPuttingGreen",
+            "typeGolfRough",
+            "typeGolfSandBunker",
+            "typeGolfFairway",
+            "typeGolfHole",
+            "typeDeprecatedGolfShop",
+            "typeCampingSite",
+            "typeDesignatedBarbecuePit",
+            "typeDesignatedCookingArea",
+            "typeCampfirePit",
+            "typeWaterFountain",
+            "typeLitterReceptacle",
+            "typeLockerArea",
+            "typeAnimalEnclosure",
+            "typeCartographicLine",
+            "typeEstablishment",
+            "typeEstablishmentGrounds",
+            "typeEstablishmentBuilding",
+            "typeEstablishmentPoi",
+            "typeEstablishmentService",
+            "typeCelestial",
+            "typeRoadMonitor",
+            "typePublicSpacesAndMonuments",
+            "typeStatue",
+            "typeTownSquare",
+            "typeLevel",
+            "typeCompound",
+            "typeCompoundGrounds",
+            "typeCompoundBuilding",
+            "typeCompoundSection",
+            "typeTerminalPoint",
+            "typeRegulatedArea",
+            "typeLogicalBorder",
+            "typeDoNotUseReservedToCatchGeneratedFiles",
+            "typeUnknown"
+          ],
+          "enumDescriptions": [
+            "ABSTRACT",
+            "ABSTRACT",
+            "A route is any section of road (or rails, etc.) that has a name. This includes city streets as well as highways. Road segments can belong to multiple routes (e.g. El Camino, CA-82).",
+            "DEPRECATED",
+            "ABSTRACT",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "A designated bicycle route, whose segments may consist of any combination of bicycle paths, bicycle lanes, or city streets.",
+            "A designated trail, which may consist of paved walkways, dirt paths, fire road, streets or highways, etc.",
+            "ABSTRACT",
+            "",
+            "Railroads use several different incompatible track types.",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "Tracks for streetcars, cable-cars, etc. Ferries are services that are part of the road network but are not roads. They typically involve fares and scheduled departure times.",
+            "ABSTRACT",
+            "The vast majority of ferries are ferry boats.",
+            "Also called a \"car transport\", a ferry train is a rail service that carries passengers and their vehicles across undrivable terrain. The Channel Tunnel (\"Chunnel\") is the most famous example, but they are also common in the Alps where they connect neighboring valleys otherwise separated by impassable mountains.",
+            "Any plausible 1-dimensional path through a 2+ dimensional space, for the purposes of making graph-search-based routing possible. Such segments can be used to model paths through parking lots, squares, floors of buildings and other areas.",
+            "An intersection consists of a collection of segments that terminate at the same location. This is topological definition: it may not match what a typical user would think of as an \"intersection\". See TYPE_INTERSECTION_GROUP, below, for more information. Each segment terminating at an intersection has an \"endpoint type\" that specifies how that segment is terminated: stop sign, yield sign, three-way light, etc.",
+            "ABSTRACT",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "A transit line is a collection of transit legs, associated with some invariant properties of the trips that run over the legs. See also transitline.proto",
+            "TYPE_TRANSIT_AGENCY was moved to 0xC91. This deprecated enum value still exists for debugging purposes only.",
+            "DEPRECATED",
+            "ABSTRACT",
+            "Road sign features have names, point geometry, etc. They also have segment_path data (see below) which lists the segments that refer to the sign. See segment.proto for the reference from the segment to the road sign.",
+            "Our TYPE_INTERSECTION feature, above, models the point where one or more segments terminate. This is topological definition: it may not match what a typical user would think of as an \"intersection\". Consider the intersections where Hayes, Market, Larkin, and 9th Street meet near (37.77765, -122.41638) in San Francisco. Most people would probably consider this a single feature, even though we model it as four separate TYPE_INTERSECTION features. This TYPE_INTERSECTION_GROUP is used to model the user's concept of a complex intersection.",
+            "RESERVED",
+            "A restriction group describes a set of segment restrictions that belong together and have a name or an associated event. See also restriction_group.proto",
+            "A toll cluster is either a single point on a segment (represented as a point at the end of the segment that has ENDPOINT_TOLL_BOOTH set) or a group of points on various road segments in MapFacts that represents one or more lanes passing through a toll fixture that all go to the same routing destination. Each toll cluster should have at most a single price per payment method. E.g. {CASH = $5, PASS = $1}. Note: If a toll fixture has different prices for multiple routing destinations, drivers need to be in the correct lane before passing through the toll fixture and hence such a fixture is represented by multiple toll clusters. A toll cluster does not necessarily represent a real-world entity, e.g. a particular plaza/structure as perceived by humans. This is because a plaza can be represented by more than one toll cluster. We require toll clusters to have names, but they might be non-unique. For example, a plaza might be represented by multiple toll clusters that may have the same plaza name. For further details, please see go/toll-cluster-schema.",
+            "ABSTRACT",
+            "",
+            "ABSTRACT",
+            "",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "",
+            "DEPRECATED",
+            "DEPRECATED",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "e.g. Silicon Valley",
+            "A reservation is a region collectively held or governed by indigenous people and officially recognized by the country\u2019s government at the federal or state level. A reservation may be fully contained within an administrative feature or partially contained within two or more. These regions are referred to by different categorical names depending on country and even by state, including but not limited to: \u201cIndian Reservations\u201d, \u201cIndian Reserves\u201d, \u201cLand Claim Settlement Lands\u201d, \u201cIndian Lands\u201d, \u201cTreaty Lands\u201d, \u201cIndigenous Territories\u201d, etc. A reservation is not a historic indigenous territory boundary or a region which has applied for land rights but has not yet received official recognition.",
+            "",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "An entity widely considered to be a city, that may itself be made up of smaller political entities, some of which are cities/towns/villages themselves. For example, the colloquial view of Sydney, Australia actually comprises many smaller cities, but is regarded as a city itself. This type is not suitable for modeling official metro-/micropolitan or other statistical areas.",
+            "ABSTRACT",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "Designated Market Areas (or DMAs) are used by marketing and ratings companies (such as the Nielsen Media Research company) to describe geographical regions (such as the greater New York metropolitan area) that are covered by a set of television stations. (See http://www.schooldata.com/pdfs/DMA.pdf) In the United States, DMAs should have a DMA numeric ID name, tagged with the FLAG_DESIGNATED_MARKET_AREA_ID flag.",
+            "",
+            "",
+            "Eventually we'll have more data for disputed areas (e.g., who makes claims on the area, who has de facto control, etc.). For the moment, we just define a type so we can simply mark areas as disputed.",
+            "Boundaries representing the jurisdiction of a particular police station.",
+            "An area used for aggregating statistical data, eg, a census region. Note that TYPE_STATISTICAL_AREA has a third nibble so we can add an abstract parent above it later if need be at 0x2E1 (and rename TYPE_STATISTICAL_AREA as TYPE_STATISTICAL_AREA1).",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "A line representing the boundary between two features. See border.proto for details.",
+            "DEPRECATED",
+            "An association of a point with an address, with no other information.",
+            "ABSTRACT",
+            "Expanses of land that share common surface attributes. These areas would look more or less uniform from a high altitude.",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "Terrain that looks populated.",
+            "Terrain that is covered in vegetation.",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "A flat expanse of salt left by the evaporation of a body of salt water.",
+            "Features can be TYPE_WATER if we don't have enough information to properly type the body of water. TYPE_WATER is also used as the type for child features that compose a TYPE_RIVER feature.",
+            "One of the large salt-water bodies that covers most of the globe.",
+            "An ocean subdivision formed by a coastal indentation. Includes coves and gulfs.",
+            "An open body of water formed by a slight coastal indentation.",
+            "",
+            "An ocean subdivision more or less confined by land and islands.",
+            "A long narrow ocean subdivision. Includes sounds.",
+            "",
+            "",
+            "An inland body of standing water.",
+            "A lake that dries up part of the year.",
+            "An artificial body of water, possibly created by a dam, often used for irrigation or house use.",
+            "",
+            "An inland body of moving water, or parts associated with it in which there is little or no current (backwater).",
+            "",
+            "A branch which flows away from the main river. Includes deltas.",
+            "A place where two or more rivers join.",
+            "",
+            "A place where ground water flows naturally out of the ground.",
+            "",
+            "",
+            "A river that dries up part of the year.",
+            "A dry riverbed that occasionally receives flashfloods.",
+            "A place at the end of a river where fresh and salt water mix. Includes tidal creeks and limans.",
+            "Land that is usually flooded. Includes bogs, marshes, flats, moors, and swamps.",
+            "",
+            "A shallow place where water may be waded through.",
+            "A narrow passage used by boats. Normally artificial.",
+            "A deep place near a shore where ships commonly drop anchor.",
+            "A deep part in a body of water that is suitable for navigation. Includes narrows.",
+            "Rocks, coral, sandbars, or other features beneath the surface of the water that pose a hazard to passing ships. Includes shoals.",
+            "A relatively shallow zone of the back reef located closest to the shore, that may be exposed at low tide.",
+            "A small section of rocks, coral, sandbars, or other features beneath the surface of the water that forms part of a reef.",
+            "The full extent of the reef complex.",
+            "A submerged rock in the water.",
+            "Man-made (and sometimes natural) channels used to move water. This type was used for both dam structures and water that is hold back by dams. We should use TYPE_COMPOUND_BUILDING for dam structures and TYPE_RESERVOIR for water.",
+            "DEPRECATED",
+            "",
+            "Includes overfalls.",
+            "A natural depression filled with water where animals come to drink.",
+            "ABSTRACT This type is incorrectly under TYPE_TECTONIC instead of TYPE_WATER. This was a mistake and is now fixed. See TYPE_WATERING_HOLE for the replacement.",
+            "DEPRECATED",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "An exposed rock in the water.",
+            "A small, low-elevation, sandy island formed on the surface of coral reefs",
+            "A stretch of land projecting into water. Includes capes and spits.",
+            "A strip of land connecting two larger land masses, such as continents.",
+            "Features that are notable for being high (or low), or for having sudden changes in elevation. These features might have an \"elevation\" extension to specify the actual elevation. See ElevationProto for more information.",
+            "Elevations that have a distinctive peak.",
+            "A peak or ridge of a mountain that extends through a glacier.",
+            "A subsidiary peak of a mountain.",
+            "A route over an otherwise difficult to traverse feature. Includes saddle.",
+            "Elevations that are flat on top. Includes mesas and buttes.",
+            "A ridge is a geographical feature consisting of a chain of mountains or hills that form a continuous elevated crest with a single ridgeline for some distance.",
+            "Steep declines usually carved by erosion. Includes valleys, canyons, ditches, and gorges.",
+            "Depressions causes by impact, explosion, and sometimes sink-holes.",
+            "Topography formed on limestone and gypsum by dissolution with sinkholes, caves, etc.",
+            "A vertical or nearly vertical slope. Includes escarpments.",
+            "An elevated place that is notable for having a good view. Raster digital elevation data. This is not a type to be used by providers or consumed by clients.",
+            "RESERVED",
+            "Land along streams higher than the alluvial plain or stream terrace.",
+            "",
+            "Land not so steep as a cliff, but changing elevation. Includes slides.",
+            "All the points on the polygon are at the same elevation.",
+            "A near-level shallow, natural depression or basin, usually containing an intermittent lake, pond, or pool.",
+            "",
+            "A series of mountains or hills ranged in a line and connected by high ground. Mountain ranges usually consist of many smaller ridges. For example, the Himalayas, the Andes. the Alps, etc.",
+            "Features that are notable for being high (or low), or for having sudden changes in elevation. These features might have an \"elevation\" extension to specify the actual elevation. See ElevationProto for more information.",
+            "includes peaks, ranges, and spurs",
+            "",
+            "includes saddles",
+            "",
+            "",
+            "includes trenches and troughs",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "Don't use 0xA7. Use 8 bits for additional types under TYPE_NATURAL_FEATURE, so we don't run out of space. The following are miscellaneous natural features that don't fit any of the categories above.",
+            "",
+            "A feature representing a group or chain of islands. ",
+            "ABSTRACT",
+            "This is the type for postal codes which are complete and independent enough that there should be a feature for them (e.g. US 5-digit ZIP codes). For even more detailed suffixes that further subdivide a postal code (such as the +4 component in US ZIP codes), store the information in a TYPE_POSTAL_CODE_SUFFIX address component. When a range or set of postal codes share the same geographical area, e.g. because a precise subdivision does not exist or this subdivision is unknown, this type is used for each individual postal code.",
+            "A prefix portion of a postal code which does not meet the requirements for TYPE_POSTAL_CODE, but which is useful to search for, for example UK outcodes.",
+            "DEPRECATED",
+            "DEPRECATED This is deprecated and we want to use TYPE_COMPOUND_SECTION instead.",
+            "DEPRECATED",
+            "The term \"post town\" is used for a locality-like-entity that is only used for postal addresses.",
+            "DEPRECATED",
+            "ABSTRACT",
+            "Every data source used in constructing a data repository has a corresponding feature that provides more information about that data source. The extra information is stored in the optional data_source field below.",
+            "A locale feature provides region specific conventions such as preferred language and formatting details for time, date, and currency values. Locales aren't necessary defined by physical geographic features, so they are classified as meta-features.",
+            "A timezone feature is used to specify the region covering an international timezone. When a point is covered by multiple timezone features, the most specific one can be used to compute the local time at this point. Most specific implies a much smaller region or the one that is closer to the center. A feature's timezone can be specified in the repeated related_timezone field.",
+            "A business chain feature is used to represent a chain, e.g. Starbucks, McDonald's, etc. Other features representing specific stores/franchises of this chain may refer to one such feature via RELATION_MEMBER_OF_CHAIN. This is not strictly reserved to commercial chains but can also be used to model organizations such as the Red Cross or the United Nations.",
+            "A phone number prefix feature is used to specify the region where phone numbers (typically fixed-line numbers) must begin with a certain prefix. Any phone number prefix down to any level of granularity could be represented by this type.",
+            "A phone number area code is a prefix which also coincides with the area code, or national destination code, of a particular region.",
+            "A Business Corridor is a dense cluster of semantically similar establishments. TYPE_BUSINESS_CORRIDOR features are distinguished from TYPE_COLLOQUIAL_AREA features because the corridors are not under the political hierarchy, are allowed to be nameless, and may not correspond to well-known real world locations. For more details, see go/geo-corridors-schema.",
+            "An address template feature provides region-specific conventions for structuring addresses. These features aren't necessarily defined by physical geographic features, so they are classified as meta-features.",
+            "A transit agency operates a number of lines, typically all in the same city, region or country. See also transitagency.proto",
+            "A feature whose geometry is planned to replace the geometry on another feature.",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "DEPRECATED",
+            "RESERVED",
+            "A portal of entry or exit to another feature. Examples: - Subway station entrance. - Parking lot entrance.",
+            "Cartographic features are used to capture real-world objects for which there is no current desire to model any specific attributes. These are only useful to make the map tiles look pretty.",
+            "DEPRECATED",
+            "Also see skitrail.proto",
+            "Also see skilift.proto",
+            "Also see skiboundary.proto",
+            "",
+            "Starting with TYPE_TARMAC, we use longer IDs, so that we can expand the number of feature types under TYPE_CARTOGRAPHIC.",
+            "Use TYPE_COMPOUND_GROUND and appropriate gcids for the next two.",
+            "DEPRECATED",
+            "DEPRECATED",
+            "",
+            "Sub-types within a golf course.",
+            "",
+            "",
+            "",
+            "",
+            "Use TYPE_ESTABLISHMENT_POI and gcid:golf_shop for golf shops instead.",
+            "DEPRECATED",
+            "DEPRECATED",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "Subtype within a zoo - a cage or fenced-off or otherwise delineated area containing animals.",
+            "A line for a cartographic detail. For example the international date line. Such features should have polyline geometry.",
+            "ABSTRACT This type is being replaced by TYPE_COMPOUND_GROUNDS. For further details, see go/compounds-v2",
+            "DEPRECATED This type has been replaced by TYPE_COMPOUND_BUILDING. For further details, see go/oyster-compounds",
+            "DEPRECATED",
+            "An establishment which has a address (a.k.a. location or storefront). Note that it *may* also have a service area (e.g. a restaurant that offers both dine-in and delivery). This type of business is also known as a \"hybrid\" Service Area Business. Establishment POIs can be referenced by TYPE_COMPOUND features using the RELATION_PRIMARILY_OCCUPIED_BY. This is the reciprocal relation of the RELATION_OCCUPIES.",
+            "A business without a storefront, e.g. a plumber. It would normally not have a place that a customer could visit to receive service, but it would have an area served by the business. Also known as a \"pure\" Service Area Business. NOTE(tcain): Using value 0xD441, since we could find ourselves with a need to differentiate service areas from online-only at this level in the future, but still benefit from being able to group those under a common parent, disjoint from TYPE_ESTABLISHMENT_POI.",
+            "The root of types of features that are in the sky, rather than on the earth. There will eventually be a hierarchy of types here.",
+            "Features responsible for monitoring traffic on roads (usually for speed). Includes cameras at particular points as well as monitors that cover larger spans. Features of this type should have a corresponding gcid that specifies the correct subtype (e.g. gcid:road_camera or gcid:speed_camera_zone). This type was originally named as TYPE_ROAD_CAMERA.",
+            "ABSTRACT",
+            "Note that this type does not distinguish the nature of the statue (religious, historical, memorial, tourist, ...).",
+            "Open space used for events, gathering, or as market-place.",
+            "A feature used to represent a logical level, e.g. floor.",
+            "ABSTRACT",
+            "e.g. campus, compound, parcel.",
+            "e.g. single family dwelling, office building.",
+            "e.g. suite, room, hallway, cubicle.",
+            "A terminal point represents a good location for a user to meet a taxi, ridesharing vehicle, or general driver.",
+            "An area controlled in some way by an authoritative source, such as a government-designated COVID containment zone or an area under government sanctions. Features of this type should have one or more gcids corresponding to their specific regulation, and client handling of these features may vary based on the type of regulation.",
+            "A grouping of TYPE_BORDER features (\"border segments\"), which together represent a border between two features of the same type.",
+            "DEPRECATED",
+            "A feature of completely unknown type. This should only be used when absolutely necessary. One example in which this type is useful is in the Chinese importer, which must heuristically segment addresses into components - it often does not know what types to make those components. Please note that the Oyster address formatter does not currently support address components of TYPE_UNKNOWN well."
+          ],
+          "type": "string"
+        },
+        "positionPrecisionMeters": {
+          "description": "Precision of the center point (lat/long) of the geocoded FeatureProto",
+          "format": "double",
+          "type": "number"
+        },
+        "queryString": {
+          "description": "The query sent to the geocoder",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GeographicDivision": {
+      "description": "Describes a political geography.",
+      "id": "GeographicDivision",
+      "properties": {
+        "alsoKnownAs": {
+          "description": "Any other valid OCD IDs that refer to the same division.\\n\\nBecause OCD IDs are meant to be human-readable and at least somewhat predictable, there are occasionally several identifiers for a single division. These identifiers are defined to be equivalent to one another, and one is always indicated as the primary identifier. The primary identifier will be returned in ocd_id above, and any other equivalent valid identifiers will be returned in this list.\\n\\nFor example, if this division's OCD ID is ocd-division/country:us/district:dc, this will contain ocd-division/country:us/state:dc.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "The name of the division.",
+          "type": "string"
+        },
+        "officeIndices": {
+          "description": "List of indices in the offices array, one for each office elected from this division. Will only be present if includeOffices was true (or absent) in the request.",
+          "items": {
+            "format": "uint32",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "MessageSet": {
+      "description": "This is proto2's version of MessageSet.",
+      "id": "MessageSet",
+      "properties": {},
+      "type": "object"
+    },
+    "Office": {
+      "description": "Information about an Office held by one or more Officials.",
+      "id": "Office",
+      "properties": {
+        "divisionId": {
+          "description": "The OCD ID of the division with which this office is associated.",
+          "type": "string"
+        },
+        "levels": {
+          "description": "The levels of government of which this office is part. There may be more than one in cases where a jurisdiction effectively acts at two different levels of government; for example, the mayor of the District of Columbia acts at \"locality\" level, but also effectively at both \"administrative-area-2\" and \"administrative-area-1\".",
+          "items": {
+            "enum": [
+              "international",
+              "country",
+              "administrativeArea1",
+              "regional",
+              "administrativeArea2",
+              "locality",
+              "subLocality1",
+              "subLocality2",
+              "special"
+            ],
+            "enumDescriptions": [
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "The human-readable name of the office.",
+          "type": "string"
+        },
+        "officialIndices": {
+          "description": "List of indices in the officials array of people who presently hold this office.",
+          "items": {
+            "format": "uint32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "roles": {
+          "description": "The roles which this office fulfills. Roles are not meant to be exhaustive, or to exactly specify the entire set of responsibilities of a given office, but are meant to be rough categories that are useful for general selection from or sorting of a list of offices.",
+          "items": {
+            "enum": [
+              "headOfState",
+              "headOfGovernment",
+              "deputyHeadOfGovernment",
+              "governmentOfficer",
+              "executiveCouncil",
+              "legislatorUpperBody",
+              "legislatorLowerBody",
+              "highestCourtJudge",
+              "judge",
+              "schoolBoard",
+              "specialPurposeOfficer",
+              "otherRole"
+            ],
+            "enumDescriptions": [
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sources": {
+          "description": "A list of sources for this office. If multiple sources are listed, the data has been aggregated from those sources.",
+          "items": {
+            "$ref": "Source"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Official": {
+      "description": "Information about a person holding an elected office.",
+      "id": "Official",
+      "properties": {
+        "address": {
+          "description": "Addresses at which to contact the official.",
+          "items": {
+            "$ref": "SimpleAddressType"
+          },
+          "type": "array"
+        },
+        "channels": {
+          "description": "A list of known (social) media channels for this official.",
+          "items": {
+            "$ref": "Channel"
+          },
+          "type": "array"
+        },
+        "emails": {
+          "description": "The direct email addresses for the official.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "geocodingSummaries": {
+          "description": "Detailed summary about the official's address's geocoding",
+          "items": {
+            "$ref": "GeocodingSummary"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "The official's name.",
+          "type": "string"
+        },
+        "party": {
+          "description": "The full name of the party the official belongs to.",
+          "type": "string"
+        },
+        "phones": {
+          "description": "The official's public contact phone numbers.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "photoUrl": {
+          "description": "A URL for a photo of the official.",
+          "type": "string"
+        },
+        "urls": {
+          "description": "The official's public website URLs.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "PollingLocation": {
+      "description": "A location where a voter can vote. This may be an early vote site, an election day voting location, or a drop off location for a completed ballot.",
+      "id": "PollingLocation",
+      "properties": {
+        "address": {
+          "$ref": "SimpleAddressType",
+          "description": "The address of the location."
+        },
+        "endDate": {
+          "description": "The last date that this early vote site or drop off location may be used. This field is not populated for polling locations.",
+          "type": "string"
+        },
+        "latitude": {
+          "description": "Latitude of the location, in degrees north of the equator. Note this field may not be available for some locations.",
+          "format": "double",
+          "type": "number"
+        },
+        "longitude": {
+          "description": "Longitude of the location, in degrees east of the Prime Meridian. Note this field may not be available for some locations.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "description": "The name of the early vote site or drop off location. This field is not populated for polling locations.",
+          "type": "string"
+        },
+        "notes": {
+          "description": "Notes about this location (e.g. accessibility ramp or entrance to use).",
+          "type": "string"
+        },
+        "pollingHours": {
+          "description": "A description of when this location is open.",
+          "type": "string"
+        },
+        "sources": {
+          "description": "A list of sources for this location. If multiple sources are listed the data has been aggregated from those sources.",
+          "items": {
+            "$ref": "Source"
+          },
+          "type": "array"
+        },
+        "startDate": {
+          "description": "The first date that this early vote site or drop off location may be used. This field is not populated for polling locations.",
+          "type": "string"
+        },
+        "voterServices": {
+          "description": "The services provided by this early vote site or drop off location. This field is not populated for polling locations.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Precinct": {
+      "id": "Precinct",
+      "properties": {
+        "administrationRegionId": {
+          "description": "ID of the AdministrationRegion message for this precinct. Corresponds to LocalityId xml tag.",
+          "type": "string"
+        },
+        "contestId": {
+          "description": "ID(s) of the Contest message(s) for this precinct.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "datasetId": {
+          "description": "Required. Dataset ID. What datasets our Precincts come from.",
+          "format": "int64",
+          "type": "string"
+        },
+        "earlyVoteSiteId": {
+          "description": "ID(s) of the PollingLocation message(s) for this precinct.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "electoralDistrictId": {
+          "description": "ID(s) of the ElectoralDistrict message(s) for this precinct.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "Required. A unique identifier for this precinct.",
+          "type": "string"
+        },
+        "mailOnly": {
+          "description": "Specifies if the precinct runs mail-only elections.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Required. The name of the precinct.",
+          "type": "string"
+        },
+        "number": {
+          "description": "The number of the precinct.",
+          "type": "string"
+        },
+        "ocdId": {
+          "description": "Encouraged. The OCD ID of the precinct",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "pollingLocationId": {
+          "description": "ID(s) of the PollingLocation message(s) for this precinct.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "spatialBoundaryId": {
+          "description": "ID(s) of the SpatialBoundary message(s) for this precinct. Used to specify a geometrical boundary of the precinct.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "splitName": {
+          "description": "If present, this proto corresponds to one portion of split precinct. Other portions of this precinct are guaranteed to have the same `name`. If not present, this proto represents a full precicnt.",
+          "type": "string"
+        },
+        "ward": {
+          "description": "Specifies the ward the precinct is contained within.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RepresentativeInfoData": {
+      "id": "RepresentativeInfoData",
+      "properties": {
+        "divisions": {
+          "additionalProperties": {
+            "$ref": "GeographicDivision"
+          },
+          "description": "A map of political geographic divisions that contain the requested address, keyed by the unique Open Civic Data identifier for this division.",
+          "type": "object"
+        },
+        "offices": {
+          "description": "Elected offices referenced by the divisions listed above. Will only be present if includeOffices was true in the request.",
+          "items": {
+            "$ref": "Office"
+          },
+          "type": "array"
+        },
+        "officials": {
+          "description": "Officials holding the offices listed above. Will only be present if includeOffices was true in the request.",
+          "items": {
+            "$ref": "Official"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "RepresentativeInfoResponse": {
+      "description": "The result of a representative info lookup query.",
+      "id": "RepresentativeInfoResponse",
+      "properties": {
+        "divisions": {
+          "additionalProperties": {
+            "$ref": "GeographicDivision"
+          },
+          "description": "A map of political geographic divisions that contain the requested address, keyed by the unique Open Civic Data identifier for this division.",
+          "type": "object"
+        },
+        "kind": {
+          "default": "civicinfo#representativeInfoResponse",
+          "description": "Identifies what kind of resource this is. Value: the fixed string \"civicinfo#representativeInfoResponse\".",
+          "type": "string"
+        },
+        "normalizedInput": {
+          "$ref": "SimpleAddressType",
+          "description": "The normalized version of the requested address"
+        },
+        "offices": {
+          "description": "Elected offices referenced by the divisions listed above. Will only be present if includeOffices was true in the request.",
+          "items": {
+            "$ref": "Office"
+          },
+          "type": "array"
+        },
+        "officials": {
+          "description": "Officials holding the offices listed above. Will only be present if includeOffices was true in the request.",
+          "items": {
+            "$ref": "Official"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "SimpleAddressType": {
+      "description": "A simple representation of an address.",
+      "id": "SimpleAddressType",
+      "properties": {
+        "city": {
+          "description": "The city or town for the address.",
+          "type": "string"
+        },
+        "line1": {
+          "description": "The street name and number of this address.",
+          "type": "string"
+        },
+        "line2": {
+          "description": "The second line the address, if needed.",
+          "type": "string"
+        },
+        "line3": {
+          "description": "The third line of the address, if needed.",
+          "type": "string"
+        },
+        "locationName": {
+          "description": "The name of the location.",
+          "type": "string"
+        },
+        "state": {
+          "description": "The US two letter state abbreviation of the address.",
+          "type": "string"
+        },
+        "zip": {
+          "description": "The US Postal Zip Code of the address.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Source": {
+      "description": "Contains information about the data source for the element containing it.",
+      "id": "Source",
+      "properties": {
+        "name": {
+          "description": "The name of the data source.",
+          "type": "string"
+        },
+        "official": {
+          "description": "Whether this data comes from an official government source.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "VoterInfoResponse": {
+      "description": "The result of a voter info lookup query.",
+      "id": "VoterInfoResponse",
+      "properties": {
+        "contests": {
+          "description": "Contests that will appear on the voter's ballot.",
+          "items": {
+            "$ref": "Contest"
+          },
+          "type": "array"
+        },
+        "dropOffLocations": {
+          "description": "Locations where a voter is eligible to drop off a completed ballot. The voter must have received and completed a ballot prior to arriving at the location. The location may not have ballots available on the premises. These locations could be open on or before election day as indicated in the pollingHours field.",
+          "items": {
+            "$ref": "PollingLocation"
+          },
+          "type": "array"
+        },
+        "earlyVoteSites": {
+          "description": "Locations where the voter is eligible to vote early, prior to election day.",
+          "items": {
+            "$ref": "PollingLocation"
+          },
+          "type": "array"
+        },
+        "election": {
+          "$ref": "Election",
+          "description": "The election that was queried."
+        },
+        "kind": {
+          "default": "civicinfo#voterInfoResponse",
+          "description": "Identifies what kind of resource this is. Value: the fixed string \"civicinfo#voterInfoResponse\".",
+          "type": "string"
+        },
+        "mailOnly": {
+          "description": "Specifies whether voters in the precinct vote only by mailing their ballots (with the possible option of dropping off their ballots as well).",
+          "type": "boolean"
+        },
+        "normalizedInput": {
+          "$ref": "SimpleAddressType",
+          "description": "The normalized version of the requested address"
+        },
+        "otherElections": {
+          "description": "When there are multiple elections for a voter address, the otherElections field is populated in the API response and there are two possibilities: 1. If the earliest election is not the intended election, specify the election ID of the desired election in a second API request using the electionId field. 2. If these elections occur on the same day, the API doesn?t return any polling location, contest, or election official information to ensure that an additional query is made. For user-facing applications, we recommend displaying these elections to the user to disambiguate. A second API request using the electionId field should be made for the election that is relevant to the user.",
+          "items": {
+            "$ref": "Election"
+          },
+          "type": "array"
+        },
+        "pollingLocations": {
+          "description": "Locations where the voter is eligible to vote on election day.",
+          "items": {
+            "$ref": "PollingLocation"
+          },
+          "type": "array"
+        },
+        "precinctId": {
+          "type": "string"
+        },
+        "precincts": {
+          "description": "The precincts that match this voter's address. Will only be returned for project IDs which have been whitelisted as \"partner projects\".",
+          "items": {
+            "$ref": "Precinct"
+          },
+          "type": "array"
+        },
+        "state": {
+          "description": "Local Election Information for the state that the voter votes in. For the US, there will only be one element in this array.",
+          "items": {
+            "$ref": "AdministrationRegion"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Google Civic Information API",
+  "version": "v2",
+  "version_module": true
+}

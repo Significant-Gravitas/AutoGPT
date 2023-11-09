@@ -1,0 +1,578 @@
+{
+  "batchPath": "batch",
+  "icons": {
+    "x32": "http://www.google.com/images/icons/product/search-32.gif",
+    "x16": "http://www.google.com/images/icons/product/search-16.gif"
+  },
+  "ownerDomain": "google.com",
+  "resources": {
+    "users": {
+      "resources": {
+        "environments": {
+          "methods": {
+            "patch": {
+              "id": "cloudshell.users.environments.patch",
+              "parameters": {
+                "name": {
+                  "description": "Name of the resource to be updated, for example `users/me/environments/default` or `users/someone@example.com/environments/default`.",
+                  "pattern": "^users/[^/]+/environments/[^/]+$",
+                  "location": "path",
+                  "required": true,
+                  "type": "string"
+                },
+                "updateMask": {
+                  "type": "string",
+                  "format": "google-fieldmask",
+                  "description": "Mask specifying which fields in the environment should be updated.",
+                  "location": "query"
+                }
+              },
+              "request": {
+                "$ref": "Environment"
+              },
+              "flatPath": "v1alpha1/users/{usersId}/environments/{environmentsId}",
+              "path": "v1alpha1/{+name}",
+              "parameterOrder": [
+                "name"
+              ],
+              "description": "Updates an existing environment.",
+              "response": {
+                "$ref": "Environment"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ],
+              "httpMethod": "PATCH"
+            },
+            "get": {
+              "response": {
+                "$ref": "Environment"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ],
+              "parameters": {
+                "name": {
+                  "pattern": "^users/[^/]+/environments/[^/]+$",
+                  "location": "path",
+                  "required": true,
+                  "description": "Name of the requested resource, for example `users/me/environments/default` or `users/someone@example.com/environments/default`.",
+                  "type": "string"
+                }
+              },
+              "parameterOrder": [
+                "name"
+              ],
+              "path": "v1alpha1/{+name}",
+              "flatPath": "v1alpha1/users/{usersId}/environments/{environmentsId}",
+              "description": "Gets an environment. Returns NOT_FOUND if the environment does not exist.",
+              "httpMethod": "GET",
+              "id": "cloudshell.users.environments.get"
+            },
+            "start": {
+              "request": {
+                "$ref": "StartEnvironmentRequest"
+              },
+              "flatPath": "v1alpha1/users/{usersId}/environments/{environmentsId}:start",
+              "parameters": {
+                "name": {
+                  "location": "path",
+                  "required": true,
+                  "pattern": "^users/[^/]+/environments/[^/]+$",
+                  "type": "string",
+                  "description": "Name of the resource that should be started, for example `users/me/environments/default` or `users/someone@example.com/environments/default`."
+                }
+              },
+              "description": "Starts an existing environment, allowing clients to connect to it. The returned operation will contain an instance of StartEnvironmentMetadata in its metadata field. Users can wait for the environment to start by polling this operation via GetOperation. Once the environment has finished starting and is ready to accept connections, the operation will contain a StartEnvironmentResponse in its response field.",
+              "path": "v1alpha1/{+name}:start",
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ],
+              "response": {
+                "$ref": "Operation"
+              },
+              "id": "cloudshell.users.environments.start",
+              "parameterOrder": [
+                "name"
+              ],
+              "httpMethod": "POST"
+            },
+            "authorize": {
+              "id": "cloudshell.users.environments.authorize",
+              "flatPath": "v1alpha1/users/{usersId}/environments/{environmentsId}:authorize",
+              "parameters": {
+                "name": {
+                  "description": "Name of the resource that should receive the credentials, for example `users/me/environments/default` or `users/someone@example.com/environments/default`.",
+                  "type": "string",
+                  "required": true,
+                  "pattern": "^users/[^/]+/environments/[^/]+$",
+                  "location": "path"
+                }
+              },
+              "response": {
+                "$ref": "Empty"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ],
+              "path": "v1alpha1/{+name}:authorize",
+              "description": "Sends OAuth credentials to a running environment on behalf of a user. When this completes, the environment will be authorized to run various Google Cloud command line tools without requiring the user to manually authenticate.",
+              "request": {
+                "$ref": "AuthorizeEnvironmentRequest"
+              },
+              "httpMethod": "POST",
+              "parameterOrder": [
+                "name"
+              ]
+            }
+          },
+          "resources": {
+            "publicKeys": {
+              "methods": {
+                "create": {
+                  "flatPath": "v1alpha1/users/{usersId}/environments/{environmentsId}/publicKeys",
+                  "response": {
+                    "$ref": "PublicKey"
+                  },
+                  "httpMethod": "POST",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "parent": {
+                      "pattern": "^users/[^/]+/environments/[^/]+$",
+                      "required": true,
+                      "location": "path",
+                      "type": "string",
+                      "description": "Parent resource name, e.g. `users/me/environments/default`."
+                    }
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ],
+                  "path": "v1alpha1/{+parent}/publicKeys",
+                  "id": "cloudshell.users.environments.publicKeys.create",
+                  "request": {
+                    "$ref": "CreatePublicKeyRequest"
+                  },
+                  "description": "Adds a public SSH key to an environment, allowing clients with the corresponding private key to connect to that environment via SSH. If a key with the same format and content already exists, this will return the existing key."
+                },
+                "delete": {
+                  "response": {
+                    "$ref": "Empty"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ],
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "path": "v1alpha1/{+name}",
+                  "id": "cloudshell.users.environments.publicKeys.delete",
+                  "parameters": {
+                    "name": {
+                      "location": "path",
+                      "type": "string",
+                      "required": true,
+                      "pattern": "^users/[^/]+/environments/[^/]+/publicKeys/[^/]+$",
+                      "description": "Name of the resource to be deleted, e.g. `users/me/environments/default/publicKeys/my-key`."
+                    }
+                  },
+                  "flatPath": "v1alpha1/users/{usersId}/environments/{environmentsId}/publicKeys/{publicKeysId}",
+                  "httpMethod": "DELETE",
+                  "description": "Removes a public SSH key from an environment. Clients will no longer be able to connect to the environment using the corresponding private key."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "description": "Allows users to start, configure, and connect to interactive shell sessions running in the cloud. ",
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "View and manage your data across Google Cloud Platform services"
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "documentationLink": "https://cloud.google.com/shell/docs/",
+  "rootUrl": "https://cloudshell.googleapis.com/",
+  "id": "cloudshell:v1alpha1",
+  "fullyEncodeReservedExpansion": true,
+  "title": "Cloud Shell API",
+  "protocol": "rest",
+  "version_module": true,
+  "discoveryVersion": "v1",
+  "version": "v1alpha1",
+  "canonicalName": "Cloud Shell",
+  "revision": "20200803",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://cloudshell.mtls.googleapis.com/",
+  "ownerName": "Google",
+  "servicePath": "",
+  "baseUrl": "https://cloudshell.googleapis.com/",
+  "parameters": {
+    "fields": {
+      "location": "query",
+      "description": "Selector specifying which fields to include in a partial response.",
+      "type": "string"
+    },
+    "alt": {
+      "description": "Data format for response.",
+      "default": "json",
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "type": "string",
+      "location": "query"
+    },
+    "uploadType": {
+      "type": "string",
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query"
+    },
+    "upload_protocol": {
+      "location": "query",
+      "type": "string",
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\")."
+    },
+    "access_token": {
+      "type": "string",
+      "description": "OAuth access token.",
+      "location": "query"
+    },
+    "callback": {
+      "type": "string",
+      "description": "JSONP",
+      "location": "query"
+    },
+    "key": {
+      "location": "query",
+      "type": "string",
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token."
+    },
+    "quotaUser": {
+      "location": "query",
+      "type": "string",
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters."
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "type": "string",
+      "location": "query"
+    },
+    "$.xgafv": {
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "description": "V1 error format.",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "type": "boolean",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query"
+    }
+  },
+  "schemas": {
+    "CreatePublicKeyRequest": {
+      "properties": {
+        "key": {
+          "description": "Key that should be added to the environment.",
+          "$ref": "PublicKey"
+        }
+      },
+      "type": "object",
+      "id": "CreatePublicKeyRequest",
+      "description": "Request message for CreatePublicKey."
+    },
+    "StartEnvironmentMetadata": {
+      "properties": {
+        "state": {
+          "enumDescriptions": [
+            "The environment's start state is unknown.",
+            "The environment is in the process of being started, but no additional details are available.",
+            "Startup is waiting for the user's disk to be unarchived. This can happen when the user returns to Cloud Shell after not having used it for a while, and suggests that startup will take longer than normal.",
+            "Startup is waiting for a VM to be assigned to the environment. This should normally happen very quickly, but an environment might stay in this state for an extended period of time if the system is experiencing heavy load.",
+            "Startup is waiting for compute resources to be assigned to the environment. This should normally happen very quickly, but an environment might stay in this state for an extended period of time if the system is experiencing heavy load.",
+            "Startup has completed. If the start operation was successful, the user should be able to establish an SSH connection to their environment. Otherwise, the operation will contain details of the failure."
+          ],
+          "type": "string",
+          "description": "Current state of the environment being started.",
+          "enum": [
+            "STATE_UNSPECIFIED",
+            "STARTING",
+            "UNARCHIVING_DISK",
+            "AWAITING_VM",
+            "AWAITING_COMPUTE_RESOURCES",
+            "FINISHED"
+          ]
+        }
+      },
+      "description": "Message included in the metadata field of operations returned from StartEnvironment.",
+      "id": "StartEnvironmentMetadata",
+      "type": "object"
+    },
+    "PublicKey": {
+      "id": "PublicKey",
+      "description": "A public SSH key, corresponding to a private SSH key held by the client.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Output only. Full name of this resource, in the format `users/{owner_email}/environments/{environment_id}/publicKeys/{key_id}`. `{owner_email}` is the email address of the user to whom the key belongs. `{environment_id}` is the identifier of the environment to which the key grants access. `{key_id}` is the unique identifier of the key. For example, `users/someone@example.com/environments/default/publicKeys/myKey`."
+        },
+        "key": {
+          "type": "string",
+          "description": "Required. Content of this key.",
+          "format": "byte"
+        },
+        "format": {
+          "type": "string",
+          "description": "Required. Format of this key's content.",
+          "enumDescriptions": [
+            "Unknown format. Do not use.",
+            "`ssh-dss` key format (see RFC4253).",
+            "`ssh-rsa` key format (see RFC4253).",
+            "`ecdsa-sha2-nistp256` key format (see RFC5656).",
+            "`ecdsa-sha2-nistp384` key format (see RFC5656).",
+            "`ecdsa-sha2-nistp521` key format (see RFC5656)."
+          ],
+          "enum": [
+            "FORMAT_UNSPECIFIED",
+            "SSH_DSS",
+            "SSH_RSA",
+            "ECDSA_SHA2_NISTP256",
+            "ECDSA_SHA2_NISTP384",
+            "ECDSA_SHA2_NISTP521"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Status": {
+      "id": "Status",
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the google.rpc.Status.details field, or localized by the client."
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "any",
+              "description": "Properties of the object. Contains field @type with type URL."
+            }
+          },
+          "description": "A list of messages that carry the error details. There is a common set of message types for APIs to use."
+        },
+        "code": {
+          "description": "The status code, which should be an enum value of google.rpc.Code.",
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "description": "The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors)."
+    },
+    "Operation": {
+      "id": "Operation",
+      "description": "This resource represents a long-running operation that is the result of a network API call.",
+      "type": "object",
+      "properties": {
+        "done": {
+          "type": "boolean",
+          "description": "If the value is `false`, it means the operation is still in progress. If `true`, the operation is completed, and either `error` or `response` is available."
+        },
+        "response": {
+          "description": "The normal response of the operation in case of success. If the original method returns no data on success, such as `Delete`, the response is `google.protobuf.Empty`. If the original method is standard `Get`/`Create`/`Update`, the response should be the resource. For other methods, the response should have the type `XxxResponse`, where `Xxx` is the original method name. For example, if the original method name is `TakeSnapshot()`, the inferred response type is `TakeSnapshotResponse`.",
+          "additionalProperties": {
+            "type": "any",
+            "description": "Properties of the object. Contains field @type with type URL."
+          },
+          "type": "object"
+        },
+        "name": {
+          "description": "The server-assigned name, which is only unique within the same service that originally returns it. If you use the default HTTP mapping, the `name` should be a resource name ending with `operations/{unique_id}`.",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "Service-specific metadata associated with the operation. It typically contains progress information and common metadata such as create time. Some services might not provide such metadata. Any method that returns a long-running operation should document the metadata type, if any.",
+          "type": "object"
+        },
+        "error": {
+          "$ref": "Status",
+          "description": "The error result of the operation in case of failure or cancellation."
+        }
+      }
+    },
+    "Environment": {
+      "type": "object",
+      "id": "Environment",
+      "properties": {
+        "sshPort": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Output only. Port to which clients can connect to initiate SSH sessions with the environment."
+        },
+        "webHost": {
+          "type": "string",
+          "description": "Output only. Host to which clients can connect to initiate HTTPS or WSS connections with the environment."
+        },
+        "sshUsername": {
+          "description": "Output only. Username that clients should use when initiating SSH sessions with the environment.",
+          "type": "string"
+        },
+        "dockerImage": {
+          "type": "string",
+          "description": "Required. Full path to the Docker image used to run this environment, e.g. \"gcr.io/dev-con/cloud-devshell:latest\"."
+        },
+        "name": {
+          "description": "Output only. Full name of this resource, in the format `users/{owner_email}/environments/{environment_id}`. `{owner_email}` is the email address of the user to whom this environment belongs, and `{environment_id}` is the identifier of this environment. For example, `users/someone@example.com/environments/default`.",
+          "type": "string"
+        },
+        "size": {
+          "type": "string",
+          "description": "Indicates the size of the backing VM running the environment. If set to something other than DEFAULT, it will be reverted to the default VM size after vm_size_expire_time.",
+          "enum": [
+            "VM_SIZE_UNSPECIFIED",
+            "DEFAULT",
+            "BOOSTED"
+          ],
+          "enumDescriptions": [
+            "The VM size is unknown.",
+            "The default VM size.",
+            "The boosted VM size."
+          ]
+        },
+        "state": {
+          "enumDescriptions": [
+            "The environment's states is unknown.",
+            "The environment is not running and can't be connected to. Starting the environment will transition it to the STARTING state.",
+            "The environment is being started but is not yet ready to accept connections.",
+            "The environment is running and ready to accept connections. It will automatically transition back to DISABLED after a period of inactivity or if another environment is started.",
+            "The environment is being deleted and can't be connected to."
+          ],
+          "enum": [
+            "STATE_UNSPECIFIED",
+            "DISABLED",
+            "STARTING",
+            "RUNNING",
+            "DELETING"
+          ],
+          "description": "Output only. Current execution state of this environment.",
+          "type": "string"
+        },
+        "webPorts": {
+          "description": "Output only. Ports to which clients can connect to initiate HTTPS or WSS connections with the environment.",
+          "type": "array",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "sshHost": {
+          "type": "string",
+          "description": "Output only. Host to which clients can connect to initiate SSH sessions with the environment."
+        },
+        "id": {
+          "description": "Output only. The environment's identifier, unique among the user's environments.",
+          "type": "string"
+        },
+        "publicKeys": {
+          "items": {
+            "$ref": "PublicKey"
+          },
+          "type": "array",
+          "description": "Output only. Public keys associated with the environment. Clients can connect to this environment via SSH only if they possess a private key corresponding to at least one of these public keys. Keys can be added to or removed from the environment using the CreatePublicKey and DeletePublicKey methods."
+        },
+        "vmSizeExpireTime": {
+          "description": "Output only. The time when the Environment will expire back to the default VM size.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "description": "A Cloud Shell environment, which is defined as the combination of a Docker image specifying what is installed on the environment and a home directory containing the user's data that will remain across sessions. Each user has a single environment with the ID \"default\"."
+    },
+    "StartEnvironmentResponse": {
+      "id": "StartEnvironmentResponse",
+      "properties": {
+        "environment": {
+          "$ref": "Environment",
+          "description": "Environment that was started."
+        }
+      },
+      "type": "object",
+      "description": "Message included in the response field of operations returned from StartEnvironment once the operation is complete."
+    },
+    "StartEnvironmentRequest": {
+      "type": "object",
+      "id": "StartEnvironmentRequest",
+      "properties": {
+        "publicKeys": {
+          "items": {
+            "$ref": "PublicKey"
+          },
+          "description": "Public keys that should be added to the environment before it is started.",
+          "type": "array"
+        },
+        "accessToken": {
+          "type": "string",
+          "description": "The initial access token passed to the environment. If this is present and valid, the environment will be pre-authenticated with gcloud so that the user can run gcloud commands in Cloud Shell without having to log in. This code can be updated later by calling AuthorizeEnvironment."
+        }
+      },
+      "description": "Request message for StartEnvironment."
+    },
+    "AuthorizeEnvironmentRequest": {
+      "description": "Request message for AuthorizeEnvironment.",
+      "properties": {
+        "expireTime": {
+          "type": "string",
+          "format": "google-datetime",
+          "description": "The time when the credentials expire. If not set, defaults to one hour from when the server received the request."
+        },
+        "idToken": {
+          "type": "string",
+          "description": "The OAuth ID token that should be sent to the environment."
+        },
+        "accessToken": {
+          "description": "The OAuth access token that should be sent to the environment.",
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "id": "AuthorizeEnvironmentRequest"
+    },
+    "Empty": {
+      "properties": {},
+      "id": "Empty",
+      "description": "A generic empty message that you can re-use to avoid defining duplicated empty messages in your APIs. A typical example is to use it as the request or the response type of an API method. For instance: service Foo { rpc Bar(google.protobuf.Empty) returns (google.protobuf.Empty); } The JSON representation for `Empty` is empty JSON object `{}`.",
+      "type": "object"
+    }
+  },
+  "name": "cloudshell"
+}

@@ -1,0 +1,60 @@
+<HTML>
+<HEAD>
+<base target="text">
+<TITLE> Internet Workshop </TITLE>
+</HEAD>
+<BODY leftmargin=8 bgcolor="#FFFFFF" VLINK="#666666" LINK="#FF0000">
+<FONT FACE="ARIAL,HELVETICA" SIZE="2">
+
+<P>
+<BR>
+<P><FONT FACE="ARIAL,HELVETICA" SIZE="5"><B>Marquee Demo</B></FONT>
+
+<P>
+
+
+<OBJECT 
+	ID="Marquee1" 
+ 	CLASSID="CLSID:1A4DA620-6217-11CF-BE62-0080C72EDD2D"
+	CODEBASE="/workshop/activex/gallery/ms/marquee/other/marquee.ocx#Version=4,70,0,1112"
+	TYPE="application/x-oleobject"
+	WIDTH=100% 
+	HEIGHT=80
+>
+	<PARAM NAME="szURL" VALUE="marqueeText1.htm">
+	<PARAM NAME="ScrollPixelsX" VALUE="0">
+    	<PARAM NAME="ScrollPixelsY" VALUE="-5">
+    	<PARAM NAME="ScrollDelay" VALUE="100">
+    	<PARAM NAME="Whitespace" VALUE="0">
+</OBJECT>
+
+<br> <br>
+
+<INPUT TYPE="Button" NAME="btnFaster" VALUE="Faster">
+<INPUT TYPE="Button" NAME="btnNormal" VALUE="Normal">
+<INPUT TYPE="Button" NAME="btnSlower" VALUE="Slower">
+
+<SCRIPT Language="Python">
+
+def btnFaster_Onclick():
+	ax.Marquee1.ScrollDelay = 0
+
+def btnNormal_Onclick():
+	ax.Marquee1.ScrollDelay = 50
+
+def btnSlower_Onclick():
+	ax.Marquee1.ScrollDelay = 300
+
+</SCRIPT> 
+
+
+<P>&nbsp;
+<HR>
+<B>Notes:</B>
+<P>
+
+
+</FONT>
+</BODY>
+</HTML>
+

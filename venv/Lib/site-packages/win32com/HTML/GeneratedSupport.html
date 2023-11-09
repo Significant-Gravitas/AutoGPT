@@ -1,0 +1,104 @@
+<HTML>
+<HEAD>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=windows-1252">
+<META NAME="Generator" CONTENT="Microsoft Word 97">
+<TITLE>Generated Python COM Support</TITLE>
+<META NAME="Version" CONTENT="8.0.3410">
+<META NAME="Date" CONTENT="10/11/96">
+<META NAME="Template" CONTENT="D:\Program Files\Microsoft Office\Office\html.dot">
+</HEAD>
+<BODY TEXT="#000000" LINK="#0000ff" VLINK="#800080" BGCOLOR="#ffffff">
+
+<P><IMG SRC="image/pycom_blowing.gif" WIDTH=549 HEIGHT=99 ALT="Python and COM - Blowing the others away"></P>
+<H1>Generated Python COM Support</H1>
+<P>This file describes how the Python COM extensions support "generated files". The information contained here is for expert Python users, and people who need to take advantage of the advanced features of the support. More general information is available in the <A HREF="QuickStartClientCom.html">Quick Start to Client Side COM</A> documentation.</P>
+<H2>Introduction</H2>
+<P>Generated Python COM support means that a .py file exists behind a particular COM object. This .py file is created by a generation process from a COM type library.</P>
+<P>This documentation talks about the process of the creation of the .py files.</P>
+<H2>Design Goals</H2>
+<P>The main design goal is that the Python programmer need not know much about the type library they wish to work with. They need not know the name of a specific Python module to use a type library. COM uses an IID, version and LCID to identify a type library. Therefore, the Python programmer only need know this information to obtain a Python module.</P>
+<H2>How to generate support files</H2>
+<P>Support files can be generated either "off-line" by the makepy utility, or in custom Python code.</P>
+<P>Using makepy is in many ways far simpler - you simply pick the type library and you are ready to go! The <A HREF="QuickStartClientCom.html">Quick Start to Client Side COM</A> documentation describes this process.</P>
+<P>Often however, you will want to use code to ensure the type library has been processed. This document describes that process.</P>
+<H2>Usage</H2>
+<P>The win32com.client.gencache module implements all functionality. As described above, if you wish to generate support from code, you need to know the IID, version and LCID of the type library.</P>
+<P>The following functions are defined. The best examples of their usage is probably in the Pythonwin OCX Demos, and the COM Test Suite (particularly testMSOffice.py)</P>
+<P>Note that the gencache.py file supports being run from the command line, and provides some utilities for managing the cache. Run the file to see usage options.</P>
+<H2>Using makepy to help with the runtime generation</H2>
+<P>makepy supports a "-i" option, to print information about a type library.  When you select a type library, makepy will print out 2 lines of code that you cant paste into your application.  This will then allow your module to generate the makepy .py file at runtime, but will only take you a few seconds!</P>
+<H2>win32com.client.gencache functions</H2>
+<H3>def MakeModuleForTypelib(typelibCLSID, lcid, major, minor, progressInstance = None):</H3>
+<P>Generate support for a type library.</P>
+<P>Given the IID, LCID and version information for a type library, generate and import the necessary support files.</P>
+<B><P>Returns</P>
+</B><P>The Python module. No exceptions are caught.</P>
+<B><P>Params</P>
+</B><I><P>typelibCLSID</I><BR>
+IID of the type library.</P>
+<I><P>major</I><BR>
+Integer major version.</P>
+<I><P>minor</I><BR>
+Integer minor version.</P>
+<I><P>lcid</I><BR>
+Integer LCID for the library.</P>
+<I><P>progressInstance</I><BR>
+A class instance to use as the progress indicator, or None to use the default GUI one.&nbsp;</P>
+<H3>def EnsureModule(typelibCLSID, lcid, major, minor, progressInstance = None):</H3>
+<P>Ensure Python support is loaded for a type library, generating if necessary.</P>
+<P>Given the IID, LCID and version information for a type library, check and if necessary generate, then import the necessary support files.</P>
+<P>Returns:</P>
+<P>The Python module. No exceptions are caught during the generate process.</P>
+<B><P>Params</P>
+</B><I><P>typelibCLSID</I><BR>
+IID of the type library.</P>
+<I><P>major</I><BR>
+Integer major version.</P>
+<I><P>minor</I><BR>
+Integer minor version.</P>
+<I><P>lcid</I><BR>
+Integer LCID for the library.</P>
+<I><P>progressInstance</I><BR>
+A class instance to use as the progress indicator, or None to use the default GUI one.&nbsp;</P>
+<P>&nbsp;</P>
+<H3>def GetClassForProgID(<I>progid</I>):</H3>
+<P>Get a Python class for a Program ID</P>
+<P>Given a Program ID, return a Python class which wraps the COM object</P>
+<B><P>Returns</P>
+</B><P>The Python class, or None if no module is available.</P>
+<B><P>Params</P>
+</B><I><P>progid<BR>
+</I>A COM ProgramID or IID (eg, "Word.Application")</P>
+<P>&nbsp;</P>
+<H3>def GetModuleForProgID(progid):</H3>
+<P>Get a Python module for a Program ID</P>
+<P>Given a Program ID, return a Python module which contains the class which wraps the COM object.</P>
+<B><P>Returns</P>
+</B><P>The Python module, or None if no module is available.</P>
+<B><P>Params:</P>
+</B><I><P>progid <BR>
+</I>A COM ProgramID or IID (eg, "Word.Application")</P>
+<P>&nbsp;</P>
+<H3>def GetModuleForCLSID(clsid):</H3>
+<P>Get a Python module for a CLSID</P>
+<P>Given a CLSID, return a Python module which contains the class which wraps the COM object.</P>
+<B><P>Returns</P>
+</B><P>The Python module, or None if no module is available.</P>
+<B><P>Params</P>
+</B><I><P>progid<BR>
+</I>A COM CLSID (ie, not the description)</P>
+<P>&nbsp;</P>
+<H3>def GetModuleForTypelib(typelibCLSID, lcid, major, minor):</H3>
+<P>Get a Python module for a type library ID</P>
+<B><P>Returns</P>
+</B><P>An imported Python module, else None</P>
+<B><P>Params</B>:</P>
+<I><P>typelibCLSID</I><BR>
+IID of the type library.</P>
+<I><P>major</I><BR>
+Integer major version.</P>
+<I><P>minor</I><BR>
+Integer minor version</P>
+<I><P>lcid</I><BR>
+Integer LCID for the library.</P></BODY>
+</HTML>

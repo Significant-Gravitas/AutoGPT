@@ -1,0 +1,35 @@
+Metadata-Version: 2.1
+Name: googleapis-common-protos
+Version: 1.59.0
+Summary: Common protobufs used in Google APIs
+Home-page: https://github.com/googleapis/python-api-common-protos
+Author: Google LLC
+Author-email: googleapis-packages@google.com
+License: Apache-2.0
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: protobuf (!=3.20.0,!=3.20.1,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<5.0.0dev,>=3.19.5)
+Provides-Extra: grpc
+Requires-Dist: grpcio (<2.0.0dev,>=1.44.0) ; extra == 'grpc'
+
+Google APIs common protos
+-------------------------
+
+.. image:: https://img.shields.io/pypi/v/googleapis-common-protos.svg
+    :target: https://pypi.org/project/googleapis-common-protos/
+
+
+googleapis-common-protos contains the python classes generated from the common
+protos in the `googleapis/googleapis <https://github.com/googleapis/googleapis>`_ repository.

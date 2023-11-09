@@ -1,0 +1,1547 @@
+{
+    "auth": {
+        "oauth2": {
+            "scopes": {
+                "https://www.googleapis.com/auth/analytics": {
+                    "description": "View and manage your Google Analytics data"
+                },
+                "https://www.googleapis.com/auth/analytics.readonly": {
+                    "description": "See and download your Google Analytics data"
+                }
+            }
+        }
+    },
+    "basePath": "",
+    "baseUrl": "https://analyticsdata.googleapis.com/",
+    "batchPath": "batch",
+    "canonicalName": "AnalyticsData",
+    "description": "Accesses report data in Google Analytics.",
+    "discoveryVersion": "v1",
+    "documentationLink": "https://developers.google.com/analytics/devguides/reporting/data/v1/",
+    "fullyEncodeReservedExpansion": true,
+    "icons": {
+        "x16": "http://www.google.com/images/icons/product/search-16.gif",
+        "x32": "http://www.google.com/images/icons/product/search-32.gif"
+    },
+    "id": "analyticsdata:v1alpha",
+    "kind": "discovery#restDescription",
+    "mtlsRootUrl": "https://analyticsdata.mtls.googleapis.com/",
+    "name": "analyticsdata",
+    "ownerDomain": "google.com",
+    "ownerName": "Google",
+    "parameters": {
+        "$.xgafv": {
+            "description": "V1 error format.",
+            "enum": [
+                "1",
+                "2"
+            ],
+            "enumDescriptions": [
+                "v1 error format",
+                "v2 error format"
+            ],
+            "location": "query",
+            "type": "string"
+        },
+        "access_token": {
+            "description": "OAuth access token.",
+            "location": "query",
+            "type": "string"
+        },
+        "alt": {
+            "default": "json",
+            "description": "Data format for response.",
+            "enum": [
+                "json",
+                "media",
+                "proto"
+            ],
+            "enumDescriptions": [
+                "Responses with Content-Type of application/json",
+                "Media download with context-dependent Content-Type",
+                "Responses with Content-Type of application/x-protobuf"
+            ],
+            "location": "query",
+            "type": "string"
+        },
+        "callback": {
+            "description": "JSONP",
+            "location": "query",
+            "type": "string"
+        },
+        "fields": {
+            "description": "Selector specifying which fields to include in a partial response.",
+            "location": "query",
+            "type": "string"
+        },
+        "key": {
+            "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+            "location": "query",
+            "type": "string"
+        },
+        "oauth_token": {
+            "description": "OAuth 2.0 token for the current user.",
+            "location": "query",
+            "type": "string"
+        },
+        "prettyPrint": {
+            "default": "true",
+            "description": "Returns response with indentations and line breaks.",
+            "location": "query",
+            "type": "boolean"
+        },
+        "quotaUser": {
+            "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+            "location": "query",
+            "type": "string"
+        },
+        "uploadType": {
+            "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+            "location": "query",
+            "type": "string"
+        },
+        "upload_protocol": {
+            "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+            "location": "query",
+            "type": "string"
+        }
+    },
+    "protocol": "rest",
+    "resources": {
+        "properties": {
+            "methods": {
+                "getMetadata": {
+                    "description": "Returns metadata for dimensions and metrics available in reporting methods. Used to explore the dimensions and metrics. In this method, a Google Analytics GA4 Property Identifier is specified in the request, and the metadata response includes Custom dimensions and metrics as well as Universal metadata. For example if a custom metric with parameter name `levels_unlocked` is registered to a property, the Metadata response will contain `customEvent:levels_unlocked`. Universal metadata are dimensions and metrics applicable to any property such as `country` and `totalUsers`.",
+                    "flatPath": "v1alpha/properties/{propertiesId}/metadata",
+                    "httpMethod": "GET",
+                    "id": "analyticsdata.properties.getMetadata",
+                    "parameterOrder": [
+                        "name"
+                    ],
+                    "parameters": {
+                        "name": {
+                            "description": "Required. The resource name of the metadata to retrieve. This name field is specified in the URL path and not URL parameters. Property is a numeric Google Analytics GA4 Property identifier. To learn more, see [where to find your Property ID](https://developers.google.com/analytics/devguides/reporting/data/v1/property-id). Example: properties/1234/metadata Set the Property ID to 0 for dimensions and metrics common to all properties. In this special mode, this method will not return custom dimensions and metrics.",
+                            "location": "path",
+                            "pattern": "^properties/[^/]+/metadata$",
+                            "required": true,
+                            "type": "string"
+                        }
+                    },
+                    "path": "v1alpha/{+name}",
+                    "response": {
+                        "$ref": "Metadata"
+                    },
+                    "scopes": [
+                        "https://www.googleapis.com/auth/analytics",
+                        "https://www.googleapis.com/auth/analytics.readonly"
+                    ]
+                },
+                "runRealtimeReport": {
+                    "description": "The Google Analytics Realtime API returns a customized report of realtime event data for your property. These reports show events and usage from the last 30 minutes.",
+                    "flatPath": "v1alpha/properties/{propertiesId}:runRealtimeReport",
+                    "httpMethod": "POST",
+                    "id": "analyticsdata.properties.runRealtimeReport",
+                    "parameterOrder": [
+                        "property"
+                    ],
+                    "parameters": {
+                        "property": {
+                            "description": "A Google Analytics GA4 property identifier whose events are tracked. Specified in the URL path and not the body. To learn more, see [where to find your Property ID](https://developers.google.com/analytics/devguides/reporting/data/v1/property-id). Example: properties/1234",
+                            "location": "path",
+                            "pattern": "^properties/[^/]+$",
+                            "required": true,
+                            "type": "string"
+                        }
+                    },
+                    "path": "v1alpha/{+property}:runRealtimeReport",
+                    "request": {
+                        "$ref": "RunRealtimeReportRequest"
+                    },
+                    "response": {
+                        "$ref": "RunRealtimeReportResponse"
+                    },
+                    "scopes": [
+                        "https://www.googleapis.com/auth/analytics",
+                        "https://www.googleapis.com/auth/analytics.readonly"
+                    ]
+                }
+            }
+        },
+        "v1alpha": {
+            "methods": {
+                "batchRunPivotReports": {
+                    "description": "Returns multiple pivot reports in a batch. All reports must be for the same Entity.",
+                    "flatPath": "v1alpha:batchRunPivotReports",
+                    "httpMethod": "POST",
+                    "id": "analyticsdata.batchRunPivotReports",
+                    "parameterOrder": [],
+                    "parameters": {},
+                    "path": "v1alpha:batchRunPivotReports",
+                    "request": {
+                        "$ref": "BatchRunPivotReportsRequest"
+                    },
+                    "response": {
+                        "$ref": "BatchRunPivotReportsResponse"
+                    },
+                    "scopes": [
+                        "https://www.googleapis.com/auth/analytics",
+                        "https://www.googleapis.com/auth/analytics.readonly"
+                    ]
+                },
+                "batchRunReports": {
+                    "description": "Returns multiple reports in a batch. All reports must be for the same Entity.",
+                    "flatPath": "v1alpha:batchRunReports",
+                    "httpMethod": "POST",
+                    "id": "analyticsdata.batchRunReports",
+                    "parameterOrder": [],
+                    "parameters": {},
+                    "path": "v1alpha:batchRunReports",
+                    "request": {
+                        "$ref": "BatchRunReportsRequest"
+                    },
+                    "response": {
+                        "$ref": "BatchRunReportsResponse"
+                    },
+                    "scopes": [
+                        "https://www.googleapis.com/auth/analytics",
+                        "https://www.googleapis.com/auth/analytics.readonly"
+                    ]
+                },
+                "runPivotReport": {
+                    "description": "Returns a customized pivot report of your Google Analytics event data. Pivot reports are more advanced and expressive formats than regular reports. In a pivot report, dimensions are only visible if they are included in a pivot. Multiple pivots can be specified to further dissect your data.",
+                    "flatPath": "v1alpha:runPivotReport",
+                    "httpMethod": "POST",
+                    "id": "analyticsdata.runPivotReport",
+                    "parameterOrder": [],
+                    "parameters": {},
+                    "path": "v1alpha:runPivotReport",
+                    "request": {
+                        "$ref": "RunPivotReportRequest"
+                    },
+                    "response": {
+                        "$ref": "RunPivotReportResponse"
+                    },
+                    "scopes": [
+                        "https://www.googleapis.com/auth/analytics",
+                        "https://www.googleapis.com/auth/analytics.readonly"
+                    ]
+                },
+                "runReport": {
+                    "description": "Returns a customized report of your Google Analytics event data. Reports contain statistics derived from data collected by the Google Analytics tracking code. The data returned from the API is as a table with columns for the requested dimensions and metrics. Metrics are individual measurements of user activity on your property, such as active users or event count. Dimensions break down metrics across some common criteria, such as country or event name.",
+                    "flatPath": "v1alpha:runReport",
+                    "httpMethod": "POST",
+                    "id": "analyticsdata.runReport",
+                    "parameterOrder": [],
+                    "parameters": {},
+                    "path": "v1alpha:runReport",
+                    "request": {
+                        "$ref": "RunReportRequest"
+                    },
+                    "response": {
+                        "$ref": "RunReportResponse"
+                    },
+                    "scopes": [
+                        "https://www.googleapis.com/auth/analytics",
+                        "https://www.googleapis.com/auth/analytics.readonly"
+                    ]
+                }
+            }
+        }
+    },
+    "revision": "20210206",
+    "rootUrl": "https://analyticsdata.googleapis.com/",
+    "schemas": {
+        "BatchRunPivotReportsRequest": {
+            "description": "The batch request containing multiple pivot report requests.",
+            "id": "BatchRunPivotReportsRequest",
+            "properties": {
+                "entity": {
+                    "$ref": "Entity",
+                    "description": "A property whose events are tracked. This entity must be specified for the batch. The entity within RunPivotReportRequest may either be unspecified or consistent with this entity."
+                },
+                "requests": {
+                    "description": "Individual requests. Each request has a separate pivot report response. Each batch request is allowed up to 5 requests.",
+                    "items": {
+                        "$ref": "RunPivotReportRequest"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "BatchRunPivotReportsResponse": {
+            "description": "The batch response containing multiple pivot reports.",
+            "id": "BatchRunPivotReportsResponse",
+            "properties": {
+                "pivotReports": {
+                    "description": "Individual responses. Each response has a separate pivot report request.",
+                    "items": {
+                        "$ref": "RunPivotReportResponse"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "BatchRunReportsRequest": {
+            "description": "The batch request containing multiple report requests.",
+            "id": "BatchRunReportsRequest",
+            "properties": {
+                "entity": {
+                    "$ref": "Entity",
+                    "description": "A property whose events are tracked. This entity must be specified for the batch. The entity within RunReportRequest may either be unspecified or consistent with this entity."
+                },
+                "requests": {
+                    "description": "Individual requests. Each request has a separate report response. Each batch request is allowed up to 5 requests.",
+                    "items": {
+                        "$ref": "RunReportRequest"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "BatchRunReportsResponse": {
+            "description": "The batch response containing multiple reports.",
+            "id": "BatchRunReportsResponse",
+            "properties": {
+                "reports": {
+                    "description": "Individual responses. Each response has a separate report request.",
+                    "items": {
+                        "$ref": "RunReportResponse"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "BetweenFilter": {
+            "description": "To express that the result needs to be between two numbers (inclusive).",
+            "id": "BetweenFilter",
+            "properties": {
+                "fromValue": {
+                    "$ref": "NumericValue",
+                    "description": "Begins with this number."
+                },
+                "toValue": {
+                    "$ref": "NumericValue",
+                    "description": "Ends with this number."
+                }
+            },
+            "type": "object"
+        },
+        "CaseExpression": {
+            "description": "Used to convert a dimension value to a single case.",
+            "id": "CaseExpression",
+            "properties": {
+                "dimensionName": {
+                    "description": "Name of a dimension. The name must refer back to a name in dimensions field of the request.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "Cohort": {
+            "description": "Defines a cohort selection criteria. A cohort is a group of users who share a common characteristic. For example, users with the same `firstSessionDate` belong to the same cohort.",
+            "id": "Cohort",
+            "properties": {
+                "dateRange": {
+                    "$ref": "DateRange",
+                    "description": "The cohort selects users whose first touch date is between start date and end date defined in the `dateRange`. This `dateRange` does not specify the full date range of event data that is present in a cohort report. In a cohort report, this `dateRange` is extended by the granularity and offset present in the `cohortsRange`; event data for the extended reporting date range is present in a cohort report. In a cohort request, this `dateRange` is required and the `dateRanges` in the `RunReportRequest` or `RunPivotReportRequest` must be unspecified. This `dateRange` should generally be aligned with the cohort's granularity. If `CohortsRange` uses daily granularity, this `dateRange` can be a single day. If `CohortsRange` uses weekly granularity, this `dateRange` can be aligned to a week boundary, starting at Sunday and ending Saturday. If `CohortsRange` uses monthly granularity, this `dateRange` can be aligned to a month, starting at the first and ending on the last day of the month."
+                },
+                "dimension": {
+                    "description": "Dimension used by the cohort. Required and only supports `firstSessionDate`.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Assigns a name to this cohort. The dimension `cohort` is valued to this name in a report response. If set, cannot begin with `cohort_` or `RESERVED_`. If not set, cohorts are named by their zero based index `cohort_0`, `cohort_1`, etc.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "CohortReportSettings": {
+            "description": "Optional settings of a cohort report.",
+            "id": "CohortReportSettings",
+            "properties": {
+                "accumulate": {
+                    "description": "If true, accumulates the result from first touch day to the end day. Not supported in `RunReportRequest`.",
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
+        "CohortSpec": {
+            "description": "The specification of cohorts for a cohort report. Cohort reports create a time series of user retention for the cohort. For example, you could select the cohort of users that were acquired in the first week of September and follow that cohort for the next six weeks. Selecting the users acquired in the first week of September cohort is specified in the `cohort` object. Following that cohort for the next six weeks is specified in the `cohortsRange` object. For examples, see [Cohort Report Examples](https://developers.google.com/analytics/devguides/reporting/data/v1/advanced#cohort_report_examples). The report response could show a weekly time series where say your app has retained 60% of this cohort after three weeks and 25% of this cohort after six weeks. These two percentages can be calculated by the metric `cohortActiveUsers/cohortTotalUsers` and will be separate rows in the report.",
+            "id": "CohortSpec",
+            "properties": {
+                "cohortReportSettings": {
+                    "$ref": "CohortReportSettings",
+                    "description": "Optional settings for a cohort report."
+                },
+                "cohorts": {
+                    "description": "Defines the selection criteria to group users into cohorts. Most cohort reports define only a single cohort. If multiple cohorts are specified, each cohort can be recognized in the report by their name.",
+                    "items": {
+                        "$ref": "Cohort"
+                    },
+                    "type": "array"
+                },
+                "cohortsRange": {
+                    "$ref": "CohortsRange",
+                    "description": "Cohort reports follow cohorts over an extended reporting date range. This range specifies an offset duration to follow the cohorts over."
+                }
+            },
+            "type": "object"
+        },
+        "CohortsRange": {
+            "description": "Configures the extended reporting date range for a cohort report. Specifies an offset duration to follow the cohorts over.",
+            "id": "CohortsRange",
+            "properties": {
+                "endOffset": {
+                    "description": "Required. `endOffset` specifies the end date of the extended reporting date range for a cohort report. `endOffset` can be any positive integer but is commonly set to 5 to 10 so that reports contain data on the cohort for the next several granularity time periods. If `granularity` is `DAILY`, the `endDate` of the extended reporting date range is `endDate` of the cohort plus `endOffset` days. If `granularity` is `WEEKLY`, the `endDate` of the extended reporting date range is `endDate` of the cohort plus `endOffset * 7` days. If `granularity` is `MONTHLY`, the `endDate` of the extended reporting date range is `endDate` of the cohort plus `endOffset * 30` days.",
+                    "format": "int32",
+                    "type": "integer"
+                },
+                "granularity": {
+                    "description": "Required. The granularity used to interpret the `startOffset` and `endOffset` for the extended reporting date range for a cohort report.",
+                    "enum": [
+                        "GRANULARITY_UNSPECIFIED",
+                        "DAILY",
+                        "WEEKLY",
+                        "MONTHLY"
+                    ],
+                    "enumDescriptions": [
+                        "Should never be specified.",
+                        "Daily granularity. Commonly used if the cohort's `dateRange` is a single day and the request contains `cohortNthDay`.",
+                        "Weekly granularity. Commonly used if the cohort's `dateRange` is a week in duration (starting on Sunday and ending on Saturday) and the request contains `cohortNthWeek`.",
+                        "Monthly granularity. Commonly used if the cohort's `dateRange` is a month in duration and the request contains `cohortNthMonth`."
+                    ],
+                    "type": "string"
+                },
+                "startOffset": {
+                    "description": "`startOffset` specifies the start date of the extended reporting date range for a cohort report. `startOffset` is commonly set to 0 so that reports contain data from the acquisition of the cohort forward. If `granularity` is `DAILY`, the `startDate` of the extended reporting date range is `startDate` of the cohort plus `startOffset` days. If `granularity` is `WEEKLY`, the `startDate` of the extended reporting date range is `startDate` of the cohort plus `startOffset * 7` days. If `granularity` is `MONTHLY`, the `startDate` of the extended reporting date range is `startDate` of the cohort plus `startOffset * 30` days.",
+                    "format": "int32",
+                    "type": "integer"
+                }
+            },
+            "type": "object"
+        },
+        "ConcatenateExpression": {
+            "description": "Used to combine dimension values to a single dimension.",
+            "id": "ConcatenateExpression",
+            "properties": {
+                "delimiter": {
+                    "description": "The delimiter placed between dimension names. Delimiters are often single characters such as \"|\" or \",\" but can be longer strings. If a dimension value contains the delimiter, both will be present in response with no distinction. For example if dimension 1 value = \"US,FR\", dimension 2 value = \"JP\", and delimiter = \",\", then the response will contain \"US,FR,JP\".",
+                    "type": "string"
+                },
+                "dimensionNames": {
+                    "description": "Names of dimensions. The names must refer back to names in the dimensions field of the request.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "DateRange": {
+            "description": "A contiguous set of days: startDate, startDate + 1, ..., endDate. Requests are allowed up to 4 date ranges.",
+            "id": "DateRange",
+            "properties": {
+                "endDate": {
+                    "description": "The inclusive end date for the query in the format `YYYY-MM-DD`. Cannot be before `start_date`. The format `NdaysAgo`, `yesterday`, or `today` is also accepted, and in that case, the date is inferred based on the property's reporting time zone.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Assigns a name to this date range. The dimension `dateRange` is valued to this name in a report response. If set, cannot begin with `date_range_` or `RESERVED_`. If not set, date ranges are named by their zero based index in the request: `date_range_0`, `date_range_1`, etc.",
+                    "type": "string"
+                },
+                "startDate": {
+                    "description": "The inclusive start date for the query in the format `YYYY-MM-DD`. Cannot be after `end_date`. The format `NdaysAgo`, `yesterday`, or `today` is also accepted, and in that case, the date is inferred based on the property's reporting time zone.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "Dimension": {
+            "description": "Dimensions are attributes of your data. For example, the dimension city indicates the city from which an event originates. Dimension values in report responses are strings; for example, city could be \"Paris\" or \"New York\". Requests are allowed up to 8 dimensions.",
+            "id": "Dimension",
+            "properties": {
+                "dimensionExpression": {
+                    "$ref": "DimensionExpression",
+                    "description": "One dimension can be the result of an expression of multiple dimensions. For example, dimension \"country, city\": concatenate(country, \", \", city)."
+                },
+                "name": {
+                    "description": "The name of the dimension. See the [API Dimensions](https://developers.google.com/analytics/devguides/reporting/data/v1/api-schema#dimensions) for the list of dimension names. If `dimensionExpression` is specified, `name` can be any string that you would like. For example if a `dimensionExpression` concatenates `country` and `city`, you could call that dimension `countryAndCity`. Dimensions are referenced by `name` in `dimensionFilter`, `orderBys`, `dimensionExpression`, and `pivots`.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "DimensionExpression": {
+            "description": "Used to express a dimension which is the result of a formula of multiple dimensions. Example usages: 1) lower_case(dimension) 2) concatenate(dimension1, symbol, dimension2).",
+            "id": "DimensionExpression",
+            "properties": {
+                "concatenate": {
+                    "$ref": "ConcatenateExpression",
+                    "description": "Used to combine dimension values to a single dimension. For example, dimension \"country, city\": concatenate(country, \", \", city)."
+                },
+                "lowerCase": {
+                    "$ref": "CaseExpression",
+                    "description": "Used to convert a dimension value to lower case."
+                },
+                "upperCase": {
+                    "$ref": "CaseExpression",
+                    "description": "Used to convert a dimension value to upper case."
+                }
+            },
+            "type": "object"
+        },
+        "DimensionHeader": {
+            "description": "Describes a dimension column in the report. Dimensions requested in a report produce column entries within rows and DimensionHeaders. However, dimensions used exclusively within filters or expressions do not produce columns in a report; correspondingly, those dimensions do not produce headers.",
+            "id": "DimensionHeader",
+            "properties": {
+                "name": {
+                    "description": "The dimension's name.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "DimensionMetadata": {
+            "description": "Explains a dimension.",
+            "id": "DimensionMetadata",
+            "properties": {
+                "apiName": {
+                    "description": "This dimension's name. Useable in [Dimension](#Dimension)'s `name`. For example, `eventName`.",
+                    "type": "string"
+                },
+                "customDefinition": {
+                    "description": "True if the dimension is a custom dimension for this property.",
+                    "type": "boolean"
+                },
+                "deprecatedApiNames": {
+                    "description": "Still usable but deprecated names for this dimension. If populated, this dimension is available by either `apiName` or one of `deprecatedApiNames` for a period of time. After the deprecation period, the dimension will be available only by `apiName`.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "description": {
+                    "description": "Description of how this dimension is used and calculated.",
+                    "type": "string"
+                },
+                "uiName": {
+                    "description": "This dimension's name within the Google Analytics user interface. For example, `Event name`.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "DimensionOrderBy": {
+            "description": "Sorts by dimension values.",
+            "id": "DimensionOrderBy",
+            "properties": {
+                "dimensionName": {
+                    "description": "A dimension name in the request to order by.",
+                    "type": "string"
+                },
+                "orderType": {
+                    "description": "Controls the rule for dimension value ordering.",
+                    "enum": [
+                        "ORDER_TYPE_UNSPECIFIED",
+                        "ALPHANUMERIC",
+                        "CASE_INSENSITIVE_ALPHANUMERIC",
+                        "NUMERIC"
+                    ],
+                    "enumDescriptions": [
+                        "Unspecified.",
+                        "Alphanumeric sort by Unicode code point. For example, \"2\" < \"A\" < \"X\" < \"b\" < \"z\".",
+                        "Case insensitive alphanumeric sort by lower case Unicode code point. For example, \"2\" < \"A\" < \"b\" < \"X\" < \"z\".",
+                        "Dimension values are converted to numbers before sorting. For example in NUMERIC sort, \"25\" < \"100\", and in `ALPHANUMERIC` sort, \"100\" < \"25\". Non-numeric dimension values all have equal ordering value below all numeric values."
+                    ],
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "DimensionValue": {
+            "description": "The value of a dimension.",
+            "id": "DimensionValue",
+            "properties": {
+                "value": {
+                    "description": "Value as a string if the dimension type is a string.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "Entity": {
+            "description": "The unique identifier of the property whose events are tracked.",
+            "id": "Entity",
+            "properties": {
+                "propertyId": {
+                    "description": "A Google Analytics GA4 property id. To learn more, see [where to find your Property ID](https://developers.google.com/analytics/devguides/reporting/data/v1/property-id).",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "Filter": {
+            "description": "An expression to filter dimension or metric values.",
+            "id": "Filter",
+            "properties": {
+                "betweenFilter": {
+                    "$ref": "BetweenFilter",
+                    "description": "A filter for two values."
+                },
+                "fieldName": {
+                    "description": "The dimension name or metric name. Must be a name defined in dimensions or metrics.",
+                    "type": "string"
+                },
+                "inListFilter": {
+                    "$ref": "InListFilter",
+                    "description": "A filter for in list values."
+                },
+                "numericFilter": {
+                    "$ref": "NumericFilter",
+                    "description": "A filter for numeric or date values."
+                },
+                "stringFilter": {
+                    "$ref": "StringFilter",
+                    "description": "Strings related filter."
+                }
+            },
+            "type": "object"
+        },
+        "FilterExpression": {
+            "description": "To express dimension or metric filters. The fields in the same FilterExpression need to be either all dimensions or all metrics.",
+            "id": "FilterExpression",
+            "properties": {
+                "andGroup": {
+                    "$ref": "FilterExpressionList",
+                    "description": "The FilterExpressions in and_group have an AND relationship."
+                },
+                "filter": {
+                    "$ref": "Filter",
+                    "description": "A primitive filter. All fields in filter in same FilterExpression needs to be either all dimensions or metrics."
+                },
+                "notExpression": {
+                    "$ref": "FilterExpression",
+                    "description": "The FilterExpression is NOT of not_expression."
+                },
+                "orGroup": {
+                    "$ref": "FilterExpressionList",
+                    "description": "The FilterExpressions in or_group have an OR relationship."
+                }
+            },
+            "type": "object"
+        },
+        "FilterExpressionList": {
+            "description": "A list of filter expressions.",
+            "id": "FilterExpressionList",
+            "properties": {
+                "expressions": {
+                    "description": "A list of filter expressions.",
+                    "items": {
+                        "$ref": "FilterExpression"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "InListFilter": {
+            "description": "The result needs to be in a list of string values.",
+            "id": "InListFilter",
+            "properties": {
+                "caseSensitive": {
+                    "description": "If true, the string value is case sensitive.",
+                    "type": "boolean"
+                },
+                "values": {
+                    "description": "The list of string values. Must be non-empty.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "Metadata": {
+            "description": "The dimensions and metrics currently accepted in reporting methods.",
+            "id": "Metadata",
+            "properties": {
+                "dimensions": {
+                    "description": "The dimension descriptions.",
+                    "items": {
+                        "$ref": "DimensionMetadata"
+                    },
+                    "type": "array"
+                },
+                "metrics": {
+                    "description": "The metric descriptions.",
+                    "items": {
+                        "$ref": "MetricMetadata"
+                    },
+                    "type": "array"
+                },
+                "name": {
+                    "description": "Resource name of this metadata.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "Metric": {
+            "description": "The quantitative measurements of a report. For example, the metric `eventCount` is the total number of events. Requests are allowed up to 10 metrics.",
+            "id": "Metric",
+            "properties": {
+                "expression": {
+                    "description": "A mathematical expression for derived metrics. For example, the metric Event count per user is `eventCount/totalUsers`.",
+                    "type": "string"
+                },
+                "invisible": {
+                    "description": "Indicates if a metric is invisible in the report response. If a metric is invisible, the metric will not produce a column in the response, but can be used in `metricFilter`, `orderBys`, or a metric `expression`.",
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "The name of the metric. See the [API Metrics](https://developers.google.com/analytics/devguides/reporting/data/v1/api-schema#metrics) for the list of metric names. If `expression` is specified, `name` can be any string that you would like. For example if `expression` is `screenPageViews/sessions`, you could call that metric's name = `viewsPerSession`. Metrics are referenced by `name` in `metricFilter`, `orderBys`, and metric `expression`.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "MetricHeader": {
+            "description": "Describes a metric column in the report. Visible metrics requested in a report produce column entries within rows and MetricHeaders. However, metrics used exclusively within filters or expressions do not produce columns in a report; correspondingly, those metrics do not produce headers.",
+            "id": "MetricHeader",
+            "properties": {
+                "name": {
+                    "description": "The metric's name.",
+                    "type": "string"
+                },
+                "type": {
+                    "description": "The metric's data type.",
+                    "enum": [
+                        "METRIC_TYPE_UNSPECIFIED",
+                        "TYPE_INTEGER",
+                        "TYPE_FLOAT",
+                        "TYPE_SECONDS",
+                        "TYPE_MILLISECONDS",
+                        "TYPE_MINUTES",
+                        "TYPE_HOURS",
+                        "TYPE_STANDARD",
+                        "TYPE_CURRENCY",
+                        "TYPE_FEET",
+                        "TYPE_MILES",
+                        "TYPE_METERS",
+                        "TYPE_KILOMETERS"
+                    ],
+                    "enumDescriptions": [
+                        "Unspecified type.",
+                        "Integer type.",
+                        "Floating point type.",
+                        "A duration of seconds; a special floating point type.",
+                        "A duration in milliseconds; a special floating point type.",
+                        "A duration in minutes; a special floating point type.",
+                        "A duration in hours; a special floating point type.",
+                        "A custom metric of standard type; a special floating point type.",
+                        "An amount of money; a special floating point type.",
+                        "A length in feet; a special floating point type.",
+                        "A length in miles; a special floating point type.",
+                        "A length in meters; a special floating point type.",
+                        "A length in kilometers; a special floating point type."
+                    ],
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "MetricMetadata": {
+            "description": "Explains a metric.",
+            "id": "MetricMetadata",
+            "properties": {
+                "apiName": {
+                    "description": "A metric name. Useable in [Metric](#Metric)'s `name`. For example, `eventCount`.",
+                    "type": "string"
+                },
+                "customDefinition": {
+                    "description": "True if the metric is a custom metric for this property.",
+                    "type": "boolean"
+                },
+                "deprecatedApiNames": {
+                    "description": "Still usable but deprecated names for this metric. If populated, this metric is available by either `apiName` or one of `deprecatedApiNames` for a period of time. After the deprecation period, the metric will be available only by `apiName`.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "description": {
+                    "description": "Description of how this metric is used and calculated.",
+                    "type": "string"
+                },
+                "expression": {
+                    "description": "The mathematical expression for this derived metric. Can be used in [Metric](#Metric)'s `expression` field for equivalent reports. Most metrics are not expressions, and for non-expressions, this field is empty.",
+                    "type": "string"
+                },
+                "type": {
+                    "description": "The type of this metric.",
+                    "enum": [
+                        "METRIC_TYPE_UNSPECIFIED",
+                        "TYPE_INTEGER",
+                        "TYPE_FLOAT",
+                        "TYPE_SECONDS",
+                        "TYPE_MILLISECONDS",
+                        "TYPE_MINUTES",
+                        "TYPE_HOURS",
+                        "TYPE_STANDARD",
+                        "TYPE_CURRENCY",
+                        "TYPE_FEET",
+                        "TYPE_MILES",
+                        "TYPE_METERS",
+                        "TYPE_KILOMETERS"
+                    ],
+                    "enumDescriptions": [
+                        "Unspecified type.",
+                        "Integer type.",
+                        "Floating point type.",
+                        "A duration of seconds; a special floating point type.",
+                        "A duration in milliseconds; a special floating point type.",
+                        "A duration in minutes; a special floating point type.",
+                        "A duration in hours; a special floating point type.",
+                        "A custom metric of standard type; a special floating point type.",
+                        "An amount of money; a special floating point type.",
+                        "A length in feet; a special floating point type.",
+                        "A length in miles; a special floating point type.",
+                        "A length in meters; a special floating point type.",
+                        "A length in kilometers; a special floating point type."
+                    ],
+                    "type": "string"
+                },
+                "uiName": {
+                    "description": "This metric's name within the Google Analytics user interface. For example, `Event count`.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "MetricOrderBy": {
+            "description": "Sorts by metric values.",
+            "id": "MetricOrderBy",
+            "properties": {
+                "metricName": {
+                    "description": "A metric name in the request to order by.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "MetricValue": {
+            "description": "The value of a metric.",
+            "id": "MetricValue",
+            "properties": {
+                "value": {
+                    "description": "Measurement value. See MetricHeader for type.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "NumericFilter": {
+            "description": "Filters for numeric or date values.",
+            "id": "NumericFilter",
+            "properties": {
+                "operation": {
+                    "description": "The operation type for this filter.",
+                    "enum": [
+                        "OPERATION_UNSPECIFIED",
+                        "EQUAL",
+                        "LESS_THAN",
+                        "LESS_THAN_OR_EQUAL",
+                        "GREATER_THAN",
+                        "GREATER_THAN_OR_EQUAL"
+                    ],
+                    "enumDescriptions": [
+                        "Unspecified.",
+                        "Equal",
+                        "Less than",
+                        "Less than or equal",
+                        "Greater than",
+                        "Greater than or equal"
+                    ],
+                    "type": "string"
+                },
+                "value": {
+                    "$ref": "NumericValue",
+                    "description": "A numeric value or a date value."
+                }
+            },
+            "type": "object"
+        },
+        "NumericValue": {
+            "description": "To represent a number.",
+            "id": "NumericValue",
+            "properties": {
+                "doubleValue": {
+                    "description": "Double value",
+                    "format": "double",
+                    "type": "number"
+                },
+                "int64Value": {
+                    "description": "Integer value",
+                    "format": "int64",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "OrderBy": {
+            "description": "The sort options.",
+            "id": "OrderBy",
+            "properties": {
+                "desc": {
+                    "description": "If true, sorts by descending order.",
+                    "type": "boolean"
+                },
+                "dimension": {
+                    "$ref": "DimensionOrderBy",
+                    "description": "Sorts results by a dimension's values."
+                },
+                "metric": {
+                    "$ref": "MetricOrderBy",
+                    "description": "Sorts results by a metric's values."
+                },
+                "pivot": {
+                    "$ref": "PivotOrderBy",
+                    "description": "Sorts results by a metric's values within a pivot column group."
+                }
+            },
+            "type": "object"
+        },
+        "Pivot": {
+            "description": "Describes the visible dimension columns and rows in the report response.",
+            "id": "Pivot",
+            "properties": {
+                "fieldNames": {
+                    "description": "Dimension names for visible columns in the report response. Including \"dateRange\" produces a date range column; for each row in the response, dimension values in the date range column will indicate the corresponding date range from the request.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "description": "The number of rows to return in this pivot. If the `limit` parameter is unspecified, up to 10,000 rows are returned. The product of the `limit` for each `pivot` in a `RunPivotReportRequest` must not exceed 100,000. For example, a two pivot request with `limit: 1000` in each pivot will fail because the product is `1,000,000`.",
+                    "format": "int64",
+                    "type": "string"
+                },
+                "metricAggregations": {
+                    "description": "Aggregate the metrics by dimensions in this pivot using the specified metric_aggregations.",
+                    "items": {
+                        "enum": [
+                            "METRIC_AGGREGATION_UNSPECIFIED",
+                            "TOTAL",
+                            "MINIMUM",
+                            "MAXIMUM",
+                            "COUNT"
+                        ],
+                        "enumDescriptions": [
+                            "Unspecified operator.",
+                            "SUM operator.",
+                            "Minimum operator.",
+                            "Maximum operator.",
+                            "Count operator."
+                        ],
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "offset": {
+                    "description": "The row count of the start row. The first row is counted as row 0.",
+                    "format": "int64",
+                    "type": "string"
+                },
+                "orderBys": {
+                    "description": "Specifies how dimensions are ordered in the pivot. In the first Pivot, the OrderBys determine Row and PivotDimensionHeader ordering; in subsequent Pivots, the OrderBys determine only PivotDimensionHeader ordering. Dimensions specified in these OrderBys must be a subset of Pivot.field_names.",
+                    "items": {
+                        "$ref": "OrderBy"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "PivotDimensionHeader": {
+            "description": "Summarizes dimension values from a row for this pivot.",
+            "id": "PivotDimensionHeader",
+            "properties": {
+                "dimensionValues": {
+                    "description": "Values of multiple dimensions in a pivot.",
+                    "items": {
+                        "$ref": "DimensionValue"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "PivotHeader": {
+            "description": "Dimensions' values in a single pivot.",
+            "id": "PivotHeader",
+            "properties": {
+                "pivotDimensionHeaders": {
+                    "description": "The size is the same as the cardinality of the corresponding dimension combinations.",
+                    "items": {
+                        "$ref": "PivotDimensionHeader"
+                    },
+                    "type": "array"
+                },
+                "rowCount": {
+                    "description": "The cardinality of the pivot. The total number of rows for this pivot's fields regardless of how the parameters `offset` and `limit` are specified in the request.",
+                    "format": "int32",
+                    "type": "integer"
+                }
+            },
+            "type": "object"
+        },
+        "PivotOrderBy": {
+            "description": "Sorts by a pivot column group.",
+            "id": "PivotOrderBy",
+            "properties": {
+                "metricName": {
+                    "description": "In the response to order by, order rows by this column. Must be a metric name from the request.",
+                    "type": "string"
+                },
+                "pivotSelections": {
+                    "description": "Used to select a dimension name and value pivot. If multiple pivot selections are given, the sort occurs on rows where all pivot selection dimension name and value pairs match the row's dimension name and value pair.",
+                    "items": {
+                        "$ref": "PivotSelection"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "PivotSelection": {
+            "description": "A pair of dimension names and values. Rows with this dimension pivot pair are ordered by the metric's value. For example if pivots = {{\"browser\", \"Chrome\"}} and metric_name = \"Sessions\", then the rows will be sorted based on Sessions in Chrome. ---------|----------|----------------|----------|---------------- | Chrome | Chrome | Safari | Safari ---------|----------|----------------|----------|---------------- Country | Sessions | Pages/Sessions | Sessions | Pages/Sessions ---------|----------|----------------|----------|---------------- US | 2 | 2 | 3 | 1 ---------|----------|----------------|----------|---------------- Canada | 3 | 1 | 4 | 1 ---------|----------|----------------|----------|----------------",
+            "id": "PivotSelection",
+            "properties": {
+                "dimensionName": {
+                    "description": "Must be a dimension name from the request.",
+                    "type": "string"
+                },
+                "dimensionValue": {
+                    "description": "Order by only when the named dimension is this value.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "PropertyQuota": {
+            "description": "Current state of all quotas for this Analytics Property. If any quota for a property is exhausted, all requests to that property will return Resource Exhausted errors.",
+            "id": "PropertyQuota",
+            "properties": {
+                "concurrentRequests": {
+                    "$ref": "QuotaStatus",
+                    "description": "Standard Analytics Properties can send up to 10 concurrent requests; Analytics 360 Properties can use up to 50 concurrent requests."
+                },
+                "serverErrorsPerProjectPerHour": {
+                    "$ref": "QuotaStatus",
+                    "description": "Standard Analytics Properties and cloud project pairs can have up to 10 server errors per hour; Analytics 360 Properties and cloud project pairs can have up to 50 server errors per hour."
+                },
+                "tokensPerDay": {
+                    "$ref": "QuotaStatus",
+                    "description": "Standard Analytics Properties can use up to 25,000 tokens per day; Analytics 360 Properties can use 250,000 tokens per day. Most requests consume fewer than 10 tokens."
+                },
+                "tokensPerHour": {
+                    "$ref": "QuotaStatus",
+                    "description": "Standard Analytics Properties can use up to 5,000 tokens per hour; Analytics 360 Properties can use 50,000 tokens per hour. An API request consumes a single number of tokens, and that number is deducted from both the hourly and daily quotas."
+                }
+            },
+            "type": "object"
+        },
+        "QuotaStatus": {
+            "description": "Current state for a particular quota group.",
+            "id": "QuotaStatus",
+            "properties": {
+                "consumed": {
+                    "description": "Quota consumed by this request.",
+                    "format": "int32",
+                    "type": "integer"
+                },
+                "remaining": {
+                    "description": "Quota remaining after this request.",
+                    "format": "int32",
+                    "type": "integer"
+                }
+            },
+            "type": "object"
+        },
+        "ResponseMetaData": {
+            "description": "Response's metadata carrying additional information about the report content.",
+            "id": "ResponseMetaData",
+            "properties": {
+                "dataLossFromOtherRow": {
+                    "description": "If true, indicates some buckets of dimension combinations are rolled into \"(other)\" row. This can happen for high cardinality reports.",
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
+        "Row": {
+            "description": "Report data for each row. For example if RunReportRequest contains: ```none \"dimensions\": [ { \"name\": \"eventName\" }, { \"name\": \"countryId\" } ], \"metrics\": [ { \"name\": \"eventCount\" } ] ``` One row with 'in_app_purchase' as the eventName, 'JP' as the countryId, and 15 as the eventCount, would be: ```none \"dimensionValues\": [ { \"value\": \"in_app_purchase\" }, { \"value\": \"JP\" } ], \"metricValues\": [ { \"value\": \"15\" } ] ```",
+            "id": "Row",
+            "properties": {
+                "dimensionValues": {
+                    "description": "List of requested dimension values. In a PivotReport, dimension_values are only listed for dimensions included in a pivot.",
+                    "items": {
+                        "$ref": "DimensionValue"
+                    },
+                    "type": "array"
+                },
+                "metricValues": {
+                    "description": "List of requested visible metric values.",
+                    "items": {
+                        "$ref": "MetricValue"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "RunPivotReportRequest": {
+            "description": "The request to generate a pivot report.",
+            "id": "RunPivotReportRequest",
+            "properties": {
+                "cohortSpec": {
+                    "$ref": "CohortSpec",
+                    "description": "Cohort group associated with this request. If there is a cohort group in the request the 'cohort' dimension must be present."
+                },
+                "currencyCode": {
+                    "description": "A currency code in ISO4217 format, such as \"AED\", \"USD\", \"JPY\". If the field is empty, the report uses the entity's default currency.",
+                    "type": "string"
+                },
+                "dateRanges": {
+                    "description": "The date range to retrieve event data for the report. If multiple date ranges are specified, event data from each date range is used in the report. A special dimension with field name \"dateRange\" can be included in a Pivot's field names; if included, the report compares between date ranges. In a cohort request, this `dateRanges` must be unspecified.",
+                    "items": {
+                        "$ref": "DateRange"
+                    },
+                    "type": "array"
+                },
+                "dimensionFilter": {
+                    "$ref": "FilterExpression",
+                    "description": "The filter clause of dimensions. Dimensions must be requested to be used in this filter. Metrics cannot be used in this filter."
+                },
+                "dimensions": {
+                    "description": "The dimensions requested. All defined dimensions must be used by one of the following: dimension_expression, dimension_filter, pivots, order_bys.",
+                    "items": {
+                        "$ref": "Dimension"
+                    },
+                    "type": "array"
+                },
+                "entity": {
+                    "$ref": "Entity",
+                    "description": "A property whose events are tracked. Within a batch request, this entity should either be unspecified or consistent with the batch-level entity."
+                },
+                "keepEmptyRows": {
+                    "description": "If false or unspecified, each row with all metrics equal to 0 will not be returned. If true, these rows will be returned if they are not separately removed by a filter.",
+                    "type": "boolean"
+                },
+                "metricFilter": {
+                    "$ref": "FilterExpression",
+                    "description": "The filter clause of metrics. Applied at post aggregation phase, similar to SQL having-clause. Metrics must be requested to be used in this filter. Dimensions cannot be used in this filter."
+                },
+                "metrics": {
+                    "description": "The metrics requested, at least one metric needs to be specified. All defined metrics must be used by one of the following: metric_expression, metric_filter, order_bys.",
+                    "items": {
+                        "$ref": "Metric"
+                    },
+                    "type": "array"
+                },
+                "pivots": {
+                    "description": "Describes the visual format of the report's dimensions in columns or rows. The union of the fieldNames (dimension names) in all pivots must be a subset of dimension names defined in Dimensions. No two pivots can share a dimension. A dimension is only visible if it appears in a pivot.",
+                    "items": {
+                        "$ref": "Pivot"
+                    },
+                    "type": "array"
+                },
+                "returnPropertyQuota": {
+                    "description": "Toggles whether to return the current state of this Analytics Property's quota. Quota is returned in [PropertyQuota](#PropertyQuota).",
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
+        "RunPivotReportResponse": {
+            "description": "The response pivot report table corresponding to a pivot request.",
+            "id": "RunPivotReportResponse",
+            "properties": {
+                "aggregates": {
+                    "description": "Aggregation of metric values. Can be totals, minimums, or maximums. The returned aggregations are controlled by the metric_aggregations in the pivot. The type of aggregation returned in each row is shown by the dimension_values which are set to \"RESERVED_\".",
+                    "items": {
+                        "$ref": "Row"
+                    },
+                    "type": "array"
+                },
+                "dimensionHeaders": {
+                    "description": "Describes dimension columns. The number of DimensionHeaders and ordering of DimensionHeaders matches the dimensions present in rows.",
+                    "items": {
+                        "$ref": "DimensionHeader"
+                    },
+                    "type": "array"
+                },
+                "metadata": {
+                    "$ref": "ResponseMetaData",
+                    "description": "Metadata for the report."
+                },
+                "metricHeaders": {
+                    "description": "Describes metric columns. The number of MetricHeaders and ordering of MetricHeaders matches the metrics present in rows.",
+                    "items": {
+                        "$ref": "MetricHeader"
+                    },
+                    "type": "array"
+                },
+                "pivotHeaders": {
+                    "description": "Summarizes the columns and rows created by a pivot. Each pivot in the request produces one header in the response. If we have a request like this: \"pivots\": [{ \"fieldNames\": [\"country\", \"city\"] }, { \"fieldNames\": \"eventName\" }] We will have the following `pivotHeaders` in the response: \"pivotHeaders\" : [{ \"dimensionHeaders\": [{ \"dimensionValues\": [ { \"value\": \"United Kingdom\" }, { \"value\": \"London\" } ] }, { \"dimensionValues\": [ { \"value\": \"Japan\" }, { \"value\": \"Osaka\" } ] }] }, { \"dimensionHeaders\": [{ \"dimensionValues\": [{ \"value\": \"session_start\" }] }, { \"dimensionValues\": [{ \"value\": \"scroll\" }] }] }]",
+                    "items": {
+                        "$ref": "PivotHeader"
+                    },
+                    "type": "array"
+                },
+                "propertyQuota": {
+                    "$ref": "PropertyQuota",
+                    "description": "This Analytics Property's quota state including this request."
+                },
+                "rows": {
+                    "description": "Rows of dimension value combinations and metric values in the report.",
+                    "items": {
+                        "$ref": "Row"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "RunRealtimeReportRequest": {
+            "description": "The request to generate a realtime report.",
+            "id": "RunRealtimeReportRequest",
+            "properties": {
+                "dimensionFilter": {
+                    "$ref": "FilterExpression",
+                    "description": "The filter clause of dimensions. Dimensions must be requested to be used in this filter. Metrics cannot be used in this filter."
+                },
+                "dimensions": {
+                    "description": "The dimensions requested and displayed.",
+                    "items": {
+                        "$ref": "Dimension"
+                    },
+                    "type": "array"
+                },
+                "limit": {
+                    "description": "The number of rows to return. If the `limit` parameter is unspecified, 10,000 rows are returned. The API returns a maximum of 100,000 rows per request, no matter how many you ask for.",
+                    "format": "int64",
+                    "type": "string"
+                },
+                "metricAggregations": {
+                    "description": "Aggregation of metrics. Aggregated metric values will be shown in rows where the dimension_values are set to \"RESERVED_(MetricAggregation)\".",
+                    "items": {
+                        "enum": [
+                            "METRIC_AGGREGATION_UNSPECIFIED",
+                            "TOTAL",
+                            "MINIMUM",
+                            "MAXIMUM",
+                            "COUNT"
+                        ],
+                        "enumDescriptions": [
+                            "Unspecified operator.",
+                            "SUM operator.",
+                            "Minimum operator.",
+                            "Maximum operator.",
+                            "Count operator."
+                        ],
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "metricFilter": {
+                    "$ref": "FilterExpression",
+                    "description": "The filter clause of metrics. Applied at post aggregation phase, similar to SQL having-clause. Metrics must be requested to be used in this filter. Dimensions cannot be used in this filter."
+                },
+                "metrics": {
+                    "description": "The metrics requested and displayed.",
+                    "items": {
+                        "$ref": "Metric"
+                    },
+                    "type": "array"
+                },
+                "orderBys": {
+                    "description": "Specifies how rows are ordered in the response.",
+                    "items": {
+                        "$ref": "OrderBy"
+                    },
+                    "type": "array"
+                },
+                "returnPropertyQuota": {
+                    "description": "Toggles whether to return the current state of this Analytics Property's Realtime quota. Quota is returned in [PropertyQuota](#PropertyQuota).",
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
+        "RunRealtimeReportResponse": {
+            "description": "The response realtime report table corresponding to a request.",
+            "id": "RunRealtimeReportResponse",
+            "properties": {
+                "dimensionHeaders": {
+                    "description": "Describes dimension columns. The number of DimensionHeaders and ordering of DimensionHeaders matches the dimensions present in rows.",
+                    "items": {
+                        "$ref": "DimensionHeader"
+                    },
+                    "type": "array"
+                },
+                "maximums": {
+                    "description": "If requested, the maximum values of metrics.",
+                    "items": {
+                        "$ref": "Row"
+                    },
+                    "type": "array"
+                },
+                "metricHeaders": {
+                    "description": "Describes metric columns. The number of MetricHeaders and ordering of MetricHeaders matches the metrics present in rows.",
+                    "items": {
+                        "$ref": "MetricHeader"
+                    },
+                    "type": "array"
+                },
+                "minimums": {
+                    "description": "If requested, the minimum values of metrics.",
+                    "items": {
+                        "$ref": "Row"
+                    },
+                    "type": "array"
+                },
+                "propertyQuota": {
+                    "$ref": "PropertyQuota",
+                    "description": "This Analytics Property's Realtime quota state including this request."
+                },
+                "rowCount": {
+                    "description": "The total number of rows in the query result, regardless of the number of rows returned in the response. For example if a query returns 175 rows and includes limit = 50 in the API request, the response will contain row_count = 175 but only 50 rows.",
+                    "format": "int32",
+                    "type": "integer"
+                },
+                "rows": {
+                    "description": "Rows of dimension value combinations and metric values in the report.",
+                    "items": {
+                        "$ref": "Row"
+                    },
+                    "type": "array"
+                },
+                "totals": {
+                    "description": "If requested, the totaled values of metrics.",
+                    "items": {
+                        "$ref": "Row"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "RunReportRequest": {
+            "description": "The request to generate a report.",
+            "id": "RunReportRequest",
+            "properties": {
+                "cohortSpec": {
+                    "$ref": "CohortSpec",
+                    "description": "Cohort group associated with this request. If there is a cohort group in the request the 'cohort' dimension must be present."
+                },
+                "currencyCode": {
+                    "description": "A currency code in ISO4217 format, such as \"AED\", \"USD\", \"JPY\". If the field is empty, the report uses the entity's default currency.",
+                    "type": "string"
+                },
+                "dateRanges": {
+                    "description": "Date ranges of data to read. If multiple date ranges are requested, each response row will contain a zero based date range index. If two date ranges overlap, the event data for the overlapping days is included in the response rows for both date ranges. In a cohort request, this `dateRanges` must be unspecified.",
+                    "items": {
+                        "$ref": "DateRange"
+                    },
+                    "type": "array"
+                },
+                "dimensionFilter": {
+                    "$ref": "FilterExpression",
+                    "description": "The filter clause of dimensions. Dimensions must be requested to be used in this filter. Metrics cannot be used in this filter."
+                },
+                "dimensions": {
+                    "description": "The dimensions requested and displayed.",
+                    "items": {
+                        "$ref": "Dimension"
+                    },
+                    "type": "array"
+                },
+                "entity": {
+                    "$ref": "Entity",
+                    "description": "A property whose events are tracked. Within a batch request, this entity should either be unspecified or consistent with the batch-level entity."
+                },
+                "keepEmptyRows": {
+                    "description": "If false or unspecified, each row with all metrics equal to 0 will not be returned. If true, these rows will be returned if they are not separately removed by a filter.",
+                    "type": "boolean"
+                },
+                "limit": {
+                    "description": "The number of rows to return. If the `limit` parameter is unspecified, 10,000 rows are returned. The API returns a maximum of 100,000 rows per request, no matter how many you ask for.",
+                    "format": "int64",
+                    "type": "string"
+                },
+                "metricAggregations": {
+                    "description": "Aggregation of metrics. Aggregated metric values will be shown in rows where the dimension_values are set to \"RESERVED_(MetricAggregation)\".",
+                    "items": {
+                        "enum": [
+                            "METRIC_AGGREGATION_UNSPECIFIED",
+                            "TOTAL",
+                            "MINIMUM",
+                            "MAXIMUM",
+                            "COUNT"
+                        ],
+                        "enumDescriptions": [
+                            "Unspecified operator.",
+                            "SUM operator.",
+                            "Minimum operator.",
+                            "Maximum operator.",
+                            "Count operator."
+                        ],
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "metricFilter": {
+                    "$ref": "FilterExpression",
+                    "description": "The filter clause of metrics. Applied at post aggregation phase, similar to SQL having-clause. Metrics must be requested to be used in this filter. Dimensions cannot be used in this filter."
+                },
+                "metrics": {
+                    "description": "The metrics requested and displayed.",
+                    "items": {
+                        "$ref": "Metric"
+                    },
+                    "type": "array"
+                },
+                "offset": {
+                    "description": "The row count of the start row. The first row is counted as row 0.",
+                    "format": "int64",
+                    "type": "string"
+                },
+                "orderBys": {
+                    "description": "Specifies how rows are ordered in the response.",
+                    "items": {
+                        "$ref": "OrderBy"
+                    },
+                    "type": "array"
+                },
+                "returnPropertyQuota": {
+                    "description": "Toggles whether to return the current state of this Analytics Property's quota. Quota is returned in [PropertyQuota](#PropertyQuota).",
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
+        "RunReportResponse": {
+            "description": "The response report table corresponding to a request.",
+            "id": "RunReportResponse",
+            "properties": {
+                "dimensionHeaders": {
+                    "description": "Describes dimension columns. The number of DimensionHeaders and ordering of DimensionHeaders matches the dimensions present in rows.",
+                    "items": {
+                        "$ref": "DimensionHeader"
+                    },
+                    "type": "array"
+                },
+                "maximums": {
+                    "description": "If requested, the maximum values of metrics.",
+                    "items": {
+                        "$ref": "Row"
+                    },
+                    "type": "array"
+                },
+                "metadata": {
+                    "$ref": "ResponseMetaData",
+                    "description": "Metadata for the report."
+                },
+                "metricHeaders": {
+                    "description": "Describes metric columns. The number of MetricHeaders and ordering of MetricHeaders matches the metrics present in rows.",
+                    "items": {
+                        "$ref": "MetricHeader"
+                    },
+                    "type": "array"
+                },
+                "minimums": {
+                    "description": "If requested, the minimum values of metrics.",
+                    "items": {
+                        "$ref": "Row"
+                    },
+                    "type": "array"
+                },
+                "propertyQuota": {
+                    "$ref": "PropertyQuota",
+                    "description": "This Analytics Property's quota state including this request."
+                },
+                "rowCount": {
+                    "description": "The total number of rows in the query result, regardless of the number of rows returned in the response. For example if a query returns 175 rows and includes limit = 50 in the API request, the response will contain row_count = 175 but only 50 rows. To learn more about this pagination parameter, see [Pagination](https://developers.google.com/analytics/devguides/reporting/data/v1/basics#pagination).",
+                    "format": "int32",
+                    "type": "integer"
+                },
+                "rows": {
+                    "description": "Rows of dimension value combinations and metric values in the report.",
+                    "items": {
+                        "$ref": "Row"
+                    },
+                    "type": "array"
+                },
+                "totals": {
+                    "description": "If requested, the totaled values of metrics.",
+                    "items": {
+                        "$ref": "Row"
+                    },
+                    "type": "array"
+                }
+            },
+            "type": "object"
+        },
+        "StringFilter": {
+            "description": "The filter for string",
+            "id": "StringFilter",
+            "properties": {
+                "caseSensitive": {
+                    "description": "If true, the string value is case sensitive.",
+                    "type": "boolean"
+                },
+                "matchType": {
+                    "description": "The match type for this filter.",
+                    "enum": [
+                        "MATCH_TYPE_UNSPECIFIED",
+                        "EXACT",
+                        "BEGINS_WITH",
+                        "ENDS_WITH",
+                        "CONTAINS",
+                        "FULL_REGEXP",
+                        "PARTIAL_REGEXP"
+                    ],
+                    "enumDescriptions": [
+                        "Unspecified",
+                        "Exact match of the string value.",
+                        "Begins with the string value.",
+                        "Ends with the string value.",
+                        "Contains the string value.",
+                        "Full regular expression match with the string value.",
+                        "Partial regular expression match with the string value."
+                    ],
+                    "type": "string"
+                },
+                "value": {
+                    "description": "The string value used for the matching.",
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        }
+    },
+    "servicePath": "",
+    "title": "Google Analytics Data API",
+    "version": "v1alpha",
+    "version_module": true
+}

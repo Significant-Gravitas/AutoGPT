@@ -1,0 +1,37 @@
+<HTML>
+<HEAD>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=windows-1252">
+<META NAME="Generator" CONTENT="Microsoft Word 97">
+<TITLE>The win32com package</TITLE>
+<META NAME="Template" CONTENT="D:\Program Files\Microsoft Office\Office\html.dot">
+</HEAD>
+<BODY LINK="#0000ff" VLINK="#800080">
+
+<H1><IMG SRC="image/pycom_blowing.gif" WIDTH=549 HEIGHT=99 ALT="Python and COM - Blowing the others away"></H1>
+<H1>The win32com package </H1>
+<FONT SIZE=2><P>This document describes the win32com package in general terms.</FONT> </P>
+<FONT SIZE=2><P>The COM support can be thought of as existing in 2 main portions - the C++ support code (the core PythonCOM module), and helper code, implemented in Python. The total package is known as "win32com".</FONT> </P>
+<FONT SIZE=2><P>The win32com support is stand-alone. It does not require Pythonwin.</FONT> </P>
+<H2>The win32com package </H2>
+<FONT SIZE=2><P>To facilitate an orderly framework, the Python "ni" module has been used, and the entire package is known as "win32com". As is normal for such packages, win32com itself does not provide any functionality. Some of the modules are described below:</FONT> </P>
+
+<UL>
+<B><FONT SIZE=2><LI>win32com.pythoncom - core C++ support</B>. <BR>
+This module is rarely used directly by programmers - instead the other "helper" module are used, which themselves draw on the core pythoncom services.</FONT> </LI>
+<B><FONT SIZE=2><LI>win32com.client package<BR>
+</B>Support for COM clients used by Python. Some of the modules in this package allow for dynamic usage of COM clients, a module for generating .py files for certain COM servers, etc.</FONT> </LI>
+<B><FONT SIZE=2><LI>win32com.server package<BR>
+</B>Support for COM servers written in Python. The modules in this package provide most of the underlying framework for magically turning Python classes into COM servers, exposing the correct public methods, registering your server in the registry, etc. </LI>
+<B><LI>win32com.axscript<BR>
+</B>ActiveX Scripting implementation for Python.</FONT> </LI>
+<B><FONT SIZE=2><LI>win32com.axdebug<BR>
+</B>Active Debugging implementation for Python</FONT> </LI>
+<B><FONT SIZE=2><LI>win32com.mapi<BR>
+</B>Utilities for working with MAPI and the Microsoft Exchange Server</LI></UL>
+
+</FONT><P>&nbsp;</P>
+<H2>The pythoncom module </H2>
+<FONT SIZE=2><P>The pythoncom module is the underlying C++ support for all COM related objects. In general, Python programmers will not use this module directly, but use win32com helper classes and functions. </P>
+<P>This module exposes a C++ like interface to COM - there are objects implemented in pythoncom that have methods "QueryInterface()", "Invoke()", just like the C++ API. If you are using COM in C++, you would not call a method directly, you would use pObject-&gt;Invoke( …, MethodId, argArray…). Similarly, if you are using pythoncom directly, you must also use the Invoke method to call an object's exposed method.</FONT> </P>
+<FONT SIZE=2><P>There are some Python wrappers for hiding this raw interface, meaning you should almost never need to use the pythoncom module directly. These helpers translate a "natural" looking interface (eg, obj.SomeMethod()) into the underlying Invoke call.</P></FONT></BODY>
+</HTML>
