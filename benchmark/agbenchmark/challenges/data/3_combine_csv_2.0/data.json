@@ -1,0 +1,31 @@
+{
+    "category": [
+        "data",
+        "general",
+        "validation"
+    ],
+    "cutoff": 80,
+    "dependencies": [],
+    "eval_id": "52467beb-l098-4356-9776-9a0ae46bb33b",
+    "ground": {
+        "answer": "The csv data is combined",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.csv"
+        ],
+        "should_contain": [
+            "ID,Age,Name,Occupation,Salary\n101,28,John,Engineer,80000\n102,45,Bob,Lawyer,95000\n103,34,Alice,Doctor,120000"
+        ]
+    },
+    "info": {
+        "description": "Tests if the agent can combine data from a csv",
+        "difficulty": "intermediate",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "CombineCsv_2.0",
+    "task": "The csvs 'file1.csv' and 'file2.csv' both have a column 'ID'. Combine these 2 csvs using the 'ID' column. Sort the rows by ascending order of salary and keep the order of the ID column. Write the output in output.csv"
+}

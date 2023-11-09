@@ -1,0 +1,31 @@
+{
+    "category": [
+        "data",
+        "general",
+        "validation"
+    ],
+    "cutoff": 140,
+    "dependencies": [],
+    "eval_id": "b1bb62dd-3d09-4a69-bb2a-9dbb3c477111",
+    "ground": {
+        "answer": "The correct amount spent on utilities.",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.txt"
+        ],
+        "should_contain": [
+            "250.5"
+        ]
+    },
+    "info": {
+        "description": "Tests if the agent can answer a question from a csv",
+        "difficulty": "intermediate",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "AnswerQuestionCombineCsv_2.0",
+    "task": "How much was spent on Dining at Restaurant between the dates of 2023-06-18 and 2023-09-04 in total? Write the answer in an output.txt file."
+}

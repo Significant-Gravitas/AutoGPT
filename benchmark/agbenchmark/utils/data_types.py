@@ -174,6 +174,7 @@ class Category(str, Enum):
     GENERALIST = "general"
     CODING = "coding"
     SCRAPE_SYNTHESIZE = "scrape_synthesize"
+    VALIDATION = "validation"
 
 
 class ChallengeData(BaseModel):

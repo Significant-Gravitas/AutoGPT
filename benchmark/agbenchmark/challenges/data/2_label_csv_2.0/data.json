@@ -1,0 +1,31 @@
+{
+    "category": [
+        "data",
+        "validation"
+    ],
+    "cutoff": 80,
+    "dependencies": [],
+    "eval_id": "6e2bf1f0-6842-4704-8ed1-r02l2065bbac",
+    "ground": {
+        "answer": "The csv labelled",
+        "case_sensitive": true,
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.csv"
+        ],
+        "should_contain": [
+            "Animal,Type\nEagle,flight\nMouse,land\nHawk,flight\nRabbit,land\nFalcon,flight\nSquirrel,land\nOwl,flight\nHedgehog,land\nPeregrine Falcon,flight\nMole,land\nVulture,flight\nFox,land\nAlbatross,flight\nWolf,land\nPelican,flight"
+        ]
+    },
+    "info": {
+        "description": "Tests if the agent can label data in a csv",
+        "difficulty": "basic",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "LabelCsv_2.0",
+    "task": "The csv 'input.csv' has many items. Create a 'Type' column for these items and classify them as either 'land', 'flight' depending on the animal. Use lowercase letters to classify and preserve the order of the rows. The Type column should be the second column. Write the output in output.csv"
+}

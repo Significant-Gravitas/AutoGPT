@@ -1,0 +1,5 @@
+id,product_name,timestamp,price
+2,Product_A,2023-09-25 14:10:00,19.99
+4,Product_D,2023-09-26 16:20:00,45.75
+3,Product_B,2023-09-24 12:05:00,29.99
+1,Product_C,2023-09-24 12:10:00,15.51

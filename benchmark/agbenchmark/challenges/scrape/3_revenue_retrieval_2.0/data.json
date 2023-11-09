@@ -1,0 +1,30 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "general",
+        "validation"
+    ],
+    "cutoff": 80,
+    "dependencies": [],
+    "eval_id": "dc2114d7-1597-4c9b-tab0-a97937ad977f",
+    "ground": {
+        "answer": "It was $198.27 billion in 2022. In millions the answer is 198,27.",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            ".txt"
+        ],
+        "should_contain": [
+            "198,27"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can retrieve Microsoft's revenue in 2022.",
+        "difficulty": "intermediate",
+        "side_effects": []
+    },
+    "name": "RevenueRetrieval_2.0",
+    "task": "Write Mirosoft's exact revenue in 2022 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
+}

@@ -1,0 +1,26 @@
+{
+    "category": [
+        "coding",
+        "general",
+        "validation"
+    ],
+    "cutoff": 200,
+    "dependencies": [],
+    "eval_id": "4d613d05-475f-1r31-bf12-f6d3714323k0",
+    "ground": {
+        "answer": "The implementation of battleship that passes all the tests.",
+        "eval": {
+            "type": "pytest"
+        },
+        "files": [],
+        "should_contain": [],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can create a Battleship.",
+        "difficulty": "expert",
+        "side_effects": []
+    },
+    "name": "Battleship_2.0",
+    "task": "Build a battleship game\n\nSpecifications:\n\nOverview: Battleship is a two-player strategy game where each player places their fleet of ships on a grid and tries to sink the opponent's fleet by guessing their locations.\nPlayers take turns calling out a row and column, attempting to name a square containing one of the opponent's ships.\n\nThe Grid: Each player's grid is a 12x12 grid, identified by rows (using numbers 1-12) and columns (using letters A-L).\n\nShips:\n\nCarrier - 5 squares\nBattleship - 4 squares\nCruiser - 3 squares\nSubmarine - 3 squares\nDestroyer - 2 squares\nPatrol - 2 squares\nEach ship occupies contiguous squares on the grid, arranged either horizontally or vertically.\n\nSetup:\n\nAt the start of the game, each player places their fleet on their grid. This setup is hidden from the opponent.\nThe game begins with Player 1, followed by Player 2, and so on.\nTaking Turns:\n\nOn a player's turn, they announce a grid square (e.g., \"D5\").\nThe opponent announces whether that square is a \"hit\" (if there's a part of a ship on that square) or \"miss\" (if the square is empty).\nIf a player hits a square occupied by a ship, they get another turn to guess. This continues until they make a miss, at which point their turn ends.\nIf a player hits all the squares occupied by a ship, the opponent must announce the sinking of that specific ship, e.g., \"You sank my Battleship!\"\n\nObjective: The goal is to sink all of your opponent's ships before they sink yours.\n\nEnd of the Game: The game ends when one player has sunk all of the opponent's ships. The winner is the player who sinks all the opposing fleet first.\n\nTechnical details:\nIn your root folder you will find an abstract_class.py that defines the public interface of the Battleship class you will have to build, use this to help you successfully build the battleship. You can also run tests within test_negative.py and test_negative.py to ensure that you've correctly built the battle ship. Positive tests are => test the battleship game being used in ideal conditions\n- negative tests => tests the battleship game behaviour when used incorrectly\n\nSuccess criteria:\n- you will need to write a file called battleship.py that implements the abstract Battleship class. You're not allowed to modify any other file than the battleship.py. You can add other files as long as the main entrypoint is the battleship class."
+}

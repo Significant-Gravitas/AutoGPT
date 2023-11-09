@@ -1,0 +1,30 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "general",
+        "validation"
+    ],
+    "cutoff": 80,
+    "dependencies": [],
+    "eval_id": "cx29e6b2-779d-4a2a-1367-d520023e27ae",
+    "ground": {
+        "answer": "20 in stock",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            ".txt"
+        ],
+        "should_contain": [
+            "20"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can retrieve a specific information from a website.",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "BookStock",
+    "task": "Write the how many items of the book are in stock at this url 'http://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html' to a .txt file."
+}

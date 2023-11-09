@@ -1,0 +1,42 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "validation"
+    ],
+    "cutoff": 110,
+    "dependencies": [],
+    "eval_id": "552bpo14-db40-4bd1-b123-4ed820886cc1",
+    "ground": {
+        "answer": "The full list of revenues from 2010 to 2023",
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            ".txt"
+        ],
+        "should_contain": [
+            "62,48",
+            "69,94",
+            "73,72",
+            "77,85",
+            "86,83",
+            "93,58",
+            "85,32",
+            "89,95",
+            "110,36",
+            "125,84",
+            "143,02",
+            "168,09",
+            "198,27",
+            "211,92"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can retrieve all the revenues of Microsoft since 2010.",
+        "difficulty": "intermediate",
+        "side_effects": []
+    },
+    "name": "RevenueRetrieval2_2.0",
+    "task": "Write Microsoft's revenue every year since (and including) 2010 into a .txt file. Use the US notation, with a precision rounded to the nearest million dollars (for instance, $31,578 million)."
+}

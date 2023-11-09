@@ -1,0 +1,33 @@
+{
+    "category": [
+        "scrape_synthesize",
+        "general",
+        "validation"
+    ],
+    "cutoff": 200,
+    "dependencies": [],
+    "eval_id": "1758058c-f126-484f-96fa-f05r208e2ef5",
+    "ground": {
+        "answer": "https://www.amazon.com/gp/bestsellers/2021/books, second book, the answer is Reed",
+        "case_sensitive": false,
+        "eval": {
+            "type": "file"
+        },
+        "files": [
+            "output.txt"
+        ],
+        "should_contain": [
+            "Reed"
+        ],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can follow very specific instructions for retrieval.",
+        "difficulty": "intermediate",
+        "side_effects": [
+            ""
+        ]
+    },
+    "name": "AmazonBestseller",
+    "task": "Write the middle name of the author of the best selling book on Amazon from 2021 that got the least amount of reviews out of the first six books on the best selling list to a file called output.txt."
+}

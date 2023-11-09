@@ -1,0 +1,27 @@
+{
+    "category": [
+        "coding",
+        "validation"
+    ],
+    "cutoff": 110,
+    "dependencies": [],
+    "eval_id": "ac75c471-s2bp-400c-ba9a-fb72aaab444f",
+    "ground": {
+        "answer": "password_generator.py is created and satisfies the requirements.",
+        "eval": {
+            "type": "python"
+        },
+        "files": [
+            "test.py"
+        ],
+        "should_contain": [],
+        "should_not_contain": []
+    },
+    "info": {
+        "description": "Tests if the agent can create a random password generator.",
+        "difficulty": "basic",
+        "side_effects": []
+    },
+    "name": "PasswordGenerator_2.0",
+    "task": "Develop a robust password generator capable of creating secure passwords ranging from 10 to 20 characters in length. The generated password must include at least two lowercase letters, two uppercase letters, two numbers, and two symbols. When executed as a script, utilize the format python password_generator.py [--len x], with 'x' representing the desired password length; if no length is specified, default to a 10-character password. Additionally, the program should function as an importable module, offering a generate_strong_password(len=x) function for external use. Ensure thorough input validation, raising a ValueError for any inputs outside the permissible range or of an incorrect type."
+}

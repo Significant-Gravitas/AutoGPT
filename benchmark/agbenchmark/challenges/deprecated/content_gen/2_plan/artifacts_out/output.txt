@@ -1,5 +1,0 @@
-1. Search 'Toronto to San Francisco flights' on the internet
-2. Click on the first link that is a flight aggregator such as SkyScanner or Google Flights
-3. Select the dates that you want to travel
-3. Click on the 'one way' option and click search
-4. Search through all of the given options and select the cheapest flight
