@@ -183,7 +183,7 @@ class InitialPlanStrategy(BasePromptStrategy):
             The parsed response.
 
         """
-        parsed_response = json_loads(response_content["function_call"]["arguments"])
+        parsed_response = json_loads(response_content["tool_calls"]["arguments"])
         parsed_response["task_list"] = [
             Task.parse_obj(task) for task in parsed_response["task_list"]
         ]

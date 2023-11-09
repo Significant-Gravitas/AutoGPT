@@ -462,7 +462,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         Example:
             >>> strategy = RefineUserContextStrategy(...)
             >>> raw_response = {
-            >>>     "function_call": {
+            >>>     "tool_calls": {
             >>>         "name": "REFINE_REQUIREMENTS",
             >>>         "arguments": '{"questions": ["What temperature range?", "Any specific brand?"], "reformulated_goal": "Monitor temperatures in the specified range with preferred brand"}'
             >>>     }
@@ -474,7 +474,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             'Monitor temperatures in the specified range with preferred brand'
         """
         try:
-            parsed_response = json_loads(response_content["function_call"]["arguments"])
+            parsed_response = json_loads(response_content["tool_calls"]["arguments"])
         except Exception:
             self._logger.warning(parsed_response)
 
@@ -484,7 +484,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         #
         save_questions = False
         if (
-            response_content["function_call"]["name"]
+            response_content["tool_calls"]["name"]
             == RefineUserContextFunctionNames.REFINE_REQUIREMENTS
         ):
             questions_with_uuid = []
@@ -502,7 +502,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             self._user_last_goal = parsed_response["reformulated_goal"]
 
         elif (
-            response_content["function_call"]["name"]
+            response_content["tool_calls"]["name"]
             == RefineUserContextFunctionNames.REQUEST_SECOND_CONFIRMATION
         ):
             # questions_with_uuid = [{"id": "Q" + str(uuid.uuid4()), "question":  parsed_response["questions"]}]
@@ -521,7 +521,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             self._last_questions = questions_with_uuid
             self._last_questions_label = parsed_response["questions"]
 
-        parsed_response["name"] = response_content["function_call"]["name"]
+        parsed_response["name"] = response_content["tool_calls"]["name"]
         self._logger.debug(parsed_response)
         self._count += 1
         return parsed_response

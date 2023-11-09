@@ -35,7 +35,7 @@ class SelectToolStrategyConfiguration(PlanningPromptStrategiesConfiguration):
     model_classification: LanguageModelClassification = (
         LanguageModelClassification.FAST_MODEL_16K
     )
-    temperature : float = 0.7
+    temperature : float = 0.5
 
 
 ###

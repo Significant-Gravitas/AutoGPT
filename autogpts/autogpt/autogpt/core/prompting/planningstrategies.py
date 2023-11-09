@@ -393,11 +393,11 @@ class PlanningPromptStrategy(BasePromptStrategy):
     #         Exception: If any other error occurs
     #     """
     #     if use_openai_functions_api:
-    #         if "function_call" not in assistant_reply:
+    #         if "tool_calls" not in assistant_reply:
     #             raise InvalidAgentResponseError("No 'function_call' in assistant reply")
     #         assistant_reply_json["command"] = {
-    #             "name": assistant_reply["function_call"]["name"],
-    #             "args": json.loads(assistant_reply["function_call"]["arguments"]),
+    #             "name": assistant_reply["tool_calls"]["name"],
+    #             "args": json.loads(assistant_reply["tool_calls"]["arguments"]),
     #         }
     #     try:
     #         if not isinstance(assistant_reply_json, dict):

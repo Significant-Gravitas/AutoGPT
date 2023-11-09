@@ -194,14 +194,14 @@ class BasePromptStrategy(AbstractPromptStrategy):
 
         """
         try:
-            parsed_response = json_loads(response_content["function_call"]["arguments"])
+            parsed_response = json_loads(response_content["tool_calls"]["arguments"])
         except Exception:
             self._agent._logger.warning(parsed_response)
 
         ###
         ### NEW
         ###
-        command_name = response_content["function_call"]["name"]
+        command_name = response_content["tool_calls"]["name"]
         command_args = parsed_response
         assistant_reply_dict = response_content["content"]
 

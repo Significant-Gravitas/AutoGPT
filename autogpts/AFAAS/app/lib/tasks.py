@@ -224,18 +224,19 @@ class Task(AFAASModel):
     #     command : Optional[str] = Field(default="afaas_whichway")
     # else :
     #     command : Optional[str] = Field(default="afaas_make_initial_plan")
-    command: Optional[str] = Field(default="afaas_make_initial_plan")
+    command: Optional[str] = Field(default_factory=lambda: Task.default_command())
     arguments: Optional[dict] = Field(default={})
 
     class Config:
         arbitrary_types_allowed = True
 
     @staticmethod
-    def default_command() : 
-        if aaas :
+    def default_command() -> str: 
+        try : 
+            import autogpts.autogpt.autogpt.core.agents.routing
             return "afaas_routing"
-        else :
-            "afaas_make_initial_plan"
+        except :
+            return "afaas_make_initial_plan"
 
     def dump(self, depth=0) -> dict:
         if depth < 0:

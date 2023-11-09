@@ -52,7 +52,7 @@ Examples:
 import abc
 import enum
 from typing import (Any, Callable, Dict, Generic, List, Optional, TypedDict,
-                    TypeVar, Union)
+                    TypeVar, Union, Literal)
 
 from pydantic import BaseModel, Field
 
@@ -281,6 +281,16 @@ class AssistantFunctionCallDict(TypedDict):
 
     name: str
     arguments: str
+class AssistantToolCall(BaseModel):
+    # id: str
+    type: Literal["function"]
+    function: AssistantFunctionCall
+
+
+class AssistantToolCallDict(TypedDict):
+    # id: str
+    type: Literal["function"]
+    function: AssistantFunctionCallDict
 
 
 class AssistantChatMessage(ChatMessage):
@@ -302,7 +312,7 @@ class AssistantChatMessage(ChatMessage):
 
     role: Role.ASSISTANT
     content: Optional[str]
-    function_call: Optional[AssistantFunctionCall]
+    tool_calls: Optional[list[AssistantToolCall]]
 
 
 class AssistantChatMessageDict(TypedDict, total=False):
@@ -323,7 +333,7 @@ class AssistantChatMessageDict(TypedDict, total=False):
 
     role: str
     content: str
-    function_call: AssistantFunctionCallDict
+    tool_calls: list[AssistantToolCallDict]
 
 
 class CompletionModelFunction(BaseModel):
@@ -490,7 +500,7 @@ class ChatModelResponse(BaseModelResponse, Generic[_T]):
         >>> lm_response = {
         ...     "role": "assistant",
         ...     "content": "The sum is 8.",
-        ...     "function_call": None
+        ...     "tool_calls": None
         ... }
         >>> chat_model_response = ChatModelResponse(response=lm_response, parsed_result=parse_response(lm_response))
         >>> print(chat_model_response.parsed_result)

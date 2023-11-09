@@ -13,7 +13,7 @@ from autogpts.autogpt.autogpt.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
 from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import (
-    AssistantChatMessageDict, AssistantFunctionCallDict, BaseChatModelProvider,
+    AssistantChatMessageDict, AssistantToolCallDict, BaseChatModelProvider,
     ChatMessage, ChatModelInfo, ChatModelResponse, CompletionModelFunction)
 from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
     BaseModelProviderBudget, BaseModelProviderCredentials,
@@ -42,12 +42,12 @@ class OpenAIModelName(str, enum.Enum):
     """
 
     ADA = "text-embedding-ada-002"
-    GPT3 = "gpt-3.5-turbo-0613"
-    GPT3_16k = "gpt-3.5-turbo-16k-0613"
-    GPT3_FINE_TUNED = "gpt-3.5-turbo" + ""
+    GPT3 = "gpt-3.5-turbo-instruct"
+    GPT3_16k = "gpt-3.5-turbo-1106"
+    GPT3_FINE_TUNED = "gpt-3.5-turbo-1106" + ""
     # GPT4 = "gpt-4-0613" # TODO for tests
-    GPT4 = "gpt-3.5-turbo-0613"
-    GPT4_32k = "gpt-4-32k-0613"
+    GPT4 = "gpt-3.5-turbo-1106"
+    GPT4_32k = "gpt-4-1106-preview"
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -408,8 +408,8 @@ class OpenAIProvider(
                 )
 
             # FIXME, TODO, NOTE: Organize application save feedback loop to improve the prompts, as it is not normal that function are not called
-            response_message["function_call"] = None
-            response.choices[0].message["function_call"] = None
+            response_message["tool_calls"] = None
+            response.choices[0].message["tool_calls"] = None
             # self._handle_failed_retry(response_message)
 
         # ##############################################################################
@@ -453,7 +453,7 @@ class OpenAIProvider(
         **kwargs: Any,
     ) -> Dict[str, Any]:
         completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
-        completion_kwargs["function_call"] = function_call
+        completion_kwargs["tool_calls"] = function_call
         return completion_kwargs
 
     async def _get_chat_response(
@@ -477,7 +477,7 @@ class OpenAIProvider(
     def _should_retry_function_call(
         self, functions: list[CompletionModelFunction], response_message: Dict[str, Any]
     ) -> bool:
-        if functions is not None and "function_call" not in response_message:
+        if functions is not None and "tool_calls" not in response_message:
             LOG.error(
                 f"Attempt number {self._func_call_fails_count + 1} : Function Call was expected"
             )
@@ -499,7 +499,7 @@ class OpenAIProvider(
             completion_kwargs=completion_kwargs,
             default_function_call=default_function_call,
         )
-        completion_kwargs["functions"] = functions
+        completion_kwargs["tools"] = functions
         response.update(response_args)
         self._budget.update_usage_and_cost(model_response=response)
         return await self.create_chat_completion(
@@ -516,10 +516,10 @@ class OpenAIProvider(
             self._func_call_fails_count
             >= self._configuration.maximum_retry_before_default_function
         ):
-            completion_kwargs["function_call"] = default_function_call
+            completion_kwargs["tool_calls"] = default_function_call
         else:
-            completion_kwargs["function_call"] = completion_kwargs.get(
-                "function_call", "auto"
+            completion_kwargs["tool_calls"] = completion_kwargs.get(
+                "tool_calls", "auto"
             )
         completion_kwargs["default_function_call"] = completion_kwargs.get(
             "default_function_call", default_function_call
@@ -616,7 +616,9 @@ class OpenAIProvider(
             **self._credentials.unmasked(),
         }
         if functions:
-            completion_kwargs["functions"] = [f.schema for f in functions]
+            completion_kwargs["tools"] = [
+                    {"type": "function", "function": f.schema} for f in functions
+                ]
         else:
             # Provide compatibility with older models
             _functions_compat_fix_kwargs(functions, completion_kwargs)
@@ -699,17 +701,23 @@ async def _create_chat_completion(
 
     """
     raw_messages = [
-        message.dict(include={"role", "content", "function_call", "name"})
+        message.dict(include={"role", "content", "tool_calls", "name"})
         for message in messages
     ]
     
-    if "functions" in kwargs:
-        # wargs["functions"] = [function.dict() for function in kwargs["functions"]]
-        kwargs["functions"] = [function for function in kwargs["functions"]]
-        if len(kwargs["functions"]) == 1:
-            kwargs["function_call"] = {"name": kwargs["functions"][0]['name']}
-        elif kwargs["function_call"] != "auto":
-            kwargs["function_call"] = {"name": kwargs["function_call"]}
+    if "tools" in kwargs:
+        # wargs["tools"] = [function.dict() for function in kwargs["tools"]]
+        kwargs["tools"] = [function for function in kwargs["tools"]]
+        if len(kwargs["tools"]) == 1:
+            kwargs["tool_choice"] = {
+                        "type": "function",
+                        "function": {"name": kwargs["tools"][0]['name']},
+                    }
+        elif kwargs["tool_calls"] != "auto":
+            kwargs["tool_calls"] = {
+                        "type": "function",
+                        "function": {"name": kwargs["tool_calls"]},
+                                    }
 
     LOG.debug(raw_messages[0]['content'])
     LOG.debug(kwargs)
@@ -874,14 +882,28 @@ def _functions_compat_fix_kwargs(
             ),
         },
     )
+    tool_calls_schema = JSONSchema(
+        type=JSONSchema.Type.ARRAY,
+        items=JSONSchema(
+            type=JSONSchema.Type.OBJECT,
+            properties={
+                "type": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    enum=["function"],
+                ),
+                "function": function_call_schema,
+            },
+        ),
+    )
+
     completion_kwargs["messages"] = [
         ChatMessage.system(
-            "# function_call instructions\n\n"
-            "Specify a '```function_call' block in your response,"
-            " enclosing a function call in the form of a valid JSON object"
-            " that adheres to the following schema:\n\n"
-            f"{function_call_schema.to_dict()}\n\n"
-            "Put the function_call block at the end of your response"
+            "# tool usage instructions\n\n"
+            "Specify a '```tool_calls' block in your response,"
+            " with a valid JSON object that adheres to the following schema:\n\n"
+            f"{tool_calls_schema.to_dict()}\n\n"
+            "Specify any tools that you need to use through this JSON object.\n\n"
+            "Put the tool_calls block at the end of your response"
             " and include its fences if it is not the only content.\n\n"
             "## functions\n\n"
             "For the function call itself, use one of the following"
@@ -890,19 +912,20 @@ def _functions_compat_fix_kwargs(
     ]
 
 
-def _functions_compat_extract_call(response: str) -> AssistantFunctionCallDict:
+def _tool_calls_compat_extract_calls(response: str) -> list[AssistantToolCallDict]:
     import json
     import re
 
-    logging.debug(f"Trying to extract function call from response:\n{response}")
+    logging.debug(f"Trying to extract tool calls from response:\n{response}")
 
-    if response[0] == "{":
-        function_call = json.loads(response)
+    if response[0] == "[":
+        tool_calls: list[AssistantToolCallDict] = json.loads(response)
     else:
-        block = re.search(r"```(?:function_call)?\n(.*)\n```\s*$", response, re.DOTALL)
+        block = re.search(r"```(?:tool_calls)?\n(.*)\n```\s*$", response, re.DOTALL)
         if not block:
-            raise ValueError("Could not find function call block in response")
-        function_call = json.loads(block.group(1))
+            raise ValueError("Could not find tool calls block in response")
+        tool_calls: list[AssistantToolCallDict] = json.loads(block.group(1))
 
-    function_call["arguments"] = str(function_call["arguments"])  # HACK
-    return function_call
+    for t in tool_calls:
+        t["function"]["arguments"] = str(t["function"]["arguments"])  # HACK
+    return tool_calls
