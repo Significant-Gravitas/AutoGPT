@@ -159,16 +159,16 @@ class Plan(AFAASModel):
 
         # 2. Remove leaves with status "DONE" if ALL their siblings have this status
         def should_remove_siblings(
-            task: Task, parent_task: Optional[Task] = None
+            task: Task, task_parent: Optional[Task] = None
         ) -> bool:
             # If it's a leaf and has a parent
-            if not task.subtasks and parent_task:
-                all_done = all(st.status == "DONE" for st in parent_task.subtasks)
+            if not task.subtasks and task_parent:
+                all_done = all(st.status == "DONE" for st in task_parent.subtasks)
                 if all_done:
                     # Delete the Task objects
-                    for st in parent_task.subtasks:
+                    for st in task_parent.subtasks:
                         del st
-                    parent_task.subtasks = None  # or []
+                    task_parent.subtasks = None  # or []
                 return all_done
             # elif task.subtasks:
             #     for st in task.subtasks:
@@ -304,11 +304,11 @@ class Plan(AFAASModel):
 # first_ready_task = plan.get_first_ready_task()
 
 # # 2. Retrieve the task and its siblings
-# parent_task_id = first_ready_task.task_parent_id
+# task_parent_id = first_ready_task.task_parent_id
 # siblings = []
-# if parent_task_id:
-#     parent_task = plan.find_task(parent_task_id)
-#     siblings = parent_task.subtasks
+# if task_parent_id:
+#     task_parent = plan.find_task(task_parent_id)
+#     siblings = task_parent.subtasks
 
 # # 3. Retrieve the list of tasks on the path
 # path_to_task = plan.find_task_path(first_ready_task.task_id)
