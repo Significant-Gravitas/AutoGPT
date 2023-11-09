@@ -64,7 +64,7 @@ class PlannerLoop(BaseLoop):
         ###
         if aaas["whichway"]:
             initial_task = Task(
-                # parent_task = self.plan() ,
+                # task_parent = self.plan() ,
                 task_parent_id=None,
                 task_predecessor_id=None,
                 responsible_agent_id=None,
@@ -78,7 +78,7 @@ class PlannerLoop(BaseLoop):
             )
         else:
             initial_task = Task(
-                # parent_task = self.plan() ,
+                # task_parent = self.plan() ,
                 task_parent_id=None,
                 task_predecessor_id=None,
                 responsible_agent_id=None,
@@ -99,7 +99,7 @@ class PlannerLoop(BaseLoop):
         ###
         if aaas["usercontext"]:
             refine_user_context_task = Task(
-                # parent_task = self.plan() ,
+                # task_parent = self.plan() ,
                 task_parent_id=None,
                 task_predecessor_id=None,
                 responsible_agent_id=None,

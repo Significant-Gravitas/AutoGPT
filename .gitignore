@@ -1,6 +1,7 @@
 autogpts/autogpt/autogpt/core/agents/usercontext/*
 whichway/
 arena/*
+autocorrection.*
 
 ## Original ignores
 .github_access_token

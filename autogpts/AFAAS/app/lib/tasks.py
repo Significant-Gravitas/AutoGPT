@@ -190,15 +190,24 @@ class Task(AFAASModel):
     task_id: str = Field(
         default_factory=lambda: "T" + str(uuid.uuid4())
     )  # task_id: str = Task.generate_short_id()
-    parent_task: Optional[Task]
+    task_parent: Optional[Task]
     task_parent_id: Optional[str]
-    task_predecessor_id: Optional[str]
+    task_predecessors: Optional[list[Task]]   
+    task_predecessors_id: Optional[str]
     # responsible_agent_id: Optional[str] = Field(default="")
     state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG.value)
 
     task_goal: str
-    long_decription: Optional[str]
+    """ The title / Name of the task """
+
     task_context: Optional[str]
+    """ Placeholder : Context given by RAG & other elements """
+
+    long_decription: Optional[str] 
+    """ Placeholder : A longer description of the task than `task_goal` """
+    
+    task_text_output : Optional[str] 
+    """ Placeholder : The agent summary of his own doing while performing the task"""
 
     ###
     ### Task Management properties
@@ -220,6 +229,13 @@ class Task(AFAASModel):
 
     class Config:
         arbitrary_types_allowed = True
+
+    @staticmethod
+    def default_command() : 
+        if aaas :
+            return "afaas_routing"
+        else :
+            "afaas_make_initial_plan"
 
     def dump(self, depth=0) -> dict:
         if depth < 0:
@@ -274,9 +290,9 @@ class Task(AFAASModel):
         path = [self]
         current_task = self
 
-        while current_task.parent_task is not None:
-            path.append(current_task.parent_task)
-            current_task = current_task.parent_task
+        while current_task.task_parent is not None:
+            path.append(current_task.task_parent)
+            current_task = current_task.task_parent
 
         return path
 
