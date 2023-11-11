@@ -7,6 +7,7 @@ from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional)
 from typing_extensions import TypedDict
 
 from .features.agentmixin import AgentMixin
+from autogpts.autogpt.autogpt.core.prompting.base import BasePromptStrategy
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import \
@@ -196,3 +197,6 @@ class BaseLoop(AgentMixin, abc.ABC, metaclass=BaseLoopMeta):
         return await self._agent._prompt_manager.execute_strategy(
             strategy_name=strategy_name, **kwargs
         )
+    
+    def get_strategy(self,strategy_name :str) -> BasePromptStrategy:
+        return  self._agent._prompt_manager._prompt_strategies[strategy_name]

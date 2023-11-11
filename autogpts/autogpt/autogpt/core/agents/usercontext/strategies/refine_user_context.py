@@ -19,7 +19,7 @@ Examples:
 ---------
 To initialize and use the `RefineUserContextStrategy`:
 
->>> strategy = RefineUserContextStrategy(logger, model_classification=LanguageModelClassification.FAST_MODEL_4K, default_function_call=RefineUserContextFunctionNames.REFINE_REQUIREMENTS, strategy_name="refine_user_context", context_min_tokens=250, context_max_tokens=300)
+>>> strategy = RefineUserContextStrategy(logger, model_classification=LanguageModelClassification.FAST_MODEL_4K, default_tool_choice=RefineUserContextFunctionNames.REFINE_REQUIREMENTS, strategy_name="refine_user_context", context_min_tokens=250, context_max_tokens=300)
 >>> prompt = strategy.build_prompt(interupt_refinement_process=False, user_objective="Build a web app")
 """
 import enum
@@ -64,7 +64,7 @@ class RefineUserContextStrategyConfiguration(PromptStrategiesConfiguration):
     model_classification: LanguageModelClassification = (
         LanguageModelClassification.FAST_MODEL_4K
     )
-    default_function_call: RefineUserContextFunctionNames = (
+    default_tool_choice: RefineUserContextFunctionNames = (
         RefineUserContextFunctionNames.REFINE_REQUIREMENTS
     )
     context_min_tokens: int = 250
@@ -135,7 +135,7 @@ class RefineUserContextStrategy(BasePromptStrategy):
 1. **Utilize User's Input**: ALWAYS use the user's prior requirements and their recent responses to inform your responses.
 2. **No Assumptions**: NEVER make assumptions. Always align with the user's original expressions.
 3. **Adhere to COCE**: Your reformulations, questions, and interactions should aim to get the user's requirements to fit the COCE Framework.
-4. **Use Functions**: You MUST use the provided functions in your interactions: {function_names}.
+4. **Use Functions**: You MUST use the provided functions in your interactions: {tools_names}.
 
 It's crucial to use the user's input, make no assumptions, align with COCE, and use the provided functions. Prioritize the user's input and remain faithful to the COCE principles."""
 
@@ -162,7 +162,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         self,
         logger: Logger,
         model_classification: LanguageModelClassification,
-        default_function_call: RefineUserContextFunctionNames,
+        default_tool_choice: RefineUserContextFunctionNames,
         context_min_tokens: int,
         context_max_tokens: int,
         count=0,
@@ -179,7 +179,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             The logger object.
         model_classification: LanguageModelClassification
             Classification of the language model.
-        default_function_call: RefineUserContextFunctionNames
+        default_tool_choice: RefineUserContextFunctionNames
             Default function call for the strategy.
 
         context_min_tokens: int
@@ -216,7 +216,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         
 
 
-    def set_functions(self, **kwargs) :
+    def set_tools(self, **kwargs) :
 
         ###
         ### FUNCTIONS
@@ -287,7 +287,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             },
         )
 
-        self._functions = [
+        self._tools = [
             self.function_refine_user_context,
             self.function_request_second_confirmation ,
             self.function_validate_goal,
@@ -320,7 +320,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         #
         # STEP 1 : List all functions available
         #
-        strategy_functions = self.get_functions()
+        strategy_tools = self.get_tools()
 
         if self._config.use_message == True:
             #
@@ -373,8 +373,8 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             content=first_system_prompt.format(
                 # generated_message_history = generated_message_history,
                 os_info=kwargs["os_info"],
-                functions_list=to_numbered_list(self.get_functions_names()),
-                function_names=to_string_list(self.get_functions_names()),
+                tools_list=to_numbered_list(self.get_tools_names()),
+                tools_names=to_string_list(self.get_tools_names()),
                 user_last_goal=self._user_last_goal,
                 questions_history_full=to_numbered_list(
                     self.question_history_label_full
@@ -416,9 +416,9 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
 
         # Step 4 : Hallucination safegard
         #
-        function_call = "auto"
+        tool_choice = "auto"
         if self._count == 0:
-            function_call = RefineUserContextFunctionNames.REFINE_REQUIREMENTS
+            tool_choice = RefineUserContextFunctionNames.REFINE_REQUIREMENTS
             messages.append(
                 ChatMessage.system(
                     content="""Before finalizing your response, ensure that:
@@ -427,16 +427,16 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
                 )
             )
         elif interupt_refinement_process == True:
-            function_call = RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS
+            tool_choice = RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS
 
         #
         # Step 5 :
         #
         prompt = ChatPrompt(
             messages=messages,
-            functions=strategy_functions,
-            function_call=function_call,
-            default_function_call=RefineUserContextFunctionNames.REFINE_REQUIREMENTS,
+            tools=strategy_tools,
+            tool_choice=tool_choice,
+            default_tool_choice=RefineUserContextFunctionNames.REFINE_REQUIREMENTS,
             # TODO
             tokens_used=0,
         )

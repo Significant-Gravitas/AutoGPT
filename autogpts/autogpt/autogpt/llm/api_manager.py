@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 from autogpt.core.resource.model_providers.openai import OPEN_AI_MODELS
 from autogpt.core.resource.model_providers.schema import ChatModelInfo
 from autogpt.singleton import Singleton
@@ -104,7 +106,7 @@ class ApiManager(metaclass=Singleton):
 
         """
         if self.models is None:
-            all_models = openai.Model.list(**openai_credentials)["data"]
+            all_models = client.models.list(**openai_credentials)["data"]
             self.models = [model for model in all_models if "gpt" in model["id"]]
 
         return self.models

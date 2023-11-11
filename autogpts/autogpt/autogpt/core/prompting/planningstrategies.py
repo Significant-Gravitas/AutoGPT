@@ -367,7 +367,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
 
         return []
 
-    # FIXME : Implement this to converge to AutoGPT vs Loose "default_function_call functionality" => Move to OpenAPIProvider safer
+    # FIXME : Implement this to converge to AutoGPT vs Loose "default_tool_choice functionality" => Move to OpenAPIProvider safer
     # #############
     # # Utilities #
     # #############

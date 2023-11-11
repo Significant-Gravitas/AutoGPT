@@ -10,7 +10,9 @@ import time
 import uuid
 from base64 import b64decode
 
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 import requests
 from PIL import Image
 
@@ -141,13 +143,11 @@ def generate_image_with_dalle(
         )
         size = closest
 
-    response = openai.Image.create(
-        prompt=prompt,
-        n=1,
-        size=f"{size}x{size}",
-        response_format="b64_json",
-        api_key=agent.legacy_config.openai_api_key,
-    )
+    response = client.images.generate(prompt=prompt,
+    n=1,
+    size=f"{size}x{size}",
+    response_format="b64_json",
+    api_key=agent.legacy_config.openai_api_key)
 
     logger.info(f"Image Generated for prompt:{prompt}")
 

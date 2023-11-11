@@ -4,6 +4,7 @@ from typing import Optional
 
 
 from autogpts.AFAAS.app.lib import Task
+from autogpts.autogpt.autogpt.core.agents.planner.main import PlannerAgent
 from autogpts.autogpt.autogpt.core.prompting.base import (
     BasePromptStrategy, LanguageModelClassification, PromptStrategiesConfiguration)
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
@@ -21,7 +22,7 @@ class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
     model_classification: LanguageModelClassification = (
         LanguageModelClassification.SMART_MODEL_8K
     )
-    default_function_call: InitialPlanFunctionNames = (
+    default_tool_choice: InitialPlanFunctionNames = (
         InitialPlanFunctionNames.INITIAL_PLAN
     )
     temperature : float = 0.9
@@ -62,7 +63,7 @@ class InitialPlanStrategy(BasePromptStrategy):
         self,
         logger: Logger,
         model_classification: LanguageModelClassification,
-        default_function_call: InitialPlanFunctionNames,
+        default_tool_choice: InitialPlanFunctionNames,
         temperature: float,  # if coding 0.05
         top_p: Optional[float],
         max_tokens: Optional[int],
@@ -80,7 +81,7 @@ class InitialPlanStrategy(BasePromptStrategy):
     def model_classification(self) -> LanguageModelClassification:
         return self._model_classification
 
-    def set_functions(self, **kwargs):
+    def set_tools(self, **kwargs):
         self.DEFAULT_CREATE_PLAN_FUNCTION = CompletionModelFunction(
             name=InitialPlanFunctionNames.INITIAL_PLAN.value,
             description="Creates a set of tasks that forms the initial plan for an autonomous agent.",
@@ -115,7 +116,7 @@ class InitialPlanStrategy(BasePromptStrategy):
             },
         )
 
-        self._strategy_functions = [self.DEFAULT_CREATE_PLAN_FUNCTION]
+        self._tools = [self.DEFAULT_CREATE_PLAN_FUNCTION]
 
     def build_prompt(
         self,
@@ -152,7 +153,7 @@ class InitialPlanStrategy(BasePromptStrategy):
         user_prompt = ChatMessage.user(
             content=self._user_prompt_template.format(**template_kwargs),
         )
-        strategy_functions = self._strategy_functions
+        strategy_tools = self._tools
 
         response_format_instr = ChatMessage.system(
             self.response_format_instruction(
@@ -163,9 +164,9 @@ class InitialPlanStrategy(BasePromptStrategy):
 
         return ChatPrompt(
             messages=[system_prompt, user_prompt, response_format_instr],
-            functions=strategy_functions,
-            function_call=InitialPlanFunctionNames.INITIAL_PLAN.value,
-            default_function_call=InitialPlanFunctionNames.INITIAL_PLAN.value,
+            tools=strategy_tools,
+            tool_choice=InitialPlanFunctionNames.INITIAL_PLAN.value,
+            default_tool_choice=InitialPlanFunctionNames.INITIAL_PLAN.value,
             # TODO:
             tokens_used=0,
         )
@@ -188,3 +189,8 @@ class InitialPlanStrategy(BasePromptStrategy):
             Task.parse_obj(task) for task in parsed_response["task_list"]
         ]
         return parsed_response
+    
+    
+    def response_format_instruction(self, model_name: str) -> str:
+        model_provider = self._agent._chat_model_provider
+        return super().response_format_instruction(language_model_provider=model_provider, model_name = model_name)

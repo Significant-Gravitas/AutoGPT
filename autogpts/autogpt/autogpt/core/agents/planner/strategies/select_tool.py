@@ -77,7 +77,7 @@ class SelectToolStrategy(PlanningPromptStrategy):
         """
 
         model_name = kwargs["model_name"]
-        self._functions = agent._tool_registry.dump_tools()
+        self._tools = agent._tool_registry.dump_tools()
 
         ###
         ### To Facilitate merge with AutoGPT changes
@@ -85,7 +85,7 @@ class SelectToolStrategy(PlanningPromptStrategy):
         event_history = False
         include_os_info = True
         del kwargs["tools"]
-        tools = self._functions
+        tools = self._tools
         agent_directives = BaseAgentDirectives.from_file(agent=agent)
         extra_messages: list[ChatMessage] = []
 
@@ -138,9 +138,9 @@ class SelectToolStrategy(PlanningPromptStrategy):
         self._function = agent._tool_registry.dump_tools()
         prompt = ChatPrompt(
             messages=messages,
-            functions=self._function,
-            function_call="auto",
-            default_function_call="ask_user",
+            tools=self._function,
+            tool_choice="auto",
+            default_tool_choice="ask_user",
         )
 
         return prompt
@@ -148,10 +148,9 @@ class SelectToolStrategy(PlanningPromptStrategy):
     #
     # response_format_instruction
     #
-    def response_format_instruction(
-        self, agent: "PlannerAgent", model_name: str, **kargs
-    ) -> str:
-        return super().response_format_instruction(agent=agent, model_name=model_name)
+    def response_format_instruction(self, model_name: str) -> str:
+        model_provider = self._agent._chat_model_provider
+        return super().response_format_instruction(language_model_provider=model_provider, model_name = model_name)
 
     #
     # _generate_intro_prompt

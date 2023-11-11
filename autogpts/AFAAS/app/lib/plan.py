@@ -11,14 +11,15 @@ from .tasks import Task
 logger = Logger(name=__name__)
 
 from autogpts.autogpt.autogpt.core.configuration import AFAASModel
+from .basetask import BaseTask
 
-
-class Plan(AFAASModel):
+class Plan(BaseTask):
     """
     Represents a plan consisting of a list of tasks.
     """
-
-    plan_id: str = "PL" + str(uuid.uuid4())
+    plan_id: str = Field(
+        default_factory=lambda: "PL" + str(uuid.uuid4())
+    ) 
     # def _get_tasks_from_db(self):
     #     return Task.get_from_db(self.plan_id)
     # tasks: list[Task] =  Field(default_factory=_get_tasks_from_db)

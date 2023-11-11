@@ -139,6 +139,11 @@ class AbstractModelProvider(abc.ABC):
     def get_remaining_budget(self) -> float:
         ...
 
+class AbstractLanguageModelProvider(AbstractModelProvider) :
+    @abc.abstractmethod
+    def has_oa_tool_calls_api(self, model_name: str) -> bool:
+        ...
+
 
 class ModelTokenizer(Protocol):
     """A ModelTokenizer provides tokenization specific to a model."""

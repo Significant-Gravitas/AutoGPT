@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
     from .plan import Plan
+    from .tasks import Task
 
 
 class TaskType(str, enum.Enum):
@@ -165,7 +166,7 @@ class TaskContext(AFAASModel):
     enough_info: bool = False
 
 
-class Task(AFAASModel):
+class BaseTask(AFAASModel):
     """
     Model representing a task.
 
@@ -187,15 +188,7 @@ class Task(AFAASModel):
     ###
     ### GENERAL properties
     ###
-    task_id: str = Field(
-        default_factory=lambda: "T" + str(uuid.uuid4())
-    )  # task_id: str = Task.generate_short_id()
-    task_parent: Optional[Task]
-    task_parent_id: Optional[str]
-    task_predecessors: Optional[list[Task]]   
-    task_predecessors_id: Optional[str]
-    # responsible_agent_id: Optional[str] = Field(default="")
-    state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG.value)
+    task_id: str 
 
     task_goal: str
     """ The title / Name of the task """
@@ -214,18 +207,7 @@ class Task(AFAASModel):
     ###
     task_history: Optional[list[dict]]
     subtasks: Optional[list[Task]]
-    acceptance_criteria: list[str]
-
-    ###
-    ### Optional : Task execution properties
-    ### Suggestion : for each new task always look it it can be divided in smaller tasks
-    # ###
-    # if aaas :
-    #     command : Optional[str] = Field(default="afaas_whichway")
-    # else :
-    #     command : Optional[str] = Field(default="afaas_make_initial_plan")
-    command: Optional[str] = Field(default_factory=lambda: Task.default_command())
-    arguments: Optional[dict] = Field(default={})
+    acceptance_criteria: Optional[list[str]]
 
     class Config:
         arbitrary_types_allowed = True
@@ -305,15 +287,3 @@ class Task(AFAASModel):
             indented_structure += "  " * i + "-> " + task.name + "\n"
 
         return indented_structure
-
-    # @classmethod
-    # def generate_short_id(length=6):
-    #     characters = string.ascii_letters + string.digits
-    #     return "T".join(random.choice(characters) for i in range(length))
-
-
-# Need to resolve the circular dependency between Task and TaskContext once both models are defined.
-Task.update_forward_refs()
-
-# Need to resolve the circular dependency between Task and TaskContext once both models are defined.
-TaskContext.update_forward_refs()
