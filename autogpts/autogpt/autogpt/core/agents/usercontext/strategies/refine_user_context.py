@@ -527,7 +527,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             self._last_questions = questions_with_uuid
             self._last_questions_label = parsed_response["questions"]
 
-        parsed_response["name"] = response_content["tool_calls"]["name"]
+        parsed_response["name"] = response_content["tool_calls"][0]['function']["name"]
         self._logger.debug(parsed_response)
         self._count += 1
         return parsed_response
