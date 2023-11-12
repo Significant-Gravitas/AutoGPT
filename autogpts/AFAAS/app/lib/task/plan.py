@@ -136,25 +136,26 @@ class Plan(BaseTask):
         ### Step 2 : Prepend usercontext
         ###
         # FIXME: DEACTIVATED FOR TEST PURPOSE
-        try : 
-            import autogpts.autogpt.autogpt.core.agents.usercontext
-            refine_user_context_task = Task(
-                # task_parent = self.plan() ,
-                task_parent_id=None,
-                task_predecessor_id=None,
-                responsible_agent_id=None,
-                task_goal="Refine a user requirements for better exploitation by Agents",
-                command="afaas_refine_user_context",
-                acceptance_criteria=[
-                    "The user has clearly and undoubtly stated his willingness to quit the process"
-                ],
-                arguments={},
-                state=TaskStatusList.READY,
-            )
-            initial_task_list = [refine_user_context_task] + initial_task_list
-            # self._current_task = refine_user_context_task  # .task_id
-        except:
-            pass
+        if False : 
+            try : 
+                import autogpts.autogpt.autogpt.core.agents.usercontext
+                refine_user_context_task = Task(
+                    # task_parent = self.plan() ,
+                    task_parent_id=None,
+                    task_predecessor_id=None,
+                    responsible_agent_id=None,
+                    task_goal="Refine a user requirements for better exploitation by Agents",
+                    command="afaas_refine_user_context",
+                    acceptance_criteria=[
+                        "The user has clearly and undoubtly stated his willingness to quit the process"
+                    ],
+                    arguments={},
+                    state=TaskStatusList.READY,
+                )
+                initial_task_list = [refine_user_context_task] + initial_task_list
+                # self._current_task = refine_user_context_task  # .task_id
+            except:
+                pass
 
         self.add_tasks(tasks= initial_task_list)
 
