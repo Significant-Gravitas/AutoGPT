@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 async def query_language_model(task: Task, agent: BaseAgent) -> None:
     # plan =  self.execute_strategy(
     agent._loop.tool_registry().list_tools_descriptions()
-    plan = await agent._loop.execute_strategy(
+    plan = await agent._loop._execute_strategy(
         strategy_name="make_initial_plan", agent=agent
     )
 

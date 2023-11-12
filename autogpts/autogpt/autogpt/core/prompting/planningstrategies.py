@@ -169,7 +169,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         )
         print(
             f"""################################################################################################################################################################################################################################
-              DEBUG PLAN : Plan :\n{Plan.parse_agent_plan(agent.plan)}\n\n
+              DEBUG PLAN : Plan :\n{Plan.debug_parse_task(agent.plan)}\n\n
               """
         )
 

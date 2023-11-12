@@ -190,7 +190,7 @@ class PlannerLoop(BaseLoop):
             #     self._agent.plan.tasks.append(Task(data = task))
 
             # Debugging :)
-            self._agent._logger.info(Plan.parse_agent_plan(self._agent.plan))
+            self._agent._logger.info(Plan.debug_parse_task(self._agent.plan))
 
             ###
             ### Assign task
@@ -299,7 +299,7 @@ class PlannerLoop(BaseLoop):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
-        raw_response: ChatModelResponse = await self.execute_strategy(
+        raw_response: ChatModelResponse = await self._execute_strategy(
             strategy_name="select_tool",
             agent=self._agent,
             tools=self.get_tool_list(),

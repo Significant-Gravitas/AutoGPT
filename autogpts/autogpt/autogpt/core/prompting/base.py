@@ -136,7 +136,6 @@ class BasePromptStrategy(AbstractPromptStrategy):
         """
         return self._tools
 
-    # TODO : This implementation is shit :)
     def get_tools_names(self) -> list[str]:
         """
         Returns a list of names of functions related to refining user context.
@@ -152,7 +151,6 @@ class BasePromptStrategy(AbstractPromptStrategy):
         """
         return [item.name for item in self._tools]
 
-    # NOTE : based on autogpt agent.py
     # This can be expanded to support multiple types of (inter)actions within an agent
     @abc.abstractmethod
     def response_format_instruction(self, language_model_provider : AbstractLanguageModelProvider, model_name: str) -> str:

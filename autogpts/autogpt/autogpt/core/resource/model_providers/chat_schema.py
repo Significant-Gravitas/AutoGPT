@@ -240,7 +240,7 @@ class FunctionParameters(BaseModel):
 
     type: str
     properties: Dict[str, Property]
-    required: List[str]
+    required: list[str]
 
 
 class AssistantFunctionCall(BaseModel):

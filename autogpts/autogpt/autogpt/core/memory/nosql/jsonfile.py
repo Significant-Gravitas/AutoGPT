@@ -64,7 +64,7 @@ class JSONFileMemory(NoSQLMemory):
         else:
             raise KeyError(f"No such key '{key}' in table {table_name}")
 
-    def list(self, table_name: str) -> List[dict]:
+    def list(self, table_name: str) -> list[dict]:
         table_path = Path(self._configuration.json_file_path, table_name)
         data = []
         for json_file in table_path.glob("**/*.json"):

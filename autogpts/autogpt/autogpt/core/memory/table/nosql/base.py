@@ -171,7 +171,7 @@ class BaseNoSQLTable(AbstractTable):
         filter: AbstractTable.FilterDict = {},
         order_column: Optional[str] = None,
         order_direction: Literal["asc", "desc"] = "desc",
-    ) -> List[Dict[str, Any]]:
+    ) -> list[Dict[str, Any]]:
         """
         Retrieve a filtered and optionally ordered list of items from the table.
 
