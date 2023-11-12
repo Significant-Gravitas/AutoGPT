@@ -29,6 +29,8 @@ class UserContextAgent(BaseAgent):
         name="usercontext_agent"
         description="An agent that improve the quality of input provided by users."
 
+        prompt_manager: PromptManager.SystemSettings = PromptManager.SystemSettings()
+
         class Config(BaseAgent.SystemSettings.Config):
             pass
 
@@ -42,6 +44,7 @@ class UserContextAgent(BaseAgent):
         prompt_manager: PromptManager,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
+        **kwargs
     ):
         super().__init__(
             settings=settings,
@@ -122,7 +125,7 @@ class UserContextAgent(BaseAgent):
 
     @classmethod
     def get_strategies(cls)-> list :
-        from autogpts.autogpt.autogpt.core.agents.routing.strategies import (
+        from autogpts.autogpt.autogpt.core.agents.usercontext.strategies import (
             StrategiesSet)
         return StrategiesSet.get_strategies()
 

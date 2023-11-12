@@ -187,7 +187,11 @@ class BaseTask(AFAASModel):
         >>> print(task.objective)
         "Write a report"
     """
-
+    class Config(AFAASModel.Config):
+        # This is a list of Field to Exclude during serialization
+        default_exclude = {
+            "subtasks",
+        }
     ###
     ### GENERAL properties
     ###
@@ -209,11 +213,8 @@ class BaseTask(AFAASModel):
     ### Task Management properties
     ###
     task_history: Optional[list[dict]]
-    subtasks: Optional[list[Task]]
+    subtasks: list[Task] = []
     acceptance_criteria: Optional[list[str]]
-
-    class Config:
-        arbitrary_types_allowed = True
 
     @staticmethod
     def default_command() -> str: 
@@ -226,10 +227,10 @@ class BaseTask(AFAASModel):
     def add_tasks(self, tasks=list[Task], position: int = None):
         if position is not None:
             for tasks in tasks:
-                self.subtask.insert(tasks, position)
+                self.subtasks.insert(tasks, position)
         else:
             for tasks in tasks:
-                self.subtask.append(tasks)
+                self.subtasks.append(tasks)
 
 
     def __getitem__(self, index: Union[int, str]):
@@ -278,14 +279,14 @@ class BaseTask(AFAASModel):
         """
         if isinstance(index, int):
             # Handle positive integers and negative integers
-            if -len(self.subtask) <= index < len(self.subtask):
-                return self.subtask[index]
+            if -len(self.subtasks) <= index < len(self.subtasks):
+                return self.subtasks[index]
             else:
                 raise IndexError("Index out of range")
         elif isinstance(index, str) and index.startswith(":") and index[1:].isdigit():
             # Handle notation like ":-1"
             start = 0 if index[1:] == "" else int(index[1:])
-            return self.subtask[start:]
+            return self.subtasks[start:]
         else:
             raise ValueError("Invalid index type")
 
@@ -321,7 +322,7 @@ class BaseTask(AFAASModel):
             #         should_remove_siblings(st, task)
             return False
 
-        for task in self.subtask:
+        for task in self.subtasks:
             should_remove_siblings(task)
             clear_predecessors(task)
 
@@ -347,7 +348,7 @@ class BaseTask(AFAASModel):
                 check_task(subtask)
 
         # Start checking from the root tasks in the plan
-        for task in self.subtask:
+        for task in self.subtasks:
             check_task(task)
 
         return ready_tasks
@@ -378,7 +379,7 @@ class BaseTask(AFAASModel):
             return None
 
         # Start checking from the root tasks in the plan
-        for task in self.subtask:
+        for task in self.subtasks:
             found_task = check_task(task)
             if found_task:
                 return found_task
@@ -388,7 +389,7 @@ class BaseTask(AFAASModel):
     @staticmethod
     def debug_parse_task(plan: dict) -> str:
         parsed_response = f"Agent Plan:\n"
-        for i, task in enumerate(plan.subtask):
+        for i, task in enumerate(plan.subtasks):
             task : Task
             parsed_response += f"{i+1}. {task.task_id} - {task.task_goal}\n"
             parsed_response += f"Description {task.description}\n"

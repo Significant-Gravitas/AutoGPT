@@ -18,8 +18,8 @@ class Plan(BaseTask):
     """
     Represents a plan consisting of a list of tasks.
     """
-    class Config(BaseTask):
-        allow_population_by_field_name = True
+    # class Config(BaseTask):
+    #     allow_population_by_field_name = True
 
     task_id: str = Field(
         default_factory=lambda: Plan.generate_uuid(),
@@ -29,9 +29,10 @@ class Plan(BaseTask):
     @staticmethod
     def generate_uuid() :
         return "PL" + str(uuid.uuid4())
-
-    subtask: list[Task] = []
-
+    
+    @property
+    def plan_id(self):
+        return self.task_id
 
     def generate_pitch(self, task=None):
         if task is None:
@@ -40,7 +41,7 @@ class Plan(BaseTask):
         # Extract the task's siblings and path
         siblings = [
             sib
-            for sib in self.subtask
+            for sib in self.subtasks
             if sib.task_parent_id == task.task_parent_id and sib != task
         ]
         path_to_task = task.find_task_path()
@@ -61,7 +62,7 @@ class Plan(BaseTask):
             high_level_plan="\n".join(
                 [
                     "{}: {}".format(t.task_goal, t.description)
-                    for t in self.subtask
+                    for t in self.subtasks
                     if not t.task_parent_id
                 ]
             ),

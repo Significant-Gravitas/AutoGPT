@@ -25,6 +25,7 @@ To initialize and use the `RefineUserContextStrategy`:
 import enum
 import uuid
 from logging import Logger
+from typing import Optional
 
 
 from autogpts.AFAAS.app.lib.message_agent_user import Questions
@@ -35,7 +36,7 @@ from autogpts.autogpt.autogpt.core.prompting.schema import \
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
     json_loads, to_numbered_list, to_string_list)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
+    AbstractLanguageModelProvider, AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
@@ -165,6 +166,11 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         default_tool_choice: RefineUserContextFunctionNames,
         context_min_tokens: int,
         context_max_tokens: int,
+        temperature : float , #if coding 0.05
+        top_p: Optional[float] ,
+        max_tokens : Optional[int] ,
+        frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
+        presence_penalty : Optional[float], # Avoid certain subjects
         count=0,
         user_last_goal="",
         exit_token: str = str(uuid.uuid4()),
@@ -474,7 +480,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             'Monitor temperatures in the specified range with preferred brand'
         """
         try:
-            parsed_response = json_loads(response_content["tool_calls"]["arguments"])
+            parsed_response = json_loads(response_content["tool_calls"][0]['function']["arguments"])
         except Exception:
             self._logger.warning(parsed_response)
 
@@ -483,15 +489,15 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         # TODO : Type Questions in a Class ?
         #
         save_questions = False
+        questions_with_uuid = []
         if (
-            response_content["tool_calls"]["name"]
+            response_content["tool_calls"][0]['function']["name"]
             == RefineUserContextFunctionNames.REFINE_REQUIREMENTS
         ):
-            questions_with_uuid = []
             question = []
             # questions_with_uuid = [{"id": "Q" + str(uuid.uuid4()), "question": q} for q in parsed_response["questions"]]
             for q_text in parsed_response["questions"]:
-                question_id = Questions.generate_new_id()
+                question_id = Questions.generate_uuid()
                 question = Questions(
                     question_id=question_id, message=q_text, type=None, state=None, items=[]
                 )
@@ -502,11 +508,11 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             self._user_last_goal = parsed_response["reformulated_goal"]
 
         elif (
-            response_content["tool_calls"]["name"]
+            response_content["tool_calls"][0]['function']["name"]
             == RefineUserContextFunctionNames.REQUEST_SECOND_CONFIRMATION
         ):
             # questions_with_uuid = [{"id": "Q" + str(uuid.uuid4()), "question":  parsed_response["questions"]}]
-            question_id = Questions.generate_new_id()
+            question_id = Questions.generate_uuid()
             question_text = parsed_response["questions"]
             question = Questions(
                 question_id=question_id, message=question_text, type=None, state=None, items=[]
@@ -527,4 +533,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         return parsed_response
 
     def save(self):
+        pass
+
+    def response_format_instruction(self, language_model_provider: AbstractLanguageModelProvider, model_name: str) -> str:
         pass

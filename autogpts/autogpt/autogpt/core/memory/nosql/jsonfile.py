@@ -33,7 +33,7 @@ class JSONFileMemory(NoSQLMemory):
         return data
 
     def _save_file(self, key: dict, table_name: str, data: dict):
-        file = self._get_file_path(key, table_name)
+        file : Path = self._get_file_path(key, table_name)
 
         file.parent.mkdir(parents=True, exist_ok=True)
         with file.open("w") as f:

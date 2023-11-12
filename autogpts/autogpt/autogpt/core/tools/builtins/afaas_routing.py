@@ -53,7 +53,7 @@ async def afaas_routing(task: Task, agent: BaseAgent, note_to_agent_length : int
         # # USER CONTEXT AGENT : Get RoutingAgent from DB (for POW / POC)
         routing_settings.agent_id = new_routing_agent.agent_id
 
-        routing_agent = RoutingAgent.get_agent_from_settings(
+        routing_agent = RoutingAgent.get_instance_from_settings(
             agent_settings=routing_settings,
             logger=agent._logger,
         )

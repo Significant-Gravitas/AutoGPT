@@ -1,11 +1,16 @@
+from __future__ import annotations
 import abc
 import datetime
 import enum
 import logging
 import uuid
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
+
+
+
+LOG = logging.Logger(__name__)
 
 
 def UserConfigurable(*args, **kwargs):
@@ -41,7 +46,7 @@ class SystemConfiguration(BaseModel):
         allow_inf_nan = False
 
     def json(self, **dumps_kwargs: Any) -> str:
-        logging.Logger(__name__).warning(f"{__qualname__}.json()")
+        LOG.warning(f"{__qualname__}.json()")
         return super().json(**dumps_kwargs)
 
 
@@ -65,6 +70,7 @@ class AFAASModel(BaseModel):
     modified_at: datetime.datetime = datetime.datetime.now()
 
     def dict_memory(self, **dumps_kwargs: Any) -> dict:
+        LOG.debug(f"FIXME: Temporary implementation before a to pydantic 2.0.0")
         result = self.dict(**dumps_kwargs)
         encoders = self.Config.json_encoders
         for key, value in result.items():
@@ -73,9 +79,50 @@ class AFAASModel(BaseModel):
                     result[key] = encoder(value)
         return result
 
-    def json(self, **dumps_kwargs: Any) -> str:
-        logging.Logger(__name__).warning(f"{__qualname__}.json()")
-        return super().json(**dumps_kwargs)
+    
+    def dict(self, include_all=False, *args, **kwargs):
+        """
+        Serialize the object to a dictionary representation.
+
+        Args:
+            remove_technical_values (bool, optional): Whether to exclude technical values. Default is True.
+            *args: Additional positional arguments to pass to the base class's dict method.
+            **kwargs: Additional keyword arguments to pass to the base class's dict method.
+            kwargs['exclude'] excludes the fields from the serialization
+
+        Returns:
+            dict: A dictionary representation of the object.
+        """
+        self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
+        if not include_all:
+            kwargs["exclude"] = self.Config.default_exclude
+        # Call the .dict() method with the updated exclude_arg
+        return super().dict(*args, **kwargs)
+
+    def json(self, *args, **kwargs):
+        """
+        Serialize the object to a dictionary representation.
+
+        Args:
+            remove_technical_values (bool, optional): Whether to exclude technical values. Default is True.
+            *args: Additional positional arguments to pass to the base class's dict method.
+            **kwargs: Additional keyword arguments to pass to the base class's dict method.
+            kwargs['exclude'] excludes the fields from the serialization
+
+        Returns:
+            dict: A dictionary representation of the object.
+        """
+        logging.Logger(__name__).warning(
+            "Warning : Recomended use json_api() or json_memory()"
+        )
+        logging.Logger(__name__).warning("BaseAgent.SystemSettings.json()")
+        self.prepare_values_before_serialization()  # Call the custom treatment before .json()
+        kwargs["exclude"] = self.Config.default_exclude
+        return super().json(*args, **kwargs)
+
+    # TODO Implement a BaseSettings class and move it to the BaseSettings ?
+    def prepare_values_before_serialization(self):
+            pass
 
     def __str__(self):
         lines = [f"{self.__class__.__name__}("]
@@ -143,7 +190,7 @@ class Configurable(abc.ABC, Generic[S]):
             allow_inf_nan = False
 
     def json(self, **dumps_kwargs: Any) -> str:
-        logging.Logger(__name__).warning(f"{__qualname__}.json()")
+        LOG.warning(f"{__qualname__}.json()")
         return super().json(**dumps_kwargs)
 
     def __init__(self, settings: S, logger: logging.Logger):

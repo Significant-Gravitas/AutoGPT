@@ -58,6 +58,9 @@ class PlannerLoop(BaseLoop):
         self._active = False
         self.remaining_cycles = 1
 
+    def set_current_task(self, task = Task) :
+        self._current_task : Task = task
+
     def add_initial_tasks(self):
         ###
         ### Step 1 : add routing to the tasks
