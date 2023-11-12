@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
     from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
 
-from autogpts.AFAAS.app.lib.plan import Plan
+from autogpts.AFAAS.app.lib.task.plan import Plan
 from autogpts.autogpt.autogpt.core.configuration import UserConfigurable
 from autogpts.autogpt.autogpt.core.prompting.schema import \
     LanguageModelClassification

@@ -4,7 +4,7 @@ from logging import Logger
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autogpts.AFAAS.app.lib.plan import Plan
+    from autogpts.AFAAS.app.lib.task.plan import Plan
     from autogpts.autogpt.autogpt.core.memory.table import AbstractTable
     from autogpts.autogpt.autogpt.core.resource.model_providers import \
         CompletionModelFunction

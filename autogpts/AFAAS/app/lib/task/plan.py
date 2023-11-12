@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
-from .basetask import BaseTask
-from .tasks import Task, TaskStatusList
+from .base import BaseTask
+from .task import Task, TaskStatusList
 
 logger = Logger(name=__name__)
 
@@ -18,6 +18,9 @@ class Plan(BaseTask):
     """
     Represents a plan consisting of a list of tasks.
     """
+    class Config(BaseTask):
+        allow_population_by_field_name = True
+
     task_id: str = Field(
         default_factory=lambda: Plan.generate_uuid(),
         alias = "plan_id"
@@ -91,11 +94,11 @@ class Plan(BaseTask):
         memory = agent._memory
         plan_table = memory.get_table("plans")
         plan = cls(agent_id = agent.agent_id, task_goal = agent.agent_goal_sentence)
-        plan._create_initial_tasks(agent = agent)
+        plan._create_initial_tasks()
 
         plan_table.add(plan, id=plan.plan_id)
         return plan
-        
+    
     def _create_initial_tasks(self):
         try : 
             import autogpts.autogpt.autogpt.core.agents.routing
@@ -131,6 +134,7 @@ class Plan(BaseTask):
         ###
         ### Step 2 : Prepend usercontext
         ###
+        # FIXME: DEACTIVATED FOR TEST PURPOSE
         try : 
             import autogpts.autogpt.autogpt.core.agents.usercontext
             refine_user_context_task = Task(
@@ -140,6 +144,9 @@ class Plan(BaseTask):
                 responsible_agent_id=None,
                 task_goal="Refine a user requirements for better exploitation by Agents",
                 command="afaas_refine_user_context",
+                acceptance_criteria=[
+                    "The user has clearly and undoubtly stated his willingness to quit the process"
+                ],
                 arguments={},
                 state=TaskStatusList.READY,
             )

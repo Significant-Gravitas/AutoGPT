@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpts.AFAAS.app.lib.plan import Plan
-from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
+from autogpts.AFAAS.app.lib.task.plan import Plan
+from autogpts.AFAAS.app.lib.task.task import Task, TaskStatusList
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 
 logger = logging.getLogger(__name__)

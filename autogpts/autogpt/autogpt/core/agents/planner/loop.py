@@ -7,8 +7,8 @@ from pydantic import Field
 from autogpts.AFAAS.app.lib.action import (ActionErrorResult, ActionResult,
                                            ActionSuccessResult)
 from autogpts.AFAAS.app.lib.context_items import ContextItem
-from autogpts.AFAAS.app.lib.plan import Plan
-from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
+from autogpts.AFAAS.app.lib.task.plan import Plan
+from autogpts.AFAAS.app.lib.task.task import Task, TaskStatusList
 from autogpts.autogpt.autogpt.core.agents.base.exceptions import (
     AgentException, ToolExecutionError, UnknownToolError)
 from autogpts.autogpt.autogpt.core.tools import ToolOutput

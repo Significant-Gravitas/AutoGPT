@@ -60,7 +60,7 @@ async def run_auto_gpt():
         )
         # agent_settings.update_agent_name_and_goals(agent_dict_list[0])
         agent_from_list: PlannerAgent = PlannerAgent.get_agent_from_settings(
-            agent_settings=agent_settings,
+            agent_settings=agent_dict_list[0],
             logger=client_logger,
         )
 

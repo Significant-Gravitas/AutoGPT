@@ -12,7 +12,7 @@ class TasksTable(BaseNoSQLTable):
     secondary_key = "plan_id"
     third_key = "task_composed_id"
 
-    from autogpts.AFAAS.app.lib.tasks import Task
+    from autogpts.AFAAS.app.lib.task.task import Task
     
     
     def add(self, value: dict, id: str = Task.generate_uuid()) -> str:

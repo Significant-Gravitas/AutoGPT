@@ -13,7 +13,7 @@ class PlansTable(BaseNoSQLTable):
     third_key = "user_id"
 
  
-    from autogpts.AFAAS.app.lib.plan import Plan
+    from autogpts.AFAAS.app.lib.task.plan import Plan
 
     def add(self, value: dict, id: str = Plan.generate_uuid()) -> str:
         return super().add(value, id)

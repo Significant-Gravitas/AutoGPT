@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpts.AFAAS.app.lib.tasks import Task
+from autogpts.AFAAS.app.lib.task.task import Task
 from autogpts.autogpt.autogpt.core.agents.routing import RoutingAgent
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.agents.routing.strategies.routing import RoutingStrategyConfiguration

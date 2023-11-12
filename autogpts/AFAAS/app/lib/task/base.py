@@ -19,7 +19,8 @@ if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
     from .plan import Plan
-    from .tasks import Task
+
+from .task import Task
 
 
 class TaskType(str, enum.Enum):
