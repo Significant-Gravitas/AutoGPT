@@ -7,7 +7,9 @@ from abc import ABC
 from pathlib import Path
 from typing import Any, Dict, List
 
-import openai
+from openai import OpenAI
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 import pytest
 from agbenchmark.__main__ import OPTIONAL_CATEGORIES, TEMP_FOLDER_ABS_PATH
 from agbenchmark.agent_api_interface import run_api_agent
@@ -145,7 +147,7 @@ class Challenge(ABC):
         return 1.0
 
     def llm_eval(self, config: Dict[str, Any], content: str, ground: Ground) -> float:
-        openai.api_key = os.getenv("OPENAI_API_KEY")
+        
         if os.getenv("IS_MOCK"):
             return 1.0
 
@@ -158,12 +160,10 @@ class Challenge(ABC):
 
         prompt += END_PROMPT
 
-        answer = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": prompt},
-            ],
-        )
+        answer = client.chat.completions.create(model="gpt-4",
+        messages=[
+            {"role": "system", "content": prompt},
+        ])
 
         return float(answer["choices"][0]["message"]["content"])  # type: ignore
 

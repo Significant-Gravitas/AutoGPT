@@ -7,8 +7,8 @@ from pydantic import Field
 from autogpts.AFAAS.app.lib.action import (ActionErrorResult, ActionResult,
                                            ActionSuccessResult)
 from autogpts.AFAAS.app.lib.context_items import ContextItem
-from autogpts.AFAAS.app.lib.plan import Plan
-from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
+from autogpts.AFAAS.app.lib.task.plan import Plan
+from autogpts.AFAAS.app.lib.task.task import Task, TaskStatusList
 from autogpts.autogpt.autogpt.core.agents.base.exceptions import (
     AgentException, ToolExecutionError, UnknownToolError)
 from autogpts.autogpt.autogpt.core.tools import ToolOutput
@@ -27,10 +27,10 @@ aaas = {}
 try:
     pass
 
-    Task.command: Optional[str] = Field(default="afaas_whichway")
-    aaas["whichway"] = True
+    Task.command: Optional[str] = Field(default="afaas_routing")
+    aaas["routing"] = True
 except:
-    aaas["whichway"] = False
+    aaas["routing"] = False
 
 try:
     pass
@@ -41,7 +41,7 @@ except:
 
 # FIXME: Deactivated for as long as we don't have the UI to support it
 aaas["usercontext"] = False
-# aaas['whichway'] = False
+# aaas['routing'] = False
 
 
 class PlannerLoop(BaseLoop):
@@ -58,19 +58,23 @@ class PlannerLoop(BaseLoop):
         self._active = False
         self.remaining_cycles = 1
 
+    def set_current_task(self, task = Task) :
+        self._current_task : Task = task
+
     def add_initial_tasks(self):
         ###
-        ### Step 1 : add whichway to the tasks
+        ### Step 1 : add routing to the tasks
         ###
-        if aaas["whichway"]:
+        if aaas["routing"]:
             initial_task = Task(
                 # task_parent = self.plan() ,
                 task_parent_id=None,
                 task_predecessor_id=None,
                 responsible_agent_id=None,
-                task_goal="Define an agent approach to tackle a tasks",
-                command="afaas_whichway",
-                arguments={},
+                # task_goal="Define an agent approach to tackle a tasks",
+                task_goal= self._agent.agent_goal_sentence,
+                command="afaas_routing",
+                arguments = {'note_to_agent_length' : 400},
                 acceptance_criteria=[
                     "A plan has been made to achieve the specific task"
                 ],
@@ -82,7 +86,8 @@ class PlannerLoop(BaseLoop):
                 task_parent_id=None,
                 task_predecessor_id=None,
                 responsible_agent_id=None,
-                task_goal="Make a plan to tacke a tasks",
+                # task_goal="Make a plan to tacke a tasks",
+                task_goal= self._agent.agent_goal_sentence,
                 command="afaas_make_initial_plan",
                 arguments={},
                 acceptance_criteria=[
@@ -106,7 +111,7 @@ class PlannerLoop(BaseLoop):
                 name="afaas_refine_user_context",
                 task_goal="Refine a user requirements for better exploitation by Agents",
                 command="afaas_refine_user_context",
-                # arguments = None,
+                arguments={},
                 state=TaskStatusList.READY,
             )
             initial_task_list = [refine_user_context_task] + initial_task_list
@@ -169,8 +174,8 @@ class PlannerLoop(BaseLoop):
             ##############################################################
             routing_feedbacks = ""
             description = ""
-            if aaas["whichway"]:
-                description, routing_feedbacks = await self.run_whichway_agent()
+            if aaas["routing"]:
+                description, routing_feedbacks = await self.run_routing_agent()
 
             ##############################################################
             ### Step 4 : Saving agent with its new goals
@@ -188,7 +193,7 @@ class PlannerLoop(BaseLoop):
             #     self._agent.plan.tasks.append(Task(data = task))
 
             # Debugging :)
-            self._agent._logger.info(Plan.parse_agent_plan(self._agent.plan))
+            self._agent._logger.info(Plan.debug_parse_task(self._agent.plan))
 
             ###
             ### Assign task
@@ -297,7 +302,7 @@ class PlannerLoop(BaseLoop):
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
         """
-        raw_response: ChatModelResponse = await self.execute_strategy(
+        raw_response: ChatModelResponse = await self._execute_strategy(
             strategy_name="select_tool",
             agent=self._agent,
             tools=self.get_tool_list(),

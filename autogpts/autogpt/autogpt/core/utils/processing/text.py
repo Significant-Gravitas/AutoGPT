@@ -11,7 +11,7 @@ from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import \
     ChatPrompt
 
 logger = logging.getLogger(__name__)
-
+logger.warning(" Deprecated : Use langchain")
 T = TypeVar("T")
 
 
@@ -105,7 +105,7 @@ async def summarize_text(
 
         summary = (
             await llm_provider.create_chat_completion(
-                model_prompt=summarization_prompt.messages,
+                chat_messages=summarization_prompt.messages,
                 model_name=model,
                 temperature=0,
                 max_tokens=500,

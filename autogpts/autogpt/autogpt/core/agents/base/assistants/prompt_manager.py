@@ -150,6 +150,9 @@ class PromptManager(Configurable, AgentMixin):
 
         kwargs.update(self.get_system_info(prompt_strategy))
 
+        #MAKE FUNCTION DYNAMICS
+        prompt_strategy.set_tools(**kwargs)
+
         return await self.chat_with_model(prompt_strategy, **kwargs)
 
     async def chat_with_model(
@@ -170,15 +173,18 @@ class PromptManager(Configurable, AgentMixin):
 
         prompt = prompt_strategy.build_prompt(**template_kwargs)
 
-        self._logger.debug(f"Using prompt:\n{prompt}\n\n")
-        response = await provider.create_chat_completion(
-            model_prompt=prompt.messages,
-            functions=prompt.functions,
+        #self._logger.debug(f"Using prompt:\n{prompt}\n\n")
+        response : ChatModelResponse = await provider.create_chat_completion(
+            chat_messages=prompt.messages,
+            tools=prompt.tools,
             **model_configuration,
             completion_parser=prompt_strategy.parse_response_content,
-            function_call=prompt.function_call,
-            default_function_call=prompt.default_function_call,
+            tool_choice=prompt.tool_choice,
+            default_tool_choice=prompt.default_tool_choice,
         )
+
+        response.chat_messages = prompt.messages
+        response.system_prompt = prompt.messages[0].content
         return response
 
     def get_system_info(self, strategy: AbstractPromptStrategy) -> SystemInfo:

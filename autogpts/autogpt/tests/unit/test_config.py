@@ -95,7 +95,7 @@ def test_set_debug_mode(config: Config) -> None:
     config.debug_mode = debug_mode
 
 
-@patch("openai.Model.list")
+@patch("openai.resources.Models.list")
 def test_smart_and_fast_llms_set_to_gpt4(mock_list_models: Any, config: Config) -> None:
     """
     Test if models update to gpt-3.5-turbo if gpt-4 is not available.

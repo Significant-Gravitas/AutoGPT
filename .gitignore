@@ -1,5 +1,6 @@
 autogpts/autogpt/autogpt/core/agents/usercontext/*
 whichway/
+routing/
 arena/*
 autocorrection.*
 

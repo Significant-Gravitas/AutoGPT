@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
     from autogpts.autogpt.autogpt.core.agents.base.main import BaseAgent
 
-from autogpts.AFAAS.app.lib.plan import Plan
+from autogpts.AFAAS.app.lib.task.plan import Plan
 from autogpts.autogpt.autogpt.core.configuration import UserConfigurable
 from autogpts.autogpt.autogpt.core.prompting.schema import \
     LanguageModelClassification
@@ -169,7 +169,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         )
         print(
             f"""################################################################################################################################################################################################################################
-              DEBUG PLAN : Plan :\n{Plan.parse_agent_plan(agent.plan)}\n\n
+              DEBUG PLAN : Plan :\n{Plan.debug_parse_task(agent.plan)}\n\n
               """
         )
 
@@ -334,7 +334,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
     #     #     "You operate within the following constraints:\n"
     #     #     f"{to_numbered_list(agent.constraints + additional_constraints)}")
 
-    #     # NOTE : PLANCE HOLDER
+    #     # NOTE : PLACE HOLDER
     #     # if agent.resources :
     #     #     body.append("## Resources\n"
     #     #     "You can leverage access to the following resources:\n"
@@ -367,7 +367,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
 
         return []
 
-    # FIXME : Implement this to converge to AutoGPT vs Loose "default_function_call functionality" => Move to OpenAPIProvider safer
+    # FIXME : Implement this to converge to AutoGPT vs Loose "default_tool_choice functionality" => Move to OpenAPIProvider safer
     # #############
     # # Utilities #
     # #############
@@ -393,11 +393,11 @@ class PlanningPromptStrategy(BasePromptStrategy):
     #         Exception: If any other error occurs
     #     """
     #     if use_openai_functions_api:
-    #         if "function_call" not in assistant_reply:
+    #         if "tool_calls" not in assistant_reply:
     #             raise InvalidAgentResponseError("No 'function_call' in assistant reply")
     #         assistant_reply_json["command"] = {
-    #             "name": assistant_reply["function_call"]["name"],
-    #             "args": json.loads(assistant_reply["function_call"]["arguments"]),
+    #             "name": assistant_reply["tool_calls"]["name"],
+    #             "args": json.loads(assistant_reply["tool_calls"]["arguments"]),
     #         }
     #     try:
     #         if not isinstance(assistant_reply_json, dict):

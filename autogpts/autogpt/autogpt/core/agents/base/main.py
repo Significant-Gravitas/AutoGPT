@@ -97,7 +97,7 @@ class AbstractAgent(ABC):
 
     @classmethod
     @abstractmethod
-    def get_agent_from_settings(
+    def get_instance_from_settings(
         cls,
         agent_settings: BaseAgent.SystemSettings,
         logger: logging.Logger,
@@ -167,6 +167,7 @@ class BaseAgent(Configurable, AbstractAgent):
             pass
             # json_encoders = SystemSettings.Config.json_encoders + { Task : lambda v: v.dict()}
 
+        
         def dict(self, include_all=False, *args, **kwargs):
             """
             Serialize the object to a dictionary representation.
@@ -207,6 +208,13 @@ class BaseAgent(Configurable, AbstractAgent):
             kwargs["exclude"] = self.Config.default_exclude
             return super().json(*args, **kwargs)
 
+        # TODO Implement a BaseSettings class and move it to the BaseSettings ?
+        def prepare_values_before_serialization(self):
+            self.agent_setting_module = (
+                f"{self.__class__.__module__}.{self.__class__.__name__}"
+            )
+            self.agent_setting_class = self.__class__.__name__
+
         # NOTE : To be implemented in the future
         def load_root_values(self, *args, **kwargs):
             pass  # NOTE : Currently not used
@@ -214,13 +222,6 @@ class BaseAgent(Configurable, AbstractAgent):
             self.agent_role = self.agent.configuration.agent_role
             self.agent_goals = self.agent.configuration.agent_goals
             self.agent_goal_sentence = self.agent.configuration.agent_goal_sentence
-
-        # TODO Implement a BaseSettings class and move it to the BaseSettings ?
-        def prepare_values_before_serialization(self):
-            self.agent_setting_module = (
-                f"{self.__class__.__module__}.{self.__class__.__name__}"
-            )
-            self.agent_setting_class = self.__class__.__name__
 
     def __init__(
         self,
@@ -305,6 +306,20 @@ class BaseAgent(Configurable, AbstractAgent):
         )
         return return_var
 
+    def exit(self, *kwargs) -> None:
+        """
+        Exit the agent's loop if it's running.
+
+        Args:
+            *kwargs: Additional arguments.
+
+        Example:
+            agent = YourClass()
+            agent.exit()
+        """
+        if self._loop._is_running:
+            self._loop._is_running = False
+
     async def run(
         self,
         user_input_handler: Callable[[str], Awaitable[str]],
@@ -358,22 +373,8 @@ class BaseAgent(Configurable, AbstractAgent):
         else:
             raise BaseException("Agent Already Running")
 
-    def exit(self, *kwargs) -> None:
-        """
-        Exit the agent's loop if it's running.
-
-        Args:
-            *kwargs: Additional arguments.
-
-        Example:
-            agent = YourClass()
-            agent.exit()
-        """
-        if self._loop._is_running:
-            self._loop._is_running = False
-
     @classmethod
-    def get_agent_from_settings(
+    def get_instance_from_settings(
         cls,
         agent_settings: BaseAgent.SystemSettings,
         logger: logging.Logger,
@@ -511,7 +512,7 @@ class BaseAgent(Configurable, AbstractAgent):
 
         logger.info(f"Loaded Agent ({cls}) with ID {agent_id}")
 
-        agent = cls.get_agent_from_settings(
+        agent = cls.get_instance_from_settings(
             agent_settings=agent_settings,
             logger=logger,
         )
@@ -525,50 +526,6 @@ class BaseAgent(Configurable, AbstractAgent):
     ) -> None:
         pass
 
-    @classmethod
-    @abstractmethod
-    def load_prompt_settings(
-        cls, erase=False, file_path: str = ""
-    ) -> BaseAgentDirectives:
-        # Get the directory containing the current class file
-        base_agent_dir = os.path.dirname(__file__)
-        # Construct the path to the YAML file based on __file__
-        current_settings_path = os.path.join(base_agent_dir, "prompt_settings.yaml")
-
-        settings = {}
-        # Load settings from the current directory (based on __file__)
-        if os.path.exists(current_settings_path):
-            with open(current_settings_path, "r") as file:
-                settings = yaml.load(file, Loader=yaml.FullLoader)
-        else:
-            raise FileNotFoundError(f"Can't locate file {current_settings_path}")
-
-        agent_directives = BaseAgentDirectives(
-            constraints=settings.get("constraints", []),
-            resources=settings.get("resources", []),
-            best_practices=settings.get("best_practices", []),
-        )
-
-        # Load settings from the specified directory (based on 'file')
-        if file_path:
-            specified_settings_path = os.path.join(
-                os.path.dirname(file_path), "prompt_settings.yaml"
-            )
-
-            if os.path.exists(specified_settings_path):
-                with open(specified_settings_path, "r") as file_path:
-                    specified_settings = yaml.safe_load(file_path)
-                    for key, items in specified_settings.items():
-                        if key not in agent_directives.keys():
-                            agent_directives[key]: list[str] = items
-                        else:
-                            # If the item already exists, update it with specified_settings
-                            if erase:
-                                agent_directives[key] = items
-                            else:
-                                agent_directives[key] += items
-
-        return agent_directives
 
     ################################################################################
     ################################ DB INTERACTIONS ################################
@@ -610,7 +567,7 @@ class BaseAgent(Configurable, AbstractAgent):
         return agent_id
 
     @classmethod
-    def get_agentsetting_list_from_memory(
+    def list_users_agents_from_memory(
         cls,
         user_id: uuid.UUID,
         logger: logging.Logger = logging.Logger(__name__),
@@ -687,17 +644,65 @@ class BaseAgent(Configurable, AbstractAgent):
             memory_settings=memory_settings, logger=logger
         )
         agent_table: AgentsTable = memory.get_table("agents")
-        agent = agent_table.get(agent_id=str(agent_id), user_id=str(user_id))
+        agent_dict_from_db = agent_table.get(agent_id=str(agent_id), user_id=str(user_id))
 
-        if not agent:
+        if not agent_dict_from_db:
             return None
-        agent = cls.get_agent_from_settings(
-            agent_settings=agent_settings,
+        
+        
+
+        agent = cls.get_instance_from_settings(
+            agent_settings=agent_settings.copy(update=agent_dict_from_db),
             logger=logger,
         )
         return agent
 
 
+    @classmethod
+    @abstractmethod
+    def load_prompt_settings(
+        cls, erase=False, file_path: str = ""
+    ) -> BaseAgentDirectives:
+        # Get the directory containing the current class file
+        base_agent_dir = os.path.dirname(__file__)
+        # Construct the path to the YAML file based on __file__
+        current_settings_path = os.path.join(base_agent_dir, "prompt_settings.yaml")
+
+        settings = {}
+        # Load settings from the current directory (based on __file__)
+        if os.path.exists(current_settings_path):
+            with open(current_settings_path, "r") as file:
+                settings = yaml.load(file, Loader=yaml.FullLoader)
+        else:
+            raise FileNotFoundError(f"Can't locate file {current_settings_path}")
+
+        agent_directives = BaseAgentDirectives(
+            constraints=settings.get("constraints", []),
+            resources=settings.get("resources", []),
+            best_practices=settings.get("best_practices", []),
+        )
+
+        # Load settings from the specified directory (based on 'file')
+        if file_path:
+            specified_settings_path = os.path.join(
+                os.path.dirname(file_path), "prompt_settings.yaml"
+            )
+
+            if os.path.exists(specified_settings_path):
+                with open(specified_settings_path, "r") as file_path:
+                    specified_settings = yaml.safe_load(file_path)
+                    for key, items in specified_settings.items():
+                        if key not in agent_directives.keys():
+                            agent_directives[key]: list[str] = items
+                        else:
+                            # If the item already exists, update it with specified_settings
+                            if erase:
+                                agent_directives[key] = items
+                            else:
+                                agent_directives[key] += items
+
+        return agent_directives
+    
 def _prune_empty_dicts(d: dict) -> dict:
     """
     Prune branches from a nested dictionary if the branch only contains empty dictionaries at the leaves.

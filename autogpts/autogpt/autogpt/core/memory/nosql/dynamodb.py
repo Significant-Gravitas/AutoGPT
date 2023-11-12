@@ -90,7 +90,7 @@ class DynamoDBMemory(NoSQLMemory):
         table = self._dynamodb.Table(table_name)
         table.delete_item(Key=key)
 
-    def list(self, table_name: str) -> List[dict]:
+    def list(self, table_name: str) -> list[dict]:
         table = self._dynamodb.Table(table_name)
         response = table.scan()
         return response["Items"]

@@ -13,7 +13,7 @@ import os.path
 from pathlib import Path
 from typing import Iterator, Literal
 
-from autogpts.AFAAS.app.lib.tasks import Task
+from autogpts.AFAAS.app.lib.task.task import Task
 from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool

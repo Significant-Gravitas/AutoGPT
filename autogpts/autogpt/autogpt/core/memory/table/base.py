@@ -65,5 +65,5 @@ class AbstractTable(abc.ABC):
         filter: AbstractTable.FilterDict = {},
         order_column: Optional[str] = "modified_at",
         order_direction: Literal["asc", "desc"] = "desc",
-    ) -> List[Dict[str, Any]]:
+    ) -> list[Dict[str, Any]]:
         ...

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpts.AFAAS.app.lib.tasks import Task
+from autogpts.AFAAS.app.lib.task.task import Task
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 async def query_language_model(task: Task, agent: BaseAgent) -> None:
     # plan =  self.execute_strategy(
     agent._loop.tool_registry().list_tools_descriptions()
-    plan = await agent._loop.execute_strategy(
+    plan = await agent._loop._execute_strategy(
         strategy_name="make_initial_plan", agent=agent
     )
 

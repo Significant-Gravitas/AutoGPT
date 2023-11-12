@@ -9,12 +9,14 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from autogpts.autogpt.autogpt.core.agents import AbstractAgent, PlannerAgent
+from autogpts.autogpt.autogpt.core.configuration import AFAASModel
 
 if TYPE_CHECKING:
     from ..routes.artifact import list_agent_artifacts, list_artifacts
+    from autogpts.autogpt.autogpt.core.agents import AbstractAgent, PlannerAgent
+
 
 
 class ArtifactUpload(AFAASModel):

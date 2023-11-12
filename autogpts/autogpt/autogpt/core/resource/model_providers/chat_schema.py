@@ -52,12 +52,12 @@ Examples:
 import abc
 import enum
 from typing import (Any, Callable, Dict, Generic, List, Optional, TypedDict,
-                    TypeVar, Union)
+                    TypeVar, Union, Literal)
 
 from pydantic import BaseModel, Field
 
 from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
-    AbstractModelProvider, BaseModelInfo, BaseModelResponse,
+    AbstractLanguageModelProvider, BaseModelInfo, BaseModelResponse,
     ModelProviderService)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
@@ -240,7 +240,7 @@ class FunctionParameters(BaseModel):
 
     type: str
     properties: Dict[str, Property]
-    required: List[str]
+    required: list[str]
 
 
 class AssistantFunctionCall(BaseModel):
@@ -281,6 +281,16 @@ class AssistantFunctionCallDict(TypedDict):
 
     name: str
     arguments: str
+class AssistantToolCall(BaseModel):
+    # id: str
+    type: Literal["function"]
+    function: AssistantFunctionCall
+
+
+class AssistantToolCallDict(TypedDict):
+    # id: str
+    type: Literal["function"]
+    function: AssistantFunctionCallDict
 
 
 class AssistantChatMessage(ChatMessage):
@@ -302,7 +312,7 @@ class AssistantChatMessage(ChatMessage):
 
     role: Role.ASSISTANT
     content: Optional[str]
-    function_call: Optional[AssistantFunctionCall]
+    tool_calls: Optional[list[AssistantToolCall]]
 
 
 class AssistantChatMessageDict(TypedDict, total=False):
@@ -323,7 +333,7 @@ class AssistantChatMessageDict(TypedDict, total=False):
 
     role: str
     content: str
-    function_call: AssistantFunctionCallDict
+    tool_calls: list[AssistantToolCallDict]
 
 
 class CompletionModelFunction(BaseModel):
@@ -424,7 +434,7 @@ class ChatPrompt(BaseModel):
         messages (list[ChatMessage]): A list of `ChatMessage` instances representing the conversation history.
         functions (list[CompletionModelFunction], optional): A list of `CompletionModelFunction` instances representing the available functions the language model can call. Defaults to an empty list.
         function_call (str): A string representing a designated function (example : `myfunction`) to be called within the interaction. If you have only one function and you want to force the LLM to call this function, we recommand you to put the name of your function (example `function_call="myfunction"`), to let a LLM select the most apropriate of function within a list of function  `function_call="auto"`
-        default_function_call (str): This is a safeguard mechanism especialy usefull when using `function_call="auto"`, after 2 fails you can force a function of your choice.
+        default_tool_choice (str): This is a safeguard mechanism especialy usefull when using `function_call="auto"`, after 2 fails you can force a function of your choice.
 
     Methods:
         raw() -> list[ChatMessageDict]: Returns a list of dictionary representations of the messages in the chat prompt.
@@ -453,9 +463,9 @@ class ChatPrompt(BaseModel):
     """
 
     messages: list[ChatMessage]
-    functions: list[CompletionModelFunction] = Field(default_factory=list)
-    function_call: str
-    default_function_call: str
+    tools: list[CompletionModelFunction] = Field(default_factory=list)
+    tool_choice: str
+    default_tool_choice: str
 
     def raw(self) -> list[ChatMessageDict]:
         return [m.dict() for m in self.messages]
@@ -490,7 +500,7 @@ class ChatModelResponse(BaseModelResponse, Generic[_T]):
         >>> lm_response = {
         ...     "role": "assistant",
         ...     "content": "The sum is 8.",
-        ...     "function_call": None
+        ...     "tool_calls": None
         ... }
         >>> chat_model_response = ChatModelResponse(response=lm_response, parsed_result=parse_response(lm_response))
         >>> print(chat_model_response.parsed_result)
@@ -502,6 +512,8 @@ class ChatModelResponse(BaseModelResponse, Generic[_T]):
     """Standard response struct for a response from a language model."""
 
     content: dict = None
+    chat_messages : list[ChatMessage] = []
+    system_prompt : str = None
 
 
 ###############
@@ -524,7 +536,7 @@ class ChatModelInfo(BaseModelInfo):
 # parsed_result: _T = None
 
 
-class BaseChatModelProvider(AbstractModelProvider):
+class BaseChatModelProvider(AbstractLanguageModelProvider):
     @abc.abstractmethod
     def count_message_tokens(
         self,
@@ -538,8 +550,8 @@ class BaseChatModelProvider(AbstractModelProvider):
         model_prompt: list[ChatMessage],
         model_name: str,
         completion_parser: Callable[[dict], dict],
-        functions: list[CompletionModelFunction],
-        function_call: str,
+        tools: list[CompletionModelFunction],
+        tool_choice: str,
         **kwargs,
     ) -> ChatModelResponse:
         ...
@@ -547,10 +559,10 @@ class BaseChatModelProvider(AbstractModelProvider):
     @abc.abstractmethod
     async def create_chat_completion(
         self,
-        model_prompt: list[ChatMessage],
         model_name: str,
+        chat_messages: list[ChatMessage],
+        tools: list[CompletionModelFunction] = [],
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
-        functions: list[CompletionModelFunction] = [],
         **kwargs,
     ) -> ChatModelResponse[_T]:
         ...

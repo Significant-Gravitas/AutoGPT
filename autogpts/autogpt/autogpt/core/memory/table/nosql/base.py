@@ -8,7 +8,7 @@ from typing import (Any, Dict, List, Literal, Optional, TypedDict)
 
 from pydantic import BaseModel
 
-from autogpts.autogpt.autogpt.core.configuration import SystemSettings
+from autogpts.autogpt.autogpt.core.configuration import SystemSettings, AFAASModel
 
 from ..base import AbstractTable
 
@@ -109,7 +109,7 @@ class BaseNoSQLTable(AbstractTable):
 
     def add(self, value: dict, id: str = str(uuid.uuid4())) -> uuid.UUID:
         # Serialize non-serializable objects
-        if isinstance(value, SystemSettings):
+        if isinstance(value, AFAASModel):
             value = value.dict_memory()
         else:
             self.memory._logger.warning("Class not hinheriting from SystemSettings")
@@ -171,7 +171,7 @@ class BaseNoSQLTable(AbstractTable):
         filter: AbstractTable.FilterDict = {},
         order_column: Optional[str] = None,
         order_direction: Literal["asc", "desc"] = "desc",
-    ) -> List[Dict[str, Any]]:
+    ) -> list[Dict[str, Any]]:
         """
         Retrieve a filtered and optionally ordered list of items from the table.
 

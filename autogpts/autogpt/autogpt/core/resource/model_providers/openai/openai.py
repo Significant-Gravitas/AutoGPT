@@ -3,17 +3,23 @@ import functools
 import logging
 import math
 import time
+import os
 from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar
 
-import openai
-import tiktoken
-from openai.error import APIError, RateLimitError
+from openai import AsyncOpenAI
+from openai.resources import AsyncEmbeddings , AsyncCompletions
+
+aclient = AsyncOpenAI(
+    api_key=os.environ['OPENAI_API_KEY']
+)
+import tiktoken 
+from openai import APIError, RateLimitError, completions # , OpenAI, Em
 
 from autogpts.autogpt.autogpt.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
 from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import (
-    AssistantChatMessageDict, AssistantFunctionCallDict, BaseChatModelProvider,
+    AssistantChatMessageDict, AssistantToolCallDict, BaseChatModelProvider,
     ChatMessage, ChatModelInfo, ChatModelResponse, CompletionModelFunction)
 from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
     BaseModelProviderBudget, BaseModelProviderCredentials,
@@ -21,6 +27,10 @@ from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
     EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,
     ModelProviderName, ModelProviderService, ModelTokenizer)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
+
+import autogpts.AFAAS.app.sdk.forge_log as agptlogger
+
+LOG = agptlogger.ForgeLogger(__name__)
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
@@ -37,13 +47,22 @@ class OpenAIModelName(str, enum.Enum):
         Each enumeration represents a distinct OpenAI model name.
     """
 
+    # ADA = "text-embedding-ada-002"
+    # GPT3 = "gpt-3.5-turbo-instruct"
+    # GPT3_16k = "gpt-3.5-turbo-1106"
+    # GPT3_FINE_TUNED = "gpt-3.5-turbo-1106" + ""
+    # # GPT4 = "gpt-4-0613" # TODO for tests
+    # GPT4 = "gpt-3.5-turbo-1106"
+    # GPT4_32k = "gpt-4-1106-preview"
+
     ADA = "text-embedding-ada-002"
-    GPT3 = "gpt-3.5-turbo-0613"
-    GPT3_16k = "gpt-3.5-turbo-16k-0613"
-    GPT3_FINE_TUNED = "gpt-3.5-turbo" + ""
-    # GPT4 = "gpt-4-0613" # TODO for tests
-    GPT4 = "gpt-3.5-turbo-0613"
-    GPT4_32k = "gpt-4-32k-0613"
+    GPT3 = "gpt-3.5-turbo-1106"
+    GPT3_16k = "gpt-3.5-turbo-1106"
+    GPT3_FINE_TUNED = "gpt-3.5-turbo-1106" + ""
+    # GPT4 = "gpt-3.5-turbo-1106" # TODO for tests
+    GPT4 = "gpt-3.5-turbo-1106"
+    GPT4_32k = "gpt-3.5-turbo-1106"
+    
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -318,7 +337,7 @@ class OpenAIProvider(
         try:
             encoding = tiktoken.encoding_for_model(encoding_model)
         except KeyError:
-            cls._logger.warn(
+            LOG.warn(
                 f"Model {model_name} not found. Defaulting to cl100k_base encoding."
             )
             encoding = tiktoken.get_encoding("cl100k_base")
@@ -335,11 +354,11 @@ class OpenAIProvider(
 
     async def create_chat_completion(
         self,
-        model_prompt: list[ChatMessage],
-        functions: list[CompletionModelFunction],
+        chat_messages: list[ChatMessage],
+        tools: list[CompletionModelFunction],
         model_name: OpenAIModelName,
-        function_call: str,
-        default_function_call: str,  # This one would be called after 3 failed attemps(cf : try/catch block)
+        tool_choice: str,
+        default_tool_choice: str,  # This one would be called after 3 failed attemps(cf : try/catch block)
         completion_parser: Callable[[AssistantChatMessageDict], _T] = lambda _: None,
         **kwargs,
     ) -> ChatModelResponse[_T]:
@@ -349,8 +368,8 @@ class OpenAIProvider(
             model_prompt (list): A list of chat messages.
             functions (list): A list of completion model functions.
             model_name (str): The name of the model.
-            function_call (str): The function call string.
-            default_function_call (str): The default function call to use after 3 failed attempts.
+            tool_choice (str): The function call string.
+            default_tool_choice (str): The default function call to use after 3 failed attempts.
             completion_parser (Callable): A parser to process the chat response.
             **kwargs: Additional keyword arguments.
 
@@ -370,8 +389,8 @@ class OpenAIProvider(
         # ##############################################################################
         completion_kwargs = self._initialize_completion_args(
             model_name=model_name,
-            functions=functions,
-            function_call=function_call,
+            tools=tools,
+            tool_choice=tool_choice,
             **kwargs,
         )
 
@@ -379,7 +398,7 @@ class OpenAIProvider(
         # ### Step 2: Execute main chat completion and extract details
         # ##############################################################################
         response = await self._get_chat_response(
-            model_prompt=model_prompt, **completion_kwargs
+            model_prompt=chat_messages, **completion_kwargs
         )
         response_message, response_args = self._extract_response_details(
             response=response, model_name=model_name
@@ -389,23 +408,23 @@ class OpenAIProvider(
         # ### Step 3: Handle missing function call and retry if necessary
         # ##############################################################################
         if self._should_retry_function_call(
-            functions=functions, response_message=response_message
+            tools=tools, response_message=response_message
         ):
             if self._func_call_fails_count <= self._configuration.maximum_retry:
                 return await self._retry_chat_completion(
-                    model_prompt=model_prompt,
-                    functions=functions,
+                    model_prompt=chat_messages,
+                    tools=tools,
                     completion_kwargs=completion_kwargs,
                     model_name=model_name,
                     completion_parser=completion_parser,
-                    default_function_call=default_function_call,
+                    default_tool_choice=default_tool_choice,
                     response=response,
                     response_args=response_args,
                 )
 
             # FIXME, TODO, NOTE: Organize application save feedback loop to improve the prompts, as it is not normal that function are not called
-            response_message["function_call"] = None
-            response.choices[0].message["function_call"] = None
+            response_message["tool_calls"] = None
+            response.choices[0].message["tool_calls"] = None
             # self._handle_failed_retry(response_message)
 
         # ##############################################################################
@@ -420,7 +439,7 @@ class OpenAIProvider(
         # Create an option to deactivate feedbacks
         # Option : Maximum number of feedbacks allowed
 
-        # Prerequisite : Read OpenAI API (Chat Model) function_call section
+        # Prerequisite : Read OpenAI API (Chat Model) tool_choice section
 
         # User : 1 shirt take 5 minutes to dry , how long take 10 shirt to dry
         # Assistant : It takes 50 minutes
@@ -444,37 +463,37 @@ class OpenAIProvider(
     def _initialize_completion_args(
         self,
         model_name: str,
-        functions: list[CompletionModelFunction],
-        function_call: str,
+        tools: list[CompletionModelFunction],
+        tool_choice: str,
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        completion_kwargs = self._get_completion_kwargs(model_name, functions, **kwargs)
-        completion_kwargs["function_call"] = function_call
+        completion_kwargs = self._get_completion_kwargs(model_name, tools, **kwargs)
+        completion_kwargs["tool_choice"] = tool_choice
         return completion_kwargs
 
     async def _get_chat_response(
         self, model_prompt: list[ChatMessage], **completion_kwargs: Any
-    ) -> openai.Completion:
+    ) ->  AsyncCompletions:
         return await self._create_chat_completion(
             messages=model_prompt, **completion_kwargs
         )
 
     def _extract_response_details(
-        self, response: openai.Completion, model_name: str
+        self, response: AsyncCompletions, model_name: str
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         response_args = {
             "model_info": OPEN_AI_CHAT_MODELS[model_name],
             "prompt_tokens_used": response.usage.prompt_tokens,
             "completion_tokens_used": response.usage.completion_tokens,
         }
-        response_message = response.choices[0].message.to_dict_recursive()
+        response_message = response.choices[0].message.model_dump()
         return response_message, response_args
 
     def _should_retry_function_call(
-        self, functions: list[CompletionModelFunction], response_message: Dict[str, Any]
+        self, tools: list[CompletionModelFunction], response_message: Dict[str, Any]
     ) -> bool:
-        if functions is not None and "function_call" not in response_message:
-            self._logger.error(
+        if tools is not None and "tool_calls" not in response_message:
+            LOG.error(
                 f"Attempt number {self._func_call_fails_count + 1} : Function Call was expected"
             )
             return True
@@ -483,42 +502,42 @@ class OpenAIProvider(
     async def _retry_chat_completion(
         self,
         model_prompt: list[ChatMessage],
-        functions: list[CompletionModelFunction],
+        tools: list[CompletionModelFunction],
         completion_kwargs: Dict[str, Any],
         model_name: str,
         completion_parser: Callable[[AssistantChatMessageDict], _T],
-        default_function_call: str,
-        response: openai.Completion,
+        default_tool_choice: str,
+        response: AsyncCompletions,
         response_args: Dict[str, Any],
     ) -> ChatModelResponse[_T]:
         completion_kwargs = self._update_function_call_for_retry(
             completion_kwargs=completion_kwargs,
-            default_function_call=default_function_call,
+            default_tool_choice=default_tool_choice,
         )
-        completion_kwargs["functions"] = functions
+        completion_kwargs["tools"] = tools
         response.update(response_args)
         self._budget.update_usage_and_cost(model_response=response)
         return await self.create_chat_completion(
-            model_prompt=model_prompt,
+            chat_messages=model_prompt,
             model_name=model_name,
             completion_parser=completion_parser,
             **completion_kwargs,
         )
 
     def _update_function_call_for_retry(
-        self, completion_kwargs: Dict[str, Any], default_function_call: str
+        self, completion_kwargs: Dict[str, Any], default_tool_choice: str
     ) -> Dict[str, Any]:
         if (
             self._func_call_fails_count
             >= self._configuration.maximum_retry_before_default_function
         ):
-            completion_kwargs["function_call"] = default_function_call
+            completion_kwargs["tool_calls"] = default_tool_choice
         else:
-            completion_kwargs["function_call"] = completion_kwargs.get(
-                "function_call", "auto"
+            completion_kwargs["tool_calls"] = completion_kwargs.get(
+                "tool_calls", "auto"
             )
-        completion_kwargs["default_function_call"] = completion_kwargs.get(
-            "default_function_call", default_function_call
+        completion_kwargs["default_tool_choice"] = completion_kwargs.get(
+            "default_tool_choice", default_tool_choice
         )
         self._func_call_fails_count += 1
         return completion_kwargs
@@ -540,7 +559,7 @@ class OpenAIProvider(
         return response
 
     async def create_language_completion(self, **kwargs):
-        self._logger.warning(
+        LOG.warning(
             "create_language_completion is deprecated, use create_chat_completion"
         )
         return await self.create_chat_completion(**kwargs)
@@ -609,10 +628,12 @@ class OpenAIProvider(
         completion_kwargs = {
             "model": model_name,
             **kwargs,
-            **self._credentials.unmasked(),
+            #**self._credentials.unmasked(),
         }
         if functions:
-            completion_kwargs["functions"] = [f.schema for f in functions]
+            completion_kwargs["tools"] = [
+                    {"type": "function", "function": f.schema} for f in functions
+                ]
         else:
             # Provide compatibility with older models
             _functions_compat_fix_kwargs(functions, completion_kwargs)
@@ -661,12 +682,12 @@ class OpenAIProvider(
         """
         return "OpenAIProvider()"
 
-    def has_function_call_api(self, model_name: str) -> bool:
+    def has_oa_tool_calls_api(self, model_name: str) -> bool:
         # print(self._providers[model_name])
         return OPEN_AI_CHAT_MODELS[model_name].has_function_call_api
 
 
-async def _create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
+async def _create_embedding(text: str, *_, **kwargs) -> AsyncEmbeddings:
     """Embed text using the OpenAI API.
 
     Args:
@@ -676,15 +697,13 @@ async def _create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
     Returns:
         str: The embedding.
     """
-    return await openai.Embedding.acreate(
-        input=[text],
-        **kwargs,
-    )
+    return await aclient.embeddings.create(input=[text],
+    **kwargs)
 
 
 async def _create_chat_completion(
     messages: list[ChatMessage], *_, **kwargs
-) -> openai.Completion:
+) -> AsyncCompletions:
     """Create a chat completion using the OpenAI API.
 
     Args:
@@ -695,22 +714,28 @@ async def _create_chat_completion(
 
     """
     raw_messages = [
-        message.dict(include={"role", "content", "function_call", "name"})
+        message.dict(include={"role", "content", "tool_calls", "name"})
         for message in messages
     ]
     
-    if "functions" in kwargs:
-        # wargs["functions"] = [function.dict() for function in kwargs["functions"]]
-        kwargs["functions"] = [function for function in kwargs["functions"]]
-        if len(kwargs["functions"]) == 1:
-            kwargs["function_call"] = {"name": kwargs["functions"][0].name}
-        elif kwargs["function_call"] != "auto":
-            kwargs["function_call"] = {"name": kwargs["function_call"]}
+    if "tools" in kwargs:
+        # wargs["tools"] = [function.dict() for function in kwargs["tools"]]
+        kwargs["tools"] = [function for function in kwargs["tools"]]
+        if len(kwargs["tools"]) == 1:
+            kwargs["tool_choice"] = {
+                        "type": "function",
+                        "function": {"name": kwargs["tools"][0]['function']['name']},
+                    }
+        elif kwargs["tool_choice"] != "auto":
+            kwargs["tool_choice"] = {
+                        "type": "function",
+                        "function": {"name": kwargs["tool_choice"]},
+                                    }
 
-    return_value = await openai.ChatCompletion.acreate(
-        messages=raw_messages,
-        **kwargs,
-    )
+    LOG.debug(raw_messages[0]['content'])
+    LOG.debug(kwargs)
+    return_value = await aclient.chat.completions.create(messages=raw_messages,
+    **kwargs)
     return return_value
 
 
@@ -743,14 +768,14 @@ class _OpenAIRetryHandler:
         self._warn_user = warn_user
 
     def _log_rate_limit_error(self) -> None:
-        self._logger.debug(self._retry_limit_msg)
+        LOG.debug(self._retry_limit_msg)
         if self._warn_user:
-            self._logger.warning(self._api_key_error_msg)
+            LOG.warning(self._api_key_error_msg)
             self._warn_user = False
 
     def _backoff(self, attempt: int) -> None:
         backoff = self._backoff_base ** (attempt + 2)
-        self._logger.debug(self._backoff_msg.format(backoff=backoff))
+        LOG.debug(self._backoff_msg.format(backoff=backoff))
         time.sleep(backoff)
 
     def __call__(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
@@ -770,7 +795,7 @@ class _OpenAIRetryHandler:
                     if (e.http_status != 502) or (attempt == num_attempts):
                         raise
                 except Exception as e:
-                    self._logger.warning(e)
+                    LOG.warning(e)
                 self._backoff(attempt)
 
         return _wrapped
@@ -868,14 +893,28 @@ def _functions_compat_fix_kwargs(
             ),
         },
     )
+    tool_calls_schema = JSONSchema(
+        type=JSONSchema.Type.ARRAY,
+        items=JSONSchema(
+            type=JSONSchema.Type.OBJECT,
+            properties={
+                "type": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    enum=["function"],
+                ),
+                "function": function_call_schema,
+            },
+        ),
+    )
+
     completion_kwargs["messages"] = [
         ChatMessage.system(
-            "# function_call instructions\n\n"
-            "Specify a '```function_call' block in your response,"
-            " enclosing a function call in the form of a valid JSON object"
-            " that adheres to the following schema:\n\n"
-            f"{function_call_schema.to_dict()}\n\n"
-            "Put the function_call block at the end of your response"
+            "# tool usage instructions\n\n"
+            "Specify a '```tool_calls' block in your response,"
+            " with a valid JSON object that adheres to the following schema:\n\n"
+            f"{tool_calls_schema.to_dict()}\n\n"
+            "Specify any tools that you need to use through this JSON object.\n\n"
+            "Put the tool_calls block at the end of your response"
             " and include its fences if it is not the only content.\n\n"
             "## functions\n\n"
             "For the function call itself, use one of the following"
@@ -884,19 +923,20 @@ def _functions_compat_fix_kwargs(
     ]
 
 
-def _functions_compat_extract_call(response: str) -> AssistantFunctionCallDict:
+def _tool_calls_compat_extract_calls(response: str) -> list[AssistantToolCallDict]:
     import json
     import re
 
-    logging.debug(f"Trying to extract function call from response:\n{response}")
+    logging.debug(f"Trying to extract tool calls from response:\n{response}")
 
-    if response[0] == "{":
-        function_call = json.loads(response)
+    if response[0] == "[":
+        tool_calls: list[AssistantToolCallDict] = json.loads(response)
     else:
-        block = re.search(r"```(?:function_call)?\n(.*)\n```\s*$", response, re.DOTALL)
+        block = re.search(r"```(?:tool_calls)?\n(.*)\n```\s*$", response, re.DOTALL)
         if not block:
-            raise ValueError("Could not find function call block in response")
-        function_call = json.loads(block.group(1))
+            raise ValueError("Could not find tool calls block in response")
+        tool_calls: list[AssistantToolCallDict] = json.loads(block.group(1))
 
-    function_call["arguments"] = str(function_call["arguments"])  # HACK
-    return function_call
+    for t in tool_calls:
+        t["function"]["arguments"] = str(t["function"]["arguments"])  # HACK
+    return tool_calls

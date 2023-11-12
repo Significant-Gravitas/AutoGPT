@@ -72,6 +72,6 @@ class CosmosDBMemory(NoSQLMemory):
         container = self._database.get_container_client(table_name)
         container.delete_item(item=key["primary_key"], partition_key=key["primary_key"])
 
-    def list(self, table_name: str) -> List[dict]:
+    def list(self, table_name: str) -> list[dict]:
         container = self._database.get_container_client(table_name)
         return list(container.read_all_items())

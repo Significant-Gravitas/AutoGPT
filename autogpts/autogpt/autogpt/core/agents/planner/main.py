@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 from pydantic import Field
 
-from autogpts.AFAAS.app.lib.plan import Plan
+from autogpts.AFAAS.app.lib.task.plan import Plan
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
     OpenAIProvider, OpenAISettings)
@@ -125,16 +125,15 @@ class PlannerAgent(BaseAgent):
         ###
         ### Step 5a : Create the plan
         ###
-        self.plan: Plan = Plan(user_id=user_id)
-
-        # TODO: Move out of __init__, may be in PlannerAgent.run()
-        ###
-        ### Step 5b : Set plan with tasks the plan
-        ###
-        ### FIXME: Retrive the plan if it exists
-
-        ### FIXME: Only when the agent is created
-        self._loop.add_initial_tasks()
+        # FIXME: Long term : PlannerLoop / Pipeline get all ready tasks & launch them => Parralelle processing of tasks
+        if hasattr( settings, "plan_id" ) and settings.plan_id is not None :
+            self.plan: Plan = Plan.get_plan_from_db(settings.plan_id) # Plan(user_id=user_id)
+            self._loop.set_current_task(self.plan.get_first_ready_task())
+        else :
+            self.plan: Plan = Plan.create_plan(agent= self)
+            #self._loop.add_initial_tasks()
+            self._loop.set_current_task(task =self.plan[0])
+            self.plan_id = self.plan.plan_id
 
         ###
         ### Step 6 : add hooks/pluggins to the loop

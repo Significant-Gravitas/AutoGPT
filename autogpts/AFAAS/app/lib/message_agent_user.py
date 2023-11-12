@@ -2,7 +2,7 @@ import enum
 import uuid
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from autogpts.autogpt.autogpt.core.configuration.schema import (
     AFAASMessageType, AFAASModel)
@@ -37,7 +37,14 @@ class QuestionItems(dict):
 
 
 class Questions(AFAASModel):
-    question_id: str = "Q" + str(uuid.uuid4())
+    question_id: str = Field(
+        default_factory=lambda: Questions.generate_uuid()
+    ) 
+
+    @staticmethod
+    def generate_uuid() :
+        return "Q" + str(uuid.uuid4())
+    
     message: str
     type: Optional[QuestionTypes]
     state: Optional[QuestionStates]

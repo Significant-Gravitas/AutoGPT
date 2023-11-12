@@ -43,7 +43,7 @@ async def run_auto_gpt():
     # NOTE : Real world scenario, this user_id will be passed as an argument
     agent_dict_list: list[
         PlannerAgent.SystemSettings
-    ] = PlannerAgent.get_agentsetting_list_from_memory(
+    ] = PlannerAgent.list_users_agents_from_memory(
         user_id=user_id, logger=client_logger
     )
 
@@ -59,8 +59,8 @@ async def run_auto_gpt():
             f"Loading agent {agent_id} from get_agentsetting_list_from_memory"
         )
         # agent_settings.update_agent_name_and_goals(agent_dict_list[0])
-        agent_from_list: PlannerAgent = PlannerAgent.get_agent_from_settings(
-            agent_settings=agent_settings,
+        agent_from_list: PlannerAgent = PlannerAgent.get_instance_from_settings(
+            agent_settings=agent_dict_list[0],
             logger=client_logger,
         )
 

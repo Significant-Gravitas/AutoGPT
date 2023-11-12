@@ -19,12 +19,13 @@ Examples:
 ---------
 To initialize and use the `RefineUserContextStrategy`:
 
->>> strategy = RefineUserContextStrategy(logger, model_classification=LanguageModelClassification.FAST_MODEL_4K, default_function_call=RefineUserContextFunctionNames.REFINE_REQUIREMENTS, strategy_name="refine_user_context", context_min_tokens=250, context_max_tokens=300)
+>>> strategy = RefineUserContextStrategy(logger, model_classification=LanguageModelClassification.FAST_MODEL_4K, default_tool_choice=RefineUserContextFunctionNames.REFINE_REQUIREMENTS, strategy_name="refine_user_context", context_min_tokens=250, context_max_tokens=300)
 >>> prompt = strategy.build_prompt(interupt_refinement_process=False, user_objective="Build a web app")
 """
 import enum
 import uuid
 from logging import Logger
+from typing import Optional
 
 
 from autogpts.AFAAS.app.lib.message_agent_user import Questions
@@ -35,7 +36,7 @@ from autogpts.autogpt.autogpt.core.prompting.schema import \
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
     json_loads, to_numbered_list, to_string_list)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
+    AbstractLanguageModelProvider, AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 
@@ -64,12 +65,13 @@ class RefineUserContextStrategyConfiguration(PromptStrategiesConfiguration):
     model_classification: LanguageModelClassification = (
         LanguageModelClassification.FAST_MODEL_4K
     )
-    default_function_call: RefineUserContextFunctionNames = (
+    default_tool_choice: RefineUserContextFunctionNames = (
         RefineUserContextFunctionNames.REFINE_REQUIREMENTS
     )
     context_min_tokens: int = 250
     context_max_tokens: int = 500
     use_message: bool = False
+    temperature : float =  0.9
 
 
 class RefineUserContextStrategy(BasePromptStrategy):
@@ -102,8 +104,6 @@ class RefineUserContextStrategy(BasePromptStrategy):
     """
     default_configuration = RefineUserContextStrategyConfiguration()
     STRATEGY_NAME = "refine_user_context"
-    CONTEXT_MIN_TOKENS = 250
-    CONTEXT_MAX_TOKENS = 300
 
     ###
     ### PROMPTS
@@ -136,7 +136,7 @@ class RefineUserContextStrategy(BasePromptStrategy):
 1. **Utilize User's Input**: ALWAYS use the user's prior requirements and their recent responses to inform your responses.
 2. **No Assumptions**: NEVER make assumptions. Always align with the user's original expressions.
 3. **Adhere to COCE**: Your reformulations, questions, and interactions should aim to get the user's requirements to fit the COCE Framework.
-4. **Use Functions**: You MUST use the provided functions in your interactions: {function_names}.
+4. **Use Functions**: You MUST use the provided functions in your interactions: {tools_names}.
 
 It's crucial to use the user's input, make no assumptions, align with COCE, and use the provided functions. Prioritize the user's input and remain faithful to the COCE principles."""
 
@@ -149,108 +149,28 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
     # NEW_USER_PROMPT = "These are my requirement : \"{user_response}\"\n"
     NEW_USER_PROMPT = "{user_response}"
 
-    #     REFINED_ONCE_SYSTEM_PROMPT = ("### User's Journey:\n"
-    # #"So far the user have expressed these requirements :\n"
-    # "\"{user_response}\"\n\n"
-    # "- **Your questions**:\n"
-    # "{last_questions}\n"
-    # "- **User's Response**: \n"
-    # "{user_response}\n\n"
-    # )
 
-    #     REFINED_SYSTEM_PROMPT = ("### User's Journey:\n"
-    # #"So far the user have expressed these requirements :\n"
-    # "'{user_last_goal}'\n\n"
-    # "- **Your full history of Questions**:\n"
-    # "'{questions_history_full}\n"
-    # "- **Your Last Questions**:\n"
-    # "{last_questions}\n"
-    # "- **User's Last Response**:\n"
-    # "{user_response}\n\n"
-    # )
-
-    #     REFINED_SYSTEM_PROMPT = ("### User's Journey:\n"
-    # "So far the user have expressed these requirements :\n"
-    # "'{user_last_goal}'\n")
     REFINED_SYSTEM_PROMPT = ""
     REFINED_USER_PROMPT_A = "{user_last_goal}"
     REFINED_ASSISTANT_PROMPT = "{last_questions}"
     REFINED_USER_PROMPT_B = "{user_response}"
 
-    #     SYSTEM_PROMPT_FOOTER = ("Guide the user closer to a refined goal by referencing the above journey and adhering to the **COCE Framework**. Provide actionable insights and questions.\n\n"
-    # "### Note:\n"
-    # "This is an iterative process. Your generated `reformulated_goal` will serve as the user's next goal and the questions will gather further details from the user.\n"
-    # )
 
-    # SYSTEM_PROMPT_NOTICE = "**IMPORTANT** : YOU MUST USE FUNCTIONS AT YOUR DISPOSAL"
     SYSTEM_PROMPT_NOTICE = ""
 
-    ###
-    ### FUNCTIONS
-    ###
-
-    FUNCTION_REFINE_USER_CONTEXT = CompletionModelFunction(
-        name=RefineUserContextFunctionNames.REFINE_REQUIREMENTS,
-        description="Refines and clarifies user requirements by reformulating them and generating pertinent questions to extract more detailed and explicit information from the user, all while adhering to the COCE Framework.",
-        parameters={
-            "reformulated_goal": JSONSchema(
-                type=JSONSchema.Type.STRING,
-                ##"description": f"Users requirements as interpreted from their initial expressed requirements and their most recent answer, making sure it adheres to the COCE Framework and remains true to the user's intent. It should be formatted using Markdown and expressed in {CONTEXT_MIN_TOKENS} to {CONTEXT_MAX_TOKENS} words."
-                description=f"Users requirements as interpreted from their initial expressed requirements and their most recent answer, making sure it adheres to the COCE Framework and remains true to the user's intent. It should be formatted using Markdown and expressed in less than {CONTEXT_MAX_TOKENS} words.",
-                required=True,
-            ),
-            "questions": JSONSchema(
-                type=JSONSchema.Type.ARRAY,
-                minItems=1,
-                maxItems=5,
-                items=JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                ),
-                description="Five questions designed to extract more detailed and explicit information from the user, guiding them towards a clearer expression of their requirements while staying within the COCE Framework.",
-                required=True,
-            ),
-        },
-    )
-
-    FUNCTION_REQUEST_SECOND_CONFIRMATION = {
-        "name": RefineUserContextFunctionNames.REQUEST_SECOND_CONFIRMATION,
-        "description": "Double-check the user's intent to end the iterative requirement refining process. It poses a simple yes/no question to ensure that the user truly wants to conclude refining and proceed to the validation step.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "questions": {
-                    "type": "string",
-                    "description": "A question aimed at reconfirming the user's intention to finalize their requirements. The question should be phrased in a manner that lets the user easily signify continuation ('no') or conclusion ('yes') of the refining process.",
-                }
-            },
-            "required": ["questions"],
-        },
-    }
-
-    FUNCTION_VALIDATE_GOAL = CompletionModelFunction(
-        name=RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS,
-        description="Seals the iterative process of refining requirements. It gets activated when the user communicates satisfaction with the requirements, signaling readiness to finalize the current list of goals.",
-        parameters={
-            "goal_list": JSONSchema(
-                type=JSONSchema.Type.ARRAY,
-                minItems=1,
-                maxItems=5,
-                items=JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                ),
-                description="List of user requirements that emerged from prior interactions. Each entry in the list stands for a distinct and atomic requirement or aim expressed by the user.",
-                required=True,
-            )
-        },
-    )
 
     def __init__(
         self,
         logger: Logger,
         model_classification: LanguageModelClassification,
-        default_function_call: RefineUserContextFunctionNames,
+        default_tool_choice: RefineUserContextFunctionNames,
         context_min_tokens: int,
         context_max_tokens: int,
+        temperature : float , #if coding 0.05
+        top_p: Optional[float] ,
+        max_tokens : Optional[int] ,
+        frequency_penalty: Optional[float], # Avoid repeting oneselfif coding 0.3
+        presence_penalty : Optional[float], # Avoid certain subjects
         count=0,
         user_last_goal="",
         exit_token: str = str(uuid.uuid4()),
@@ -265,7 +185,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             The logger object.
         model_classification: LanguageModelClassification
             Classification of the language model.
-        default_function_call: RefineUserContextFunctionNames
+        default_tool_choice: RefineUserContextFunctionNames
             Default function call for the strategy.
 
         context_min_tokens: int
@@ -299,21 +219,86 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         self._config = self.default_configuration
         self.exit_token: str = exit_token
 
-        function_refine_user_context = (
-            RefineUserContextStrategy.FUNCTION_REFINE_USER_CONTEXT
-        )
-        function_request_second_confirmation= CompletionModelFunction(
-            **RefineUserContextStrategy.FUNCTION_REQUEST_SECOND_CONFIRMATION,
-        )
-        function_validate_requirements = (
-            RefineUserContextStrategy.FUNCTION_VALIDATE_GOAL
-        )
-        self._functions = [
-            function_refine_user_context,
-            function_request_second_confirmation ,
-            function_validate_requirements,
-        ]
+        
 
+
+    def set_tools(self, **kwargs) :
+
+        ###
+        ### FUNCTIONS
+        ###
+        self.function_refine_user_context : CompletionModelFunction= CompletionModelFunction(
+            name=RefineUserContextFunctionNames.REFINE_REQUIREMENTS,
+            description="Refines and clarifies user requirements by reformulating them and generating pertinent questions to extract more detailed and explicit information from the user, all while adhering to the COCE Framework.",
+            parameters={
+                "reformulated_goal": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    description=f"Users requirements as interpreted from their initial expressed requirements and their most recent answer, making sure it adheres to the COCE Framework and remains true to the user's intent. It should be formatted using Markdown and expressed in less than {self.context_max_tokens} words.",
+                    required=True,
+                ),
+                "questions": JSONSchema(
+                    type=JSONSchema.Type.ARRAY,
+                    minItems=1,
+                    maxItems=5,
+                    items=JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                    ),
+                    description="Five questions designed to extract more detailed and explicit information from the user, guiding them towards a clearer expression of their requirements while staying within the COCE Framework.",
+                    required=True,
+                ),
+            },
+        )
+
+        self.function_request_second_confirmation: CompletionModelFunction = {
+            "name": RefineUserContextFunctionNames.REQUEST_SECOND_CONFIRMATION,
+            "description": "Double-check the user's intent to end the iterative requirement refining process. It poses a simple yes/no question to ensure that the user truly wants to conclude refining and proceed to the validation step.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "questions": {
+                        "type": "string",
+                        "description": "A question aimed at reconfirming the user's intention to finalize their requirements. The question should be phrased in a manner that lets the user easily signify continuation ('no') or conclusion ('yes') of the refining process.",
+                    }
+                },
+                "required": ["questions"],
+            },
+        }
+
+        self.function_request_second_confirmation : CompletionModelFunction= CompletionModelFunction(
+            name=RefineUserContextFunctionNames.REQUEST_SECOND_CONFIRMATION,
+            description="Double-check the user's intent to end the iterative requirement refining process. It poses a simple yes/no question to ensure that the user truly wants to conclude refining and proceed to the validation step.",
+            parameters={
+                "questions": JSONSchema(
+                    type=JSONSchema.Type.STRING,
+                    description="A question aimed at reconfirming the user's intention to finalize their requirements. The question should be phrased in a manner that lets the user easily signify continuation ('no') or conclusion ('yes') of the refining process.",
+                    required=True,
+                ),
+            }
+        )
+
+        self.function_validate_goal : CompletionModelFunction= CompletionModelFunction(
+            name=RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS,
+            description="Seals the iterative process of refining requirements. It gets activated when the user communicates satisfaction with the requirements, signaling readiness to finalize the current list of goals.",
+            parameters={
+                "goal_list": JSONSchema(
+                    type=JSONSchema.Type.ARRAY,
+                    minItems=1,
+                    maxItems=5,
+                    items=JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                    ),
+                    description="List of user requirements that emerged from prior interactions. Each entry in the list stands for a distinct and atomic requirement or aim expressed by the user.",
+                    required=True,
+                )
+            },
+        )
+
+        self._tools = [
+            self.function_refine_user_context,
+            self.function_request_second_confirmation ,
+            self.function_validate_goal,
+        ]
+        
     def build_prompt(
         self, interupt_refinement_process: bool, user_objective: str = "", **kwargs
     ) -> ChatPrompt:
@@ -341,7 +326,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         #
         # STEP 1 : List all functions available
         #
-        strategy_functions = self.get_functions()
+        strategy_tools = self.get_tools()
 
         if self._config.use_message == True:
             #
@@ -394,8 +379,8 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             content=first_system_prompt.format(
                 # generated_message_history = generated_message_history,
                 os_info=kwargs["os_info"],
-                functions_list=to_numbered_list(self.get_functions_names()),
-                function_names=to_string_list(self.get_functions_names()),
+                tools_list=to_numbered_list(self.get_tools_names()),
+                tools_names=to_string_list(self.get_tools_names()),
                 user_last_goal=self._user_last_goal,
                 questions_history_full=to_numbered_list(
                     self.question_history_label_full
@@ -437,9 +422,9 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
 
         # Step 4 : Hallucination safegard
         #
-        function_call = "auto"
+        tool_choice = "auto"
         if self._count == 0:
-            function_call = RefineUserContextFunctionNames.REFINE_REQUIREMENTS
+            tool_choice = RefineUserContextFunctionNames.REFINE_REQUIREMENTS
             messages.append(
                 ChatMessage.system(
                     content="""Before finalizing your response, ensure that:
@@ -448,20 +433,20 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
                 )
             )
         elif interupt_refinement_process == True:
-            function_call = RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS
+            tool_choice = RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS
 
         #
         # Step 5 :
         #
         prompt = ChatPrompt(
             messages=messages,
-            functions=strategy_functions,
-            function_call=function_call,
-            default_function_call=RefineUserContextFunctionNames.REFINE_REQUIREMENTS,
+            tools=strategy_tools,
+            tool_choice=tool_choice,
+            default_tool_choice=RefineUserContextFunctionNames.REFINE_REQUIREMENTS,
             # TODO
             tokens_used=0,
         )
-        # self._logger.debug('Executing prompt : ' + str(prompt))
+        
         return prompt
 
     def parse_response_content(
@@ -483,7 +468,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         Example:
             >>> strategy = RefineUserContextStrategy(...)
             >>> raw_response = {
-            >>>     "function_call": {
+            >>>     "tool_calls": {
             >>>         "name": "REFINE_REQUIREMENTS",
             >>>         "arguments": '{"questions": ["What temperature range?", "Any specific brand?"], "reformulated_goal": "Monitor temperatures in the specified range with preferred brand"}'
             >>>     }
@@ -495,7 +480,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             'Monitor temperatures in the specified range with preferred brand'
         """
         try:
-            parsed_response = json_loads(response_content["function_call"]["arguments"])
+            parsed_response = json_loads(response_content["tool_calls"][0]['function']["arguments"])
         except Exception:
             self._logger.warning(parsed_response)
 
@@ -504,15 +489,15 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         # TODO : Type Questions in a Class ?
         #
         save_questions = False
+        questions_with_uuid = []
         if (
-            response_content["function_call"]["name"]
+            response_content["tool_calls"][0]['function']["name"]
             == RefineUserContextFunctionNames.REFINE_REQUIREMENTS
         ):
-            questions_with_uuid = []
             question = []
             # questions_with_uuid = [{"id": "Q" + str(uuid.uuid4()), "question": q} for q in parsed_response["questions"]]
             for q_text in parsed_response["questions"]:
-                question_id = Questions.generate_new_id()
+                question_id = Questions.generate_uuid()
                 question = Questions(
                     question_id=question_id, message=q_text, type=None, state=None, items=[]
                 )
@@ -523,11 +508,11 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             self._user_last_goal = parsed_response["reformulated_goal"]
 
         elif (
-            response_content["function_call"]["name"]
+            response_content["tool_calls"][0]['function']["name"]
             == RefineUserContextFunctionNames.REQUEST_SECOND_CONFIRMATION
         ):
             # questions_with_uuid = [{"id": "Q" + str(uuid.uuid4()), "question":  parsed_response["questions"]}]
-            question_id = Questions.generate_new_id()
+            question_id = Questions.generate_uuid()
             question_text = parsed_response["questions"]
             question = Questions(
                 question_id=question_id, message=question_text, type=None, state=None, items=[]
@@ -542,10 +527,13 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             self._last_questions = questions_with_uuid
             self._last_questions_label = parsed_response["questions"]
 
-        parsed_response["name"] = response_content["function_call"]["name"]
+        parsed_response["name"] = response_content["tool_calls"]["name"]
         self._logger.debug(parsed_response)
         self._count += 1
         return parsed_response
 
     def save(self):
+        pass
+
+    def response_format_instruction(self, language_model_provider: AbstractLanguageModelProvider, model_name: str) -> str:
         pass

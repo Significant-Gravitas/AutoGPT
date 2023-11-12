@@ -1,5 +1,9 @@
 import ast
 import json
+import autogpts.AFAAS.app.sdk.forge_log as agptlogger
+import re
+
+LOG = agptlogger.ForgeLogger(__name__)
 
 
 def to_numbered_list(
@@ -38,6 +42,28 @@ def to_string_list(string_list) -> str:
     return formatted_string
 
 
+def to_md_quotation(text):
+    """
+    Transforms a given string into a Markdown blockquote.
+
+    Parameters:
+    text (str): The string to be transformed.
+
+    Returns:
+    str: The transformed string as a Markdown blockquote.
+    """
+    # Split the text into lines
+    lines = text.split('\n')
+
+    # Prefix each line with "> "
+    quoted_lines = [f"> {line}" for line in lines]
+
+    # Join the lines back into a single string
+    quoted_text = '\n'.join(quoted_lines)
+
+    return quoted_text
+
+
 def json_loads(json_str: str):
     # TODO: this is a hack function for now. Trying to see what errors show up in testing.
     #   Can hopefully just replace with a call to ast.literal_eval (the function api still
@@ -46,13 +72,24 @@ def json_loads(json_str: str):
     try:
         json_str = json_str[json_str.index("{") : json_str.rindex("}") + 1]
         return ast.literal_eval(json_str)
-    except ValueError as ve:
-        print(f"First attempt failed: {ve}. Trying JSON.loads()")
+    except Exception as e:
+        LOG(f"First attempt failed: {e}. Trying JSON.loads()")
     try:
         return json.loads(json_str)
-    except json.JSONDecodeError as e:
+    except Exception as e:
         try:
-            print(f"JSON decode error {e}. trying literal eval")
+            LOG(f"JSON decode error {e}. trying literal eval")
+            def replacer(match):
+                # Escape newlines in the matched value
+                return match.group(0).replace('\n', '\\n').replace('\t', '\\t')
+            
+            # Find string values and apply the replacer function to each
+            json_str = re.sub(r'".+?"', replacer, json_str)
             return ast.literal_eval(json_str)
+        
+            #NOTE: BACKUP PLAN : 
+            # json_str = escape_backslaches_in_json_values(json_str) # DOUBLE BACKSLASHES
+            # return_json_value = ast.literal_eval(json_str)
+            # return remove_double_ backslaches(return_json_value) # CONVERT DOUBLE 
         except Exception:
             breakpoint()

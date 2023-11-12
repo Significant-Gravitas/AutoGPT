@@ -70,6 +70,6 @@ class MongoDBMemory(NoSQLMemory):
         if delete_result.deleted_count == 0:
             raise KeyError(f"No such key '{key}' in table {table_name}")
 
-    def list(self, table_name: str) -> List[dict]:
+    def list(self, table_name: str) -> list[dict]:
         collection = self._db[table_name]
         return list(collection.find({}))

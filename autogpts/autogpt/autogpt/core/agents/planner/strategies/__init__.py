@@ -8,6 +8,10 @@ from autogpts.autogpt.autogpt.core.prompting.base import \
     PromptStrategiesConfiguration
 
 
+import autogpts.AFAAS.app.sdk.forge_log as agptlogger
+
+LOG = agptlogger.ForgeLogger(__name__)
+
 class StrategiesConfiguration(PromptStrategiesConfiguration):
     initial_plan: InitialPlanStrategyConfiguration
     select_tool: SelectToolStrategyConfiguration
@@ -25,7 +29,7 @@ class StrategiesSet:
             InitialPlanStrategy(
                 logger=logger, **InitialPlanStrategy.default_configuration.dict()
             ),
-            SelectToolStrategy(
-                logger=logger, **SelectToolStrategy.default_configuration.dict()
-            ),
+            # SelectToolStrategy(
+            #     logger=logger, **SelectToolStrategy.default_configuration.dict()
+            # ),
         ]

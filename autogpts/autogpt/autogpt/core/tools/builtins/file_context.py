@@ -9,7 +9,7 @@ import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from autogpts.AFAAS.app.lib.tasks import Task
+from autogpts.AFAAS.app.lib.task.task import Task
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent

@@ -10,11 +10,13 @@ import time
 import uuid
 from base64 import b64decode
 
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 import requests
 from PIL import Image
 
-from autogpts.AFAAS.app.lib.tasks import Task
+from autogpts.AFAAS.app.lib.task.task import Task
 from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
@@ -141,13 +143,11 @@ def generate_image_with_dalle(
         )
         size = closest
 
-    response = openai.Image.create(
-        prompt=prompt,
-        n=1,
-        size=f"{size}x{size}",
-        response_format="b64_json",
-        api_key=agent.legacy_config.openai_api_key,
-    )
+    response = client.images.generate(prompt=prompt,
+    n=1,
+    size=f"{size}x{size}",
+    response_format="b64_json",
+    api_key=agent.legacy_config.openai_api_key)
 
     logger.info(f"Image Generated for prompt:{prompt}")
 

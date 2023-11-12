@@ -100,7 +100,7 @@ class UserContextLoop(BaseLoop):
                     f"Starting loop iteration number {self.loop_count}"
                 )
 
-                model_response : ChatModelResponse = await self.execute_strategy(
+                model_response : ChatModelResponse = await self._execute_strategy(
                     strategy_name="refine_user_context",
                     interupt_refinement_process=interupt_refinement_process,
                     user_objective=user_objectives,

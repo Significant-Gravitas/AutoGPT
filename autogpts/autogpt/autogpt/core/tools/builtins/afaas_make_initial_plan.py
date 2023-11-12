@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
-from autogpts.AFAAS.app.lib.plan import Plan
-from autogpts.AFAAS.app.lib.tasks import Task, TaskStatusList
+from autogpts.AFAAS.app.lib.task.plan import Plan
+from autogpts.AFAAS.app.lib.task.task import Task, TaskStatusList
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
     # plan =  self.execute_strategy(
     agent._loop.tool_registry().list_tools_descriptions()
-    plan = await agent._loop.execute_strategy(
+    plan = await agent._loop._execute_strategy(
         strategy_name="make_initial_plan",
         agent_name=agent.agent_name,
         agent_role=agent.agent_role,
@@ -42,9 +42,9 @@ async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
     #  and ensure that they have actionable ready and acceptance criteria
 
     agent.plan = Plan(
-        tasks=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
+        subtask=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
     )
-    agent.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
+    agent.plan.subtasks.sort(key=lambda t: t.priority, reverse=True)
     agent._loop._current_task = agent.plan[-1]
     agent._loop._current_task.context.status = TaskStatusList.READY
     return plan

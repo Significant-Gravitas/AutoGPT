@@ -40,3 +40,4 @@ class AgentsTable(BaseNoSQLTable):
             secondary_key=str(user_id),
         )
         return super().get(key=key)
+    
