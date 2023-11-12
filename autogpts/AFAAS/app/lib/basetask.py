@@ -235,18 +235,18 @@ class BaseTask(AFAASModel):
 
         return return_dict
 
-    def find_task(self, search_task_id: str):
+    def find_task(self, task_id: str):
         """
         Recursively searches for a task with the given task_id in the tree of tasks.
         """
         # Check current task
-        if self.task_id == search_task_id:
+        if self.task_id == task_id:
             return self
 
         # If there are subtasks, recursively check them
         if self.subtasks:
             for subtask in self.subtasks:
-                found_task = subtask.find_task(search_task_id)
+                found_task = subtask.find_task(task_id = task_id)
                 if found_task:
                     return found_task
         return None

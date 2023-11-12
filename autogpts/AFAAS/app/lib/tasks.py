@@ -188,13 +188,15 @@ class Task(AFAASModel):
     ### GENERAL properties
     ###
     task_id: str = Field(
-        default_factory=lambda: "T" + str(uuid.uuid4())
-    )  # task_id: str = Task.generate_short_id()
+        default_factory=lambda: Task.generate_uuid()
+    )  
     task_parent: Optional[Task]
     task_parent_id: Optional[str]
     task_predecessors: Optional[list[Task]]   
-    task_predecessors_id: Optional[str]
-    # responsible_agent_id: Optional[str] = Field(default="")
+    task_predecessors_id: Optional[list[str]]
+    task_successors: Optional[list[Task]]   
+    task_succesors_id: Optional[list[str]]
+    
     state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG.value)
 
     task_goal: str
@@ -227,16 +229,29 @@ class Task(AFAASModel):
     command: Optional[str] = Field(default_factory=lambda: Task.default_command())
     arguments: Optional[dict] = Field(default={})
 
-    class Config:
+    class Config(AFAASModel.Config):
         arbitrary_types_allowed = True
+        
+        
+    _default_command : str = None
 
     @staticmethod
-    def default_command() -> str: 
+    def generate_uuid() :
+        return "T" + str(uuid.uuid4())
+    
+    @classmethod
+    def default_command(cls) -> str: 
+        if cls._default_command is not None :
+            return cls._default_command
+        
         try : 
             import autogpts.autogpt.autogpt.core.agents.routing
-            return "afaas_routing"
+            cls._default_command = "afaas_routing"
         except :
-            return "afaas_make_initial_plan"
+            cls._default_command= "afaas_make_initial_plan"
+                
+        return cls._default_command
+
 
     def dump(self, depth=0) -> dict:
         if depth < 0:
@@ -253,18 +268,18 @@ class Task(AFAASModel):
 
         return return_dict
 
-    def find_task(self, search_task_id: str):
+    def find_task(self, task_id: str):
         """
         Recursively searches for a task with the given task_id in the tree of tasks.
         """
         # Check current task
-        if self.task_id == search_task_id:
+        if self.task_id == task_id:
             return self
 
         # If there are subtasks, recursively check them
         if self.subtasks:
             for subtask in self.subtasks:
-                found_task = subtask.find_task(search_task_id)
+                found_task = subtask.find_task(task_id)
                 if found_task:
                     return found_task
         return None

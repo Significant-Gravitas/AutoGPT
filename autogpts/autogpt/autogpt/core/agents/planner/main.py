@@ -125,16 +125,13 @@ class PlannerAgent(BaseAgent):
         ###
         ### Step 5a : Create the plan
         ###
-        self.plan: Plan = Plan(user_id=user_id)
-
-        # TODO: Move out of __init__, may be in PlannerAgent.run()
-        ###
-        ### Step 5b : Set plan with tasks the plan
-        ###
-        ### FIXME: Retrive the plan if it exists
-
-        ### FIXME: Only when the agent is created
-        self._loop.add_initial_tasks()
+        if hasattr( settings, "plan_id" ) and settings.plan_id is not None :
+            self.plan: Plan = Plan.get_plan_from_db(settings.plan_id) # Plan(user_id=user_id)
+            self._loop.set_current_task()
+        else :
+            self.plan: Plan = Plan.create_plan(agent= self )
+            #self._loop.add_initial_tasks()
+            self._loop.set_current_task(self.plan[0])
 
         ###
         ### Step 6 : add hooks/pluggins to the loop

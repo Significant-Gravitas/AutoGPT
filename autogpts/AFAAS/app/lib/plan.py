@@ -6,38 +6,36 @@ from typing import TYPE_CHECKING, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
-from .tasks import Task
+from .basetask import BaseTask
+from .tasks import Task, TaskStatusList
 
 logger = Logger(name=__name__)
 
 from autogpts.autogpt.autogpt.core.configuration import AFAASModel
-from .basetask import BaseTask
+from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
 class Plan(BaseTask):
     """
     Represents a plan consisting of a list of tasks.
     """
-    plan_id: str = Field(
-        default_factory=lambda: "PL" + str(uuid.uuid4())
+    task_id: str = Field(
+        default_factory=lambda: Plan.generate_uuid(),
+        alias = "plan_id"
     ) 
-    # def _get_tasks_from_db(self):
-    #     return Task.get_from_db(self.plan_id)
-    # tasks: list[Task] =  Field(default_factory=_get_tasks_from_db)
-    tasks: list[Task] = []
+
+    @staticmethod
+    def generate_uuid() :
+        return "PL" + str(uuid.uuid4())
+
+    subtask: list[Task] = []
 
     def add_tasks(self, tasks=list[Task], position: int = None):
         if position is not None:
             for tasks in tasks:
-                self.tasks.insert(tasks, position)
+                self.subtask.insert(tasks, position)
         else:
             for tasks in tasks:
-                self.tasks.append(tasks)
-
-    # def add_task(self , task = list[Task], position : int = None) :
-    #     if position is not None :
-    #         self.tasks.insert(task, position)
-    #     else :
-    #         self.tasks.append(task)
+                self.subtask.append(tasks)
 
     def dump(self, depth=0) -> dict:
         """
@@ -50,7 +48,7 @@ class Plan(BaseTask):
         Examples:
             >>> plan = Plan([Task("Task 1"), Task("Task 2")])
             >>> plan.dump()
-            {'tasks': [{'name': 'Task 1'}, {'name': 'Task 2'}]}
+            {'tasks': [{'task_goal': 'Task 1'}, {'task_goal': 'Task 2'}]}
 
         Returns:
             dict: A dictionary representation of the plan and its tasks.
@@ -65,7 +63,7 @@ class Plan(BaseTask):
 
         # Recursively process tasks up to the specified depth
         if depth > 0:
-            return_dict["tasks"] = [task.dump(depth=depth - 1) for task in self.tasks]
+            return_dict["tasks"] = [task.dump(depth=depth - 1) for task in self.subtask]
 
         return return_dict
 
@@ -82,9 +80,9 @@ class Plan(BaseTask):
         Examples:
             >>> plan = Plan([Task("Task 1"), Task("Task 2")])
             >>> plan[0]
-            Task(name='Task 1')
+            Task(task_goal='Task 1')
             >>> plan[1:]
-            [Task(name='Task 2')]
+            [Task(task_goal='Task 2')]
 
         Raises:
             IndexError: If the index is out of range.
@@ -105,9 +103,9 @@ class Plan(BaseTask):
         Examples:
             >>> plan = Plan([Task("Task 1"), Task("Task 2")])
             >>> plan.get_task(0)
-            Task(name='Task 1')
+            Task(task_goal='Task 1')
             >>> plan.get_task(':')
-            [Task(name='Task 1'), Task(name='Task 2')]
+            [Task(task_goal='Task 1'), Task(task_goal='Task 2')]
 
         Raises:
             IndexError: If the index is out of range.
@@ -115,42 +113,35 @@ class Plan(BaseTask):
         """
         if isinstance(index, int):
             # Handle positive integers and negative integers
-            if -len(self.tasks) <= index < len(self.tasks):
-                return self.tasks[index]
+            if -len(self.subtask) <= index < len(self.subtask):
+                return self.subtask[index]
             else:
                 raise IndexError("Index out of range")
         elif isinstance(index, str) and index.startswith(":") and index[1:].isdigit():
             # Handle notation like ":-1"
             start = 0 if index[1:] == "" else int(index[1:])
-            return self.tasks[start:]
+            return self.subtask[start:]
         else:
             raise ValueError("Invalid index type")
-
-    def find_task(self, task_id: str) -> Optional[Task]:
-        """
-        Find a task with the given task_id in the list of tasks.
-        """
-        for task in self.tasks:
-            found_task = task.find_task(task_id)
-            if found_task:
-                return found_task
-        return None
 
     def find_task_path_with_id(self, task_id: str) -> Optional[List[Task]]:
         """
         Find the path to a task with the given task_id in the list of tasks.
         """
         logger.warning("Deprecated : Recommended function is Task.find_task_path()")
-        for task in self.tasks:
+        for task in self.subtask:
             path = task.find_task_path_with_id(task_id)
             if path:
                 return path
         return None
 
     ###
-    ### NOTE : To test
+    ### FIXME : To test
     ###
     def remove_task(self, task_id: str):
+        logger.error("""FUNCTION NOT WORKING :
+                     1. We now manage multiple predecessor
+                     2. Tasks should not be deleted but managed by state""")
         # 1. Set all task_predecessor_id to null if they reference the task to be removed
         def clear_predecessors(task: Task):
             if task.task_predecessor_id == task_id:
@@ -176,7 +167,7 @@ class Plan(BaseTask):
             #         should_remove_siblings(st, task)
             return False
 
-        for task in self.tasks:
+        for task in self.subtask:
             should_remove_siblings(task)
             clear_predecessors(task)
 
@@ -202,7 +193,7 @@ class Plan(BaseTask):
                 check_task(subtask)
 
         # Start checking from the root tasks in the plan
-        for task in self.tasks:
+        for task in self.subtask:
             check_task(task)
 
         return ready_tasks
@@ -233,7 +224,7 @@ class Plan(BaseTask):
             return None
 
         # Start checking from the root tasks in the plan
-        for task in self.tasks:
+        for task in self.subtask:
             found_task = check_task(task)
             if found_task:
                 return found_task
@@ -247,7 +238,7 @@ class Plan(BaseTask):
         # Extract the task's siblings and path
         siblings = [
             sib
-            for sib in self.tasks
+            for sib in self.subtask
             if sib.task_parent_id == task.task_parent_id and sib != task
         ]
         path_to_task = task.find_task_path()
@@ -267,14 +258,14 @@ class Plan(BaseTask):
             task_description=task.description,
             high_level_plan="\n".join(
                 [
-                    "{}: {}".format(t.name, t.description)
-                    for t in self.tasks
+                    "{}: {}".format(t.task_goal, t.description)
+                    for t in self.subtask
                     if not t.task_parent_id
                 ]
             ),
-            task_name=task.name,
+            task_name=task.task_goal,
             task_command=task.command,  # assuming each task has a 'command' attribute
-            path_structure="\n".join(["->".join(p.name for p in path_to_task)]),
+            path_structure="\n".join(["->".join(p.task_goal for p in path_to_task)]),
         )
 
         return pitch
@@ -282,14 +273,18 @@ class Plan(BaseTask):
     @staticmethod
     def parse_agent_plan(plan: dict) -> str:
         parsed_response = f"Agent Plan:\n"
-        for i, task in enumerate(plan.tasks):
-            parsed_response += f"{i+1}. {task.name}\n"
+        for i, task in enumerate(plan.subtask):
+            task : Task
+            parsed_response += f"{i+1}. {task.task_id} - {task.task_goal}\n"
             parsed_response += f"Description {task.description}\n"
-            parsed_response += f"Task type: {task.type}  "
-            parsed_response += f"Priority: {task.priority}\n"
-            parsed_response += f"Ready Criteria:\n"
-            for j, criteria in enumerate(task.ready_criteria):
-                parsed_response += f"    {j+1}. {criteria}\n"
+            # parsed_response += f"Task type: {task.type}  "
+            # parsed_response += f"Priority: {task.priority}\n"
+            parsed_response += f"Predecessors:\n"
+            for j, predecessor in enumerate(task.task_predecessors):
+                 parsed_response += f"    {j+1}. {predecessor}\n"
+            parsed_response += f"Successors:\n"
+            for j, succesors in enumerate(task.task_succesors):
+                 parsed_response += f"    {j+1}. {succesors}\n"
             parsed_response += f"Acceptance Criteria:\n"
             for j, criteria in enumerate(task.acceptance_criteria):
                 parsed_response += f"    {j+1}. {criteria}\n"
@@ -313,3 +308,70 @@ class Plan(BaseTask):
 
 # # 3. Retrieve the list of tasks on the path
 # path_to_task = plan.find_task_path(first_ready_task.task_id)
+    @classmethod
+    def create_plan(cls, agent : BaseAgent):
+        memory = agent._memory
+        plan_table = memory.get_table("plans")
+        plan = cls(agent_id = agent.agent_id, task_goal = agent.agent_goal_sentence)
+        plan._create_initial_tasks(agent = agent)
+
+        plan_table.add(plan, id=plan.plan_id)
+        return plan
+        
+    def _create_initial_tasks(self):
+        try : 
+            import autogpts.autogpt.autogpt.core.agents.routing
+            initial_task = Task(
+                task_parent_id=None,
+                task_predecessor_id=None,
+                responsible_agent_id=None,
+                # task_goal="Define an agent approach to tackle a tasks",
+                task_goal= self.task_goal,
+                command="afaas_routing",
+                arguments = {'note_to_agent_length' : 400},
+                acceptance_criteria=[
+                    "A plan has been made to achieve the specific task"
+                ],
+                state=TaskStatusList.READY,
+            )
+        except:
+            initial_task = Task(
+                task_parent_id=None,
+                task_predecessor_id=None,
+                responsible_agent_id=None,
+                task_goal= self.task_goal,
+                command="afaas_make_initial_plan",
+                arguments={},
+                acceptance_criteria=[
+                    "Contextual information related to the task has been provided"
+                ],
+                state=TaskStatusList.READY,
+            )
+        # self._current_task = initial_task  # .task_id
+        initial_task_list = [initial_task]
+
+        ###
+        ### Step 2 : Prepend usercontext
+        ###
+        try : 
+            import autogpts.autogpt.autogpt.core.agents.usercontext
+            refine_user_context_task = Task(
+                # task_parent = self.plan() ,
+                task_parent_id=None,
+                task_predecessor_id=None,
+                responsible_agent_id=None,
+                task_goal="Refine a user requirements for better exploitation by Agents",
+                command="afaas_refine_user_context",
+                arguments={},
+                state=TaskStatusList.READY,
+            )
+            initial_task_list = [refine_user_context_task] + initial_task_list
+            # self._current_task = refine_user_context_task  # .task_id
+        except:
+            pass
+
+        self.add_tasks(tasks= initial_task_list)
+
+    # def _get_tasks_from_db(self):
+    #     return Task.get_from_db(self.plan_id)
+    # tasks: list[Task] =  Field(default_factory=_get_tasks_from_db)

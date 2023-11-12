@@ -206,29 +206,39 @@ class AbstractMemory(Configurable, abc.ABC):
 
         if table_name == "agents":
             from autogpts.autogpt.autogpt.core.memory.table import AgentsTable
-
             returnvalue = AgentsTable(memory=self)
             return returnvalue
+        
+        if table_name == "tasks":
+            from autogpts.autogpt.autogpt.core.memory.table import TasksTable
+            returnvalue = TasksTable(memory=self)
+            return returnvalue
+        
+        elif table_name == "plans":
+            from autogpts.autogpt.autogpt.core.memory.table import PlansTable
+            returnvalue = PlansTable(memory=self)
+            return returnvalue
+        
         elif table_name == "message_agent_agent":
             from autogpts.autogpt.autogpt.core.memory.table import \
                 MessagesAgentAgentTable
-
             return MessagesAgentAgentTable(memory=self)
+        
         elif table_name == "message_agent_llm":
             from autogpts.autogpt.autogpt.core.memory.table import \
                 MessagesAgentLLMTable
-
             return MessagesAgentLLMTable(memory=self)
+        
         elif table_name == "message_user_agent":
             from autogpts.autogpt.autogpt.core.memory.table import \
                 MessagesUserAgentTable
-
             return MessagesUserAgentTable(memory=self)
+        
         elif table_name == "users_informations":
             from autogpts.autogpt.autogpt.core.memory.table import \
                 UsersInformationsTable
-
             return UsersInformationsTable(memory=self)
+        
         else:
             raise ValueError(f"Unknown table: {table_name}")
 

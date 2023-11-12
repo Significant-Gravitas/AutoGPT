@@ -96,6 +96,10 @@ class AFAASModel(BaseModel):
 
         lines.append(")")
         return "\n".join(lines)
+    
+    @staticmethod
+    def generate_uuid() :
+        return str(uuid.uuid4())
 
 
 class SystemSettings(AFAASModel):
