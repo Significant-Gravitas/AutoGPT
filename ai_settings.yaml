@@ -1,7 +1,8 @@
 ai_goals:
-- Give a report of recent activities of linkedin competitors
-- The report should be brief, contains only important messages
-- If applicable, provide numbers and links
-- Give conclusion and suggestions to CEO
-ai_name: CEO Office
-ai_role: an AI designed to study the competitors of Linkedin company
+- Create a script for a YouTube video
+- The video should be around 8 minutes long
+- Talk about how AI girlfriends like Replika have replaced gold diggers
+- Talk about how women without any other use but looking cute are obsolete and what the consequences will be in the long run
+- Generate an image for each scene using your image generator
+ai_name: Pondering AI
+ai_role: an AI specialized into creating YouTube videos
