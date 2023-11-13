@@ -1,8 +1,8 @@
 name: Purge Auto-GPT Docker CI cache
 
-on:
-  schedule:
-    - cron: 20 4 * * 1,4
+# on:
+#   schedule:
+#     - cron: 20 4 * * 1,4
 
 env:
   BASE_BRANCH: development
