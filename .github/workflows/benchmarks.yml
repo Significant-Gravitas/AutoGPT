@@ -1,9 +1,9 @@
 name: Benchmarks (legacy)
 
-on:
-  schedule:
-    - cron: '0 8 * * *'
-  workflow_dispatch:
+# on:
+#   schedule:
+#     - cron: '0 8 * * *'
+#   workflow_dispatch:
 
 jobs:
   Benchmark:
