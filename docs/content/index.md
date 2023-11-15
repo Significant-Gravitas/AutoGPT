@@ -8,11 +8,15 @@ The AutoGPT project has been divided into four distinct sections: [Agents](#welc
 
 ## [Welcome to the heart of AutoGPT](AutoGPT/setup.md)
 
-Welcome to the heart of AutoGPT, where the magic happens – the AutoGPT Agent. This is your go-to toolkit for supercharging agents and AI innovation.
+Welcome to the heart of AutoGPT, the project that kicked it all off: a semi-autonomous agent powered by LLMs to execute any task for you*.
 
-- 👀 **Viewing** - See your progress come to life. With the AutoGPT Agent, you can easily monitor and control your agents through our user-friendly interface.
+We continue to develop this project with the goal of providing access to AI assistance to the masses, and building the future transparently and together.
 
-- Be part of the revolution! AutoGPT stays at the forefront of AI innovation and proudly features the codebase for the reigning champion in the Open-Source ecosystem.
+- 💡 **Explore** - See what AI can do and be inspired by a glimpse of the future.
+
+- 🚀 **Build with us** - We welcome any input, whether it's code or ideas for new features or improvements! Join us on [Discord](https://discord.gg/autogpt) and find out how you can join in on the action.
+
+<small>* it isn't quite there yet, but that is the ultimate goal that we are still pursuing</small>
 
 ---
 
