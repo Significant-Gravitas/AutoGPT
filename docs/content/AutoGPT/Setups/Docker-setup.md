@@ -1,37 +1,12 @@
-# Setting up AutoGPT
-
-## 📋 Requirements
-
-Choose an environment to run AutoGPT in (pick one):
-
-  - [Docker](https://docs.docker.com/get-docker/) (*recommended*)
-  - Python 3.10 or later (instructions: [for Windows](https://www.tutorialspoint.com/how-to-install-python-in-windows))
-  - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-
-
-## 🗝️ Getting an API key
-
-Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys).
-
-!!! attention
-    To use the OpenAI API with AutoGPT, we strongly recommend **setting up billing**
-    (AKA paid account). Free accounts are [limited][openai/api limits] to 3 API calls per
-    minute, which can cause the application to crash.
-
-    You can set up a paid account at [Manage account > Billing > Overview](https://platform.openai.com/account/billing/overview).
-
-[openai/api limits]: https://platform.openai.com/docs/guides/rate-limits/overview#:~:text=Free%20trial%20users,RPM%0A40%2C000%20TPM
-
-!!! important
-    It's highly recommended that you keep track of your API costs on [the Usage page](https://platform.openai.com/account/usage).
-    You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
-
-![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./imgs/openai-api-key-billing-paid-account.png)
-
-
-## Setting up AutoGPT
-
 ### Set up with Docker
+
+!!! important "Docker Setup Issue"
+    We are addressing a known issue with the Docker setup related to Poetry.
+
+    [**We have an open PR if you'd like to take a look**](https://github.com/python-poetry/poetry/issues/8548)
+
+    Please keep this in mind. We apologize for any inconvenience, and thank you for your patience.
+
 
 1. Make sure you have Docker installed, see [requirements](#requirements)
 2. Create a project directory for AutoGPT
@@ -74,45 +49,12 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
     docker pull significantgravitas/auto-gpt
     ```
 
-6. Continue to [Run with Docker](#run-with-docker)
-
 !!! note "Docker only supports headless browsing"
     AutoGPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.
     Please do not change this setting in combination with Docker, or AutoGPT will crash.
 
 [Docker Hub]: https://hub.docker.com/r/significantgravitas/auto-gpt
 [repository]: https://github.com/Significant-Gravitas/AutoGPT
-
-
-### Set up with Git
-
-!!! important
-    Make sure you have [Git](https://git-scm.com/downloads) installed for your OS.
-
-!!! info "Executing commands"
-    To execute the given commands, open a CMD, Bash, or Powershell window.  
-    On Windows: press ++win+x++ and pick *Terminal*, or ++win+r++ and enter `cmd`
-
-1. Clone the repository
-
-    ```shell
-    git clone https://github.com/Significant-Gravitas/AutoGPT.git
-    ```
-
-2. Navigate to the directory where you downloaded the repository
-
-    ```shell
-    cd AutoGPT/autogpts/autogpt
-    ```
-
-### Set up without Git/Docker
-
-!!! warning
-    We recommend to use Git or Docker, to make updating easier. Also note that some features such as Python execution will only work inside docker for security reasons.
-
-1. Download `Source code (zip)` from the [latest release](https://github.com/Significant-Gravitas/AutoGPT/releases/latest)
-2. Extract the zip-file into a folder
-
 
 ### Configuration
 
@@ -159,10 +101,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 [openai-python docs]: https://github.com/openai/openai-python#microsoft-azure-endpoints
 [Azure OpenAI docs]: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line
 
-
-## Running AutoGPT
-
-### Run with Docker
+## Running AutoGPT In Docker
 
 Easiest is to use `docker compose`. 
 
@@ -195,7 +134,7 @@ Once you have a recent version of Docker Compose, run the commands below in your
     want this, comment or remove the `depends: - redis` and `redis:` sections from
     `docker-compose.yml`.
 
-    For related settings, see [Memory > Redis setup](./configuration/memory.md#redis-setup).
+    For related settings, see [Memory > Redis setup](../configuration/memory.md)
 
 You can pass extra arguments, e.g. running with `--gpt3only` and `--continuous`:
 
@@ -211,47 +150,4 @@ docker run -it --env-file=.env -v $PWD:/app auto-gpt
 docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuous
 ```
 
-[Docker Compose file]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/docker-compose.yml
-
-
-### Run with Dev Container
-
-1. Install the [Remote - Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension in VS Code.
-
-2. Open command palette with ++f1++ and type `Dev Containers: Open Folder in Container`.
-
-3. Run `./run.sh`.
-
-
-### Run without Docker
-
-#### Create a Virtual Environment
-
-Create a virtual environment to run in.
-
-```shell
-python -m venv .venv
-source .venv/bin/activate
-pip3 install --upgrade pip
-```
-
-!!! warning
-    Due to security reasons, certain features (like Python execution) will by default be disabled when running without docker. So, even if you want to run the program outside a docker container, you currently still need docker to actually run scripts.
-
-Simply run the startup script in your terminal. This will install any necessary Python
-packages and launch AutoGPT.
-
-- On Linux/MacOS:
-
-    ```shell
-    ./run.sh
-    ```
-
-- On Windows:
-
-    ```shell
-    .\run.bat
-    ```
-
-If this gives errors, make sure you have a compatible Python version installed. See also
-the [requirements](./installation.md#requirements).
+[Docker Compose file]: https://github.com/Significant-Gravitas/AutoGPT/blob/stable/docker-compose.yml
