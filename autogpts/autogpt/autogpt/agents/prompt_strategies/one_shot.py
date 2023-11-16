@@ -42,7 +42,8 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
         "{resources}\n"
         "\n"
         "## Commands\n"
-        "You have access to the following commands:\n"
+        "These are the ONLY commands you can use."
+        " Any action you perform must be possible through one of these commands:\n"
         "{commands}\n"
         "\n"
         "## Best practices\n"
@@ -62,6 +63,13 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
                 type=JSONSchema.Type.OBJECT,
                 required=True,
                 properties={
+                    "observations": JSONSchema(
+                        description=(
+                            "Relevant observations from your last action (if any)"
+                        ),
+                        type=JSONSchema.Type.STRING,
+                        required=False,
+                    ),
                     "text": JSONSchema(
                         description="Thoughts",
                         type=JSONSchema.Type.STRING,
@@ -71,13 +79,13 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
                         type=JSONSchema.Type.STRING,
                         required=True,
                     ),
-                    "plan": JSONSchema(
-                        description="Short markdown-style bullet list that conveys the long-term plan",
+                    "self_criticism": JSONSchema(
+                        description="Constructive self-criticism",
                         type=JSONSchema.Type.STRING,
                         required=True,
                     ),
-                    "criticism": JSONSchema(
-                        description="Constructive self-criticism",
+                    "plan": JSONSchema(
+                        description="Short markdown-style bullet list that conveys the long-term plan",
                         type=JSONSchema.Type.STRING,
                         required=True,
                     ),
@@ -308,7 +316,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         )
 
         return (
-            f"Respond strictly with a JSON object{' containing your thoughts, and a function_call specifying the next command to use' if use_functions_api else ''}. "
+            f"Respond strictly with a JSON object{' containing your thoughts, and a tool_call specifying the next command to use' if use_functions_api else ''}. "
             "The JSON object should be compatible with the TypeScript type `Response` from the following:\n"
             f"{response_format}"
         )
@@ -423,11 +431,13 @@ def extract_command(
         Exception: If any other error occurs
     """
     if use_openai_functions_api:
-        if "function_call" not in assistant_reply:
-            raise InvalidAgentResponseError("No 'function_call' in assistant reply")
+        if not assistant_reply.get("tool_calls"):
+            raise InvalidAgentResponseError("No 'tool_calls' in assistant reply")
         assistant_reply_json["command"] = {
-            "name": assistant_reply["function_call"]["name"],
-            "args": json.loads(assistant_reply["function_call"]["arguments"]),
+            "name": assistant_reply["tool_calls"][0]["function"]["name"],
+            "args": json.loads(
+                assistant_reply["tool_calls"][0]["function"]["arguments"]
+            ),
         }
     try:
         if not isinstance(assistant_reply_json, dict):
