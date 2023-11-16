@@ -10,7 +10,10 @@ def extract_dict_from_response(response_content: str) -> dict[str, Any]:
     # Sometimes the response includes the JSON in a code block with ```
     if response_content.startswith("```") and response_content.endswith("```"):
         # Discard the first and last ```, then re-join in case the response naturally included ```
-        response_content = "```".join(response_content.split("```")[1:-1])
+        response_content = "```".join(response_content.split("```")[1:-1]).strip()
+
+    if (ob_pos := response_content.index("{")) > 0:
+        response_content = response_content[ob_pos:]
 
     # response content comes from OpenAI as a Python `str(content_dict)`, literal_eval reverses this
     try:
