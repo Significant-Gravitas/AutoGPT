@@ -25,7 +25,7 @@ duckduckgo-search = "^3.8.0"
 selenium = "^4.13.0"
 bs4 = "^0.0.1"
 # agbenchmark = { path = "../../benchmark", optional = true }
-agbenchmark = { git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true }
+agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
 webdriver-manager = "^4.0.1"
 
 [tool.poetry.extras]
