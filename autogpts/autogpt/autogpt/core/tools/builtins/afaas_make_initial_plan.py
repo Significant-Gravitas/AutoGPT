@@ -15,7 +15,9 @@ from autogpts.AFAAS.app.lib.task.plan import Plan
 from autogpts.AFAAS.app.lib.task.task import Task, TaskStatusList
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 
-logger = logging.getLogger(__name__)
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 
 
 @tool(

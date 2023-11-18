@@ -11,7 +11,9 @@ from autogpts.AFAAS.app.lib.action_history import EpisodicActionHistory
 
 from ..base import BaseAgent
 
-logger = logging.getLogger(__name__)
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 
 
 class WatchdogMixin:

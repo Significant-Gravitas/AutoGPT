@@ -25,7 +25,9 @@ from .decorators import sanitize_path_arg
 from .file_context import open_file, open_folder  # NOQA
 from .file_operations_utils import read_textual_file
 
-logger = logging.getLogger(__name__)
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 
 Operation = Literal["write", "append", "delete"]
 

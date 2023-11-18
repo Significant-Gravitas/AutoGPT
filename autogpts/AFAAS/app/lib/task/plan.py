@@ -94,7 +94,7 @@ class Plan(BaseTask):
     def create_plan(cls, agent : BaseAgent):
         memory = agent._memory
         plan_table = memory.get_table("plans")
-        plan = cls(agent_id = agent.agent_id, task_goal = agent.agent_goal_sentence)
+        plan = cls(agent_id = agent.agent_id, task_goal = agent.agent_goal_sentence, tasks=[])
         plan._create_initial_tasks()
 
         plan_table.add(plan, id=plan.plan_id)

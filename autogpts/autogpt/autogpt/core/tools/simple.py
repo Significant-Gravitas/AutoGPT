@@ -8,7 +8,9 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any, Iterator
 
 
-logger = logging.getLogger(__name__)
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent

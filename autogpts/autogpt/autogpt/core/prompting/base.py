@@ -230,4 +230,4 @@ class BasePromptStrategy(AbstractPromptStrategy):
     
     @staticmethod
     def get_autocorrection_response(response : ChatModelResponse) :
-        return response.parsed_result['command_args']['note_to_agent']
+        return response.parsed_result[0]['command_args']['note_to_agent']

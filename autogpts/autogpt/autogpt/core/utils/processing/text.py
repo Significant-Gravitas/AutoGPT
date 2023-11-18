@@ -10,8 +10,11 @@ from autogpts.autogpt.autogpt.core.resource.model_providers import (
 from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import \
     ChatPrompt
 
-logger = logging.getLogger(__name__)
-logger.warning(" Deprecated : Use langchain")
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
+logger.info(" Deprecated soon : Will switch to Langchain. Looking for volunteer.")
+
 T = TypeVar("T")
 
 

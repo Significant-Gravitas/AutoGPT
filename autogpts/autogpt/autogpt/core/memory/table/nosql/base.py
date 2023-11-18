@@ -124,10 +124,10 @@ class BaseNoSQLTable(AbstractTable):
             value[self.secondary_key] = str(value[self.secondary_key])
 
         self.memory._logger.debug(
-            "add new " + str(self.__class__) + "with keys " + str(key)
+            "add new " + str(self.__class__.__name__) + "with keys " + str(key)
         )
         self.memory._logger.debug(
-            "add new " + str(self.__class__) + "with values " + str(value)
+            "add new " + str(self.__class__.__name__) + "with values " + str(value)
         )
 
         self.memory.add(key=key, value=value, table_name=self.table_name)
@@ -147,10 +147,10 @@ class BaseNoSQLTable(AbstractTable):
         #     key["secondary_key"] = value[self.secondary_key]
 
         self.memory._logger.debug(
-            "update new " + str(self.__class__) + "with keys " + str(key)
+            "update new " + str(self.__class__.__name__) + "with keys " + str(key)
         )
         self.memory._logger.debug(
-            "update new " + str(self.__class__) + "with values " + str(value)
+            "update new " + str(self.__class__.__name__) + "with values " + str(value)
         )
 
         self.memory.update(key=key, value=value, table_name=self.table_name)

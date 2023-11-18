@@ -11,7 +11,9 @@ import yaml
 from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
 
-logger = logging.getLogger(__name__)
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 
 
 class ParserStrategy:

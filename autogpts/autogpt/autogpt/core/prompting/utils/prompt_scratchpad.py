@@ -7,7 +7,9 @@ from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import \
     CompletionModelFunction
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
-logger = logging.getLogger("PromptScratchpad")
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 
 
 class CallableCompletionModelFunction(CompletionModelFunction):

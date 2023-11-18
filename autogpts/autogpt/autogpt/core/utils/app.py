@@ -10,7 +10,9 @@ from git.repo import Repo
 from prompt_toolkit import ANSI, PromptSession
 from prompt_toolkit.history import InMemoryHistory
 
-logger = logging.getLogger(__name__)
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 session = PromptSession(history=InMemoryHistory())
 
 

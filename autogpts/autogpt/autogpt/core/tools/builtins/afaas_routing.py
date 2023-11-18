@@ -16,7 +16,9 @@ from autogpts.autogpt.autogpt.core.agents.routing import RoutingAgent
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.agents.routing.strategies.routing import RoutingStrategyConfiguration
 
-logger = logging.getLogger(__name__)
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 
 
 @tool(

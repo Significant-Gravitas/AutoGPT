@@ -7,4 +7,7 @@ from autogpts.autogpt.autogpt.core.agents.base.features.agentmixin import \
 class ToolExecutor(AgentMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        Logger(name=__name__).warning("ToolExecutor : Has not been implemented yet")
+
+        from  autogpts.AFAAS.app.sdk import forge_log
+        forge_log.ForgeLogger(__name__).info("ToolExecutor : Has not been implemented yet")
+        forge_log.ForgeLogger(__name__).info("ToolExecutor : Will be part of a @tool wrapper redisign")

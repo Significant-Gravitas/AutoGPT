@@ -413,6 +413,8 @@ def execute_command(
         str: The result of the command
     """
     # Execute a native command with the same name or alias, if it exists
+    agent._logger.info(f"Executing command : {command_name}")
+    agent._logger.info(f"with arguments : {arguments}")
     if command := agent._tool_registry.get_tool(tool_name=command_name):
         try:
             return command(**arguments, task=task, agent=agent)

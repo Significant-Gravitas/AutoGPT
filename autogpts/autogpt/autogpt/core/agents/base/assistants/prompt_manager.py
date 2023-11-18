@@ -150,6 +150,8 @@ class PromptManager(Configurable, AgentMixin):
 
         kwargs.update(self.get_system_info(prompt_strategy))
 
+        prompt_strategy._agent._logger.warning(f"Executing strategy : {prompt_strategy.STRATEGY_NAME}")
+
         #MAKE FUNCTION DYNAMICS
         prompt_strategy.set_tools(**kwargs)
 

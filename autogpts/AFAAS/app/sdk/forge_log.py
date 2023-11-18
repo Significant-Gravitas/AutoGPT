@@ -93,11 +93,16 @@ class ConsoleFormatter(logging.Formatter):
         if self.use_color and levelname in KEYWORD_COLORS:
             levelname_color = KEYWORD_COLORS[levelname] + levelname + RESET_SEQ
             rec.levelname = levelname_color
-        rec.name = f"{GREY}{rec.name:<15}{RESET_SEQ}"
+        rec.name = f"{GREY}{os.path.relpath(rec.pathname):<15}{RESET_SEQ}"
         rec.msg = (
             KEYWORD_COLORS[levelname] + EMOJIS[levelname] + "  " + str( rec.msg )+ RESET_SEQ
         )
-        return logging.Formatter.format(self, rec)
+
+        message = logging.Formatter.format(self, rec)
+        if rec.levelno == logging.DEBUG  and len(message) > 1000:
+            message = message[:800] + '[...] ' + os.path.abspath(ForgeLogger.LOG_FILENAME)
+        return message
+
 
 
 class ForgeLogger(logging.Logger):
@@ -106,21 +111,52 @@ class ForgeLogger(logging.Logger):
     sets the logger to use the custom formatter
     """
 
+    LOG_FILENAME = 'debug.log' 
+    DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
+    
     CONSOLE_FORMAT: str = (
         "[%(asctime)s] [$BOLD%(name)-15s$RESET] [%(levelname)-8s]\t%(message)s"
     )
     FORMAT: str = "%(asctime)s %(name)-15s %(levelname)-8s %(message)s"
     COLOR_FORMAT: str = formatter_message(CONSOLE_FORMAT, True)
     JSON_FORMAT: str = '{"time": "%(asctime)s", "name": "%(name)s", "level": "%(levelname)s", "message": "%(message)s"}'
+    
+    # _instance = None  # Class attribute to hold the single instance
 
-    def __init__(self, name: str, logLevel: str = "DEBUG"):
+    # @classmethod
+    # def get_instance(cls, name: str, logLevel: str = "DEBUG", log_folder: str = './'):
+    #     if cls._instance is None:
+    #         cls._instance = cls(name, logLevel, log_folder)
+
+    #     cls._instance.name = name
+    #     cls._instance.level = logLevel
+    #     return cls._instance
+
+
+    def __init__(self, name: str, logLevel: str = "DEBUG", log_folder: str = './'):
+        if hasattr(self, '_initialized'):
+            return
+        
         logging.Logger.__init__(self, name, logLevel)
+        # self.log_folder = log_folder
 
         # Queue Handler
         queue_handler = logging.handlers.QueueHandler(queue.Queue(-1))
         json_formatter = logging.Formatter(self.JSON_FORMAT)
         queue_handler.setFormatter(json_formatter)
         self.addHandler(queue_handler)
+
+        # File Handler
+        os.makedirs(log_folder, exist_ok=True)
+        log_file_path = os.path.join(log_folder, self.LOG_FILENAME)
+        file_handler = logging.handlers.TimedRotatingFileHandler(
+            log_file_path, when="midnight", interval=1, backupCount=7
+        )
+        file_handler.suffix = "%Y-%m-%d.log"
+        file_handler.extMatch = r"^\d{4}-\d{2}-\d{2}.log$"
+        file_handler.setLevel(logging.DEBUG) 
+        file_handler.setFormatter(logging.Formatter(self.FORMAT))  # Use a simple format for file logs
+        self.addHandler(file_handler)
 
         if JSON_LOGGING:
             console_formatter = JsonFormatter()
@@ -129,6 +165,8 @@ class ForgeLogger(logging.Logger):
         console = logging.StreamHandler()
         console.setFormatter(console_formatter)
         self.addHandler(console)
+
+        # self._initialized = True
 
     def chat(self, role: str, openai_repsonse: dict, messages=None, *args, **kws):
         """
@@ -181,14 +219,20 @@ logging_config: dict = dict(
             "formatter": "console",
             "level": logging.INFO,
         },
+        "file": {
+            "class": "logging.FileHandler",
+            "filename": ForgeLogger.LOG_FILENAME,
+            "formatter": "console",
+            "level": logging.DEBUG,
+        },
     },
     root={
-        "handlers": ["h"],
+        "handlers": ["h", "file"],
         "level": logging.INFO,
     },
     loggers={
         "autogpt": {
-            "handlers": ["h"],
+            "handlers": ["h", "file"],
             "level": logging.INFO,
             "propagate": False,
         },
@@ -201,3 +245,21 @@ def setup_logger():
     Setup the logger with the specified format
     """
     logging.config.dictConfig(logging_config)
+
+def get_client_logger(logger_level: int = logging.DEBUG):
+    # Configure logging before we do anything else.
+    # Application logs need a place to live.
+    client_logger = logging.getLogger("autogpt_client_application")
+    client_logger.setLevel(logger_level)
+
+    formatter = logging.Formatter(
+        "%(asctime)s#%(filename)s:%(funcName)s:%(levelname)s:%(message)s"
+    )
+
+    ch = logging.StreamHandler()
+    ch.setLevel(logger_level)
+    ch.setFormatter(formatter)
+
+    client_logger.addHandler(ch)
+
+    return client_logger

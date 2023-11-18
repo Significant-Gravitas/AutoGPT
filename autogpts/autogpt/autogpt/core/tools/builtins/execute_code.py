@@ -22,7 +22,9 @@ from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 
-logger = logging.getLogger(__name__)
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 
 ALLOWLIST_CONTROL = "allowlist"
 DENYLIST_CONTROL = "denylist"

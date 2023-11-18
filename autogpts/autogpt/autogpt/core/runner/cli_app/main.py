@@ -2,7 +2,8 @@ import logging
 
 import click
 
-from autogpts.autogpt.autogpt.core.agents import PlannerAgent
+from autogpts.autogpt.autogpt.core.agents import PlannerAgent 
+from  autogpts.AFAAS.app.sdk import forge_log
 from autogpts.autogpt.autogpt.core.runner.client_lib.logging import \
     get_client_logger
 
@@ -26,7 +27,7 @@ async def run_auto_gpt():
     # INFO = 20
     # DEBUG = 10
     # NOTSET = 0
-    client_logger = get_client_logger(logger_level=logging.DEBUG)
+    client_logger = forge_log.ForgeLogger(__name__)
     client_logger.info("Getting agent settings")
 
     import uuid

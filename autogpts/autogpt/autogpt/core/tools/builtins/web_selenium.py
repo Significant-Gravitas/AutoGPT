@@ -30,7 +30,9 @@ from autogpts.autogpt.autogpt.core.utils.processing.html import (
 from autogpts.autogpt.autogpt.core.utils.processing.text import summarize_text
 from autogpts.autogpt.autogpt.core.utils.url.validators import validate_url
 
-logger = logging.getLogger(__name__)
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 
 FILE_DIR = Path(__file__).parent.parent
 TOKENS_TO_TRIGGER_SUMMARY = 50

@@ -13,7 +13,9 @@ from autogpts.AFAAS.app.lib.task.task import Task
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
-logger = logging.getLogger(__name__)
+
+from  autogpts.AFAAS.app.sdk import forge_log
+logger = forge_log.ForgeLogger(__name__)
 
 
 @tool(

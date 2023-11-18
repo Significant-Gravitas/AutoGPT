@@ -61,6 +61,7 @@ class AbstractAgent(ABC):
             default_factory=_get_message_agent_llm
         )
 
+
         @property
         def _type_(self):
             # Nested Class
@@ -69,23 +70,46 @@ class AbstractAgent(ABC):
                 + "."
                 + ".".join(self.__class__.__qualname__.split(".")[:-1])
             )
-            # __module__ + "." + ".".join(__name__)
 
-    @classmethod
-    def get_agent_class(cls) -> BaseAgent:
-        """
-        Returns the agent class.
 
-        Returns:
-            Agent: The class of the agent.
+        @classmethod
+        @property
+        def _agentclassname_(cls):
+            return (
+                cls.__qualname__.split(".")[:-1]
+            )
 
-        Example:
-            >>> agent_class = BaseAgent.get_agent_class()
-            >>> print(agent_class)
-            <class '__main__.BaseAgent'>
-        """
-        return cls
+        @classmethod
+        @property
+        def _classtype_(cls):
+            return (
+                cls.__module__
+                + "."
+                + ".".join(cls.__qualname__.split(".")[:-1])
+            )
 
+
+    @classmethod    
+    @property
+    def _basetype_(self):
+        returnval = (self.__module__
+            + "."
+            + ".".join(self.__name__))
+        
+        returnval = (self.__module__
+            + "."
+            + ".".join(self.__qualname__))
+        return (
+            self.__module__
+            + "."
+            + self.__name__
+        )
+    
+    @classmethod 
+    @property
+    def _classname_(cls) -> str :
+        return cls.__name__
+    
     @abstractmethod
     def __init__(self, *args, **kwargs):
         """
@@ -286,7 +310,7 @@ class BaseAgent(Configurable, AbstractAgent):
         user_input_handler: Callable[[str], Awaitable[str]],
         user_message_handler: Callable[[str], Awaitable[str]],
     ) -> None:
-        self._logger.info(str(self.__class__) + ".start()")
+        self._logger.info(str(self.__class__.__name__) + ".start()")
         return_var = await self._loop.start(
             agent=self,
             user_input_handler=user_input_handler,
@@ -350,7 +374,7 @@ class BaseAgent(Configurable, AbstractAgent):
             agent = YourClass()
             await agent.run(input_handler, message_handler)
         """
-        self._logger.debug(str(self.__class__) + ".run() *kwarg : " + str(kwargs))
+        self._logger.debug(str(self.__class__.__name__) + ".run() *kwarg : " + str(kwargs))
         self._user_input_handler = user_input_handler
         self._user_message_handler = user_message_handler
 
@@ -510,7 +534,7 @@ class BaseAgent(Configurable, AbstractAgent):
         # Processing to custom treatments
         cls._create_agent_custom_treatment(agent_settings=agent_settings, logger=logger)
 
-        logger.info(f"Loaded Agent ({cls}) with ID {agent_id}")
+        logger.info(f"Loaded Agent ({cls.__name__}) with ID {agent_id}")
 
         agent = cls.get_instance_from_settings(
             agent_settings=agent_settings,
@@ -608,7 +632,7 @@ class BaseAgent(Configurable, AbstractAgent):
                         value=str(user_id), operator=AbstractTable.Operators.EQUAL_TO
                     )
                 ],
-                "agent_class": [
+                "_classname_": [
                     AbstractTable.FilterItem(
                         value=str(cls.__name__),
                         operator=AbstractTable.Operators.EQUAL_TO,
