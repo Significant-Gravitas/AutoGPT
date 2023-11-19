@@ -123,8 +123,11 @@ class AFAASModel(BaseModel):
     # TODO Implement a BaseSettings class and move it to the BaseSettings ?
     def prepare_values_before_serialization(self):
             pass
-
+    
     def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
         lines = [f"{self.__class__.__name__}("]
 
         for field_name, field_value in self.dict().items():

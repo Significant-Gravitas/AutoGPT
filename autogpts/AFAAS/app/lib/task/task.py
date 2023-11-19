@@ -252,17 +252,17 @@ class Task(AFAASModel):
                 
         return cls._default_command
 
-    AAAS : str = None
-    @classmethod
-    def default_command(cls) -> str: 
-        if cls.AAAS is None:
-            try : 
-                import autogpts.autogpt.autogpt.core.agents.routing        
-                cls.AAAS = "afaas_routing"
-            except :
-                cls.AAAS = "afaas_make_initial_plan"
+    # AAAS : str = None
+    # @classmethod
+    # def default_command(cls) -> str: 
+    #     if cls.AAAS is None:
+    #         try : 
+    #             import autogpts.autogpt.autogpt.core.agents.routing        
+    #             cls.AAAS = "afaas_routing"
+    #         except :
+    #             cls.AAAS = "afaas_make_initial_plan"
 
-        return cls.AAAS
+    #     return cls.AAAS
 
     def dump(self, depth=0) -> dict:
         if depth < 0:

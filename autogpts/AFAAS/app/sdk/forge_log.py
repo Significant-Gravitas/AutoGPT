@@ -1,9 +1,17 @@
+
+from dotenv import load_dotenv
 import json
 import logging
 import logging.config
 import logging.handlers
 import os
 import queue
+
+# Load the .env file
+load_dotenv()
+
+CONSOLE_LOG_LEVEL = os.getenv('CONSOLE_LOG_LEVEL', 'INFO').upper()
+FILE_LOG_LEVEL = os.getenv('FILE_LOG_LEVEL', 'DEBUG').upper()
 
 JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
 
@@ -210,6 +218,12 @@ class ForgeLogger(logging.Logger):
         if self.isEnabledFor(NOTICE):
             self._log(NOTICE, msg, args, **kwargs)
 
+            
+    def trace(self, msg, *args, **kwargs):
+      
+        if self.isEnabledFor(TRACE):
+            self._log(TRACE, msg, args, **kwargs)
+
 
 class QueueLogger(logging.Logger):
     """
@@ -234,23 +248,23 @@ logging_config: dict = dict(
         "h": {
             "class": "logging.StreamHandler",
             "formatter": "console",
-            "level": logging.INFO,
+            "level": CONSOLE_LOG_LEVEL,
         },
         "file": {
             "class": "logging.FileHandler",
             "filename": ForgeLogger.LOG_FILENAME,
             "formatter": "console",
-            "level": TRACE,
+            "level": FILE_LOG_LEVEL,
         },
     },
     root={
         "handlers": ["h", "file"],
-        "level": logging.INFO,
+        "level": CONSOLE_LOG_LEVEL,
     },
     loggers={
         "autogpt": {
             "handlers": ["h", "file"],
-            "level": logging.INFO,
+            "level": CONSOLE_LOG_LEVEL,
             "propagate": False,
         },
     },
@@ -263,20 +277,6 @@ def setup_logger():
     """
     logging.config.dictConfig(logging_config)
 
-def get_client_logger(logger_level: int = logging.DEBUG):
-    # Configure logging before we do anything else.
-    # Application logs need a place to live.
-    client_logger = logging.getLogger("autogpt_client_application")
-    client_logger.setLevel(logger_level)
-
-    formatter = logging.Formatter(
-        "%(asctime)s#%(filename)s:%(funcName)s:%(levelname)s:%(message)s"
-    )
-
-    ch = logging.StreamHandler()
-    ch.setLevel(logger_level)
-    ch.setFormatter(formatter)
-
-    client_logger.addHandler(ch)
-
-    return client_logger
+LOG = ForgeLogger(__name__)
+LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}" )
+LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}" )

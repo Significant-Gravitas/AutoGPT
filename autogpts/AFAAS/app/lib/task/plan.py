@@ -11,8 +11,9 @@ from .task import Task, TaskStatusList
 
 logger = Logger(name=__name__)
 
-from autogpts.autogpt.autogpt.core.configuration import AFAASModel
-from autogpts.autogpt.autogpt.core.agents import BaseAgent
+# from autogpts.autogpt.autogpt.core.configuration import AFAASModel
+if TYPE_CHECKING :
+    from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
 class Plan(BaseTask):
     """

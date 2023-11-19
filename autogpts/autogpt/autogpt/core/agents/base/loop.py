@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 import enum
-from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional)
+from typing import (TYPE_CHECKING, Any, Awaitable, Callable, Optional)
 
 from typing_extensions import TypedDict
 
@@ -28,7 +28,7 @@ class BaseLoopHookKwargs(TypedDict):
     loop: BaseLoop
     user_input_handler: Callable[[str], Awaitable[str]]
     user_message_handler: Callable[[str], Awaitable[str]]
-    kwargs: Dict[str, Any]
+    kwargs: dict[str, Any]
 
 
 class BaseLoopHook(TypedDict):
@@ -49,8 +49,8 @@ class UserFeedback(str, enum.Enum):
 
 class BaseLoop(AgentMixin, abc.ABC, metaclass=BaseLoopMeta):
     class LoophooksDict(TypedDict):
-        begin_run: Dict[BaseLoopHook]
-        end_run: Dict[BaseLoopHook]
+        begin_run: dict[BaseLoopHook]
+        end_run: dict[BaseLoopHook]
 
     _loophooks: LoophooksDict
 
@@ -111,7 +111,7 @@ class BaseLoop(AgentMixin, abc.ABC, metaclass=BaseLoopMeta):
             for key, hook in self._loophooks[hook_key].items():
                 # if isinstance(hook, BaseLoopHook):
                 self._agent._logger.debug(f"Executing hook {key}")
-                self._agent._logger.info(f"hook class is {hook.__class__}'")
+                self._agent._logger.trace(f"Hook class is {hook.__class__}'")
                 await self.execute_hook(hook=hook, agent=agent)
                 # else :
                 #     raise TypeError(f"Hook {key} is not a BaseLoopHook but is a {hook.__class__}")
