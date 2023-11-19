@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/stale@v8
         with:
-          operations-per-run: 5000
+          # operations-per-run: 5000
           stale-issue-message: >
             This issue has automatically been marked as _stale_ because it has not had
             any activity in the last 50 days. You can _unstale_ it by commenting or
@@ -28,7 +28,7 @@ jobs:
           days-before-stale: 50
           days-before-close: 10
           # Do not touch meta issues:
-          exempt-issue-labels: meta
+          exempt-issue-labels: meta,fridge,project management
           # Do not affect pull requests:
           days-before-pr-stale: -1
           days-before-pr-close: -1

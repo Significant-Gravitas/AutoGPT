@@ -108,7 +108,7 @@ line-length = 88
 target-version = ['py310']
 include = '\.pyi?$'
 packages = ["autogpt"]
-extend-exclude = '.+/(dist|.venv|venv|build)/.+'
+extend-exclude = '.+/(dist|.venv|venv|build|data)/.+'
 
 
 [tool.isort]
