@@ -1,6 +1,7 @@
 """Text processing functions"""
 import logging
 import math
+import os
 from typing import Iterator, Optional, TypeVar
 
 import spacy
@@ -13,7 +14,7 @@ from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import \
 
 from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
-logger.info(" Deprecated soon : Will switch to Langchain. Looking for volunteer.")
+logger.notice(f"Looking for volunteer to migrate {os.path.relpath(__file__)} library to Langchain.")
 
 T = TypeVar("T")
 

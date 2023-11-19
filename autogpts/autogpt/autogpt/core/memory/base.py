@@ -155,7 +155,7 @@ class AbstractMemory(Configurable, abc.ABC):
             from autogpts.autogpt.autogpt.core.memory.nosql.jsonfile import \
                 JSONFileMemory
 
-            logger.info("Using JSONFileMemory. Help us to implement/test DynamoDB & CosmoDB backends !")
+            logger.notice("Started using a local JSONFile backend. Help us to implement/test DynamoDB & CosmoDB backends !")
             instance = JSONFileMemory(settings=memory_settings, logger=logger)
 
         elif adapter_type == MemoryAdapterType.SQLLIKE_JSON_FILE:

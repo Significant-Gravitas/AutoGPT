@@ -8,7 +8,9 @@ import queue
 JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
 
 CHAT = 29
+NOTICE = 15
 logging.addLevelName(CHAT, "CHAT")
+logging.addLevelName(NOTICE, "NOTICE")
 
 RESET_SEQ: str = "\033[0m"
 COLOR_SEQ: str = "\033[1;%dm"
@@ -23,6 +25,7 @@ LIGHT_BLUE: str = "\033[94m"
 RED: str = "\033[91m"
 GREY: str = "\33[90m"
 GREEN: str = "\033[92m"
+PURPLE: str = "\033[35m"
 
 EMOJIS: dict[str, str] = {
     "DEBUG": "🐛",
@@ -31,12 +34,14 @@ EMOJIS: dict[str, str] = {
     "WARNING": "⚠️",
     "ERROR": "❌",
     "CRITICAL": "💥",
+    "NOTICE": "🔊",
 }
 
 KEYWORD_COLORS: dict[str, str] = {
     "DEBUG": WHITE,
     "INFO": LIGHT_BLUE,
-    "CHAT": GREEN,
+    "CHAT": PURPLE, 
+    "NOTICE": GREEN,
     "WARNING": YELLOW,
     "ERROR": ORANGE,
     "CRITICAL": RED,
@@ -192,6 +197,11 @@ class ForgeLogger(logging.Logger):
                     CHAT,
                     f"{role_emojis.get(role, '🔵')}: {response['choices'][0]['message']['content']}",
                 )
+        
+    def notice(self, msg, *args, **kwargs):
+      
+        if self.isEnabledFor(NOTICE):
+            self._log(NOTICE, msg, args, **kwargs)
 
 
 class QueueLogger(logging.Logger):
