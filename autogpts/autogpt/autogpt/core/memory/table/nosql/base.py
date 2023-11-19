@@ -4,7 +4,7 @@ import abc
 import datetime
 import uuid
 from pathlib import Path
-from typing import (Any, Dict, List, Literal, Optional, TypedDict)
+from typing import (Any, Literal, Optional, TypedDict)
 
 from pydantic import BaseModel
 
@@ -12,6 +12,9 @@ from autogpts.autogpt.autogpt.core.configuration import SystemSettings, AFAASMod
 
 from ..base import AbstractTable
 
+
+from  autogpts.AFAAS.app.sdk import forge_log
+LOG = forge_log.ForgeLogger(__name__)
 
 class BaseSQLTable(AbstractTable):
     def __init__(self) -> None:
@@ -147,10 +150,10 @@ class BaseNoSQLTable(AbstractTable):
         #     key["secondary_key"] = value[self.secondary_key]
 
         self.memory._logger.debug(
-            "update new " + str(self.__class__.__name__) + "with keys " + str(key)
+            "Update new " + str(self.__class__.__name__) + "with keys " + str(key)
         )
         self.memory._logger.debug(
-            "update new " + str(self.__class__.__name__) + "with values " + str(value)
+            "Update new " + str(self.__class__.__name__) + "with values " + str(value)
         )
 
         self.memory.update(key=key, value=value, table_name=self.table_name)
@@ -171,7 +174,7 @@ class BaseNoSQLTable(AbstractTable):
         filter: AbstractTable.FilterDict = {},
         order_column: Optional[str] = None,
         order_direction: Literal["asc", "desc"] = "desc",
-    ) -> list[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Retrieve a filtered and optionally ordered list of items from the table.
 
@@ -231,13 +234,16 @@ class BaseNoSQLTable(AbstractTable):
             # Output: [{'name': 'Alice', 'age': 30, 'city': 'Los Angeles'}]
         """
         data_list = self.memory.list(table_name=self.table_name)
-        filtered_data_list: List = []
+        filtered_data_list: list = []
+
+        LOG.notice("May need to be moved to JSONFileMemory")
 
         for data in data_list:
             remove_entry = False
             for filter_column_name, filters in filter.items():
                 value_to_filter = data.get(filter_column_name)
-                if value_to_filter is not None:
+                # NOTE: May be this test & the else need to be removed
+                if value_to_filter is not None: 
                     for filter_data in filters:
                         filter_value = filter_data["value"]
                         filter_operator = filter_data["operator"]
@@ -251,6 +257,8 @@ class BaseNoSQLTable(AbstractTable):
                             )
                         if not comparison_function(value_to_filter, filter_value):
                             remove_entry = True
+                else : 
+                    remove_entry = True
             if not remove_entry:
                 filtered_data_list.append(data)
 

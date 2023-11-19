@@ -285,6 +285,9 @@ class PlannerAgent(BaseAgent):
 
 
 def test_hook(**kwargs):
+    logger : logging.Logger =  kwargs['agent']._logger
+    logger.notice("Entering test_hook Function")
+    logger.notice("Hooks are an experimental plug-in system that may fade away as we are transiting from a Loop logic to a Pipeline logic.")
     test = "foo_bar"
     for key, value in kwargs.items():
-        print(f"{key}: {value}")
+         logger.trace(f"{key}: {value}")

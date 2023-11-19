@@ -12,43 +12,13 @@ from typing import TYPE_CHECKING, Optional, Union
 from pydantic import BaseModel, Field
 
 from autogpts.autogpt.autogpt.core.configuration import AFAASModel
-from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
+# from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
 logger = Logger(name=__name__)
 
-if TYPE_CHECKING:
-    from autogpts.autogpt.autogpt.core.agents import BaseAgent
+# if TYPE_CHECKING:
+    # from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
-    from .plan import Plan
-
-from .task import Task
-
-
-class TaskType(str, enum.Enum):
-    """
-    An enumeration representing the type of tasks available.
-
-    Attributes:
-    - RESEARCH: Task type represents research work.
-    - WRITE: Task type represents writing.
-    - EDIT: Task type represents editing.
-    - CODE: Task type represents coding.
-    - DESIGN: Task type represents designing.
-    - TEST: Task type represents testing.
-    - PLAN: Task type represents planning.
-
-    Example:
-        >>> task = TaskType.RESEARCH
-        >>> print(task)
-        TaskType.RESEARCH
-    """
-
-    RESEARCH: str = "research"
-    WRITE: str = "write"
-    EDIT: str = "edit"
-    CODE: str = "code"
-    DESIGN: str = "design"
-    TEST: str = "test"
-    PLAN: str = "plan"
+    #from .plan import Plan
 
 
 class TaskStatus(AFAASModel):
@@ -138,37 +108,6 @@ class TaskStatusList(str, enum.Enum):
         else:
             return super().__eq__(other)
 
-
-class TaskContext(AFAASModel):
-    """
-    Model representing the context of a task.
-
-    Attributes:
-    - cycle_count: Number of cycles (default is 0).
-    - status: Status of the task (default is BACKLOG).
-    - parent: Parent task (default is None).
-    - prior_actions: List of prior actions (default is empty list).
-    - memories: List of memories related to the task (default is empty list).
-    - user_input: List of user inputs related to the task (default is empty list).
-    - supplementary_info: Additional information about the task (default is empty list).
-    - enough_info: Flag indicating if enough information is available (default is False).
-
-    Example:
-        >>> context = TaskContext(cycle_count=5, status=TaskStatusList.IN_PROGRESS)
-        >>> print(context.cycle_count)
-        5
-    """
-
-    cycle_count: int = 0
-    status: TaskStatusList = TaskStatusList.BACKLOG
-    parent: "Task" = None
-    prior_actions: list[ToolResult] = Field(default_factory=list)
-    memories: list = Field(default_factory=list)
-    user_input: list[str] = Field(default_factory=list)
-    supplementary_info: list[str] = Field(default_factory=list)
-    enough_info: bool = False
-
-
 class BaseTask(AFAASModel):
     """
     Model representing a task.
@@ -205,26 +144,29 @@ class BaseTask(AFAASModel):
 
     long_decription: Optional[str] 
     """ Placeholder : A longer description of the task than `task_goal` """
-    
-    task_text_output : Optional[str] 
-    """ Placeholder : The agent summary of his own doing while performing the task"""
 
     ###
     ### Task Management properties
     ###
     task_history: Optional[list[dict]]
-    subtasks: list[Task] = []
-    acceptance_criteria: Optional[list[str]]
+    subtasks: list [BaseTask] = []
+    acceptance_criteria: Optional[list[str]] = []
 
-    @staticmethod
-    def default_command() -> str: 
+    _default_command : str = None
+    @classmethod
+    def default_command(cls) -> str: 
+        if cls._default_command is not None :
+            return cls._default_command
+        
         try : 
             import autogpts.autogpt.autogpt.core.agents.routing
-            return "afaas_routing"
+            cls._default_command = "afaas_routing"
         except :
-            return "afaas_make_initial_plan"
+            cls._default_command= "afaas_make_initial_plan"
+                
+        return cls._default_command
 
-    def add_tasks(self, tasks=list[Task], position: int = None):
+    def add_tasks(self, tasks=list["BaseTask"], position: int = None):
         if position is not None:
             for tasks in tasks:
                 self.subtasks.insert(tasks, position)
@@ -241,7 +183,7 @@ class BaseTask(AFAASModel):
             index (Union[int, str]): The index or slice notation to retrieve a task.
 
         Returns:
-            Task or List[Task]: The task or list of tasks specified by the index or slice.
+            Task or List [BaseTask]: The task or list of tasks specified by the index or slice.
 
         Examples:
             >>> plan = Plan([Task("Task 1"), Task("Task 2")])
@@ -264,7 +206,7 @@ class BaseTask(AFAASModel):
             index (Union[int, str]): The index or slice notation to retrieve a task.
 
         Returns:
-            Task or List[Task]: The task or list of tasks specified by the index or slice.
+            Task or List [BaseTask]: The task or list of tasks specified by the index or slice.
 
         Examples:
             >>> plan = Plan([Task("Task 1"), Task("Task 2")])
@@ -298,7 +240,7 @@ class BaseTask(AFAASModel):
                      1. We now manage multiple predecessor
                      2. Tasks should not be deleted but managed by state""")
         # 1. Set all task_predecessor_id to null if they reference the task to be removed
-        def clear_predecessors(task: Task):
+        def clear_predecessors(task: BaseTask):
             if task.task_predecessor_id == task_id:
                 task.task_predecessor_id = None
             for subtask in task.subtasks or []:
@@ -306,7 +248,7 @@ class BaseTask(AFAASModel):
 
         # 2. Remove leaves with status "DONE" if ALL their siblings have this status
         def should_remove_siblings(
-            task: Task, task_parent: Optional[Task] = None
+            task: BaseTask, task_parent: Optional [BaseTask] = None
         ) -> bool:
             # If it's a leaf and has a parent
             if not task.subtasks and task_parent:
@@ -326,16 +268,16 @@ class BaseTask(AFAASModel):
             should_remove_siblings(task)
             clear_predecessors(task)
 
-    def get_ready_leaf_tasks(self) -> list[Task]:
+    def get_ready_leaf_tasks(self) -> list [BaseTask]:
         """
         Get tasks that have status "READY", no subtasks, and no task_predecessor_id.
 
         Returns:
-            List[Task]: A list of tasks meeting the specified criteria.
+            List [BaseTask]: A list of tasks meeting the specified criteria.
         """
         ready_tasks = []
 
-        def check_task(task: Task):
+        def check_task(task: BaseTask):
             if (
                 task.status == "READY"
                 and not task.subtasks
@@ -353,7 +295,7 @@ class BaseTask(AFAASModel):
 
         return ready_tasks
 
-    def get_first_ready_task(self) -> Optional[Task]:
+    def get_first_ready_task(self) -> Optional [BaseTask]:
         """
         Get the first task that has status "READY", no subtasks, and no task_predecessor_id.
 
@@ -361,7 +303,7 @@ class BaseTask(AFAASModel):
             Task or None: The first task meeting the specified criteria or None if no such task is found.
         """
 
-        def check_task(task: Task) -> Optional[Task]:
+        def check_task(task: BaseTask) -> Optional [BaseTask]:
             if (
                 task.status == "READY"
                 and not task.subtasks
@@ -387,10 +329,10 @@ class BaseTask(AFAASModel):
         return None
     
     @staticmethod
-    def debug_parse_task(plan: dict) -> str:
+    def debug_parse_task(task: dict) -> str:
         parsed_response = f"Agent Plan:\n"
-        for i, task in enumerate(plan.subtasks):
-            task : Task
+        for i, task in enumerate(task.subtasks):
+            task : BaseTask
             parsed_response += f"{i+1}. {task.task_id} - {task.task_goal}\n"
             parsed_response += f"Description {task.description}\n"
             # parsed_response += f"Task type: {task.type}  "

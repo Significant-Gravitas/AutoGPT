@@ -122,8 +122,8 @@ class BaseAgent(Configurable, AbstractAgent):
         self.user_id = user_id
         self.agent_id = agent_id
 
-        self._settings_agent_class_ = settings._settings_agent_class_
-        self._settings_agent_module_ = settings._settings_agent_module_
+        self.settings_agent_class_ = settings.settings_agent_class_
+        self.settings_agent_module_ = settings.settings_agent_module_
 
 
     def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):
@@ -486,7 +486,7 @@ class BaseAgent(Configurable, AbstractAgent):
                         value=str(user_id), operator=AbstractTable.Operators.EQUAL_TO
                     )
                 ],
-                "_settings_agent_class_": [
+                "settings_agent_class_": [
                     AbstractTable.FilterItem(
                         value=str(cls.__name__),
                         operator=AbstractTable.Operators.EQUAL_TO,

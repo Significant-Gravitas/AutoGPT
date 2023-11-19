@@ -93,14 +93,14 @@ class AbstractAgent(ABC):
 
         @classmethod
         @property
-        def _settings_agent_class_(cls):
+        def settings_agent_class_(cls):
             return (
                 cls.__qualname__.partition(".")[0]
             )
 
         @classmethod
         @property
-        def _settings_agent_module_(cls):
+        def settings_agent_module_(cls):
             return (
                 cls.__module__
                 + "."

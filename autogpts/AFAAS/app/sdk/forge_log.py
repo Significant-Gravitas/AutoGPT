@@ -174,7 +174,6 @@ class ForgeLogger(logging.Logger):
         )
         file_handler.suffix = "%Y-%m-%d.log"
         file_handler.extMatch = r"^\d{4}-\d{2}-\d{2}.log$"
-        file_handler.setLevel(logging.DEBUG) 
         file_handler.setFormatter(logging.Formatter(self.FORMAT))  # Use a simple format for file logs
         self.addHandler(file_handler)
 
