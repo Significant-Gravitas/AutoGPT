@@ -9,8 +9,10 @@ JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
 
 CHAT = 29
 NOTICE = 15
+TRACE = 5
 logging.addLevelName(CHAT, "CHAT")
 logging.addLevelName(NOTICE, "NOTICE")
+logging.addLevelName(TRACE, "TRACE")
 
 RESET_SEQ: str = "\033[0m"
 COLOR_SEQ: str = "\033[1;%dm"
@@ -26,8 +28,10 @@ RED: str = "\033[91m"
 GREY: str = "\33[90m"
 GREEN: str = "\033[92m"
 PURPLE: str = "\033[35m"
+BRIGHT_PINK: str = "\033[95m"
 
 EMOJIS: dict[str, str] = {
+    "TRACE": "🔍",
     "DEBUG": "🐛",
     "INFO": "📝",
     "CHAT": "💬",
@@ -38,6 +42,7 @@ EMOJIS: dict[str, str] = {
 }
 
 KEYWORD_COLORS: dict[str, str] = {
+    "TRACE": BRIGHT_PINK,
     "DEBUG": WHITE,
     "INFO": LIGHT_BLUE,
     "CHAT": PURPLE, 
@@ -45,6 +50,7 @@ KEYWORD_COLORS: dict[str, str] = {
     "WARNING": YELLOW,
     "ERROR": ORANGE,
     "CRITICAL": RED,
+    
 }
 
 
@@ -88,6 +94,7 @@ class ConsoleFormatter(logging.Formatter):
     ):
         super().__init__(fmt, datefmt, style)
         self.use_color = use_color
+        self.default_msec_format = None
 
     def format(self, record: logging.LogRecord) -> str:
         """
@@ -120,7 +127,7 @@ class ForgeLogger(logging.Logger):
     DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
     
     CONSOLE_FORMAT: str = (
-        "[%(asctime)s] [$BOLD%(name)-15s$RESET] [%(levelname)-8s]\t%(message)s"
+        "[%(asctime)s] [$BOLD%(name)-15s,%(lineno)d$RESET] [%(levelname)-8s]\t%(message)s"
     )
     FORMAT: str = "%(asctime)s %(name)-15s %(levelname)-8s %(message)s"
     COLOR_FORMAT: str = formatter_message(CONSOLE_FORMAT, True)
@@ -233,7 +240,7 @@ logging_config: dict = dict(
             "class": "logging.FileHandler",
             "filename": ForgeLogger.LOG_FILENAME,
             "formatter": "console",
-            "level": logging.DEBUG,
+            "level": TRACE,
         },
     },
     root={
