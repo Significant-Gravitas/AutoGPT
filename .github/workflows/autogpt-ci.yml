@@ -223,14 +223,9 @@ jobs:
 
           if [[ "${{ steps.push_cassettes.outputs.updated }}" == "true" ]]; then
             echo "Adding label and comment..."
-            curl -X POST \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels \
-            -d '{"labels":["behaviour change"]}'
-
             echo $TOKEN | gh auth login --with-token
-            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
+            gh issue edit $PR_NUMBER --add-label "behaviour change"
+            gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
 
       - name: Upload logs to artifact
