@@ -4,16 +4,13 @@ on:
   push:
     branches: [ master, development, ci-test* ]
     paths:
+      - '.github/workflows/autogpt-ci.yml'
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
-      - 'autogpts/autogpt/**'
-      - '!autogpts/autogpt/tests/vcr_cassettes'
-  pull_request_target:
-    branches: [ master, development, release-*, ci-test* ]
-    paths:
+      - '.github/workflows/autogpt-ci.yml'
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
 
@@ -27,9 +24,6 @@ defaults:
 
 jobs:
   lint:
-    # eliminate duplicate runs
-    if: github.event_name == 'push' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
-
     runs-on: ubuntu-latest
     env:
       min-python-version: "3.10"
@@ -39,8 +33,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v4
@@ -83,17 +75,8 @@ jobs:
           poetry run $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
 
   test:
-    # eliminate duplicate runs
-    if: github.event_name == 'push' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
-
     permissions:
-      # Gives the action the necessary permissions for publishing new
-      # comments in pull requests.
-      pull-requests: write
-      # Gives the action the necessary permissions for pushing data to the
-      # python-coverage-comment-action branch, and for editing existing
-      # comments (to avoid publishing multiple comments in the same PR)
-      contents: write
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -105,8 +88,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
 
       - name: Configure git user Auto-GPT-Bot
@@ -116,9 +97,13 @@ jobs:
 
       - name: Checkout cassettes
         if: ${{ startsWith(github.event_name, 'pull_request') }}
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
-          cassette_base_branch="${{ github.event.pull_request.base.ref }}"
+          cassette_branch="${PR_AUTHOR}-${PR_BRANCH}"
+          cassette_base_branch="${PR_BASE}"
           cd tests/vcr_cassettes
 
           if ! git ls-remote --exit-code --heads origin $cassette_base_branch ; then
@@ -169,10 +154,7 @@ jobs:
             tests/unit tests/integration
         env:
           CI: true
-          PROXY: ${{ github.event_name == 'pull_request_target' && secrets.PROXY || '' }}
-          AGENT_MODE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_MODE || '' }}
-          AGENT_TYPE: ${{ github.event_name == 'pull_request_target' && secrets.AGENT_TYPE || '' }}
-          OPENAI_API_KEY: ${{ github.event_name != 'pull_request_target' && secrets.OPENAI_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PLAIN_OUTPUT: True
 
       - name: Upload coverage reports to Codecov
@@ -198,11 +180,14 @@ jobs:
       - id: push_cassettes
         name: Push updated cassettes
         # For pull requests, push updated cassettes even when tests fail
-        if: github.event_name == 'push' || success() || failure()
+        if: github.event_name == 'push' || (! github.event.pull_request.head.repo.fork && (success() || failure()))
+        env:
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           if [ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]; then
             is_pull_request=true
-            cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+            cassette_branch="${PR_AUTHOR}-${PR_BRANCH}"
           else
             cassette_branch="${{ github.ref_name }}"
           fi
@@ -234,20 +219,15 @@ jobs:
       - name: Apply "behaviour change" label and comment on PR
         if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          TOKEN=${{ secrets.PAT_REVIEW }}
-          REPO=${{ github.repository }}
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          TOKEN="${{ secrets.PAT_REVIEW }}"
+          REPO="${{ github.repository }}"
 
           if [[ "${{ steps.push_cassettes.outputs.updated }}" == "true" ]]; then
             echo "Adding label and comment..."
-            curl -X POST \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels \
-            -d '{"labels":["behaviour change"]}'
-
             echo $TOKEN | gh auth login --with-token
-            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
+            gh issue edit $PR_NUMBER --add-label "behaviour change"
+            gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
 
       - name: Upload logs to artifact

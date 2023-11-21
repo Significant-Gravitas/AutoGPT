@@ -54,7 +54,6 @@ class Test(BaseModelBenchmark):
     metadata: Any
 
 
-
 class ReportBase(BaseModelBenchmark):
     command: str
     completion_time: str | None
@@ -68,7 +67,6 @@ class ReportBase(BaseModelBenchmark):
 
 class Report(ReportBase):
     tests: Dict[str, Test]
-
 
 
 class ReportV2(Test, ReportBase):

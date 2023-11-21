@@ -2,7 +2,6 @@ name: Hackathon
 
 on:
   workflow_dispatch:
-    branches: [hackathon]
     inputs:
       agents:
         description: "Agents to run (comma-separated)"
@@ -92,8 +91,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
 
       - name: Set up Python ${{ env.min-python-version }}
