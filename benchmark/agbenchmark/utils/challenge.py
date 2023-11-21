@@ -123,7 +123,7 @@ class Challenge(ABC):
         print("\033[1;34mScoring content:\033[0m", content)
         if ground.should_contain:
             for should_contain_word in ground.should_contain:
-                if not getattr(ground, 'case_sensitive', True):
+                if not getattr(ground, "case_sensitive", True):
                     should_contain_word = should_contain_word.lower()
                     content = content.lower()
                 print_content = (
@@ -137,7 +137,7 @@ class Challenge(ABC):
 
         if ground.should_not_contain:
             for should_not_contain_word in ground.should_not_contain:
-                if not getattr(ground, 'case_sensitive', True):
+                if not getattr(ground, "case_sensitive", True):
                     should_not_contain_word = should_not_contain_word.lower()
                     content = content.lower()
                 print_content = f"\033[1;34mWord that should not exist\033[0m - {should_not_contain_word}:"
