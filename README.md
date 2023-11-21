@@ -1,35 +1,24 @@
-# 🌟 AutoGPT: the heart of the open-source agent ecosystem
+# AutoGPT: build & use AI agents
 
-[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/AutoGPT?style=social)](https://github.com/Significant-Gravitas/AutoGPT/stargazers) [![Twitter Follow](https://img.shields.io/twitter/follow/auto_gpt?style=social)](https://twitter.com/Auto_GPT) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) &ensp;
+[![Twitter Follow](https://img.shields.io/twitter/follow/Auto_GPT?style=social)](https://twitter.com/Auto_GPT) &ensp;
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**AutoGPT** is your go-to toolkit for supercharging agents. With its modular and extensible framework, you're empowered to focus on:
+**AutoGPT** is the vision of the power of AI accessible to everyone, to use and to build on. Our mission is to provide the tools, so that you can focus on what matters:
 
 - 🏗️ **Building** - Lay the foundation for something amazing.
 - 🧪 **Testing** - Fine-tune your agent to perfection.
-- 👀 **Viewing** - See your progress come to life.
+- 🤝 **Delegating** - Let AI work for you, and have your ideas come to life.
 
-Be part of the revolution! **AutoGPT** stays at the forefront of AI innovation, featuring the codebase for the reigning champion in the Open-Source ecosystem.
+Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI innovation.
 
----
+## 🥇 Current Best Agent: evo.ninja
 
-<p align="center">
-  <a href="https://lablab.ai/event/autogpt-arena-hacks">
-    <img src="https://lablab.ai/_next/image?url=https%3A%2F%2Fstorage.googleapis.com%2Flablab-static-eu%2Fimages%2Fevents%2Fcll6p5cxj0000356zslac05gg%2Fcll6p5cxj0000356zslac05gg_imageLink_562z1jzj.jpg&w=1080&q=75" alt="AutoGPT Arena Hacks Hackathon" />
-  </a>
-</p>
-<p align="center">
-  <strong>We're hosting a Hackathon!</strong>
-  <br>
-  Click the banner above for details and registration!
-</p>
+The AutoGPT Arena Hackathon saw [**evo.ninja**](https://github.com/polywrap/evo.ninja) earn the top spot on our [leaderboard], making it the best open-source generalist agent currently in existence. Try it now at https://evo.ninja!
 
----
+📈 To challenge evo.ninja, AutoGPT, and others, submit your benchmark run to the [leaderboard] through the UI!
 
-## 🥇 Current Best Agent: AutoGPT
-
-Among our currently benchmarked agents, AutoGPT scores the best. This will change after the hackathon - the top-performing generalist agent will earn the esteemed position as the primary AutoGPT 🎊
-
-📈 To enter, submit your benchmark run through the UI.
+[leaderboard]: https://leaderboard.agpt.co/
 
 ## 🌟 Quickstart
 
