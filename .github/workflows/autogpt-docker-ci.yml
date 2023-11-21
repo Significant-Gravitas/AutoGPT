@@ -4,11 +4,13 @@ on:
   push:
     branches: [ master, development ]
     paths:
+      - '.github/workflows/autogpt-docker-ci.yml'
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
   pull_request:
     branches: [ master, development, release-* ]
     paths:
+      - '.github/workflows/autogpt-docker-ci.yml'
       - 'autogpts/autogpt/**'
       - '!autogpts/autogpt/tests/vcr_cassettes'
 
