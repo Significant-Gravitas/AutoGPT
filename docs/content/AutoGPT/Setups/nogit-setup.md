@@ -58,9 +58,10 @@
 First we need to create a virtual environment to run in.
 
 ```shell
+pip3 install poetry
 python -m venv .venv
 source .venv/bin/activate
-pip3 install --upgrade pip
+poetry install
 ```
 
 !!! warning
