@@ -7,6 +7,7 @@ Choose an environment to run AutoGPT in (pick one):
   - [Docker](https://docs.docker.com/get-docker/) (*recommended*)
   - Python 3.10 or later (instructions: [for Windows](https://www.tutorialspoint.com/how-to-install-python-in-windows))
   - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+  - 
 
 
 ## 🗝️ Getting an API key
@@ -47,3 +48,6 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
 ### If you dont want to use git or docker for the setup follow here.
 [No Git Or Docker Setup Here.](Setups/nogit-setup.md)
+
+### For Windows 10/11 with WSL2 (Windows Subsystem for Linux) follow here.
+[WSL2 Setup Here.](Setups/WSL2-setup.md)
