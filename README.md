@@ -20,27 +20,24 @@ The AutoGPT Arena Hackathon saw [**evo.ninja**](https://github.com/polywrap/evo.
 
 [leaderboard]: https://leaderboard.agpt.co/
 
-## 🌟 Quickstart
+## Building blocks
 
-- **To build your own agent** and to be eligible for the hackathon, follow the quickstart guide [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/forge/tutorials/001_getting_started.md). This will guide you through the process of creating your own agent and using the benchmark and user interface.
+### 🏗️ Forge
 
-- **To activate the best agent** follow the guide [here](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/README.md).
+**Forge your own agent!** &ndash; Forge is a ready-to-go template for your agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set *your* agent apart. All tutorials are located [here](https://medium.com/@aiedge/autogpt-forge-e3de53cc58ec).
 
-Want to build your own groundbreaking agent using AutoGPT? 🛠️ There are three major components to focus on:
+🚀 [**Getting Started with Forge**](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/forge/tutorials/001_getting_started.md) &ndash;
+This guide will walk you through the process of creating your own agent and using the benchmark and user interface.
 
-### 🏗️ the Forge
+📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/forge) about Forge
 
-**Forge your future!** The `forge` is your innovation lab. All the boilerplate code is already handled, letting you channel all your creativity into building a revolutionary agent. It's more than a starting point, it's a launchpad for your ideas. All tutorials are located [here](https://medium.com/@aiedge/autogpt-forge-e3de53cc58ec).
-
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/forge)
-
-### 🎯 the Benchmark
+### 🎯 Benchmark
 
 **Test to impress!** The `benchmark` offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 
 📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark)
 
-### 🎮 the UI
+### 🎮 UI
 
 **Take Control!** The `frontend` is your personal command center. It gives you a user-friendly interface to control and monitor your agents, making it easier to bring your ideas to life.
 
