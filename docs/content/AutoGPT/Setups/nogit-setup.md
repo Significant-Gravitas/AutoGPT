@@ -83,4 +83,4 @@ packages and launch AutoGPT.
     ```
 
 If this gives errors, make sure you have a compatible Python version installed. See also
-the [requirements](./installation.md#requirements).
+the [requirements](/autogpt/setup/#requirements).
