@@ -1,1 +1,0 @@
-../../../autogpts/autogpt/README.md

@@ -6,7 +6,8 @@ nav:
   - Home: index.md
 
   - AutoGPT Agent:
-    - Introduction: AutoGPT/introduction.md
+    # - Introduction: AutoGPT/introduction.md
+    - Readme (on GitHub): https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/README.md
     - Setup:
         - Setting up AutoGPT: AutoGPT/setup.md
         - Docker setup: AutoGPT/Setups/Docker-setup.md
