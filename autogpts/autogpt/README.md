@@ -1,5 +1,9 @@
 # AutoGPT: An Autonomous GPT-4 Experiment
 
+[📖 **Documentation**][docs]
+&ensp;|&ensp;
+[🚀 **Contributing**](../../CONTRIBUTING.md)
+
 AutoGPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, AutoGPT pushes the boundaries of what is possible with AI.
 
 <h2 align="center"> Demo April 16th 2023 </h2>
@@ -11,11 +15,11 @@ Demo made by <a href=https://twitter.com/BlakeWerlinger>Blake Werlinger</a>
 ## 🚀 Features
 
 - 🌐 Internet access for searches and information gathering
-- 💾 Long-term and short-term memory management
-- 🧠 GPT-4 instances for text generation
+- 🧠 Powered by a mix of GPT-4 and GPT-3.5 Turbo
 - 🔗 Access to popular websites and platforms
-- 🗃️ File storage and summarization with GPT-3.5
+- 🗃️ File generation and editing capabilities
 - 🔌 Extensibility with Plugins
+<!-- - 💾 Long-term and short-term memory management -->
 
 ## Quickstart
 
@@ -29,18 +33,6 @@ Demo made by <a href=https://twitter.com/BlakeWerlinger>Blake Werlinger</a>
 Please see the [documentation][docs] for full setup instructions and configuration options.
 
 [docs]: https://docs.agpt.co/
-
-## 📖 Documentation
-
-- [⚙️ Setup][docs/setup]
-- [💻 Usage][docs/usage]
-- [🔌 Plugins][docs/plugins]
-- Configuration
-  - [🔍 Web Search](https://docs.agpt.co/configuration/search/)
-  - [🧠 Memory](https://docs.agpt.co/configuration/memory/)
-  - [🗣️ Voice (TTS)](https://docs.agpt.co/configuration/voice/)
-  - [🖼️ Image Generation](https://docs.agpt.co/configuration/imagegen/)
-
 [docs/setup]: https://docs.agpt.co/setup/
 [docs/usage]: https://docs.agpt.co/usage/
 [docs/plugins]: https://docs.agpt.co/plugins/
@@ -69,13 +61,7 @@ As an autonomous experiment, AutoGPT may generate content or take actions that a
 
 By using AutoGPT, you agree to indemnify, defend, and hold harmless the developers, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software or your violation of these terms.
 
-## 🐦 Connect with Us on Twitter
-
-Stay up-to-date with the latest news, updates, and insights about AutoGPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
-
-- **Developer**: Follow [@siggravitas](https://twitter.com/siggravitas) for insights into the development process, project updates, and related topics from the creator of Entrepreneur-GPT.
-
-We look forward to connecting with you and hearing your thoughts, ideas, and experiences with AutoGPT. Join us on Twitter and let's explore the future of AI together!
+---
 
 <p align="center">
   <a href="https://star-history.com/#Significant-Gravitas/AutoGPT&Date">
