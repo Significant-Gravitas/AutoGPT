@@ -6,11 +6,11 @@ nav:
   - Home: index.md
 
   - AutoGPT Agent:
-    - Agent-setup:
+    - Agent setup:
         - Setting up AutoGPT: AutoGPT/setup.md
-        - Docker-setup: AutoGPT/Setups/Docker-setup.md
-        - Git-setup: AutoGPT/Setups/Git-setup.md
-        - No Git/Docker-setup: AutoGPT/Setups/nogit-setup.md
+        - Docker setup: AutoGPT/Setups/Docker-setup.md
+        - Git setup: AutoGPT/Setups/Git-setup.md
+        - No Git/Docker setup: AutoGPT/Setups/nogit-setup.md
     - Usage: AutoGPT/usage.md
     - Plugins: AutoGPT/plugins.md
     - Configuration:
@@ -25,14 +25,14 @@ nav:
         - Running tests: AutoGPT/testing.md
         - Code of Conduct: code-of-conduct.md
 
-  - AutoGPT-Benchmarks:
+  - AutoGPT Benchmarks:
     - Benchmarks: benchmarks/benchmark.md
 
-  - AutoGPT-Forge:
-    - Forge-setup: forge/get-started.md
+  - AutoGPT Forge:
+    - Forge setup: forge/get-started.md
 
   - Frontend:
-    - Flutter-setup: front-end/the-ui.md
+    - Flutter setup: front-end/the-ui.md
 
   - Challenges:
       - Introduction: challenges/introduction.md
