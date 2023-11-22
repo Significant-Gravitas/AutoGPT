@@ -25,7 +25,7 @@ The getting started [tutorial series](https://aiedge.medium.com/autogpt-forge-e3
 Coming soon:
 
 
-3. Interacting with and Benchmarking your Agent
-4. Abilities
-5. The Planning Loop
-6. Memories
+5. Interacting with and Benchmarking your Agent
+6. Abilities
+7. The Planning Loop
+8. Memories
