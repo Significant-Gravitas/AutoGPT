@@ -15,13 +15,11 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 ## 🥇 Current Best Agent: evo.ninja
 [Current Best Agent]: #-current-best-agent-evoninja
 
-The AutoGPT Arena Hackathon saw [**evo.ninja**](https://github.com/polywrap/evo.ninja) earn the top spot on our [leaderboard], making it the best open-source generalist agent currently in existence. Try it now at https://evo.ninja!
+The AutoGPT Arena Hackathon saw [**evo.ninja**](https://github.com/polywrap/evo.ninja) earn the top spot on our Arena Leaderboard, making it the best open-source generalist agent currently in existence. Try it now at https://evo.ninja!
 
-📈 To challenge evo.ninja, AutoGPT, and others, submit your benchmark run to the [leaderboard] through the UI!
+📈 To challenge evo.ninja, AutoGPT, and others, submit your benchmark run to the [Leaderboard](#-leaderboard), and maybe your agent will be up here next!
 
-[leaderboard]: https://leaderboard.agpt.co/
-
-## Building blocks
+## 🧱 Building blocks
 
 ### 🏗️ Forge
 
@@ -49,7 +47,6 @@ Submit your benchmark run through the UI and claim your place on the AutoGPT Are
 
 [![Screenshot of the AutoGPT Arena leaderboard](https://github.com/Significant-Gravitas/AutoGPT/assets/12185583/60813392-9ddb-4cca-bb44-b477dbae225d)][leaderboard]
 
-
 ### 💻 UI
 
 **Makes agents easy to use!** The `frontend` gives you a user-friendly interface to control and monitor your agents. It connects to agents through the [agent protocol](#-agent-protocol), ensuring compatibility with many agents from both inside and outside of our ecosystem.
@@ -58,7 +55,7 @@ Submit your benchmark run through the UI and claim your place on the AutoGPT Are
 
 The frontend works out-of-the-box with all agents in the repo. Just use the [CLI] to run your agent of choice!
 
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/frontend)
+📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/frontend) about the Frontend
 
 ### ⌨️ CLI
 
