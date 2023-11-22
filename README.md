@@ -13,6 +13,7 @@
 Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI innovation.
 
 ## 🥇 Current Best Agent: evo.ninja
+[Current Best Agent]: #-current-best-agent-evoninja
 
 The AutoGPT Arena Hackathon saw [**evo.ninja**](https://github.com/polywrap/evo.ninja) earn the top spot on our [leaderboard], making it the best open-source generalist agent currently in existence. Try it now at https://evo.ninja!
 
@@ -24,7 +25,7 @@ The AutoGPT Arena Hackathon saw [**evo.ninja**](https://github.com/polywrap/evo.
 
 ### 🏗️ Forge
 
-**Forge your own agent!** &ndash; Forge is a ready-to-go template for your agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set *your* agent apart. All tutorials are located [here](https://medium.com/@aiedge/autogpt-forge-e3de53cc58ec).
+**Forge your own agent!** &ndash; Forge is a ready-to-go template for your agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set *your* agent apart. All tutorials are located [here](https://medium.com/@aiedge/autogpt-forge-e3de53cc58ec). Components from the [`forge.sdk`](/autogpts/forge/forge/sdk) can also be used individually to speed up development and reduce boilerplate in your agent project.
 
 🚀 [**Getting Started with Forge**](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/forge/tutorials/001_getting_started.md) &ndash;
 This guide will walk you through the process of creating your own agent and using the benchmark and user interface.
@@ -33,29 +34,69 @@ This guide will walk you through the process of creating your own agent and usin
 
 ### 🎯 Benchmark
 
-**Test to impress!** The `benchmark` offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
+**Measure your agent's performance!** The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 
-📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark)
+<!-- TODO: insert visual demonstrating the benchmark -->
 
-### 🎮 UI
+📦 [`agbenchmark`](https://pypi.org/project/agbenchmark/) on Pypi
+&ensp;|&ensp;
+📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark) about the Benchmark
 
-**Take Control!** The `frontend` is your personal command center. It gives you a user-friendly interface to control and monitor your agents, making it easier to bring your ideas to life.
+#### 🏆 [Leaderboard][leaderboard]
+[leaderboard]: https://leaderboard.agpt.co
+
+Submit your benchmark run through the UI and claim your place on the AutoGPT Arena Leaderboard! The best scoring general agent earns the title of **[Current Best Agent]**, and will be adopted into our repo so people can easily run it through the [CLI].
+
+[![Screenshot of the AutoGPT Arena leaderboard](https://github.com/Significant-Gravitas/AutoGPT/assets/12185583/60813392-9ddb-4cca-bb44-b477dbae225d)][leaderboard]
+
+
+### 💻 UI
+
+**Makes agents easy to use!** The `frontend` gives you a user-friendly interface to control and monitor your agents. It connects to agents through the [agent protocol](#-agent-protocol), ensuring compatibility with many agents from both inside and outside of our ecosystem.
+
+<!-- TODO: instert screenshot of front end -->
+
+The frontend works out-of-the-box with all agents in the repo. Just use the [CLI] to run your agent of choice!
 
 📘 [Learn More](https://github.com/Significant-Gravitas/AutoGPT/tree/master/frontend)
 
----
+### ⌨️ CLI
 
-### 🔄 Agent Protocol
+[CLI]: #-cli
 
-🔌 **Standardize to Maximize!** To maintain a uniform standard and ensure seamless compatibility, AutoGPT employs the [agent protocol](https://agentprotocol.ai/) from the AI Engineer Foundation. This standardizes the communication pathways from your agent to the frontend and benchmark.
+To make it as easy as possible to use all of the tools offered by the repository, a CLI is included at the root of the repo:
 
-### 🤔 Questions? Problems? Suggestions?
+```shell
+$ ./run
+Usage: cli.py [OPTIONS] COMMAND [ARGS]...
 
-#### Get help - [Discord 💬](https://discord.gg/autogpt)
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  agent      Commands to create, start and stop agents
+  arena      Commands to enter the arena
+  benchmark  Commands to start the benchmark and list tests and categories
+  setup      Installs dependencies needed for your system.
+```
+
+Just clone the repo, install dependencies with `./run setup`, and you should be good to go!
+
+## 🤔 Questions? Problems? Suggestions?
+
+### Get help - [Discord 💬](https://discord.gg/autogpt)
 
 [![Join us on Discord](https://invidget.switchblade.xyz/autogpt)](https://discord.gg/autogpt)
 
 To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose). Please ensure someone else hasn’t created an issue for the same topic.
+
+## 🤝 Sister projects
+
+### 🔄 Agent Protocol
+
+To maintain a uniform standard and ensure seamless compatibility with many current and future applications, AutoGPT employs the [agent protocol](https://agentprotocol.ai/) standard by the AI Engineer Foundation. This standardizes the communication pathways from your agent to the frontend and benchmark.
+
+---
 
 <p align="center">
   <a href="https://star-history.com/#Significant-Gravitas/AutoGPT&Date">
