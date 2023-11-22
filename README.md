@@ -12,6 +12,12 @@
 
 Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI innovation.
 
+**📖 [Documentation](https://docs.agpt.co)**
+&ensp;|&ensp;
+**🚀 [Contributing](CONTRIBUTING.md)**
+&ensp;|&ensp;
+**🛠️ [Build your own Agent - Quickstart](QUICKSTART.md)**
+
 ## 🥇 Current Best Agent: evo.ninja
 [Current Best Agent]: #-current-best-agent-evoninja
 
