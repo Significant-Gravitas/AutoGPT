@@ -14,11 +14,11 @@ To tie these together, we also have a CLI at the root of the project.
 
 ## 🤖 Agent
 
+**[📖 Introduction](AutoGPT/introduction.md)**
+&ensp;|&ensp;
 **[🔧 Setup](AutoGPT/setup.md)**
 &ensp;|&ensp;
 **[💻 Usage](AutoGPT/usage.md)**
-&ensp;|&ensp;
-**[⚙️ How it works](AutoGPT/how-it-works.md)**
 
 The heart of AutoGPT, and the project that kicked it all off: a semi-autonomous agent powered by LLMs to execute any task for you*.
 
