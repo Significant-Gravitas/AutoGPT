@@ -6,7 +6,7 @@ nav:
   - Home: index.md
 
   - AutoGPT Agent:
-    - Agent setup:
+    - Setup:
         - Setting up AutoGPT: AutoGPT/setup.md
         - Docker setup: AutoGPT/Setups/Docker-setup.md
         - Git setup: AutoGPT/Setups/Git-setup.md
@@ -25,14 +25,14 @@ nav:
         - Running tests: AutoGPT/testing.md
         - Code of Conduct: code-of-conduct.md
 
-  - AutoGPT Benchmarks:
-    - Benchmarks: benchmarks/benchmark.md
+  - Benchmark:
+    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md
 
-  - AutoGPT Forge:
-    - Forge setup: forge/get-started.md
+  - Forge:
+    - Introduction: forge/get-started.md
 
   - Frontend:
-    - Flutter setup: front-end/the-ui.md
+    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/frontend/README.md
 
   - Challenges:
       - Introduction: challenges/introduction.md
