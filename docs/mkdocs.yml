@@ -33,21 +33,21 @@ nav:
   - Frontend:
     - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/frontend/README.md
 
-  - Challenges:
-      - Introduction: challenges/introduction.md
-      - List of Challenges:
-          - Memory:
-              - Introduction: challenges/memory/introduction.md
-              - Memory Challenge A: challenges/memory/challenge_a.md
-              - Memory Challenge B: challenges/memory/challenge_b.md
-              - Memory Challenge C: challenges/memory/challenge_c.md
-              - Memory Challenge D: challenges/memory/challenge_d.md
-          - Information retrieval:
-              - Introduction: challenges/information_retrieval/introduction.md
-              - Information Retrieval Challenge A: challenges/information_retrieval/challenge_a.md
-              - Information Retrieval Challenge B: challenges/information_retrieval/challenge_b.md
-  - Submit a Challenge: challenges/submit.md
-  - Beat a Challenge: challenges/beat.md
+  # - Challenges:
+  #     - Introduction: challenges/introduction.md
+  #     - List of Challenges:
+  #         - Memory:
+  #             - Introduction: challenges/memory/introduction.md
+  #             - Memory Challenge A: challenges/memory/challenge_a.md
+  #             - Memory Challenge B: challenges/memory/challenge_b.md
+  #             - Memory Challenge C: challenges/memory/challenge_c.md
+  #             - Memory Challenge D: challenges/memory/challenge_d.md
+  #         - Information retrieval:
+  #             - Introduction: challenges/information_retrieval/introduction.md
+  #             - Information Retrieval Challenge A: challenges/information_retrieval/challenge_a.md
+  #             - Information Retrieval Challenge B: challenges/information_retrieval/challenge_b.md
+  # - Submit a Challenge: challenges/submit.md
+  # - Beat a Challenge: challenges/beat.md
 
   - License: https://github.com/Significant-Gravitas/AutoGPT/blob/master/LICENSE
 
