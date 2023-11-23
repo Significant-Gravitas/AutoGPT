@@ -1,5 +1,9 @@
 # AutoGPT Agent User Guide
 
+!!! note
+    This guide assumes you are in the `autogpts/autogpt` folder, where the AutoGPT Agent
+    is located.
+
 ## Command Line Interface
 
 Running `./run.sh` (or any of its subcommands) with `--help` lists all the possible
