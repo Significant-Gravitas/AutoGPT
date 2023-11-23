@@ -35,13 +35,15 @@ We continue to develop this project with the goal of providing access to AI assi
 
 ## 🎯 Benchmark
 
-**[🔧 Setup](benchmarks/benchmark.md)**
+**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md)**
 
-Test to impress with AutoGPT Benchmarks! Our benchmarking system offers a stringent testing environment to evaluate your agents objectively. 
+Measure your agent's performance! The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's CLI makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 
-- 📈 **Top Performance** - Among our currently benchmarked agents, AutoGPT consistently scores the best. The top-performing generalist agent will earn its position as the primary AutoGPT post-hackathon.
+<!-- TODO: insert visual demonstrating the benchmark -->
 
-- 🔌 **Agent Protocol Standardization** - AutoGPT uses the agent protocol from the AI Engineer Foundation to ensure seamless compatibility.
+- 📦 [**`agbenchmark`**](https://pypi.org/project/agbenchmark/) on Pypi
+
+- 🔌 **Agent Protocol Standardization** - AutoGPT uses the agent protocol from the AI Engineer Foundation to ensure compatibility with many agents, both from within and outside the project.
 
 ---
 
