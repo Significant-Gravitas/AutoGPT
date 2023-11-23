@@ -86,23 +86,5 @@ def check_local_file_access(url: str) -> bool:
         "file:///",
         "file://localhost",
     ]
-    if any(url.startswith(prefix) for prefix in local_file_prefixes):
-        return True
-    
-    # Parse the URL
-    parsed = urlparse(url)
-    
-    # List of local hostnames/IPs without considering ports
-    local_domains = [
-        "localhost",
-        "2130706433",     # IP representation of 127.0.0.1
-        "127.0.0.1",
-        "0.0.0.0",
-        "0000"            # Not sure what this is for, but keeping it as in original
-    ]
-    # Check if the domain part of the URL is in local_domains
-    if parsed.hostname in local_domains:
-        return False  # We don't restrict localhost access on different ports
-    
-    # Return True for anything else that is deemed "local"
-    return True
+
+    return any(url.startswith(prefix) for prefix in local_file_prefixes)
