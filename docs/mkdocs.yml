@@ -31,7 +31,7 @@ nav:
     - Introduction: forge/get-started.md
 
   - Frontend:
-    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/frontend/README.md
+    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md
 
   # - Challenges:
   #     - Introduction: challenges/introduction.md
