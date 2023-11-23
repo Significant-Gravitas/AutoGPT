@@ -1,8 +1,8 @@
 # AutoGPT Agent setup
 
-[🐋 **Set up with Docker**](./docker.md)
+[🐋 **Set up & Run with Docker**](./docker.md)
 &ensp;|&ensp;
-[👷🏼 **Developer setup**](./for-developers.md)
+[👷🏼 **For Developers**](./for-developers.md)
 
 ## 📋 Requirements
 
