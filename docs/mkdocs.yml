@@ -9,10 +9,10 @@ nav:
     # - Introduction: AutoGPT/introduction.md
     - Readme (on GitHub): https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/README.md
     - Setup:
-        - Setting up AutoGPT: AutoGPT/setup.md
-        - Docker setup: AutoGPT/Setups/Docker-setup.md
-        - Git setup: AutoGPT/Setups/Git-setup.md
-        - No Git/Docker setup: AutoGPT/Setups/nogit-setup.md
+        - Setting up AutoGPT: AutoGPT/setup/index.md
+        - Docker setup: AutoGPT/setup/docker.md
+        - Git setup: AutoGPT/setup/Git-setup.md
+        - No Git/Docker setup: AutoGPT/setup/nogit-setup.md
     - Usage: AutoGPT/usage.md
     - Plugins: AutoGPT/plugins.md
     - Configuration:

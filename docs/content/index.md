@@ -16,7 +16,7 @@ To tie these together, we also have a CLI at the root of the project.
 
 **[📖 Introduction](AutoGPT/introduction.md)**
 &ensp;|&ensp;
-**[🔧 Setup](AutoGPT/setup.md)**
+**[🔧 Setup](AutoGPT/setup/index.md)**
 &ensp;|&ensp;
 **[💻 Usage](AutoGPT/usage.md)**
 
