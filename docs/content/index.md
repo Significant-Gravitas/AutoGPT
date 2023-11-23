@@ -3,6 +3,7 @@
 Welcome to the AutoGPT Documentation.
 
 The AutoGPT project consists of four main components:
+
 * The [Agent](#welcome-to-the-heart-of-autogpt) &ndash; also known as just "AutoGPT"
 * The [Benchmark](#autogpt-benchmarks) &ndash; AKA `agbenchmark`
 * The [Forge](#autogpt-forge)

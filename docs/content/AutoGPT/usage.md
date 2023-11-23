@@ -158,15 +158,15 @@ Here are some common arguments you can use when running AutoGPT:
 
 * Run AutoGPT with a different AI Settings file
 
-```shell
-./run.sh --ai-settings <filename>
-```
+    ```shell
+    ./run.sh --ai-settings <filename>
+    ```
 
 * Run AutoGPT with a different Prompt Settings file
 
-```shell
-./run.sh --prompt-settings <filename>
-```
+    ```shell
+    ./run.sh --prompt-settings <filename>
+    ```
 
 !!! note
     There are shorthands for some of these flags, for example `-P` for `--prompt-settings`.  

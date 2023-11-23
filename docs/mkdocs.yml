@@ -7,18 +7,17 @@ nav:
 
   - AutoGPT Agent:
     - Introduction: AutoGPT/index.md
-    - Readme (on GitHub): https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpts/autogpt/README.md
     - Setup:
         - Setting up AutoGPT: AutoGPT/setup/index.md
-        - Docker setup: AutoGPT/setup/docker.md
+        - Set up with Docker: AutoGPT/setup/docker.md
     - Usage: AutoGPT/usage.md
     - Plugins: AutoGPT/plugins.md
-    - Configuration:
-        - Options: AutoGPT/configuration/options.md
-        - Search: AutoGPT/configuration/search.md
-        - Memory: AutoGPT/configuration/memory.md
-        - Voice: AutoGPT/configuration/voice.md
-        - Image Generation: AutoGPT/configuration/imagegen.md
+    # - Configuration:
+    #     - Options: AutoGPT/configuration/options.md
+    #     - Search: AutoGPT/configuration/search.md
+    #     - Memory: AutoGPT/configuration/memory.md
+    #     - Voice: AutoGPT/configuration/voice.md
+    #     - Image Generation: AutoGPT/configuration/imagegen.md
     - Help us improve AutoGPT:
         - Share your debug logs with us: AutoGPT/share-your-logs.md
         - Contribution guide: contributing.md
