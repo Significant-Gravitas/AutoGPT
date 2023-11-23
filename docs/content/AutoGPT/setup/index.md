@@ -1,17 +1,36 @@
-# Setting up AutoGPT
+# AutoGPT Agent setup
+
+[🐋 **Set up with Docker**](./docker.md)
+&ensp;|&ensp;
+[👷🏼 **Developer setup**](./for-developers.md)
 
 ## 📋 Requirements
 
-Choose an environment to run AutoGPT in (pick one):
+### Linux / macOS
 
-  - [Docker](https://docs.docker.com/get-docker/) (*recommended*)
-  - Python 3.10 or later (instructions: [for Windows](https://www.tutorialspoint.com/how-to-install-python-in-windows))
-  - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+- Python 3.10 or later
+- Poetry ([instructions](https://python-poetry.org/docs/#installation))
+
+### Windows (WSL)
+
+- WSL 2
+  - See also the [requirements for Linux](#linux--macos)
+- [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
+
+### Windows
+
+!!! attention
+    We recommend setting up AutoGPT with WSL. Some things don't work exactly the same on
+    Windows and we currently can't provide specialized instructions for all those cases.
+
+- Python 3.10 or later ([instructions](https://www.tutorialspoint.com/how-to-install-python-in-windows))
+- Poetry ([instructions](https://python-poetry.org/docs/#installation))
+- [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
 
 
-## 🗝️ Getting an API key
+### 🗝️ Getting an OpenAI API key
 
-Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys).
+Get your OpenAI API key from: https://platform.openai.com/account/api-keys.
 
 !!! attention
     To use the OpenAI API with AutoGPT, we strongly recommend **setting up billing**
@@ -20,7 +39,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
     You can set up a paid account at [Manage account > Billing > Overview](https://platform.openai.com/account/billing/overview).
 
-[openai/api limits]: https://platform.openai.com/docs/guides/rate-limits/overview#:~:text=Free%20trial%20users,RPM%0A40%2C000%20TPM
+[openai/api limits]: https://platform.openai.com/docs/guides/rate-limits/free-tier-rate-limits
 
 !!! important
     It's highly recommended that you keep track of your API costs on [the Usage page](https://platform.openai.com/account/usage).
@@ -31,19 +50,55 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
 ## Setting up AutoGPT
 
-### If you plan to use Docker please follow this setup.
+### Getting AutoGPT
 
-!!! important "Docker Setup Issue"
-    We are addressing a known issue with the Docker setup related to Poetry.
+Since we don't ship AutoGPT as a desktop application, you'll need to download the
+[project] from GitHub and give it a place on your computer.
 
-    [**We have an open PR if you'd like to take a look**](https://github.com/python-poetry/poetry/issues/8548)
+![Screenshot of the dialog to clone or download the repo](get-repo-dialog.png)
 
-    Please keep this in mind. We apologize for any inconvenience, and thank you for your patience.
+* To get the latest bleeding edge version, use `master`.
+* If you're looking for more stability, check out the latest AutoGPT [release][releases].
 
-[Docker Install Here.](Setups/Docker-setup.md)
+[project]: https://github.com/Significant-Gravitas/AutoGPT
+[releases]: https://github.com/Significant-Gravitas/AutoGPT/releases
 
-### If you plan to use Git please follow this setup.
-[Git Setup Here.](Setups/Git-setup.md)
+!!! note
+    These instructions don't apply if you're looking to run AutoGPT as a docker image.
+    Instead, check out the [Docker setup](./docker.md) guide.
 
-### If you dont want to use git or docker for the setup follow here.
-[No Git Or Docker Setup Here.](Setups/nogit-setup.md)
+### Completing the Setup
+
+Once you have cloned or downloaded the project, you can find the AutoGPT Agent in the
+`autogpts/autogpt/` folder. In this folder:
+
+1. Find the file named `.env.template` in the main `Auto-GPT` folder. This file may
+    be hidden by default in some operating systems due to the dot prefix. To reveal
+    hidden files, follow the instructions for your specific operating system:
+    [Windows][show hidden files/Windows] and [macOS][show hidden files/macOS].
+2. Create a copy of `.env.template` and call it `.env`;
+    if you're already in a command prompt/terminal window: 
+    ```shell
+    cp .env.template .env
+    ```
+3. Open the `.env` file in a text editor.
+4. Find the line that says `OPENAI_API_KEY=`.
+5. Insert your OpenAI API Key directly after = without quotes or spaces..
+    ```yaml
+    OPENAI_API_KEY=sk-qwertykeys123456
+    ```
+6. Enter any other API keys or tokens for services you would like to use.
+
+    !!! note
+        To activate and adjust a setting, remove the `# ` prefix.
+
+7. Save and close the `.env` file.
+8. _Optional: run `poetry install` to install all required dependencies._ The
+    application also checks for and installs any required dependencies when it starts.
+
+You should now be able to explore the CLI (`./run.sh --help`) and run the application.
+
+See the [user guide](../usage.md) for further instructions.
+
+[show hidden files/Windows]: https://support.microsoft.com/en-us/windows/view-hidden-files-and-folders-in-windows-97fbc472-c603-9d90-91d0-1166d1d9f4b5
+[show hidden files/macOS]: https://www.pcmag.com/how-to/how-to-access-your-macs-hidden-files
