@@ -458,7 +458,7 @@ class _OpenAIRetryHandler:
     _retry_limit_msg = "Error: Reached rate limit, passing..."
     _api_key_error_msg = (
         "Please double check that you have setup a PAID OpenAI API Account. You can "
-        "read more here: https://docs.agpt.co/setup/#getting-an-api-key"
+        "read more here: https://docs.agpt.co/setup/#getting-an-openai-api-key"
     )
     _backoff_msg = "Error: API Bad gateway. Waiting {backoff} seconds..."
 

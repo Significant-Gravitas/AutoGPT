@@ -1,6 +1,10 @@
 # AutoGPT: An Autonomous GPT-4 Experiment
 
-AutoGPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, AutoGPT pushes the boundaries of what is possible with AI.
+[📖 **Documentation**][docs]
+&ensp;|&ensp;
+[🚀 **Contributing**](../../CONTRIBUTING.md)
+
+AutoGPT is an experimental open-source application showcasing the capabilities of modern Large Language Models. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, AutoGPT pushes the boundaries of what is possible with AI.
 
 <h2 align="center"> Demo April 16th 2023 </h2>
 
@@ -10,44 +14,140 @@ Demo made by <a href=https://twitter.com/BlakeWerlinger>Blake Werlinger</a>
 
 ## 🚀 Features
 
+- 🔌 Agent Protocol ([docs](https://agentprotocol.ai))
+- 💻 Easy to use UI
 - 🌐 Internet access for searches and information gathering
-- 💾 Long-term and short-term memory management
-- 🧠 GPT-4 instances for text generation
+- 🧠 Powered by a mix of GPT-4 and GPT-3.5 Turbo
 - 🔗 Access to popular websites and platforms
-- 🗃️ File storage and summarization with GPT-3.5
+- 🗃️ File generation and editing capabilities
 - 🔌 Extensibility with Plugins
+<!-- - 💾 Long-term and short-term memory management -->
 
-## Quickstart
-
-0. Check out the [wiki](https://github.com/Significant-Gravitas/Nexus/wiki)
+## Setting up AutoGPT
 1. Get an OpenAI [API Key](https://platform.openai.com/account/api-keys)
-2. Download the [latest release](https://github.com/Significant-Gravitas/AutoGPT/releases/latest)
-3. Follow the [installation instructions][docs/setup]
-4. Configure any additional features you want, or install some [plugins][docs/plugins]
-5. [Run][docs/usage] the app
+2. Copy `.env.template` to `.env` and set `OPENAI_API_KEY`
+3. Make sure you have Poetry [installed](https://python-poetry.org/docs/#installation)
 
-Please see the [documentation][docs] for full setup instructions and configuration options.
+For more ways to run AutoGPT, more detailed instructions, and more configuration options,
+see the [setup guide][docs/setup].
 
-[docs]: https://docs.agpt.co/
+## Running AutoGPT
+The CLI should be self-documenting:
+```shell
+$ ./run.sh --help
+Usage: python -m autogpt [OPTIONS] COMMAND [ARGS]...
 
-## 📖 Documentation
+Options:
+  --help  Show this message and exit.
 
-- [⚙️ Setup][docs/setup]
-- [💻 Usage][docs/usage]
-- [🔌 Plugins][docs/plugins]
-- Configuration
-  - [🔍 Web Search](https://docs.agpt.co/configuration/search/)
-  - [🧠 Memory](https://docs.agpt.co/configuration/memory/)
-  - [🗣️ Voice (TTS)](https://docs.agpt.co/configuration/voice/)
-  - [🖼️ Image Generation](https://docs.agpt.co/configuration/imagegen/)
+Commands:
+  run    Sets up and runs an agent, based on the task specified by the...
+  serve  Starts an Agent Protocol compliant AutoGPT server, which creates...
+```
+When run without a sub-command, it will default to `run` for legacy reasons.
 
-[docs/setup]: https://docs.agpt.co/setup/
-[docs/usage]: https://docs.agpt.co/usage/
-[docs/plugins]: https://docs.agpt.co/plugins/
+<details>
+<summary>
+<code>$ ./run.sh run --help</code>
+</summary>
 
-## 🏗️ Setting up for development
-1. Make sure `poetry` is installed: `python3 -m pip install poetry`
-2. Install all dependencies: `poetry install`
+The `run` sub-command starts AutoGPT with the legacy CLI interface:
+
+```shell
+$ ./run.sh run --help
+Usage: python -m autogpt run [OPTIONS]
+
+  Sets up and runs an agent, based on the task specified by the user, or
+  resumes an existing agent.
+
+Options:
+  -c, --continuous                Enable Continuous Mode
+  -y, --skip-reprompt             Skips the re-prompting messages at the
+                                  beginning of the script
+  -C, --ai-settings FILE          Specifies which ai_settings.yaml file to
+                                  use, relative to the AutoGPT root directory.
+                                  Will also automatically skip the re-prompt.
+  -P, --prompt-settings FILE      Specifies which prompt_settings.yaml file to
+                                  use.
+  -l, --continuous-limit INTEGER  Defines the number of times to run in
+                                  continuous mode
+  --speak                         Enable Speak Mode
+  --debug                         Enable Debug Mode
+  --gpt3only                      Enable GPT3.5 Only Mode
+  --gpt4only                      Enable GPT4 Only Mode
+  -m, --use-memory TEXT           Defines which Memory backend to use
+  -b, --browser-name TEXT         Specifies which web-browser to use when
+                                  using selenium to scrape the web.
+  --allow-downloads               Dangerous: Allows AutoGPT to download files
+                                  natively.
+  --skip-news                     Specifies whether to suppress the output of
+                                  latest news on startup.
+  --install-plugin-deps           Installs external dependencies for 3rd party
+                                  plugins.
+  --ai-name TEXT                  AI name override
+  --ai-role TEXT                  AI role override
+  --constraint TEXT               Add or override AI constraints to include in
+                                  the prompt; may be used multiple times to
+                                  pass multiple constraints
+  --resource TEXT                 Add or override AI resources to include in
+                                  the prompt; may be used multiple times to
+                                  pass multiple resources
+  --best-practice TEXT            Add or override AI best practices to include
+                                  in the prompt; may be used multiple times to
+                                  pass multiple best practices
+  --override-directives           If specified, --constraint, --resource and
+                                  --best-practice will override the AI's
+                                  directives instead of being appended to them
+  --help                          Show this message and exit.
+```
+</details>
+
+
+<details>
+<summary>
+<code>$ ./run.sh serve --help</code>
+</summary>
+
+The `serve` sub-command starts AutoGPT wrapped in an Agent Protocol server:
+
+```shell
+$ ./run.sh serve --help
+Usage: python -m autogpt serve [OPTIONS]
+
+  Starts an Agent Protocol compliant AutoGPT server, which creates a custom
+  agent for every task.
+
+Options:
+  -P, --prompt-settings FILE  Specifies which prompt_settings.yaml file to
+                              use.
+  --debug                     Enable Debug Mode
+  --gpt3only                  Enable GPT3.5 Only Mode
+  --gpt4only                  Enable GPT4 Only Mode
+  -m, --use-memory TEXT       Defines which Memory backend to use
+  -b, --browser-name TEXT     Specifies which web-browser to use when using
+                              selenium to scrape the web.
+  --allow-downloads           Dangerous: Allows AutoGPT to download files
+                              natively.
+  --install-plugin-deps       Installs external dependencies for 3rd party
+                              plugins.
+  --help                      Show this message and exit.
+```
+</details>
+
+With `serve`, the application exposes an Agent Protocol compliant API and serves a frontend,
+by default on `http://localhost:8000`.
+
+For more comprehensive instructions, see the [user guide][docs/usage].
+
+[docs]: https://docs.agpt.co/autogpt
+[docs/setup]: https://docs.agpt.co/autogpt/setup
+[docs/usage]: https://docs.agpt.co/autogpt/usage
+[docs/plugins]: https://docs.agpt.co/autogpt/plugins
+
+## 📚 Resources
+* 📔 AutoGPT [team wiki](https://github.com/Significant-Gravitas/Nexus/wiki)
+* 🧮 AutoGPT [project kanban](https://github.com/orgs/Significant-Gravitas/projects/1)
+* 🌃 AutoGPT [roadmap](https://github.com/orgs/Significant-Gravitas/projects/2)
 
 ## ⚠️ Limitations
 
@@ -69,13 +169,9 @@ As an autonomous experiment, AutoGPT may generate content or take actions that a
 
 By using AutoGPT, you agree to indemnify, defend, and hold harmless the developers, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software or your violation of these terms.
 
-## 🐦 Connect with Us on Twitter
+---
 
-Stay up-to-date with the latest news, updates, and insights about AutoGPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
-
-- **Developer**: Follow [@siggravitas](https://twitter.com/siggravitas) for insights into the development process, project updates, and related topics from the creator of Entrepreneur-GPT.
-
-We look forward to connecting with you and hearing your thoughts, ideas, and experiences with AutoGPT. Join us on Twitter and let's explore the future of AI together!
+In Q2 of 2023, AutoGPT became the fastest growing open-source project in history. Now that the dust has settled, we're committed to continued sustainable development and growth of the project.
 
 <p align="center">
   <a href="https://star-history.com/#Significant-Gravitas/AutoGPT&Date">

@@ -1,4 +1,4 @@
-### Set up with Docker
+# Run AutoGPT in Docker
 
 !!! important "Docker Setup Issue"
     We are addressing a known issue with the Docker setup related to Poetry.

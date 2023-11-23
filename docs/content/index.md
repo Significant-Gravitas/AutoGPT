@@ -1,14 +1,27 @@
-# AutoGPT docs
+# AutoGPT Documentation
 
-Welcome to the AutoGPT Docs.
+Welcome to the AutoGPT Documentation.
 
-The AutoGPT project has been divided into four distinct sections: [Agents](#welcome-to-the-heart-of-autogpt), [Benchmarks](#autogpt-benchmarks), [Forge](#autogpt-forge), and [Frontend](#frontend)
+The AutoGPT project consists of four main components:
+
+* The [Agent](#-agent) &ndash; also known as just "AutoGPT"
+* The [Benchmark](#-benchmark) &ndash; AKA `agbenchmark`
+* The [Forge](#-forge)
+* The [Frontend](#-frontend)
+
+To tie these together, we also have a CLI at the root of the project.
 
 ---
 
-## [Welcome to the heart of AutoGPT](AutoGPT/setup.md)
+## 🤖 Agent
 
-Welcome to the heart of AutoGPT, the project that kicked it all off: a semi-autonomous agent powered by LLMs to execute any task for you*.
+**[📖 About AutoGPT](AutoGPT/index.md)**
+&ensp;|&ensp;
+**[🔧 Setup](AutoGPT/setup/index.md)**
+&ensp;|&ensp;
+**[💻 Usage](AutoGPT/usage.md)**
+
+The heart of AutoGPT, and the project that kicked it all off: a semi-autonomous agent powered by LLMs to execute any task for you*.
 
 We continue to develop this project with the goal of providing access to AI assistance to the masses, and building the future transparently and together.
 
@@ -20,27 +33,39 @@ We continue to develop this project with the goal of providing access to AI assi
 
 ---
 
-## [AutoGPT-Benchmarks](benchmarks/benchmark.md)
+## 🎯 Benchmark
 
-Test to impress with AutoGPT Benchmarks! Our benchmarking system offers a stringent testing environment to evaluate your agents objectively. 
+**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md)**
 
-- 📈 **Top Performance** - Among our currently benchmarked agents, AutoGPT consistently scores the best. The top-performing generalist agent will earn its position as the primary AutoGPT post-hackathon.
+Measure your agent's performance! The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's CLI makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 
-- 🔌 **Agent Protocol Standardization** - AutoGPT uses the agent protocol from the AI Engineer Foundation to ensure seamless compatibility.
+<!-- TODO: insert visual demonstrating the benchmark -->
 
----
+- 📦 [**`agbenchmark`**](https://pypi.org/project/agbenchmark/) on Pypi
 
-## [AutoGPT-Forge](forge/get-started.md)
-
-Forge your future with AutoGPT! The Forge is your innovation lab.
-
-- 🏗️ **Building with Ease** - We've set the groundwork so you can focus on your agent's personality and capabilities. Comprehensive tutorials are available [Here](https://aiedge.medium.com/autogpt-forge-e3de53cc58ec).
+- 🔌 **Agent Protocol Standardization** - AutoGPT uses the agent protocol from the AI Engineer Foundation to ensure compatibility with many agents, both from within and outside the project.
 
 ---
 
-## [Frontend](front-end/the-ui.md)
+## 🏗️ Forge
 
-Harness your AI journey with the AutoGPT FrontEnd.
+**[📖 Introduction](forge/get-started.md)**
+&ensp;|&ensp;
+**[🚀 Quickstart](https://github.com/Significant-Gravitas/AutoGPT/blob/master/QUICKSTART.md)**
+
+<!-- TODO: have the guides all in one place -->
+
+Forge your own agent! The Forge is a ready-to-go template for your agent application. All the boilerplate code is already handled, letting you channel all your creativity into the things that set *your* agent apart.
+
+- 🛠️ **Building with Ease** - We've set the groundwork so you can focus on your agent's personality and capabilities. Comprehensive tutorials are available [here](https://aiedge.medium.com/autogpt-forge-e3de53cc58ec).
+
+---
+
+## 💻 Frontend
+
+**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md)**
+
+An easy-to-use and open source frontend for any Agent Protocol-compliant agent.
 
 - 🎮 **User-Friendly Interface** - Manage your agents effortlessly.
 
@@ -48,7 +73,8 @@ Harness your AI journey with the AutoGPT FrontEnd.
 
 ---
 
-[Join the AutoGPT Discord server for any queries](discord.gg/autogpt)
+🤔 Join the AutoGPT Discord server for any queries:
+[discord.gg/autogpt](https://discord.gg/autogpt)
 
 ### Glossary of Terms
 
