@@ -4,10 +4,10 @@ Welcome to the AutoGPT Documentation.
 
 The AutoGPT project consists of four main components:
 
-* The [Agent](#welcome-to-the-heart-of-autogpt) &ndash; also known as just "AutoGPT"
-* The [Benchmark](#autogpt-benchmarks) &ndash; AKA `agbenchmark`
-* The [Forge](#autogpt-forge)
-* The [Frontend](#frontend)
+* The [Agent](#-agent) &ndash; also known as just "AutoGPT"
+* The [Benchmark](#-benchmark) &ndash; AKA `agbenchmark`
+* The [Forge](#-forge)
+* The [Frontend](#-frontend)
 
 To tie these together, we also have a CLI at the root of the project.
 
@@ -15,7 +15,7 @@ To tie these together, we also have a CLI at the root of the project.
 
 ## 🤖 Agent
 
-**[📖 Introduction](AutoGPT/introduction.md)**
+**[📖 About AutoGPT](AutoGPT/index.md)**
 &ensp;|&ensp;
 **[🔧 Setup](AutoGPT/setup/index.md)**
 &ensp;|&ensp;
