@@ -30,7 +30,8 @@
 
 ### 🗝️ Getting an OpenAI API key
 
-Get your OpenAI API key from: https://platform.openai.com/account/api-keys.
+Get your OpenAI API key from:
+[https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys).
 
 !!! attention
     To use the OpenAI API with AutoGPT, we strongly recommend **setting up billing**
@@ -72,12 +73,12 @@ Since we don't ship AutoGPT as a desktop application, you'll need to download th
 Once you have cloned or downloaded the project, you can find the AutoGPT Agent in the
 `autogpts/autogpt/` folder. In this folder:
 
-1. Find the file named `.env.template` in the main `Auto-GPT` folder. This file may
+1. Find the file named `.env.template`. This file may
     be hidden by default in some operating systems due to the dot prefix. To reveal
     hidden files, follow the instructions for your specific operating system:
     [Windows][show hidden files/Windows] and [macOS][show hidden files/macOS].
 2. Create a copy of `.env.template` and call it `.env`;
-    if you're already in a command prompt/terminal window: 
+    if you're already in a command prompt/terminal window:
     ```shell
     cp .env.template .env
     ```
