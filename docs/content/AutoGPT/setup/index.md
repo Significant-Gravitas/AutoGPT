@@ -97,7 +97,7 @@ Once you have cloned or downloaded the project, you can find the AutoGPT Agent i
 8. _Optional: run `poetry install` to install all required dependencies._ The
     application also checks for and installs any required dependencies when it starts.
 
-You should now be able to explore the CLI (`./run.sh --help`) and run the application.
+You should now be able to explore the CLI (`./autogpt.sh --help`) and run the application.
 
 See the [user guide](../usage.md) for further instructions.
 
