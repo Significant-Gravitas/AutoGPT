@@ -194,4 +194,4 @@ docker run -it --env-file=.env -v $PWD:/app autogpt
 docker run -it --env-file=.env -v $PWD:/app --rm autogpt --gpt3only --continuous
 ```
 
-[user guide]: ../usage/#command-line-interface
+[user guide]: /autogpt/usage/#command-line-interface
