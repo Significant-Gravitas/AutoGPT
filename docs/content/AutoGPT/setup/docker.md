@@ -1,12 +1,18 @@
-# Run AutoGPT in Docker
+# AutoGPT + Docker guide
 
-!!! important "Docker Setup Issue"
-    We are addressing a known issue with the Docker setup related to Poetry.
+!!! important
+    Docker Compose version 1.29.0 or later is required to use version 3.9 of the Compose file format.
+    You can check the version of Docker Compose installed on your system by running the following command:
 
-    [**We have an open PR if you'd like to take a look**](https://github.com/python-poetry/poetry/issues/8548)
+    ```shell
+    docker compose version
+    ```
 
-    Please keep this in mind. We apologize for any inconvenience, and thank you for your patience.
+    This will display the version of Docker Compose that is currently installed on your system.
 
+    If you need to upgrade Docker Compose to a newer version, you can follow the installation instructions in the Docker documentation: https://docs.docker.com/compose/install/
+
+## Basic Setup
 
 1. Make sure you have Docker installed, see [requirements](#requirements)
 2. Create a project directory for AutoGPT
@@ -16,7 +22,12 @@
     cd AutoGPT
     ```
 
-3. In the project directory, create a file called `docker-compose.yml` with the following contents:
+3. In the project directory, create a file called `docker-compose.yml`:
+
+    <details>
+    <summary>
+      <code>docker-compose.yml></code> for <= v0.4.7
+    </summary>
 
     ```yaml
     version: "3.9"
@@ -39,11 +50,46 @@
           #- type: bind
           #  source: ./ai_settings.yaml
           #  target: /app/ai_settings.yaml
+          #- type: bind
+          #  source: ./prompt_settings.yaml
+          #  target: /app/prompt_settings.yaml
     ```
+    </details>
 
-4. Create the necessary [configuration](#configuration) files. If needed, you can find
-    templates in the [repository].
-5. Pull the latest image from [Docker Hub]
+    <details>
+    <summary>
+      <code>docker-compose.yml></code> for > v0.4.7 (including <code>master</code>)
+    </summary>
+
+    ```yaml
+    version: "3.9"
+    services:
+      auto-gpt:
+        image: significantgravitas/auto-gpt
+        env_file:
+          - .env
+        ports:
+          - "8000:8000"  # remove this if you just want to run a single agent in TTY mode
+        profiles: ["exclude-from-up"]
+        volumes:
+          - ./data:/app/data
+          ## allow auto-gpt to write logs to disk
+          - ./logs:/app/logs
+          ## uncomment following lines if you want to make use of these files
+          ## you must have them existing in the same folder as this docker-compose.yml
+          #- type: bind
+          #  source: ./ai_settings.yaml
+          #  target: /app/ai_settings.yaml
+          #- type: bind
+          #  source: ./prompt_settings.yaml
+          #  target: /app/prompt_settings.yaml
+    ```
+    </details>
+
+
+4. Download [`.env.template`][.env.template] and save it as `.env` in the AutoGPT folder.
+5. Follow the [configuration](#configuration) steps.
+6. Pull the latest image from [Docker Hub]
 
     ```shell
     docker pull significantgravitas/auto-gpt
@@ -53,26 +99,26 @@
     AutoGPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.
     Please do not change this setting in combination with Docker, or AutoGPT will crash.
 
+[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/.env.template
 [Docker Hub]: https://hub.docker.com/r/significantgravitas/auto-gpt
-[repository]: https://github.com/Significant-Gravitas/AutoGPT
 
-### Configuration
+## Configuration
 
-1. Find the file named `.env.template` in the main `Auto-GPT` folder. This file may
+1. Open the `.env` file in a text editor. This file may
     be hidden by default in some operating systems due to the dot prefix. To reveal
     hidden files, follow the instructions for your specific operating system:
     [Windows][show hidden files/Windows], [macOS][show hidden files/macOS].
-2. Create a copy of `.env.template` and call it `.env`;
-    if you're already in a command prompt/terminal window: `cp .env.template .env`.
-3. Open the `.env` file in a text editor.
-4. Find the line that says `OPENAI_API_KEY=`.
-5. After the `=`, enter your unique OpenAI API Key *without any quotes or spaces*.
-6. Enter any other API keys or tokens for services you would like to use.
+2. Find the line that says `OPENAI_API_KEY=`.
+3. After the `=`, enter your unique OpenAI API Key *without any quotes or spaces*.
+4. Enter any other API keys or tokens for services you would like to use.
 
     !!! note
         To activate and adjust a setting, remove the `# ` prefix.
 
-7. Save and close the `.env` file.
+5. Save and close the `.env` file.
+
+Templates for the optional extra configuration files (e.g. `prompt_settings.yml`) can be
+found in the [repository].
 
 !!! info "Using a GPT Azure-instance"
     If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and
@@ -96,58 +142,56 @@
     Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.
     If you're on Windows you may need to install an [MSVC library](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
 
+    **Note:** Azure support has been dropped in `master`, so these instructions will only work with v0.4.7 (or earlier).
+
+[repository]: https://github.com/Significant-Gravitas/AutoGPT/autogpts/autogpt
 [show hidden files/Windows]: https://support.microsoft.com/en-us/windows/view-hidden-files-and-folders-in-windows-97fbc472-c603-9d90-91d0-1166d1d9f4b5
 [show hidden files/macOS]: https://www.pcmag.com/how-to/how-to-access-your-macs-hidden-files
 [openai-python docs]: https://github.com/openai/openai-python#microsoft-azure-endpoints
 [Azure OpenAI docs]: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line
 
-## Running AutoGPT In Docker
+## Developer Setup
 
-Easiest is to use `docker compose`. 
+!!! tip
+    Use this setup if you have cloned the repository and have made (or want to make)
+    changes to the codebase.
 
-Important: Docker Compose version 1.29.0 or later is required to use version 3.9 of the Compose file format.
-You can check the version of Docker Compose installed on your system by running the following command:
+1. Copy `.env.template` to `.env`.
+2. Follow the standard [configuration](#configuration) steps above.
 
-```shell
-docker compose version
-```
+## Running AutoGPT with Docker
 
-This will display the version of Docker Compose that is currently installed on your system.
-
-If you need to upgrade Docker Compose to a newer version, you can follow the installation instructions in the Docker documentation: https://docs.docker.com/compose/install/
-
-Once you have a recent version of Docker Compose, run the commands below in your AutoGPT folder.
-
-1. Build the image. If you have pulled the image from Docker Hub, skip this step (NOTE: You *will* need to do this if you are modifying requirements.txt to add/remove dependencies like Python libs/frameworks) 
-
-    ```shell
-    docker compose build auto-gpt
-    ```
-        
-2. Run AutoGPT
-
-    ```shell
-    docker compose run --rm auto-gpt
-    ```
-
-    By default, this will also start and attach a Redis memory backend. If you do not
-    want this, comment or remove the `depends: - redis` and `redis:` sections from
-    `docker-compose.yml`.
-
-    For related settings, see [Memory > Redis setup](../configuration/memory.md)
-
-You can pass extra arguments, e.g. running with `--gpt3only` and `--continuous`:
+After following setup instructions above, you can run AutoGPT with the following command:
 
 ```shell
-docker compose run --rm auto-gpt --gpt3only --continuous
+docker compose run --rm auto-gpt
 ```
+
+This creates and starts an AutoGPT container, and removes it after the application stops.
+This does not mean your data will be lost: data generated by the application is stored
+in the `data` folder.
+
+Subcommands and arguments work the same as described in the [user guide]:
+
+* Run AutoGPT:
+    ```shell
+    docker compose run --rm auto-gpt serve
+    ```
+* Run AutoGPT in TTY mode, with continuous mode.
+    ```shell
+    docker compose run --rm auto-gpt run --continuous
+    ```
+* Run AutoGPT in TTY mode and install dependencies for all active plugins:
+    ```shell
+    docker compose run --rm auto-gpt run --install-plugin-deps
+    ```
 
 If you dare, you can also build and run it with "vanilla" docker commands:
 
 ```shell
-docker build -t auto-gpt .
-docker run -it --env-file=.env -v $PWD:/app auto-gpt
-docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuous
+docker build -t autogpt .
+docker run -it --env-file=.env -v $PWD:/app autogpt
+docker run -it --env-file=.env -v $PWD:/app --rm autogpt --gpt3only --continuous
 ```
 
-[Docker Compose file]: https://github.com/Significant-Gravitas/AutoGPT/blob/stable/docker-compose.yml
+[user guide]: https://docs.agpt.co/autogpt/usage/#command-line-interface

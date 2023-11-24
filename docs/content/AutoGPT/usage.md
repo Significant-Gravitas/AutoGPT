@@ -30,8 +30,8 @@ Commands:
     `docker compose run --rm auto-gpt`:
 
     ```shell
-    docker compose run --rm auto-gpt --help
     docker compose run --rm auto-gpt --ai-settings <filename>
+    docker compose run --rm auto-gpt serve
     ```
 
 ### `run` &ndash; CLI mode
