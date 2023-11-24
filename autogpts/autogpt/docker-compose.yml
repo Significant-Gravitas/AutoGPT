@@ -9,6 +9,8 @@ services:
     build: ./
     env_file:
       - .env
+    ports:
+      - "8000:8000"
     volumes:
       - ./:/app
       - ./docker-compose.yml:/app/docker-compose.yml:ro
