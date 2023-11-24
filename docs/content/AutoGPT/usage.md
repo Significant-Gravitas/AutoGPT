@@ -152,8 +152,8 @@ For more information about the API of the application, see [agentprotocol.ai](ht
 ### Arguments
 
 !!! attention
-    Most arguments are equivalent to configuration options. See [`.env.template`] for
-    all available configuration options.
+    Most arguments are equivalent to configuration options. See [`.env.template`][.env.template]
+    for all available configuration options.
 
 !!! note
     Replace anything in angled brackets (<>) to a value you want to specify
@@ -176,13 +176,14 @@ Here are some common arguments you can use when running AutoGPT:
     There are shorthands for some of these flags, for example `-P` for `--prompt-settings`.  
     Use `./run.sh --help` for more information.
 
-[`.env.template`]: https://github.com/Significant-Gravitas/AutoGPT/tree/docs/streamline-getting-started/autogpts/autogpt/.env.template
+[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/.env.template
 
 ## Agent State
 [agent state]: #agent-state
 
 The state of individual agents is stored in the `data/agents` folder. You can use this
 in various ways:
+
 * Resume your agent at a later time.
 * Create "checkpoints" for your agent so you can always go back to specific points in
     its history.
