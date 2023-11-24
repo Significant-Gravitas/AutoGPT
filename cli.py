@@ -260,7 +260,11 @@ def create(agent_name):
 
 @agent.command()
 @click.argument("agent_name")
-@click.option("--no-setup", is_flag=True, help="Rebuilds your poetry env")
+@click.option(
+    "--no-setup",
+    is_flag=True,
+    help="Disables running the setup script before starting the agent",
+)
 def start(agent_name, no_setup):
     """Start agent command"""
     import os
