@@ -94,6 +94,7 @@ Commands:
 ```
 
 Common commands:
+
 * `./run agent start autogpt` &ndash; [runs](./AutoGPT/usage.md#serve-agent-protocol-mode-with-ui) the AutoGPT agent
 * `./run agent create <name>` &ndash; creates a new Forge-based agent project at `autogpts/<name>`
 * `./run benchmark start <agent>` &ndash; benchmarks the specified agent
