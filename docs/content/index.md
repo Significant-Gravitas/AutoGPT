@@ -9,7 +9,7 @@ The AutoGPT project consists of four main components:
 * The [Forge](#forge)
 * The [Frontend](#frontend)
 
-To tie these together, we also have a CLI at the root of the project.
+To tie these together, we also have a [CLI] at the root of the project.
 
 ---
 
@@ -37,7 +37,7 @@ We continue to develop this project with the goal of providing access to AI assi
 
 **[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md)**
 
-Measure your agent's performance! The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's CLI makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
+Measure your agent's performance! The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
 
 <!-- TODO: insert visual demonstrating the benchmark -->
 
@@ -73,6 +73,33 @@ An easy-to-use and open source frontend for any Agent Protocol-compliant agent.
 
 ---
 
+## 🔧 CLI
+[CLI]: #cli
+
+The project CLI makes it easy to use all of the components in the repo, separately or
+together. To install its dependencies, simply run `./run setup`, and you're ready to go!
+
+```shell
+$ ./run
+Usage: cli.py [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  agent      Commands to create, start and stop agents
+  arena      Commands to enter the arena
+  benchmark  Commands to start the benchmark and list tests and categories
+  setup      Installs dependencies needed for your system.
+```
+
+Common commands:
+* `./run agent start autogpt` &ndash; [runs](./AutoGPT/usage.md#serve-agent-protocol-mode-with-ui) the AutoGPT agent
+* `./run agent create <name>` &ndash; creates a new Forge-based agent project at `autogpts/<name>`
+* `./run benchmark start <agent>` &ndash; benchmarks the specified agent
+
+---
+
 🤔 Join the AutoGPT Discord server for any queries:
 [discord.gg/autogpt](https://discord.gg/autogpt)
 
@@ -85,5 +112,3 @@ An easy-to-use and open source frontend for any Agent Protocol-compliant agent.
 - **Benchmarking**: Testing your agent's skills in the Forge.
 - **Forge**: The template for building your AutoGPT agent.
 - **Frontend**: The UI for tasks, logs, and task history.
-
----
