@@ -6,11 +6,11 @@
 
 ## Command Line Interface
 
-Running `./run.sh` (or any of its subcommands) with `--help` lists all the possible
+Running `./autogpt.sh` (or any of its subcommands) with `--help` lists all the possible
 sub-commands and arguments you can use:
 
 ```shell
-$ ./run.sh --help
+$ ./autogpt.sh --help
 Usage: python -m autogpt [OPTIONS] COMMAND [ARGS]...
 
 Options:
@@ -22,7 +22,7 @@ Commands:
 ```
 
 !!! important "For Windows users"
-    On Windows, use `.\run.bat` instead of `./run.sh`.
+    On Windows, use `.\autogpt.bat` instead of `./autogpt.sh`.
     Everything else (subcommands, arguments) should work the same.
 
 !!! info "Usage with Docker"
@@ -40,11 +40,11 @@ The `run` sub-command starts AutoGPT with the legacy CLI interface.
 
 <details>
 <summary>
-<code>./run.sh run --help</code>
+<code>./autogpt.sh run --help</code>
 </summary>
 
 ```shell
-$ ./run.sh run --help
+$ ./autogpt.sh run --help
 Usage: python -m autogpt run [OPTIONS]
 
   Sets up and runs an agent, based on the task specified by the user, or
@@ -96,7 +96,7 @@ This means you can *resume* agents at a later time. See also [agent state].
 
 !!! note
     For legacy reasons, the CLI will default to the `run` subcommand when none is
-    specified: running `./run.sh run [OPTIONS]` does the same as `./run.sh [OPTIONS]`,
+    specified: running `./autogpt.sh run [OPTIONS]` does the same as `./autogpt.sh [OPTIONS]`,
     but this may change in the future.
 
 #### 💀 Continuous Mode ⚠️
@@ -107,7 +107,7 @@ It is potentially dangerous and may cause your AI to run forever or carry out ac
 Use at your own risk.
 
 ```shell
-./run.sh --continuous
+./autogpt.sh --continuous
 ```
 
 To exit the program, press ++ctrl+c++
@@ -119,11 +119,11 @@ frontend, by default on `http://localhost:8000`.
 
 <details>
 <summary>
-<code>./run.sh serve --help</code>
+<code>./autogpt.sh serve --help</code>
 </summary>
 
 ```shell
-$ ./run.sh serve --help
+$ ./autogpt.sh serve --help
 Usage: python -m autogpt serve [OPTIONS]
 
   Starts an Agent Protocol compliant AutoGPT server, which creates a custom
@@ -163,18 +163,18 @@ Here are some common arguments you can use when running AutoGPT:
 * Run AutoGPT with a different AI Settings file
 
     ```shell
-    ./run.sh --ai-settings <filename>
+    ./autogpt.sh --ai-settings <filename>
     ```
 
 * Run AutoGPT with a different Prompt Settings file
 
     ```shell
-    ./run.sh --prompt-settings <filename>
+    ./autogpt.sh --prompt-settings <filename>
     ```
 
 !!! note
     There are shorthands for some of these flags, for example `-P` for `--prompt-settings`.  
-    Use `./run.sh --help` for more information.
+    Use `./autogpt.sh --help` for more information.
 
 [.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/.env.template
 
@@ -200,7 +200,7 @@ Activity, Error, and Debug logs are located in `logs`.
 To print out debug logs:
 
 ```shell
-./run.sh --debug
+./autogpt.sh --debug
 ```
 
 ## Disabling Command Categories
