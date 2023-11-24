@@ -64,7 +64,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         install_error = True
 
     try:
-        # Check if GitHub user name is configured
+        # Check if git user is configured
         user_name = (
             subprocess.check_output(["git", "config", "user.name"])
             .decode("utf-8")
@@ -79,7 +79,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         if user_name and user_email:
             click.echo(
                 click.style(
-                    f"✅ GitHub account is configured with username: {user_name} and email: {user_email}",
+                    f"✅ Git is configured with name '{user_name}' and email '{user_email}'",
                     fg="green",
                 )
             )
@@ -90,25 +90,27 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 
     except subprocess.CalledProcessError:
         # If the GitHub account is not configured, print instructions on how to set it up
-        click.echo(click.style("❌ GitHub account is not configured.", fg="red"))
+        click.echo(click.style("⚠️ Git user is not configured.", fg="red"))
         click.echo(
             click.style(
-                "To configure your GitHub account, use the following commands:",
+                "To configure Git with your user info, use the following commands:",
                 fg="red",
             )
         )
         click.echo(
             click.style(
-                '  git config --global user.name "Your GitHub Username"', fg="red"
+                '  git config --global user.name "Your (user)name"', fg="red"
             )
         )
         click.echo(
             click.style(
-                '  git config --global user.email "Your GitHub Email"', fg="red"
+                '  git config --global user.email "Your email"', fg="red"
             )
         )
         install_error = True
+
     print_access_token_instructions = False
+
     # Check for the existence of the .github_access_token file
     if os.path.exists(".github_access_token"):
         with open(".github_access_token", "r") as file:
@@ -169,7 +171,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         # Instructions to set up GitHub access token
         click.echo(
             click.style(
-                "❌ To configure your GitHub access token, follow these steps:", fg="red"
+                "💡 To configure your GitHub access token, follow these steps:", fg="red"
             )
         )
         click.echo(
@@ -195,6 +197,7 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         click.echo(
             click.style("\t7. Save the file and run the setup command again.", fg="red")
         )
+
     if install_error:
         click.echo(
             click.style(
