@@ -34,7 +34,7 @@ see the [setup guide][docs/setup].
 ## Running AutoGPT
 The CLI should be self-documenting:
 ```shell
-$ ./run.sh --help
+$ ./autogpt.sh --help
 Usage: python -m autogpt [OPTIONS] COMMAND [ARGS]...
 
 Options:
@@ -48,13 +48,13 @@ When run without a sub-command, it will default to `run` for legacy reasons.
 
 <details>
 <summary>
-<code>$ ./run.sh run --help</code>
+<code>$ ./autogpt.sh run --help</code>
 </summary>
 
 The `run` sub-command starts AutoGPT with the legacy CLI interface:
 
 ```shell
-$ ./run.sh run --help
+$ ./autogpt.sh run --help
 Usage: python -m autogpt run [OPTIONS]
 
   Sets up and runs an agent, based on the task specified by the user, or
@@ -105,13 +105,13 @@ Options:
 
 <details>
 <summary>
-<code>$ ./run.sh serve --help</code>
+<code>$ ./autogpt.sh serve --help</code>
 </summary>
 
 The `serve` sub-command starts AutoGPT wrapped in an Agent Protocol server:
 
 ```shell
-$ ./run.sh serve --help
+$ ./autogpt.sh serve --help
 Usage: python -m autogpt serve [OPTIONS]
 
   Starts an Agent Protocol compliant AutoGPT server, which creates a custom
