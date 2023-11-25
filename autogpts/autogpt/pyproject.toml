@@ -16,8 +16,7 @@ packages = [{ include = "autogpt" }]
 
 
 [tool.poetry.scripts]
-autogpt = "autogpt.app.cli:run"
-run = "autogpt.app.cli:run"
+autogpt = "autogpt.app.cli:cli"
 serve = "autogpt.app.cli:serve"
 
 
@@ -66,7 +65,8 @@ webdriver-manager = "*"
 openapi-python-client = "^0.14.0"
 
 # Benchmarking
-agbenchmark = { path = "../../benchmark", optional = true }
+# agbenchmark = { path = "../../benchmark", optional = true }
+agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
 
 [tool.poetry.extras]
 benchmark = ["agbenchmark"]

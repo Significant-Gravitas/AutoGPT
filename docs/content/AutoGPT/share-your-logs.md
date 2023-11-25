@@ -9,9 +9,9 @@ Activity, Error, and Debug logs are located in `./logs`
 To print out debug logs:
 
 ```shell
-./run.sh --debug     # on Linux / macOS
+./autogpt.sh --debug     # on Linux / macOS
 
-.\run.bat --debug    # on Windows
+.\autogpt.bat --debug    # on Windows
 
 docker-compose run --rm auto-gpt --debug    # in Docker
 ```

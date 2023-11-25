@@ -6,49 +6,48 @@ nav:
   - Home: index.md
 
   - AutoGPT Agent:
-    - Agent-setup:
-        - Setting up AutoGPT: AutoGPT/setup.md
-        - Docker-setup: AutoGPT/Setups/Docker-setup.md
-        - Git-setup: AutoGPT/Setups/Git-setup.md
-        - No Git/Docker-setup: AutoGPT/Setups/nogit-setup.md
+    - Introduction: AutoGPT/index.md
+    - Setup:
+        - Setting up AutoGPT: AutoGPT/setup/index.md
+        - Set up with Docker: AutoGPT/setup/docker.md
     - Usage: AutoGPT/usage.md
     - Plugins: AutoGPT/plugins.md
-    - Configuration:
-        - Options: AutoGPT/configuration/options.md
-        - Search: AutoGPT/configuration/search.md
-        - Memory: AutoGPT/configuration/memory.md
-        - Voice: AutoGPT/configuration/voice.md
-        - Image Generation: AutoGPT/configuration/imagegen.md
+    # - Configuration:
+    #     - Options: AutoGPT/configuration/options.md
+    #     - Search: AutoGPT/configuration/search.md
+    #     - Memory: AutoGPT/configuration/memory.md
+    #     - Voice: AutoGPT/configuration/voice.md
+    #     - Image Generation: AutoGPT/configuration/imagegen.md
     - Help us improve AutoGPT:
         - Share your debug logs with us: AutoGPT/share-your-logs.md
         - Contribution guide: contributing.md
         - Running tests: AutoGPT/testing.md
         - Code of Conduct: code-of-conduct.md
 
-  - AutoGPT-Benchmarks:
-    - Benchmarks: benchmarks/benchmark.md
+  - Benchmark:
+    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/benchmark/README.md
 
-  - AutoGPT-Forge:
-    - Forge-setup: forge/get-started.md
+  - Forge:
+    - Introduction: forge/get-started.md
 
   - Frontend:
-    - Flutter-setup: front-end/the-ui.md
+    - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/frontend/README.md
 
-  - Challenges:
-      - Introduction: challenges/introduction.md
-      - List of Challenges:
-          - Memory:
-              - Introduction: challenges/memory/introduction.md
-              - Memory Challenge A: challenges/memory/challenge_a.md
-              - Memory Challenge B: challenges/memory/challenge_b.md
-              - Memory Challenge C: challenges/memory/challenge_c.md
-              - Memory Challenge D: challenges/memory/challenge_d.md
-          - Information retrieval:
-              - Introduction: challenges/information_retrieval/introduction.md
-              - Information Retrieval Challenge A: challenges/information_retrieval/challenge_a.md
-              - Information Retrieval Challenge B: challenges/information_retrieval/challenge_b.md
-  - Submit a Challenge: challenges/submit.md
-  - Beat a Challenge: challenges/beat.md
+  # - Challenges:
+  #     - Introduction: challenges/introduction.md
+  #     - List of Challenges:
+  #         - Memory:
+  #             - Introduction: challenges/memory/introduction.md
+  #             - Memory Challenge A: challenges/memory/challenge_a.md
+  #             - Memory Challenge B: challenges/memory/challenge_b.md
+  #             - Memory Challenge C: challenges/memory/challenge_c.md
+  #             - Memory Challenge D: challenges/memory/challenge_d.md
+  #         - Information retrieval:
+  #             - Introduction: challenges/information_retrieval/introduction.md
+  #             - Information Retrieval Challenge A: challenges/information_retrieval/challenge_a.md
+  #             - Information Retrieval Challenge B: challenges/information_retrieval/challenge_b.md
+  # - Submit a Challenge: challenges/submit.md
+  # - Beat a Challenge: challenges/beat.md
 
   - License: https://github.com/Significant-Gravitas/AutoGPT/blob/master/LICENSE
 
