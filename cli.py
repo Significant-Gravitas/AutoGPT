@@ -29,15 +29,15 @@ def setup():
     click.echo(
         click.style(
             """
-       d8888          888             .d8888b.  8888888b. 88888888888 
-      d88888          888            d88P  Y88b 888   Y88b    888     
-     d88P888          888            888    888 888    888    888     
-    d88P 888 888  888 888888 .d88b.  888        888   d88P    888     
-   d88P  888 888  888 888   d88""88b 888  88888 8888888P"     888     
-  d88P   888 888  888 888   888  888 888    888 888           888     
- d8888888888 Y88b 888 Y88b. Y88..88P Y88b  d88P 888           888     
-d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888     
-                                                                                                                                       
+       d8888          888             .d8888b.  8888888b. 88888888888
+      d88888          888            d88P  Y88b 888   Y88b    888
+     d88P888          888            888    888 888    888    888
+    d88P 888 888  888 888888 .d88b.  888        888   d88P    888
+   d88P  888 888  888 888   d88""88b 888  88888 8888888P"     888
+  d88P   888 888  888 888   888  888 888    888 888           888
+ d8888888888 Y88b 888 Y88b. Y88..88P Y88b  d88P 888           888
+d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
+
 """,
             fg="green",
         )
@@ -237,7 +237,18 @@ def create(agent_name):
         existing_arena_files = [name.lower() for name in os.listdir("./arena/")]
 
         if not os.path.exists(new_agent_dir) and not new_agent_name in existing_arena_files:
-            shutil.copytree("./autogpts/forge", new_agent_dir)
+            # Ask the user if they want to use the default AutoGPT agent that comes with loads of pre-baked features compared to the forge agent
+            user_autogpt_agent =input("Would you like to use the default AutoGPT agent? (y/n) ")
+            # Check if the user provided an input and whether or not they want it to be autogpt
+            # Making the default if you just hit enter the forge, so it maintains the standard way it's been until now
+            if(user_autogpt_agent and (user_autogpt_agent.lower() == "y" or user_autogpt_agent.lower() == "yes")):
+                # Copy the default AutoGPT agent to the new agent directory
+                # Beware, if you have used the autogpt agent already, it will also copy anything you have in there
+                shutil.copytree("./autogpts/autogpt", new_agent_dir)
+            else:
+                # If the user does not want the default, copy the forge agent to the new agent directory with bare bones features
+                shutil.copytree("./autogpts/forge", new_agent_dir)
+
             click.echo(
                 click.style(
                     f"🎉 New agent '{agent_name}' created. The code for your new agent is in: autogpts/{agent_name}",
@@ -777,7 +788,7 @@ Hey there amazing builders! We're thrilled to have you join this exciting journe
 
 - **Starting Point:** (Are you building from scratch or starting with an existing agent? Do tell!)
 - **Preliminary Ideas:** (Share your initial ideas and what kind of project you are aiming to build. We are all ears!)
-  
+
 #### 🏆 Prize Category
 
 - **Target Prize:** (Which prize caught your eye? Which one are you aiming for?)
