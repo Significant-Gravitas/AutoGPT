@@ -189,6 +189,17 @@ in various ways:
     its history.
 * Share your agent!
 
+## Workspace
+[workspace]: #workspace
+
+Agents can read and write files. This happens in the `workspace` folder, which
+is in `data/agents/<agent_id>/`. Files outside of this folder can not be accessed by the
+agent *unless* `RESTRICT_TO_WORKSPACE` is set to `False`.
+
+!!! warning
+    We do not recommend disabling `RESTRICT_TO_WORKSPACE`, unless AutoGPT is running in
+    a sandbox environment where it couldn't do any damage (e.g. Docker or a VM).
+
 ## Logs
 
 Activity, Error, and Debug logs are located in `logs`.
