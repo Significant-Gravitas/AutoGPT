@@ -39,7 +39,7 @@ class JSONFileMemory(NoSQLMemory):
         with file.open("w") as f:
             json.dump(data, f)
 
-        self._logger.debug(f"Saved {table_name} to {file} \n {str(data)[:250]}")
+        self._logger.debug(f"Saved {table_name} to {file} \n {str(data)}")
 
     def get(self, key: dict, table_name: str):
         return self._load_file(key, table_name)

@@ -7,8 +7,9 @@ from pydantic import Field
 from autogpts.AFAAS.app.lib.action import (ActionErrorResult, ActionResult,
                                            ActionSuccessResult)
 from autogpts.AFAAS.app.lib.context_items import ContextItem
+from autogpts.AFAAS.app.lib.task import TaskStatusList
 from autogpts.AFAAS.app.lib.task.plan import Plan
-from autogpts.AFAAS.app.lib.task.task import Task, TaskStatusList
+from autogpts.AFAAS.app.lib.task.task import Task
 from autogpts.autogpt.autogpt.core.agents.base.exceptions import (
     AgentException, ToolExecutionError, UnknownToolError)
 from autogpts.autogpt.autogpt.core.tools import ToolOutput
@@ -61,6 +62,7 @@ class PlannerLoop(BaseLoop):
     def set_current_task(self, task = Task) :
         self._current_task : Task = task
 
+    """
     def add_initial_tasks(self):
         ###
         ### Step 1 : add routing to the tasks
@@ -121,7 +123,8 @@ class PlannerLoop(BaseLoop):
 
         self._current_task_routing_description = ""
         self._current_task_routing_feedbacks = ""
-        self.plan().add_tasks(tasks=initial_task_list)
+        self.plan().add_tasks(tasks=initial_task_list, agent=self._agent)
+    """
 
     async def run(
         self,
@@ -193,7 +196,7 @@ class PlannerLoop(BaseLoop):
             #     self._agent.plan.tasks.append(Task(data = task))
 
             # Debugging :)
-            self._agent._logger.info(Plan.debug_parse_task(self._agent.plan))
+            self._agent._logger.info(Plan.info_parse_task(self._agent.plan))
 
             ###
             ### Assign task

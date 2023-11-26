@@ -1,112 +1,15 @@
 from __future__ import annotations
 
-import enum
-import importlib
-import pkgutil
-import random
-import string
-import uuid
+import abc
 from logging import Logger
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional, Union, get_args
 
 from pydantic import BaseModel, Field
 
 from autogpts.autogpt.autogpt.core.configuration import AFAASModel
+
 # from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
 logger = Logger(name=__name__)
-
-# if TYPE_CHECKING:
-    # from autogpts.autogpt.autogpt.core.agents import BaseAgent
-
-    #from .plan import Plan
-
-
-class TaskStatus(AFAASModel):
-    """
-    Model representing the status of a task.
-
-    Attributes:
-    - name: Name of the task status.
-    - description: Description of the task status.
-
-    Example:
-        >>> status = TaskStatus(name="in_progress", description="Work ongoing")
-        >>> print(status)
-        in_progress
-    """
-
-    name: str
-    description: str
-
-    def __str__(self) -> str:
-        """
-        Returns the name of the task status.
-
-        Example:
-            >>> status = TaskStatus(name="in_progress", description="Work ongoing")
-            >>> print(status)
-            in_progress
-        """
-        return self.name
-
-    def __repr__(self) -> str:
-        """
-        Returns the representation of task status in the format: "name description".
-
-        Example:
-            >>> status = TaskStatus(name="in_progress", description="Work ongoing")
-            >>> repr(status)
-            "in_progress Work ongoing"
-        """
-        return f"{self.name} {self.description}"
-
-
-class TaskStatusList(str, enum.Enum):
-    """
-    An enumeration representing the list of possible task statuses.
-
-    Attributes:
-    - BACKLOG: Task is not ready.
-    - READY: Task is ready.
-    - IN_PROGRESS: Task is currently being taken care of.
-    - DONE: Task has been achieved.
-
-    Example:
-        >>> task_status = TaskStatusList.BACKLOG
-        >>> print(task_status)
-        TaskStatusList.BACKLOG
-    """
-
-    BACKLOG: TaskStatus = TaskStatus(
-        name="backlog", description="The task is not ready"
-    )
-    READY: TaskStatus = TaskStatus(name="ready", description="The task  ready")
-    IN_PROGRESS: TaskStatus = TaskStatus(
-        name="in_progress", description="The being taken care of"
-    )
-    DONE: TaskStatus = TaskStatus(name="done", description="The being achieved")
-
-    def __eq__(self, other):
-        """
-        Overrides the default equality to check for equality with strings or with other Enum values.
-
-        Args:
-        - other: The object to compare with.
-
-        Returns:
-        - bool: True if equal, False otherwise.
-
-        Example:
-            >>> task_status = TaskStatusList.BACKLOG
-            >>> task_status == "backlog"
-            True
-            >>> task_status == TaskStatusList.READY
-            False
-        """
-        if isinstance(other, str):
-            return self.value.name == other
-        else:
-            return super().__eq__(other)
 
 class BaseTask(AFAASModel):
     """
@@ -128,12 +31,21 @@ class BaseTask(AFAASModel):
     """
     class Config(AFAASModel.Config):
         # This is a list of Field to Exclude during serialization
-        default_exclude = {
+        default_exclude = set(AFAASModel.Config.default_exclude) |  {
             "subtasks",
+            "agent"
         }
+        json_encoders = set(AFAASModel.Config.default_exclude) | {
+            "BaseTask": lambda v: str(v.task_id),
+            }
     ###
     ### GENERAL properties
     ###
+    if TYPE_CHECKING : 
+        from autogpts.autogpt.autogpt.core.agents import BaseAgent
+
+    #agent: Optional[BaseAgent]
+    agent_id :str
     task_id: str 
 
     task_goal: str
@@ -165,14 +77,34 @@ class BaseTask(AFAASModel):
             cls._default_command= "afaas_make_initial_plan"
                 
         return cls._default_command
+    
+    def dict_memory(self, **kwargs) -> dict:
+        d = super().dict(**kwargs)
 
-    def add_tasks(self, tasks=list["BaseTask"], position: int = None):
+        # Iterate over each attribute of the dict
+        for field, field_info in self.__fields__.items():
+            field_value = getattr(self, field)
+
+            if field_value is not None:
+                field_type = field_info.outer_type_
+
+                # Check if the field is a list and contains BaseTask or its subclasses
+                if isinstance(field_value, list) and issubclass(get_args(field_type)[0], BaseTask):
+                    # Replace the list of BaseTask instances with a list of their task_ids
+                    d[field] = [v.task_id for v in field_value]
+
+        return self._apply_custom_encoders(data = d)
+        
+        
+    def add_tasks(self, tasks : list["BaseTask"], agent : BaseAgent, position: int = None):
         if position is not None:
-            for tasks in tasks:
-                self.subtasks.insert(tasks, position)
+            for task in tasks:
+                self.subtasks.insert(task, position)
+                task.create_in_db(task = task, agent = agent)
         else:
-            for tasks in tasks:
-                self.subtasks.append(tasks)
+            for task in tasks:
+                self.subtasks.append(task)
+                task.create_in_db(task = task, agent = agent)
 
 
     def __getitem__(self, index: Union[int, str]):
@@ -239,10 +171,10 @@ class BaseTask(AFAASModel):
         logger.error("""FUNCTION NOT WORKING :
                      1. We now manage multiple predecessor
                      2. Tasks should not be deleted but managed by state""")
-        # 1. Set all task_predecessor_id to null if they reference the task to be removed
+        # 1. Set all task_predecessors_id to null if they reference the task to be removed
         def clear_predecessors(task: BaseTask):
-            if task.task_predecessor_id == task_id:
-                task.task_predecessor_id = None
+            if task_id in task.task_predecessors_id :
+                task.task_predecessors_id.remove(task_id)
             for subtask in task.subtasks or []:
                 clear_predecessors(subtask)
 
@@ -270,7 +202,7 @@ class BaseTask(AFAASModel):
 
     def get_ready_leaf_tasks(self) -> list [BaseTask]:
         """
-        Get tasks that have status "READY", no subtasks, and no task_predecessor_id.
+        Get tasks that have status "READY", no subtasks, and no task_predecessors_id.
 
         Returns:
             List [BaseTask]: A list of tasks meeting the specified criteria.
@@ -281,7 +213,7 @@ class BaseTask(AFAASModel):
             if (
                 task.status == "READY"
                 and not task.subtasks
-                and not task.task_predecessor_id
+                and not task.task_predecessors_id
             ):
                 ready_tasks.append(task)
 
@@ -297,7 +229,7 @@ class BaseTask(AFAASModel):
 
     def get_first_ready_task(self) -> Optional [BaseTask]:
         """
-        Get the first task that has status "READY", no subtasks, and no task_predecessor_id.
+        Get the first task that has status "READY", no subtasks, and no task_predecessors_id.
 
         Returns:
             Task or None: The first task meeting the specified criteria or None if no such task is found.
@@ -307,7 +239,7 @@ class BaseTask(AFAASModel):
             if (
                 task.status == "READY"
                 and not task.subtasks
-                and not task.task_predecessor_id
+                and not task.task_predecessors_id
             ):
                 return task
 
@@ -329,19 +261,20 @@ class BaseTask(AFAASModel):
         return None
     
     @staticmethod
-    def debug_parse_task(task: dict) -> str:
+    def info_parse_task(task: BaseTask) -> str:
+        from .task import Task
         parsed_response = f"Agent Plan:\n"
+        task : Task
         for i, task in enumerate(task.subtasks):
-            task : BaseTask
             parsed_response += f"{i+1}. {task.task_id} - {task.task_goal}\n"
-            parsed_response += f"Description {task.description}\n"
+            parsed_response += f"Description {task.long_decription}\n"
             # parsed_response += f"Task type: {task.type}  "
             # parsed_response += f"Priority: {task.priority}\n"
             parsed_response += f"Predecessors:\n"
             for j, predecessor in enumerate(task.task_predecessors):
                  parsed_response += f"    {j+1}. {predecessor}\n"
             parsed_response += f"Successors:\n"
-            for j, succesors in enumerate(task.task_succesors):
+            for j, succesors in enumerate(task.task_successors):
                  parsed_response += f"    {j+1}. {succesors}\n"
             parsed_response += f"Acceptance Criteria:\n"
             for j, criteria in enumerate(task.acceptance_criteria):
@@ -399,24 +332,8 @@ class BaseTask(AFAASModel):
                     return [self] + [found_task]
         return None
 
-    def find_task_path(self):
-        """
-        Finds the path from this task to the root.
-        """
-        path = [self]
-        current_task = self
 
-        while current_task.task_parent is not None:
-            path.append(current_task.task_parent)
-            current_task = current_task.task_parent
-
-        return path
-
-    def get_path_structure(self, task) -> str:
-        path_to_task = self.find_task_path(task)
-        indented_structure = ""
-
-        for i, task in enumerate(path_to_task):
-            indented_structure += "  " * i + "-> " + task.name + "\n"
-
-        return indented_structure
+    #
+    @abc.abstractmethod
+    def create_in_db(self, agent: BaseAgent) :
+        ...

@@ -42,19 +42,19 @@ class AbstractAgent(ABC):
 
         @staticmethod
         def _get_message_agent_user(agent_id):
-            LOG.debug(f'Retriving :  _get_message_agent_user{agent_id}')
+            LOG.notice(f'Retriving : Agent - User Message history for {agent_id}')
             return []
             # return MessageAgentUser.get_from_db(agent_id)
 
         @staticmethod
         def _get_message_agent_agent(agent_id):
-            LOG.debug(f'Retriving :  _get_message_agent_agent{agent_id}')
+            LOG.notice(f'Retriving : Agent - Agent Message history for {agent_id}')
             return []
             # return MessageAgentAgent.get_from_db(agent_id)
 
         @staticmethod
         def _get_message_agent_llm(agent_id):
-            LOG.debug(f'Retriving :  _get_message_agent_llm{agent_id}')
+            LOG.notice(f'Retriving : Agent - LLM Message history for {agent_id}')
             return []
             # return MessageAgentLLM.get_from_db(agent_id)
 

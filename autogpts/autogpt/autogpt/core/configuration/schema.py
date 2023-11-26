@@ -4,7 +4,7 @@ import datetime
 import enum
 import logging
 import uuid
-from typing import Any, Generic, TypeVar, TYPE_CHECKING
+from typing import Generic, TypeVar, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -45,7 +45,7 @@ class SystemConfiguration(BaseModel):
         }
         allow_inf_nan = False
 
-    def json(self, **dumps_kwargs: Any) -> str:
+    def json(self, **dumps_kwargs) -> str:
         LOG.warning(f"{__qualname__}.json()")
         return super().json(**dumps_kwargs)
 
@@ -69,15 +69,19 @@ class AFAASModel(BaseModel):
     created_at: datetime.datetime = datetime.datetime.now()
     modified_at: datetime.datetime = datetime.datetime.now()
 
-    def dict_memory(self, **dumps_kwargs: Any) -> dict:
+    def dict_memory(self, **dumps_kwargs) -> dict:
         LOG.debug(f"FIXME: Temporary implementation before a to pydantic 2.0.0")
-        result = self.dict(**dumps_kwargs)
+        dict = self.dict(**dumps_kwargs)
+        return self._apply_custom_encoders(data = dict)
+        
+    def _apply_custom_encoders(self, data: dict) -> dict:
         encoders = self.Config.json_encoders
-        for key, value in result.items():
+        for key, value in data.items():
             for type_, encoder in encoders.items():
                 if isinstance(value, type_):
-                    result[key] = encoder(value)
-        return result
+
+                    data[key] = encoder(value)
+        return data
 
     
     def dict(self, include_all=False, *args, **kwargs):
@@ -93,6 +97,7 @@ class AFAASModel(BaseModel):
         Returns:
             dict: A dictionary representation of the object.
         """
+        # TODO: Move to System settings ? 
         self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
         if not include_all:
             kwargs["exclude"] = self.Config.default_exclude
@@ -192,7 +197,7 @@ class Configurable(abc.ABC, Generic[S]):
             use_enum_values = True
             allow_inf_nan = False
 
-    def json(self, **dumps_kwargs: Any) -> str:
+    def json(self, **dumps_kwargs) -> str:
         LOG.warning(f"{__qualname__}.json()")
         return super().json(**dumps_kwargs)
 

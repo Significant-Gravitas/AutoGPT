@@ -168,7 +168,7 @@ class BaseAgent(Configurable, AbstractAgent):
         user_input_handler: Callable[[str], Awaitable[str]],
         user_message_handler: Callable[[str], Awaitable[str]],
     ) -> None:
-        self._logger.info(str(self.__class__.__name__) + ".start()")
+        self._logger.debug(str(self.__class__.__name__) + ".start()")
         return_var = await self._loop.start(
             agent=self,
             user_input_handler=user_input_handler,
@@ -380,7 +380,7 @@ class BaseAgent(Configurable, AbstractAgent):
         if not isinstance(agent_settings, cls.SystemSettings):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
 
-        agent_id = cls._create_agent_in_memory(
+        agent_id = cls._create_in_db(
             agent_settings=agent_settings, logger=logger
         )
         logger.info(
@@ -414,7 +414,7 @@ class BaseAgent(Configurable, AbstractAgent):
     ################################################################################
 
     @classmethod
-    def _create_agent_in_memory(
+    def _create_in_db(
         cls,
         agent_settings: BaseAgent.SystemSettings,
         logger: logging.Logger,

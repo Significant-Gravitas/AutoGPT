@@ -3,7 +3,7 @@ from logging import Logger
 from typing import Optional
 
 
-from autogpts.AFAAS.app.lib import Task
+from autogpts.AFAAS.app.lib.task import Task
 from autogpts.autogpt.autogpt.core.agents.planner.main import PlannerAgent
 from autogpts.autogpt.autogpt.core.prompting.base import (
     BasePromptStrategy, LanguageModelClassification, PromptStrategiesConfiguration)

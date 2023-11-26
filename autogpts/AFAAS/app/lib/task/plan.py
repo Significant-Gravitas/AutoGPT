@@ -6,8 +6,10 @@ from typing import TYPE_CHECKING, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
+from .meta import TaskStatusList
+
 from .base import BaseTask
-from .task import Task, TaskStatusList
+from .task import Task
 
 logger = Logger(name=__name__)
 
@@ -25,7 +27,7 @@ class Plan(BaseTask):
     task_id: str = Field(
         default_factory=lambda: Plan.generate_uuid(),
         alias = "plan_id"
-    ) 
+    )
 
     @staticmethod
     def generate_uuid() :
@@ -92,43 +94,71 @@ class Plan(BaseTask):
 # # 3. Retrieve the list of tasks on the path
 # path_to_task = plan.find_task_path(first_ready_task.task_id)
     @classmethod
-    def create_plan(cls, agent : BaseAgent):
+    def create_in_db(cls, agent : BaseAgent):
         memory = agent._memory
         plan_table = memory.get_table("plans")
         plan = cls(agent_id = agent.agent_id, task_goal = agent.agent_goal_sentence, tasks=[])
-        plan._create_initial_tasks()
+        plan._create_initial_tasks(status = TaskStatusList.READY, agent= agent)
 
         plan_table.add(plan, id=plan.plan_id)
         return plan
     
-    def _create_initial_tasks(self):
+    def _create_initial_tasks(self, status : TaskStatusList, agent :BaseAgent):
+
+        """        
         try : 
             import autogpts.autogpt.autogpt.core.agents.routing
             initial_task = Task(
-                task_parent_id=None,
-                task_predecessor_id=None,
+
+                task_parent= self ,
+                task_parent_id=self.plan_id,
+                state=status,
+
+                task_predecessors_id=None,
                 responsible_agent_id=None,
-                # task_goal="Define an agent approach to tackle a tasks",
+
                 task_goal= self.task_goal,
                 command="afaas_routing",
                 arguments = {'note_to_agent_length' : 400},
                 acceptance_criteria=[
                     "A plan has been made to achieve the specific task"
                 ],
-                state=TaskStatusList.READY,
+                
             )
         except:
             initial_task = Task(
-                task_parent_id=None,
-                task_predecessor_id=None,
+
+                task_parent= self ,
+                task_parent_id=self.plan_id,
+                state=status,
+
+                task_predecessors_id=None,
                 responsible_agent_id=None,
+
                 task_goal= self.task_goal,
                 command="afaas_make_initial_plan",
                 arguments={},
                 acceptance_criteria=[
                     "Contextual information related to the task has been provided"
                 ],
-                state=TaskStatusList.READY,
+            )
+        """
+        initial_task = Task(
+                agent_id= self.agent_id,
+                task_parent= self ,
+                task_parent_id=self.plan_id,
+                state=status.value,
+
+                task_predecessors_id=None,
+                responsible_agent_id=None,
+
+                task_goal= self.task_goal,
+                command=Task.default_command(),
+                arguments = {'note_to_agent_length' : 400},
+                acceptance_criteria=[
+                    "A plan has been made to achieve the specific task"
+                ],
+                
             )
         # self._current_task = initial_task  # .task_id
         initial_task_list = [initial_task]
@@ -143,7 +173,7 @@ class Plan(BaseTask):
                 refine_user_context_task = Task(
                     # task_parent = self.plan() ,
                     task_parent_id=None,
-                    task_predecessor_id=None,
+                    task_predecessors_id=None,
                     responsible_agent_id=None,
                     task_goal="Refine a user requirements for better exploitation by Agents",
                     command="afaas_refine_user_context",
@@ -158,7 +188,7 @@ class Plan(BaseTask):
             except:
                 pass
 
-        self.add_tasks(tasks= initial_task_list)
+        self.add_tasks(tasks= initial_task_list, agent= agent)
 
     # def _get_tasks_from_db(self):
     #     return Task.get_from_db(self.plan_id)

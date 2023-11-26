@@ -115,7 +115,7 @@ class BaseNoSQLTable(AbstractTable):
         if isinstance(value, AFAASModel):
             value = value.dict_memory()
         else:
-            self.memory._logger.warning("Class not hinheriting from SystemSettings")
+            self.memory._logger.warning("Class not hinheriting from AFAASModel")
             value = self.__class__.serialize_value(value)
 
         # Assigning primary key

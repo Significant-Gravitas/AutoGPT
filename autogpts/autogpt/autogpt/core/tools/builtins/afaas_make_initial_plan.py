@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from autogpts.AFAAS.app.lib.task.meta import TaskStatusList
+
 TOOL_CATEGORY = "framework"
 TOOL_CATEGORY_TITLE = "Framework"
 
@@ -12,7 +14,7 @@ if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
 from autogpts.AFAAS.app.lib.task.plan import Plan
-from autogpts.AFAAS.app.lib.task.task import Task, TaskStatusList
+from autogpts.AFAAS.app.lib.task.task import Task
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 
 

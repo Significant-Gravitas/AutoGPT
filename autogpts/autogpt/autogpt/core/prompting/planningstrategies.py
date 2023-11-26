@@ -169,7 +169,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         )
         print(
             f"""################################################################################################################################################################################################################################
-              DEBUG PLAN : Plan :\n{Plan.debug_parse_task(agent.plan)}\n\n
+              DEBUG PLAN : Plan :\n{Plan.info_parse_task(agent.plan)}\n\n
               """
         )
 
@@ -204,7 +204,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         #     plugin.post_prompt(self)
 
         # Construct full prompt
-        from autogpts.AFAAS.app.lib import get_os_info
+        from autogpt.autogpt.core.agents.base.assistants.prompt_manager import get_os_info
 
         full_prompt_parts: list[str] = (
             self._generate_intro_prompt(agent=agent)
