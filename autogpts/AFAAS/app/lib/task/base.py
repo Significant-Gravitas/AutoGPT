@@ -34,10 +34,10 @@ class BaseTask(AFAASModel):
         default_exclude = set(AFAASModel.Config.default_exclude) |  {
             "subtasks",
             "agent"
-        }
-        json_encoders = set(AFAASModel.Config.default_exclude) | {
-            "BaseTask": lambda v: str(v.task_id),
             }
+        json_encoders = AFAASModel.Config.json_encoders | {
+            }
+        
     ###
     ### GENERAL properties
     ###
@@ -88,7 +88,11 @@ class BaseTask(AFAASModel):
             if field_value is not None:
                 field_type = field_info.outer_type_
 
-                # Check if the field is a list and contains BaseTask or its subclasses
+                # Direct check for BaseTask instances
+                if isinstance(field_value, BaseTask):
+                    d[field] = field_value.task_id
+
+                # Check for lists of BaseTask instances
                 if isinstance(field_value, list) and issubclass(get_args(field_type)[0], BaseTask):
                     # Replace the list of BaseTask instances with a list of their task_ids
                     d[field] = [v.task_id for v in field_value]
@@ -337,3 +341,7 @@ class BaseTask(AFAASModel):
     @abc.abstractmethod
     def create_in_db(self, agent: BaseAgent) :
         ...
+
+
+# Need to resolve the circular dependency between Task and TaskContext once both models are defined.
+BaseTask.update_forward_refs()

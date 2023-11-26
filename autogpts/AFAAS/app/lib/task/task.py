@@ -1,16 +1,10 @@
 from __future__ import annotations
 
-import enum
-import importlib
-import pkgutil
-import random
-import string
 import uuid
 from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, Field
 
-from .meta import TaskStatusList
 
 # from autogpts.autogpt.autogpt.core.configuration import AFAASModel
 # from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
@@ -19,6 +13,7 @@ from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
     #from .plan import Plan
 from .base import BaseTask
+from .meta import TaskStatusList
 
 
 
@@ -49,11 +44,11 @@ class Task(BaseTask):
         default_factory=lambda: Task.generate_uuid()
     )  
     task_parent: BaseTask
-    task_parent_id: str
+    _task_parent_id: str
     task_predecessors: Optional[list[Task]]  = []  
-    task_predecessors_id: Optional[list[str]]  = []
+    _task_predecessors_id: Optional[list[str]]  = []
     task_successors: Optional[list[Task]]  = []   
-    task_successors_id: Optional[list[str]] = []
+    _task_successors_id: Optional[list[str]] = []
     
     state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG.value)
 
@@ -70,7 +65,9 @@ class Task(BaseTask):
 
     class Config(BaseTask.Config):
         default_exclude = set(BaseTask.Config.default_exclude) | {
+            # If commented create an infinite loop 
             "task_parent",
+
             "task_predecessors",
             "task_successors"
         }

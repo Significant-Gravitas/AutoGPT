@@ -146,10 +146,10 @@ class Plan(BaseTask):
         initial_task = Task(
                 agent_id= self.agent_id,
                 task_parent= self ,
-                task_parent_id=self.plan_id,
+                _task_parent_id=self.plan_id,
                 state=status.value,
 
-                task_predecessors_id=None,
+                _task_predecessors_id=None,
                 responsible_agent_id=None,
 
                 task_goal= self.task_goal,
@@ -172,8 +172,8 @@ class Plan(BaseTask):
                 import autogpts.autogpt.autogpt.core.agents.usercontext
                 refine_user_context_task = Task(
                     # task_parent = self.plan() ,
-                    task_parent_id=None,
-                    task_predecessors_id=None,
+                    _task_parent_id=None,
+                    _task_predecessors_id=None,
                     responsible_agent_id=None,
                     task_goal="Refine a user requirements for better exploitation by Agents",
                     command="afaas_refine_user_context",
