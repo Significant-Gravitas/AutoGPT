@@ -173,3 +173,7 @@ pri*
 ig*
 .github_access_token
 arena/TestAgent.json
+
+# evo.ninja
+autogpts/evo.ninja/*
+!autogpts/evo.ninja/setup
