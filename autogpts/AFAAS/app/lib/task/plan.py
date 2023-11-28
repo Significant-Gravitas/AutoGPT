@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from logging import Logger
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union, ClassVar
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,17 @@ if TYPE_CHECKING :
     from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
 class Plan(BaseTask):
+
+    _instance : ClassVar[dict[Plan]] = {}
+
+    def __init__(self, *args, **kwargs):
+        if kwargs["agent_id"] not in Plan._instance :
+            # Initialize the instance if needed
+            Plan._instance[kwargs["agent_id"]] = super().__init__(**kwargs)
+        return Plan._instance[kwargs["agent_id"]]
+
+
+
     """
     Represents a plan consisting of a list of tasks.
     """
@@ -145,6 +156,7 @@ class Plan(BaseTask):
         """
         initial_task = Task(
                 agent_id= self.agent_id,
+                plan=self,
                 task_parent= self ,
                 _task_parent_id=self.plan_id,
                 state=status.value,
@@ -172,6 +184,9 @@ class Plan(BaseTask):
                 import autogpts.autogpt.autogpt.core.agents.usercontext
                 refine_user_context_task = Task(
                     # task_parent = self.plan() ,
+
+                    agent_id= self.agent_id,
+                    plan=self,
                     _task_parent_id=None,
                     _task_predecessors_id=None,
                     responsible_agent_id=None,

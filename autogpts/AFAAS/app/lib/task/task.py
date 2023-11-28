@@ -43,6 +43,7 @@ class Task(BaseTask):
     ###
     ### GENERAL properties
     ###
+    plan:BaseTask
     task_id: str = Field(
         default_factory=lambda: Task.generate_uuid()
     )  
