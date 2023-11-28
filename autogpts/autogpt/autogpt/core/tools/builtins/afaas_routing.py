@@ -48,14 +48,14 @@ async def afaas_routing(task: Task, agent: BaseAgent, note_to_agent_length : int
         routing_settings.note_to_agent_length = note_to_agent_length
 
         # USER CONTEXT AGENT : Save RoutingAgent Settings in DB (for POW / POC)
-        new_routing_agent = RoutingAgent.create_agent(
+        new_routing_agent : RoutingAgent= RoutingAgent.create_agent(
             agent_settings=routing_settings, logger=agent._logger
         )
 
         # # USER CONTEXT AGENT : Get RoutingAgent from DB (for POW / POC)
         routing_settings.agent_id = new_routing_agent.agent_id
 
-        routing_agent = RoutingAgent.get_instance_from_settings(
+        routing_agent : RoutingAgent = RoutingAgent.get_instance_from_settings(
             agent_settings=routing_settings,
             logger=agent._logger,
         )
@@ -67,5 +67,7 @@ async def afaas_routing(task: Task, agent: BaseAgent, note_to_agent_length : int
 
         # agent.agent_goal_sentence =     routing_return["agent_goal_sentence"]
         # agent.agent_goals =     routing_return["agent_goals"]
+
+        return routing_return
     except Exception as e:
         raise str(e)

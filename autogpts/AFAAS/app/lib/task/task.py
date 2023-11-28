@@ -14,6 +14,9 @@ from autogpts.autogpt.autogpt.core.agents import BaseAgent
     #from .plan import Plan
 from .base import BaseTask
 from .meta import TaskStatusList
+from ...sdk.forge_log import ForgeLogger
+
+LOG = ForgeLogger(__name__)
 
 
 
@@ -81,6 +84,16 @@ class Task(BaseTask):
         memory = agent._memory
         task_table = memory.get_table("tasks")
         task_table.add(task, id=task.task_id)
+
+    
+    def __setattr__(self, key, value):
+        # Set attribute as normal
+        super().__setattr__(key, value)
+        # If the key is a model field, mark the instance as modified
+        if key in self.__fields__:
+            self._is_modified = True
+
+        LOG.notice("TODO : Implement Lazy Saving")
 
     def find_task_path(self) -> list[Task]:
         """

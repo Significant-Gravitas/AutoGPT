@@ -5,7 +5,7 @@ import logging
 import os
 import uuid
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, ClassVar
 
 import yaml
 from pydantic import Field, root_validator
@@ -107,8 +107,8 @@ class AbstractAgent(ABC):
                 + ".".join(cls.__qualname__.split(".")[:-1])
             )
         
-    _type_ : str = __name__
-    _module_ = (
+    _type_ : ClassVar[str] = __name__
+    _module_ : ClassVar[str] = (
             __module__ + "." + __name__
         )
     
