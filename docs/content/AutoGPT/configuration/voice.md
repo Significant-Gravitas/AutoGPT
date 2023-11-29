@@ -3,7 +3,7 @@
 Enter this command to use TTS _(Text-to-Speech)_ for AutoGPT
 
 ```shell
-python -m autogpt --speak
+./autogpt.sh --speak
 ```
 
 Eleven Labs provides voice technologies such as voice design, speech synthesis, and
