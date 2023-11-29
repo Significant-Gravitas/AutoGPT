@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional, Union, get_args
 from pydantic import BaseModel, Field
 
 from autogpts.autogpt.autogpt.core.configuration import AFAASModel
+from autogpts.autogpt.autogpt.core.agents import AbstractAgent
 
 # from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
 logger = Logger(name=__name__)
@@ -44,8 +45,11 @@ class BaseTask(AFAASModel):
     if TYPE_CHECKING : 
         from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
-    #agent: Optional[BaseAgent]
-    agent_id :str
+    agent : AbstractAgent = Field(exclude=True)
+    @property
+    def agent_id(self):
+        return self.agent.agent_id
+    
     task_id: str 
 
     task_goal: str
@@ -104,11 +108,13 @@ class BaseTask(AFAASModel):
         if position is not None:
             for task in tasks:
                 self.subtasks.insert(task, position)
-                task.create_in_db(task = task, agent = agent)
+                task.create_in_db(task = task, agent = self.agent)
         else:
             for task in tasks:
                 self.subtasks.append(task)
-                task.create_in_db(task = task, agent = agent)
+                task.create_in_db(task = task, agent = self.agent)
+
+        self.agent.plan.register_task(tasks = tasks)
 
 
     def __getitem__(self, index: Union[int, str]):
@@ -211,6 +217,12 @@ class BaseTask(AFAASModel):
         Returns:
             List [BaseTask]: A list of tasks meeting the specified criteria.
         """
+        logger.notice(
+            "Deprecated : Recommended functions are:\n" +
+            "- Plan.get_ready_tasks()\n" +
+            "- Task.get_first_ready_task()\n" +
+            "- Plan.get_next_task()\n"
+        )
         ready_tasks = []
 
         def check_task(task: BaseTask):
@@ -306,6 +318,7 @@ class BaseTask(AFAASModel):
         """
         Recursively searches for a task with the given task_id in the tree of tasks.
         """
+        logger.warning("Deprecated : Recommended function is Plan.get_task()")
         # Check current task
         if self.task_id == task_id:
             return self

@@ -43,7 +43,7 @@ class Task(BaseTask):
     ###
     ### GENERAL properties
     ###
-    plan:BaseTask
+    
     task_id: str = Field(
         default_factory=lambda: Task.generate_uuid()
     )  
@@ -76,6 +76,10 @@ class Task(BaseTask):
             "task_successors"
         }
         
+    @property
+    def plan_id(self) -> str:
+        return self.agent.plan.plan_id
+
     @staticmethod
     def generate_uuid() :
         return "T" + str(uuid.uuid4())
@@ -84,17 +88,29 @@ class Task(BaseTask):
     def create_in_db(cls, task : Task , agent : BaseAgent):
         memory = agent._memory
         task_table = memory.get_table("tasks")
-        task_table.add(task, id=task.task_id)
+        task_table.add(value = task, id=task.task_id)
 
-    
+
+    def save_in_db(self):
+        from autogpts.autogpt.autogpt.core.memory.table import AbstractTable
+        memory = self.agent._memory
+        task_table: AbstractTable = memory.get_table("tasks")
+        task_table.update(  
+                            value = self,
+                           task_id =  self.task_id,
+                           plan_id =  self.plan_id, 
+                           )
+
+
     def __setattr__(self, key, value):
         # Set attribute as normal
         super().__setattr__(key, value)
         # If the key is a model field, mark the instance as modified
         if key in self.__fields__:
             self._is_modified = True
+            self.agent.plan.register_task_as_modified(task_id = self.task_id)
 
-        LOG.notice("TODO : Implement Lazy Saving")
+        LOG.notice("TODO: Implement Lazy Saving")
 
     def find_task_path(self) -> list[Task]:
         """

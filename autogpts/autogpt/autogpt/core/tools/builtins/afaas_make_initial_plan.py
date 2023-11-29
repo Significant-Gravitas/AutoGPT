@@ -46,7 +46,8 @@ async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
     #  and ensure that they have actionable ready and acceptance criteria
 
     agent.plan = Plan(
-        subtask=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
+        subtask=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]],
+        agent=agent
     )
     agent.plan.subtasks.sort(key=lambda t: t.priority, reverse=True)
     agent._loop._current_task = agent.plan[-1]

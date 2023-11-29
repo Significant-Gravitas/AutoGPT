@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import uuid
 from enum import Enum
-from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Literal,
+from typing import (TYPE_CHECKING, Any, Callable, Literal,
                     Optional, TypedDict, Union)
 
 
@@ -33,7 +33,7 @@ class AbstractTable(abc.ABC):
     # BaseModel to require a column description Enum
     # CustomTable to reference the Enum/Model
     # FilterDict probably to be defined in the CustomTable class (Enforce via abc or pydantic)
-    class FilterDict(Dict[str, List[FilterItem]]):
+    class FilterDict(dict[str, list[FilterItem]]):
         pass
 
     table_name: str
@@ -65,5 +65,5 @@ class AbstractTable(abc.ABC):
         filter: AbstractTable.FilterDict = {},
         order_column: Optional[str] = "modified_at",
         order_direction: Literal["asc", "desc"] = "desc",
-    ) -> list[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         ...
