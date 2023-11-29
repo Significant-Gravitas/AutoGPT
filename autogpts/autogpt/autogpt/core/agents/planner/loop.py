@@ -329,7 +329,6 @@ class PlannerLoop(BaseLoop):
         command_name: str,
         current_task: Task,
         command_args: dict[str, str] = {},
-        user_input: str = "",
     ) -> ActionResult:
         result: ActionResult
 
@@ -420,7 +419,8 @@ def execute_command(
     agent._logger.info(f"with arguments : {arguments}")
     if command := agent._tool_registry.get_tool(tool_name=command_name):
         try:
-            return command(**arguments, task=task, agent=agent)
+            result = command(**arguments, task=task, agent=agent)
+            return result
         except AgentException:
             raise
         except Exception as e:

@@ -2,15 +2,26 @@
 from __future__ import annotations
 
 from autogpts.autogpt.autogpt.core.configuration import AFAASModel
-from autogpts.autogpt.autogpt.core.agents import AbstractAgent    
-from .base import BaseTask
+from autogpts.autogpt.autogpt.core.agents import AbstractAgent   
+
+
+from  autogpts.AFAAS.app.sdk.forge_log import ForgeLogger
+LOG = ForgeLogger(__name__)
+
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .base import BaseTask
 
 class TaskStack(AFAASModel):
     parent_task : BaseTask
-    _task_ids : list[str] 
+    _task_ids : list[str] = [] 
 
-    def __init__(self):
-        self._task_ids : list[str] = []  # List for all task IDs
+    def __init__(self, **kwargs):
+        #self._task_ids : list[str]  # List for all task IDs
+        LOG.notice(f"TaskStack created with {kwargs}")
+         
     
     def __len__(self):
         return len(self._task_ids)
@@ -20,7 +31,7 @@ class TaskStack(AFAASModel):
         Add a task. Can also mark it as ready.
         """
         self._task_ids.append(task.task_id)
-        self.parent_task.add_task(task)
+        #self.parent_task.add_task(task)
 
     def get_task(self, task_id)->BaseTask:
         """

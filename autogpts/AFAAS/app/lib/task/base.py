@@ -12,6 +12,8 @@ from autogpts.autogpt.autogpt.core.agents import AbstractAgent
 # from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
 logger = Logger(name=__name__)
 
+
+from .stack import TaskStack
 class BaseTask(AFAASModel):
     """
     Model representing a task.
@@ -65,8 +67,18 @@ class BaseTask(AFAASModel):
     ### Task Management properties
     ###
     task_history: Optional[list[dict]]
-    subtasks: list [BaseTask] = []
+    
     acceptance_criteria: Optional[list[str]] = []
+
+    ###
+    ### Dynamic properties
+    ###
+    _subtasks: Optional[TaskStack] = None
+    @property
+    def subtasks(self) -> TaskStack:
+        if self._subtasks is None:
+            self._subtasks = TaskStack(parent_task=self)
+        return self._subtasks
 
     _default_command : str = None
     @classmethod
@@ -101,21 +113,21 @@ class BaseTask(AFAASModel):
                     # Replace the list of BaseTask instances with a list of their task_ids
                     d[field] = [v.task_id for v in field_value]
 
+                # Check for lists of BaseTask instances
+                if isinstance(field_value, TaskStack):
+                    # Replace the list of BaseTask instances with a list of their task_ids
+                    d[field] = [v.task_id for v in field_value._task_ids]
+
         return self._apply_custom_encoders(data = d)
         
     
-    def add_task(self, task : "BaseTask", position: int = None): 
-        self.add_tasks(tasks = [task], position = position)
+    def add_task(self, task : "BaseTask"): 
+        self.add_tasks(tasks = [task])
 
-    def add_tasks(self, tasks : list["BaseTask"],  position: int = None):
-        if position is not None:
-            for task in tasks:
-                self.subtasks.insert(task, position)
-                task.create_in_db(task = task, agent = self.agent)
-        else:
-            for task in tasks:
-                self.subtasks.append(task)
-                task.create_in_db(task = task, agent = self.agent)
+    def add_tasks(self, tasks : list["BaseTask"]):
+        for task in tasks:
+            self.subtasks.add(task = task)
+            task.create_in_db(task = task, agent = self.agent)
 
         self.agent.plan.register_tasks(tasks = tasks)
 
@@ -253,6 +265,13 @@ class BaseTask(AFAASModel):
         Returns:
             Task or None: The first task meeting the specified criteria or None if no such task is found.
         """
+
+        logger.notice(
+            "Deprecated : Recommended functions are:\n" +
+            "- Plan.get_ready_tasks()\n" +
+            "- Plan.get_first_ready_task()\n" +
+            "- Plan.get_next_task()\n"
+        )
 
         def check_task(task: BaseTask) -> Optional [BaseTask]:
             if (

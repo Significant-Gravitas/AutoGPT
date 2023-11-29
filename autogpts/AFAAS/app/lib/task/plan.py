@@ -150,21 +150,22 @@ class Plan(BaseTask):
             raise Exception(f"Task {task_id} not found in plan {self.plan_id}")
         
 
-        
+
     def get_ready_tasks(self, task_ids_set : list[str] = None) -> list[Task]:
+        """
+        Get the first ready tasks. 
+        """
+
+        # Fetch the Task objects based on the common task IDs
+        return [self.get_task(task_id) for task_id in self._ready_task_ids]
+    
+    def get_first_ready_tasks(self, task_ids_set : list[str] = None) -> Task:
         """
         Get all ready tasks. If task_ids_set is not None, return only the tasks that are both ready and in the additional_task_ids list.
         """
-        ready_task_ids_set = set(self._ready_task_ids)
-
-        if task_ids_set is not None:
-            # Intersect the sets to find common task IDs
-            common_task_ids = ready_task_ids_set.intersection(task_ids_set)
-        else:
-            common_task_ids = ready_task_ids_set
-
+        
         # Fetch the Task objects based on the common task IDs
-        return [self.get_task(task_id) for task_id in common_task_ids]
+        return self.get_task(self._ready_task_ids[0]) 
         
 
 

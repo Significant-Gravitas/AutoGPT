@@ -132,7 +132,7 @@ class PlannerAgent(BaseAgent):
         else :
             self.plan: Plan = Plan.create_in_db(agent= self)
             #self._loop.add_initial_tasks()
-            self._loop.set_current_task(task =self.plan[0])
+            self._loop.set_current_task(task =self.plan.get_ready_tasks()[0])
             self.plan_id = self.plan.plan_id
 
         ###
