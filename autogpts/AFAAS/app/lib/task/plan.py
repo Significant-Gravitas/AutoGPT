@@ -1,4 +1,5 @@
 from __future__ import annotations
+from abc import ABCMeta
 
 import uuid
 from logging import Logger
@@ -55,6 +56,7 @@ class Plan(BaseTask):
         # Initialize the instance if needed
         super().__init__(**kwargs)
         Plan._instance[kwargs["agent"].agent_id ] = self
+        self.agent.plan : Plan = self
 
         # Load the tasks from the database
         agent : AbstractAgent = kwargs["agent"]
@@ -65,9 +67,9 @@ class Plan(BaseTask):
         # Update the static variables
         for task in all_task:
             #Plan._loaded_tasks_dict[task.task_id] = task
-            Plan._all_task_ids.append(task.task_id)
+            self._all_task_ids.append(task.task_id)
             if task.state == TaskStatusList.READY.value:
-                Plan._ready_task_ids.append(task.task_id)
+                self._ready_task_ids.append(task.task_id)
 
         
 
@@ -146,6 +148,9 @@ class Plan(BaseTask):
         else : 
             raise Exception(f"Task {task_id} not found in plan {self.plan_id}")
         
+    def register_tasks(self, task: Task):
+        self.register_tasks([task])
+        
     def register_tasks(self, tasks: list[Task]):
         """
         Register a list of tasks in the plan
@@ -194,6 +199,7 @@ class Plan(BaseTask):
                        tasks=[],
                        agent=agent
                        )
+            
             plan._create_initial_tasks(status=TaskStatusList.READY)
 
             plan_table.add(plan, id=plan.plan_id)

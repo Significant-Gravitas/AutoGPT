@@ -114,7 +114,7 @@ class BaseTask(AFAASModel):
                 self.subtasks.append(task)
                 task.create_in_db(task = task, agent = self.agent)
 
-        self.agent.plan.register_task(tasks = tasks)
+        self.agent.plan.register_tasks(tasks = tasks)
 
 
     def __getitem__(self, index: Union[int, str]):
