@@ -24,6 +24,7 @@ class Plan(BaseTask):
 
     _instance: ClassVar[dict[Plan]] = {}
     _modified_tasks_ids: list[str] = []
+    _new_tasks_ids: list[str] = []
     _all_task_ids: list[str] = []
     _ready_task_ids: list[str] = []
     _loaded_tasks_dict: dict[Task] = {}
@@ -148,9 +149,30 @@ class Plan(BaseTask):
         else : 
             raise Exception(f"Task {task_id} not found in plan {self.plan_id}")
         
+
+        
+    def get_ready_tasks(self, task_ids_set : list[str] = None) -> list[Task]:
+        """
+        Get all ready tasks. If task_ids_set is not None, return only the tasks that are both ready and in the additional_task_ids list.
+        """
+        ready_task_ids_set = set(self._ready_task_ids)
+
+        if task_ids_set is not None:
+            # Intersect the sets to find common task IDs
+            common_task_ids = ready_task_ids_set.intersection(task_ids_set)
+        else:
+            common_task_ids = ready_task_ids_set
+
+        # Fetch the Task objects based on the common task IDs
+        return [self.get_task(task_id) for task_id in common_task_ids]
+        
+
+
     def register_tasks(self, task: Task):
         self.register_tasks([task])
         
+
+
     def register_tasks(self, tasks: list[Task]):
         """
         Register a list of tasks in the plan
@@ -160,6 +182,8 @@ class Plan(BaseTask):
             self._loaded_tasks_dict[task.task_id] = task
             if(task.state == TaskStatusList.READY.value):
                 self._ready_task_ids.append(task.task_id)
+            
+            self.register_task_as_new(task_id=task.task_id)
 
     def register_task_as_modified(self, task_id: str):
         """
@@ -167,8 +191,14 @@ class Plan(BaseTask):
         """
         if task_id not in self._modified_tasks_ids:
             self._modified_tasks_ids.append(task_id)
-        
 
+    def register_task_as_new(self, task_id: str):
+        """
+        Register a task as modified
+        """
+        if task_id not in self._new_tasks_ids:
+            self._new_tasks_ids.append(task_id)
+        
     #############################################################################################
     #############################################################################################
     #############################################################################################
@@ -255,26 +285,36 @@ class Plan(BaseTask):
             except:
                 pass
 
-        self.add_tasks(tasks=initial_task_list, agent=self.agent)
+        self.add_tasks(tasks=initial_task_list)
 
     
     async def save(self):
 
         ###
-        # Save all tasks in the database
+        # Step 1 : Lazy saving : Update Existing Tasks 
         ###
-        processed_task_ids = []
         for task_id in self._modified_tasks_ids:
+            # Safeguard to avoid saving new tasks
+            if task_id not in self._new_tasks_ids:
+                task : Task = self._loaded_tasks_dict.get(task_id)
+                if task:
+                    task.save_in_db() # Save the task
+
+        ###
+        # Step 2 : Lazy saving : Create New Tasks 
+        ###
+        for task_id in self._new_tasks_ids:
             task : Task = self._loaded_tasks_dict.get(task_id)
             if task:
-                task.save_in_db() # Save the task
-                processed_task_ids.append(task_id)  # Add this task_id to the list of processed tasks
-        # Remove processed task IDs from the original list
-        for task_id in processed_task_ids:
-            self._modified_tasks_ids.remove(task_id)
-            
+                task.create_in_db(task=task,agent=self.agent) # Save the task
+        
+        # Reinitalize the lists
+        self._modified_tasks_ids = []
+        self._new_tasks_ids = []
 
-        # Save the plan in the database using agent._memory
+        ###
+        # Step 3 : Save the Plan 
+        ###
         agent = self._agent
         if agent:
             memory = agent._memory

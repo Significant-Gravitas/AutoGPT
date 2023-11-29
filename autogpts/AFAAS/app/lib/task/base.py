@@ -103,8 +103,11 @@ class BaseTask(AFAASModel):
 
         return self._apply_custom_encoders(data = d)
         
-        
-    def add_tasks(self, tasks : list["BaseTask"], agent : BaseAgent, position: int = None):
+    
+    def add_task(self, task : "BaseTask", position: int = None): 
+        self.add_tasks(tasks = [task], position = position)
+
+    def add_tasks(self, tasks : list["BaseTask"],  position: int = None):
         if position is not None:
             for task in tasks:
                 self.subtasks.insert(task, position)
