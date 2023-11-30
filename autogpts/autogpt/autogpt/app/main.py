@@ -125,7 +125,7 @@ async def run_auto_gpt(
     if install_plugin_deps:
         install_plugin_dependencies()
 
-    config.plugins = scan_plugins(config, config.debug_mode)
+    config.plugins = scan_plugins(config)
     configure_chat_plugins(config)
 
     # Let user choose an existing agent to run
@@ -333,7 +333,7 @@ async def run_auto_gpt_server(
     if install_plugin_deps:
         install_plugin_dependencies()
 
-    config.plugins = scan_plugins(config, config.debug_mode)
+    config.plugins = scan_plugins(config)
 
     # Set up & start server
     database = AgentDB("sqlite:///data/ap_server.db", debug_enabled=False)
