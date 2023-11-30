@@ -51,23 +51,25 @@ from .utils import (
 
 @coroutine
 async def run_auto_gpt(
-    continuous: bool,
-    continuous_limit: int,
-    ai_settings: Optional[Path],
-    prompt_settings: Optional[Path],
-    skip_reprompt: bool,
-    speak: bool,
-    debug: bool,
-    gpt3only: bool,
-    gpt4only: bool,
-    memory_type: str,
-    browser_name: str,
-    allow_downloads: bool,
-    skip_news: bool,
-    workspace_directory: Path,
-    install_plugin_deps: bool,
-    override_ai_name: str = "",
-    override_ai_role: str = "",
+    continuous: bool = False,
+    continuous_limit: Optional[int] = None,
+    ai_settings: Optional[Path] = None,
+    prompt_settings: Optional[Path] = None,
+    skip_reprompt: bool = False,
+    speak: bool = False,
+    debug: bool = False,
+    log_level: Optional[str] = None,
+    log_format: Optional[str] = None,
+    log_file_format: Optional[str] = None,
+    gpt3only: bool = False,
+    gpt4only: bool = False,
+    browser_name: Optional[str] = None,
+    allow_downloads: bool = False,
+    skip_news: bool = False,
+    workspace_directory: Optional[Path] = None,
+    install_plugin_deps: bool = False,
+    override_ai_name: Optional[str] = None,
+    override_ai_role: Optional[str] = None,
     resources: Optional[list[str]] = None,
     constraints: Optional[list[str]] = None,
     best_practices: Optional[list[str]] = None,
@@ -87,9 +89,11 @@ async def run_auto_gpt(
         skip_reprompt=skip_reprompt,
         speak=speak,
         debug=debug,
+        log_level=log_level,
+        log_format=log_format,
+        log_file_format=log_file_format,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
-        memory_type=memory_type,
         browser_name=browser_name,
         allow_downloads=allow_downloads,
         skip_news=skip_news,
@@ -97,8 +101,7 @@ async def run_auto_gpt(
 
     # Set up logging module
     configure_logging(
-        debug_mode=debug,
-        plain_output=config.plain_output,
+        **config.logging.dict(),
         tts_config=config.tts_config,
     )
 
@@ -294,14 +297,16 @@ async def run_auto_gpt(
 
 @coroutine
 async def run_auto_gpt_server(
-    prompt_settings: Optional[Path],
-    debug: bool,
-    gpt3only: bool,
-    gpt4only: bool,
-    memory_type: str,
-    browser_name: str,
-    allow_downloads: bool,
-    install_plugin_deps: bool,
+    prompt_settings: Optional[Path] = None,
+    debug: bool = False,
+    log_level: Optional[str] = None,
+    log_format: Optional[str] = None,
+    log_file_format: Optional[str] = None,
+    gpt3only: bool = False,
+    gpt4only: bool = False,
+    browser_name: Optional[str] = None,
+    allow_downloads: bool = False,
+    install_plugin_deps: bool = False,
 ):
     from .agent_protocol_server import AgentProtocolServer
 
@@ -314,17 +319,18 @@ async def run_auto_gpt_server(
         config=config,
         prompt_settings_file=prompt_settings,
         debug=debug,
+        log_level=log_level,
+        log_format=log_format,
+        log_file_format=log_file_format,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
-        memory_type=memory_type,
         browser_name=browser_name,
         allow_downloads=allow_downloads,
     )
 
     # Set up logging module
     configure_logging(
-        debug_mode=debug,
-        plain_output=config.plain_output,
+        **config.logging.dict(),
         tts_config=config.tts_config,
     )
 
@@ -410,7 +416,9 @@ async def run_interaction_loop(
     cycle_budget = cycles_remaining = _get_cycle_budget(
         legacy_config.continuous_mode, legacy_config.continuous_limit
     )
-    spinner = Spinner("Thinking...", plain_output=legacy_config.plain_output)
+    spinner = Spinner(
+        "Thinking...", plain_output=legacy_config.logging.plain_console_output
+    )
     stop_reason = None
 
     def graceful_agent_interrupt(signum: int, frame: Optional[FrameType]) -> None:
