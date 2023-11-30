@@ -2,6 +2,7 @@
 import enum
 import logging
 import math
+import os
 import re
 import signal
 import sys
@@ -342,7 +343,7 @@ async def run_auto_gpt_server(
     config.plugins = scan_plugins(config)
 
     # Set up & start server
-    database = AgentDB("sqlite:///data/ap_server.db", debug_enabled=False)
+    database = AgentDB(os.getenv("AP_SERVER_DB_URL", "sqlite:///data/ap_server.db"))
     server = AgentProtocolServer(
         app_config=config, database=database, llm_provider=llm_provider
     )
