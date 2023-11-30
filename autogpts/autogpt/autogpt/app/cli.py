@@ -1,8 +1,11 @@
 """Main script for the autogpt package."""
+from logging import _nameToLevel as logLevelMap
 from pathlib import Path
 from typing import Optional
 
 import click
+
+from autogpt.logs.config import LogFormatName
 
 
 @click.group(invoke_without_command=True)
@@ -15,6 +18,43 @@ def cli(ctx: click.Context):
 
 @cli.command()
 @click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
+@click.option(
+    "-l",
+    "--continuous-limit",
+    type=int,
+    help="Defines the number of times to run in continuous mode",
+)
+@click.option("--speak", is_flag=True, help="Enable Speak Mode")
+@click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
+@click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
+@click.option(
+    "-b",
+    "--browser-name",
+    help="Specifies which web-browser to use when using selenium to scrape the web.",
+)
+@click.option(
+    "--allow-downloads",
+    is_flag=True,
+    help="Dangerous: Allows AutoGPT to download files natively.",
+)
+@click.option(
+    # TODO: this is a hidden option for now, necessary for integration testing.
+    #   We should make this public once we're ready to roll out agent specific workspaces.
+    "--workspace-directory",
+    "-w",
+    type=click.Path(file_okay=False),
+    hidden=True,
+)
+@click.option(
+    "--install-plugin-deps",
+    is_flag=True,
+    help="Installs external dependencies for 3rd party plugins.",
+)
+@click.option(
+    "--skip-news",
+    is_flag=True,
+    help="Specifies whether to suppress the output of latest news on startup.",
+)
 @click.option(
     "--skip-reprompt",
     "-y",
@@ -31,57 +71,6 @@ def cli(ctx: click.Context):
     ),
 )
 @click.option(
-    "--prompt-settings",
-    "-P",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Specifies which prompt_settings.yaml file to use.",
-)
-@click.option(
-    "-l",
-    "--continuous-limit",
-    type=int,
-    help="Defines the number of times to run in continuous mode",
-)
-@click.option("--speak", is_flag=True, help="Enable Speak Mode")
-@click.option("--debug", is_flag=True, help="Enable Debug Mode")
-@click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
-@click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
-@click.option(
-    "--use-memory",
-    "-m",
-    "memory_type",
-    type=str,
-    help="Defines which Memory backend to use",
-)
-@click.option(
-    "-b",
-    "--browser-name",
-    help="Specifies which web-browser to use when using selenium to scrape the web.",
-)
-@click.option(
-    "--allow-downloads",
-    is_flag=True,
-    help="Dangerous: Allows AutoGPT to download files natively.",
-)
-@click.option(
-    "--skip-news",
-    is_flag=True,
-    help="Specifies whether to suppress the output of latest news on startup.",
-)
-@click.option(
-    # TODO: this is a hidden option for now, necessary for integration testing.
-    #   We should make this public once we're ready to roll out agent specific workspaces.
-    "--workspace-directory",
-    "-w",
-    type=click.Path(),
-    hidden=True,
-)
-@click.option(
-    "--install-plugin-deps",
-    is_flag=True,
-    help="Installs external dependencies for 3rd party plugins.",
-)
-@click.option(
     "--ai-name",
     type=str,
     help="AI name override",
@@ -90,6 +79,12 @@ def cli(ctx: click.Context):
     "--ai-role",
     type=str,
     help="AI role override",
+)
+@click.option(
+    "--prompt-settings",
+    "-P",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Specifies which prompt_settings.yaml file to use.",
 )
 @click.option(
     "--constraint",
@@ -126,28 +121,51 @@ def cli(ctx: click.Context):
         " the AI's directives instead of being appended to them"
     ),
 )
+@click.option(
+    "--debug", is_flag=True, help="Implies --log-level=DEBUG --log-format=debug"
+)
+@click.option("--log-level", type=click.Choice([*logLevelMap.keys()]))
+@click.option(
+    "--log-format",
+    help=(
+        "Choose a log format; defaults to 'simple'."
+        " Also implies --log-file-format, unless it is specified explicitly."
+        " Using the 'structured_google_cloud' format disables log file output."
+    ),
+    type=click.Choice([i.value for i in LogFormatName]),
+)
+@click.option(
+    "--log-file-format",
+    help=(
+        "Override the format used for the log file output."
+        " Defaults to the application's global --log-format."
+    ),
+    type=click.Choice([i.value for i in LogFormatName]),
+)
 def run(
     continuous: bool,
-    continuous_limit: int,
-    ai_settings: Optional[Path],
-    prompt_settings: Optional[Path],
-    skip_reprompt: bool,
+    continuous_limit: Optional[int],
     speak: bool,
-    debug: bool,
     gpt3only: bool,
     gpt4only: bool,
-    memory_type: str,
-    browser_name: str,
+    browser_name: Optional[str],
     allow_downloads: bool,
-    skip_news: bool,
-    workspace_directory: str,
+    workspace_directory: Optional[Path],
     install_plugin_deps: bool,
+    skip_news: bool,
+    skip_reprompt: bool,
+    ai_settings: Optional[Path],
     ai_name: Optional[str],
     ai_role: Optional[str],
+    prompt_settings: Optional[Path],
     resource: tuple[str],
     constraint: tuple[str],
     best_practice: tuple[str],
     override_directives: bool,
+    debug: bool,
+    log_level: Optional[str],
+    log_format: Optional[str],
+    log_file_format: Optional[str],
 ) -> None:
     """
     Sets up and runs an agent, based on the task specified by the user, or resumes an
@@ -164,9 +182,11 @@ def run(
         skip_reprompt=skip_reprompt,
         speak=speak,
         debug=debug,
+        log_level=log_level,
+        log_format=log_format,
+        log_file_format=log_file_format,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
-        memory_type=memory_type,
         browser_name=browser_name,
         allow_downloads=allow_downloads,
         skip_news=skip_news,
@@ -188,16 +208,8 @@ def run(
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Specifies which prompt_settings.yaml file to use.",
 )
-@click.option("--debug", is_flag=True, help="Enable Debug Mode")
 @click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
 @click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
-@click.option(
-    "--use-memory",
-    "-m",
-    "memory_type",
-    type=str,
-    help="Defines which Memory backend to use",
-)
 @click.option(
     "-b",
     "--browser-name",
@@ -213,15 +225,38 @@ def run(
     is_flag=True,
     help="Installs external dependencies for 3rd party plugins.",
 )
+@click.option(
+    "--debug", is_flag=True, help="Implies --log-level=DEBUG --log-format=debug"
+)
+@click.option("--log-level", type=click.Choice([*logLevelMap.keys()]))
+@click.option(
+    "--log-format",
+    help=(
+        "Choose a log format; defaults to 'simple'."
+        " Also implies --log-file-format, unless it is specified explicitly."
+        " Using the 'structured_google_cloud' format disables log file output."
+    ),
+    type=click.Choice([i.value for i in LogFormatName]),
+)
+@click.option(
+    "--log-file-format",
+    help=(
+        "Override the format used for the log file output."
+        " Defaults to the application's global --log-format."
+    ),
+    type=click.Choice([i.value for i in LogFormatName]),
+)
 def serve(
     prompt_settings: Optional[Path],
-    debug: bool,
     gpt3only: bool,
     gpt4only: bool,
-    memory_type: str,
-    browser_name: str,
+    browser_name: Optional[str],
     allow_downloads: bool,
     install_plugin_deps: bool,
+    debug: bool,
+    log_level: Optional[str],
+    log_format: Optional[str],
+    log_file_format: Optional[str],
 ) -> None:
     """
     Starts an Agent Protocol compliant AutoGPT server, which creates a custom agent for
@@ -233,9 +268,11 @@ def serve(
     run_auto_gpt_server(
         prompt_settings=prompt_settings,
         debug=debug,
+        log_level=log_level,
+        log_format=log_format,
+        log_file_format=log_file_format,
         gpt3only=gpt3only,
         gpt4only=gpt4only,
-        memory_type=memory_type,
         browser_name=browser_name,
         allow_downloads=allow_downloads,
         install_plugin_deps=install_plugin_deps,
