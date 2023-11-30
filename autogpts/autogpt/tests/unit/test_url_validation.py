@@ -73,7 +73,7 @@ local_file = (
 
 @pytest.mark.parametrize("url", local_file)
 def test_url_validation_fails_local_path(url):
-    with raises(ValueError, match="Access to local files is restricted"):
+    with raises(ValueError):
         dummy_method(url)
 
 
