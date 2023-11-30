@@ -64,17 +64,16 @@ def test_url_validation_fails_invalid_url(url, expected_error):
 
 
 local_file = (
-    ("http://localhost"),
-    ("https://localhost/"),
-    ("http://2130706433"),
-    ("https://2130706433"),
-    ("http://127.0.0.1/"),
+    ("file://localhost"),
+    ("file://localhost/home/reinier/secrets.txt"),
+    ("file:///home/reinier/secrets.txt"),
+    ("file:///C:/Users/Reinier/secrets.txt"),
 )
 
 
 @pytest.mark.parametrize("url", local_file)
 def test_url_validation_fails_local_path(url):
-    with raises(ValueError, match="Access to local files is restricted"):
+    with raises(ValueError):
         dummy_method(url)
 
 

@@ -61,7 +61,7 @@ def _configure_agent(
             "Either (state) or (task, ai_profile, directives) must be specified"
         )
 
-    app_config.plugins = scan_plugins(app_config, app_config.debug_mode)
+    app_config.plugins = scan_plugins(app_config)
     configure_chat_plugins(app_config)
 
     # Create a CommandRegistry instance and scan default folder

@@ -26,7 +26,7 @@ from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 logger = logging.getLogger(__name__)
 
 
-def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
+def inspect_zip_for_modules(zip_path: str) -> list[str]:
     """
     Inspect a zipfile for a modules.
 
@@ -134,9 +134,7 @@ def create_directory_if_not_exists(directory_path: str) -> bool:
         return True
 
 
-def initialize_openai_plugins(
-    manifests_specs: dict, config: Config, debug: bool = False
-) -> dict:
+def initialize_openai_plugins(manifests_specs: dict, config: Config) -> dict:
     """
     Initialize OpenAI plugins.
     Args:
@@ -188,9 +186,7 @@ def initialize_openai_plugins(
     return manifests_specs
 
 
-def instantiate_openai_plugin_clients(
-    manifests_specs_clients: dict, config: Config, debug: bool = False
-) -> dict:
+def instantiate_openai_plugin_clients(manifests_specs_clients: dict) -> dict:
     """
     Instantiates BaseOpenAIPlugin instances for each OpenAI plugin.
     Args:
@@ -207,7 +203,7 @@ def instantiate_openai_plugin_clients(
     return plugins
 
 
-def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTemplate]:
+def scan_plugins(config: Config) -> List[AutoGPTPluginTemplate]:
     """Scan the plugins directory for plugins and loads them.
 
     Args:
@@ -254,7 +250,7 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
 
     # Zip-based plugins
     for plugin in plugins_path.glob("*.zip"):
-        if moduleList := inspect_zip_for_modules(str(plugin), debug):
+        if moduleList := inspect_zip_for_modules(str(plugin)):
             for module in moduleList:
                 plugin = Path(plugin)
                 module = Path(module)
@@ -307,9 +303,7 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
     if config.plugins_openai:
         manifests_specs = fetch_openai_plugins_manifest_and_spec(config)
         if manifests_specs.keys():
-            manifests_specs_clients = initialize_openai_plugins(
-                manifests_specs, config, debug
-            )
+            manifests_specs_clients = initialize_openai_plugins(manifests_specs, config)
             for url, openai_plugin_meta in manifests_specs_clients.items():
                 if not plugins_config.is_enabled(url):
                     logger.warn(

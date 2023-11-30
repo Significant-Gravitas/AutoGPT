@@ -13,7 +13,6 @@ from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvi
 from autogpt.file_workspace import FileWorkspace
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
-from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 
 pytest_plugins = [
@@ -77,8 +76,9 @@ def config(
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
 
+    config.logging.log_dir = Path(__file__).parent / "logs"
+    config.logging.plain_console_output = True
     config.noninteractive_mode = True
-    config.plain_output = True
 
     # avoid circular dependency
     from autogpt.plugins.plugins_config import PluginsConfig
@@ -93,11 +93,7 @@ def config(
 
 @pytest.fixture(scope="session")
 def setup_logger(config: Config):
-    configure_logging(
-        debug_mode=config.debug_mode,
-        plain_output=config.plain_output,
-        log_dir=Path(__file__).parent / "logs",
-    )
+    configure_logging(**config.logging.dict())
 
 
 @pytest.fixture()

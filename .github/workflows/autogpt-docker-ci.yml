@@ -24,6 +24,8 @@ defaults:
 
 env:
   IMAGE_NAME: auto-gpt
+  DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER }}/auto-gpt
+  DEV_IMAGE_TAG: latest-dev
 
 jobs:
   build:
@@ -93,6 +95,12 @@ jobs:
         with:
           submodules: true
 
+      - name: Log in to Docker hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
@@ -102,7 +110,9 @@ jobs:
         with:
           context: autogpts/autogpt
           build-args: BUILD_TYPE=dev  # include pytest
-          tags: ${{ env.IMAGE_NAME }}
+          tags: >
+            ${{ env.IMAGE_NAME }},
+            ${{ env.DEPLOY_IMAGE_NAME }}:${{ env.DEV_IMAGE_TAG }}
           load: true                  # save to docker images
           # cache layers in GitHub Actions cache to speed up builds
           cache-from: type=gha,scope=autogpt-docker-dev
@@ -135,3 +145,6 @@ jobs:
           $EOF
 
           exit $test_failure
+
+      - name: Push image to Docker Hub
+        run: docker push ${{ env.DEPLOY_IMAGE_NAME }}:${{ env.DEV_IMAGE_TAG }}

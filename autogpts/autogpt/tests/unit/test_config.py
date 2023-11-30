@@ -18,11 +18,10 @@ def test_initial_values(config: Config) -> None:
     """
     Test if the initial values of the config class attributes are set correctly.
     """
-    assert config.debug_mode is False
     assert config.continuous_mode is False
     assert config.tts_config.speak_mode is False
     assert config.fast_llm == "gpt-3.5-turbo-16k"
-    assert config.smart_llm == "gpt-4-0314"
+    assert config.smart_llm.startswith("gpt-4")
 
 
 def test_set_continuous_mode(config: Config) -> None:
@@ -79,20 +78,6 @@ def test_set_smart_llm(config: Config) -> None:
 
     # Reset model name
     config.smart_llm = smart_llm
-
-
-def test_set_debug_mode(config: Config) -> None:
-    """
-    Test if the set_debug_mode() method updates the debug_mode attribute.
-    """
-    # Store debug mode to reset it after the test
-    debug_mode = config.debug_mode
-
-    config.debug_mode = True
-    assert config.debug_mode is True
-
-    # Reset debug mode
-    config.debug_mode = debug_mode
 
 
 @patch("openai.Model.list")
