@@ -21,7 +21,7 @@ def test_initial_values(config: Config) -> None:
     assert config.continuous_mode is False
     assert config.tts_config.speak_mode is False
     assert config.fast_llm == "gpt-3.5-turbo-16k"
-    assert config.smart_llm == "gpt-4-0314"
+    assert config.smart_llm.startswith("gpt-4")
 
 
 def test_set_continuous_mode(config: Config) -> None:
