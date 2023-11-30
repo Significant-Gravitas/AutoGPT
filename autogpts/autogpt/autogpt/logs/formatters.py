@@ -1,6 +1,7 @@
 import logging
 
 from colorama import Style
+from google.cloud.logging_v2.handlers import CloudLoggingFilter, StructuredLogHandler
 
 from autogpt.core.runner.client_lib.logging import FancyConsoleFormatter
 
@@ -37,3 +38,16 @@ class AutoGptFormatter(FancyConsoleFormatter):
             return remove_color_codes(super().format(record))
         else:
             return super().format(record)
+
+
+class StructuredLoggingFormatter(StructuredLogHandler, logging.Formatter):
+    def __init__(self):
+        # Set up CloudLoggingFilter to add diagnostic info to the log records
+        self.cloud_logging_filter = CloudLoggingFilter()
+
+        # Init StructuredLogHandler
+        super().__init__()
+
+    def format(self, record: logging.LogRecord) -> str:
+        self.cloud_logging_filter.filter(record)
+        return super().format(record)

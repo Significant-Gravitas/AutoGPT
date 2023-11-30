@@ -12,6 +12,7 @@ from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
 from autogpt.llm.api_manager import ApiManager
+from autogpt.logs.config import LogFormatName
 from autogpt.logs.helpers import print_attribute, request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
 
@@ -27,10 +28,13 @@ def apply_overrides_to_config(
     skip_reprompt: bool = False,
     speak: bool = False,
     debug: bool = False,
+    log_level: Optional[str] = None,
+    log_format: Optional[str] = None,
+    log_file_format: Optional[str] = None,
     gpt3only: bool = False,
     gpt4only: bool = False,
-    memory_type: str = "",
-    browser_name: str = "",
+    memory_type: Optional[str] = None,
+    browser_name: Optional[str] = None,
     allow_downloads: bool = False,
     skip_news: bool = False,
 ) -> None:
@@ -51,13 +55,20 @@ def apply_overrides_to_config(
         allow_downloads (bool): Whether to allow AutoGPT to download files natively
         skips_news (bool): Whether to suppress the output of latest news on startup
     """
-    config.debug_mode = False
     config.continuous_mode = False
     config.tts_config.speak_mode = False
 
+    # Set log level
     if debug:
-        print_attribute("Debug mode", "ENABLED")
-        config.debug_mode = True
+        config.logging.level = logging.DEBUG
+    elif log_level and type(_level := logging.getLevelName(log_level.upper())) is int:
+        config.logging.level = _level
+
+    # Set log format
+    if log_format and log_format in LogFormatName._value2member_map_:
+        config.logging.log_format = LogFormatName(log_format)
+    if log_file_format and log_file_format in LogFormatName._value2member_map_:
+        config.logging.log_file_format = LogFormatName(log_file_format)
 
     if continuous:
         print_attribute("Continuous Mode", "ENABLED", title_color=Fore.YELLOW)
