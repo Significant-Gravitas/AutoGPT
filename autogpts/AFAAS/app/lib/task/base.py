@@ -241,14 +241,12 @@ class BaseTask(AFAASModel):
 
         def check_task(task: BaseTask):
             if (
-                task.status == "READY"
-                and not task.subtasks
-                and not task.task_predecessors_id
+                task.is_ready()
             ):
                 ready_tasks.append(task)
 
             # Check subtasks recursively
-            for subtask in task.subtasks or []:
+            for subtask in task.subtasks:
                 check_task(subtask)
 
         # Start checking from the root tasks in the plan
@@ -274,9 +272,7 @@ class BaseTask(AFAASModel):
 
         def check_task(task: BaseTask) -> Optional [BaseTask]:
             if (
-                task.status == "READY"
-                and not task.subtasks
-                and not task.task_predecessors_id
+                task.is_ready()
             ):
                 return task
 

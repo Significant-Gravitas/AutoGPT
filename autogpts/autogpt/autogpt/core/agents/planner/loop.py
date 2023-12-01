@@ -209,6 +209,7 @@ class PlannerLoop(BaseLoop):
         self._loop_count = 0
 
         # _is_running is important because it avoid having two concurent loop in the same agent (cf : Agent.run())
+        current_task =  self._current_task 
         while self._is_running:
             # if _active is false, then the loop is paused
             # FIXME replace _active by self.remaining_cycles > 0:
@@ -218,10 +219,10 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 ### Step 5 : select_tool()
                 ##############################################################
-                if self._current_task.command is not None:
-                    command_name = self._current_task.command
-                    command_args = self._current_task.arguments
-                    assistant_reply_dict = self._current_task.long_decription
+                if current_task.command is not None:
+                    command_name = current_task.command
+                    command_args = current_task.arguments
+                    assistant_reply_dict = current_task.long_decription
                 else:
                     # FIXME: REPLACE WITH ROUTING ?
                     (
@@ -236,9 +237,11 @@ class PlannerLoop(BaseLoop):
                 result = await self.execute_tool(
                     command_name=command_name,
                     command_args=command_args,
-                    current_task=self._current_task
+                    current_task=current_task
                     # user_input = assistant_reply_dict
                 )
+            
+            self._current_task = self.plan().get_next_task(current_task = current_task)
 
             self.save_plan()
 
@@ -344,18 +347,24 @@ class PlannerLoop(BaseLoop):
                 agent=self._agent,
             )
 
-            # Intercept ContextItem if one is returned by the command
-            if type(return_value) == tuple and isinstance(return_value[1], ContextItem):
-                context_item = return_value[1]
-                return_value = return_value[0]
-                self._agent._logger.debug(
-                    f"Tool {command_name} returned a ContextItem: {context_item}"
-                )
-                self.context.add(context_item)
+            # # Intercept ContextItem if one is returned by the command
+            # if type(return_value) == tuple and isinstance(return_value[1], ContextItem):
+            #     context_item = return_value[1]
+            #     return_value = return_value[0]
+            #     self._agent._logger.debug(
+            #         f"Tool {command_name} returned a ContextItem: {context_item}"
+            #     )
+            #     self.context.add(context_item)
 
-            result = ActionSuccessResult(outputs=return_value)
+            # result = ActionSuccessResult(outputs=return_value)
         except AgentException as e:
+            #FIXME : Implement retry mechanism if a fail
             result = ActionErrorResult(reason=e.message, error=e)
+
+        
+        self.plan().set_task_status(task= current_task, status= TaskStatusList.DONE)
+
+        return result
 
         ###
         ### TODO : Low priority : Save results of tool execution & manage errors

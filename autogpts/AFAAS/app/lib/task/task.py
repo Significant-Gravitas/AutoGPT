@@ -69,7 +69,16 @@ class Task(BaseTask):
             self._task_successors = TaskStack(parent_task=self)
         return self._task_successors
 
-    state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG.value)
+    _state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
+
+    @property
+    def state(self) -> Optional[TaskStatusList]:
+        return self._state
+    
+    @state.setter
+    def state(self, new_state: TaskStatusList):
+        self.agent.plan._registry_update_task_status_in_list(task_id=self.task_id, new_state=new_state)
+        self._state = new_state
 
     task_text_output : Optional[str] 
     """ Placeholder : The agent summary of his own doing while performing the task"""
@@ -99,6 +108,64 @@ class Task(BaseTask):
     def generate_uuid() :
         return "T" + str(uuid.uuid4())
     
+    def is_ready(self, sucessor_task)-> bool:
+        if (len(sucessor_task.task_predecessors.get_active_tasks()) == 0 
+                    and sucessor_task.subtasks.get_active_tasks() == 0
+                    and sucessor_task.state == TaskStatusList.BACKLOG) : 
+            self.state = TaskStatusList.READY.value
+            return True
+        
+        return False
+    
+    def add_predecessor(self, task : Task):
+        """
+        Adds a predecessor to this task (also automatically adds this task as a successor to the given predecessor task).
+
+        Args:
+            task (Task): The task to be added as a predecessor.
+
+        Warning:
+            This method should not be used in conjunction with `add_successor` or `_add_predecessor` on the same task objects,
+            as it can lead to a recursive loop.
+        """
+        self.task_predecessors.add(task)
+        task._add_successor(self)
+        
+    def add_successor(self, task : Task):
+        """
+        Adds a successor to this task (also automatically adds this task as a successor to the given predecessor task).
+
+        Args:
+            task (Task): The task to be added as a successor.
+
+        Warning:
+            This method should not be used in conjunction with `add_predecessor` on the same task objects,
+            as it can lead to a recursive loop.
+        """
+        self.task_successors.add(task)
+        task._add_predecessor(self)
+
+    def _add_successor(self, task : Task):
+        """
+        DO NOT USE : This method should only be used within `Task.add_predecessor()`
+        """
+        self.task_successors.add(task)
+    
+    def _add_predecessor(self, task : Task):
+        """
+        DO NOT USE : This method should only be used within `Task.add_successors()`
+        """
+        self.task_predecessors.add(task)
+
+    
+    #############################################################################################
+    #############################################################################################
+    #############################################################################################
+    # region Task DB Management
+    #############################################################################################
+    #############################################################################################
+    #############################################################################################
+
     @classmethod
     def get_task_from_db(cls, task_id : str, agent : BaseAgent) -> Task:
         memory = agent._memory
@@ -122,7 +189,7 @@ class Task(BaseTask):
                            task_id =  self.task_id,
                            plan_id =  self.plan_id, 
                            )
-
+    #endregion
 
     def __setattr__(self, key, value):
         # Set attribute as normal

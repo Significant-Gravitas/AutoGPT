@@ -75,7 +75,7 @@ class Plan(BaseTask):
             self._register_task(task=task)
             self._all_task_ids.append(task.task_id)
             if task.state == TaskStatusList.READY:
-                self.registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.READY)
+                self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.READY)
 
    
     def set_task_status(self, task: Task, status: TaskStatusList):
@@ -89,8 +89,8 @@ class Plan(BaseTask):
         Returns:
             None
         """
-        self.registry_update_task_status_in_list(task_id=task.task_id, status=status)
-        task.state = TaskStatusList.DONE.value
+        self._registry_update_task_status_in_list(task_id=task.task_id, status=status)
+        task.state = status
      
 
     """
@@ -132,11 +132,38 @@ class Plan(BaseTask):
             if task is None:
                 task =  Task.get_task_from_db(task_id)
                 self._loaded_tasks_dict[task_id] = task
-
             return task
         else : 
             raise Exception(f"Task {task_id} not found in plan {self.plan_id}")
         
+    def get_next_task(self, task: Task = None) -> Task:
+            """
+            Retrieves the next task in the plan based on the given task.
+
+            Args:
+                task (Task): The current task.
+
+            Returns:
+                Task: The next task in the plan.
+
+            """
+            if task is not None :
+                for successor_id in task.task_successors : 
+                    sucessor_task = self.get_task(task_id = successor_id)
+                    if sucessor_task.is_ready():
+                        self._registry_update_task_status_in_list(task_id = sucessor_task.task_id, status = TaskStatusList.READY)
+                        
+            if len(self._ready_task_ids) > 0:
+                     return self.get_task(self._ready_task_ids[0])
+            
+            LOG.warning(f"We are browsing the tree from leaf to root. This use case is not yet supported. This functionality is in alpha version.")
+            if task is not None :
+                #FIXME: Create a get_outer_first_ready_task method
+                return task.task_parent.get_first_ready_task()
+            else :
+                return self.get_first_ready_task()
+
+
 
 
     def get_ready_tasks(self, task_ids_set : list[str] = None) -> list[Task]:
@@ -145,7 +172,7 @@ class Plan(BaseTask):
         """
 
         # Fetch the Task objects based on the common task IDs
-        return [self.get_task(task_id) for task_id in self._ready_task_ids]
+        return [self.get_task(task_id = task_id) for task_id in self._ready_task_ids]
     
     def get_active_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
         """
@@ -171,11 +198,12 @@ class Plan(BaseTask):
     # endregion
     # region Task Registry ( cf : region VSCode Feature)
     #############################################################################################
+    ########################_#####################################################################
     #############################################################################################
-    #############################################################################################
-
+    def unregister_loaded_task(self, task_id: str) -> Task:
+        return self._loaded_tasks_dict.pop(task_id)
     
-    def registry_update_task_status_in_list(self, task_id: Task, status: TaskStatusList):
+    def _registry_update_task_status_in_list(self, task_id: Task, status: TaskStatusList):
         """
         Update the status of a task in the task list.
 
@@ -187,6 +215,7 @@ class Plan(BaseTask):
             ValueError: If the status is not a valid TaskStatusList value.
 
         """
+        LOG.debug(f"Updating task {task_id} status to {status}")
         if status == TaskStatusList.READY:
             self._ready_task_ids.append(task_id)
         elif status == TaskStatusList.DONE:
