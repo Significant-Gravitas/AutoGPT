@@ -19,6 +19,7 @@ ENV PIP_NO_CACHE_DIR=yes \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_PATH="/venv" \
     POETRY_VIRTUALENVS_IN_PROJECT=0 \
     POETRY_NO_INTERACTION=1
 
@@ -26,7 +27,6 @@ ENV PIP_NO_CACHE_DIR=yes \
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="$POETRY_HOME/bin:$PATH"
 RUN poetry config installer.max-workers 10
-RUN poetry config virtualenvs.path /venv
 
 WORKDIR /app
 COPY pyproject.toml poetry.lock ./
