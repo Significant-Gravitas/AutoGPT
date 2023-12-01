@@ -1,4 +1,3 @@
-
 import click
 
 from autogpts.autogpt.autogpt.core.runner.cli_app.main import run_auto_gpt

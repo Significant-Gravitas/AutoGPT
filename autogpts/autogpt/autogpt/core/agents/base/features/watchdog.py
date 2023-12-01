@@ -8,11 +8,10 @@ if TYPE_CHECKING:
     from ..base import BaseAgentConfiguration
 
 from autogpts.AFAAS.app.lib.action_history import EpisodicActionHistory
+from autogpts.AFAAS.app.sdk import forge_log
 
 from ..base import BaseAgent
 
-
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 

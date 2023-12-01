@@ -1,9 +1,10 @@
 import logging
-import sys
 import os
+import sys
 
 from colorama import Fore, Style
-#from openai import logger as openai_logger
+
+# from openai import logger as openai_logger
 
 SIMPLE_LOG_FORMAT = "%(asctime)s %(levelname)s  %(message)s"
 DEBUG_LOG_FORMAT = (
@@ -25,7 +26,7 @@ def configure_root_logger():
     logging.basicConfig(level=logging.DEBUG, handlers=[stdout, stderr])
 
     # Disable debug logging from OpenAI library
-    #openai_logger.setLevel(logging.WARNING)
+    # openai_logger.setLevel(logging.WARNING)
     os.environ.setdefault("OPENAI_LOG", logging.WARNING)
 
 

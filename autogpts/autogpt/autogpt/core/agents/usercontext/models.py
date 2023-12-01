@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-
 from autogpts.autogpt.autogpt.core.agents.base.models import (
     BaseAgentConfiguration, BaseAgentSystems)
-
 
 if TYPE_CHECKING:
     pass

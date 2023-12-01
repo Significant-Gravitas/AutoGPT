@@ -11,8 +11,8 @@ import yaml
 from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
 
+from autogpts.AFAAS.app.sdk import forge_log
 
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 

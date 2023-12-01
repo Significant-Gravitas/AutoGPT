@@ -51,8 +51,8 @@ Examples:
 
 import abc
 import enum
-from typing import (Any, Callable, Dict, Generic, List, Optional, TypedDict,
-                    TypeVar, Union, Literal)
+from typing import (Any, Callable, Dict, Generic, List, Literal, Optional,
+                    TypedDict, TypeVar, Union)
 
 from pydantic import BaseModel, Field
 
@@ -281,6 +281,8 @@ class AssistantFunctionCallDict(TypedDict):
 
     name: str
     arguments: str
+
+
 class AssistantToolCall(BaseModel):
     # id: str
     type: Literal["function"]
@@ -512,8 +514,8 @@ class ChatModelResponse(BaseModelResponse, Generic[_T]):
     """Standard response struct for a response from a language model."""
 
     content: dict = None
-    chat_messages : list[ChatMessage] = []
-    system_prompt : str = None
+    chat_messages: list[ChatMessage] = []
+    system_prompt: str = None
 
 
 ###############

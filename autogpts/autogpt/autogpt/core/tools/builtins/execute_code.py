@@ -14,6 +14,7 @@ from docker.errors import DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container as DockerContainer
 
 from autogpts.AFAAS.app.lib.task.task import Task
+from autogpts.AFAAS.app.sdk import forge_log
 from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.exceptions import (
@@ -22,8 +23,6 @@ from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 
-
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 ALLOWLIST_CONTROL = "allowlist"

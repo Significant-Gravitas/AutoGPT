@@ -2,19 +2,18 @@ import enum
 import functools
 import logging
 import math
-import time
 import os
+import time
 from typing import Any, Callable, Dict, ParamSpec, Tuple, TypeVar
 
 from openai import AsyncOpenAI
-from openai.resources import AsyncEmbeddings , AsyncCompletions
+from openai.resources import AsyncCompletions, AsyncEmbeddings
 
-aclient = AsyncOpenAI(
-    api_key=os.environ['OPENAI_API_KEY']
-)
-import tiktoken 
-from openai import APIError, RateLimitError, completions # , OpenAI, Em
+aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+import tiktoken
+from openai import APIError, RateLimitError, completions  # , OpenAI, Em
 
+import autogpts.AFAAS.app.sdk.forge_log as agptlogger
 from autogpts.autogpt.autogpt.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
@@ -27,8 +26,6 @@ from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
     EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,
     ModelProviderName, ModelProviderService, ModelTokenizer)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
-
-import autogpts.AFAAS.app.sdk.forge_log as agptlogger
 
 LOG = agptlogger.ForgeLogger(__name__)
 
@@ -62,7 +59,6 @@ class OpenAIModelName(str, enum.Enum):
     # GPT4 = "gpt-3.5-turbo-1106" # TODO for tests
     GPT4 = "gpt-3.5-turbo-1106"
     GPT4_32k = "gpt-3.5-turbo-1106"
-    
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -473,7 +469,7 @@ class OpenAIProvider(
 
     async def _get_chat_response(
         self, model_prompt: list[ChatMessage], **completion_kwargs: Any
-    ) ->  AsyncCompletions:
+    ) -> AsyncCompletions:
         return await self._create_chat_completion(
             messages=model_prompt, **completion_kwargs
         )
@@ -628,12 +624,12 @@ class OpenAIProvider(
         completion_kwargs = {
             "model": model_name,
             **kwargs,
-            #**self._credentials.unmasked(),
+            # **self._credentials.unmasked(),
         }
         if functions:
             completion_kwargs["tools"] = [
-                    {"type": "function", "function": f.schema} for f in functions
-                ]
+                {"type": "function", "function": f.schema} for f in functions
+            ]
         else:
             # Provide compatibility with older models
             _functions_compat_fix_kwargs(functions, completion_kwargs)
@@ -697,8 +693,7 @@ async def _create_embedding(text: str, *_, **kwargs) -> AsyncEmbeddings:
     Returns:
         str: The embedding.
     """
-    return await aclient.embeddings.create(input=[text],
-    **kwargs)
+    return await aclient.embeddings.create(input=[text], **kwargs)
 
 
 async def _create_chat_completion(
@@ -717,25 +712,26 @@ async def _create_chat_completion(
         message.dict(include={"role", "content", "tool_calls", "name"})
         for message in messages
     ]
-    
+
     if "tools" in kwargs:
         # wargs["tools"] = [function.dict() for function in kwargs["tools"]]
         kwargs["tools"] = [function for function in kwargs["tools"]]
         if len(kwargs["tools"]) == 1:
             kwargs["tool_choice"] = {
-                        "type": "function",
-                        "function": {"name": kwargs["tools"][0]['function']['name']},
-                    }
+                "type": "function",
+                "function": {"name": kwargs["tools"][0]["function"]["name"]},
+            }
         elif kwargs["tool_choice"] != "auto":
             kwargs["tool_choice"] = {
-                        "type": "function",
-                        "function": {"name": kwargs["tool_choice"]},
-                                    }
+                "type": "function",
+                "function": {"name": kwargs["tool_choice"]},
+            }
 
-    LOG.debug(raw_messages[0]['content'])
+    LOG.debug(raw_messages[0]["content"])
     LOG.debug(kwargs)
-    return_value = await aclient.chat.completions.create(messages=raw_messages,
-    **kwargs)
+    return_value = await aclient.chat.completions.create(
+        messages=raw_messages, **kwargs
+    )
     return return_value
 
 

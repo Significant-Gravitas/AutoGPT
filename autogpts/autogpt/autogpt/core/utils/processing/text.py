@@ -6,15 +6,16 @@ from typing import Iterator, Optional, TypeVar
 
 import spacy
 
+from autogpts.AFAAS.app.sdk import forge_log
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
     BaseChatModelProvider, ChatMessage, ModelTokenizer)
 from autogpts.autogpt.autogpt.core.resource.model_providers.chat_schema import \
     ChatPrompt
 
-
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
-logger.notice(f"Looking for volunteer to migrate {os.path.relpath(__file__)} library to Langchain.")
+logger.notice(
+    f"Looking for volunteer to migrate {os.path.relpath(__file__)} library to Langchain."
+)
 
 T = TypeVar("T")
 

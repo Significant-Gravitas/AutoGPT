@@ -1,7 +1,8 @@
 import ast
 import json
-import autogpts.AFAAS.app.sdk.forge_log as agptlogger
 import re
+
+import autogpts.AFAAS.app.sdk.forge_log as agptlogger
 
 LOG = agptlogger.ForgeLogger(__name__)
 
@@ -53,13 +54,13 @@ def to_md_quotation(text):
     str: The transformed string as a Markdown blockquote.
     """
     # Split the text into lines
-    lines = text.split('\n')
+    lines = text.split("\n")
 
     # Prefix each line with "> "
     quoted_lines = [f"> {line}" for line in lines]
 
     # Join the lines back into a single string
-    quoted_text = '\n'.join(quoted_lines)
+    quoted_text = "\n".join(quoted_lines)
 
     return quoted_text
 
@@ -79,17 +80,18 @@ def json_loads(json_str: str):
     except Exception as e:
         try:
             LOG(f"JSON decode error {e}. trying literal eval")
+
             def replacer(match):
                 # Escape newlines in the matched value
-                return match.group(0).replace('\n', '\\n').replace('\t', '\\t')
-            
+                return match.group(0).replace("\n", "\\n").replace("\t", "\\t")
+
             # Find string values and apply the replacer function to each
             json_str = re.sub(r'".+?"', replacer, json_str)
             return ast.literal_eval(json_str)
-        
-            #NOTE: BACKUP PLAN : 
+
+            # NOTE: BACKUP PLAN :
             # json_str = escape_backslaches_in_json_values(json_str) # DOUBLE BACKSLASHES
             # return_json_value = ast.literal_eval(json_str)
-            # return remove_double_ backslaches(return_json_value) # CONVERT DOUBLE 
+            # return remove_double_ backslaches(return_json_value) # CONVERT DOUBLE
         except Exception:
             breakpoint()

@@ -2,8 +2,8 @@ import logging
 
 import click
 
-from autogpts.autogpt.autogpt.core.agents import PlannerAgent 
-from  autogpts.AFAAS.app.sdk import forge_log
+from autogpts.AFAAS.app.sdk import forge_log
+from autogpts.autogpt.autogpt.core.agents import PlannerAgent
 from autogpts.autogpt.autogpt.core.runner.client_lib.logging import \
     get_client_logger
 

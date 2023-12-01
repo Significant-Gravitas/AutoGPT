@@ -4,7 +4,6 @@ import enum
 from logging import Logger
 from typing import TYPE_CHECKING, Callable, Optional
 
-
 from autogpts.autogpt.autogpt.core.agents.base.agent_directives import \
     BaseAgentDirectives
 
@@ -15,11 +14,10 @@ if TYPE_CHECKING:
 # prompting
 from autogpts.AFAAS.app.lib.action_history import Episode
 from autogpts.autogpt.autogpt.core.prompting.base import (
-    LanguageModelClassification, DefaultParsedResponse)
+    DefaultParsedResponse, LanguageModelClassification)
 from autogpts.autogpt.autogpt.core.prompting.planningstrategies import (
     PlanningPromptStrategiesConfiguration, PlanningPromptStrategy)
-from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
-    indent)
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import indent
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 
@@ -35,7 +33,7 @@ class SelectToolStrategyConfiguration(PlanningPromptStrategiesConfiguration):
     model_classification: LanguageModelClassification = (
         LanguageModelClassification.FAST_MODEL_16K
     )
-    temperature : float = 0.5
+    temperature: float = 0.5
 
 
 ###
@@ -150,7 +148,9 @@ class SelectToolStrategy(PlanningPromptStrategy):
     #
     def response_format_instruction(self, model_name: str) -> str:
         model_provider = self._agent._chat_model_provider
-        return super().response_format_instruction(language_model_provider=model_provider, model_name = model_name)
+        return super().response_format_instruction(
+            language_model_provider=model_provider, model_name=model_name
+        )
 
     #
     # _generate_intro_prompt

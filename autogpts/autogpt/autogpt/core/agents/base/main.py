@@ -10,8 +10,6 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 import yaml
 from pydantic import Field, root_validator
 
-from .abstract import AbstractAgent
-
 from autogpts.autogpt.autogpt.core.agents.base.loop import (  # Import only where it's needed
     BaseLoop, BaseLoopHook)
 from autogpts.autogpt.autogpt.core.agents.base.models import (
@@ -21,6 +19,7 @@ from autogpts.autogpt.autogpt.core.configuration import (Configurable,
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
 
+from .abstract import AbstractAgent
 
 
 class BaseAgent(Configurable, AbstractAgent):
@@ -48,7 +47,6 @@ class BaseAgent(Configurable, AbstractAgent):
             pass
             # json_encoders = SystemSettings.Config.json_encoders + { Task : lambda v: v.dict()}
 
-        
         def dict(self, include_all=False, *args, **kwargs):
             """
             Serialize the object to a dictionary representation.
@@ -124,7 +122,6 @@ class BaseAgent(Configurable, AbstractAgent):
 
         self.settings_agent_class_ = settings.settings_agent_class_
         self.settings_agent_module_ = settings.settings_agent_module_
-
 
     def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):
         """
@@ -232,7 +229,9 @@ class BaseAgent(Configurable, AbstractAgent):
             agent = YourClass()
             await agent.run(input_handler, message_handler)
         """
-        self._logger.debug(str(self.__class__.__name__) + ".run() *kwarg : " + str(kwargs))
+        self._logger.debug(
+            str(self.__class__.__name__) + ".run() *kwarg : " + str(kwargs)
+        )
         self._user_input_handler = user_input_handler
         self._user_message_handler = user_message_handler
 
@@ -380,9 +379,7 @@ class BaseAgent(Configurable, AbstractAgent):
         if not isinstance(agent_settings, cls.SystemSettings):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
 
-        agent_id = cls._create_in_db(
-            agent_settings=agent_settings, logger=logger
-        )
+        agent_id = cls._create_in_db(agent_settings=agent_settings, logger=logger)
         logger.info(
             f"{cls.__name__} id #{agent_id} created in memory. Now, finalizing creation..."
         )
@@ -407,7 +404,6 @@ class BaseAgent(Configurable, AbstractAgent):
         cls, agent_settings: BaseAgent.SystemSettings, logger: logging.Logger
     ) -> None:
         pass
-
 
     ################################################################################
     ################################ DB INTERACTIONS ################################
@@ -522,19 +518,18 @@ class BaseAgent(Configurable, AbstractAgent):
             memory_settings=memory_settings, logger=logger
         )
         agent_table: AgentsTable = memory.get_table("agents")
-        agent_dict_from_db = agent_table.get(agent_id=str(agent_id), user_id=str(user_id))
+        agent_dict_from_db = agent_table.get(
+            agent_id=str(agent_id), user_id=str(user_id)
+        )
 
         if not agent_dict_from_db:
             return None
-        
-        
 
         agent = cls.get_instance_from_settings(
             agent_settings=agent_settings.copy(update=agent_dict_from_db),
             logger=logger,
         )
         return agent
-
 
     @classmethod
     @abstractmethod
@@ -580,7 +575,8 @@ class BaseAgent(Configurable, AbstractAgent):
                                 agent_directives[key] += items
 
         return agent_directives
-    
+
+
 def _prune_empty_dicts(d: dict) -> dict:
     """
     Prune branches from a nested dictionary if the branch only contains empty dictionaries at the leaves.

@@ -22,6 +22,7 @@ from selenium.webdriver.safari.options import Options as SafariOptions
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
+from autogpts.AFAAS.app.sdk import forge_log
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.exceptions import ToolExecutionError
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
@@ -30,8 +31,6 @@ from autogpts.autogpt.autogpt.core.utils.processing.html import (
 from autogpts.autogpt.autogpt.core.utils.processing.text import summarize_text
 from autogpts.autogpt.autogpt.core.utils.url.validators import validate_url
 
-
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 FILE_DIR = Path(__file__).parent.parent

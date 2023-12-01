@@ -12,12 +12,12 @@ if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
 from autogpts.AFAAS.app.lib.task.task import Task
+from autogpts.AFAAS.app.sdk import forge_log
 from autogpts.autogpt.autogpt.core.agents.routing import RoutingAgent
+from autogpts.autogpt.autogpt.core.agents.routing.strategies.routing import \
+    RoutingStrategyConfiguration
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
-from autogpts.autogpt.autogpt.core.agents.routing.strategies.routing import RoutingStrategyConfiguration
 
-
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 
@@ -27,7 +27,11 @@ logger = forge_log.ForgeLogger(__name__)
     # parameters = ,
     hide=True,
 )
-async def afaas_routing(task: Task, agent: BaseAgent, note_to_agent_length : int = RoutingStrategyConfiguration().note_to_agent_length) -> None:
+async def afaas_routing(
+    task: Task,
+    agent: BaseAgent,
+    note_to_agent_length: int = RoutingStrategyConfiguration().note_to_agent_length,
+) -> None:
     """
     Tool that help an agent to decide what kind of planning / execution to undertake
     """
@@ -38,7 +42,7 @@ async def afaas_routing(task: Task, agent: BaseAgent, note_to_agent_length : int
             parent_agent_id=agent.agent_id,
             parent_agent=agent,
             current_task=task,
-            note_to_agent_length=note_to_agent_length
+            note_to_agent_length=note_to_agent_length,
         )
         # routing_settings.agent_goals=  agent.agent_goals
         # routing_settings.agent_goal_sentence=  agent.agent_goal_sentence
@@ -48,14 +52,14 @@ async def afaas_routing(task: Task, agent: BaseAgent, note_to_agent_length : int
         routing_settings.note_to_agent_length = note_to_agent_length
 
         # USER CONTEXT AGENT : Save RoutingAgent Settings in DB (for POW / POC)
-        new_routing_agent : RoutingAgent= RoutingAgent.create_agent(
+        new_routing_agent: RoutingAgent = RoutingAgent.create_agent(
             agent_settings=routing_settings, logger=agent._logger
         )
 
         # # USER CONTEXT AGENT : Get RoutingAgent from DB (for POW / POC)
         routing_settings.agent_id = new_routing_agent.agent_id
 
-        routing_agent : RoutingAgent = RoutingAgent.get_instance_from_settings(
+        routing_agent: RoutingAgent = RoutingAgent.get_instance_from_settings(
             agent_settings=routing_settings,
             logger=agent._logger,
         )

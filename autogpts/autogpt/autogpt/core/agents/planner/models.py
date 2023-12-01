@@ -11,7 +11,6 @@ from autogpts.autogpt.autogpt.core.agents.base.models import (
     BaseAgentConfiguration, BaseAgentSystems)
 
 
-
 class PlannerAgentSystems(BaseAgentSystems):
     tool_registry: str = "autogpt.core.tools.SimpleToolRegistry"
     chat_model_provider: str = "autogpt.core.resource.model_providers.OpenAIProvider"

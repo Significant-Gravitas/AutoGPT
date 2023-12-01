@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 
 from autogpts.AFAAS.app.lib.task.task import Task
+from autogpts.AFAAS.app.sdk import forge_log
 from autogpts.autogpt.autogpt.core.agents.base.features.context import \
     get_agent_context
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
@@ -19,8 +20,6 @@ from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.exceptions import InvalidArgumentError
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
-
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 

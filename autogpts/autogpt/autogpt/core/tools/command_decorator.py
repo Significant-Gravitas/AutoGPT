@@ -25,7 +25,9 @@ def tool(
     aliases: list[str] = [],
     available: Literal[True] | Callable[[BaseAgent], bool] = True,
     hide=False,
-    success_check_callback: Optional[Callable[..., Any]] = Tool.default_success_check_callback,  # Add this line
+    success_check_callback: Optional[
+        Callable[..., Any]
+    ] = Tool.default_success_check_callback,  # Add this line
 ) -> Callable[..., ToolOutput]:
     """The command decorator is used to create Tool objects from ordinary functions."""
 
@@ -47,7 +49,7 @@ def tool(
             aliases=aliases,
             available=available,
             hide=hide,
-            success_check_callback = success_check_callback
+            success_check_callback=success_check_callback,
         )
 
         if inspect.iscoroutinefunction(func):

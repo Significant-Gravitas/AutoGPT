@@ -1,13 +1,17 @@
 from __future__ import annotations
-# if TYPE_CHECKING:
-    # from autogpts.autogpt.autogpt.core.agents import BaseAgent
-
-    #from .plan import Plan
-
 
 import enum
+
+from autogpts.autogpt.autogpt.core.agents import AbstractAgent
 from autogpts.autogpt.autogpt.core.configuration import AFAASModel
-from autogpts.autogpt.autogpt.core.agents import AbstractAgent    
+
+# if TYPE_CHECKING:
+# from autogpts.autogpt.autogpt.core.agents import BaseAgent
+
+# from .plan import Plan
+
+
+
 
 class TaskStatus(AFAASModel):
     """
@@ -95,4 +99,3 @@ class TaskStatusList(str, enum.Enum):
             return self.value == other
         else:
             return super().__eq__(other)
-        

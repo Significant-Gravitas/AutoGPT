@@ -98,14 +98,10 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
             )
         )
         click.echo(
-            click.style(
-                '  git config --global user.name "Your (user)name"', fg="red"
-            )
+            click.style('  git config --global user.name "Your (user)name"', fg="red")
         )
         click.echo(
-            click.style(
-                '  git config --global user.email "Your email"', fg="red"
-            )
+            click.style('  git config --global user.email "Your email"', fg="red")
         )
         install_error = True
 
@@ -238,7 +234,10 @@ def create(agent_name):
 
         existing_arena_files = [name.lower() for name in os.listdir("./arena/")]
 
-        if not os.path.exists(new_agent_dir) and not new_agent_name in existing_arena_files:
+        if (
+            not os.path.exists(new_agent_dir)
+            and not new_agent_name in existing_arena_files
+        ):
             shutil.copytree("./autogpts/forge", new_agent_dir)
             click.echo(
                 click.style(
@@ -902,6 +901,7 @@ def update(agent_name, hash, branch):
                 fg="green",
             )
         )
+
 
 if __name__ == "__main__":
     cli()

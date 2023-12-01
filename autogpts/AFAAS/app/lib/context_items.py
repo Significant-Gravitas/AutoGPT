@@ -14,10 +14,9 @@ from typing import Optional
 
 from pydantic import Field
 
+from autogpts.AFAAS.app.sdk import forge_log
 from autogpts.autogpt.autogpt.core.configuration import AFAASModel
 
-
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 

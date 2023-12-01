@@ -1,10 +1,9 @@
 import logging
 
-from colorama import Style
-from google.cloud.logging_v2.handlers import CloudLoggingFilter, StructuredLogHandler
-
 from autogpt.core.runner.client_lib.logging import FancyConsoleFormatter
 from colorama import Style
+from google.cloud.logging_v2.handlers import (CloudLoggingFilter,
+                                              StructuredLogHandler)
 
 from .utils import remove_color_codes
 

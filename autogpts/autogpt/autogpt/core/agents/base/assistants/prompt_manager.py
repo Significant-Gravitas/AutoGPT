@@ -150,9 +150,11 @@ class PromptManager(Configurable, AgentMixin):
 
         kwargs.update(self.get_system_info(prompt_strategy))
 
-        prompt_strategy._agent._logger.debug(f"Executing strategy : {prompt_strategy.STRATEGY_NAME}")
+        prompt_strategy._agent._logger.debug(
+            f"Executing strategy : {prompt_strategy.STRATEGY_NAME}"
+        )
 
-        #MAKE FUNCTION DYNAMICS
+        # MAKE FUNCTION DYNAMICS
         prompt_strategy.set_tools(**kwargs)
 
         return await self.chat_with_model(prompt_strategy, **kwargs)
@@ -175,8 +177,8 @@ class PromptManager(Configurable, AgentMixin):
 
         prompt = prompt_strategy.build_prompt(**template_kwargs)
 
-        #self._logger.debug(f"Using prompt:\n{prompt}\n\n")
-        response : ChatModelResponse = await provider.create_chat_completion(
+        # self._logger.debug(f"Using prompt:\n{prompt}\n\n")
+        response: ChatModelResponse = await provider.create_chat_completion(
             chat_messages=prompt.messages,
             tools=prompt.tools,
             **model_configuration,

@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Awaitable, Callable
 
-
-
 from ..base import BaseLoop
 
 if TYPE_CHECKING:
     from ..base import BaseAgent
     from autogpts.autogpt.autogpt.core.resource.model_providers import ChatModelResponse
-
 
 from .strategies import RefineUserContextFunctionNames
 

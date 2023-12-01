@@ -22,7 +22,7 @@ if TYPE_CHECKING:
         ChatModelResponse,
     )
 
-from autogpts.autogpt.autogpt.core.agents.base import (BaseLoop, BaseLoopHook)
+from autogpts.autogpt.autogpt.core.agents.base import BaseLoop, BaseLoopHook
 
 # aaas = {}
 # try:
@@ -59,8 +59,8 @@ class PlannerLoop(BaseLoop):
         self._active = False
         self.remaining_cycles = 1
 
-    def set_current_task(self, task = Task) :
-        self._current_task : Task = task
+    def set_current_task(self, task=Task):
+        self._current_task: Task = task
 
     """
     def add_initial_tasks(self):
@@ -397,8 +397,8 @@ class PlannerLoop(BaseLoop):
             self._agent._logger.warn(
                 f"Tool {command_name} returned an error: {result.error or result.reason}"
             )
-        
-        self.plan().set_task_status(task= current_task, status= TaskStatusList.DONE.value)
+
+        self.plan().set_task_status(task=current_task, status=TaskStatusList.DONE.value)
 
         return result
 
@@ -422,7 +422,7 @@ def execute_command(
     if tool := agent._tool_registry.get_tool(tool_name=command_name):
         try:
             result = tool(**arguments, task=task, agent=agent)
-            tool.success_check_callback(task = task, tool_output = result )
+            tool.success_check_callback(task=task, tool_output=result)
             return result
         except AgentException:
             raise
