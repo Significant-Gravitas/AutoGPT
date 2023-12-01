@@ -20,7 +20,7 @@ def test_scan_plugins_openai(config: Config):
     )
 
     # Test that the function returns the correct number of plugins
-    result = scan_plugins(config, debug=True)
+    result = scan_plugins(config)
     assert len(result) == 1
 
 
@@ -33,7 +33,7 @@ def test_scan_plugins_generic(config: Config):
     plugins_config.plugins["AutoGPTPVicuna"] = PluginConfig(
         name="AutoGPTPVicuna", enabled=True
     )
-    result = scan_plugins(config, debug=True)
+    result = scan_plugins(config)
     plugin_class_names = [plugin.__class__.__name__ for plugin in result]
 
     assert len(result) == 2
@@ -50,7 +50,7 @@ def test_scan_plugins_not_enabled(config: Config):
     plugins_config.plugins["auto_gpt_vicuna"] = PluginConfig(
         name="auto_gptp_vicuna", enabled=False
     )
-    result = scan_plugins(config, debug=True)
+    result = scan_plugins(config)
     plugin_class_names = [plugin.__class__.__name__ for plugin in result]
 
     assert len(result) == 1

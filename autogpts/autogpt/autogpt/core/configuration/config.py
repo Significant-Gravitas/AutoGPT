@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import re
 from pathlib import Path
@@ -19,6 +20,12 @@ from autogpts.autogpt.autogpt.core.configuration.schema import (Configurable,
                                                                 SystemSettings)
 from autogpts.autogpt.autogpt.core.resource.model_providers.openai import \
     OPEN_AI_CHAT_MODELS
+import autogpt
+from autogpt.core.configuration.schema import Configurable, SystemSettings
+from autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.logs.config import LogFormatName, LoggingConfig
+from autogpt.plugins.plugins_config import PluginsConfig
+from autogpt.speech import TTSConfig
 
 PROJECT_ROOT = Path(autogpt.__file__).parent.parent
 AI_SETTINGS_FILE = Path("ai_settings.yaml")
@@ -42,12 +49,11 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     skip_reprompt: bool = False
     authorise_key: str = "y"
     exit_key: str = "n"
-    debug_mode: bool = False
-    plain_output: bool = False
     noninteractive_mode: bool = False
     chat_messages_enabled: bool = True
     # TTS configuration
     tts_config: TTSConfig = TTSConfig()
+    logging: LoggingConfig = LoggingConfig()
 
     ##########################
     # Agent Control Settings #
@@ -228,9 +234,16 @@ class ConfigBuilder(Configurable[Config]):
         """Initialize the Config class"""
         config_dict = {
             "project_root": project_root,
+            "logging": {
+                "level": logging.getLevelName(os.getenv("LOG_LEVEL", "INFO")),
+                "log_format": LogFormatName(os.getenv("LOG_FORMAT", "simple")),
+                "log_file_format": LogFormatName(
+                    os.getenv("LOG_FILE_FORMAT", os.getenv("LOG_FORMAT", "simple"))
+                ),
+                "plain_console_output": os.getenv("PLAIN_OUTPUT", "False") == "True",
+            },
             "authorise_key": os.getenv("AUTHORISE_COMMAND_KEY"),
             "exit_key": os.getenv("EXIT_KEY"),
-            "plain_output": os.getenv("PLAIN_OUTPUT", "False") == "True",
             "shell_command_control": os.getenv("SHELL_COMMAND_CONTROL"),
             "ai_settings_file": project_root
             / Path(os.getenv("AI_SETTINGS_FILE", AI_SETTINGS_FILE)),
