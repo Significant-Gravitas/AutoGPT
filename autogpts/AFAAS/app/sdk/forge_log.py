@@ -16,10 +16,12 @@ FILE_LOG_LEVEL = os.getenv('FILE_LOG_LEVEL', 'DEBUG').upper()
 JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
 
 CHAT = 29
+DB_LOG = 18
 NOTICE = 15
 TRACE = 5
 logging.addLevelName(CHAT, "CHAT")
 logging.addLevelName(NOTICE, "NOTICE")
+logging.addLevelName(DB_LOG, "TRACE")
 logging.addLevelName(TRACE, "TRACE")
 
 RESET_SEQ: str = "\033[0m"
@@ -38,6 +40,7 @@ GREEN: str = "\033[92m"
 PURPLE: str = "\033[35m"
 BRIGHT_PINK: str = "\033[95m"
 
+
 EMOJIS: dict[str, str] = {
     "TRACE": "🔍",
     "DEBUG": "🐛",
@@ -47,6 +50,7 @@ EMOJIS: dict[str, str] = {
     "ERROR": "❌",
     "CRITICAL": "💥",
     "NOTICE": "🔊",
+    "DB_LOG": "📁",
 }
 
 KEYWORD_COLORS: dict[str, str] = {
@@ -58,6 +62,7 @@ KEYWORD_COLORS: dict[str, str] = {
     "WARNING": YELLOW,
     "ERROR": ORANGE,
     "CRITICAL": RED,
+    "DB_LOG": GREY,
     
 }
 
@@ -222,6 +227,11 @@ class ForgeLogger(logging.Logger):
       
         if self.isEnabledFor(TRACE):
             self._log(TRACE, msg, args, **kwargs)
+
+    def db_log(self, msg, *args, **kwargs):
+        
+          if self.isEnabledFor(DB_LOG):
+                self._log(DB_LOG, msg, args, **kwargs)
 
 
 class QueueLogger(logging.Logger):

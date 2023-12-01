@@ -92,7 +92,7 @@ class TaskStatusList(str, enum.Enum):
             False
         """
         if isinstance(other, str):
-            return self.value.name == other
+            return self.value == other
         else:
             return super().__eq__(other)
         

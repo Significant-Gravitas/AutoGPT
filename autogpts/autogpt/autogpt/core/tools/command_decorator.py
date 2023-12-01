@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
-    from autogpt.config import Config
+    from autogpts.autogpt.autogpt.core.configuration.config import Config
 
 from autogpts.autogpt.autogpt.core.tools.tool_parameters import ToolParameter
 from autogpts.autogpt.autogpt.core.tools.tools import Tool, ToolOutput
@@ -25,6 +25,7 @@ def tool(
     aliases: list[str] = [],
     available: Literal[True] | Callable[[BaseAgent], bool] = True,
     hide=False,
+    success_check_callback: Optional[Callable[..., Any]] = Tool.default_success_check_callback,  # Add this line
 ) -> Callable[..., ToolOutput]:
     """The command decorator is used to create Tool objects from ordinary functions."""
 
@@ -39,13 +40,14 @@ def tool(
         cmd = Tool(
             name=name,
             description=description,
-            method=func,
+            exec_function=func,
             parameters=typed_parameters,
             enabled=enabled,
             disabled_reason=disabled_reason,
             aliases=aliases,
             available=available,
             hide=hide,
+            success_check_callback = success_check_callback
         )
 
         if inspect.iscoroutinefunction(func):

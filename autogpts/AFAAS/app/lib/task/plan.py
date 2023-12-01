@@ -23,11 +23,16 @@ from autogpts.autogpt.autogpt.core.agents import AbstractAgent
 class Plan(BaseTask):
 
     _instance: ClassVar[dict[Plan]] = {}
+
+    # List & Dict for Lazy loading & lazy saving
     _modified_tasks_ids: list[str] = []
     _new_tasks_ids: list[str] = []
+    _loaded_tasks_dict: dict[Task] = {}
+
+    # List for easier task Management
     _all_task_ids: list[str] = []
     _ready_task_ids: list[str] = []
-    _loaded_tasks_dict: dict[Task] = {}
+    _done_task_ids: list[str] = []
 
 
     # def dict(self, *args, **kwargs):
@@ -67,12 +72,26 @@ class Plan(BaseTask):
 
         # Update the static variables
         for task in all_task:
-            #Plan._loaded_tasks_dict[task.task_id] = task
+            self._register_task(task=task)
             self._all_task_ids.append(task.task_id)
             if task.state == TaskStatusList.READY.value:
-                self._ready_task_ids.append(task.task_id)
+                self.registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.READY)
 
-        
+   
+    def set_task_status(self, task: Task, status: TaskStatusList):
+        """
+        Sets the status of a task and updates it in the task list.
+
+        Args:
+            task (Task): The task object whose status needs to be updated.
+            status (TaskStatusList): The new status to be set for the task.
+
+        Returns:
+            None
+        """
+        self.registry_update_task_status_in_list(task_id=task.task_id, status=status)
+        task.state = TaskStatusList.DONE.value
+     
 
     """
     Represents a plan consisting of a list of tasks.
@@ -93,45 +112,14 @@ class Plan(BaseTask):
     def plan_id(self):
         return self.task_id
 
-    def generate_pitch(self, task=None):
-        if task is None:
-            task = self.get_first_ready_task()
-
-        # Extract the task's siblings and path
-        siblings = [
-            sib
-            for sib in self.subtasks
-            if sib.task_parent_id == task.task_parent_id and sib != task
-        ]
-        path_to_task = task.find_task_path()
-
-        # Build the pitch
-        pitch = """
-        # INSTRUCTION
-        Your goal is to find the best-suited command in order to achieve the following task: {task_description}
-
-        # CONTEXT
-        The high-level plan designed to achieve our goal is: 
-        {high_level_plan}
-        
-        We are working on the task "{task_name}" that consists in: {task_command}. This task is located in:
-        {path_structure}
-        """.format(
-            task_description=task.description,
-            high_level_plan="\n".join(
-                [
-                    "{}: {}".format(t.task_goal, t.description)
-                    for t in self.subtasks
-                    if not t.task_parent_id
-                ]
-            ),
-            task_name=task.task_goal,
-            task_command=task.command,  # assuming each task has a 'command' attribute
-            path_structure="\n".join(["->".join(p.task_goal for p in path_to_task)]),
-        )
-
-        return pitch
     
+    #############################################################################################
+    #############################################################################################
+    #############################################################################################
+    # region Graph Traversal ( cf : region VSCode Feature)
+    #############################################################################################
+    #############################################################################################
+    #############################################################################################
 
     def get_task(self, task_id: str) -> Task:
         """
@@ -142,7 +130,7 @@ class Plan(BaseTask):
             
             task =  self._loaded_tasks_dict.get(task_id)
             if task is None:
-                task =  Task(**task.get_from_db(task_id))
+                task =  Task.get_task_from_db(task_id)
                 self._loaded_tasks_dict[task_id] = task
 
             return task
@@ -159,6 +147,16 @@ class Plan(BaseTask):
         # Fetch the Task objects based on the common task IDs
         return [self.get_task(task_id) for task_id in self._ready_task_ids]
     
+    def get_active_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
+        """
+        Active tasks are tasks not in self._done_task_ids but in self._all_task_ids
+        """
+        all_task_ids_set = set(self._all_task_ids)
+        done_task_ids_set = set(self._done_task_ids)
+        active_task_ids = all_task_ids_set - done_task_ids_set  # Set difference
+
+        return [self.get_task(task_id) for task_id in active_task_ids]
+
     def get_first_ready_tasks(self, task_ids_set : list[str] = None) -> Task:
         """
         Get all ready tasks. If task_ids_set is not None, return only the tasks that are both ready and in the additional_task_ids list.
@@ -167,48 +165,94 @@ class Plan(BaseTask):
         # Fetch the Task objects based on the common task IDs
         return self.get_task(self._ready_task_ids[0]) 
         
+    #############################################################################################
+    #############################################################################################
+    #############################################################################################
+    # endregion
+    # region Task Registry ( cf : region VSCode Feature)
+    #############################################################################################
+    #############################################################################################
+    #############################################################################################
 
+    
+    def registry_update_task_status_in_list(self, task_id: Task, status: TaskStatusList):
+        """
+        Update the status of a task in the task list.
 
-    def register_tasks(self, task: Task):
-        self.register_tasks([task])
-        
+        Args:
+            task_id (Task): The ID of the task to update.
+            status (TaskStatusList): The new status of the task.
 
+        Raises:
+            ValueError: If the status is not a valid TaskStatusList value.
 
-    def register_tasks(self, tasks: list[Task]):
+        """
+        if status == TaskStatusList.READY:
+            self._ready_task_ids.append(task_id)
+        elif status == TaskStatusList.DONE:
+            self._ready_task_ids.remove(task_id)
+            self._done_task_ids.append(task_id)
+
+    def _register_new_task(self, task: Task):
+        """
+        Registers a new task.
+
+        Args:
+            task (Task): The task object to be registered.
+
+        Returns:
+            None
+        """
+        self._register_task(task=task)
+        self._loaded_tasks_dict[task.task_id] = task
+        self._register_task_as_new(task_id=task.task_id)
+ 
+    def _register_new_tasks(self, tasks: list[Task]):
         """
         Register a list of tasks in the plan
         """
         for task in tasks:
-            self._all_task_ids.append(task.task_id)
-            self._loaded_tasks_dict[task.task_id] = task
-            if(task.state == TaskStatusList.READY.value):
-                self._ready_task_ids.append(task.task_id)
-            
-            self.register_task_as_new(task_id=task.task_id)
+            self._register_new_task(task = task)
 
-    def register_task_as_modified(self, task_id: str):
+    def _register_task(self, task: Task):
+        self._all_task_ids.append(task.task_id)
+        if(task.state == TaskStatusList.READY.value):
+            self._ready_task_ids.append(task.task_id)
+
+
+    def _register_tasks(self, tasks: list[Task]):
+        """
+        Register a list of tasks in the plan
+        """
+        for task in tasks:
+            self._register_task(task = task)
+            
+
+    def _register_task_as_modified(self, task_id: str):
         """
         Register a task as modified
         """
         if task_id not in self._modified_tasks_ids:
             self._modified_tasks_ids.append(task_id)
 
-    def register_task_as_new(self, task_id: str):
+    def _register_task_as_new(self, task_id: str):
         """
         Register a task as modified
         """
         if task_id not in self._new_tasks_ids:
             self._new_tasks_ids.append(task_id)
+
+
+    
         
     #############################################################################################
     #############################################################################################
     #############################################################################################
-    ### Database access
+    # endregion
+    # region Database access ( cf : region VSCode Feature)
     #############################################################################################
     #############################################################################################
     #############################################################################################
-
-
 
     @classmethod
     def create_in_db(cls, agent: AbstractAgent):
@@ -299,6 +343,7 @@ class Plan(BaseTask):
             if task_id not in self._new_tasks_ids:
                 task : Task = self._loaded_tasks_dict.get(task_id)
                 if task:
+                    LOG.db_log(f"Saving task {task.task_goal}")
                     task.save_in_db() # Save the task
 
         ###
@@ -307,6 +352,7 @@ class Plan(BaseTask):
         for task_id in self._new_tasks_ids:
             task : Task = self._loaded_tasks_dict.get(task_id)
             if task:
+                LOG.db_log(f"Creating task {task.task_goal}")
                 task.create_in_db(task=task,agent=self.agent) # Save the task
         
         # Reinitalize the lists
@@ -323,16 +369,56 @@ class Plan(BaseTask):
             plan_table.update(self.plan_id, self)
 
     @classmethod
-    def get_plan_from_db(plan_id : str, agent : AbstractAgent):
+    def get_plan_from_db(cls, plan_id : str, agent : AbstractAgent):
         """
         Get a plan from the database
         """
         memory = agent._memory
         plan_table = memory.get_table("plans")
         plan_dict = plan_table.get(plan_id)
-        return Plan(**plan_dict, agent=agent)
+        return cls(**plan_dict, agent=agent)
     
+    #endregion
 
+    def generate_pitch(self, task=None):
+        if task is None:
+            task = self.get_first_ready_task()
+
+        # Extract the task's siblings and path
+        siblings = [
+            sib
+            for sib in self.subtasks
+            if sib.task_parent_id == task.task_parent_id and sib != task
+        ]
+        path_to_task = task.find_task_path()
+
+        # Build the pitch
+        pitch = """
+        # INSTRUCTION
+        Your goal is to find the best-suited command in order to achieve the following task: {task_description}
+
+        # CONTEXT
+        The high-level plan designed to achieve our goal is: 
+        {high_level_plan}
+        
+        We are working on the task "{task_name}" that consists in: {task_command}. This task is located in:
+        {path_structure}
+        """.format(
+            task_description=task.description,
+            high_level_plan="\n".join(
+                [
+                    "{}: {}".format(t.task_goal, t.description)
+                    for t in self.subtasks
+                    if not t.task_parent_id
+                ]
+            ),
+            task_name=task.task_goal,
+            task_command=task.command,  # assuming each task has a 'command' attribute
+            path_structure="\n".join(["->".join(p.task_goal for p in path_to_task)]),
+        )
+
+        return pitch
+    
 Plan.update_forward_refs()
 
 

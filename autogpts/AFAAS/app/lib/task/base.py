@@ -12,8 +12,8 @@ from autogpts.autogpt.autogpt.core.agents import AbstractAgent
 # from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
 logger = Logger(name=__name__)
 
-
-from .stack import TaskStack
+if TYPE_CHECKING:
+    from .stack import TaskStack
 class BaseTask(AFAASModel):
     """
     Model representing a task.
@@ -77,6 +77,7 @@ class BaseTask(AFAASModel):
     @property
     def subtasks(self) -> TaskStack:
         if self._subtasks is None:
+            from .stack import TaskStack
             self._subtasks = TaskStack(parent_task=self)
         return self._subtasks
 
@@ -113,24 +114,22 @@ class BaseTask(AFAASModel):
                     # Replace the list of BaseTask instances with a list of their task_ids
                     d[field] = [v.task_id for v in field_value]
 
-                # Check for lists of BaseTask instances
-                if isinstance(field_value, TaskStack):
-                    # Replace the list of BaseTask instances with a list of their task_ids
-                    d[field] = [v.task_id for v in field_value._task_ids]
+                # # Check for lists of BaseTask instances
+                # if isinstance(field_value, TaskStack):
+                #     # Replace the list of BaseTask instances with a list of their task_ids
+                #     d[field] = [v.task_id for v in field_value._task_ids]
 
         return self._apply_custom_encoders(data = d)
         
     
     def add_task(self, task : "BaseTask"): 
-        self.add_tasks(tasks = [task])
+        self.subtasks.add(task = task)
+        self.agent.plan._register_new_task(task = task)
+
 
     def add_tasks(self, tasks : list["BaseTask"]):
         for task in tasks:
-            self.subtasks.add(task = task)
-            task.create_in_db(task = task, agent = self.agent)
-
-        self.agent.plan.register_tasks(tasks = tasks)
-
+            self.add_task(task = task)
 
     def __getitem__(self, index: Union[int, str]):
         """

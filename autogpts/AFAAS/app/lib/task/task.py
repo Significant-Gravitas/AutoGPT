@@ -18,9 +18,8 @@ from ...sdk.forge_log import ForgeLogger
 
 LOG = ForgeLogger(__name__)
 
-
-
-
+if TYPE_CHECKING:
+    from .stack import TaskStack
 class Task(BaseTask):
     """
     Model representing a task.
@@ -49,11 +48,27 @@ class Task(BaseTask):
     )  
     task_parent: BaseTask
     _task_parent_id: str
-    task_predecessors: Optional[list[Task]]  = []  
-    _task_predecessors_id: Optional[list[str]]  = []
-    task_successors: Optional[list[Task]]  = []   
-    _task_successors_id: Optional[list[str]] = []
-    
+
+    # task_predecessors: Optional[list[Task]]  = []  
+    # _task_predecessors_id: Optional[list[str]]  = []
+    _task_predecessors: Optional[TaskStack] = None
+    @property
+    def task_predecessors(self) -> TaskStack:
+        if self._task_predecessors is None:
+            from .stack import TaskStack
+            self._task_predecessors = TaskStack(parent_task=self)
+        return self._task_predecessors
+
+    # task_successors: Optional[list[Task]]  = []   
+    # _task_successors_id: Optional[list[str]] = []
+    _task_successors: Optional[TaskStack] = None
+    @property
+    def task_successors(self) -> TaskStack:
+        if self._task_successors is None:
+            from .stack import TaskStack
+            self._task_successors = TaskStack(parent_task=self)
+        return self._task_successors
+
     state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG.value)
 
     task_text_output : Optional[str] 
@@ -85,6 +100,13 @@ class Task(BaseTask):
         return "T" + str(uuid.uuid4())
     
     @classmethod
+    def get_task_from_db(cls, task_id : str, agent : BaseAgent) -> Task:
+        memory = agent._memory
+        task_table = memory.get_table("tasks")
+        task = task_table.get(task_id)
+        return cls(**task, agent=agent)
+    
+    @classmethod
     def create_in_db(cls, task : Task , agent : BaseAgent):
         memory = agent._memory
         task_table = memory.get_table("tasks")
@@ -107,10 +129,7 @@ class Task(BaseTask):
         super().__setattr__(key, value)
         # If the key is a model field, mark the instance as modified
         if key in self.__fields__:
-            self._is_modified = True
-            self.agent.plan.register_task_as_modified(task_id = self.task_id)
-
-        LOG.notice("TODO: Implement Lazy Saving")
+            self.agent.plan._register_task_as_modified(task_id = self.task_id)
 
     def find_task_path(self) -> list[Task]:
         """

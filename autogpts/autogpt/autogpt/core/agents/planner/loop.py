@@ -24,25 +24,25 @@ if TYPE_CHECKING:
 
 from autogpts.autogpt.autogpt.core.agents.base import (BaseLoop, BaseLoopHook)
 
-aaas = {}
-try:
-    pass
+# aaas = {}
+# try:
+#     pass
 
-    Task.command: Optional[str] = Field(default="afaas_routing")
-    aaas["routing"] = True
-except:
-    aaas["routing"] = False
+#     Task.command: Optional[str] = Field(default="afaas_routing")
+#     aaas["routing"] = True
+# except:
+#     aaas["routing"] = False
 
-try:
-    pass
+# try:
+#     pass
 
-    aaas["usercontext"] = True
-except:
-    aaas["usercontext"] = False
+#     aaas["usercontext"] = True
+# except:
+#     aaas["usercontext"] = False
 
-# FIXME: Deactivated for as long as we don't have the UI to support it
-aaas["usercontext"] = False
-# aaas['routing'] = False
+# # FIXME: Deactivated for as long as we don't have the UI to support it
+# aaas["usercontext"] = False
+# # aaas['routing'] = False
 
 
 class PlannerLoop(BaseLoop):
@@ -397,6 +397,8 @@ class PlannerLoop(BaseLoop):
             self._agent._logger.warn(
                 f"Tool {command_name} returned an error: {result.error or result.reason}"
             )
+        
+        self.plan().set_task_status(task= current_task, status= TaskStatusList.DONE.value)
 
         return result
 
@@ -417,9 +419,10 @@ def execute_command(
     # Execute a native command with the same name or alias, if it exists
     agent._logger.info(f"Executing command : {command_name}")
     agent._logger.info(f"with arguments : {arguments}")
-    if command := agent._tool_registry.get_tool(tool_name=command_name):
+    if tool := agent._tool_registry.get_tool(tool_name=command_name):
         try:
-            result = command(**arguments, task=task, agent=agent)
+            result = tool(**arguments, task=task, agent=agent)
+            tool.success_check_callback(task = task, tool_output = result )
             return result
         except AgentException:
             raise

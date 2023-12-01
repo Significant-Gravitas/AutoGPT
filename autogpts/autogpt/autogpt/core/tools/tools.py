@@ -8,6 +8,10 @@ if TYPE_CHECKING:
     from autogpt.config import Any
     from .tool_parameters import ToolParameter
 from autogpts.AFAAS.app.lib.context_items import ContextItem
+from autogpts.AFAAS.app.sdk.forge_log import ForgeLogger
+from autogpts.AFAAS.app.lib.task import Task
+
+LOG = ForgeLogger(__name__)
 
 ToolReturnValue = Any
 ToolOutput = ToolReturnValue | tuple[ToolReturnValue, ContextItem]
@@ -21,13 +25,15 @@ class Tool:
         description (str): A brief description of what the command does.
         parameters (list): The parameters of the function that the command executes.
     """
-
+    success_check_callback :  Callable[..., Any] 
+    
     def __init__(
         self,
         name: str,
         description: str,
-        method: Callable[..., ToolOutput],
+        exec_function: Callable[..., ToolOutput],
         parameters: list[ToolParameter],
+        success_check_callback : Callable[..., Any],
         enabled: Literal[True] | Callable[[Any], bool] = True,
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
@@ -36,13 +42,14 @@ class Tool:
     ):
         self.name = name
         self.description = description
-        self.method = method
+        self.method = exec_function
         self.parameters = parameters
         self.enabled = enabled
         self.disabled_reason = disabled_reason
         self.aliases = aliases
         self.available = available
         self.hide = hide
+        self.success_check_callback = success_check_callback
 
     @property
     def is_async(self) -> bool:
@@ -67,3 +74,10 @@ class Tool:
             for param in self.parameters
         ]
         return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"
+    
+    @classmethod
+    def default_success_check_callback(cls, task : Task, tool_output : Any):
+        LOG.notice(f"Tool.default_summary() not yet implemented")
+        def summary(self, *args, **kwargs):
+            return self.description
+        return summary
