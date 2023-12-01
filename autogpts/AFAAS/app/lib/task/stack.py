@@ -39,10 +39,10 @@ class TaskStack(AFAASModel):
         """
         self._task_ids.append(task.task_id)
         if isinstance(self.parent_task, Plan):
-            LOG.info(f"Added task {task.task_goal} to plan {self.parent_task.task_goal}")
+            LOG.info(f"Added task ``{LOG.italic(task.task_goal)}`` to plan ``{LOG.italic(self.parent_task.task_goal)}``")
             plan :Plan = self.parent_task
         else :
-            LOG.info(f"Added task {task.task_goal} as subtask of task {self.parent_task.task_goal}")
+            LOG.info(f"Added task ``{LOG.italic(task.task_goal)}`` as subtask of task ``{LOG.italic(self.parent_task.task_goal)}``")
             plan :Plan = self.parent_task.agent.plan
             plan._register_task_as_modified(task_id= self.parent_task.task_id)
 

@@ -31,6 +31,7 @@ logger = forge_log.ForgeLogger(__name__)
 async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
     # plan =  self.execute_strategy(
     agent._loop.tool_registry().list_tools_descriptions()
+    agent._logger.warning(f"This function is not maintained and should only be used at your own risk.")
     plan = await agent._loop._execute_strategy(
         strategy_name="make_initial_plan",
         agent_name=agent.agent_name,

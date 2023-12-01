@@ -28,6 +28,7 @@ RESET_SEQ: str = "\033[0m"
 COLOR_SEQ: str = "\033[1;%dm"
 BOLD_SEQ: str = "\033[1m"
 UNDERLINE_SEQ: str = "\033[04m"
+ITALIC_SEQ = '\033[3m'
 
 ORANGE: str = "\033[33m"
 YELLOW: str = "\033[93m"
@@ -232,6 +233,20 @@ class ForgeLogger(logging.Logger):
         
           if self.isEnabledFor(DB_LOG):
                 self._log(DB_LOG, msg, args, **kwargs)
+
+    @staticmethod
+    def bold(msg: str) -> str:
+        """
+        Returns the message in bold
+        """
+        return BOLD_SEQ + msg + RESET_SEQ
+    
+    @staticmethod
+    def italic(msg: str) -> str:
+        """
+        Returns the message in italic
+        """
+        return ITALIC_SEQ + msg + RESET_SEQ
 
 
 class QueueLogger(logging.Logger):
