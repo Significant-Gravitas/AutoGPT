@@ -128,7 +128,7 @@ class PlannerAgent(BaseAgent):
         # FIXME: Long term : PlannerLoop / Pipeline get all ready tasks & launch them => Parralelle processing of tasks
         if hasattr( settings, "plan_id" ) and settings.plan_id is not None :
             self.plan: Plan = Plan.get_plan_from_db(settings.plan_id) # Plan(user_id=user_id)
-            self._loop.set_current_task(task = self.plan.get_first_ready_task())
+            self._loop.set_current_task(task = self.plan.find_first_ready_task())
         else :
             self.plan: Plan = Plan.create_in_db(agent= self)
             #self._loop.add_initial_tasks()

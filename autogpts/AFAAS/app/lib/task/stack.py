@@ -46,6 +46,16 @@ class TaskStack(AFAASModel):
             plan :Plan = self.parent_task.agent.plan
             plan._register_task_as_modified(task_id= self.parent_task.task_id)
 
+        if(self.parent_task.subtasks == self) : 
+            # FIXME: Evaluate what is the best way to evaluate predecessors
+            LOG.info(f"Added task ``{LOG.italic(task.task_goal)}`` as subtask of task ``{LOG.italic(self.parent_task.task_goal)}``")
+            LOG.debug((f"As is subtask do not inherit from parent predecessors, 3 options are considered :\n"
+                        + f"- Always add all predecessors of parent task to subtask predecessors\n"
+                        + f"- Smartly/Dynamicaly add all predecessors of parent task to subtask predecessors\n"
+                        + f"- Consider parent predecessor when evaluatin `Task.is_ready()`\n"))
+            LOG.notice(f"Added subtask should only be added if parent_task is READY")
+            
+
     def get_task(self, task_id) -> BaseTask:
         """
         Get a specific task.
