@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 import requests
+from git import InvalidGitRepositoryError
 
 from autogpt.app.utils import (
     get_bulletin_from_web,
@@ -186,7 +187,7 @@ def test_get_current_git_branch_success(mock_repo):
 
 @patch("autogpt.app.utils.Repo")
 def test_get_current_git_branch_failure(mock_repo):
-    mock_repo.side_effect = Exception()
+    mock_repo.side_effect = InvalidGitRepositoryError()
     branch_name = get_current_git_branch()
 
     assert branch_name == ""
