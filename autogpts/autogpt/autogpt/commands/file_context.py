@@ -2,15 +2,9 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "file_operations"
-COMMAND_CATEGORY_TITLE = "File Operations"
-
 import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from autogpt.agents import Agent, BaseAgent
 
 from autogpt.agents.features.context import ContextMixin, get_agent_context
 from autogpt.agents.utils.exceptions import (
@@ -23,6 +17,13 @@ from autogpt.models.context_item import FileContextItem, FolderContextItem
 
 from .decorators import sanitize_path_arg
 
+COMMAND_CATEGORY = "file_operations"
+COMMAND_CATEGORY_TITLE = "File Operations"
+
+
+if TYPE_CHECKING:
+    from autogpt.agents import Agent, BaseAgent
+
 
 def agent_implements_context(agent: BaseAgent) -> bool:
     return isinstance(agent, ContextMixin)
@@ -30,8 +31,9 @@ def agent_implements_context(agent: BaseAgent) -> bool:
 
 @command(
     "open_file",
-    "Open a file for editing or continued viewing; create it if it does not exist yet."
-    " Note: if you only need to read or write a file once, use `write_to_file` instead.",
+    "Opens a file for editing or continued viewing;"
+    " creates it if it does not exist yet. "
+    "Note: If you only need to read or write a file once, use `write_to_file` instead.",
     {
         "file_path": JSONSchema(
             type=JSONSchema.Type.STRING,
@@ -76,7 +78,8 @@ def open_file(file_path: Path, agent: Agent) -> tuple[str, FileContextItem]:
         raise DuplicateOperationError(f"The file {file_path} is already open")
 
     return (
-        f"File {file_path}{' created,' if created else ''} has been opened and added to the context ✅",
+        f"File {file_path}{' created,' if created else ''} has been opened"
+        " and added to the context ✅",
         file,
     )
 

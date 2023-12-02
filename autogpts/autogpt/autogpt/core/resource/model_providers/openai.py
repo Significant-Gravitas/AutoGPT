@@ -572,10 +572,12 @@ def count_openai_functions_tokens(
 ) -> int:
     """Returns the number of tokens taken up by a set of function definitions
 
-    Reference: https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18
+    Reference: https://community.openai.com/t/how-to-calculate-the-tokens-when-using-function-call/266573/18  # noqa: E501
     """
     return count_tokens(
-        f"# Tools\n\n## functions\n\n{format_function_specs_as_typescript_ns(functions)}"
+        "# Tools\n\n"
+        "## functions\n\n"
+        f"{format_function_specs_as_typescript_ns(functions)}"
     )
 
 

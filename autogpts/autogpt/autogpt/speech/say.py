@@ -45,7 +45,10 @@ class TextToSpeechProvider:
             thread.start()
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(provider={self._voice_engine.__class__.__name__})"
+        return "{class_name}(provider={voice_engine_name})".format(
+            class_name=self.__class__.__name__,
+            voice_engine_name=self._voice_engine.__class__.__name__,
+        )
 
     @staticmethod
     def _get_voice_engine(config: TTSConfig) -> tuple[VoiceBase, VoiceBase]:

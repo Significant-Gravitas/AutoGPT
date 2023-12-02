@@ -39,7 +39,8 @@ def mock_pdf_file():
         # Write the page object
         f.write(b"2 0 obj\n")
         f.write(
-            b"<< /Type /Page /Parent 1 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 4 0 R >>\n"
+            b"<< /Type /Page /Parent 1 0 R /Resources << /Font << /F1 3 0 R >> >> "
+            b"/MediaBox [0 0 612 792] /Contents 4 0 R >>\n"
         )
         f.write(b"endobj\n")
         # Write the font object
@@ -103,7 +104,10 @@ def mock_yaml_file():
 
 def mock_html_file():
     html = BeautifulSoup(
-        f"<html><head><title>This is a test</title></head><body><p>{plain_text_str}</p></body></html>",
+        "<html>"
+        "<head><title>This is a test</title></head>"
+        f"<body><p>{plain_text_str}</p></body>"
+        "</html>",
         "html.parser",
     )
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".html") as f:
@@ -119,7 +123,12 @@ def mock_md_file():
 
 def mock_latex_file():
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".tex") as f:
-        latex_str = rf"\documentclass{{article}}\begin{{document}}{plain_text_str}\end{{document}}"
+        latex_str = (
+            r"\documentclass{article}"
+            r"\begin{document}"
+            f"{plain_text_str}"
+            r"\end{document}"
+        )
         f.write(latex_str)
     return f.name
 

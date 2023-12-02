@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "user_interaction"
-COMMAND_CATEGORY_TITLE = "User Interaction"
-
 from autogpt.agents.agent import Agent
 from autogpt.app.utils import clean_input
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
+
+COMMAND_CATEGORY = "user_interaction"
+COMMAND_CATEGORY_TITLE = "User Interaction"
 
 
 @command(

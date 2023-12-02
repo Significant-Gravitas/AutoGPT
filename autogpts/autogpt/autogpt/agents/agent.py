@@ -232,7 +232,7 @@ class Agent(
                 )
 
                 # Intercept ContextItem if one is returned by the command
-                if type(return_value) == tuple and isinstance(
+                if type(return_value) is tuple and isinstance(
                     return_value[1], ContextItem
                 ):
                     context_item = return_value[1]

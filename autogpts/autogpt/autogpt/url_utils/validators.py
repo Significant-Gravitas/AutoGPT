@@ -8,12 +8,14 @@ T = TypeVar("T")
 
 
 def validate_url(func: Callable[P, T]) -> Callable[P, T]:
-    """The method decorator validate_url is used to validate urls for any command that requires
-    a url as an argument"""
+    """
+    The method decorator validate_url is used to validate urls for any command that
+    requires a url as an argument.
+    """
 
     @functools.wraps(func)
     def wrapper(url: str, *args, **kwargs) -> Any:
-        """Check if the URL is valid using a basic check, urllib check, and local file check
+        """Check if the URL is valid and not a local file accessor.
 
         Args:
             url (str): The URL to check

@@ -41,25 +41,36 @@ class NextAbility(PromptStrategy):
         "{additional_info}\n\n"
         "Additionally, you should consider the following:\n"
         "{user_input}\n\n"
-        "Your task of {task_objective} is complete when the following acceptance criteria have been met:\n"
+        "Your task of {task_objective} is complete when the following acceptance"
+        " criteria have been met:\n"
         "{acceptance_criteria}\n\n"
         "Please choose one of the provided functions to accomplish this task. "
-        "Some tasks may require multiple functions to accomplish. If that is the case, choose the function that "
-        "you think is most appropriate for the current situation given your progress so far."
+        "Some tasks may require multiple functions to accomplish. If that is the case,"
+        " choose the function that you think is most appropriate for the current"
+        " situation given your progress so far."
     )
 
     DEFAULT_ADDITIONAL_ABILITY_ARGUMENTS = {
         "motivation": JSONSchema(
             type=JSONSchema.Type.STRING,
-            description="Your justification for choosing choosing this function instead of a different one.",
+            description=(
+                "Your justification for choosing choosing this function instead of a "
+                "different one."
+            ),
         ),
         "self_criticism": JSONSchema(
             type=JSONSchema.Type.STRING,
-            description="Thoughtful self-criticism that explains why this function may not be the best choice.",
+            description=(
+                "Thoughtful self-criticism that explains why this function may not be "
+                "the best choice."
+            ),
         ),
         "reasoning": JSONSchema(
             type=JSONSchema.Type.STRING,
-            description="Your reasoning for choosing this function taking into account the `motivation` and weighing the `self_criticism`.",
+            description=(
+                "Your reasoning for choosing this function taking into account the "
+                "`motivation` and weighing the `self_criticism`."
+            ),
         ),
     }
 
@@ -124,7 +135,9 @@ class NextAbility(PromptStrategy):
         template_kwargs["additional_info"] = to_numbered_list(
             [memory.summary() for memory in task.context.memories]
             + [info for info in task.context.supplementary_info],
-            no_items_response="There is no additional information available at this time.",
+            no_items_response=(
+                "There is no additional information available at this time."
+            ),
             **template_kwargs,
         )
         template_kwargs["user_input"] = to_numbered_list(

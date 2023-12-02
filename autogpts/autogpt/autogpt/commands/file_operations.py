@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "file_operations"
-COMMAND_CATEGORY_TITLE = "File Operations"
-
 import contextlib
 import hashlib
 import logging
@@ -20,8 +17,13 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.memory.vector import MemoryItem, VectorMemory
 
 from .decorators import sanitize_path_arg
-from .file_context import open_file, open_folder  # NOQA
 from .file_operations_utils import read_textual_file
+
+COMMAND_CATEGORY = "file_operations"
+COMMAND_CATEGORY_TITLE = "File Operations"
+
+
+from .file_context import open_file, open_folder  # NOQA
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,5 @@
 """Commands to execute code"""
 
-COMMAND_CATEGORY = "execute_code"
-COMMAND_CATEGORY_TITLE = "Execute Code"
-
 import logging
 import os
 import subprocess
@@ -26,6 +23,10 @@ from autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 
+COMMAND_CATEGORY = "execute_code"
+COMMAND_CATEGORY_TITLE = "Execute Code"
+
+
 logger = logging.getLogger(__name__)
 
 ALLOWLIST_CONTROL = "allowlist"
@@ -45,15 +46,18 @@ DENYLIST_CONTROL = "denylist"
     },
 )
 def execute_python_code(code: str, agent: Agent) -> str:
-    """Create and execute a Python file in a Docker container and return the STDOUT of the
-    executed code. If there is any data that needs to be captured use a print statement
+    """
+    Create and execute a Python file in a Docker container and return the STDOUT of the
+    executed code.
+
+    If the code generates any data that needs to be captured, use a print statement.
 
     Args:
-        code (str): The Python code to run
-        name (str): A name to be given to the Python file
+        code (str): The Python code to run.
+        agent (Agent): The Agent executing the command.
 
     Returns:
-        str: The STDOUT captured from the code when it ran
+        str: The STDOUT captured from the code when it ran.
     """
 
     tmp_code_file = NamedTemporaryFile(
@@ -63,7 +67,7 @@ def execute_python_code(code: str, agent: Agent) -> str:
     tmp_code_file.flush()
 
     try:
-        return execute_python_file(tmp_code_file.name, agent)
+        return execute_python_file(tmp_code_file.name, agent)  # type: ignore
     except Exception as e:
         raise CommandExecutionError(*e.args)
     finally:
@@ -102,7 +106,8 @@ def execute_python_file(
         str: The output of the file
     """
     logger.info(
-        f"Executing python file '{filename}' in working directory '{agent.workspace.root}'"
+        f"Executing python file '{filename}' "
+        f"in working directory '{agent.workspace.root}'"
     )
 
     if isinstance(args, str):
@@ -113,14 +118,16 @@ def execute_python_file(
 
     file_path = filename
     if not file_path.is_file():
-        # Mimic the response that you get from the command line so that it's easier to identify
+        # Mimic the response that you get from the command line to make it
+        # intuitively understandable for the LLM
         raise FileNotFoundError(
             f"python: can't open file '{filename}': [Errno 2] No such file or directory"
         )
 
     if we_are_running_in_a_docker_container():
         logger.debug(
-            f"AutoGPT is running in a Docker container; executing {file_path} directly..."
+            "AutoGPT is running in a Docker container; "
+            f"executing {file_path} directly..."
         )
         result = subprocess.run(
             ["python", "-B", str(file_path)] + args,
@@ -145,14 +152,17 @@ def execute_python_file(
         container_is_fresh = False
         container_name = f"{agent.state.agent_id}_sandbox"
         try:
-            container: DockerContainer = client.containers.get(container_name)  # type: ignore
+            container: DockerContainer = client.containers.get(
+                container_name
+            )  # type: ignore
         except NotFound:
             try:
                 client.images.get(image_name)
                 logger.debug(f"Image '{image_name}' found locally")
             except ImageNotFound:
                 logger.info(
-                    f"Image '{image_name}' not found locally, pulling from Docker Hub..."
+                    f"Image '{image_name}' not found locally,"
+                    " pulling from Docker Hub..."
                 )
                 # Use the low-level API to stream the pull response
                 low_level_client = docker.APIClient()
@@ -207,7 +217,9 @@ def execute_python_file(
 
     except DockerException as e:
         logger.warn(
-            "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
+            "Could not run the script in a container. "
+            "If you haven't already, please install Docker: "
+            "https://docs.docker.com/get-docker/"
         )
         raise CommandExecutionError(f"Could not run the script in a container: {e}")
 

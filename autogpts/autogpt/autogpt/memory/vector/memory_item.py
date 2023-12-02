@@ -141,7 +141,11 @@ class MemoryItem(BaseModel, arbitrary_types_allowed=True):
         return MemoryItem.from_text(
             text=memory_content,
             source_type="agent_history",
-            how_to_summarize="if possible, also make clear the link between the command in the assistant's response and the command result. Do not mention the human feedback if there is none",
+            how_to_summarize=(
+                "if possible, also make clear the link between the command in the"
+                " assistant's response and the command result. "
+                "Do not mention the human feedback if there is none.",
+            ),
         )
 
     @staticmethod
@@ -161,9 +165,10 @@ class MemoryItem(BaseModel, arbitrary_types_allowed=True):
             token_length = self.llm_provider.count_tokens(
                 self.raw_content, Config().embedding_model
             )
+        n_chunks = len(self.e_chunks)
         return f"""
 =============== MemoryItem ===============
-Size: {f'{token_length} tokens in ' if calculate_length else ''}{len(self.e_chunks)} chunks
+Size: {f'{token_length} tokens in ' if calculate_length else ''}{n_chunks} chunks
 Metadata: {json.dumps(self.metadata, indent=2)}
 ---------------- SUMMARY -----------------
 {self.summary}

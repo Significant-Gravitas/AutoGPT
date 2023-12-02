@@ -42,16 +42,17 @@ class PluginsConfig(BaseModel):
                 plugins_denylist,
                 plugins_allowlist,
             )
-            if type(config_data) != dict:
+            if type(config_data) is not dict:
                 logger.error(
-                    f"Expected plugins config to be a dict, got {type(config_data)}, continuing without plugins"
+                    f"Expected plugins config to be a dict, got {type(config_data)}."
+                    " Continuing without plugins."
                 )
                 return empty_config
             return cls(plugins=config_data)
 
         except BaseException as e:
             logger.error(
-                f"Plugin config is invalid, continuing without plugins. Error: {e}"
+                f"Plugin config is invalid. Continuing without plugins. Error: {e}"
             )
             return empty_config
 
@@ -75,13 +76,13 @@ class PluginsConfig(BaseModel):
 
         plugins = {}
         for name, plugin in plugins_config.items():
-            if type(plugin) == dict:
+            if type(plugin) is dict:
                 plugins[name] = PluginConfig(
                     name=name,
                     enabled=plugin.get("enabled", False),
                     config=plugin.get("config", {}),
                 )
-            elif type(plugin) == PluginConfig:
+            elif isinstance(plugin, PluginConfig):
                 plugins[name] = plugin
             else:
                 raise ValueError(f"Invalid plugin config data type: {type(plugin)}")
@@ -93,7 +94,10 @@ class PluginsConfig(BaseModel):
         plugins_denylist: list[str],
         plugins_allowlist: list[str],
     ):
-        """Create an empty plugins_config.yaml file. Fill it with values from old env variables."""
+        """
+        Create an empty plugins_config.yaml file.
+        Fill it with values from old env variables.
+        """
         base_config = {}
 
         logger.debug(f"Legacy plugin denylist: {plugins_denylist}")

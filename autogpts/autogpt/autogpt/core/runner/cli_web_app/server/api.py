@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from agent_protocol import StepHandler, StepResult
 
