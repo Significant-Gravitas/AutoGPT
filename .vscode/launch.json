@@ -37,7 +37,7 @@
             "args": ["run"],
             "console": "integratedTerminal",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${env:PYTHONPATH}"
+                "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${env:PYTHONPATH}:${workspaceFolder}/autogpts/AFAAS/"
             }
             
         },
@@ -52,6 +52,18 @@
                 "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/;${env:PYTHONPATH}"
             }
             
-        }
+        },
+        {
+            "name": "Mac unit-test",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/autogpts/AFAAS/tests/run.py",
+            "args": ["run"],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/autogpts/autogpt/:${env:PYTHONPATH}:${workspaceFolder}/autogpts/AFAAS/"
+            }
+            
+        },
     ]
 }

@@ -224,7 +224,7 @@ class BaseTask(AFAASModel):
             should_remove_siblings(task)
             clear_predecessors(task)
 
-    def get_ready_leaf_tasks(self) -> list [BaseTask]:
+    def find_ready_tasks(self) -> list[BaseTask]:
         """
         Get tasks that have status "READY", no subtasks, and no task_predecessors_id.
 
@@ -255,7 +255,7 @@ class BaseTask(AFAASModel):
 
         return ready_tasks
 
-    def get_first_ready_task(self) -> Optional [BaseTask]:
+    def find_first_ready_task(self) -> Optional[BaseTask]:
         """
         Get the first task that has status "READY", no subtasks, and no task_predecessors_id.
 
@@ -270,7 +270,7 @@ class BaseTask(AFAASModel):
             "- Plan.get_next_task()\n"
         )
 
-        def check_task(task: BaseTask) -> Optional [BaseTask]:
+        def check_task(task: BaseTask) -> Optional[BaseTask]:
             if (
                 task.is_ready()
             ):
@@ -280,7 +280,7 @@ class BaseTask(AFAASModel):
             for subtask in task.subtasks or []:
                 found_task = check_task(subtask)
                 if (
-                    found_task
+                    found_task is not None
                 ):  # If a task is found in the subtasks, return it immediately
                     return found_task
             return None
@@ -292,7 +292,35 @@ class BaseTask(AFAASModel):
                 return found_task
 
         return None
-    
+        
+
+    def find_ready_branch(self) -> list[BaseTask]:
+        ready_tasks = []
+
+        def check_task(task: BaseTask, found_ready: bool) -> bool:
+            nonlocal ready_tasks
+            if task.is_ready():
+                ready_tasks.append(task)
+                return True
+
+            # If a ready task has already been found in this branch, check only siblings
+            if found_ready:
+                return False
+
+            # Check subtasks
+            for subtask in task.subtasks:
+                if check_task(subtask, found_ready):
+                    found_ready = True
+
+            return found_ready
+
+        # Start checking from the root tasks in the plan
+        for task in self.subtasks:
+            if check_task(task, False):
+                break  # Break after finding the first ready task and its siblings
+
+        return ready_tasks
+        
     @staticmethod
     def info_parse_task(task: BaseTask) -> str:
         from .task import Task

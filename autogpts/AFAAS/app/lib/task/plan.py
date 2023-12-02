@@ -75,7 +75,10 @@ class Plan(BaseTask):
             self._register_task(task=task)
             self._all_task_ids.append(task.task_id)
             if task.state == TaskStatusList.READY:
+                LOG.notice("DEBUG : Task is ready may may have subtasks...")
                 self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.READY)
+            elif task.state == TaskStatusList.DONE:
+                self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.DONE)
 
    
     def set_task_status(self, task: Task, status: TaskStatusList):
@@ -137,32 +140,51 @@ class Plan(BaseTask):
             raise Exception(f"Task {task_id} not found in plan {self.plan_id}")
         
     def get_next_task(self, task: Task = None) -> Task:
-            """
-            Retrieves the next task in the plan based on the given task.
+        """
+        Retrieves the next task in the plan based on the given task.
 
-            Args:
-                task (Task): The current task.
+        Args:
+            task (Task): The current task.
 
-            Returns:
-                Task: The next task in the plan.
+        Returns:
+            Task: The next task in the plan.
 
-            """
-            if task is not None :
-                for successor_id in task.task_successors : 
-                    sucessor_task = self.get_task(task_id = successor_id)
-                    if sucessor_task.is_ready():
-                        self._registry_update_task_status_in_list(task_id = sucessor_task.task_id, status = TaskStatusList.READY)
-                        
-            if len(self._ready_task_ids) > 0:
-                     return self.get_task(self._ready_task_ids[0])
-            
-            LOG.warning(f"We are browsing the tree from leaf to root. This use case is not yet supported. This functionality is in alpha version.")
-            if task is not None :
-                #FIXME: Create a get_outer_first_ready_task method
-                return task.task_parent.get_first_ready_task()
+        """
+        if task is not None :
+            for successor_id in task.task_successors : 
+                # Get the successor task, check if it is ready (the check operation will update the status in the list `_ready_task_ids`)
+                self.get_task(task_id = successor_id).is_ready()
+                # sucessor_task = self.get_task(task_id = successor_id)
+                # if sucessor_task.is_ready():
+                #     #FIXME: Possibly calling twice _registry_update_task_status_in_list
+                #     LOG.trace(f"Note : Possibly calling twice _registry_update_task_status_in_list ")
+                #     self._registry_update_task_status_in_list(task_id = sucessor_task.task_id, status = TaskStatusList.READY)
+                    
+        if len(self._ready_task_ids) > 0:
+                    return self.get_task(self._ready_task_ids[0])
+        
+        if (task is None):
+            tasks =  self.find_ready_branch()
+            if len(tasks) > 0:
+                return tasks[0]
             else :
-                return self.get_first_ready_task()
+                return None
+        else : 
+            return self._find_outer_next_task(task = task)
+              
 
+    def _find_outer_next_task(self, task: Task = None, origin_task: Task = None) -> Task:
+        
+        if(task == origin_task):
+            return None
+
+        LOG.warning(f"We are browsing the tree from leaf to root. This use case is not yet supported. This functionality is in alpha version.")
+        if task is not None and task.task_parent is not None:
+            t = task.task_parent.find_ready_branch()
+            if len(t) > 0:
+                return t[0]
+            else :
+                return self._find_outer_next_task(task = task.task_parent , origin_task = task)
 
 
 
@@ -411,7 +433,7 @@ class Plan(BaseTask):
 
     def generate_pitch(self, task=None):
         if task is None:
-            task = self.get_first_ready_task()
+            task = self.find_first_ready_task()
 
         # Extract the task's siblings and path
         siblings = [

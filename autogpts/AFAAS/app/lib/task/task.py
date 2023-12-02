@@ -108,11 +108,16 @@ class Task(BaseTask):
     def generate_uuid() :
         return "T" + str(uuid.uuid4())
     
-    def is_ready(self, sucessor_task)-> bool:
-        if (len(sucessor_task.task_predecessors.get_active_tasks()) == 0 
-                    and sucessor_task.subtasks.get_active_tasks() == 0
-                    and sucessor_task.state == TaskStatusList.BACKLOG) : 
-            self.state = TaskStatusList.READY.value
+    def is_ready(self)-> bool:
+        if (
+            len(self.task_predecessors.get_active_tasks()) == 0 
+            and len(self.subtasks.get_active_tasks()) == 0
+            and (
+                self.state == TaskStatusList.BACKLOG
+                or self.state == TaskStatusList.READY
+                )
+            ) : 
+            self.state = TaskStatusList.READY
             return True
         
         return False
