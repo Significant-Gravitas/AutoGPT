@@ -13,7 +13,10 @@ class Action(BaseModel):
     reasoning: str
 
     def format_call(self) -> str:
-        return f"{self.name}({', '.join([f'{a}={repr(v)}' for a, v in self.args.items()])})"
+        return (
+            f"{self.name}"
+            f"({', '.join([f'{a}={repr(v)}' for a, v in self.args.items()])})"
+        )
 
 
 class ActionSuccessResult(BaseModel):
@@ -69,7 +72,10 @@ class ActionInterruptedByHuman(BaseModel):
     status: Literal["interrupted_by_human"] = "interrupted_by_human"
 
     def __str__(self) -> str:
-        return f'The user interrupted the action with the following feedback: "{self.feedback}"'
+        return (
+            'The user interrupted the action with the following feedback: "%s"'
+            % self.feedback
+        )
 
 
 ActionResult = ActionSuccessResult | ActionErrorResult | ActionInterruptedByHuman

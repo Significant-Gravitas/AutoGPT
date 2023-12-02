@@ -61,7 +61,9 @@ class NameAndGoals(PromptStrategy):
             ),
             "agent_role": JSONSchema(
                 type=JSONSchema.Type.STRING,
-                description="An informative one sentence description of what the AI agent does",
+                description=(
+                    "An informative one sentence description of what the AI agent does"
+                ),
             ),
             "agent_goals": JSONSchema(
                 type=JSONSchema.Type.ARRAY,
@@ -71,8 +73,9 @@ class NameAndGoals(PromptStrategy):
                     type=JSONSchema.Type.STRING,
                 ),
                 description=(
-                    "One to five highly effective goals that are optimally aligned with the completion of a "
-                    "specific task. The number and complexity of the goals should correspond to the "
+                    "One to five highly effective goals that are optimally aligned "
+                    "with the completion of a specific task. "
+                    "The number and complexity of the goals should correspond to the "
                     "complexity of the agent's primary objective."
                 ),
             ),

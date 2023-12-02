@@ -1,4 +1,6 @@
-"""The application entry point.  Can be invoked by a CLI or any other front end application."""
+"""
+The application entry point. Can be invoked by a CLI or any other front end application.
+"""
 import enum
 import logging
 import math
@@ -143,7 +145,8 @@ async def run_auto_gpt(
         )
         load_existing_agent = await clean_input(
             config,
-            "Enter the number or name of the agent to run, or hit enter to create a new one:",
+            "Enter the number or name of the agent to run,"
+            " or hit enter to create a new one:",
         )
         if re.match(r"^\d+$", load_existing_agent):
             load_existing_agent = existing_agents[int(load_existing_agent) - 1]
@@ -263,8 +266,9 @@ async def run_auto_gpt(
 
         if not agent.config.allow_fs_access:
             logger.info(
-                f"{Fore.YELLOW}NOTE: All files/directories created by this agent"
-                f" can be found inside its workspace at:{Fore.RESET} {agent.workspace.root}",
+                f"{Fore.YELLOW}"
+                "NOTE: All files/directories created by this agent can be found "
+                f"inside its workspace at:{Fore.RESET} {agent.workspace.root}",
                 extra={"preserve_color": True},
             )
 
@@ -281,7 +285,8 @@ async def run_auto_gpt(
         save_as_id = (
             await clean_input(
                 config,
-                f"Press enter to save as '{agent_id}', or enter a different ID to save to:",
+                f"Press enter to save as '{agent_id}',"
+                " or enter a different ID to save to:",
             )
             or agent_id
         )
@@ -574,7 +579,8 @@ async def run_interaction_loop(
                 )
             elif result.status == "error":
                 logger.warn(
-                    f"Command {command_name} returned an error: {result.error or result.reason}"
+                    f"Command {command_name} returned an error: "
+                    f"{result.error or result.reason}"
                 )
 
 

@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "system"
-COMMAND_CATEGORY_TITLE = "System"
-
 import logging
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from autogpt.agents.agent import Agent
 
 from autogpt.agents.features.context import get_agent_context
 from autogpt.agents.utils.exceptions import AgentTerminated, InvalidArgumentError
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
+
+COMMAND_CATEGORY = "system"
+COMMAND_CATEGORY_TITLE = "System"
+
+
+if TYPE_CHECKING:
+    from autogpt.agents.agent import Agent
+
 
 logger = logging.getLogger(__name__)
 

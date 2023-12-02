@@ -24,7 +24,8 @@ def extract_dict_from_response(response_content: str) -> dict[str, Any]:
         if match:
             response_content = match.group()
 
-    # response content comes from OpenAI as a Python `str(content_dict)`, literal_eval reverses this
+    # Response content comes from OpenAI as a Python `str(content_dict)`.
+    # `literal_eval` does the reverse of `str(dict)`.
     try:
         return ast.literal_eval(response_content)
     except BaseException as e:

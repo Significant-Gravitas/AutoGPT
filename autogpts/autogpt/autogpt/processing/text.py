@@ -21,8 +21,11 @@ T = TypeVar("T")
 def batch(
     sequence: list[T], max_batch_length: int, overlap: int = 0
 ) -> Iterator[list[T]]:
-    """Batch data from iterable into slices of length N. The last batch may be shorter."""
-    # batched('ABCDEFG', 3) --> ABC DEF G
+    """
+    Batch data from iterable into slices of length N. The last batch may be shorter.
+
+    Example: `batched('ABCDEFGHIJ', 3)` --> `ABC DEF GHI J`
+    """
     if max_batch_length < 1:
         raise ValueError("n must be at least one")
     for i in range(0, len(sequence), max_batch_length - overlap):
@@ -60,10 +63,13 @@ async def summarize_text(
     """Summarize text using the OpenAI API
 
     Args:
-        text (str): The text to summarize
-        config (Config): The config object
-        instruction (str): Additional instruction for summarization, e.g. "focus on information related to polar bears", "omit personal information contained in the text"
-        question (str): Question to answer in the summary
+        text (str): The text to summarize.
+        llm_provider: LLM provider to use for summarization.
+        config (Config): The global application config, containing the FAST_LLM setting.
+        instruction (str): Additional instruction for summarization, e.g.
+            "focus on information related to polar bears", or
+            "omit personal information contained in the text".
+        question (str): Question to be answered by the summary.
 
     Returns:
         str: The summary of the text
@@ -80,9 +86,9 @@ async def summarize_text(
 
     if question:
         instruction = (
-            f'include any information that can be used to answer the question "{question}". '
-            "Do not directly answer the question itself"
-        )
+            'Include any information that can be used to answer the question: "%s". '
+            "Do not directly answer the question itself."
+        ) % question
 
     summarization_prompt = ChatPrompt(messages=[])
 
@@ -97,13 +103,12 @@ async def summarize_text(
         # summarization_prompt.add("user", text)
         summarization_prompt.messages.append(
             ChatMessage.user(
-                "Write a concise summary of the following text"
-                f"{f'; {instruction}' if instruction is not None else ''}:"
+                "Write a concise summary of the following text."
+                f"{f' {instruction}' if instruction is not None else ''}:"
                 "\n\n\n"
                 f'LITERAL TEXT: """{text}"""'
                 "\n\n\n"
                 "CONCISE SUMMARY: The text is best summarized as"
-                # "Only respond with a concise summary or description of the user message."
             )
         )
 
@@ -160,14 +165,15 @@ def split_text(
     tokenizer: ModelTokenizer,
     with_overlap: bool = True,
 ) -> Iterator[tuple[str, int]]:
-    """Split text into chunks of sentences, with each chunk not exceeding the maximum length
+    """
+    Split text into chunks of sentences, with each chunk not exceeding the max length.
 
     Args:
-        text (str): The text to split
-        for_model (str): The model to chunk for; determines tokenizer and constraints
-        config (Config): The config object
-        with_overlap (bool, optional): Whether to allow overlap between chunks
-        max_chunk_length (int, optional): The maximum length of a chunk
+        text (str): The text to split.
+        config (Config): Config object containing the Spacy model setting.
+        max_chunk_length (int, optional): The maximum length of a chunk.
+        tokenizer (ModelTokenizer): Tokenizer to use for determining chunk length.
+        with_overlap (bool, optional): Whether to allow overlap between chunks.
 
     Yields:
         str: The next chunk of text

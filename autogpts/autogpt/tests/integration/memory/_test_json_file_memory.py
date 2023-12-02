@@ -68,7 +68,7 @@ def test_json_memory_clear(config: Config, memory_item: MemoryItem):
 def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embedding):
     index = JSONFileMemory(config)
     assert (
-        index.get("test", config) == None
+        index.get("test", config) is None
     ), "Cannot test get() because initial index is not empty"
 
     index.add(memory_item)

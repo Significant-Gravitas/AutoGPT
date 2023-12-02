@@ -65,7 +65,10 @@ def test_inspect_zip_for_modules():
 
 
 def test_create_base_config(config: Config):
-    """Test the backwards-compatibility shim to convert old plugin allow/deny list to a config file"""
+    """
+    Test the backwards-compatibility shim to convert old plugin allow/deny list
+    to a config file.
+    """
     config.plugins_allowlist = ["a", "b"]
     config.plugins_denylist = ["c", "d"]
 
@@ -96,7 +99,9 @@ def test_create_base_config(config: Config):
 
 
 def test_load_config(config: Config):
-    """Test that the plugin config is loaded correctly from the plugins_config.yaml file"""
+    """
+    Test that the plugin config is loaded correctly from the plugins_config.yaml file.
+    """
     # Create a test config and write it to disk
     test_config = {
         "a": {"enabled": True, "config": {"api_key": "1234"}},

@@ -25,13 +25,18 @@ class InitialPlanConfiguration(SystemConfiguration):
 
 class InitialPlan(PromptStrategy):
     DEFAULT_SYSTEM_PROMPT_TEMPLATE = (
-        "You are an expert project planner. You're responsibility is to create work plans for autonomous agents. "
-        "You will be given a name, a role, set of goals for the agent to accomplish. Your job is to "
-        "break down those goals into a set of tasks that the agent can accomplish to achieve those goals. "
-        "Agents are resourceful, but require clear instructions. Each task you create should have clearly defined "
-        "`ready_criteria` that the agent can check to see if the task is ready to be started. Each task should "
-        "also have clearly defined `acceptance_criteria` that the agent can check to evaluate if the task is complete. "
-        "You should create as many tasks as you think is necessary to accomplish the goals.\n\n"
+        "You are an expert project planner. "
+        "Your responsibility is to create work plans for autonomous agents. "
+        "You will be given a name, a role, set of goals for the agent to accomplish. "
+        "Your job is to break down those goals into a set of tasks that the agent can"
+        " accomplish to achieve those goals. "
+        "Agents are resourceful, but require clear instructions."
+        " Each task you create should have clearly defined `ready_criteria` that the"
+        " agent can check to see if the task is ready to be started."
+        " Each task should also have clearly defined `acceptance_criteria` that the"
+        " agent can check to evaluate if the task is complete. "
+        "You should create as many tasks as you think is necessary to accomplish"
+        " the goals.\n\n"
         "System Info:\n{system_info}"
     )
 
@@ -47,7 +52,9 @@ class InitialPlan(PromptStrategy):
 
     DEFAULT_CREATE_PLAN_FUNCTION = CompletionModelFunction(
         name="create_initial_agent_plan",
-        description="Creates a set of tasks that forms the initial plan for an autonomous agent.",
+        description=(
+            "Creates a set of tasks that forms the initial plan of an autonomous agent."
+        ),
         parameters={
             "task_list": JSONSchema(
                 type=JSONSchema.Type.ARRAY,
@@ -56,7 +63,10 @@ class InitialPlan(PromptStrategy):
                     properties={
                         "objective": JSONSchema(
                             type=JSONSchema.Type.STRING,
-                            description="An imperative verb phrase that succinctly describes the task.",
+                            description=(
+                                "An imperative verb phrase that succinctly describes "
+                                "the task."
+                            ),
                         ),
                         "type": JSONSchema(
                             type=JSONSchema.Type.STRING,
@@ -67,12 +77,19 @@ class InitialPlan(PromptStrategy):
                             type=JSONSchema.Type.ARRAY,
                             items=JSONSchema(
                                 type=JSONSchema.Type.STRING,
-                                description="A list of measurable and testable criteria that must be met for the task to be considered complete.",
+                                description=(
+                                    "A list of measurable and testable criteria that "
+                                    "must be met for the task to be considered "
+                                    "complete."
+                                ),
                             ),
                         ),
                         "priority": JSONSchema(
                             type=JSONSchema.Type.INTEGER,
-                            description="A number between 1 and 10 indicating the priority of the task relative to other generated tasks.",
+                            description=(
+                                "A number between 1 and 10 indicating the priority of "
+                                "the task relative to other generated tasks."
+                            ),
                             minimum=1,
                             maximum=10,
                         ),
@@ -80,7 +97,10 @@ class InitialPlan(PromptStrategy):
                             type=JSONSchema.Type.ARRAY,
                             items=JSONSchema(
                                 type=JSONSchema.Type.STRING,
-                                description="A list of measurable and testable criteria that must be met before the task can be started.",
+                                description=(
+                                    "A list of measurable and testable criteria that "
+                                    "must be met before the task can be started."
+                                ),
                             ),
                         ),
                     },

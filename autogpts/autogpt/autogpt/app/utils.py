@@ -5,7 +5,7 @@ import sys
 
 import requests
 from colorama import Fore, Style
-from git.repo import Repo
+from git import InvalidGitRepositoryError, Repo
 from prompt_toolkit import ANSI, PromptSession
 from prompt_toolkit.history import InMemoryHistory
 
@@ -62,7 +62,7 @@ async def clean_input(config: Config, prompt: str = ""):
 def get_bulletin_from_web():
     try:
         response = requests.get(
-            "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpts/autogpt/BULLETIN.md"
+            "https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/master/autogpts/autogpt/BULLETIN.md"  # noqa: E501
         )
         if response.status_code == 200:
             return response.text
@@ -77,7 +77,7 @@ def get_current_git_branch() -> str:
         repo = Repo(search_parent_directories=True)
         branch = repo.active_branch
         return branch.name
-    except:
+    except InvalidGitRepositoryError:
         return ""
 
 
@@ -94,7 +94,7 @@ def get_latest_bulletin() -> tuple[str, bool]:
     news_header = Fore.YELLOW + "Welcome to AutoGPT!\n"
     if new_bulletin or current_bulletin:
         news_header += (
-            "Below you'll find the latest AutoGPT News and updates regarding features!\n"
+            "Below you'll find the latest AutoGPT News and feature updates!\n"
             "If you don't wish to see this message, you "
             "can run AutoGPT with the *--skip-news* flag.\n"
         )
@@ -145,7 +145,7 @@ behalf. You acknowledge that using the System could expose you to potential liab
 
 ## Indemnification
 By using the System, you agree to indemnify, defend, and hold harmless the Project Parties from and against any and all claims, liabilities, damages, losses, or expenses (including reasonable attorneys' fees and costs) arising out of or in connection with your use of the System, including, without limitation, any actions taken by the System on your behalf, any failure to properly supervise or monitor the System, and any resulting harm or unintended consequences.
-            """
+    """  # noqa: E501
     return legal_text
 
 

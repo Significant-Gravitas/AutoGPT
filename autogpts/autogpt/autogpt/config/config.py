@@ -99,7 +99,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Web browsing
     selenium_web_browser: str = "chrome"
     selenium_headless: bool = True
-    user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"
+    user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"  # noqa: E501
 
     ###################
     # Plugin Settings #
