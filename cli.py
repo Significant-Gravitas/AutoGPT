@@ -1,3 +1,4 @@
+
 """
 This is a minimal file intended to be run by users to help them manage the autogpt projects.
 
