@@ -1,6 +1,6 @@
 from autogpt.config import Config
 
-from .memory_item import MemoryItem, MemoryItemRelevance
+from .memory_item import MemoryItem, MemoryItemFactory, MemoryItemRelevance
 from .providers.base import VectorMemoryProvider as VectorMemory
 from .providers.json_file import JSONFileMemory
 from .providers.no_memory import NoMemory
@@ -144,6 +144,7 @@ def get_supported_memory_backends():
 __all__ = [
     "get_memory",
     "MemoryItem",
+    "MemoryItemFactory",
     "MemoryItemRelevance",
     "JSONFileMemory",
     "NoMemory",
