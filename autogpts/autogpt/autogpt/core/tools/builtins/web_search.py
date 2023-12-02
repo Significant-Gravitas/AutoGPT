@@ -16,6 +16,10 @@ from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.exceptions import ConfigurationError
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
+COMMAND_CATEGORY = "web_search"
+COMMAND_CATEGORY_TITLE = "Web Search"
+
+
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 

@@ -221,10 +221,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     async def propose_action(self) -> ThoughtProcessOutput:
-        """Runs the agent for one cycle.
-
-        Params:
-            instruction: The instruction to put at the end of the prompt.
+        """Proposes the next action to execute, based on the task and current state.
 
         Returns:
             The command name and arguments, if any, and the agent's thoughts.
@@ -274,7 +271,7 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
             user_input: The user's input, if any.
 
         Returns:
-            The results of the command.
+            ActionResult: An object representing the result(s) of the command.
         """
         ...
 
@@ -285,13 +282,13 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         extra_messages: Optional[list[ChatMessage]] = None,
         **extras,
     ) -> ChatPrompt:
-        """Constructs and returns a prompt with the following structure:
-        1. System prompt
-        2. Message history of the agent, truncated & prepended with running summary as needed
-        3. `cycle_instruction`
+        """Constructs a prompt using `self.prompt_strategy`.
 
         Params:
-            cycle_instruction: The final instruction for a thinking cycle
+            scratchpad: An object for plugins to write additional prompt elements to.
+                (E.g. commands, constraints, best practices)
+            extra_commands: Additional commands that the agent has access to.
+            extra_messages: Additional messages to include in the prompt.
         """
         if not extra_commands:
             extra_commands = []
@@ -340,7 +337,9 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         output to the prompt.
 
         Params:
-            instruction: The instruction for the current cycle, also used in constructing the prompt
+            prompt: The prompt that is about to be executed.
+            scratchpad: An object for plugins to write additional prompt elements to.
+                (E.g. commands, constraints, best practices)
 
         Returns:
             The prompt to execute
@@ -377,13 +376,13 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
     ) -> ThoughtProcessOutput:
         """Called upon receiving a response from the chat model.
 
-        Adds the last/newest message in the prompt and the response to `history`,
-        and calls `self.parse_and_process_response()` to do the rest.
+        Calls `self.parse_and_process_response()`.
 
         Params:
-            llm_response: The raw response from the chat model
-            prompt: The prompt that was executed
-            instruction: The instruction for the current cycle, also used in constructing the prompt
+            llm_response: The raw response from the chat model.
+            prompt: The prompt that was executed.
+            scratchpad: An object containing additional prompt elements from plugins.
+                (E.g. commands, constraints, best practices)
 
         Returns:
             The parsed command name and command args, if any, and the agent thoughts.
@@ -410,9 +409,10 @@ class BaseAgent(Configurable[BaseAgentSettings], ABC):
         since the implementation depends on the role of the derivative Agent.
 
         Params:
-            llm_response: The raw response from the chat model
-            prompt: The prompt that was executed
-            instruction: The instruction for the current cycle, also used in constructing the prompt
+            llm_response: The raw response from the chat model.
+            prompt: The prompt that was executed.
+            scratchpad: An object containing additional prompt elements from plugins.
+                (E.g. commands, constraints, best practices)
 
         Returns:
             The parsed command name and command args, if any, and the agent thoughts.

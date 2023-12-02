@@ -44,9 +44,12 @@ class BrowsingError(ToolExecutionError):
 
 @tool(
     "read_webpage",
-    "Read a webpage, and extract specific information from it if a question is specified."
-    " If you are looking to extract specific information from the webpage, you should"
-    " specify a question.",
+    (
+        "Read a webpage, and extract specific information from it"
+        " if a question is specified."
+        " If you are looking to extract specific information from the webpage,"
+        " you should specify a question."
+    ),
     {
         "url": JSONSchema(
             type=JSONSchema.Type.STRING,
@@ -55,7 +58,9 @@ class BrowsingError(ToolExecutionError):
         ),
         "question": JSONSchema(
             type=JSONSchema.Type.STRING,
-            description="A question that you want to answer using the content of the webpage.",
+            description=(
+                "A question that you want to answer using the content of the webpage."
+            ),
             required=False,
         ),
     },
@@ -111,8 +116,8 @@ async def read_webpage(url: str, agent: BaseAgent, question: str = "") -> str:
         msg = e.msg.split("\n")[0]
         if "net::" in msg:
             raise BrowsingError(
-                f"A networking error occurred while trying to load the page: "
-                + re.sub(r"^unknown error: ", "", msg)
+                "A networking error occurred while trying to load the page: %s"
+                % re.sub(r"^unknown error: ", "", msg)
             )
         raise ToolExecutionError(msg)
     finally:
@@ -270,7 +275,12 @@ async def summarize_memorize_webpage(
 
     # memory = get_memory(agent.legacy_config)
 
-    # new_memory = MemoryItem.from_webpage(text, url, agent.legacy_config, question=question)
+    # new_memory = MemoryItem.from_webpage(
+    #     content=text,
+    #     url=url,
+    #     config=agent.legacy_config,
+    #     question=question,
+    # )
     # memory.add(new_memory)
 
     summary, _ = await summarize_text(

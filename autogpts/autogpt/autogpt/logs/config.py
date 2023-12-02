@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from google.cloud.logging_v2.handlers import CloudLoggingFilter
 from openai.util import logger as openai_logger
 
 if TYPE_CHECKING:

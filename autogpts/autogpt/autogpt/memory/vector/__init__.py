@@ -1,8 +1,6 @@
-import logging
-
 from autogpt.config import Config
 
-from .memory_item import MemoryItem, MemoryItemRelevance
+from .memory_item import MemoryItem, MemoryItemFactory, MemoryItemRelevance
 from .providers.base import VectorMemoryProvider as VectorMemory
 from .providers.json_file import JSONFileMemory
 from .providers.no_memory import NoMemory
@@ -41,7 +39,8 @@ supported_memory = ["json_file", "no_memory"]
 
 
 def get_memory(config: Config) -> VectorMemory:
-    """Returns a memory object corresponding to the memory backend specified in the config.
+    """
+    Returns a memory object corresponding to the memory backend specified in the config.
 
     The type of memory object returned depends on the value of the `memory_backend`
     attribute in the configuration. E.g. if `memory_backend` is set to "pinecone", a
@@ -50,11 +49,11 @@ def get_memory(config: Config) -> VectorMemory:
     By default, a `JSONFileMemory` object is returned.
 
     Params:
-        config: A configuration object that contains information about the memory backend
-            to be used and other relevant parameters.
+        config: A configuration object that contains information about the memory
+            backend to be used and other relevant parameters.
 
     Returns:
-        VectorMemory: an instance of a memory object based on the configuration provided.
+        VectorMemory: an instance of a memory object based on the configuration provided
     """
     memory = None
 
@@ -65,8 +64,8 @@ def get_memory(config: Config) -> VectorMemory:
         case "pinecone":
             raise NotImplementedError(
                 "The Pinecone memory backend has been rendered incompatible by work on "
-                "the memory system, and was removed. Whether support will be added back "
-                "in the future is subject to discussion, feel free to pitch in: "
+                "the memory system, and was removed. Whether support will be added "
+                "back in the future is subject to discussion, feel free to pitch in: "
                 "https://github.com/Significant-Gravitas/AutoGPT/discussions/4280"
             )
             # if not PineconeMemory:
@@ -95,14 +94,14 @@ def get_memory(config: Config) -> VectorMemory:
         case "weaviate":
             raise NotImplementedError(
                 "The Weaviate memory backend has been rendered incompatible by work on "
-                "the memory system, and was removed. Whether support will be added back "
-                "in the future is subject to discussion, feel free to pitch in: "
+                "the memory system, and was removed. Whether support will be added "
+                "back in the future is subject to discussion, feel free to pitch in: "
                 "https://github.com/Significant-Gravitas/AutoGPT/discussions/4280"
             )
             # if not WeaviateMemory:
             #     logger.warn(
-            #         "Error: Weaviate is not installed. Please install weaviate-client to"
-            #         " use Weaviate as a memory backend."
+            #         "Error: Weaviate is not installed. Please install weaviate-client"
+            #         " to use Weaviate as a memory backend."
             #     )
             # else:
             #     memory = WeaviateMemory(config)
@@ -110,14 +109,15 @@ def get_memory(config: Config) -> VectorMemory:
         case "milvus":
             raise NotImplementedError(
                 "The Milvus memory backend has been rendered incompatible by work on "
-                "the memory system, and was removed. Whether support will be added back "
-                "in the future is subject to discussion, feel free to pitch in: "
+                "the memory system, and was removed. Whether support will be added "
+                "back in the future is subject to discussion, feel free to pitch in: "
                 "https://github.com/Significant-Gravitas/AutoGPT/discussions/4280"
             )
             # if not MilvusMemory:
             #     logger.warn(
-            #         "Error: pymilvus sdk is not installed."
-            #         "Please install pymilvus to use Milvus or Zilliz Cloud as memory backend."
+            #         "Error: pymilvus sdk is not installed, but required "
+            #         "to use Milvus or Zilliz as memory backend. "
+            #         "Please install pymilvus."
             #     )
             # else:
             #     memory = MilvusMemory(config)
@@ -127,7 +127,8 @@ def get_memory(config: Config) -> VectorMemory:
 
         case _:
             raise ValueError(
-                f"Unknown memory backend '{config.memory_backend}'. Please check your config."
+                f"Unknown memory backend '{config.memory_backend}'."
+                " Please check your config."
             )
 
     if memory is None:
@@ -143,6 +144,7 @@ def get_supported_memory_backends():
 __all__ = [
     "get_memory",
     "MemoryItem",
+    "MemoryItemFactory",
     "MemoryItemRelevance",
     "JSONFileMemory",
     "NoMemory",

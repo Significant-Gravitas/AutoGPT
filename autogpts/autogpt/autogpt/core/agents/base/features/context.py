@@ -61,10 +61,10 @@ class ContextMixin:
                 0,
                 ChatMessage.system(
                     "## Context\n"
-                    + self.context.format_numbered()
-                    + "\n\nWhen a context item is no longer needed and you are not done yet,"
-                    " you can hide the item by specifying its number in the list above"
-                    " to `hide_context_item`.",
+                    f"{self.context.format_numbered()}\n\n"
+                    "When a context item is no longer needed and you are not done yet, "
+                    "you can hide the item by specifying its number in the list above "
+                    "to `hide_context_item`.",
                 ),
             )
 

@@ -4,3 +4,11 @@
 # from autogpts.autogpt.autogpt.core.memory.simple import Memory.SystemSettings, SimpleMemory
 
 # from autogpts.autogpt.autogpt.core.memory.table.base import BaseTable
+# from autogpt.core.memory.base import Memory
+# from autogpt.core.memory.simple import MemorySettings, SimpleMemory
+
+# __all__ = [
+#     "Memory",
+#     "MemorySettings",
+#     "SimpleMemory",
+# ]

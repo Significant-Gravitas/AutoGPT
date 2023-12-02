@@ -1,4 +1,5 @@
 import os
+import uuid
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -51,7 +52,10 @@ def workspace(workspace_root: Path) -> FileWorkspace:
 
 @pytest.fixture
 def temp_plugins_config_file():
-    """Create a plugins_config.yaml file in a temp directory so that it doesn't mess with existing ones"""
+    """
+    Create a plugins_config.yaml file in a temp directory
+    so that it doesn't mess with existing ones.
+    """
     config_directory = TemporaryDirectory()
     config_file = Path(config_directory.name) / "plugins_config.yaml"
     with open(config_file, "w+") as f:
@@ -126,6 +130,7 @@ def agent(
     agent_settings = AgentSettings(
         name=Agent.default_settings.name,
         description=Agent.default_settings.description,
+        agent_id=f"AutoGPT-test-agent-{str(uuid.uuid4())[:8]}",
         ai_profile=ai_profile,
         config=AgentConfiguration(
             fast_llm=config.fast_llm,

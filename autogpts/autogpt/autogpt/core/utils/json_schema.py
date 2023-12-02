@@ -96,8 +96,9 @@ class JSONSchema(BaseModel):
             schema (JSONSchema): The JSONSchema to validate against.
 
         Returns:
-            tuple: A tuple where the first element is a boolean indicating whether the object is valid or not,
-                and the second element is a list of errors found in the object, or None if the object is valid.
+            tuple: A tuple where the first element is a boolean indicating whether the
+                object is valid or not, and the second element is a list of errors found
+                in the object, or None if the object is valid.
         """
         validator = Draft7Validator(self.to_dict())
 

@@ -16,6 +16,9 @@ from autogpts.autogpt.autogpt.core.utils.url.validators import validate_url
 
 from .decorators import sanitize_path_arg
 
+COMMAND_CATEGORY = "git_operations"
+COMMAND_CATEGORY_TITLE = "Git Operations"
+
 
 @tool(
     "clone_repository",
@@ -48,7 +51,7 @@ def clone_repository(url: str, clone_path: Path, task: Task, agent: BaseAgent) -
         str: The result of the clone operation.
     """
     split_url = url.split("//")
-    auth_repo_url = f"//{agent.legacy_config.github_username}:{agent.legacy_config.github_api_key}@".join(
+    auth_repo_url = f"//{agent.legacy_config.github_username}:{agent.legacy_config.github_api_key}@".join(  # noqa: E501
         split_url
     )
     try:

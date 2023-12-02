@@ -116,11 +116,14 @@ class CommandRegistry:
                 yield cmd
 
     # def command_specs(self) -> str:
-    #     """Returns a technical declaration of all commands in the registry for use in a prompt"""
+    #     """
+    #     Returns a technical declaration of all commands in the registry,
+    #     for use in a prompt.
+    #     """
     #
-    #     Declaring functions or commands should be done in a model-specific way to achieve
-    #     optimal results. For this reason, it should NOT be implemented here, but in an
-    #     LLM provider module.
+    #     Declaring functions or commands should be done in a model-specific way to
+    #     achieve optimal results. For this reason, it should NOT be implemented here,
+    #     but in an LLM provider module.
     #     MUST take command AVAILABILITY into account.
 
     @staticmethod
@@ -128,7 +131,8 @@ class CommandRegistry:
         new_registry = CommandRegistry()
 
         logger.debug(
-            f"The following command categories are disabled: {config.disabled_command_categories}"
+            "The following command categories are disabled: "
+            f"{config.disabled_command_categories}"
         )
         enabled_command_modules = [
             x for x in modules if x not in config.disabled_command_categories

@@ -7,7 +7,7 @@ import time
 
 import click
 import yaml
-from agent_protocol import Agent as AgentProtocol
+
 from fastapi import requests
 
 from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.api import \

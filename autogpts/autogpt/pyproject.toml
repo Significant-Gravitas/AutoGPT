@@ -127,17 +127,32 @@ sections = [
     "FIRSTPARTY",
     "LOCALFOLDER"
 ]
-skip = '''
-    .tox
-    __pycache__
-    *.pyc
-    .env
-    venv*/*
-    .venv/*
-    reports/*
-    dist/*
+extend_skip = [
+    "agbenchmark_config/temp_folder/",
+    "data/",
+]
 
-'''
+
+[tool.mypy]
+follow_imports = 'skip'
+check_untyped_defs = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+files = [
+    'autogpt/**/*.py',
+    'tests/**/*.py'
+]
+
+[[tool.mypy.overrides]]
+module = 'tests.*'
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    'requests.*',
+    'yaml.*'
+]
+ignore_missing_imports = true
 
 
 [tool.pytest.ini_options]

@@ -2,6 +2,7 @@
 /agents (GET): Returns a list of all agents.
 AP alias /agent/tasks (GET): Returns a list of all agents.
     => Need Agent (Parent) to define this properties : agent_id, client_facing, status
+import logging
 
     
 /agent (POST): Create a new agent.

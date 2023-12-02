@@ -23,7 +23,6 @@ from autogpts.autogpt.autogpt.core.utils.exceptions import \
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
-from .file_context import open_file, open_folder  # NOQA
 from .file_operations_utils import read_textual_file
 
 logger = forge_log.ForgeLogger(__name__)
@@ -185,10 +184,10 @@ def ingest_file(
     #     logger.info(f"Ingesting file {filename}")
     #     content = read_file(filename)
 
-    #     # TODO: differentiate between different types of files
-    #     file_memory = MemoryItem.from_text_file(content, filename)
-    #     logger.debug(f"Created memory: {file_memory.dump(True)}")
-    #     memory.add(file_memory)
+    # TODO: differentiate between different types of files
+    file_memory = MemoryItemFactory.from_text_file(content, filename)
+    logger.debug(f"Created memory: {file_memory.dump(True)}")
+    memory.add(file_memory)
 
     #     logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
     # except Exception as err:

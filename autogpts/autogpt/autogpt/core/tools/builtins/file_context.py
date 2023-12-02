@@ -23,6 +23,10 @@ from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 from .decorators import sanitize_path_arg
 
 
+if TYPE_CHECKING:
+    from autogpt.agents import Agent, BaseAgent
+
+
 def agent_implements_context(task: Task, agent: BaseAgent) -> bool:
     raise NotImplementedError("Not Implemented")
     return False
@@ -31,8 +35,9 @@ def agent_implements_context(task: Task, agent: BaseAgent) -> bool:
 
 @tool(
     "open_file",
-    "Open a file for editing or continued viewing; create it if it does not exist yet."
-    " Note: if you only need to read or write a file once, use `write_to_file` instead.",
+    "Opens a file for editing or continued viewing;"
+    " creates it if it does not exist yet. "
+    "Note: If you only need to read or write a file once, use `write_to_file` instead.",
     {
         "file_path": JSONSchema(
             type=JSONSchema.Type.STRING,
@@ -79,7 +84,8 @@ def open_file(
     #     raise DuplicateOperationError(f"The file {file_path} is already open")
 
     return (
-        f"File {file_path}{' created,' if created else ''} has been opened and added to the context ✅",
+        f"File {file_path}{' created,' if created else ''} has been opened"
+        " and added to the context ✅",
         file,
     )
 
