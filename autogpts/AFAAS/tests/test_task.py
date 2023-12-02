@@ -31,27 +31,36 @@ task_prepare_main_course.add_predecessor(task_set_table)
 task_serve_dinner = Task(task_id="400", task_goal="400. Serve Main Course")
 task_serve_dinner.add_predecessor(task_prepare_main_course)
 task_serve_dinner.add_predecessor(task_serve_salad)
-task_make_banana_bread = Task(task_id="1000", task_goal="500. Make Banana Bread")
+task_make_banana_bread = Task(task_id="600", task_goal="600. Make Banana Bread")
+
+subtask_chop_ingredients = Task(task_id="131", task_goal="131. Chop Ingredients")
+subtask_chop_ingredients.add_predecessor(task_buy_groceries)
+subtask_chop_ingredients.add_predecessor(task_clean_kitchen)
+subtask_marinate_meat = Task(task_id="132", task_goal="132. Marinate Meat")
+subtask_marinate_meat.add_predecessor(subtask_chop_ingredients)
+subtask_preheat_oven_main_course = Task(task_id="133", task_goal="133. Preheat Oven for Main Course")
+subtask_preheat_oven_main_course.add_predecessor(task_buy_groceries)
+subtask_finish_main_course = Task(task_id="134", task_goal="134. Finish Main Course")
+subtask_finish_main_course.add_predecessor(subtask_preheat_oven_main_course)
 
 # Subtasks for 'Make Banana Bread'
 task_gather_ingredients = Task(task_id="50", task_goal="50. Gather Ingredients")
 task_gather_ingredients.add_predecessor(task_buy_groceries)
 task_gather_ingredients.add_predecessor(task_clean_kitchen)
-task_preheat_oven = Task(task_id="310", task_goal="310. Preheat Oven")
-task_preheat_oven.add_predecessor(task_gather_ingredients)
 task_prepare_baking_pan = Task(task_id="320", task_goal="320. Prepare Baking Pan")
-task_prepare_baking_pan.add_predecessor(task_gather_ingredients)
-task_mix_ingredients = Task(task_id="440", task_goal="440. Mix Ingredients")
+task_mix_ingredients = Task(task_id="350", task_goal="350. Mix Ingredients")
 task_mix_ingredients.add_predecessor(task_buy_groceries)
 task_mix_ingredients.add_predecessor(task_clean_kitchen)
 task_mix_ingredients.add_predecessor(task_gather_ingredients)
 task_bake_bread = Task(task_id="450", task_goal="450. Bake the Bread")
+task_bake_bread.add_predecessor(subtask_finish_main_course)
 task_bake_bread.add_predecessor(task_mix_ingredients)
 task_cool_bread = Task(task_id="490", task_goal="490. Cool the Bread")
 task_cool_bread.add_predecessor(task_bake_bread)
-task_serve_bread = Task(task_id="500", task_goal="400. Serve Banana Bread")
+task_serve_bread = Task(task_id="500", task_goal="500. Serve Banana Bread")
 task_serve_bread.add_predecessor(task_cool_bread)
 task_serve_bread.add_predecessor(task_serve_dinner)
+
 
 # Subtasks for 'Mix Ingredients'
 subtask_measure_flour = Task(task_id="351", task_goal="351. Measure Flour")
@@ -61,6 +70,15 @@ subtask_mash_bananas.add_predecessor(task_gather_ingredients)
 subtask_combine_wet_ingredients = Task(task_id="353", task_goal="353. Combine Wet Ingredients")
 subtask_combine_wet_ingredients.add_predecessor(subtask_mash_bananas)
 subtask_combine_wet_ingredients.add_predecessor(subtask_measure_flour)
+
+subtask_grease_pan = Task(task_id="321", task_goal="321. Grease Baking Pan")
+subtask_grease_pan.add_predecessor(task_gather_ingredients)
+subtask_line_pan = Task(task_id="322", task_goal="322. Line Baking Pan with Parchment Paper")
+subtask_line_pan.add_predecessor(subtask_grease_pan)
+
+subtask_find_ingredients_list = Task(task_id="51", task_goal="51. Find Ingredients List")
+subtask_check_pantry = Task(task_id="52", task_goal="52. Check Pantry for Ingredients")
+subtask_check_pantry.add_predecessor(subtask_find_ingredients_list)
 
 plan_prepare_dinner.add_task(task_make_banana_bread)
 plan_prepare_dinner.add_task(task_set_table)
@@ -73,147 +91,154 @@ plan_prepare_dinner.add_task(task_clean_kitchen)
 plan_prepare_dinner.add_task(task_choose_music)
 plan_prepare_dinner.add_task(task_decorate_dining_room)
 plan_prepare_dinner.add_task(task_set_mood)
+task_prepare_main_course.add_task(subtask_chop_ingredients)
+task_prepare_main_course.add_task(subtask_marinate_meat)
+task_prepare_main_course.add_task(subtask_preheat_oven_main_course)
+task_prepare_main_course.add_task(subtask_finish_main_course)
 task_make_banana_bread.add_task(task_gather_ingredients)
-task_make_banana_bread.add_task(task_preheat_oven)
 task_make_banana_bread.add_task(task_prepare_baking_pan)
 task_make_banana_bread.add_task(task_mix_ingredients)
 task_make_banana_bread.add_task(task_bake_bread)
 task_make_banana_bread.add_task(task_cool_bread)
 task_make_banana_bread.add_task(task_serve_bread)
+task_gather_ingredients.add_task(subtask_find_ingredients_list)
+task_gather_ingredients.add_task(subtask_check_pantry)
+task_prepare_baking_pan.add_task(subtask_grease_pan)
+task_prepare_baking_pan.add_task(subtask_line_pan)
 task_mix_ingredients.add_task(subtask_measure_flour)
 task_mix_ingredients.add_task(subtask_mash_bananas)
 task_mix_ingredients.add_task(subtask_combine_wet_ingredients)
 
 @pytest.fixture
 def plan_step_0():
-    # Task 'task_prepare_dinner' has multiple subtasks
+    # Initial setup with multiple subtasks
     return copy.deepcopy(plan_prepare_dinner)
 
 @pytest.fixture
 def plan_step_1():
-    t : Plan = plan_step_0()
+    t = plan_step_0()
+    # Marking initial tasks as done
     t.get_task(task_id="5").state = TaskStatusList.DONE
     t.get_task(task_id="15").state = TaskStatusList.DONE
     t.get_task(task_id="25").state = TaskStatusList.DONE
     t.get_task(task_id="35").state = TaskStatusList.DONE
+    # These tasks become ready as their predecessors are done
     t.get_task(task_id="45").state = TaskStatusList.READY
+    # Task 50 is not yet ready since its subtasks are not done
     t.get_task(task_id="50").state = TaskStatusList.READY
+    t.get_task(task_id="51").state = TaskStatusList.READY
     t.get_task(task_id="110").state = TaskStatusList.READY
-    # Task 'task_prepare_dinner' has multiple subtasks
     return t
 
 @pytest.fixture
 def plan_step_2a():
-    t : Plan = plan_step_1()
+    t = plan_step_1()
+    t.get_task(task_id="45").state = TaskStatusList.DONE
+    t.get_task(task_id="51").state = TaskStatusList.DONE
+    t.get_task(task_id="52").state = TaskStatusList.READY
     t.get_task(task_id="110").state = TaskStatusList.DONE
     t.get_task(task_id="120").state = TaskStatusList.READY
     t.get_task(task_id="130").state = TaskStatusList.READY
-    # Task 'task_prepare_dinner' has multiple subtasks
+    t.get_task(task_id="131").state = TaskStatusList.READY
+    t.get_task(task_id="133").state = TaskStatusList.READY
     return t
-
 
 @pytest.fixture
 def plan_step_2b():
-    t : Plan = plan_step_1()
-    t.get_task(task_id="45").state = TaskStatusList.DONE
+    t = plan_step_2a()
+    t.get_task(task_id="52").state = TaskStatusList.DONE
+    # Task 50 can now be marked as done, as its subtasks are done
     t.get_task(task_id="50").state = TaskStatusList.DONE
-    t.get_task(task_id="310").state = TaskStatusList.READY
+    # Task 320 is not yet ready since its subtasks are not done
     t.get_task(task_id="320").state = TaskStatusList.READY
+    t.get_task(task_id="321").state = TaskStatusList.READY
+    t.get_task(task_id="350").state = TaskStatusList.READY
     t.get_task(task_id="351").state = TaskStatusList.READY
     t.get_task(task_id="352").state = TaskStatusList.READY
-    # Task 'task_prepare_dinner' has multiple subtasks
-    return t
-
-@pytest.fixture
-def plan_step_3a():
-    t : Plan = plan_step_2b()
     t.get_task(task_id="120").state = TaskStatusList.DONE
-    t.get_task(task_id="130").state = TaskStatusList.DONE
-    t.get_task(task_id="390").state = TaskStatusList.READY
-    # Task 'task_prepare_dinner' has multiple subtasks
+    t.get_task(task_id="131").state = TaskStatusList.DONE
+    t.get_task(task_id="132").state = TaskStatusList.READY
+    t.get_task(task_id="133").state = TaskStatusList.DONE
     return t
 
-
 @pytest.fixture
-def plan_step_3b():
-    t : Plan = plan_step_3a()
-    t.get_task(task_id="310").state = TaskStatusList.DONE
-    t.get_task(task_id="320").state = TaskStatusList.DONE
+def plan_step_2c():
+    t = plan_step_2b()
+    t.get_task(task_id="321").state = TaskStatusList.DONE
+    t.get_task(task_id="322").state = TaskStatusList.READY
+    t.get_task(task_id="132").state = TaskStatusList.DONE
+    t.get_task(task_id="134").state = TaskStatusList.READY
     t.get_task(task_id="351").state = TaskStatusList.DONE
     t.get_task(task_id="352").state = TaskStatusList.DONE
     t.get_task(task_id="353").state = TaskStatusList.READY
-    # Task 'task_prepare_dinner' has multiple subtasks
     return t
 
 @pytest.fixture
-def plan_step_4a():
-    t : Plan = plan_step_3b()
-    t.get_task(task_id="390").state = TaskStatusList.DONE
-    t.get_task(task_id="400").state = TaskStatusList.READY
-    # Task 'task_prepare_dinner' has multiple subtasks
+def plan_step_3():
+    t = plan_step_2b()
+
+    # Marking tasks as done, enabling other tasks to become read
+    t.get_task(task_id="134").state = TaskStatusList.DONE
+    t.get_task(task_id="130").state = TaskStatusList.DONE
+    # Task 320 can now be marked as ready
+    t.get_task(task_id="322").state = TaskStatusList.DONE
+    t.get_task(task_id="320").state = TaskStatusList.DONE
+
     return t
 
 @pytest.fixture
-def plan_step_4b():
-    t : Plan = plan_step_4a()
+def plan_step_4():
+    t = plan_step_3()
     t.get_task(task_id="353").state = TaskStatusList.DONE
-    t.get_task(task_id="440").state = TaskStatusList.READY
-    # Task 'task_prepare_dinner' has multiple subtasks
-    return t
-
-@pytest.fixture
-def plan_step_5a():
-    t : Plan = plan_step_4b()
-    t.get_task(task_id="400").state = TaskStatusList.DONE
-    return t
-
-@pytest.fixture
-def plan_step_5b():
-    t : Plan = plan_step_5a()
-    t.get_task(task_id="440").state = TaskStatusList.DONE
+    t.get_task(task_id="350").state = TaskStatusList.DONE
     t.get_task(task_id="450").state = TaskStatusList.READY
-    # Task 'task_prepare_dinner' has multiple subtasks
+    return t
+
+@pytest.fixture
+def plan_step_5():
+    t = plan_step_4()
+    t.get_task(task_id="350").state = TaskStatusList.DONE
     return t
 
 @pytest.fixture
 def plan_step_6():
-    t : Plan = plan_step_5b()
-    t.get_task(task_id="450").state = TaskStatusList.DONE
-    t.get_task(task_id="490").state = TaskStatusList.READY
-    # Task 'task_prepare_dinner' has multiple subtasks
+    t = plan_step_5()
+    t.get_task(task_id="390").state = TaskStatusList.READY
     return t
 
 @pytest.fixture
 def plan_step_7():
-    t : Plan = plan_step_6()
-    t.get_task(task_id="490").state = TaskStatusList.DONE
-    t.get_task(task_id="500").state = TaskStatusList.READY
-    # Task 'task_prepare_dinner' has multiple subtasks
+    t = plan_step_6()
+    t.get_task(task_id="390").state = TaskStatusList.DONE
+    t.get_task(task_id="400").state = TaskStatusList.READY
     return t
 
 @pytest.fixture
 def plan_step_8():
-    t : Plan = plan_step_7()
-    t.get_task(task_id="500").state = TaskStatusList.DONE
-    # Task 'task_prepare_dinner' has multiple subtasks
+    t = plan_step_7()
+    t.get_task(task_id="400").state = TaskStatusList.DONE
     return t
 
+@pytest.fixture
+def plan_step_9():
+    t = plan_step_8()
+    t.get_task(task_id="450").state = TaskStatusList.DONE
+    t.get_task(task_id="490").state = TaskStatusList.READY
+    return t
 
-plan_steps = (
-    plan_step_0,
-    plan_step_1,
-    plan_step_2a,
-    plan_step_2b,
-    plan_step_3a,
-    plan_step_3b,
-    plan_step_4a,
-    plan_step_4b,
-    plan_step_5a,
-    plan_step_5b,
-    plan_step_6,
-    plan_step_7,
-    plan_step_8,
-)
+@pytest.fixture
+def plan_step_10():
+    t = plan_step_9()
+    t.get_task(task_id="490").state = TaskStatusList.DONE
+    t.get_task(task_id="500").state = TaskStatusList.READY
+    return t
+
+@pytest.fixture
+def plan_step_11():
+    t = plan_step_10()
+    t.get_task(task_id="500").state = TaskStatusList.DONE
+    return t
+
 
 @pytest.fixture
 def task_ready_no_predecessors_or_subtasks(plan_step_0: Plan):
@@ -234,6 +259,65 @@ def task_ready_all_subtasks_done(plan_step_8: Plan):
 def task_with_mixed_predecessors(plan_step_7: Plan):
     # Task 'task_serve_bread' with some predecessors done and some not
     return plan_step_7.get_task(task_id="500")
+
+@pytest.mark.parametrize("plan_step, expected_task_ids", [
+    # Initial state, where tasks 5, 15, 25, 35, and 51 are ready and have no subtasks
+    (plan_step_0, ["5", "15", "25", "35", "51"]),
+
+
+    (plan_step_1, ["45", "110", "52"]),
+
+    # After subtask 52 is done, task 50 can be marked as done, and tasks 120, 130, 131 become ready
+    (plan_step_2a, ["45", "110", "120", "130", "131"]),
+
+    # After tasks 110, 131 are done, tasks 132, 133, 320, 351, and 352 become ready
+    (plan_step_3, ["45", "120", "130", "132", "133", "320", "351", "352"]),
+
+    # After tasks 132, 133, 351, 352 are done, tasks 134, 353, and 350 become ready
+    (plan_step_4, ["45", "120", "130", "134", "353", "350"]),
+
+    # After tasks 134, 353, 120, 130 are done, tasks 390, 450 become ready
+    (plan_step_5, ["45", "390", "350", "450"]),
+
+    # After tasks 390, 350 are done, tasks 400, 490 become ready
+    (plan_step_6, ["45", "400", "450", "490"]),
+
+    # After tasks 400, 450 are done, task 500 becomes ready
+    (plan_step_7, ["45", "490", "500"]),
+
+    # After task 490 is done, task 500 remains ready
+    (plan_step_8, ["45", "500"]),
+
+    # After task 500 is done, no more tasks are ready
+    (plan_step_9, ["45"]),
+
+    # After task 45 is done, no more tasks are ready
+    (plan_step_10, []),
+])
+def test_get_ready_leaf_tasks(plan_step, expected_task_ids):
+    ready_tasks = plan_step.get_ready_leaf_tasks()
+    ready_task_ids = [task.task_id for task in ready_tasks]
+    assert set(ready_task_ids) == set(expected_task_ids)
+
+@pytest.mark.parametrize("plan_step, expected_task_id", [
+    (plan_step_0, "5"),   # "5. Buy Groceries" is ready
+    (plan_step_1, "45"),  # "45. Set the Mood for Dinner" is ready
+    (plan_step_2a, "110"), # "110. Set the Table" is ready
+    (plan_step_3, "50"),
+    (plan_step_4, "134"),
+    (plan_step_5, "390"), # "390. Serve Salad" is ready
+    (plan_step_6, "400"), # "400. Serve Main Course" is ready
+    (plan_step_7, "490"), # "490. Cool the Bread" is ready
+    (plan_step_8, "500"), # "500. Serve Banana Bread" is ready
+    (plan_step_9, "45"),  # "45. Set the Mood for Dinner" is ready
+    (plan_step_10, None)  # No task is ready
+])
+def test_get_first_ready_task(plan_step, expected_task_id):
+    first_ready_task = plan_step.get_first_ready_task()
+    if expected_task_id is None:
+        assert first_ready_task is None
+    else:
+        assert first_ready_task.task_id == expected_task_id
 
 
 
