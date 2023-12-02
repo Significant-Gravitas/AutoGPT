@@ -22,8 +22,10 @@ from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 logger = logging.getLogger(__name__)
-from  autogpts.AFAAS.app.sdk import forge_log
+from autogpts.AFAAS.app.sdk import forge_log
+
 logger = forge_log.ForgeLogger(__name__)
+
 
 @tool(
     "generate_image",
@@ -144,11 +146,13 @@ def generate_image_with_dalle(
         )
         size = closest
 
-    response = client.images.generate(prompt=prompt,
-    n=1,
-    size=f"{size}x{size}",
-    response_format="b64_json",
-    api_key=agent.legacy_config.openai_api_key)
+    response = client.images.generate(
+        prompt=prompt,
+        n=1,
+        size=f"{size}x{size}",
+        response_format="b64_json",
+        api_key=agent.legacy_config.openai_api_key,
+    )
 
     logger.info(f"Image Generated for prompt:{prompt}")
 

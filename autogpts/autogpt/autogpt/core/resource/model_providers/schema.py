@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 import enum
-from typing import (Callable, ClassVar, Protocol)
+from typing import Callable, ClassVar, Protocol
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
@@ -139,7 +139,8 @@ class AbstractModelProvider(abc.ABC):
     def get_remaining_budget(self) -> float:
         ...
 
-class AbstractLanguageModelProvider(AbstractModelProvider) :
+
+class AbstractLanguageModelProvider(AbstractModelProvider):
     @abc.abstractmethod
     def has_oa_tool_calls_api(self, model_name: str) -> bool:
         ...

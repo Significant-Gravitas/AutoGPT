@@ -15,10 +15,9 @@ if TYPE_CHECKING:
 
 from autogpts.AFAAS.app.lib.task.plan import Plan
 from autogpts.AFAAS.app.lib.task.task import Task
+from autogpts.AFAAS.app.sdk import forge_log
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
 
-
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 
@@ -31,7 +30,9 @@ logger = forge_log.ForgeLogger(__name__)
 async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
     # plan =  self.execute_strategy(
     agent._loop.tool_registry().list_tools_descriptions()
-    agent._logger.warning(f"This function is not maintained and should only be used at your own risk.")
+    agent._logger.warning(
+        f"This function is not maintained and should only be used at your own risk."
+    )
     plan = await agent._loop._execute_strategy(
         strategy_name="make_initial_plan",
         agent_name=agent.agent_name,
@@ -48,7 +49,7 @@ async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
 
     agent.plan = Plan(
         subtask=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]],
-        agent=agent
+        agent=agent,
     )
     agent.plan.subtasks.sort(key=lambda t: t.priority, reverse=True)
     agent._loop._current_task = agent.plan[-1]

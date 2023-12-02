@@ -4,7 +4,6 @@ import logging
 import uuid
 from typing import Awaitable, Callable
 
-
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 from autogpts.autogpt.autogpt.core.resource.model_providers import \
     OpenAIProvider
@@ -125,8 +124,8 @@ class UserContextAgent(BaseAgent):
 
     @classmethod
     def get_strategies(cls)-> list :
-        from autogpts.autogpt.autogpt.core.agents.usercontext.strategies import (
-            StrategiesSet)
+        from autogpts.autogpt.autogpt.core.agents.usercontext.strategies import \
+            StrategiesSet
         return StrategiesSet.get_strategies()
 
     @classmethod

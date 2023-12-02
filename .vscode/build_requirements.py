@@ -1,6 +1,8 @@
 import os
-import pkg_resources
 import re
+
+import pkg_resources
+
 
 def get_imports_from_file(file_path):
     with open(file_path, 'r') as file:

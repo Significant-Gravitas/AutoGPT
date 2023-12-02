@@ -12,8 +12,8 @@ from fastapi import requests
 
 from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.api import \
     task_handler
-from autogpts.autogpt.autogpt.core.runner.client_lib.shared_click_commands import (
-    DEFAULT_SETTINGS_FILE)
+from autogpts.autogpt.autogpt.core.runner.client_lib.shared_click_commands import \
+    DEFAULT_SETTINGS_FILE
 from autogpts.autogpt.autogpt.core.runner.client_lib.utils import coroutine
 
 

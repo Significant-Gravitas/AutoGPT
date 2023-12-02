@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Iterator, Literal
 
 from autogpts.AFAAS.app.lib.task.task import Task
+from autogpts.AFAAS.app.sdk import forge_log
 from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
 from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
 from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
@@ -25,8 +26,6 @@ from .decorators import sanitize_path_arg
 from .file_context import open_file, open_folder  # NOQA
 from .file_operations_utils import read_textual_file
 
-
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 Operation = Literal["write", "append", "delete"]

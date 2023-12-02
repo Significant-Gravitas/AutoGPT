@@ -2,11 +2,11 @@ import enum
 from logging import Logger
 from typing import Optional
 
-
 from autogpts.AFAAS.app.lib.task import Task
 from autogpts.autogpt.autogpt.core.agents.planner.main import PlannerAgent
 from autogpts.autogpt.autogpt.core.prompting.base import (
-    BasePromptStrategy, LanguageModelClassification, PromptStrategiesConfiguration)
+    BasePromptStrategy, LanguageModelClassification,
+    PromptStrategiesConfiguration)
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
     json_loads, to_numbered_list)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
@@ -25,7 +25,7 @@ class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
     default_tool_choice: InitialPlanFunctionNames = (
         InitialPlanFunctionNames.INITIAL_PLAN
     )
-    temperature : float = 0.9
+    temperature: float = 0.9
 
 
 class InitialPlanStrategy(BasePromptStrategy):
@@ -76,7 +76,7 @@ class InitialPlanStrategy(BasePromptStrategy):
         self._system_prompt_template = self.FIRST_SYSTEM_PROMPT_TEMPLATE
         self._system_info = self.DEFAULT_SYSTEM_INFO
         self._user_prompt_template = self.DEFAULT_USER_PROMPT_TEMPLATE
-        
+
     @property
     def model_classification(self) -> LanguageModelClassification:
         return self._model_classification
@@ -189,8 +189,9 @@ class InitialPlanStrategy(BasePromptStrategy):
             Task.parse_obj(task) for task in parsed_response["task_list"]
         ]
         return parsed_response
-    
-    
+
     def response_format_instruction(self, model_name: str) -> str:
         model_provider = self._agent._chat_model_provider
-        return super().response_format_instruction(language_model_provider=model_provider, model_name = model_name)
+        return super().response_format_instruction(
+            language_model_provider=model_provider, model_name=model_name
+        )

@@ -7,9 +7,10 @@ if TYPE_CHECKING:
     from autogpt.agents.base import BaseAgent
     from autogpt.config import Any
     from .tool_parameters import ToolParameter
+
 from autogpts.AFAAS.app.lib.context_items import ContextItem
-from autogpts.AFAAS.app.sdk.forge_log import ForgeLogger
 from autogpts.AFAAS.app.lib.task import Task
+from autogpts.AFAAS.app.sdk.forge_log import ForgeLogger
 
 LOG = ForgeLogger(__name__)
 
@@ -25,15 +26,16 @@ class Tool:
         description (str): A brief description of what the command does.
         parameters (list): The parameters of the function that the command executes.
     """
-    success_check_callback :  Callable[..., Any] 
-    
+
+    success_check_callback: Callable[..., Any]
+
     def __init__(
         self,
         name: str,
         description: str,
         exec_function: Callable[..., ToolOutput],
         parameters: list[ToolParameter],
-        success_check_callback : Callable[..., Any],
+        success_check_callback: Callable[..., Any],
         enabled: Literal[True] | Callable[[Any], bool] = True,
         disabled_reason: Optional[str] = None,
         aliases: list[str] = [],
@@ -74,10 +76,12 @@ class Tool:
             for param in self.parameters
         ]
         return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"
-    
+
     @classmethod
-    def default_success_check_callback(cls, task : Task, tool_output : Any):
+    def default_success_check_callback(cls, task: Task, tool_output: Any):
         LOG.notice(f"Tool.default_summary() not yet implemented")
+
         def summary(self, *args, **kwargs):
             return self.description
+
         return summary

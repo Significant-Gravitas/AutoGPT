@@ -1,14 +1,13 @@
 from __future__ import annotations
+
 import abc
 import datetime
 import enum
 import logging
 import uuid
-from typing import Generic, TypeVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from pydantic import BaseModel, Field
-
-
 
 LOG = logging.Logger(__name__)
 
@@ -72,18 +71,16 @@ class AFAASModel(BaseModel):
     def dict_memory(self, **dumps_kwargs) -> dict:
         LOG.debug(f"FIXME: Temporary implementation before a to pydantic 2.0.0")
         dict = self.dict(**dumps_kwargs)
-        return self._apply_custom_encoders(data = dict)
-        
+        return self._apply_custom_encoders(data=dict)
+
     def _apply_custom_encoders(self, data: dict) -> dict:
         encoders = self.Config.json_encoders
         for key, value in data.items():
             for type_, encoder in encoders.items():
                 if isinstance(value, type_):
-
                     data[key] = encoder(value)
         return data
 
-    
     def dict(self, include_all=False, *args, **kwargs):
         """
         Serialize the object to a dictionary representation.
@@ -97,7 +94,7 @@ class AFAASModel(BaseModel):
         Returns:
             dict: A dictionary representation of the object.
         """
-        # TODO: Move to System settings ? 
+        # TODO: Move to System settings ?
         self.prepare_values_before_serialization()  # Call the custom treatment before .dict()
         if not include_all:
             kwargs["exclude"] = self.Config.default_exclude
@@ -127,8 +124,8 @@ class AFAASModel(BaseModel):
 
     # TODO Implement a BaseSettings class and move it to the BaseSettings ?
     def prepare_values_before_serialization(self):
-            pass
-    
+        pass
+
     def __str__(self):
         return self.__repr__()
 
@@ -151,9 +148,9 @@ class AFAASModel(BaseModel):
 
         lines.append(")")
         return "\n".join(lines)
-    
+
     @staticmethod
-    def generate_uuid() :
+    def generate_uuid():
         return str(uuid.uuid4())
 
 

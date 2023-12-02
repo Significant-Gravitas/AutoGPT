@@ -1,6 +1,6 @@
 import typing
 
-from openai import OpenAI, AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
 
 client = OpenAI()
 aclient = AsyncOpenAI()
@@ -40,8 +40,9 @@ async def create_embedding_request(
 ) -> typing.Union[typing.Dict[str, typing.Any], Exception]:
     """Generate an embedding for a list of messages using OpenAI's API"""
     try:
-        return await aclient.embeddings.create(input=[f"{m['role']}: {m['content']}" for m in messages],
-        engine=model)
+        return await aclient.embeddings.create(
+            input=[f"{m['role']}: {m['content']}" for m in messages], engine=model
+        )
     except Exception as e:
         LOG.error("Unable to generate ChatCompletion response")
         LOG.error(f"Exception: {e}")

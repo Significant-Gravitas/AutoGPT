@@ -13,11 +13,10 @@ from autogpts.autogpt.autogpt.core.resource.model_providers import (
 from autogpts.autogpt.autogpt.core.tools import (TOOL_CATEGORIES,
                                                  SimpleToolRegistry)
 
-from ..base import (BaseAgent, BaseLoopHook, PromptManager,
-                    ToolExecutor)
+from ..base import BaseAgent, BaseLoopHook, PromptManager, ToolExecutor
 from .loop import PlannerLoop
-from .models import (PlannerAgentConfiguration,  # PlannerAgentSystemSettings,
-                     PlannerAgentSystems)
+from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
+from .models import PlannerAgentSystems
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.workspace.simple import SimpleWorkspace
@@ -218,8 +217,8 @@ class PlannerAgent(BaseAgent):
     @classmethod
     def get_strategies(cls) -> list:
         # TODO : Continue refactorization => move to loop ?
-        from autogpts.autogpt.autogpt.core.agents.planner.strategies import (
-            StrategiesSet)
+        from autogpts.autogpt.autogpt.core.agents.planner.strategies import \
+            StrategiesSet
 
         return StrategiesSet.get_strategies()
 
@@ -285,9 +284,11 @@ class PlannerAgent(BaseAgent):
 
 
 def test_hook(**kwargs):
-    logger : logging.Logger =  kwargs['agent']._logger
+    logger: logging.Logger = kwargs["agent"]._logger
     logger.notice("Entering test_hook Function")
-    logger.notice("Hooks are an experimental plug-in system that may fade away as we are transiting from a Loop logic to a Pipeline logic.")
+    logger.notice(
+        "Hooks are an experimental plug-in system that may fade away as we are transiting from a Loop logic to a Pipeline logic."
+    )
     test = "foo_bar"
     for key, value in kwargs.items():
-         logger.trace(f"{key}: {value}")
+        logger.trace(f"{key}: {value}")

@@ -5,21 +5,24 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, Field
 
+from autogpts.autogpt.autogpt.core.agents import BaseAgent
+
+from ...sdk.forge_log import ForgeLogger
+# from .plan import Plan
+from .base import BaseTask
+from .meta import TaskStatusList
 
 # from autogpts.autogpt.autogpt.core.configuration import AFAASModel
 # from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
 
-from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
-    #from .plan import Plan
-from .base import BaseTask
-from .meta import TaskStatusList
-from ...sdk.forge_log import ForgeLogger
 
 LOG = ForgeLogger(__name__)
 
 if TYPE_CHECKING:
     from .stack import TaskStack
+
+
 class Task(BaseTask):
     """
     Model representing a task.
@@ -42,30 +45,32 @@ class Task(BaseTask):
     ###
     ### GENERAL properties
     ###
-    
-    task_id: str = Field(
-        default_factory=lambda: Task.generate_uuid()
-    )  
+
+    task_id: str = Field(default_factory=lambda: Task.generate_uuid())
     task_parent: BaseTask
     _task_parent_id: str
 
-    # task_predecessors: Optional[list[Task]]  = []  
+    # task_predecessors: Optional[list[Task]]  = []
     # _task_predecessors_id: Optional[list[str]]  = []
     _task_predecessors: Optional[TaskStack] = None
+
     @property
     def task_predecessors(self) -> TaskStack:
         if self._task_predecessors is None:
             from .stack import TaskStack
+
             self._task_predecessors = TaskStack(parent_task=self)
         return self._task_predecessors
 
-    # task_successors: Optional[list[Task]]  = []   
+    # task_successors: Optional[list[Task]]  = []
     # _task_successors_id: Optional[list[str]] = []
     _task_successors: Optional[TaskStack] = None
+
     @property
     def task_successors(self) -> TaskStack:
         if self._task_successors is None:
             from .stack import TaskStack
+
             self._task_successors = TaskStack(parent_task=self)
         return self._task_successors
 
@@ -80,7 +85,7 @@ class Task(BaseTask):
         self.agent.plan._registry_update_task_status_in_list(task_id=self.task_id, new_state=new_state)
         self._state = new_state
 
-    task_text_output : Optional[str] 
+    task_text_output: Optional[str]
     """ Placeholder : The agent summary of his own doing while performing the task"""
 
     ###
@@ -93,19 +98,18 @@ class Task(BaseTask):
 
     class Config(BaseTask.Config):
         default_exclude = set(BaseTask.Config.default_exclude) | {
-            # If commented create an infinite loop 
+            # If commented create an infinite loop
             "task_parent",
-
             "task_predecessors",
-            "task_successors"
+            "task_successors",
         }
-        
+
     @property
     def plan_id(self) -> str:
         return self.agent.plan.plan_id
 
     @staticmethod
-    def generate_uuid() :
+    def generate_uuid():
         return "T" + str(uuid.uuid4())
     
     def is_ready(self)-> bool:
@@ -172,28 +176,28 @@ class Task(BaseTask):
     #############################################################################################
 
     @classmethod
-    def get_task_from_db(cls, task_id : str, agent : BaseAgent) -> Task:
+    def get_task_from_db(cls, task_id: str, agent: BaseAgent) -> Task:
         memory = agent._memory
         task_table = memory.get_table("tasks")
         task = task_table.get(task_id)
         return cls(**task, agent=agent)
-    
+
     @classmethod
-    def create_in_db(cls, task : Task , agent : BaseAgent):
+    def create_in_db(cls, task: Task, agent: BaseAgent):
         memory = agent._memory
         task_table = memory.get_table("tasks")
-        task_table.add(value = task, id=task.task_id)
-
+        task_table.add(value=task, id=task.task_id)
 
     def save_in_db(self):
         from autogpts.autogpt.autogpt.core.memory.table import AbstractTable
+
         memory = self.agent._memory
         task_table: AbstractTable = memory.get_table("tasks")
-        task_table.update(  
-                            value = self,
-                           task_id =  self.task_id,
-                           plan_id =  self.plan_id, 
-                           )
+        task_table.update(
+            value=self,
+            task_id=self.task_id,
+            plan_id=self.plan_id,
+        )
     #endregion
 
     def __setattr__(self, key, value):
@@ -201,21 +205,24 @@ class Task(BaseTask):
         super().__setattr__(key, value)
         # If the key is a model field, mark the instance as modified
         if key in self.__fields__:
-            self.agent.plan._register_task_as_modified(task_id = self.task_id)
+            self.agent.plan._register_task_as_modified(task_id=self.task_id)
 
     def find_task_path(self) -> list[Task]:
         """
         Finds the path from this task to the root.
         """
         path = [self]
-        current_task : BaseTask = self
+        current_task: BaseTask = self
 
-        while hasattr(current_task, 'task_parent') and current_task.task_parent is not None:
+        while (
+            hasattr(current_task, "task_parent")
+            and current_task.task_parent is not None
+        ):
             path.append(current_task.task_parent)
             current_task = current_task.task_parent
 
         return path
-    
+
     def get_path_structure(self) -> str:
         path_to_task = self.find_task_path()
         indented_structure = ""
@@ -224,9 +231,7 @@ class Task(BaseTask):
             indented_structure += "  " * i + "-> " + task.task_goal + "\n"
 
         return indented_structure
-    
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
 Task.update_forward_refs()
-

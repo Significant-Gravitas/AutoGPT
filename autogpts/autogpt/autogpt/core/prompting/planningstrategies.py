@@ -4,8 +4,6 @@ import copy
 from logging import Logger
 from typing import TYPE_CHECKING, Optional, Union
 
-
-
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.agents.planner.main import PlannerAgent
 
@@ -15,8 +13,8 @@ from autogpts.AFAAS.app.lib.task.plan import Plan
 from autogpts.autogpt.autogpt.core.configuration import UserConfigurable
 from autogpts.autogpt.autogpt.core.prompting.schema import \
     LanguageModelClassification
-from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
-    to_numbered_list)
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import \
+    to_numbered_list
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
     ChatMessage, CompletionModelFunction)
 
@@ -161,7 +159,6 @@ class PlanningPromptStrategy(BasePromptStrategy):
             "{best_practices}"
         )
 
-
         print(
             f"""################################################################################################################################################################################################################################
               DEBUG PLAN : Plan :\n{agent.plan.dump(depth=1)}\n\n
@@ -204,7 +201,8 @@ class PlanningPromptStrategy(BasePromptStrategy):
         #     plugin.post_prompt(self)
 
         # Construct full prompt
-        from autogpt.autogpt.core.agents.base.assistants.prompt_manager import get_os_info
+        from autogpt.autogpt.core.agents.base.assistants.prompt_manager import \
+            get_os_info
 
         full_prompt_parts: list[str] = (
             self._generate_intro_prompt(agent=agent)

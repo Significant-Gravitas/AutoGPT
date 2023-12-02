@@ -6,14 +6,16 @@ from typing import TYPE_CHECKING, Optional, Union, get_args
 
 from pydantic import BaseModel, Field
 
-from autogpts.autogpt.autogpt.core.configuration import AFAASModel
 from autogpts.autogpt.autogpt.core.agents import AbstractAgent
+from autogpts.autogpt.autogpt.core.configuration import AFAASModel
 
 # from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
 logger = Logger(name=__name__)
 
 if TYPE_CHECKING:
     from .stack import TaskStack
+
+
 class BaseTask(AFAASModel):
     """
     Model representing a task.
@@ -32,27 +34,25 @@ class BaseTask(AFAASModel):
         >>> print(task.objective)
         "Write a report"
     """
+
     class Config(AFAASModel.Config):
         # This is a list of Field to Exclude during serialization
-        default_exclude = set(AFAASModel.Config.default_exclude) |  {
-            "subtasks",
-            "agent"
-            }
-        json_encoders = AFAASModel.Config.json_encoders | {
-            }
-        
+        default_exclude = set(AFAASModel.Config.default_exclude) | {"subtasks", "agent"}
+        json_encoders = AFAASModel.Config.json_encoders | {}
+
     ###
     ### GENERAL properties
     ###
-    if TYPE_CHECKING : 
+    if TYPE_CHECKING:
         from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
-    agent : AbstractAgent = Field(exclude=True)
+    agent: AbstractAgent = Field(exclude=True)
+
     @property
     def agent_id(self):
         return self.agent.agent_id
-    
-    task_id: str 
+
+    task_id: str
 
     task_goal: str
     """ The title / Name of the task """
@@ -60,41 +60,45 @@ class BaseTask(AFAASModel):
     task_context: Optional[str]
     """ Placeholder : Context given by RAG & other elements """
 
-    long_decription: Optional[str] 
+    long_decription: Optional[str]
     """ Placeholder : A longer description of the task than `task_goal` """
 
     ###
     ### Task Management properties
     ###
     task_history: Optional[list[dict]]
-    
+
     acceptance_criteria: Optional[list[str]] = []
 
     ###
     ### Dynamic properties
     ###
     _subtasks: Optional[TaskStack] = None
+
     @property
     def subtasks(self) -> TaskStack:
         if self._subtasks is None:
             from .stack import TaskStack
+
             self._subtasks = TaskStack(parent_task=self)
         return self._subtasks
 
-    _default_command : str = None
+    _default_command: str = None
+
     @classmethod
-    def default_command(cls) -> str: 
-        if cls._default_command is not None :
+    def default_command(cls) -> str:
+        if cls._default_command is not None:
             return cls._default_command
-        
-        try : 
+
+        try:
             import autogpts.autogpt.autogpt.core.agents.routing
+
             cls._default_command = "afaas_routing"
-        except :
-            cls._default_command= "afaas_make_initial_plan"
-                
+        except:
+            cls._default_command = "afaas_make_initial_plan"
+
         return cls._default_command
-    
+
     def dict_memory(self, **kwargs) -> dict:
         d = super().dict(**kwargs)
 
@@ -110,7 +114,9 @@ class BaseTask(AFAASModel):
                     d[field] = field_value.task_id
 
                 # Check for lists of BaseTask instances
-                if isinstance(field_value, list) and issubclass(get_args(field_type)[0], BaseTask):
+                if isinstance(field_value, list) and issubclass(
+                    get_args(field_type)[0], BaseTask
+                ):
                     # Replace the list of BaseTask instances with a list of their task_ids
                     d[field] = [v.task_id for v in field_value]
 
@@ -119,17 +125,15 @@ class BaseTask(AFAASModel):
                 #     # Replace the list of BaseTask instances with a list of their task_ids
                 #     d[field] = [v.task_id for v in field_value._task_ids]
 
-        return self._apply_custom_encoders(data = d)
-        
-    
-    def add_task(self, task : "BaseTask"): 
-        self.subtasks.add(task = task)
-        self.agent.plan._register_new_task(task = task)
+        return self._apply_custom_encoders(data=d)
 
+    def add_task(self, task: "BaseTask"):
+        self.subtasks.add(task=task)
+        self.agent.plan._register_new_task(task=task)
 
-    def add_tasks(self, tasks : list["BaseTask"]):
+    def add_tasks(self, tasks: list["BaseTask"]):
         for task in tasks:
-            self.add_task(task = task)
+            self.add_task(task=task)
 
     def __getitem__(self, index: Union[int, str]):
         """
@@ -192,19 +196,22 @@ class BaseTask(AFAASModel):
     ### FIXME : To test
     ###
     def remove_task(self, task_id: str):
-        logger.error("""FUNCTION NOT WORKING :
+        logger.error(
+            """FUNCTION NOT WORKING :
                      1. We now manage multiple predecessor
-                     2. Tasks should not be deleted but managed by state""")
+                     2. Tasks should not be deleted but managed by state"""
+        )
+
         # 1. Set all task_predecessors_id to null if they reference the task to be removed
         def clear_predecessors(task: BaseTask):
-            if task_id in task.task_predecessors_id :
+            if task_id in task.task_predecessors_id:
                 task.task_predecessors_id.remove(task_id)
             for subtask in task.subtasks or []:
                 clear_predecessors(subtask)
 
         # 2. Remove leaves with status "DONE" if ALL their siblings have this status
         def should_remove_siblings(
-            task: BaseTask, task_parent: Optional [BaseTask] = None
+            task: BaseTask, task_parent: Optional[BaseTask] = None
         ) -> bool:
             # If it's a leaf and has a parent
             if not task.subtasks and task_parent:
@@ -232,10 +239,10 @@ class BaseTask(AFAASModel):
             List [BaseTask]: A list of tasks meeting the specified criteria.
         """
         logger.notice(
-            "Deprecated : Recommended functions are:\n" +
-            "- Plan.get_ready_tasks()\n" +
-            "- Task.get_first_ready_task()\n" +
-            "- Plan.get_next_task()\n"
+            "Deprecated : Recommended functions are:\n"
+            + "- Plan.get_ready_tasks()\n"
+            + "- Task.get_first_ready_task()\n"
+            + "- Plan.get_next_task()\n"
         )
         ready_tasks = []
 
@@ -264,10 +271,10 @@ class BaseTask(AFAASModel):
         """
 
         logger.notice(
-            "Deprecated : Recommended functions are:\n" +
-            "- Plan.get_ready_tasks()\n" +
-            "- Plan.get_first_ready_task()\n" +
-            "- Plan.get_next_task()\n"
+            "Deprecated : Recommended functions are:\n"
+            + "- Plan.get_ready_tasks()\n"
+            + "- Plan.get_first_ready_task()\n"
+            + "- Plan.get_next_task()\n"
         )
 
         def check_task(task: BaseTask) -> Optional[BaseTask]:
@@ -324,8 +331,9 @@ class BaseTask(AFAASModel):
     @staticmethod
     def info_parse_task(task: BaseTask) -> str:
         from .task import Task
+
         parsed_response = f"Agent Plan:\n"
-        task : Task
+        task: Task
         for i, task in enumerate(task.subtasks):
             parsed_response += f"{i+1}. {task.task_id} - {task.task_goal}\n"
             parsed_response += f"Description {task.long_decription}\n"
@@ -333,17 +341,17 @@ class BaseTask(AFAASModel):
             # parsed_response += f"Priority: {task.priority}\n"
             parsed_response += f"Predecessors:\n"
             for j, predecessor in enumerate(task.task_predecessors):
-                 parsed_response += f"    {j+1}. {predecessor}\n"
+                parsed_response += f"    {j+1}. {predecessor}\n"
             parsed_response += f"Successors:\n"
             for j, succesors in enumerate(task.task_successors):
-                 parsed_response += f"    {j+1}. {succesors}\n"
+                parsed_response += f"    {j+1}. {succesors}\n"
             parsed_response += f"Acceptance Criteria:\n"
             for j, criteria in enumerate(task.acceptance_criteria):
                 parsed_response += f"    {j+1}. {criteria}\n"
             parsed_response += "\n"
 
         return parsed_response
-    
+
     def dump(self, depth=0) -> dict:
         if depth < 0:
             raise ValueError("Depth must be a non-negative integer.")
@@ -371,7 +379,7 @@ class BaseTask(AFAASModel):
         # If there are subtasks, recursively check them
         if self.subtasks:
             for subtask in self.subtasks:
-                found_task = subtask.find_task(task_id = task_id)
+                found_task = subtask.find_task(task_id=task_id)
                 if found_task:
                     return found_task
         return None
@@ -394,10 +402,9 @@ class BaseTask(AFAASModel):
                     return [self] + [found_task]
         return None
 
-
     #
     @abc.abstractmethod
-    def create_in_db(self, agent: BaseAgent) :
+    def create_in_db(self, agent: BaseAgent):
         ...
 
 

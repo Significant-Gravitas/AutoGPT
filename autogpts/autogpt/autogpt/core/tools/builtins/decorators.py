@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 from typing import Callable, ParamSpec, TypeVar
 
-
 P = ParamSpec("P")
 T = TypeVar("T")
 

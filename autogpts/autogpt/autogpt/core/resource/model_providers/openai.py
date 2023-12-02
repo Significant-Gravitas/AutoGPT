@@ -7,34 +7,17 @@ from typing import Callable, Optional, ParamSpec, TypeVar
 
 import openai
 import tiktoken
-from openai.error import APIError, RateLimitError
-
-from autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    UserConfigurable,
-)
+from autogpt.core.configuration import (Configurable, SystemConfiguration,
+                                        UserConfigurable)
 from autogpt.core.resource.model_providers.schema import (
-    AssistantChatMessageDict,
-    AssistantToolCallDict,
-    ChatMessage,
-    ChatModelInfo,
-    ChatModelProvider,
-    ChatModelResponse,
-    CompletionModelFunction,
-    Embedding,
-    EmbeddingModelInfo,
-    EmbeddingModelProvider,
-    EmbeddingModelResponse,
-    ModelProviderBudget,
-    ModelProviderCredentials,
-    ModelProviderName,
-    ModelProviderService,
-    ModelProviderSettings,
-    ModelProviderUsage,
-    ModelTokenizer,
-)
+    AssistantChatMessageDict, AssistantToolCallDict, ChatMessage,
+    ChatModelInfo, ChatModelProvider, ChatModelResponse,
+    CompletionModelFunction, Embedding, EmbeddingModelInfo,
+    EmbeddingModelProvider, EmbeddingModelResponse, ModelProviderBudget,
+    ModelProviderCredentials, ModelProviderName, ModelProviderService,
+    ModelProviderSettings, ModelProviderUsage, ModelTokenizer)
 from autogpt.core.utils.json_schema import JSONSchema
+from openai.error import APIError, RateLimitError
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

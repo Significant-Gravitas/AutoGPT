@@ -14,9 +14,10 @@ from pydantic import Field
 from autogpts.autogpt.autogpt.core.configuration import AFAASModel
 
 if TYPE_CHECKING:
-    from ..routes.artifact import list_agent_artifacts, list_artifacts
-    from autogpts.autogpt.autogpt.core.agents import AbstractAgent, PlannerAgent
+    from autogpts.autogpt.autogpt.core.agents import (AbstractAgent,
+                                                      PlannerAgent)
 
+    from ..routes.artifact import list_agent_artifacts, list_artifacts
 
 
 class ArtifactUpload(AFAASModel):

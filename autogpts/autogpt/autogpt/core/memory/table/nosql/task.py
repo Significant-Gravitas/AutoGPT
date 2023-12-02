@@ -13,8 +13,7 @@ class TasksTable(BaseNoSQLTable):
     third_key = "task_composed_id"
 
     from autogpts.AFAAS.app.lib.task.task import Task
-    
-    
+
     def add(self, value: dict, id: str = Task.generate_uuid()) -> str:
         return super().add(value, id)
 

@@ -3,9 +3,8 @@ from __future__ import annotations
 import abc
 import uuid
 from enum import Enum
-from typing import (TYPE_CHECKING, Any, Callable, Literal,
-                    Optional, TypedDict, Union)
-
+from typing import (TYPE_CHECKING, Any, Callable, Literal, Optional, TypedDict,
+                    Union)
 
 if TYPE_CHECKING:
     from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory

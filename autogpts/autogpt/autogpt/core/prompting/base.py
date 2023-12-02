@@ -4,7 +4,6 @@ import abc
 import re
 from typing import TYPE_CHECKING, Optional
 
-
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
@@ -13,11 +12,10 @@ if TYPE_CHECKING:
 from autogpts.autogpt.autogpt.core.configuration import SystemConfiguration
 from autogpts.autogpt.autogpt.core.prompting.schema import \
     LanguageModelClassification
-from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
-    json_loads)
+from autogpts.autogpt.autogpt.core.prompting.utils.utils import json_loads
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    AssistantChatMessageDict, ChatPrompt, CompletionModelFunction, ChatModelResponse, AbstractLanguageModelProvider
-)
+    AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
+    ChatPrompt, CompletionModelFunction)
 
 RESPONSE_SCHEMA = JSONSchema(
     type=JSONSchema.Type.OBJECT,
@@ -75,12 +73,14 @@ RESPONSE_SCHEMA = JSONSchema(
     },
 )
 
-class DefaultParsedResponse(dict) :
-    id : str
-    type : str
-    command_name : str
-    command_args : dict
-    assistant_reply_dict : dict
+
+class DefaultParsedResponse(dict):
+    id: str
+    type: str
+    command_name: str
+    command_args: dict
+    assistant_reply_dict: dict
+
 
 class PromptStrategiesConfiguration(SystemConfiguration):
     temperature: float
@@ -110,10 +110,11 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
     @abc.abstractmethod
     def parse_response_content(self, response_content: AssistantChatMessageDict):
         ...
-    
+
     @abc.abstractmethod
     def set_tools(self, **kwargs):
         ...
+
 
 class BasePromptStrategy(AbstractPromptStrategy):
     @property
@@ -153,7 +154,9 @@ class BasePromptStrategy(AbstractPromptStrategy):
 
     # This can be expanded to support multiple types of (inter)actions within an agent
     @abc.abstractmethod
-    def response_format_instruction(self, language_model_provider : AbstractLanguageModelProvider, model_name: str) -> str:
+    def response_format_instruction(
+        self, language_model_provider: AbstractLanguageModelProvider, model_name: str
+    ) -> str:
         use_oa_tools_api = language_model_provider.has_oa_tool_calls_api(
             model_name=model_name
         )
@@ -166,7 +169,6 @@ class BasePromptStrategy(AbstractPromptStrategy):
         ):
             del response_schema.properties["command"]
 
-
         # Unindent for performance
         response_format: str = re.sub(
             r"\n\s+",
@@ -174,7 +176,7 @@ class BasePromptStrategy(AbstractPromptStrategy):
             response_schema.to_typescript_object_interface("Response"),
         )
 
-        if use_oa_tools_api :
+        if use_oa_tools_api:
             return (
                 f"Respond strictly with a JSON of type `Response` :\n"
                 f"{response_format}"
@@ -202,32 +204,32 @@ class BasePromptStrategy(AbstractPromptStrategy):
             The parsed response.
 
         """
-        assistant_return_list : list[DefaultParsedResponse] = []
+        assistant_return_list: list[DefaultParsedResponse] = []
         assistant_reply_dict = response_content["content"]
 
-        for tool in response_content["tool_calls"] : 
+        for tool in response_content["tool_calls"]:
             try:
-                command_args = json_loads(tool['function']["arguments"])
+                command_args = json_loads(tool["function"]["arguments"])
             except Exception:
                 self._agent._logger.warning(command_args)
 
             ###
             ### NEW
             ###
-            command_name = tool['function']["name"]
-            
+            command_name = tool["function"]["name"]
 
-            assistant_return_list.append( DefaultParsedResponse(
-                    id = tool["id"],
-                    type = tool["type"],
-                    command_name = command_name, 
-                    command_args = command_args, 
-                    assistant_reply_dict = assistant_reply_dict
-                    )
-                    )
-        
+            assistant_return_list.append(
+                DefaultParsedResponse(
+                    id=tool["id"],
+                    type=tool["type"],
+                    command_name=command_name,
+                    command_args=command_args,
+                    assistant_reply_dict=assistant_reply_dict,
+                )
+            )
+
         return assistant_return_list
-    
+
     @staticmethod
-    def get_autocorrection_response(response : ChatModelResponse) :
-        return response.parsed_result[0]['command_args']['note_to_agent']
+    def get_autocorrection_response(response: ChatModelResponse):
+        return response.parsed_result[0]["command_args"]["note_to_agent"]

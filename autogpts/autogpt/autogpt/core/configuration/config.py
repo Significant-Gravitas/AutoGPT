@@ -11,6 +11,9 @@ from typing import Any, Dict, Optional, Union
 import autogpt
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
+from autogpt.core.configuration.schema import Configurable, SystemSettings
+from autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.logs.config import LogFormatName, LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
 from colorama import Fore
@@ -20,12 +23,6 @@ from autogpts.autogpt.autogpt.core.configuration.schema import (Configurable,
                                                                 SystemSettings)
 from autogpts.autogpt.autogpt.core.resource.model_providers.openai import \
     OPEN_AI_CHAT_MODELS
-import autogpt
-from autogpt.core.configuration.schema import Configurable, SystemSettings
-from autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS
-from autogpt.logs.config import LogFormatName, LoggingConfig
-from autogpt.plugins.plugins_config import PluginsConfig
-from autogpt.speech import TTSConfig
 
 PROJECT_ROOT = Path(autogpt.__file__).parent.parent
 AI_SETTINGS_FILE = Path("ai_settings.yaml")

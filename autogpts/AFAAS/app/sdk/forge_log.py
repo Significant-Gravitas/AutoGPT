@@ -1,5 +1,3 @@
-
-from dotenv import load_dotenv
 import json
 import logging
 import logging.config
@@ -7,11 +5,13 @@ import logging.handlers
 import os
 import queue
 
+from dotenv import load_dotenv
+
 # Load the .env file
 load_dotenv()
 
-CONSOLE_LOG_LEVEL = os.getenv('CONSOLE_LOG_LEVEL', 'INFO').upper()
-FILE_LOG_LEVEL = os.getenv('FILE_LOG_LEVEL', 'DEBUG').upper()
+CONSOLE_LOG_LEVEL = os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper()
+FILE_LOG_LEVEL = os.getenv("FILE_LOG_LEVEL", "DEBUG").upper()
 
 JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
 
@@ -28,7 +28,7 @@ RESET_SEQ: str = "\033[0m"
 COLOR_SEQ: str = "\033[1;%dm"
 BOLD_SEQ: str = "\033[1m"
 UNDERLINE_SEQ: str = "\033[04m"
-ITALIC_SEQ = '\033[3m'
+ITALIC_SEQ = "\033[3m"
 
 ORANGE: str = "\033[33m"
 YELLOW: str = "\033[93m"
@@ -58,13 +58,12 @@ KEYWORD_COLORS: dict[str, str] = {
     "TRACE": BRIGHT_PINK,
     "DEBUG": WHITE,
     "INFO": LIGHT_BLUE,
-    "CHAT": PURPLE, 
+    "CHAT": PURPLE,
     "NOTICE": GREEN,
     "WARNING": YELLOW,
     "ERROR": ORANGE,
     "CRITICAL": RED,
     "DB_LOG": GREY,
-    
 }
 
 
@@ -121,14 +120,19 @@ class ConsoleFormatter(logging.Formatter):
             rec.levelname = levelname_color
         rec.name = f"{GREY}{os.path.relpath(rec.pathname):<15}{RESET_SEQ}"
         rec.msg = (
-            KEYWORD_COLORS[levelname] + EMOJIS[levelname] + "  " + str( rec.msg )+ RESET_SEQ
+            KEYWORD_COLORS[levelname]
+            + EMOJIS[levelname]
+            + "  "
+            + str(rec.msg)
+            + RESET_SEQ
         )
 
         message = logging.Formatter.format(self, rec)
-        if rec.levelno == logging.DEBUG  and len(message) > 1000:
-            message = message[:800] + '[...] ' + os.path.abspath(ForgeLogger.LOG_FILENAME)
+        if rec.levelno == logging.DEBUG and len(message) > 1000:
+            message = (
+                message[:800] + "[...] " + os.path.abspath(ForgeLogger.LOG_FILENAME)
+            )
         return message
-
 
 
 class ForgeLogger(logging.Logger):
@@ -137,16 +141,14 @@ class ForgeLogger(logging.Logger):
     sets the logger to use the custom formatter
     """
 
-    LOG_FILENAME = 'debug.log' 
+    LOG_FILENAME = "debug.log"
     DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
-    
-    CONSOLE_FORMAT: str = (
-        "[%(asctime)s] [$BOLD%(name)-15s,%(lineno)d$RESET] [%(levelname)-8s]\t%(message)s"
-    )
+
+    CONSOLE_FORMAT: str = "[%(asctime)s] [$BOLD%(name)-15s,%(lineno)d$RESET] [%(levelname)-8s]\t%(message)s"
     FORMAT: str = "%(asctime)s %(name)-15s %(levelname)-8s %(message)s"
     COLOR_FORMAT: str = formatter_message(CONSOLE_FORMAT, True)
     JSON_FORMAT: str = '{"time": "%(asctime)s", "name": "%(name)s", "level": "%(levelname)s", "message": "%(message)s"}'
-    
+
     # _instance = None  # Class attribute to hold the single instance
 
     # @classmethod
@@ -158,11 +160,10 @@ class ForgeLogger(logging.Logger):
     #     cls._instance.level = logLevel
     #     return cls._instance
 
-
-    def __init__(self, name: str, logLevel: str = "DEBUG", log_folder: str = './'):
-        if hasattr(self, '_initialized'):
+    def __init__(self, name: str, logLevel: str = "DEBUG", log_folder: str = "./"):
+        if hasattr(self, "_initialized"):
             return
-        
+
         logging.Logger.__init__(self, name, logLevel)
         # self.log_folder = log_folder
 
@@ -180,7 +181,9 @@ class ForgeLogger(logging.Logger):
         )
         file_handler.suffix = "%Y-%m-%d.log"
         file_handler.extMatch = r"^\d{4}-\d{2}-\d{2}.log$"
-        file_handler.setFormatter(logging.Formatter(self.FORMAT))  # Use a simple format for file logs
+        file_handler.setFormatter(
+            logging.Formatter(self.FORMAT)
+        )  # Use a simple format for file logs
         self.addHandler(file_handler)
 
         if JSON_LOGGING:
@@ -217,22 +220,18 @@ class ForgeLogger(logging.Logger):
                     CHAT,
                     f"{role_emojis.get(role, '🔵')}: {response['choices'][0]['message']['content']}",
                 )
-        
+
     def notice(self, msg, *args, **kwargs):
-      
         if self.isEnabledFor(NOTICE):
             self._log(NOTICE, msg, args, **kwargs)
 
-            
     def trace(self, msg, *args, **kwargs):
-      
         if self.isEnabledFor(TRACE):
             self._log(TRACE, msg, args, **kwargs)
 
     def db_log(self, msg, *args, **kwargs):
-        
-          if self.isEnabledFor(DB_LOG):
-                self._log(DB_LOG, msg, args, **kwargs)
+        if self.isEnabledFor(DB_LOG):
+            self._log(DB_LOG, msg, args, **kwargs)
 
     @staticmethod
     def bold(msg: str) -> str:
@@ -240,7 +239,7 @@ class ForgeLogger(logging.Logger):
         Returns the message in bold
         """
         return BOLD_SEQ + msg + RESET_SEQ
-    
+
     @staticmethod
     def italic(msg: str) -> str:
         """
@@ -301,6 +300,7 @@ def setup_logger():
     """
     logging.config.dictConfig(logging_config)
 
+
 LOG = ForgeLogger(__name__)
-LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}" )
-LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}" )
+LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}")
+LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}")

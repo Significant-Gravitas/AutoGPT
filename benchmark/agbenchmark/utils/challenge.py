@@ -147,7 +147,6 @@ class Challenge(ABC):
         return 1.0
 
     def llm_eval(self, config: Dict[str, Any], content: str, ground: Ground) -> float:
-        
         if os.getenv("IS_MOCK"):
             return 1.0
 
@@ -160,10 +159,12 @@ class Challenge(ABC):
 
         prompt += END_PROMPT
 
-        answer = client.chat.completions.create(model="gpt-4",
-        messages=[
-            {"role": "system", "content": prompt},
-        ])
+        answer = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": prompt},
+            ],
+        )
 
         return float(answer["choices"][0]["message"]["content"])  # type: ignore
 

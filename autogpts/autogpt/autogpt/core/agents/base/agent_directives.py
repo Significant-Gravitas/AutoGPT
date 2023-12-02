@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 import yaml
 from pydantic import BaseModel
 
+from autogpts.AFAAS.app.sdk import forge_log
 
-from  autogpts.AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 if TYPE_CHECKING:

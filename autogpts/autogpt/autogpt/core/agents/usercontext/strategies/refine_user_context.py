@@ -27,7 +27,6 @@ import uuid
 from logging import Logger
 from typing import Optional
 
-
 from autogpts.AFAAS.app.lib.message_agent_user import Questions
 from autogpts.autogpt.autogpt.core.prompting.base import (
     BasePromptStrategy, PromptStrategiesConfiguration)
@@ -36,7 +35,8 @@ from autogpts.autogpt.autogpt.core.prompting.schema import \
 from autogpts.autogpt.autogpt.core.prompting.utils.utils import (
     json_loads, to_numbered_list, to_string_list)
 from autogpts.autogpt.autogpt.core.resource.model_providers import (
-    AbstractLanguageModelProvider, AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
+    AbstractLanguageModelProvider, AssistantChatMessageDict, ChatMessage,
+    ChatPrompt, CompletionModelFunction)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
 

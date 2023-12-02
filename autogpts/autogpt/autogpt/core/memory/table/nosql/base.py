@@ -4,17 +4,18 @@ import abc
 import datetime
 import uuid
 from pathlib import Path
-from typing import (Any, Literal, Optional, TypedDict)
+from typing import Any, Literal, Optional, TypedDict
 
 from pydantic import BaseModel
 
-from autogpts.autogpt.autogpt.core.configuration import SystemSettings, AFAASModel
+from autogpts.AFAAS.app.sdk import forge_log
+from autogpts.autogpt.autogpt.core.configuration import (AFAASModel,
+                                                         SystemSettings)
 
 from ..base import AbstractTable
 
-
-from  autogpts.AFAAS.app.sdk import forge_log
 LOG = forge_log.ForgeLogger(__name__)
+
 
 class BaseSQLTable(AbstractTable):
     def __init__(self) -> None:
@@ -243,7 +244,7 @@ class BaseNoSQLTable(AbstractTable):
             for filter_column_name, filters in filter.items():
                 value_to_filter = data.get(filter_column_name)
                 # NOTE: May be this test & the else need to be removed
-                if value_to_filter is not None: 
+                if value_to_filter is not None:
                     for filter_data in filters:
                         filter_value = filter_data["value"]
                         filter_operator = filter_data["operator"]
@@ -257,7 +258,7 @@ class BaseNoSQLTable(AbstractTable):
                             )
                         if not comparison_function(value_to_filter, filter_value):
                             remove_entry = True
-                else : 
+                else:
                     remove_entry = True
             if not remove_entry:
                 filtered_data_list.append(data)

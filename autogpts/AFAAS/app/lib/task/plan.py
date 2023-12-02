@@ -1,18 +1,17 @@
 from __future__ import annotations
-from abc import ABCMeta
 
 import uuid
+from abc import ABCMeta
 from logging import Logger
 from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import Field
 
-from .meta import TaskStatusList
-
-from .base import BaseTask
-from .task import Task
 # from autogpts.autogpt.autogpt.core.memory import
 from ...sdk.forge_log import ForgeLogger
+from .base import BaseTask
+from .meta import TaskStatusList
+from .task import Task
 
 LOG = ForgeLogger(name=__name__)
 
@@ -21,7 +20,6 @@ from autogpts.autogpt.autogpt.core.agents import AbstractAgent
 
 
 class Plan(BaseTask):
-
     _instance: ClassVar[dict[Plan]] = {}
 
     # List & Dict for Lazy loading & lazy saving
@@ -33,7 +31,6 @@ class Plan(BaseTask):
     _all_task_ids: list[str] = []
     _ready_task_ids: list[str] = []
     _done_task_ids: list[str] = []
-
 
     # def dict(self, *args, **kwargs):
     #     exclude = set(kwargs.get("exclude", []))
@@ -51,21 +48,18 @@ class Plan(BaseTask):
     #     data = data[:-1] + f', "myagent_id": "{self.agent_id}"' + data[-1:]
     #     return data
 
-    def __init__(self,
-                 *args,
-                 **kwargs):
-
+    def __init__(self, *args, **kwargs):
         if kwargs["agent"].agent_id in Plan._instance:
             self = Plan._instance[kwargs["agent"].agent_id]
             return None
 
         # Initialize the instance if needed
         super().__init__(**kwargs)
-        Plan._instance[kwargs["agent"].agent_id ] = self
-        self.agent.plan : Plan = self
+        Plan._instance[kwargs["agent"].agent_id] = self
+        self.agent.plan: Plan = self
 
         # Load the tasks from the database
-        agent : AbstractAgent = kwargs["agent"]
+        agent: AbstractAgent = kwargs["agent"]
         memory = agent._memory
         task_table = memory.get_table("tasks")
         all_task = task_table.list(filter={"plan_id": self.plan_id})
@@ -80,7 +74,6 @@ class Plan(BaseTask):
             elif task.state == TaskStatusList.DONE:
                 self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.DONE)
 
-   
     def set_task_status(self, task: Task, status: TaskStatusList):
         """
         Sets the status of a task and updates it in the task list.
@@ -102,10 +95,7 @@ class Plan(BaseTask):
     # class Config(BaseTask):
     #     allow_population_by_field_name = True
 
-    task_id: str = Field(
-        default_factory=lambda: Plan.generate_uuid(),
-        alias="plan_id"
-    )
+    task_id: str = Field(default_factory=lambda: Plan.generate_uuid(), alias="plan_id")
 
     @staticmethod
     def generate_uuid():
@@ -115,7 +105,6 @@ class Plan(BaseTask):
     def plan_id(self):
         return self.task_id
 
-    
     #############################################################################################
     #############################################################################################
     #############################################################################################
@@ -128,15 +117,14 @@ class Plan(BaseTask):
         """
         Get a task from the plan
         """
-        task : Task = None
+        task: Task = None
         if task_id in self._all_task_ids:
-            
-            task =  self._loaded_tasks_dict.get(task_id)
+            task = self._loaded_tasks_dict.get(task_id)
             if task is None:
-                task =  Task.get_task_from_db(task_id)
+                task = Task.get_task_from_db(task_id)
                 self._loaded_tasks_dict[task_id] = task
             return task
-        else : 
+        else:
             raise Exception(f"Task {task_id} not found in plan {self.plan_id}")
         
     def get_next_task(self, task: Task = None) -> Task:
@@ -187,10 +175,9 @@ class Plan(BaseTask):
                 return self._find_outer_next_task(task = task.task_parent , origin_task = task)
 
 
-
-    def get_ready_tasks(self, task_ids_set : list[str] = None) -> list[Task]:
+    def get_ready_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
         """
-        Get the first ready tasks. 
+        Get the first ready tasks.
         """
 
         # Fetch the Task objects based on the common task IDs
@@ -206,14 +193,14 @@ class Plan(BaseTask):
 
         return [self.get_task(task_id) for task_id in active_task_ids]
 
-    def get_first_ready_tasks(self, task_ids_set : list[str] = None) -> Task:
+    def get_first_ready_tasks(self, task_ids_set: list[str] = None) -> Task:
         """
         Get all ready tasks. If task_ids_set is not None, return only the tasks that are both ready and in the additional_task_ids list.
         """
-        
+
         # Fetch the Task objects based on the common task IDs
-        return self.get_task(self._ready_task_ids[0]) 
-        
+        return self.get_task(self._ready_task_ids[0])
+
     #############################################################################################
     #############################################################################################
     #############################################################################################
@@ -225,7 +212,9 @@ class Plan(BaseTask):
     def unregister_loaded_task(self, task_id: str) -> Task:
         return self._loaded_tasks_dict.pop(task_id)
     
-    def _registry_update_task_status_in_list(self, task_id: Task, status: TaskStatusList):
+    def _registry_update_task_status_in_list(
+        self, task_id: Task, status: TaskStatusList
+    ):
         """
         Update the status of a task in the task list.
 
@@ -257,27 +246,25 @@ class Plan(BaseTask):
         self._register_task(task=task)
         self._loaded_tasks_dict[task.task_id] = task
         self._register_task_as_new(task_id=task.task_id)
- 
+
     def _register_new_tasks(self, tasks: list[Task]):
         """
         Register a list of tasks in the plan
         """
         for task in tasks:
-            self._register_new_task(task = task)
+            self._register_new_task(task=task)
 
     def _register_task(self, task: Task):
         self._all_task_ids.append(task.task_id)
-        if(task.state == TaskStatusList.READY):
+        if task.state == TaskStatusList.READY:
             self._ready_task_ids.append(task.task_id)
-
 
     def _register_tasks(self, tasks: list[Task]):
         """
         Register a list of tasks in the plan
         """
         for task in tasks:
-            self._register_task(task = task)
-            
+            self._register_task(task=task)
 
     def _register_task_as_modified(self, task_id: str):
         """
@@ -293,9 +280,6 @@ class Plan(BaseTask):
         if task_id not in self._new_tasks_ids:
             self._new_tasks_ids.append(task_id)
 
-
-    
-        
     #############################################################################################
     #############################################################################################
     #############################################################################################
@@ -307,48 +291,44 @@ class Plan(BaseTask):
 
     @classmethod
     def create_in_db(cls, agent: AbstractAgent):
-            """
-            Create a plan in the database for the given agent.
+        """
+        Create a plan in the database for the given agent.
 
-            Args:
-                agent (AbstractAgent): The agent for which the plan is created.
+        Args:
+            agent (AbstractAgent): The agent for which the plan is created.
 
-            Returns:
-                Plan: The created plan.
+        Returns:
+            Plan: The created plan.
 
-            """
-            memory = agent._memory
-            plan_table = memory.get_table("plans")
+        """
+        memory = agent._memory
+        plan_table = memory.get_table("plans")
 
-            plan = cls(agent_id=agent.agent_id,
-                       task_goal=agent.agent_goal_sentence, 
-                       tasks=[],
-                       agent=agent
-                       )
-            
-            plan._create_initial_tasks(status=TaskStatusList.READY)
+        plan = cls(
+            agent_id=agent.agent_id,
+            task_goal=agent.agent_goal_sentence,
+            tasks=[],
+            agent=agent,
+        )
 
-            plan_table.add(plan, id=plan.plan_id)
-            return plan
+        plan._create_initial_tasks(status=TaskStatusList.READY)
+
+        plan_table.add(plan, id=plan.plan_id)
+        return plan
 
     def _create_initial_tasks(self, status: TaskStatusList):
         initial_task = Task(
             agent=self.agent,
-            #plan=self,
+            # plan=self,
             task_parent=self,
             _task_parent_id=self.plan_id,
             state=status.value,
-
             _task_predecessors_id=None,
             responsible_agent_id=None,
-
             task_goal=self.task_goal,
             command=Task.default_command(),
-            arguments={'note_to_agent_length': 400},
-            acceptance_criteria=[
-                "A plan has been made to achieve the specific task"
-            ],
-
+            arguments={"note_to_agent_length": 400},
+            acceptance_criteria=["A plan has been made to achieve the specific task"],
         )
         # self._current_task = initial_task  # .task_id
         initial_task_list = [initial_task]
@@ -360,10 +340,10 @@ class Plan(BaseTask):
         if False:
             try:
                 import autogpts.autogpt.autogpt.core.agents.usercontext
+
                 refine_user_context_task = Task(
                     # task_parent = self.plan() ,
-
-                    agent = self.agent,
+                    agent=self.agent,
                     plan=self,
                     _task_parent_id=None,
                     _task_predecessors_id=None,
@@ -383,35 +363,33 @@ class Plan(BaseTask):
 
         self.add_tasks(tasks=initial_task_list)
 
-    
     async def save(self):
-
         ###
-        # Step 1 : Lazy saving : Update Existing Tasks 
+        # Step 1 : Lazy saving : Update Existing Tasks
         ###
         for task_id in self._modified_tasks_ids:
             # Safeguard to avoid saving new tasks
             if task_id not in self._new_tasks_ids:
-                task : Task = self._loaded_tasks_dict.get(task_id)
+                task: Task = self._loaded_tasks_dict.get(task_id)
                 if task:
                     LOG.db_log(f"Saving task {task.task_goal}")
-                    task.save_in_db() # Save the task
+                    task.save_in_db()  # Save the task
 
         ###
-        # Step 2 : Lazy saving : Create New Tasks 
+        # Step 2 : Lazy saving : Create New Tasks
         ###
         for task_id in self._new_tasks_ids:
-            task : Task = self._loaded_tasks_dict.get(task_id)
+            task: Task = self._loaded_tasks_dict.get(task_id)
             if task:
                 LOG.db_log(f"Creating task {task.task_goal}")
-                task.create_in_db(task=task,agent=self.agent) # Save the task
-        
+                task.create_in_db(task=task, agent=self.agent)  # Save the task
+
         # Reinitalize the lists
         self._modified_tasks_ids = []
         self._new_tasks_ids = []
 
         ###
-        # Step 3 : Save the Plan 
+        # Step 3 : Save the Plan
         ###
         agent = self._agent
         if agent:
@@ -420,7 +398,7 @@ class Plan(BaseTask):
             plan_table.update(self.plan_id, self)
 
     @classmethod
-    def get_plan_from_db(cls, plan_id : str, agent : AbstractAgent):
+    def get_plan_from_db(cls, plan_id: str, agent: AbstractAgent):
         """
         Get a plan from the database
         """
@@ -428,8 +406,8 @@ class Plan(BaseTask):
         plan_table = memory.get_table("plans")
         plan_dict = plan_table.get(plan_id)
         return cls(**plan_dict, agent=agent)
-    
-    #endregion
+
+    # endregion
 
     def generate_pitch(self, task=None):
         if task is None:
@@ -469,7 +447,8 @@ class Plan(BaseTask):
         )
 
         return pitch
-    
+
+
 Plan.update_forward_refs()
 
 
