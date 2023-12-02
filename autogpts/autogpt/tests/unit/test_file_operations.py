@@ -26,7 +26,7 @@ def mock_MemoryItem_from_text(
     mocker: MockerFixture, mock_embedding: Embedding, config: Config
 ):
     mocker.patch.object(
-        file_ops.MemoryItem,
+        file_ops.MemoryItemFactory,
         "from_text",
         new=lambda content, source_type, config, metadata: MemoryItem(
             raw_content=content,
