@@ -41,19 +41,23 @@ def apply_overrides_to_config(
     """Updates the config object with the given arguments.
 
     Args:
-        continuous (bool): Whether to run in continuous mode
-        continuous_limit (int): The number of times to run in continuous mode
-        ai_settings_file (Path): The path to the ai_settings.yaml file
-        prompt_settings_file (Path): The path to the prompt_settings.yaml file
-        skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
-        speak (bool): Whether to enable speak mode
-        debug (bool): Whether to enable debug mode
-        gpt3only (bool): Whether to enable GPT3.5 only mode
-        gpt4only (bool): Whether to enable GPT4 only mode
-        memory_type (str): The type of memory backend to use
-        browser_name (str): The name of the browser to use when using selenium to scrape the web
-        allow_downloads (bool): Whether to allow AutoGPT to download files natively
-        skips_news (bool): Whether to suppress the output of latest news on startup
+        config (Config): The config object to update.
+        continuous (bool): Whether to run in continuous mode.
+        continuous_limit (int): The number of times to run in continuous mode.
+        ai_settings_file (Path): The path to the ai_settings.yaml file.
+        prompt_settings_file (Path): The path to the prompt_settings.yaml file.
+        skip_reprompt (bool): Whether to skip the re-prompting messages on start.
+        speak (bool): Whether to enable speak mode.
+        debug (bool): Whether to enable debug mode.
+        log_level (int): The global log level for the application.
+        log_format (str): The format for the log(s).
+        log_file_format (str): Override the format for the log file.
+        gpt3only (bool): Whether to enable GPT3.5 only mode.
+        gpt4only (bool): Whether to enable GPT4 only mode.
+        memory_type (str): The type of memory backend to use.
+        browser_name (str): The name of the browser to use for scraping the web.
+        allow_downloads (bool): Whether to allow AutoGPT to download files natively.
+        skips_news (bool): Whether to suppress the output of latest news on startup.
     """
     config.continuous_mode = False
     config.tts_config.speak_mode = False
@@ -164,11 +168,15 @@ def apply_overrides_to_config(
     if allow_downloads:
         print_attribute("Native Downloading", "ENABLED")
         logger.warn(
-            msg=f"{Back.LIGHTYELLOW_EX}AutoGPT will now be able to download and save files to your machine.{Back.RESET}"
+            msg=f"{Back.LIGHTYELLOW_EX}"
+            "AutoGPT will now be able to download and save files to your machine."
+            f"{Back.RESET}"
             " It is recommended that you monitor any files it downloads carefully.",
         )
         logger.warn(
-            msg=f"{Back.RED + Style.BRIGHT}ALWAYS REMEMBER TO NEVER OPEN FILES YOU AREN'T SURE OF!{Style.RESET_ALL}",
+            msg=f"{Back.RED + Style.BRIGHT}"
+            "NEVER OPEN FILES YOU AREN'T SURE OF!"
+            f"{Style.RESET_ALL}",
         )
         config.allow_downloads = True
 
@@ -190,6 +198,6 @@ def check_model(
         return model_name
 
     logger.warn(
-        f"You do not have access to {model_name}. Setting {model_type} to gpt-3.5-turbo."
+        f"You don't have access to {model_name}. Setting {model_type} to gpt-3.5-turbo."
     )
     return "gpt-3.5-turbo"

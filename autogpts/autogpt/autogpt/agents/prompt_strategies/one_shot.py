@@ -7,7 +7,6 @@ from logging import Logger
 from typing import TYPE_CHECKING, Callable, Optional
 
 import distro
-from pydantic import Field
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
@@ -85,7 +84,10 @@ class OneShotAgentPromptConfiguration(SystemConfiguration):
                         required=True,
                     ),
                     "plan": JSONSchema(
-                        description="Short markdown-style bullet list that conveys the long-term plan",
+                        description=(
+                            "Short markdown-style bullet list that conveys the "
+                            "long-term plan"
+                        ),
                         type=JSONSchema.Type.STRING,
                         required=True,
                     ),
@@ -165,11 +167,9 @@ class OneShotAgentPromptStrategy(PromptStrategy):
     ) -> ChatPrompt:
         """Constructs and returns a prompt with the following structure:
         1. System prompt
-        2. Message history of the agent, truncated & prepended with running summary as needed
+        2. Message history of the agent, truncated & prepended with running summary
+            as needed
         3. `cycle_instruction`
-
-        Params:
-            cycle_instruction: The final instruction for a thinking cycle
         """
         if not extra_messages:
             extra_messages = []
@@ -264,7 +264,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
 
         steps: list[str] = []
         tokens: int = 0
-        start: int = len(episode_history)
+        # start: int = len(episode_history)
 
         for i, c in reversed(list(enumerate(episode_history))):
             step = f"### Step {i+1}: Executed `{c.action.format_call()}`\n"
@@ -291,11 +291,10 @@ class OneShotAgentPromptStrategy(PromptStrategy):
                 tokens += step_tokens
 
             steps.insert(0, step)
-            start = i
+        #     start = i
 
-        # TODO: summarize remaining
-
-        part = slice(0, start)
+        # # TODO: summarize remaining
+        # part = slice(0, start)
 
         return "\n\n".join(steps)
 
@@ -315,10 +314,19 @@ class OneShotAgentPromptStrategy(PromptStrategy):
             response_schema.to_typescript_object_interface("Response"),
         )
 
+        instruction = (
+            (
+                "Respond strictly with a JSON object containing your thoughts, "
+                "and a tool_call specifying the next command to use."
+            )
+            if use_functions_api
+            else "Respond strictly with a JSON object."
+        )
+
         return (
-            f"Respond strictly with a JSON object{' containing your thoughts, and a tool_call specifying the next command to use' if use_functions_api else ''}. "
-            "The JSON object should be compatible with the TypeScript type `Response` from the following:\n"
-            f"{response_format}"
+            f"{instruction} "
+            "The JSON object should be compatible with the TypeScript type `Response` "
+            f"from the following:\n{response_format}"
         )
 
     def _generate_intro_prompt(self, ai_profile: AIProfile) -> list[str]:

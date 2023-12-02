@@ -51,7 +51,7 @@ class FancyConsoleFormatter(logging.Formatter):
         # Make sure `msg` is a string
         if not hasattr(record, "msg"):
             record.msg = ""
-        elif not type(record.msg) == str:
+        elif not type(record.msg) is str:
             record.msg = str(record.msg)
 
         # Determine default color based on error level

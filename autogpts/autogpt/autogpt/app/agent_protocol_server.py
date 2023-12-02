@@ -58,7 +58,8 @@ class AgentProtocolServer:
         config.bind = [f"localhost:{port}"]
         app = FastAPI(
             title="AutoGPT Server",
-            description="Forked from AutoGPT Forge; Modified version of The Agent Protocol.",
+            description="Forked from AutoGPT Forge; "
+            "Modified version of The Agent Protocol.",
             version="v0.4",
         )
 
@@ -93,7 +94,8 @@ class AgentProtocolServer:
 
         else:
             logger.warning(
-                f"Frontend not found. {frontend_path} does not exist. The frontend will not be available."
+                f"Frontend not found. {frontend_path} does not exist. "
+                "The frontend will not be available."
             )
 
         # Used to access the methods on this class from API route handlers
@@ -258,7 +260,7 @@ class AgentProtocolServer:
         # Format step output
         output = (
             (
-                f"Command `{execute_command}({fmt_kwargs(execute_command_args)})` returned:"
+                f"`{execute_command}({fmt_kwargs(execute_command_args)})` returned:"
                 + ("\n\n" if "\n" in str(execute_result) else " ")
                 + f"{execute_result}\n\n"
             )
@@ -361,9 +363,9 @@ class AgentProtocolServer:
                 file_path = artifact.relative_path
             workspace = get_task_agent_file_workspace(task_id, self.agent_manager)
             retrieved_artifact = workspace.read_file(file_path, binary=True)
-        except NotFoundError as e:
+        except NotFoundError:
             raise
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             raise
 
         return StreamingResponse(

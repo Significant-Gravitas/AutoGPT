@@ -63,7 +63,7 @@ class JSONFileMemory(VectorMemoryProvider):
     def discard(self, item: MemoryItem):
         try:
             self.remove(item)
-        except:
+        except ValueError:  # item not in memory
             pass
 
     def clear(self):

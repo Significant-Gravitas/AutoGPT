@@ -51,7 +51,10 @@ def workspace(workspace_root: Path) -> FileWorkspace:
 
 @pytest.fixture
 def temp_plugins_config_file():
-    """Create a plugins_config.yaml file in a temp directory so that it doesn't mess with existing ones"""
+    """
+    Create a plugins_config.yaml file in a temp directory
+    so that it doesn't mess with existing ones.
+    """
     config_directory = TemporaryDirectory()
     config_file = Path(config_directory.name) / "plugins_config.yaml"
     with open(config_file, "w+") as f:

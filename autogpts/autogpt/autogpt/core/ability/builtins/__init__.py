@@ -4,3 +4,9 @@ from autogpt.core.ability.builtins.query_language_model import QueryLanguageMode
 BUILTIN_ABILITIES = {
     QueryLanguageModel.name(): QueryLanguageModel,
 }
+
+__all__ = [
+    "BUILTIN_ABILITIES",
+    "CreateNewAbility",
+    "QueryLanguageModel",
+]

@@ -45,7 +45,10 @@ class QueryLanguageModel(Ability):
     parameters: ClassVar[dict[str, JSONSchema]] = {
         "query": JSONSchema(
             type=JSONSchema.Type.STRING,
-            description="A query for a language model. A query should contain a question and any relevant context.",
+            description=(
+                "A query for a language model. "
+                "A query should contain a question and any relevant context."
+            ),
         )
     }
 

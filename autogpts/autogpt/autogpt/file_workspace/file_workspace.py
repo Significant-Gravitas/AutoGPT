@@ -133,7 +133,8 @@ class FileWorkspace:
             and not relative_path.is_relative_to(root)
         ):
             raise ValueError(
-                f"Attempted to access absolute path '{relative_path}' in workspace '{root}'."
+                f"Attempted to access absolute path '{relative_path}' "
+                f"in workspace '{root}'."
             )
 
         full_path = root.joinpath(relative_path).resolve()
