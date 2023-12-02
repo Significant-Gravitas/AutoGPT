@@ -143,6 +143,7 @@ def test_huggingface_fail_request_with_delay(
             mock_post.return_value.text = return_text
 
         agent.legacy_config.image_provider = "huggingface"
+        agent.legacy_config.huggingface_api_token = "mock-api-key"
         agent.legacy_config.huggingface_image_model = image_model
         prompt = "astronaut riding a horse"
 
