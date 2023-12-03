@@ -289,7 +289,7 @@ class Plan(BaseTask):
         """
         Register a task as modified
         """
-        LOG.trace("Task {task_id} is registered as modified in the Lazy Loading List")
+        LOG.trace(f"Task {task_id} is registered as modified in the Lazy Loading List")
         if task_id not in self._modified_tasks_ids:
             self._modified_tasks_ids.append(task_id)
 
@@ -297,7 +297,7 @@ class Plan(BaseTask):
         """
         Register a task as modified
         """
-        LOG.trace("Task {task_id} is registered as new in the Lazy Loading List")
+        LOG.trace(f"Task {task_id} is registered as new in the Lazy Loading List")
         if task_id not in self._new_tasks_ids:
             self._new_tasks_ids.append(task_id)
 

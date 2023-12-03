@@ -117,17 +117,33 @@ class ConsoleFormatter(logging.Formatter):
         """
         rec = record
         levelname = rec.levelname
+        current_color = ''
+
         if self.use_color and levelname in KEYWORD_COLORS:
-            levelname_color = KEYWORD_COLORS[levelname] + levelname + RESET_SEQ
+            current_color = KEYWORD_COLORS[levelname]
+            levelname_color = current_color + levelname + RESET_SEQ
             rec.levelname = levelname_color
+
         rec.name = f"{GREY}{os.path.relpath(rec.pathname):<15}{RESET_SEQ}"
         rec.msg = (
-            KEYWORD_COLORS[levelname] + EMOJIS[levelname] + "  " + str( rec.msg )+ RESET_SEQ
+            current_color
+            + EMOJIS[levelname]
+            + "  "
+            + str(rec.msg)
+            + RESET_SEQ
         )
 
         message = logging.Formatter.format(self, rec)
-        if rec.levelno == logging.DEBUG  and len(message) > 1000:
-            message = message[:800] + '[...] ' + os.path.abspath(ForgeLogger.LOG_FILENAME)
+
+        # Reinstate color after each reset
+        if self.use_color:
+            message = message.replace(RESET_SEQ, RESET_SEQ + current_color)
+
+        if rec.levelno == logging.DEBUG and len(message) > 1000:
+            message = (
+                message[:800] + "[...] " + os.path.abspath(ForgeLogger.LOG_FILENAME)
+            )
+
         return message
 
 
