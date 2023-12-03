@@ -146,5 +146,6 @@ jobs:
 
           exit $test_failure
 
-      - name: Push image to Docker Hub
+      - if: github.event_name == 'push' && github.ref_name == 'master'
+        name: Push image to Docker Hub
         run: docker push ${{ env.DEPLOY_IMAGE_NAME }}:${{ env.DEV_IMAGE_TAG }}
