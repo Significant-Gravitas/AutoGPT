@@ -52,10 +52,11 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
         click.echo(click.style("🚀 Setup initiated...\n", fg="green"))
         try:
             subprocess.check_call( ['bash', setup_script], cwd=script_dir)
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
             click.echo(
-                click.style("❌ There was an issue with the installation.", fg="red")
+                click.style(f"❌ There was an issue with the installation. Error: {e}", fg="red")
             )
+            
             install_error = True
     else:
         click.echo(
@@ -282,11 +283,11 @@ def start(agent_name, no_setup):
     if os.path.exists(agent_dir) and os.path.isfile(run_command) and os.path.isfile(run_bench_command):
         os.chdir(agent_dir)
         if not no_setup:
-            setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
+            setup_process = subprocess.Popen(["bash","./setup"], cwd=agent_dir)
             setup_process.wait()
-        subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
+        subprocess.Popen(["bash","./run_benchmark", "serve"], cwd=agent_dir)
         click.echo(f"Benchmark Server starting please wait...")
-        subprocess.Popen(["./run"], cwd=agent_dir)
+        subprocess.Popen(["bash","./run"], cwd=agent_dir)
         click.echo(f"Agent '{agent_name}' starting please wait...")
     elif not os.path.exists(agent_dir):
         click.echo(
@@ -378,7 +379,7 @@ def start(agent_name, subprocess_args):
     benchmark_script = os.path.join(agent_dir, "run_benchmark")
     if os.path.exists(agent_dir) and os.path.isfile(benchmark_script):
         os.chdir(agent_dir)
-        subprocess.Popen([benchmark_script, *subprocess_args], cwd=agent_dir)
+        subprocess.Popen(["bash",benchmark_script, *subprocess_args], cwd=agent_dir)
         click.echo(
             click.style(
                 f"🚀 Running benchmark for '{agent_name}' with subprocess arguments: {' '.join(subprocess_args)}",
