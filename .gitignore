@@ -182,3 +182,4 @@ arena/TestAgent.json
 # evo.ninja
 autogpts/evo.ninja/*
 !autogpts/evo.ninja/setup
+autogpts/autogpt/tests/vcr_cassettes
