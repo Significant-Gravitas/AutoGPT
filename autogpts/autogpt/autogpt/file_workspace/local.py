@@ -1,0 +1,76 @@
+"""
+The LocalFileWorkspace class implements a FileWorkspace that works with local files.
+"""
+from __future__ import annotations
+
+import inspect
+import logging
+from pathlib import Path
+from typing import Any, Callable
+
+from .base import FileWorkspace
+
+logger = logging.getLogger(__name__)
+
+
+class LocalFileWorkspace(FileWorkspace):
+    """A class that represents a file workspace."""
+
+    on_write_file: Callable[[Path], Any] | None = None
+    """
+    Event hook, executed after writing a file.
+
+    Params:
+        Path: The path of the file that was written, relative to the workspace root.
+    """
+
+    def __init__(self, root: str | Path, restrict_to_root: bool):
+        self._root = self._sanitize_path(root)
+        self._restrict_to_root = restrict_to_root
+        super().__init__()
+
+    @property
+    def root(self) -> Path:
+        """The root directory of the file workspace."""
+        return self._root
+
+    @property
+    def restrict_to_root(self):
+        """Whether to restrict generated paths to the root."""
+        return self._restrict_to_root
+
+    def initialize(self) -> None:
+        self.root.mkdir(exist_ok=True, parents=True)
+
+    def open_file(self, path: str | Path, mode: str = "r"):
+        """Open a file in the workspace."""
+        full_path = self.get_path(path)
+        return open(full_path, mode)
+
+    def read_file(self, path: str | Path, binary: bool = False):
+        """Read a file in the workspace."""
+        with self.open_file(path, "rb" if binary else "r") as file:
+            return file.read()
+
+    async def write_file(self, path: str | Path, content: str | bytes):
+        """Write to a file in the workspace."""
+        with self.open_file(path, "wb" if type(content) is bytes else "w") as file:
+            file.write(content)
+
+        if self.on_write_file:
+            path = Path(path)
+            if path.is_absolute():
+                path = path.relative_to(self.root)
+            res = self.on_write_file(path)
+            if inspect.isawaitable(res):
+                await res
+
+    def list_files(self, path: str | Path = "."):
+        """List all files in a directory in the workspace."""
+        full_path = self.get_path(path)
+        return [str(file) for file in full_path.glob("*") if file.is_file()]
+
+    def delete_file(self, path: str | Path):
+        """Delete a file in the workspace."""
+        full_path = self.get_path(path)
+        full_path.unlink()

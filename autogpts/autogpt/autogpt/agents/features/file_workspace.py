@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
     from ..base import BaseAgent
 
-from autogpt.file_workspace import FileWorkspace
+from autogpt.file_workspace import FileWorkspace, LocalFileWorkspace
 
 from ..base import AgentFileManager, BaseAgentConfiguration
 
@@ -42,7 +42,7 @@ class FileWorkspaceMixin:
 
 
 def _setup_workspace(file_manager: AgentFileManager, config: BaseAgentConfiguration):
-    workspace = FileWorkspace(
+    workspace = LocalFileWorkspace(
         file_manager.root / "workspace",
         restrict_to_root=not config.allow_fs_access,
     )

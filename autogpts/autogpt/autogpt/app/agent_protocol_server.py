@@ -33,7 +33,7 @@ from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
-from autogpt.file_workspace import FileWorkspace
+from autogpt.file_workspace import LocalFileWorkspace
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
 logger = logging.getLogger(__name__)
@@ -384,8 +384,8 @@ def task_agent_id(task_id: str | int) -> str:
 def get_task_agent_file_workspace(
     task_id: str | int,
     agent_manager: AgentManager,
-) -> FileWorkspace:
-    return FileWorkspace(
+) -> LocalFileWorkspace:
+    return LocalFileWorkspace(
         root=agent_manager.get_agent_dir(
             agent_id=task_agent_id(task_id),
             must_exist=True,
