@@ -138,23 +138,20 @@ jobs:
           S3_SECRET_ACCESS_KEY: minioadmin
         run: |
           set +e
-          test_output=$(
-            docker run --env CI --env OPENAI_API_KEY \
-              --network container:minio \
-              --env S3_ENDPOINT_URL --env S3_ACCESS_KEY_ID --env S3_SECRET_ACCESS_KEY \
-              --entrypoint poetry ${{ env.IMAGE_NAME }} run \
-              pytest -v --cov=autogpt --cov-branch --cov-report term-missing \
-              --numprocesses=4 --durations=10 \
-              tests/unit tests/integration 2>&1
-          )
-          test_failure=$?
+          docker run --env CI --env OPENAI_API_KEY \
+            --network container:minio \
+            --env S3_ENDPOINT_URL --env S3_ACCESS_KEY_ID --env S3_SECRET_ACCESS_KEY \
+            --entrypoint poetry ${{ env.IMAGE_NAME }} run \
+            pytest -v --cov=autogpt --cov-branch --cov-report term-missing \
+            --numprocesses=4 --durations=10 \
+            tests/unit tests/integration 2>&1 | tee test_output.txt
 
-          echo "$test_output"
+          test_failure=${PIPESTATUS[0]}
 
           cat << $EOF >> $GITHUB_STEP_SUMMARY
           # Tests $([ $test_failure = 0 ] && echo '✅' || echo '❌')
           \`\`\`
-          $test_output
+          $(cat test_output.txt)
           \`\`\`
           $EOF
 
