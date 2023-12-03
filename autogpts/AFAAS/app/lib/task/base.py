@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import abc
-from logging import Logger
 from typing import TYPE_CHECKING, Optional, Union, get_args
 
 from pydantic import BaseModel, Field
 
 from autogpts.autogpt.autogpt.core.configuration import AFAASModel
 from autogpts.autogpt.autogpt.core.agents import AbstractAgent
+from ...sdk.forge_log import ForgeLogger
 
 # from autogpts.autogpt.autogpt.core.tools.schema import ToolResult
-logger = Logger(name=__name__)
+LOG = ForgeLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .stack import TaskStack
@@ -126,8 +126,13 @@ class BaseTask(AFAASModel):
         self.subtasks.add(task = task)
         self.agent.plan._register_new_task(task = task)
 
+    def add_task(self, task: "BaseTask"):
+        LOG.trace(f"Adding task {task.task_id} to {self.task_id}")
+        self.subtasks.add(task=task)
+        self.agent.plan._register_new_task(task=task)
 
-    def add_tasks(self, tasks : list["BaseTask"]):
+    def add_tasks(self, tasks: list["BaseTask"]):
+        LOG.trace(f"Adding {len(tasks)} tasks to {self.task_id}")
         for task in tasks:
             self.add_task(task = task)
 
@@ -192,7 +197,8 @@ class BaseTask(AFAASModel):
     ### FIXME : To test
     ###
     def remove_task(self, task_id: str):
-        logger.error("""FUNCTION NOT WORKING :
+        LOG.error(
+            """FUNCTION NOT WORKING :
                      1. We now manage multiple predecessor
                      2. Tasks should not be deleted but managed by state""")
         # 1. Set all task_predecessors_id to null if they reference the task to be removed
@@ -231,11 +237,11 @@ class BaseTask(AFAASModel):
         Returns:
             List [BaseTask]: A list of tasks meeting the specified criteria.
         """
-        logger.notice(
-            "Deprecated : Recommended functions are:\n" +
-            "- Plan.get_ready_tasks()\n" +
-            "- Task.get_first_ready_task()\n" +
-            "- Plan.get_next_task()\n"
+        LOG.notice(
+            "Deprecated : Recommended functions are:\n"
+            + "- Plan.get_ready_tasks()\n"
+            + "- Task.get_first_ready_task()\n"
+            + "- Plan.get_next_task()\n"
         )
         ready_tasks = []
 
@@ -263,11 +269,11 @@ class BaseTask(AFAASModel):
             Task or None: The first task meeting the specified criteria or None if no such task is found.
         """
 
-        logger.notice(
-            "Deprecated : Recommended functions are:\n" +
-            "- Plan.get_ready_tasks()\n" +
-            "- Plan.get_first_ready_task()\n" +
-            "- Plan.get_next_task()\n"
+        LOG.notice(
+            "Deprecated : Recommended functions are:\n"
+            + "- Plan.get_ready_tasks()\n"
+            + "- Plan.get_first_ready_task()\n"
+            + "- Plan.get_next_task()\n"
         )
 
         def check_task(task: BaseTask) -> Optional[BaseTask]:
@@ -363,7 +369,7 @@ class BaseTask(AFAASModel):
         """
         Recursively searches for a task with the given task_id in the tree of tasks.
         """
-        logger.warning("Deprecated : Recommended function is Plan.get_task()")
+        LOG.warning("Deprecated : Recommended function is Plan.get_task()")
         # Check current task
         if self.task_id == task_id:
             return self
@@ -382,7 +388,7 @@ class BaseTask(AFAASModel):
         Returns the parent task and all child tasks on the path to the desired task.
         """
 
-        logger.warning("Deprecated : Recommended function is Task.find_task_path()")
+        LOG.warning("Deprecated : Recommended function is Task.find_task_path()")
 
         if self.task_id == search_task_id:
             return self

@@ -7,7 +7,7 @@ from autogpts.autogpt.autogpt.core.agents import AbstractAgent
 
 
 from  autogpts.AFAAS.app.sdk.forge_log import ForgeLogger
-LOG = ForgeLogger(__name__)
+LOG = ForgeLogger(name=__name__)
 
 
 from typing import TYPE_CHECKING
@@ -34,17 +34,16 @@ class TaskStack(AFAASModel):
         return iter(self._task_ids)
 
     def add(self, task: BaseTask):
+        LOG.trace(f"Adding task ``{LOG.italic(task.task_goal)}`` to stack")
         """
         Add a task. Can also mark it as ready.
         """
         self._task_ids.append(task.task_id)
         if isinstance(self.parent_task, Plan):
-            LOG.info(f"Added task ``{LOG.italic(task.task_goal)}`` to plan ``{LOG.italic(self.parent_task.task_goal)}``")
-            plan :Plan = self.parent_task
-        else :
-            LOG.info(f"Added task ``{LOG.italic(task.task_goal)}`` as subtask of task ``{LOG.italic(self.parent_task.task_goal)}``")
-            plan :Plan = self.parent_task.agent.plan
-            plan._register_task_as_modified(task_id= self.parent_task.task_id)
+            plan: Plan = self.parent_task
+        else:
+            plan: Plan = self.parent_task.agent.plan
+            plan._register_task_as_modified(task_id=self.parent_task.task_id)
 
         if(self.parent_task.subtasks == self) : 
             # FIXME: Evaluate what is the best way to evaluate predecessors
@@ -53,7 +52,7 @@ class TaskStack(AFAASModel):
                         + f"- Always add all predecessors of parent task to subtask predecessors\n"
                         + f"- Smartly/Dynamicaly add all predecessors of parent task to subtask predecessors\n"
                         + f"- Consider parent predecessor when evaluatin `Task.is_ready()`\n"))
-            LOG.notice(f"Added subtask should only be added if parent_task is READY")
+            LOG.debug(f"Added subtask should only be added if parent_task is READY")
             
 
     def get_task(self, task_id) -> BaseTask:

@@ -359,12 +359,12 @@ class PlannerLoop(BaseLoop):
             # result = ActionSuccessResult(outputs=return_value)
         except AgentException as e:
             #FIXME : Implement retry mechanism if a fail
-            result = ActionErrorResult(reason=e.message, error=e)
+            return_value = ActionErrorResult(reason=e.message, error=e)
 
         
         self.plan().set_task_status(task= current_task, status= TaskStatusList.DONE)
 
-        return result
+        return return_value
 
         ###
         ### TODO : Low priority : Save results of tool execution & manage errors
