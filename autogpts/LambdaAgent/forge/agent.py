@@ -6,12 +6,12 @@ from forge.sdk import (
     StepRequestBody,
     Task,
     TaskRequestBody,
-    Workspace,    
-    PromptEngine,	
-    chat_completion_request,	
-    ChromaMemStore	
+    Workspace,
+    PromptEngine,
+    chat_completion_request,
+    ChromaMemStore,
 )
-import json	
+import json
 import pprint
 
 LOG = ForgeLogger(__name__)
@@ -95,53 +95,70 @@ class ForgeAgent(Agent):
         return task
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
-        """
-        For a tutorial on how to add your own logic please see the offical tutorial series:
-        https://aiedge.medium.com/autogpt-forge-e3de53cc58ec
-
-        The agent protocol, which is the core of the Forge, works by creating a task and then
-        executing steps for that task. This method is called when the agent is asked to execute
-        a step.
-
-        The task that is created contains an input string, for the benchmarks this is the task
-        the agent has been asked to solve and additional input, which is a dictionary and
-        could contain anything.
-
-        If you want to get the task use:
-
-        ```
+        # Firstly we get the task this step is for so we can access the task input
         task = await self.db.get_task(task_id)
-        ```
 
-        The step request body is essentially the same as the task request and contains an input
-        string, for the benchmarks this is the task the agent has been asked to solve and
-        additional input, which is a dictionary and could contain anything.
-
-        You need to implement logic that will take in this step input and output the completed step
-        as a step object. You can do everything in a single step or you can break it down into
-        multiple steps. Returning a request to continue in the step output, the user can then decide
-        if they want the agent to continue or not.
-        """
-        # An example that
+        # Create a new step in the database
         step = await self.db.create_step(
             task_id=task_id, input=step_request, is_last=True
         )
 
-        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
+        # Log the message
+        LOG.info(f"\t✅ Final Step completed: {step.step_id} input: {step.input[:19]}")
 
-        await self.db.create_artifact(
-            task_id=task_id,
-            step_id=step.step_id,
-            file_name="output.txt",
-            relative_path="",
-            agent_created=True,
+        # Initialize the PromptEngine with the "gpt-3.5-turbo" model
+        prompt_engine = PromptEngine("gpt-3.5-turbo")
+
+        # Load the system and task prompts
+        system_prompt = prompt_engine.load_prompt("system-format")
+
+        # Initialize the messages list with the system prompt
+        messages = [
+            {"role": "system", "content": system_prompt},
+        ]
+        # Define the task parameters
+        task_kwargs = {
+            "task": task.input,
+            "abilities": self.abilities.list_abilities_for_prompt(),
+        }
+
+        # Load the task prompt with the defined task parameters
+        task_prompt = prompt_engine.load_prompt("task-step", **task_kwargs)
+
+        # Append the task prompt to the messages list
+        messages.append({"role": "user", "content": task_prompt})
+
+        try:
+            # Define the parameters for the chat completion request
+            chat_completion_kwargs = {
+                "messages": messages,
+                "model": "gpt-3.5-turbo",
+            }
+            # Make the chat completion request and parse the response
+            chat_response = await chat_completion_request(**chat_completion_kwargs)
+            answer = json.loads(chat_response["choices"][0]["message"]["content"])
+
+            # Log the answer for debugging purposes
+            LOG.info(pprint.pformat(answer))
+
+        except json.JSONDecodeError as e:
+            # Handle JSON decoding errors
+            LOG.error(f"Unable to decode chat response: {chat_response}")
+        except Exception as e:
+            # Handle other exceptions
+            LOG.error(f"Unable to generate chat response: {e}")
+
+        # Extract the ability from the answer
+        ability = answer["ability"]
+
+        # Run the ability and get the output
+        # We don't actually use the output in this example
+        output = await self.abilities.run_ability(
+            task_id, ability["name"], **ability["args"]
         )
 
-        step.output = "Washington D.C"
+        # Set the step output to the "speak" part of the answer
+        step.output = answer["thoughts"]["speak"]
 
-        LOG.info(f"\t✅ Final Step completed: {step.step_id}. \n" +
-                 f"Output should be placeholder text Washington D.C. You'll need to \n" +
-                 f"modify execute_step to include LLM behavior. Follow the tutorial " +
-                 f"if confused. ")
-
+        # Return the completed step
         return step
