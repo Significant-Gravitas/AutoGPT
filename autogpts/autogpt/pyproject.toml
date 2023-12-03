@@ -25,6 +25,7 @@ python = "^3.10"
 # autogpt-forge = { path = "../forge" }
 autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge"}
 beautifulsoup4 = "^4.12.2"
+boto3 = "^1.33.6"
 charset-normalizer = "^3.1.0"
 click = "*"
 colorama = "^0.4.6"
@@ -75,6 +76,7 @@ benchmark = ["agbenchmark"]
 [tool.poetry.group.dev.dependencies]
 auto-gpt-plugin-template = {git = "https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template", rev = "0.1.0"}
 black = "*"
+boto3-stubs = {extras = ["s3"], version = "^1.33.6"}
 flake8 = "*"
 gitpython = "^3.1.32"
 isort = "*"
