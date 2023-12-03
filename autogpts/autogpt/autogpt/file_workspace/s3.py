@@ -64,7 +64,9 @@ class S3FileWorkspace(FileWorkspace):
         try:
             self._s3.meta.client.head_bucket(Bucket=self._bucket_name)
             self._bucket = self._s3.Bucket(self._bucket_name)
-        except botocore.exceptions.ClientError:
+        except botocore.exceptions.ClientError as e:
+            if "(404)" not in str(e):
+                raise
             self._bucket = self._s3.create_bucket(Bucket=self._bucket_name)
 
     def get_path(self, relative_path: str | Path) -> Path:
