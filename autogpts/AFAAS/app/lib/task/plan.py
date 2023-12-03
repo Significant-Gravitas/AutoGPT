@@ -226,7 +226,7 @@ class Plan(BaseTask):
             ValueError: If the status is not a valid TaskStatusList value.
 
         """
-        LOG.debug(f"Updating task {task_id} status to {status}")
+        LOG.trace(f"Updating task {task_id} status to {status}")
         if status == TaskStatusList.READY:
             self._ready_task_ids.append(task_id)
         elif status == TaskStatusList.DONE:
@@ -243,6 +243,9 @@ class Plan(BaseTask):
         Returns:
             None
         """
+        LOG.trace((f"Start registering new task {task.task_goal}\n"
+                   + f"- Step 1 : Register the task in the plan\n"
+                   + f"- Step 2 : Register the task as new in the Lazy Saving Stack\n"))
         self._register_task(task=task)
         self._loaded_tasks_dict[task.task_id] = task
         self._register_task_as_new(task_id=task.task_id)
@@ -251,10 +254,12 @@ class Plan(BaseTask):
         """
         Register a list of tasks in the plan
         """
+        LOG.trace(f"Registering {len(tasks)} new tasks")
         for task in tasks:
             self._register_new_task(task=task)
 
     def _register_task(self, task: Task):
+        LOG.trace(f"Registering task `{task.task_goal}`")
         self._all_task_ids.append(task.task_id)
         if task.state == TaskStatusList.READY:
             self._ready_task_ids.append(task.task_id)
@@ -263,6 +268,7 @@ class Plan(BaseTask):
         """
         Register a list of tasks in the plan
         """
+        LOG.trace(f"Registering {len(tasks)} tasks")
         for task in tasks:
             self._register_task(task=task)
 
@@ -270,6 +276,7 @@ class Plan(BaseTask):
         """
         Register a task as modified
         """
+        LOG.trace("Task {task_id} is registered as modified in the Lazy Loading List")
         if task_id not in self._modified_tasks_ids:
             self._modified_tasks_ids.append(task_id)
 
@@ -277,6 +284,7 @@ class Plan(BaseTask):
         """
         Register a task as modified
         """
+        LOG.trace("Task {task_id} is registered as new in the Lazy Loading List")
         if task_id not in self._new_tasks_ids:
             self._new_tasks_ids.append(task_id)
 
@@ -301,28 +309,29 @@ class Plan(BaseTask):
             Plan: The created plan.
 
         """
+        LOG.trace(f"Creating plan for agent {agent.agent_id}")
         memory = agent._memory
         plan_table = memory.get_table("plans")
 
-        plan = cls(
-            agent_id=agent.agent_id,
-            task_goal=agent.agent_goal_sentence,
-            tasks=[],
-            agent=agent,
-        )
-
+        plan = cls(agent_id=agent.agent_id,
+                    task_goal=agent.agent_goal_sentence, 
+                    tasks=[],
+                    agent=agent
+                    )
+        
         plan._create_initial_tasks(status=TaskStatusList.READY)
 
         plan_table.add(plan, id=plan.plan_id)
         return plan
 
     def _create_initial_tasks(self, status: TaskStatusList):
+        LOG.trace(f"Creating initial task for plan {self.plan_id}")
         initial_task = Task(
             agent=self.agent,
             # plan=self,
             task_parent=self,
             _task_parent_id=self.plan_id,
-            state=status.value,
+            state=status,
             _task_predecessors_id=None,
             responsible_agent_id=None,
             task_goal=self.task_goal,
