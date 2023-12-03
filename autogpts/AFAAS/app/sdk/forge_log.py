@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 # Load the .env file
 load_dotenv()
 
-CONSOLE_LOG_LEVEL = os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper()
+#CONSOLE_LOG_LEVEL = os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper()
+CONSOLE_LOG_LEVEL = "TRACE"
 FILE_LOG_LEVEL = os.getenv("FILE_LOG_LEVEL", "DEBUG").upper()
 
 JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
@@ -160,11 +161,11 @@ class ForgeLogger(logging.Logger):
     #     cls._instance.level = logLevel
     #     return cls._instance
 
-    def __init__(self, name: str, logLevel: str = "DEBUG", log_folder: str = "./"):
+    def __init__(self, name: str, log_folder: str = "./"):
         if hasattr(self, "_initialized"):
             return
 
-        logging.Logger.__init__(self, name, logLevel)
+        logging.Logger.__init__(self, name)
         # self.log_folder = log_folder
 
         # Queue Handler
@@ -221,17 +222,18 @@ class ForgeLogger(logging.Logger):
                     f"{role_emojis.get(role, '🔵')}: {response['choices'][0]['message']['content']}",
                 )
 
-    def notice(self, msg, *args, **kwargs):
-        if self.isEnabledFor(NOTICE):
-            self._log(NOTICE, msg, args, **kwargs)
-
     def trace(self, msg, *args, **kwargs):
         if self.isEnabledFor(TRACE):
-            self._log(TRACE, msg, args, **kwargs)
+            self._log(TRACE, msg, args, kwargs, stacklevel=2)
+
+    def notice(self, msg, *args, **kwargs):
+        if self.isEnabledFor(NOTICE):
+            self._log(NOTICE, msg, args, kwargs, stacklevel=2)
 
     def db_log(self, msg, *args, **kwargs):
         if self.isEnabledFor(DB_LOG):
-            self._log(DB_LOG, msg, args, **kwargs)
+            self._log(DB_LOG, msg, args, kwargs, stacklevel=2)
+
 
     @staticmethod
     def bold(msg: str) -> str:
@@ -302,5 +304,5 @@ def setup_logger():
 
 
 LOG = ForgeLogger(__name__)
-LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}")
-LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}")
+LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}" )
+LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}" )

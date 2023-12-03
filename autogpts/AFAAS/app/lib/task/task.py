@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 from autogpts.autogpt.autogpt.core.agents import BaseAgent
 
@@ -17,7 +17,7 @@ from .meta import TaskStatusList
 
 
 
-LOG = ForgeLogger(__name__)
+LOG = ForgeLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .stack import TaskStack
@@ -74,16 +74,30 @@ class Task(BaseTask):
             self._task_successors = TaskStack(parent_task=self)
         return self._task_successors
 
-    _state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
+    # _state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
 
-    @property
-    def state(self) -> Optional[TaskStatusList]:
-        return self._state
+    # @property
+    # def state(self) -> Optional[TaskStatusList]:
+    #     LOG.trace(f"Getting state of task {self.task_id}")
+    #     return self._state
     
-    @state.setter
-    def state(self, new_state: TaskStatusList):
-        self.agent.plan._registry_update_task_status_in_list(task_id=self.task_id, new_state=new_state)
-        self._state = new_state
+    # @state.setter
+    # def state(self, new_state: TaskStatusList):
+    #     LOG.trace(f"Setting state of task {self.task_id} to {new_state}")
+    #     self.agent.plan._registry_update_task_status_in_list(task_id=self.task_id, status=new_state)
+    #     self._state = new_state
+
+    state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
+    @validator('state', pre=True, always=True)
+    def set_state(cls, new_state, values):
+        task_id = values.get("task_id")
+        if task_id and new_state:
+            LOG.trace(f"Setting state of task {task_id} to {new_state}")
+            # Assuming LOG and agent are defined and accessible
+            agent = values.get("agent")
+            if agent:
+                agent.plan._registry_update_task_status_in_list(task_id=task_id, status=new_state)
+        return new_state
 
     task_text_output: Optional[str]
     """ Placeholder : The agent summary of his own doing while performing the task"""
