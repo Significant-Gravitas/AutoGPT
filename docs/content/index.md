@@ -13,7 +13,28 @@ To tie these together, we also have a [CLI] at the root of the project.
 
 ---
 
-## 🤖 Agent
+## 🥇 Best Agent: evo.ninja
+
+evo.ninja emerged as a top-performing agent in a recent hackathon, establishing itself as a best open-source generalist agent. You can explore its capabilities at https://evo.ninja.
+
+### Setting Up and Running Evo Ninja
+To get started with Evo Ninja, follow these comprehensive steps:
+1. **Initial Setup Requirements**: Make sure to install [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git), [nodejs](https://nodejs.org/en/download/package-manager#alpine-linux), [yarn](https://classic.yarnpkg.com/lang/en/docs/install/#debian-stable), and [nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+2. **Installation Process**:
+    - Clone the evo.ninja repository: `git clone https://github.com/polywrap/evo.ninja`
+    - Rename the `.env.template` file to `.env`: `cp .env.template .env`
+    - Add your OpenAI API Key in the `.env` file: `OPENAI_API_KEY=your_key_here`
+    - Include your SERP API Key in the same file: `SERP_API_KEY=your_key_here`
+    - Switch to the appropriate Node.JS version: `nvm install && nvm use`
+    - Install dependencies and build the project: `yarn && yarn build`
+3. Start the agent: `yarn start`
+4. Interact with the agent to see it in action!
+
+For a detailed guide, visit the [evo.ninja documentation](https://github.com/polywrap/evo.ninja#readme). For additional support and community interaction, join the [evo.ninja Discord](https://discord.com/invite/r3rwh69cCa).
+
+---
+
+## 🤖 AutoGPT Agent
 
 **[📖 About AutoGPT](AutoGPT/index.md)**
 &ensp;|&ensp;
