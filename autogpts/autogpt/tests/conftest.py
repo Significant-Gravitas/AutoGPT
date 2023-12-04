@@ -30,7 +30,9 @@ def tmp_project_root(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def app_data_dir(tmp_project_root: Path) -> Path:
-    return tmp_project_root / "data"
+    dir = tmp_project_root / "data"
+    dir.mkdir(parents=True, exist_ok=True)
+    return dir
 
 
 @pytest.fixture()

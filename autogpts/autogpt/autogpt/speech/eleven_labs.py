@@ -17,8 +17,8 @@ PLACEHOLDERS = {"your-voice-id"}
 
 
 class ElevenLabsConfig(SystemConfiguration):
-    api_key: str = UserConfigurable()
-    voice_id: str = UserConfigurable()
+    api_key: str = UserConfigurable(from_env="ELEVENLABS_API_KEY")
+    voice_id: str = UserConfigurable(from_env="ELEVENLABS_VOICE_ID")
 
 
 class ElevenLabsSpeech(VoiceBase):

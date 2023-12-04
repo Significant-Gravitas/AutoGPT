@@ -11,7 +11,6 @@ import pytest
 
 from autogpt.app.configurator import GPT_3_MODEL, GPT_4_MODEL, apply_overrides_to_config
 from autogpt.config import Config, ConfigBuilder
-from autogpt.file_workspace import FileWorkspace
 
 
 def test_initial_values(config: Config) -> None:
@@ -107,8 +106,8 @@ def test_smart_and_fast_llms_set_to_gpt4(mock_list_models: Any, config: Config) 
     config.smart_llm = smart_llm
 
 
-def test_missing_azure_config(workspace: FileWorkspace) -> None:
-    config_file = workspace.get_path("azure_config.yaml")
+def test_missing_azure_config(config: Config) -> None:
+    config_file = config.app_data_dir / "azure_config.yaml"
     with pytest.raises(FileNotFoundError):
         ConfigBuilder.load_azure_config(config_file)
 
@@ -121,9 +120,10 @@ def test_missing_azure_config(workspace: FileWorkspace) -> None:
     assert azure_config["azure_model_to_deployment_id_map"] == {}
 
 
-def test_azure_config(config: Config, workspace: FileWorkspace) -> None:
-    config_file = workspace.get_path("azure_config.yaml")
-    yaml_content = """
+def test_azure_config(config: Config) -> None:
+    config_file = config.app_data_dir / "azure_config.yaml"
+    config_file.write_text(
+        """
 azure_api_type: azure
 azure_api_base: https://dummy.openai.azure.com
 azure_api_version: 2023-06-01-preview
@@ -132,11 +132,15 @@ azure_model_map:
     smart_llm_deployment_id: SMART-LLM_ID
     embedding_model_deployment_id: embedding-deployment-id-for-azure
 """
-    config_file.write_text(yaml_content)
+    )
 
     os.environ["USE_AZURE"] = "True"
     os.environ["AZURE_CONFIG_FILE"] = str(config_file)
-    config = ConfigBuilder.build_config_from_env(project_root=workspace.root.parent)
+    print(str(config_file))
+    config = ConfigBuilder.build_config_from_env(project_root=config.project_root)
+    import pprint
+
+    pprint.pprint(config)
 
     assert config.openai_api_type == "azure"
     assert config.openai_api_base == "https://dummy.openai.azure.com"

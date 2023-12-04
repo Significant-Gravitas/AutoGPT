@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import enum
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.speech import TTSConfig
 
-from autogpt.core.configuration import SystemConfiguration
+from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.runner.client_lib.logging import BelowLevelFilter
 
 from .formatters import AutoGptFormatter, StructuredLoggingFormatter
@@ -49,15 +50,29 @@ TEXT_LOG_FORMAT_MAP = {
 
 
 class LoggingConfig(SystemConfiguration):
-    level: int = logging.INFO
+    level: int = UserConfigurable(
+        default=logging.INFO,
+        from_env=lambda: logging.getLevelName(os.getenv("LOG_LEVEL", "INFO")),
+    )
 
     # Console output
-    log_format: LogFormatName = LogFormatName.SIMPLE
-    plain_console_output: bool = False
+    log_format: LogFormatName = UserConfigurable(
+        default=LogFormatName.SIMPLE,
+        from_env=lambda: LogFormatName(os.getenv("LOG_FORMAT", "simple")),
+    )
+    plain_console_output: bool = UserConfigurable(
+        default=False,
+        from_env=lambda: os.getenv("PLAIN_OUTPUT", "False") == "True",
+    )
 
     # File output
     log_dir: Path = LOG_DIR
-    log_file_format: Optional[LogFormatName] = LogFormatName.SIMPLE
+    log_file_format: Optional[LogFormatName] = UserConfigurable(
+        default=LogFormatName.SIMPLE,
+        from_env=lambda: LogFormatName(
+            os.getenv("LOG_FILE_FORMAT", os.getenv("LOG_FORMAT", "simple"))
+        ),
+    )
 
 
 def configure_logging(
