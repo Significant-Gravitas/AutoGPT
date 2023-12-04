@@ -15,7 +15,7 @@ To tie these together, we also have a [CLI] at the root of the project.
 
 ## 🥇 Best Agent: evo.ninja
 
-evo.ninja emerged as a top-performing agent in a recent hackathon, establishing itself as a best open-source generalist agent. You can explore its capabilities at https://evo.ninja.
+evo.ninja emerged as a top-performing agent in the recent AutoGPT Arena hackathon, establishing itself as a best open-source generalist agent. You can explore its capabilities at https://evo.ninja.
 
 ### Setting Up and Running Evo Ninja
 To get started with Evo Ninja, follow these comprehensive steps:
