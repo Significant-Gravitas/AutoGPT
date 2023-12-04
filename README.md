@@ -25,14 +25,19 @@ The AutoGPT Arena Hackathon saw [**evo.ninja**](https://github.com/polywrap/evo.
 
 📈 To challenge evo.ninja, AutoGPT, and others, submit your benchmark run to the [Leaderboard](#-leaderboard), and maybe your agent will be up here next!
 
+
 ### How to Run Evo Ninja
-To run Evo Ninja, follow these steps:
-1. Install all prerequisites (nvm, yarn)
-2. Clone the evo.ninja repository: `git clone https://github.com/polywrap/evo.ninja`
-3. Activate the correct node version: `nvm install && nvm use`
-4. Install dependencies: `yarn && yarn build`
-5. Run the agent: `yarn start`
-6. Prompt the agent and watch it do its magic!
+To run Evo Ninja, follow these detailed steps:
+1. **Pre-Requisites**: Install [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git), [nodejs](https://nodejs.org/en/download/package-manager#alpine-linux), [yarn](https://classic.yarnpkg.com/lang/en/docs/install/#debian-stable), and [nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+2. **Installation**:
+    - Clone the repository: `git clone https://github.com/polywrap/evo.ninja`
+    - Copy and rename the environment template: `cp .env.template .env`
+    - Add your OpenAI API Key to `.env`: `OPENAI_API_KEY=your_key_here`
+    - Add your SERP API Key to `.env`: `SERP_API_KEY=your_key_here`
+    - Use the correct Node.JS version: `nvm install && nvm use`
+    - Install dependencies and build: `yarn && yarn build`
+3. Run the agent: `yarn start`
+4. Prompt the agent and watch it do its magic!
 
 For detailed instructions, visit the [evo.ninja documentation](https://github.com/polywrap/evo.ninja#readme), and for live support, join the [evo.ninja discord](https://discord.com/invite/r3rwh69cCa)
 
