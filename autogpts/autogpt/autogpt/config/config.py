@@ -71,11 +71,11 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Model configuration
     fast_llm: str = UserConfigurable(
         default="gpt-3.5-turbo-16k",
-        from_env=lambda: os.getenv("FAST_LLM", os.getenv("FAST_LLM_MODEL")),
+        from_env=lambda: os.getenv("FAST_LLM"),
     )
     smart_llm: str = UserConfigurable(
         default="gpt-4",
-        from_env=lambda: os.getenv("SMART_LLM", os.getenv("SMART_LLM_MODEL")),
+        from_env=lambda: os.getenv("SMART_LLM"),
     )
     temperature: float = UserConfigurable(
         default=0,
@@ -220,9 +220,7 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Google
     google_api_key: Optional[str] = UserConfigurable(from_env="GOOGLE_API_KEY")
     google_custom_search_engine_id: Optional[str] = UserConfigurable(
-        from_env=lambda: os.getenv(
-            "GOOGLE_CUSTOM_SEARCH_ENGINE_ID", os.getenv("CUSTOM_SEARCH_ENGINE_ID")
-        ),
+        from_env=lambda: os.getenv("GOOGLE_CUSTOM_SEARCH_ENGINE_ID"),
     )
 
     # Huggingface
