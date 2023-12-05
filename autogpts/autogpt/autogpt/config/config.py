@@ -4,12 +4,11 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
-import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
-from pydantic import Field, validator
+from pydantic import Field, SecretStr, validator
 
 import autogpt
 from autogpt.core.configuration.schema import (
@@ -17,7 +16,10 @@ from autogpt.core.configuration.schema import (
     SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.core.resource.model_providers.openai import (
+    OPEN_AI_CHAT_MODELS,
+    OpenAICredentials,
+)
 from autogpt.logs.config import LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
@@ -35,6 +37,7 @@ GPT_3_MODEL = "gpt-3.5-turbo"
 class Config(SystemSettings, arbitrary_types_allowed=True):
     name: str = "Auto-GPT configuration"
     description: str = "Default configuration for the Auto-GPT application."
+
     ########################
     # Application Settings #
     ########################
@@ -204,21 +207,11 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     # Credentials #
     ###############
     # OpenAI
-    openai_api_key: Optional[str] = UserConfigurable(from_env="OPENAI_API_KEY")
-    openai_api_type: Optional[str] = None
-    openai_api_base: Optional[str] = UserConfigurable(from_env="OPENAI_API_BASE_URL")
-    openai_api_version: Optional[str] = None
-    openai_organization: Optional[str] = UserConfigurable(
-        from_env="OPENAI_ORGANIZATION"
-    )
-    use_azure: bool = UserConfigurable(
-        default=False, from_env=lambda: os.getenv("USE_AZURE") == "True"
-    )
+    openai_credentials: Optional[OpenAICredentials] = None
     azure_config_file: Optional[Path] = UserConfigurable(
         default=AZURE_CONFIG_FILE,
         from_env=lambda: Path(f) if (f := os.getenv("AZURE_CONFIG_FILE")) else None,
     )
-    azure_model_to_deployment_id_map: Optional[Dict[str, str]] = None
 
     # Github
     github_api_key: Optional[str] = UserConfigurable(from_env="GITHUB_API_KEY")
@@ -260,67 +253,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
             )
         return v
 
-    def get_openai_credentials(self, model: str) -> dict[str, str]:
-        credentials = {
-            "api_key": self.openai_api_key,
-            "api_base": self.openai_api_base,
-            "organization": self.openai_organization,
-        }
-        if self.use_azure:
-            azure_credentials = self.get_azure_credentials(model)
-            credentials.update(azure_credentials)
-        return credentials
-
-    def get_azure_credentials(self, model: str) -> dict[str, str]:
-        """Get the kwargs for the Azure API."""
-
-        # Fix --gpt3only and --gpt4only in combination with Azure
-        fast_llm = (
-            self.fast_llm
-            if not (
-                self.fast_llm == self.smart_llm
-                and self.fast_llm.startswith(GPT_4_MODEL)
-            )
-            else f"not_{self.fast_llm}"
-        )
-        smart_llm = (
-            self.smart_llm
-            if not (
-                self.smart_llm == self.fast_llm
-                and self.smart_llm.startswith(GPT_3_MODEL)
-            )
-            else f"not_{self.smart_llm}"
-        )
-
-        deployment_id = {
-            fast_llm: self.azure_model_to_deployment_id_map.get(
-                "fast_llm_deployment_id",
-                self.azure_model_to_deployment_id_map.get(
-                    "fast_llm_model_deployment_id"  # backwards compatibility
-                ),
-            ),
-            smart_llm: self.azure_model_to_deployment_id_map.get(
-                "smart_llm_deployment_id",
-                self.azure_model_to_deployment_id_map.get(
-                    "smart_llm_model_deployment_id"  # backwards compatibility
-                ),
-            ),
-            self.embedding_model: self.azure_model_to_deployment_id_map.get(
-                "embedding_model_deployment_id"
-            ),
-        }.get(model, None)
-
-        kwargs = {
-            "api_type": self.openai_api_type,
-            "api_base": self.openai_api_base,
-            "api_version": self.openai_api_version,
-        }
-        if model == self.embedding_model:
-            kwargs["engine"] = deployment_id
-        else:
-            kwargs["deployment_id"] = deployment_id
-        return kwargs
-
 
 class ConfigBuilder(Configurable[Config]):
     default_settings = Config()
@@ -341,10 +273,12 @@ class ConfigBuilder(Configurable[Config]):
         }:
             setattr(config, k, project_root / getattr(config, k))
 
-        if config.use_azure and config.azure_config_file:
-            azure_config = cls.load_azure_config(config.azure_config_file)
-            for key, value in azure_config.items():
-                setattr(config, key, value)
+        if (
+            config.openai_credentials
+            and config.openai_credentials.api_type == "azure"
+            and (config_file := config.azure_config_file)
+        ):
+            config.openai_credentials.load_azure_config(config_file)
 
         config.plugins_config = PluginsConfig.load_config(
             config.plugins_config_file,
@@ -354,36 +288,10 @@ class ConfigBuilder(Configurable[Config]):
 
         return config
 
-    @classmethod
-    def load_azure_config(cls, config_file: Path) -> Dict[str, str]:
-        """
-        Loads the configuration parameters for Azure hosting from the specified file
-          path as a yaml file.
-
-        Parameters:
-            config_file (Path): The path to the config yaml file.
-
-        Returns:
-            Dict
-        """
-        with open(config_file) as file:
-            config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
-
-        return {
-            "openai_api_type": config_params.get("azure_api_type", "azure"),
-            "openai_api_base": config_params.get("azure_api_base", ""),
-            "openai_api_version": config_params.get(
-                "azure_api_version", "2023-03-15-preview"
-            ),
-            "azure_model_to_deployment_id_map": config_params.get(
-                "azure_model_map", {}
-            ),
-        }
-
 
 def assert_config_has_openai_api_key(config: Config) -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
-    if not config.openai_api_key:
+    if not config.openai_credentials:
         print(
             Fore.RED
             + "Please set your OpenAI API key in .env or as an environment variable."
@@ -397,7 +305,9 @@ def assert_config_has_openai_api_key(config: Config) -> None:
         openai_api_key = openai_api_key.strip()
         if re.search(key_pattern, openai_api_key):
             os.environ["OPENAI_API_KEY"] = openai_api_key
-            config.openai_api_key = openai_api_key
+            config.openai_credentials = OpenAICredentials(
+                api_key=SecretStr(openai_api_key)
+            )
             print(
                 Fore.GREEN
                 + "OpenAI API key successfully set!\n"

@@ -73,9 +73,9 @@ def config(
     app_data_dir: Path,
     mocker: MockerFixture,
 ):
-    config = ConfigBuilder.build_config_from_env(project_root=tmp_project_root)
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
+    config = ConfigBuilder.build_config_from_env(project_root=tmp_project_root)
 
     config.app_data_dir = app_data_dir
 

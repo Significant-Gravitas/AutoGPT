@@ -5,6 +5,7 @@ from typing import Any, Callable, Generic, Optional, Type, TypeVar, get_args
 
 from pydantic import BaseModel, Field, ValidationError
 from pydantic.fields import ModelField, Undefined, UndefinedType
+from pydantic.main import ModelMetaclass
 
 T = TypeVar("T")
 M = TypeVar("M", bound=BaseModel)
@@ -56,6 +57,7 @@ class SystemConfiguration(BaseModel):
     class Config:
         extra = "forbid"
         use_enum_values = True
+        validate_assignment = True
 
 
 SC = TypeVar("SC", bound=SystemConfiguration)
@@ -70,6 +72,7 @@ class SystemSettings(BaseModel):
     class Config:
         extra = "forbid"
         use_enum_values = True
+        validate_assignment = True
 
 
 S = TypeVar("S", bound=SystemSettings)
@@ -189,7 +192,7 @@ def _recursive_init_model(
     for name, field in model.__fields__.items():
         if "user_configurable" in field.field_info.extra:
             user_config_fields[name] = infer_field_value(field)
-        elif isinstance(field.outer_type_, type) and issubclass(
+        elif type(field.outer_type_) is ModelMetaclass and issubclass(
             field.outer_type_, SystemConfiguration
         ):
             try:
@@ -248,7 +251,7 @@ def _recurse_user_config_fields(
         # Recurse into optional nested config object
         elif value is None and init_sub_config:
             field_type = get_args(field.annotation)[0]  # Optional[T] -> T
-            if isinstance(field_type, type) and issubclass(
+            if type(field_type) is ModelMetaclass and issubclass(
                 field_type, SystemConfiguration
             ):
                 sub_config = init_sub_config(field_type)
