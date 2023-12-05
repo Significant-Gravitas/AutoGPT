@@ -6,7 +6,7 @@ from pathlib import Path
 import charset_normalizer
 import docx
 import markdown
-import PyPDF2
+import pypdf
 import yaml
 from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
@@ -30,7 +30,7 @@ class TXTParser(ParserStrategy):
 # Reading text from binary file using pdf parser
 class PDFParser(ParserStrategy):
     def read(self, file_path: Path) -> str:
-        parser = PyPDF2.PdfReader(file_path)
+        parser = pypdf.PdfReader(file_path)
         text = ""
         for page_idx in range(len(parser.pages)):
             text += parser.pages[page_idx].extract_text()
