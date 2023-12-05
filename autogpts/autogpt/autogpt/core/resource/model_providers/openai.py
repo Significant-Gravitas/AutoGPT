@@ -2,12 +2,16 @@ import enum
 import functools
 import logging
 import math
+import os
 import time
+from pathlib import Path
 from typing import Callable, Optional, ParamSpec, TypeVar
 
 import openai
 import tiktoken
+import yaml
 from openai.error import APIError, RateLimitError
+from pydantic import SecretStr
 
 from autogpt.core.configuration import (
     Configurable,
@@ -167,6 +171,68 @@ class OpenAIConfiguration(SystemConfiguration):
     retries_per_request: int = UserConfigurable()
 
 
+class OpenAICredentials(ModelProviderCredentials):
+    """Credentials for OpenAI."""
+
+    api_key: SecretStr = UserConfigurable(from_env="OPENAI_API_KEY")
+    api_base: Optional[SecretStr] = UserConfigurable(
+        default=None, from_env="OPENAI_API_BASE_URL"
+    )
+    organization: Optional[SecretStr] = UserConfigurable(from_env="OPENAI_ORGANIZATION")
+
+    api_type: str = UserConfigurable(
+        default="",
+        from_env=lambda: (
+            "azure"
+            if os.getenv("USE_AZURE") == "True"
+            else os.getenv("OPENAI_API_TYPE")
+        ),
+    )
+    api_version: str = UserConfigurable("", from_env="OPENAI_API_VERSION")
+    azure_model_to_deploy_id_map: Optional[dict[str, str]] = None
+
+    def get_api_access_kwargs(self, model: str = "") -> dict[str, str]:
+        credentials = {k: v for k, v in self.unmasked().items() if type(v) is str}
+        if self.api_type == "azure" and model:
+            azure_credentials = self._get_azure_access_kwargs(model)
+            credentials.update(azure_credentials)
+        return credentials
+
+    def load_azure_config(self, config_file: Path) -> None:
+        with open(config_file) as file:
+            config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
+
+        try:
+            assert (
+                azure_api_base := config_params.get("azure_api_base", "")
+            ) != "", "Azure API base URL not set"
+            assert config_params.get(
+                "azure_model_map", {}
+            ), "Azure model->deployment_id map is empty"
+        except AssertionError as e:
+            raise ValueError(*e.args)
+
+        self.api_base = SecretStr(azure_api_base)
+        self.api_type = config_params.get("azure_api_type", "azure")
+        self.api_version = config_params.get("azure_api_version", "")
+        self.azure_model_to_deploy_id_map = config_params.get("azure_model_map")
+
+    def _get_azure_access_kwargs(self, model: str) -> dict[str, str]:
+        """Get the kwargs for the Azure API."""
+
+        if not self.azure_model_to_deploy_id_map:
+            raise ValueError("Azure model deployment map not configured")
+
+        if model not in self.azure_model_to_deploy_id_map:
+            raise ValueError(f"No Azure deployment ID configured for model '{model}'")
+        deployment_id = self.azure_model_to_deploy_id_map[model]
+
+        if model in OPEN_AI_EMBEDDING_MODELS:
+            return {"engine": deployment_id}
+        else:
+            return {"deployment_id": deployment_id}
+
+
 class OpenAIModelProviderBudget(ModelProviderBudget):
     graceful_shutdown_threshold: float = UserConfigurable()
     warning_threshold: float = UserConfigurable()
@@ -174,7 +240,7 @@ class OpenAIModelProviderBudget(ModelProviderBudget):
 
 class OpenAISettings(ModelProviderSettings):
     configuration: OpenAIConfiguration
-    credentials: ModelProviderCredentials
+    credentials: Optional[OpenAICredentials]
     budget: OpenAIModelProviderBudget
 
 
@@ -187,7 +253,7 @@ class OpenAIProvider(
         configuration=OpenAIConfiguration(
             retries_per_request=10,
         ),
-        credentials=ModelProviderCredentials(),
+        credentials=None,
         budget=OpenAIModelProviderBudget(
             total_budget=math.inf,
             total_cost=0.0,
@@ -207,6 +273,7 @@ class OpenAIProvider(
         settings: OpenAISettings,
         logger: logging.Logger,
     ):
+        assert settings.credentials, "Cannot create OpenAIProvider without credentials"
         self._configuration = settings.configuration
         self._credentials = settings.credentials
         self._budget = settings.budget
@@ -362,7 +429,7 @@ class OpenAIProvider(
         completion_kwargs = {
             "model": model_name,
             **kwargs,
-            **self._credentials.unmasked(),
+            **self._credentials.get_api_access_kwargs(model_name),
         }
 
         if functions:

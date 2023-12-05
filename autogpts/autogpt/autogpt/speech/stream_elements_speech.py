@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class StreamElementsConfig(SystemConfiguration):
-    voice: str = UserConfigurable(default="Brian")
+    voice: str = UserConfigurable(default="Brian", from_env="STREAMELEMENTS_VOICE")
 
 
 class StreamElementsSpeech(VoiceBase):
