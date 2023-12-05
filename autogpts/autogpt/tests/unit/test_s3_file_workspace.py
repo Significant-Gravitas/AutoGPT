@@ -6,10 +6,15 @@ import pytest
 import pytest_asyncio
 from botocore.exceptions import ClientError
 
+from autogpt.config import Config
 from autogpt.file_workspace.s3 import S3FileWorkspace
 
 if not os.getenv("S3_ENDPOINT_URL") and not os.getenv("S3_ACCESS_KEY_ID"):
     pytest.skip("S3 environment variables are not set", allow_module_level=True)
+
+
+def test_s3_credentials_in_config(config: Config):
+    assert config.s3_credentials
 
 
 @pytest.fixture
@@ -18,8 +23,12 @@ def s3_bucket_name() -> str:
 
 
 @pytest.fixture
-def s3_workspace_uninitialized(s3_bucket_name: str) -> S3FileWorkspace:
-    workspace = S3FileWorkspace(bucket_name=s3_bucket_name)
+def s3_workspace_uninitialized(config: Config, s3_bucket_name: str) -> S3FileWorkspace:
+    assert config.s3_credentials
+    workspace = S3FileWorkspace(
+        s3_credentials=config.s3_credentials,
+        bucket_name=s3_bucket_name,
+    )
     yield workspace  # type: ignore
 
 
