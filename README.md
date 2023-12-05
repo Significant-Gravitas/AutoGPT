@@ -32,7 +32,7 @@ To run Evo Ninja, follow these detailed steps:
     - Clone the repository: `git clone https://github.com/Significant-Gravitas/AutoGPT.git`
     - Run the setup script: `./AutoGPT/autogpts/evo.ninja/setup`
     - Change directories into the evo.ninja folder: `cd AutoGPT/autogpts/evo.ninja`
-    - Follow this [detailed guide](https://github.com/polywrap/evo.ninja/tree/release/autogpt#installation)
+    - Follow this [detailed guide](https://github.com/polywrap/evo.ninja/tree/release/autogpt#installation) skipping the clone step.
 2. **Prompt**
     - Tell the agent what is your goal and watch it do its magic!
 
