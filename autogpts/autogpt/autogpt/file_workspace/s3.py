@@ -9,10 +9,14 @@ import inspect
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import boto3
 import botocore.exceptions
+from pydantic import SecretStr
+
+from autogpt.core.configuration.schema import UserConfigurable
+from autogpt.core.resource.schema import ProviderCredentials
 
 from .base import FileWorkspace
 
@@ -20,6 +24,24 @@ if TYPE_CHECKING:
     import mypy_boto3_s3
 
 logger = logging.getLogger(__name__)
+
+
+class S3Credentials(ProviderCredentials):
+    endpoint_url: Optional[SecretStr] = UserConfigurable(
+        from_env=lambda: SecretStr(v) if (v := os.getenv("S3_ENDPOINT_URL")) else None
+    )
+    aws_access_key_id: Optional[SecretStr] = UserConfigurable(
+        from_env=lambda: SecretStr(v) if (v := os.getenv("S3_ACCESS_KEY_ID")) else None
+    )
+    aws_secret_access_key: Optional[SecretStr] = UserConfigurable(
+        from_env=lambda: SecretStr(v)
+        if (v := os.getenv("S3_SECRET_ACCESS_KEY"))
+        else None
+    )
+
+    # AWS specifics
+    region_name: Optional[str] = UserConfigurable(from_env="S3_AWS_REGION")
+    api_version: Optional[str] = UserConfigurable(from_env="S3_API_VERSION")
 
 
 class S3FileWorkspace(FileWorkspace):
@@ -35,19 +57,16 @@ class S3FileWorkspace(FileWorkspace):
 
     _bucket: mypy_boto3_s3.service_resource.Bucket
 
-    def __init__(self, bucket_name: str, root: Path = Path("/")):
+    def __init__(
+        self, s3_credentials: S3Credentials, bucket_name: str, root: Path = Path("/")
+    ):
         self._bucket_name = bucket_name
         self._root = root
         super().__init__()
 
-        s3_endpoint_url = os.getenv("S3_ENDPOINT_URL", None)
-        s3_access_key_id = os.getenv("S3_ACCESS_KEY_ID", None)
-        s3_secret_access_key = os.getenv("S3_SECRET_ACCESS_KEY", None)
         self._s3 = boto3.resource(
             "s3",
-            endpoint_url=s3_endpoint_url,
-            aws_access_key_id=s3_access_key_id,
-            aws_secret_access_key=s3_secret_access_key,
+            **s3_credentials.unmasked(),
         )
 
     @property

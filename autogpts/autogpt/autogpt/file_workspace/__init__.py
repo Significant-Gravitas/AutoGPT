@@ -1,7 +1,14 @@
+import enum
+
 from .base import FileWorkspace
-from .local import LocalFileWorkspace
+
+
+class FileWorkspaceBackendName(str, enum.Enum):
+    S3 = "s3"
+    LOCAL = "local"
+
 
 __all__ = [
     "FileWorkspace",
-    "LocalFileWorkspace",
+    "FileWorkspaceBackendName",
 ]

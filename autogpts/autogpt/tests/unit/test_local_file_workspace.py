@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from autogpt.file_workspace import LocalFileWorkspace
+from autogpt.file_workspace.local import LocalFileWorkspace
 
 _WORKSPACE_ROOT = Path("home/users/monty/auto_gpt_workspace")
 

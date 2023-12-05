@@ -172,22 +172,8 @@ class ModelProviderCredentials(ProviderCredentials):
     api_version: SecretStr | None = UserConfigurable(default=None)
     deployment_id: SecretStr | None = UserConfigurable(default=None)
 
-    def unmasked(self) -> dict:
-        return unmask(self)
-
     class Config:
         extra = "ignore"
-
-
-def unmask(model: BaseModel):
-    unmasked_fields = {}
-    for field_name, field in model.__fields__.items():
-        value = getattr(model, field_name)
-        if isinstance(value, SecretStr):
-            unmasked_fields[field_name] = value.get_secret_value()
-        else:
-            unmasked_fields[field_name] = value
-    return unmasked_fields
 
 
 class ModelProviderUsage(ProviderUsage):

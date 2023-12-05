@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
     from ..base import BaseAgent
 
-from autogpt.file_workspace import FileWorkspace, LocalFileWorkspace
+from autogpt.file_workspace.local import FileWorkspace, LocalFileWorkspace
 
 from ..base import AgentFileManager, BaseAgentConfiguration
 

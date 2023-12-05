@@ -33,7 +33,7 @@ from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
-from autogpt.file_workspace import LocalFileWorkspace
+from autogpt.file_workspace.local import LocalFileWorkspace
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
 logger = logging.getLogger(__name__)
