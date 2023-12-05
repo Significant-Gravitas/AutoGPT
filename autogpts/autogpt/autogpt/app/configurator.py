@@ -178,13 +178,13 @@ def apply_overrides_to_config(
 
     if allow_downloads:
         print_attribute("Native Downloading", "ENABLED")
-        logger.warn(
+        logger.warning(
             msg=f"{Back.LIGHTYELLOW_EX}"
             "AutoGPT will now be able to download and save files to your machine."
             f"{Back.RESET}"
             " It is recommended that you monitor any files it downloads carefully.",
         )
-        logger.warn(
+        logger.warning(
             msg=f"{Back.RED + Style.BRIGHT}"
             "NEVER OPEN FILES YOU AREN'T SURE OF!"
             f"{Style.RESET_ALL}",
@@ -207,7 +207,7 @@ def check_model(
     if any(model_name in m["id"] for m in models):
         return model_name
 
-    logger.warn(
+    logger.warning(
         f"You don't have access to {model_name}. Setting {model_type} to gpt-3.5-turbo."
     )
     return "gpt-3.5-turbo"

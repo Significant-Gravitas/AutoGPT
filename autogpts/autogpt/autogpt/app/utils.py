@@ -174,7 +174,7 @@ def print_motd(config: Config, logger: logging.Logger):
 def print_git_branch_info(logger: logging.Logger):
     git_branch = get_current_git_branch()
     if git_branch and git_branch != "master":
-        logger.warn(
+        logger.warning(
             f"You are running on `{git_branch}` branch"
             " - this is not a supported branch."
         )

@@ -42,7 +42,7 @@ class JSONFileMemory(VectorMemoryProvider):
             self.load_index()
             logger.debug(f"Loaded {len(self.memories)} MemoryItems from file")
         except Exception as e:
-            logger.warn(f"Could not load MemoryItems from file: {e}")
+            logger.warning(f"Could not load MemoryItems from file: {e}")
             self.save_index()
 
     def __iter__(self) -> Iterator[MemoryItem]:

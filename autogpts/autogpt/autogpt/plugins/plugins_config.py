@@ -64,7 +64,7 @@ class PluginsConfig(BaseModel):
         plugins_allowlist: list[str],
     ) -> dict[str, PluginConfig]:
         if not plugins_config_file.is_file():
-            logger.warn("plugins_config.yaml does not exist, creating base config.")
+            logger.warning("plugins_config.yaml does not exist, creating base config.")
             cls.create_empty_plugins_config(
                 plugins_config_file,
                 plugins_denylist,
