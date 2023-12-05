@@ -144,7 +144,7 @@ found in the [repository].
 
     **Note:** Azure support has been dropped in `master`, so these instructions will only work with v0.4.7 (or earlier).
 
-[repository]: https://github.com/Significant-Gravitas/AutoGPT/autogpts/autogpt
+[repository]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt
 [show hidden files/Windows]: https://support.microsoft.com/en-us/windows/view-hidden-files-and-folders-in-windows-97fbc472-c603-9d90-91d0-1166d1d9f4b5
 [show hidden files/macOS]: https://www.pcmag.com/how-to/how-to-access-your-macs-hidden-files
 [openai-python docs]: https://github.com/openai/openai-python#microsoft-azure-endpoints
