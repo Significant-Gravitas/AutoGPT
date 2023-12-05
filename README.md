@@ -28,18 +28,13 @@ The AutoGPT Arena Hackathon saw [**evo.ninja**](https://github.com/polywrap/evo.
 
 ### How to Run Evo Ninja
 To run Evo Ninja, follow these detailed steps:
-1. **Pre-Requisites**: Install [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git), [nodejs](https://nodejs.org/en/download/package-manager#alpine-linux), [yarn](https://classic.yarnpkg.com/lang/en/docs/install/#debian-stable), and [nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-2. **Installation**:
+1. **Installation**:
     - Clone the repository: `git clone https://github.com/Significant-Gravitas/AutoGPT.git`
     - Run the setup script: `./AutoGPT/autogpts/evo.ninja/setup`
-    - Change directory to the evo.ninja agent: `cd AutoGPT/autogpts/evo.ninja`
-    - Copy and rename the environment template: `cp .env.template .env`
-    - Add your OpenAI API Key to `.env`: `OPENAI_API_KEY=your_key_here`
-    - Add your SERP API Key to `.env`: `SERP_API_KEY=your_key_here`
-    - Use the correct Node.JS version: `nvm install && nvm use`
-    - Install dependencies and build: `yarn && yarn build`
-3. Run the agent: `yarn start`
-4. Prompt the agent and watch it do its magic!
+    - Change directories into the evo.ninja folder: `cd AutoGPT/autogpts/evo.ninja`
+    - Follow this [detailed guide](https://github.com/polywrap/evo.ninja/tree/release/autogpt#installation)
+2. **Prompt**
+    - Tell the agent what is your goal and watch it do its magic!
 
 For detailed instructions, visit the [evo.ninja documentation](https://github.com/polywrap/evo.ninja/tree/release/autogpt#readme), and for live support, join the [evo.ninja discord](https://discord.com/invite/r3rwh69cCa)
 
