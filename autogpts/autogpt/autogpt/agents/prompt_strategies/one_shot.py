@@ -381,7 +381,7 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         try:
             return format_numbered_list([cmd.fmt_line() for cmd in commands])
         except AttributeError:
-            self.logger.warn(f"Formatting commands failed. {commands}")
+            self.logger.warning(f"Formatting commands failed. {commands}")
             raise
 
     def parse_response_content(
