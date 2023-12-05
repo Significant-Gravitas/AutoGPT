@@ -147,7 +147,7 @@ def generate_image_with_dalle(
         n=1,
         size=f"{size}x{size}",
         response_format="b64_json",
-        api_key=agent.legacy_config.openai_api_key,
+        api_key=agent.legacy_config.openai_credentials.api_key.get_secret_value(),
     )
 
     logger.info(f"Image Generated for prompt:{prompt}")

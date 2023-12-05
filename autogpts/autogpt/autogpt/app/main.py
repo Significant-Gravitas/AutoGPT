@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
 from forge.sdk.db import AgentDB
-from pydantic import SecretStr
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
@@ -31,7 +30,6 @@ from autogpt.config import (
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
-from autogpt.core.resource.model_providers import ModelProviderCredentials
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
 from autogpt.logs.config import configure_chat_plugins, configure_logging
@@ -364,19 +362,11 @@ def _configure_openai_provider(config: Config) -> OpenAIProvider:
     Returns:
         A configured OpenAIProvider object.
     """
-    if config.openai_api_key is None:
+    if config.openai_credentials is None:
         raise RuntimeError("OpenAI key is not configured")
 
     openai_settings = OpenAIProvider.default_settings.copy(deep=True)
-    openai_settings.credentials = ModelProviderCredentials(
-        api_key=SecretStr(config.openai_api_key),
-        # TODO: support OpenAI Azure credentials
-        api_base=SecretStr(config.openai_api_base) if config.openai_api_base else None,
-        api_type=SecretStr(config.openai_api_type) if config.openai_api_type else None,
-        api_version=SecretStr(config.openai_api_version)
-        if config.openai_api_version
-        else None,
-    )
+    openai_settings.credentials = config.openai_credentials
     return OpenAIProvider(
         settings=openai_settings,
         logger=logging.getLogger("OpenAIProvider"),
