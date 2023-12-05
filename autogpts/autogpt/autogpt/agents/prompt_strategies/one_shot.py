@@ -315,12 +315,9 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         )
 
         instruction = (
-            (
-                "Respond strictly with a JSON object containing your thoughts, "
-                "and a tool_call specifying the next command to use."
-            )
+            "Respond with pure JSON containing your thoughts, " "and invoke a tool."
             if use_functions_api
-            else "Respond strictly with a JSON object."
+            else "Respond with pure JSON."
         )
 
         return (
