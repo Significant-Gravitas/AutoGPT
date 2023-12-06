@@ -14,7 +14,7 @@ from .errors import NotFoundError
 from .forge_log import ForgeLogger
 from .middlewares import AgentMiddleware
 from .routes.agent_protocol import base_router
-from .schema import *
+from .model import *
 from .workspace import Workspace
 
 LOG = ForgeLogger(__name__)
