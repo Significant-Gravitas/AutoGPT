@@ -76,7 +76,6 @@ def format_hyperlinks(hyperlinks: list[tuple[str, str]]) -> list[str]:
     return [f"{link_text} ({link_url})" for link_text, link_url in hyperlinks]
 
 
-
 def validate_url(func: Callable[..., Any]) -> Any:
     """The method decorator validate_url is used to validate urls for any command that requires
     a url as an argument"""
@@ -178,8 +177,6 @@ def check_local_file_access(url: str) -> bool:
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
 
-
-
 logger = logging.getLogger(__name__)
 
 FILE_DIR = Path(__file__).parent.parent
@@ -201,17 +198,19 @@ class BrowsingError(CommandExecutionError):
             "type": "string",
             "required": True,
         },
-                {
+        {
             "name": "question",
             "description": "A question that you want to answer using the content of the webpage.",
             "type": "string",
             "required": False,
-        }
+        },
     ],
     output_type="string",
 )
 @validate_url
-async def read_webpage(agent, task_id: str, url: str, question: str = "") -> Tuple(str, List[str]):
+async def read_webpage(
+    agent, task_id: str, url: str, question: str = ""
+) -> Tuple(str, List[str]):
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -372,4 +371,3 @@ def close_browser(driver: WebDriver) -> None:
         None
     """
     driver.quit()
-
