@@ -34,7 +34,7 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 
-from ..registry import ability
+from ..registry import action
 from forge.sdk.errors import *
 import functools
 import re
@@ -74,7 +74,6 @@ def format_hyperlinks(hyperlinks: list[tuple[str, str]]) -> list[str]:
         List[str]: The formatted hyperlinks
     """
     return [f"{link_text} ({link_url})" for link_text, link_url in hyperlinks]
-
 
 
 def validate_url(func: Callable[..., Any]) -> Any:
@@ -178,8 +177,6 @@ def check_local_file_access(url: str) -> bool:
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
 
-
-
 logger = logging.getLogger(__name__)
 
 FILE_DIR = Path(__file__).parent.parent
@@ -191,7 +188,7 @@ class BrowsingError(CommandExecutionError):
     """An error occurred while trying to browse the page"""
 
 
-@ability(
+@action(
     name="read_webpage",
     description="Read a webpage, and extract specific information from it if a question is specified. If you are looking to extract specific information from the webpage, you should specify a question.",
     parameters=[
@@ -201,17 +198,19 @@ class BrowsingError(CommandExecutionError):
             "type": "string",
             "required": True,
         },
-                {
+        {
             "name": "question",
             "description": "A question that you want to answer using the content of the webpage.",
             "type": "string",
             "required": False,
-        }
+        },
     ],
     output_type="string",
 )
 @validate_url
-async def read_webpage(agent, task_id: str, url: str, question: str = "") -> Tuple(str, List[str]):
+async def read_webpage(
+    agent, task_id: str, url: str, question: str = ""
+) -> Tuple(str, List[str]):
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -372,4 +371,3 @@ def close_browser(driver: WebDriver) -> None:
         None
     """
     driver.quit()
-
