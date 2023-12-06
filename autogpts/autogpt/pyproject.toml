@@ -69,6 +69,7 @@ openapi-python-client = "^0.14.0"
 # agbenchmark = { path = "../../benchmark", optional = true }
 agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
 google-cloud-logging = "^3.8.0"
+google-cloud-storage = "^2.13.0"
 
 [tool.poetry.extras]
 benchmark = ["agbenchmark"]

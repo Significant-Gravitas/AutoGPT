@@ -19,11 +19,11 @@ def s3_bucket_name() -> str:
 
 @pytest.fixture
 def s3_workspace_uninitialized(s3_bucket_name: str) -> S3FileWorkspace:
-    os.environ["WORKSPACE_S3_BUCKET"] = s3_bucket_name
+    os.environ["WORKSPACE_STORAGE_BUCKET"] = s3_bucket_name
     ws_config = S3FileWorkspaceConfiguration.from_env()
     workspace = S3FileWorkspace(ws_config)
     yield workspace  # type: ignore
-    del os.environ["WORKSPACE_S3_BUCKET"]
+    del os.environ["WORKSPACE_STORAGE_BUCKET"]
 
 
 def test_initialize(s3_bucket_name: str, s3_workspace_uninitialized: S3FileWorkspace):

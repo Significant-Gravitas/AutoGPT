@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class S3FileWorkspaceConfiguration(FileWorkspaceConfiguration):
-    bucket: str = UserConfigurable(from_env="WORKSPACE_S3_BUCKET")
+    bucket: str = UserConfigurable("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
     s3_endpoint_url: Optional[SecretStr] = UserConfigurable(
         from_env=lambda: SecretStr(v) if (v := os.getenv("S3_ENDPOINT_URL")) else None
     )

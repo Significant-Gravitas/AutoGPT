@@ -32,7 +32,11 @@ def get_workspace(
             config.root = root_path
             return S3FileWorkspace(config)
         case FileWorkspaceBackendName.GCS:
-            raise NotImplementedError("Google Cloud Storage is not implemented yet")
+            from .gcs import GCSFileWorkspace, GCSFileWorkspaceConfiguration
+
+            config = GCSFileWorkspaceConfiguration.from_env()
+            config.root = root_path
+            return GCSFileWorkspace(config)
 
 
 __all__ = [
