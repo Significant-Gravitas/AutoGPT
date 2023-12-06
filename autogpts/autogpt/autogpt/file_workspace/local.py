@@ -6,9 +6,8 @@ from __future__ import annotations
 import inspect
 import logging
 from pathlib import Path
-from typing import Any, Callable
 
-from .base import FileWorkspace
+from .base import FileWorkspace, FileWorkspaceConfiguration
 
 logger = logging.getLogger(__name__)
 
@@ -16,17 +15,9 @@ logger = logging.getLogger(__name__)
 class LocalFileWorkspace(FileWorkspace):
     """A class that represents a file workspace."""
 
-    on_write_file: Callable[[Path], Any] | None = None
-    """
-    Event hook, executed after writing a file.
-
-    Params:
-        Path: The path of the file that was written, relative to the workspace root.
-    """
-
-    def __init__(self, root: str | Path, restrict_to_root: bool):
-        self._root = self._sanitize_path(root)
-        self._restrict_to_root = restrict_to_root
+    def __init__(self, config: FileWorkspaceConfiguration):
+        self._root = self._sanitize_path(config.root)
+        self._restrict_to_root = config.restrict_to_root
         super().__init__()
 
     @property

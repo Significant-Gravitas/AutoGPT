@@ -8,7 +8,14 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional, overload
 
+from autogpt.core.configuration.schema import SystemConfiguration
+
 logger = logging.getLogger(__name__)
+
+
+class FileWorkspaceConfiguration(SystemConfiguration):
+    restrict_to_root: bool = True
+    root: Path = Path("/")
 
 
 class FileWorkspace(ABC):

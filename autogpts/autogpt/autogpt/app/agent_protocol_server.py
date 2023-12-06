@@ -33,7 +33,7 @@ from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
-from autogpt.file_workspace.local import LocalFileWorkspace
+from autogpt.file_workspace import FileWorkspace, get_workspace
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
 logger = logging.getLogger(__name__)
@@ -340,7 +340,7 @@ class AgentProtocolServer:
         else:
             file_path = os.path.join(relative_path, file_name)
 
-        workspace = get_task_agent_file_workspace(task_id, self.agent_manager)
+        workspace = self._get_task_agent_file_workspace(task_id, self.agent_manager)
         await workspace.write_file(file_path, data)
 
         artifact = await self.db.create_artifact(
@@ -361,7 +361,7 @@ class AgentProtocolServer:
                 file_path = os.path.join(artifact.relative_path, artifact.file_name)
             else:
                 file_path = artifact.relative_path
-            workspace = get_task_agent_file_workspace(task_id, self.agent_manager)
+            workspace = self._get_task_agent_file_workspace(task_id, self.agent_manager)
             retrieved_artifact = workspace.read_file(file_path, binary=True)
         except NotFoundError:
             raise
@@ -376,23 +376,23 @@ class AgentProtocolServer:
             },
         )
 
+    def _get_task_agent_file_workspace(
+        self,
+        task_id: str | int,
+        agent_manager: AgentManager,
+    ) -> FileWorkspace:
+        return get_workspace(
+            backend=self.app_config.workspace_backend,
+            root_path=agent_manager.get_agent_dir(
+                agent_id=task_agent_id(task_id),
+                must_exist=True,
+            )
+            / "workspace",
+        )
+
 
 def task_agent_id(task_id: str | int) -> str:
     return f"AutoGPT-{task_id}"
-
-
-def get_task_agent_file_workspace(
-    task_id: str | int,
-    agent_manager: AgentManager,
-) -> LocalFileWorkspace:
-    return LocalFileWorkspace(
-        root=agent_manager.get_agent_dir(
-            agent_id=task_agent_id(task_id),
-            must_exist=True,
-        )
-        / "workspace",
-        restrict_to_root=True,
-    )
 
 
 def fmt_kwargs(kwargs: dict) -> str:

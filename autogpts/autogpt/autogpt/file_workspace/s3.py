@@ -9,16 +9,15 @@ import inspect
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Optional
 
 import boto3
 import botocore.exceptions
 from pydantic import SecretStr
 
 from autogpt.core.configuration.schema import UserConfigurable
-from autogpt.core.resource.schema import ProviderCredentials
 
-from .base import FileWorkspace
+from .base import FileWorkspace, FileWorkspaceConfiguration
 
 if TYPE_CHECKING:
     import mypy_boto3_s3
@@ -26,48 +25,31 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class S3Credentials(ProviderCredentials):
-    endpoint_url: Optional[SecretStr] = UserConfigurable(
+class S3FileWorkspaceConfiguration(FileWorkspaceConfiguration):
+    bucket: str = UserConfigurable(from_env="WORKSPACE_S3_BUCKET")
+    s3_endpoint_url: Optional[SecretStr] = UserConfigurable(
         from_env=lambda: SecretStr(v) if (v := os.getenv("S3_ENDPOINT_URL")) else None
     )
-    aws_access_key_id: Optional[SecretStr] = UserConfigurable(
-        from_env=lambda: SecretStr(v) if (v := os.getenv("S3_ACCESS_KEY_ID")) else None
-    )
-    aws_secret_access_key: Optional[SecretStr] = UserConfigurable(
-        from_env=lambda: SecretStr(v)
-        if (v := os.getenv("S3_SECRET_ACCESS_KEY"))
-        else None
-    )
-
-    # AWS specifics
-    region_name: Optional[str] = UserConfigurable(from_env="S3_AWS_REGION")
-    api_version: Optional[str] = UserConfigurable(from_env="S3_API_VERSION")
 
 
 class S3FileWorkspace(FileWorkspace):
     """A class that represents an S3 workspace."""
 
-    on_write_file: Callable[[Path], Any] | None = None
-    """
-    Event hook, executed after writing a file.
-
-    Params:
-        Path: The path of the file that was written, relative to the workspace root.
-    """
-
     _bucket: mypy_boto3_s3.service_resource.Bucket
 
-    def __init__(
-        self, s3_credentials: S3Credentials, bucket_name: str, root: Path = Path("/")
-    ):
-        self._bucket_name = bucket_name
-        self._root = root
-        super().__init__()
+    def __init__(self, config: S3FileWorkspaceConfiguration):
+        self._bucket_name = config.bucket
+        self._root = config.root
 
+        # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html
         self._s3 = boto3.resource(
             "s3",
-            **s3_credentials.unmasked(),
+            endpoint_url=config.s3_endpoint_url.get_secret_value()
+            if config.s3_endpoint_url
+            else None,
         )
+
+        super().__init__()
 
     @property
     def root(self) -> Path:

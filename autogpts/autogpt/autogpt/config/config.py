@@ -21,7 +21,6 @@ from autogpt.core.resource.model_providers.openai import (
     OpenAICredentials,
 )
 from autogpt.file_workspace import FileWorkspaceBackendName
-from autogpt.file_workspace.s3 import S3Credentials
 from autogpt.logs.config import LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
@@ -241,9 +240,6 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
 
     # Stable Diffusion
     sd_webui_auth: Optional[str] = UserConfigurable(from_env="SD_WEBUI_AUTH")
-
-    # S3 storage
-    s3_credentials: Optional[S3Credentials] = None
 
     @validator("plugins", each_item=True)
     def validate_plugins(cls, p: AutoGPTPluginTemplate | Any):

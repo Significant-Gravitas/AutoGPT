@@ -166,8 +166,8 @@ jobs:
           PLAIN_OUTPUT: True
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           S3_ENDPOINT_URL: http://localhost:9000
-          S3_ACCESS_KEY_ID: minioadmin
-          S3_SECRET_ACCESS_KEY: minioadmin
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
