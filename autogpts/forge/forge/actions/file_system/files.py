@@ -1,8 +1,9 @@
 from typing import List
 
-from ..registry import ability
+from ..registry import action
 
-@ability(
+
+@action(
     name="list_files",
     description="List files in a directory",
     parameters=[
@@ -22,7 +23,7 @@ async def list_files(agent, task_id: str, path: str) -> List[str]:
     return agent.workspace.list(task_id=task_id, path=str(path))
 
 
-@ability(
+@action(
     name="write_file",
     description="Write data to a file",
     parameters=[
@@ -57,7 +58,7 @@ async def write_file(agent, task_id: str, file_path: str, data: bytes):
     )
 
 
-@ability(
+@action(
     name="read_file",
     description="Read data from a file",
     parameters=[
