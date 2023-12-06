@@ -1,5 +1,6 @@
 import enum
 from pathlib import Path
+from typing import Optional
 
 from .base import FileWorkspace
 
@@ -10,7 +11,13 @@ class FileWorkspaceBackendName(str, enum.Enum):
     S3 = "s3"
 
 
-def get_workspace(backend: FileWorkspaceBackendName, root_path: Path) -> FileWorkspace:
+def get_workspace(
+    backend: FileWorkspaceBackendName, *, id: str = "", root_path: Optional[Path] = None
+) -> FileWorkspace:
+    assert bool(root_path) != bool(id), "Specify root_path or id to get workspace"
+    if root_path is None:
+        root_path = Path(f"workspaces/{id}")
+
     match backend:
         case FileWorkspaceBackendName.LOCAL:
             from .local import FileWorkspaceConfiguration, LocalFileWorkspace
