@@ -244,12 +244,6 @@ def create(agent_name):
                     fg="green",
                 )
             )
-            click.echo(
-                click.style(
-                    f"🚀 If you would like to enter the arena, run './run arena enter {agent_name}'",
-                    fg="yellow",
-                )
-            )
         else:
             click.echo(
                 click.style(
