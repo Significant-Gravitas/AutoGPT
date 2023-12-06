@@ -34,7 +34,7 @@ from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 
-from ..registry import ability
+from ..registry import action
 from forge.sdk.errors import *
 import functools
 import re
@@ -188,7 +188,7 @@ class BrowsingError(CommandExecutionError):
     """An error occurred while trying to browse the page"""
 
 
-@ability(
+@action(
     name="read_webpage",
     description="Read a webpage, and extract specific information from it if a question is specified. If you are looking to extract specific information from the webpage, you should specify a question.",
     parameters=[

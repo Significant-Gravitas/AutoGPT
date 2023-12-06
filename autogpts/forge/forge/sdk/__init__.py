@@ -7,7 +7,7 @@ from .db import AgentDB, Base
 from .forge_log import ForgeLogger
 from .llm import chat_completion_request, create_embedding_request, transcribe_audio
 from .prompting import PromptEngine
-from .schema import (
+from .model import (
     Artifact,
     ArtifactUpload,
     Pagination,

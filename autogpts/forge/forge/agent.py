@@ -11,6 +11,7 @@ from forge.sdk import (
     chat_completion_request,
     ChromaMemStore,
 )
+from forge.actions import ActionRegister
 import json
 import pprint
 
@@ -78,6 +79,7 @@ class ForgeAgent(Agent):
         Feel free to create subclasses of the database and workspace to implement your own storage
         """
         super().__init__(database, workspace)
+        self.abilities = ActionRegister(self)
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """
