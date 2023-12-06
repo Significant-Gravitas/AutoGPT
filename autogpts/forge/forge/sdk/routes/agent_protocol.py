@@ -30,7 +30,7 @@ from fastapi.responses import FileResponse
 
 from forge.sdk.errors import *
 from forge.sdk.forge_log import ForgeLogger
-from forge.sdk.schema import *
+from autogpts.forge.forge.sdk.model import *
 
 base_router = APIRouter()
 

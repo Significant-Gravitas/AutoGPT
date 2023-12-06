@@ -1,10 +1,10 @@
-from ..forge_log import ForgeLogger
-from .registry import ability
+from sdk.forge_log import ForgeLogger
+from .registry import action
 
 logger = ForgeLogger(__name__)
 
 
-@ability(
+@action(
     name="finish",
     description="Use this to shut down once you have accomplished all of your goals,"
     " or when there are insurmountable problems that make it impossible"
