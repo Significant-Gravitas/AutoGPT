@@ -89,6 +89,15 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
+    services:
+      minio:
+        image: minio/minio:edge-cicd
+        options: >
+          --name=minio
+          --health-interval=10s --health-timeout=5s --health-retries=3
+          --health-cmd="curl -f http://localhost:9000/minio/health/live"
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
@@ -124,23 +133,25 @@ jobs:
           CI: true
           PLAIN_OUTPUT: True
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          S3_ENDPOINT_URL: http://minio:9000
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
         run: |
           set +e
-          test_output=$(
-            docker run --env CI --env OPENAI_API_KEY \
-              --entrypoint poetry ${{ env.IMAGE_NAME }} run \
-              pytest -v --cov=autogpt --cov-branch --cov-report term-missing \
-              --numprocesses=4 --durations=10 \
-              tests/unit tests/integration 2>&1
-          )
-          test_failure=$?
+          docker run --env CI --env OPENAI_API_KEY \
+            --network container:minio \
+            --env S3_ENDPOINT_URL --env AWS_ACCESS_KEY_ID --env AWS_SECRET_ACCESS_KEY \
+            --entrypoint poetry ${{ env.IMAGE_NAME }} run \
+            pytest -v --cov=autogpt --cov-branch --cov-report term-missing \
+            --numprocesses=4 --durations=10 \
+            tests/unit tests/integration 2>&1 | tee test_output.txt
 
-          echo "$test_output"
+          test_failure=${PIPESTATUS[0]}
 
           cat << $EOF >> $GITHUB_STEP_SUMMARY
           # Tests $([ $test_failure = 0 ] && echo '✅' || echo '❌')
           \`\`\`
-          $test_output
+          $(cat test_output.txt)
           \`\`\`
           $EOF
 

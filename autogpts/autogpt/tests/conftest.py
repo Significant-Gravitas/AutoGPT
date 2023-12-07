@@ -11,7 +11,11 @@ from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.main import _configure_openai_provider
 from autogpt.config import AIProfile, Config, ConfigBuilder
 from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
-from autogpt.file_workspace import FileWorkspace
+from autogpt.file_workspace.local import (
+    FileWorkspace,
+    FileWorkspaceConfiguration,
+    LocalFileWorkspace,
+)
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
 from autogpt.models.command_registry import CommandRegistry
@@ -47,7 +51,7 @@ def workspace_root(agent_data_dir: Path) -> Path:
 
 @pytest.fixture()
 def workspace(workspace_root: Path) -> FileWorkspace:
-    workspace = FileWorkspace(workspace_root, restrict_to_root=True)
+    workspace = LocalFileWorkspace(FileWorkspaceConfiguration(root=workspace_root))
     workspace.initialize()
     return workspace
 

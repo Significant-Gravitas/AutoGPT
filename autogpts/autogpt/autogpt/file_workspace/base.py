@@ -3,18 +3,23 @@ The FileWorkspace class provides an interface for interacting with a file worksp
 """
 from __future__ import annotations
 
-import inspect
 import logging
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional, overload
+
+from autogpt.core.configuration.schema import SystemConfiguration
 
 logger = logging.getLogger(__name__)
 
 
-class FileWorkspace:
-    """A class that represents a file workspace."""
+class FileWorkspaceConfiguration(SystemConfiguration):
+    restrict_to_root: bool = True
+    root: Path = Path("/")
 
-    NULL_BYTES = ["\0", "\000", "\x00", "\u0000"]
+
+class FileWorkspace(ABC):
+    """A class that represents a file workspace."""
 
     on_write_file: Callable[[Path], Any] | None = None
     """
@@ -24,22 +29,55 @@ class FileWorkspace:
         Path: The path of the file that was written, relative to the workspace root.
     """
 
-    def __init__(self, root: str | Path, restrict_to_root: bool):
-        self._root = self._sanitize_path(root)
-        self._restrict_to_root = restrict_to_root
-
     @property
+    @abstractmethod
     def root(self) -> Path:
-        """The root directory of the file workspace."""
-        return self._root
+        """The root path of the file workspace."""
 
     @property
-    def restrict_to_root(self):
-        """Whether to restrict generated paths to the root."""
-        return self._restrict_to_root
+    @abstractmethod
+    def restrict_to_root(self) -> bool:
+        """Whether to restrict file access to within the workspace's root path."""
 
+    @abstractmethod
     def initialize(self) -> None:
-        self.root.mkdir(exist_ok=True, parents=True)
+        """
+        Calling `initialize()` should bring the workspace to a ready-to-use state.
+        For example, it can create the resource in which files will be stored, if it
+        doesn't exist yet. E.g. a folder on disk, or an S3 Bucket.
+        """
+
+    @abstractmethod
+    def open_file(self, path: str | Path, mode: str = "r"):
+        """Open a file in the workspace."""
+
+    @overload
+    @abstractmethod
+    def read_file(self, path: str | Path, binary: Literal[False] = False) -> str:
+        """Read a file in the workspace as text."""
+        ...
+
+    @overload
+    @abstractmethod
+    def read_file(self, path: str | Path, binary: Literal[True] = True) -> bytes:
+        """Read a file in the workspace as binary."""
+        ...
+
+    @abstractmethod
+    def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
+        """Read a file in the workspace."""
+
+    @abstractmethod
+    async def write_file(self, path: str | Path, content: str | bytes) -> None:
+        """Write to a file in the workspace."""
+
+    @abstractmethod
+    def list_files(self, path: str | Path = ".") -> list[Path]:
+        """List all files in a directory in the workspace."""
+
+    @abstractmethod
+    def delete_file(self, path: str | Path) -> None:
+        """Delete a file in the workspace."""
 
     def get_path(self, relative_path: str | Path) -> Path:
         """Get the full path for an item in the workspace.
@@ -50,44 +88,7 @@ class FileWorkspace:
         Returns:
             Path: The resolved path relative to the workspace.
         """
-        return self._sanitize_path(
-            relative_path,
-            root=self.root,
-            restrict_to_root=self.restrict_to_root,
-        )
-
-    def open_file(self, path: str | Path, mode: str = "r"):
-        """Open a file in the workspace."""
-        full_path = self.get_path(path)
-        return open(full_path, mode)
-
-    def read_file(self, path: str | Path, binary: bool = False):
-        """Read a file in the workspace."""
-        with self.open_file(path, "rb" if binary else "r") as file:
-            return file.read()
-
-    async def write_file(self, path: str | Path, content: str | bytes):
-        """Write to a file in the workspace."""
-        with self.open_file(path, "wb" if type(content) is bytes else "w") as file:
-            file.write(content)
-
-        if self.on_write_file:
-            path = Path(path)
-            if path.is_absolute():
-                path = path.relative_to(self.root)
-            res = self.on_write_file(path)
-            if inspect.isawaitable(res):
-                await res
-
-    def list_files(self, path: str | Path = "."):
-        """List all files in a directory in the workspace."""
-        full_path = self.get_path(path)
-        return [str(file) for file in full_path.glob("*") if file.is_file()]
-
-    def delete_file(self, path: str | Path):
-        """Delete a file in the workspace."""
-        full_path = self.get_path(path)
-        full_path.unlink()
+        return self._sanitize_path(relative_path, self.root)
 
     @staticmethod
     def _sanitize_path(
@@ -113,9 +114,8 @@ class FileWorkspace:
         # Posix systems disallow null bytes in paths. Windows is agnostic about it.
         # Do an explicit check here for all sorts of null byte representations.
 
-        for null_byte in FileWorkspace.NULL_BYTES:
-            if null_byte in str(relative_path) or null_byte in str(root):
-                raise ValueError("embedded null byte")
+        if "\0" in str(relative_path) or "\0" in str(root):
+            raise ValueError("embedded null byte")
 
         if root is None:
             return Path(relative_path).resolve()
