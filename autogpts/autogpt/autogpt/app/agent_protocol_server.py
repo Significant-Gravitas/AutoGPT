@@ -33,7 +33,11 @@ from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from autogpt.core.resource.model_providers import ChatModelProvider
-from autogpt.file_workspace import FileWorkspace, get_workspace
+from autogpt.file_workspace import (
+    FileWorkspace,
+    FileWorkspaceBackendName,
+    get_workspace,
+)
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
 logger = logging.getLogger(__name__)
@@ -381,14 +385,23 @@ class AgentProtocolServer:
         task_id: str | int,
         agent_manager: AgentManager,
     ) -> FileWorkspace:
-        return get_workspace(
+        use_local_ws = (
+            self.app_config.workspace_backend == FileWorkspaceBackendName.LOCAL
+        )
+        agent_id = task_agent_id(task_id)
+        workspace = get_workspace(
             backend=self.app_config.workspace_backend,
+            id=agent_id if not use_local_ws else "",
             root_path=agent_manager.get_agent_dir(
-                agent_id=task_agent_id(task_id),
+                agent_id=agent_id,
                 must_exist=True,
             )
-            / "workspace",
+            / "workspace"
+            if use_local_ws
+            else None,
         )
+        workspace.initialize()
+        return workspace
 
 
 def task_agent_id(task_id: str | int) -> str:
