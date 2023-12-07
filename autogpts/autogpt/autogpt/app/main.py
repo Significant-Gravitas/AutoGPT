@@ -346,7 +346,10 @@ async def run_auto_gpt_server(
     config.plugins = scan_plugins(config)
 
     # Set up & start server
-    database = AgentDB(os.getenv("AP_SERVER_DB_URL", "sqlite:///data/ap_server.db"))
+    database = AgentDB(
+        database_string=os.getenv("AP_SERVER_DB_URL", "sqlite:///data/ap_server.db"),
+        debug_enabled=debug,
+    )
     server = AgentProtocolServer(
         app_config=config, database=database, llm_provider=llm_provider
     )
