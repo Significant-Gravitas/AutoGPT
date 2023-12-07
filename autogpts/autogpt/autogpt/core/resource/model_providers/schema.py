@@ -109,7 +109,8 @@ class BaseModelProviderBudget(BaseProviderBudget):
             + model_response.prompt_tokens_used * model_info.prompt_token_cost
         )
         self.total_cost += incurred_cost
-        self.remaining_budget -= incurred_cost
+        if abs(self.remaining_budget) != float("inf"):
+            self.remaining_budget -= incurred_cost
 
 
 class BaseModelProviderSettings(BaseProviderSettings):
