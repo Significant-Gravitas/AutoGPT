@@ -169,11 +169,6 @@ class AgentProtocolServer:
             app_config=self.app_config,
             llm_provider=self.llm_provider,
         )
-        agent.workspace.on_write_file = lambda path: self.db.create_artifact(
-            task_id=task_id,
-            file_name=path.parts[-1],
-            relative_path=str(path),
-        )
 
         # According to the Agent Protocol spec, the first execute_step request contains
         #  the same task input as the parent create_task request.
@@ -214,6 +209,13 @@ class AgentProtocolServer:
         # Execute previously proposed action
         if execute_command:
             assert execute_command_args is not None
+            agent.workspace.on_write_file = lambda path: self.db.create_artifact(
+                task_id=step.task_id,
+                step_id=step.step_id,
+                file_name=path.parts[-1],
+                agent_created=True,
+                relative_path=str(path),
+            )
 
             if step.is_last and execute_command == finish.__name__:
                 assert execute_command_args
