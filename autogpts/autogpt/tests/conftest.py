@@ -30,7 +30,9 @@ def tmp_project_root(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def app_data_dir(tmp_project_root: Path) -> Path:
-    return tmp_project_root / "data"
+    dir = tmp_project_root / "data"
+    dir.mkdir(parents=True, exist_ok=True)
+    return dir
 
 
 @pytest.fixture()
@@ -71,9 +73,9 @@ def config(
     app_data_dir: Path,
     mocker: MockerFixture,
 ):
-    config = ConfigBuilder.build_config_from_env(project_root=tmp_project_root)
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
+    config = ConfigBuilder.build_config_from_env(project_root=tmp_project_root)
 
     config.app_data_dir = app_data_dir
 

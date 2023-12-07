@@ -56,13 +56,13 @@ class CommandRegistry:
 
     def register(self, cmd: Command) -> None:
         if cmd.name in self.commands:
-            logger.warn(
+            logger.warning(
                 f"Command '{cmd.name}' already registered and will be overwritten!"
             )
         self.commands[cmd.name] = cmd
 
         if cmd.name in self.commands_aliases:
-            logger.warn(
+            logger.warning(
                 f"Command '{cmd.name}' will overwrite alias with the same name of "
                 f"'{self.commands_aliases[cmd.name]}'!"
             )

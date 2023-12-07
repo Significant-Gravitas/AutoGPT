@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 import click
 from autogpt import utils
@@ -14,6 +14,9 @@ from autogpt.logs.config import LogFormatName
 from autogpt.logs.helpers import print_attribute, request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
 from colorama import Back, Fore, Style
+
+if TYPE_CHECKING:
+    from autogpt.core.resource.model_providers.openai import OpenAICredentials
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +105,11 @@ def apply_overrides_to_config(
         config.smart_llm = GPT_3_MODEL
     elif (
         gpt4only
-        and check_model(GPT_4_MODEL, model_type="smart_llm", config=config)
+        and check_model(
+            GPT_4_MODEL,
+            model_type="smart_llm",
+            api_credentials=config.openai_credentials,
+        )
         == GPT_4_MODEL
     ):
         print_attribute("GPT4 Only Mode", "ENABLED")
@@ -110,8 +117,12 @@ def apply_overrides_to_config(
         config.fast_llm = GPT_4_MODEL
         config.smart_llm = GPT_4_MODEL
     else:
-        config.fast_llm = check_model(config.fast_llm, "fast_llm", config=config)
-        config.smart_llm = check_model(config.smart_llm, "smart_llm", config=config)
+        config.fast_llm = check_model(
+            config.fast_llm, "fast_llm", api_credentials=config.openai_credentials
+        )
+        config.smart_llm = check_model(
+            config.smart_llm, "smart_llm", api_credentials=config.openai_credentials
+        )
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
@@ -166,13 +177,13 @@ def apply_overrides_to_config(
 
     if allow_downloads:
         print_attribute("Native Downloading", "ENABLED")
-        logger.warn(
+        logger.warning(
             msg=f"{Back.LIGHTYELLOW_EX}"
             "AutoGPT will now be able to download and save files to your machine."
             f"{Back.RESET}"
             " It is recommended that you monitor any files it downloads carefully.",
         )
-        logger.warn(
+        logger.warning(
             msg=f"{Back.RED + Style.BRIGHT}"
             "NEVER OPEN FILES YOU AREN'T SURE OF!"
             f"{Style.RESET_ALL}",
@@ -186,17 +197,16 @@ def apply_overrides_to_config(
 def check_model(
     model_name: str,
     model_type: Literal["smart_llm", "fast_llm"],
-    config: Config,
+    api_credentials: OpenAICredentials,
 ) -> str:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
-    openai_credentials = config.get_openai_credentials(model_name)
     api_manager = ApiManager()
-    models = api_manager.get_models(**openai_credentials)
+    models = api_manager.get_models(**api_credentials.get_api_access_kwargs(model_name))
 
     if any(model_name in m["id"] for m in models):
         return model_name
 
-    logger.warn(
+    logger.warning(
         f"You don't have access to {model_name}. Setting {model_type} to gpt-3.5-turbo."
     )
     return "gpt-3.5-turbo"

@@ -1,5 +1,15 @@
-import json
-import pprint
+from forge.sdk import (
+    Agent,
+    AgentDB,
+    ForgeLogger,
+    Step,
+    StepRequestBody,
+    Task,
+    TaskRequestBody,
+    Workspace,
+)
+from forge.actions import ActionRegister
+
 
 from forge.sdk import (Agent, AgentDB, ChromaMemStore, ForgeLogger,
                        PromptEngine, Step, StepRequestBody, Task,
@@ -69,6 +79,7 @@ class ForgeAgent(Agent):
         Feel free to create subclasses of the database and workspace to implement your own storage
         """
         super().__init__(database, workspace)
+        self.abilities = ActionRegister(self)
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """

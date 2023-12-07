@@ -17,6 +17,7 @@ BASE_VCR_CONFIG = {
         "Authorization",
         "AGENT-MODE",
         "AGENT-TYPE",
+        "Cookie",
         "OpenAI-Organization",
         "X-OpenAI-Client-User-Agent",
         "User-Agent",
