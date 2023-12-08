@@ -12,8 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from forge.sdk.db import AgentDB
 from forge.sdk.errors import NotFoundError
 from forge.sdk.middlewares import AgentMiddleware
-from forge.sdk.routes.agent_protocol import base_router
-from forge.sdk.schema import (
+from forge.sdk.model import (
     Artifact,
     Step,
     StepRequestBody,
@@ -23,6 +22,7 @@ from forge.sdk.schema import (
     TaskRequestBody,
     TaskStepsListResponse,
 )
+from forge.sdk.routes.agent_protocol import base_router
 from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
 
