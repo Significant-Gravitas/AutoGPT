@@ -357,9 +357,9 @@ class AgentProtocolServer:
         )
         return artifact
 
-    async def get_artifact(self, task_id: str, artifact_id: str) -> Artifact:
+    async def get_artifact(self, task_id: str, artifact_id: str) -> StreamingResponse:
         """
-        Get an artifact by ID.
+        Download a task artifact by ID.
         """
         try:
             artifact = await self.db.get_artifact(artifact_id)
@@ -378,7 +378,7 @@ class AgentProtocolServer:
             BytesIO(retrieved_artifact),
             media_type="application/octet-stream",
             headers={
-                "Content-Disposition": f"attachment; filename={artifact.file_name}"
+                "Content-Disposition": f'attachment; filename="{artifact.file_name}"'
             },
         )
 
