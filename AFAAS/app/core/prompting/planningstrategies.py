@@ -201,7 +201,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         #     plugin.post_prompt(self)
 
         # Construct full prompt
-        from autogpt.autogpt.core.agents.base.assistants.prompt_manager import \
+        from autogpt.AFAAS.app.core.agents.base.assistants.prompt_manager import \
             get_os_info
 
         full_prompt_parts: list[str] = (

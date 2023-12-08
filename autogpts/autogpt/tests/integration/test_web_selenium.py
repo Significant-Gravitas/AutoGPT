@@ -1,6 +1,6 @@
 import pytest
 from autogpt.agents.agent import Agent
-from autogpt.core.tools.builtins.web_selenium import (BrowsingError,
+from AFAAS.app.core.tools.builtins.web_selenium import (BrowsingError,
                                                       read_webpage)
 
 

@@ -4,7 +4,7 @@ from typing import Any, Sequence, overload
 
 import numpy as np
 from autogpt.config import Config
-from autogpt.core.resource.model_providers import EmbeddingModelProvider
+from AFAAS.app.core.resource.model_providers import EmbeddingModelProvider
 
 logger = logging.getLogger(__name__)
 

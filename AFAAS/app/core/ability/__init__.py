@@ -3,8 +3,8 @@ import warnings
 from .. import tools
 
 warnings.warn(
-    "autogpt.core.ability is deprecated and will be removed in a future version. "
-    "Use autogpt.core.tools instead.",
+    "AFAAS.app.core.ability is deprecated and will be removed in a future version. "
+    "Use AFAAS.app.core.tools instead.",
     DeprecationWarning,
     stacklevel=2,
 )

@@ -30,8 +30,8 @@ Start by importing the necessary modules and classes. This includes the base cla
 from __future__ import annotations
 import logging
 import uuid
-from autogpt.core.agents.base.main import BaseAgent
-from autogpt.core.agents.usercontext.loop import UserContextLoop
+from AFAAS.app.core.agents.base.main import BaseAgent
+from AFAAS.app.core.agents.usercontext.loop import UserContextLoop
 # ... other imports
 ```
 

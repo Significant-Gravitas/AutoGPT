@@ -4,10 +4,10 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from autogpt.core.configuration import SystemConfiguration, SystemSettings
-from autogpt.core.memory.base import MemorySettings
-from autogpt.core.plugin.simple import PluginLocation
-from autogpt.core.resource.model_providers import OpenAISettings
+from AFAAS.app.core.configuration import SystemConfiguration, SystemSettings
+from AFAAS.app.core.memory.base import MemorySettings
+from AFAAS.app.core.plugin.simple import PluginLocation
+from AFAAS.app.core.resource.model_providers import OpenAISettings
 from pydantic import BaseModel, Field
 
 

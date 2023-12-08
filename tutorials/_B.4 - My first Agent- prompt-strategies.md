@@ -20,10 +20,10 @@ Begin by creating a new Python file under the `strategies` directory of your age
 
 ## Step 2: Import Necessary Modules and Classes
 
-Import the required modules and classes. At a minimum, you'll need to import the `BasePromptStrategy` class from `autogpt.core.prompting.base`.
+Import the required modules and classes. At a minimum, you'll need to import the `BasePromptStrategy` class from `AFAAS.app.core.prompting.base`.
 
 ```python
-from autogpt.core.prompting.base import BasePromptStrategy
+from AFAAS.app.core.prompting.base import BasePromptStrategy
 ```
 
 ## Step 3: Define Your Strategy Class
@@ -40,7 +40,7 @@ class MyStrategy(BasePromptStrategy):
 Create a Pydantic model for your strategy configurations, inheriting from `PromptStrategiesConfiguration`.
 
 ```python
-from autogpt.core.prompting.base import PromptStrategiesConfiguration
+from AFAAS.app.core.prompting.base import PromptStrategiesConfiguration
 from pydantic import BaseModel
 
 class MyStrategyConfiguration(PromptStrategiesConfiguration):
@@ -71,7 +71,7 @@ class StrategiesConfiguration(PromptStrategiesConfiguration):
     ...
 
 class Strategies:
-    from autogpt.core.prompting.base import BasePromptStrategy, PromptStrategy
+    from AFAAS.app.core.prompting.base import BasePromptStrategy, PromptStrategy
 
     @staticmethod
     def get_strategies(logger: Logger) -> list[PromptStrategy]:

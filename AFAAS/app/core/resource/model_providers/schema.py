@@ -6,8 +6,8 @@ from typing import Callable, ClassVar, Protocol
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
-from autogpt.core.configuration import SystemConfiguration, UserConfigurable
-from autogpt.core.resource.schema import (
+from ...configuration import SystemConfiguration, UserConfigurable
+from ..schema import (
     Embedding,
     BaseProviderBudget, 
     BaseProviderCredentials, 
@@ -15,7 +15,7 @@ from autogpt.core.resource.schema import (
     BaseProviderUsage, 
     ResourceType,
 )
-from autogpt.core.utils.json_schema import JSONSchema
+from ...utils.json_schema import JSONSchema
 
 
 class ModelProviderService(str, enum.Enum):

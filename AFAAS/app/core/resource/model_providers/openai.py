@@ -12,15 +12,15 @@ import openai
 import tiktoken
 from pydantic import SecretStr
 
-from autogpt.core.configuration import Configurable, UserConfigurable
-from autogpt.core.resource.model_providers.schema import (
+from AFAAS.app.core.configuration import Configurable, UserConfigurable
+from AFAAS.app.core.resource.model_providers.schema import (
     AssistantChatMessageDict, AssistantToolCallDict, ChatMessage,
     BaseChatModelInfo, ChatModelProvider, ChatModelResponse,
     CompletionModelFunction, Embedding, EmbeddingModelInfo,
     EmbeddingModelProvider, EmbeddingModelResponse, ModelProviderBudget,
     ModelProviderCredentials, ModelProviderName, ModelProviderService,
     ModelProviderSettings, ModelProviderUsage, ModelTokenizer)
-from autogpt.core.utils.json_schema import JSONSchema
+from AFAAS.app.core.utils.json_schema import JSONSchema
 
 
 _T = TypeVar("_T")

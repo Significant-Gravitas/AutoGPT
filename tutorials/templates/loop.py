@@ -1,8 +1,8 @@
 # Import necessary libraries and modules from the afaas framework and other packages.
 from typing import Awaitable, Callable
 
-from autogpt.core.agents.base import BaseAgent, BaseLoop
-from autogpt.core.prompting.base import (LoophooksDict,
+from AFAAS.app.core.agents.base import BaseAgent, BaseLoop
+from AFAAS.app.core.prompting.base import (LoophooksDict,
                                          PromptStrategiesConfiguration)
 
 

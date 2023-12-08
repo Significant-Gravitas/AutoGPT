@@ -3,7 +3,7 @@ import json
 import pytest
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import ConfigurationError
-from autogpt.core.tools.builtins.web_search import (google,
+from AFAAS.app.core.tools.builtins.web_search import (google,
                                                     safe_google_results,
                                                     web_search)
 from googleapiclient.errors import HttpError
@@ -43,7 +43,7 @@ def test_google_search(
     mock_ddg = mocker.Mock()
     mock_ddg.return_value = return_value
 
-    mocker.patch("autogpt.core.tools.builtins.web_search.DDGS.text", mock_ddg)
+    mocker.patch("AFAAS.app.core.tools.builtins.web_search.DDGS.text", mock_ddg)
     actual_output = web_search(query, agent=agent, num_results=num_results)
     for o in expected_output_parts:
         assert o in actual_output

@@ -14,7 +14,7 @@ class CreateNewTool(Tool):
     default_configuration = ToolConfiguration(
         location=PluginLocation(
             storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-            storage_route="autogpt.core.tools.builtins.CreateNewTool",
+            storage_route="AFAAS.app.core.tools.builtins.CreateNewTool",
         ),
     )
 

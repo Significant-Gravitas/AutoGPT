@@ -7,7 +7,7 @@ In this segment, we're going to simulate a real-world scenario where an agent in
 The conversation begins by creating messages from both the user and the assistant. Each message is encapsulated as a `ChatMessage` object, identifying the sender and the content.
 
 ```python
-from autogpt.core.agents.usercontext.strategies.refine_user_context import Role, ChatMessage
+from AFAAS.app.core.agents.usercontext.strategies.refine_user_context import Role, ChatMessage
 
 # User initiates the conversation
 user_message = ChatMessage(role=Role.USER, content="I need help with my math homework.")
@@ -22,7 +22,7 @@ assistant_message1 = ChatMessage(role=Role.ASSISTANT, content="Of course! What t
 Now, let's define some functions that the assistant could perform to assist the user better using `CompletionModelFunction`.
 
 ```python
-from autogpt.core.core.resource.model_providers.openai import CompletionModelFunction, FunctionParameters, Property
+from AFAAS.app.core.core.resource.model_providers.openai import CompletionModelFunction, FunctionParameters, Property
 
 # Define a function to solve quadratic equations
 solve_quad = CompletionModelFunction(
@@ -55,7 +55,7 @@ solve_linear = CompletionModelFunction(
 The `ChatPrompt` is constructed using the messages and functions defined earlier. This prompt will be sent to the LLM.
 
 ```python
-from autogpt.core.core.resource.model_providers.chat_schema import ChatPrompt
+from AFAAS.app.core.core.resource.model_providers.chat_schema import ChatPrompt
 
 # Build the chat prompt
 chat_prompt = ChatPrompt(

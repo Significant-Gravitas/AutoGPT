@@ -16,7 +16,7 @@ from autogpt.memory.vector import get_supported_memory_backends
 from colorama import Back, Fore, Style
 
 if TYPE_CHECKING:
-    from autogpt.core.resource.model_providers.openai import OpenAICredentials
+    from AFAAS.app.core.resource.model_providers.openai import OpenAICredentials
 
 logger = logging.getLogger(__name__)
 

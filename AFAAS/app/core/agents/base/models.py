@@ -6,8 +6,8 @@ from AFAAS.app.core.configuration import SystemConfiguration
 
 
 class BaseAgentSystems(SystemConfiguration):
-    memory: str = "autogpt.core.memory.base.Memory"
-    workspace: str = "autogpt.core.workspace.SimpleWorkspace"
+    memory: str = "AFAAS.app.core.memory.base.Memory"
+    workspace: str = "AFAAS.app.core.workspace.SimpleWorkspace"
 
     class Config(SystemConfiguration.Config):
         extra = "allow"

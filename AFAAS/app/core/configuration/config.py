@@ -9,8 +9,8 @@ from typing import Any, Optional, Union
 import autogpt
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from autogpt.core.configuration.schema import Configurable, SystemSettings, UserConfigurable
-from autogpt.core.resource.model_providers.openai.openai import OPEN_AI_CHAT_MODELS, OpenAICredentials
+from AFAAS.app.core.configuration.schema import Configurable, SystemSettings, UserConfigurable
+from AFAAS.app.core.resource.model_providers.openai.openai import OPEN_AI_CHAT_MODELS, OpenAICredentials
 from autogpt.logs.config import LogFormatName, LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig

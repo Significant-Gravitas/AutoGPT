@@ -234,7 +234,7 @@ class PlannerAgent(BaseAgent):
         # #
         # simple_strategies = {}
         # import inspect
-        # from  autogpt.core.agents.simple.lib.base import PromptStrategy
+        # from  AFAAS.app.core.agents.simple.lib.base import PromptStrategy
         # for strategy_name, strategy_config in strategies_config.__dict__.items():
         #     strategy_module = getattr(strategies, strategy_name)
         #     # Filter classes that are subclasses of PromptStrategy and are defined within that module

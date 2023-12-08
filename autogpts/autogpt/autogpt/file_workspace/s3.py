@@ -15,7 +15,7 @@ import boto3
 import botocore.exceptions
 from pydantic import SecretStr
 
-from autogpt.core.configuration.schema import UserConfigurable
+from AFAAS.app.core.configuration.schema import UserConfigurable
 
 from .base import FileWorkspace, FileWorkspaceConfiguration
 

@@ -6,7 +6,7 @@ import threading
 from threading import Semaphore
 from typing import Literal, Optional
 
-from autogpt.core.configuration.schema import (SystemConfiguration,
+from AFAAS.app.core.configuration.schema import (SystemConfiguration,
                                                UserConfigurable)
 
 from .base import VoiceBase

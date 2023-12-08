@@ -12,9 +12,9 @@ from AFAAS.app.core.agents.base.models import (
 
 
 class PlannerAgentSystems(BaseAgentSystems):
-    tool_registry: str = "autogpt.core.tools.SimpleToolRegistry"
-    chat_model_provider: str = "autogpt.core.resource.model_providers.OpenAIProvider"
-    prompt_manager: str = "autogpt.core.agents.base.PromptManager"
+    tool_registry: str = "AFAAS.app.core.tools.SimpleToolRegistry"
+    chat_model_provider: str = "AFAAS.app.core.resource.model_providers.OpenAIProvider"
+    prompt_manager: str = "AFAAS.app.core.agents.base.PromptManager"
 
     class Config(BaseAgentSystems.Config):
         pass
@@ -47,7 +47,7 @@ class PlannerAgentConfiguration(BaseAgentConfiguration):
 #     agent_role: Optional[str] = Field(default=None)
 #     agent_goals: Optional[list]
 #     agent_goal_sentence: Optional[list]
-#     agent_class: str = Field(default="autogpt.core.agents.planner.main.PlannerAgent")
+#     agent_class: str = Field(default="AFAAS.app.core.agents.planner.main.PlannerAgent")
 
 #     class Config(BaseAgent.SystemSettings.Config):
 #         pass

@@ -38,15 +38,15 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import Field
 
-from autogpt.core.agents.base.models import (
+from AFAAS.app.core.agents.base.models import (
     BaseAgentConfiguration,
     BaseAgentSettings,
     BaseAgentSystems,
     BaseAgentSystemSettings,
 )
-from autogpt.core.planning import PlannerSettings
-from autogpt.core.plugin.simple import PluginLocation
-from autogpt.core.resource.model_providers import OpenAISettings
+from AFAAS.app.core.planning import PlannerSettings
+from AFAAS.app.core.plugin.simple import PluginLocation
+from AFAAS.app.core.resource.model_providers import OpenAISettings
 
 ```
 
