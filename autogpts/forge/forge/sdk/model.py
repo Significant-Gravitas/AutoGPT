@@ -73,7 +73,7 @@ class TaskRequestBody(BaseModel):
         description="Input prompt for the task.",
         example="Write the words you receive to the file 'output.txt'.",
     )
-    additional_input: Optional[dict] = {}
+    additional_input: Optional[dict] = None
 
 
 class Task(TaskRequestBody):
