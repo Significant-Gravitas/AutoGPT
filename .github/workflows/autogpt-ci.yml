@@ -83,6 +83,15 @@ jobs:
       matrix:
         python-version: ["3.10"]
 
+    services:
+      minio:
+        image: minio/minio:edge-cicd
+        ports:
+          - 9000:9000
+        options: >
+          --health-interval=10s --health-timeout=5s --health-retries=3
+          --health-cmd="curl -f http://localhost:9000/minio/health/live"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -154,8 +163,11 @@ jobs:
             tests/unit tests/integration
         env:
           CI: true
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           PLAIN_OUTPUT: True
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          S3_ENDPOINT_URL: http://localhost:9000
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3

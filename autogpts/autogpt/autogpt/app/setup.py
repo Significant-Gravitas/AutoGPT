@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 def apply_overrides_to_ai_settings(
     ai_profile: AIProfile,
     directives: AIDirectives,
-    override_name: str = "",
-    override_role: str = "",
+    override_name: Optional[str] = "",
+    override_role: Optional[str] = "",
     replace_directives: bool = False,
     resources: Optional[list[str]] = None,
     constraints: Optional[list[str]] = None,

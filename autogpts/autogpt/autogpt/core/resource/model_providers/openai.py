@@ -12,11 +12,7 @@ import openai
 import tiktoken
 from pydantic import SecretStr
 
-from autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    UserConfigurable,
-)
+from autogpt.core.configuration import Configurable, UserConfigurable
 from autogpt.core.resource.model_providers.schema import (
     AssistantChatMessageDict, AssistantToolCallDict, ChatMessage,
     BaseChatModelInfo, ChatModelProvider, ChatModelResponse,
@@ -26,8 +22,6 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProviderSettings, ModelProviderUsage, ModelTokenizer)
 from autogpt.core.utils.json_schema import JSONSchema
 
-
-from openai.error import APIError, RateLimitError
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
@@ -156,8 +150,8 @@ OPEN_AI_MODELS = {
 }
 
 
-class OpenAIConfiguration(SystemConfiguration):
-    retries_per_request: int = UserConfigurable()
+class OpenAIConfiguration(ModelProviderConfiguration):
+    pass
 
 
 class OpenAICredentials(ModelProviderCredentials):
@@ -256,6 +250,8 @@ class OpenAIProvider(
             warning_threshold=0.01,
         ),
     )
+
+    _configuration: OpenAIConfiguration
 
     def __init__(
         self,
@@ -436,6 +432,12 @@ class OpenAIProvider(
                 # Provide compatibility with older models
                 _functions_compat_fix_kwargs(functions, completion_kwargs)
 
+        if extra_headers := self._configuration.extra_request_headers:
+            if completion_kwargs.get("headers"):
+                completion_kwargs["headers"].update(extra_headers)
+            else:
+                completion_kwargs["headers"] = extra_headers.copy()
+
         return completion_kwargs
 
     def _get_embedding_kwargs(
@@ -458,6 +460,12 @@ class OpenAIProvider(
             **kwargs,
             **self._credentials.unmasked(),
         }
+
+        if extra_headers := self._configuration.extra_request_headers:
+            if embedding_kwargs.get("headers"):
+                embedding_kwargs["headers"].update(extra_headers)
+            else:
+                embedding_kwargs["headers"] = extra_headers.copy()
 
         return embedding_kwargs
 

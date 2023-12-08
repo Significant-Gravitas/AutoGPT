@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import pathlib
@@ -5,16 +6,6 @@ from io import BytesIO
 from uuid import uuid4
 
 import orjson
-from autogpt.agent_factory.configurators import configure_agent_with_state
-from autogpt.agent_factory.generators import generate_agent_for_task
-from autogpt.agent_manager import AgentManager
-from autogpt.commands.system import finish
-from autogpt.commands.user_interaction import ask_user
-from autogpt.config import Config
-from autogpt.core.resource.model_providers import ChatModelProvider
-from autogpt.file_workspace import FileWorkspace
-from autogpt.models.action_history import (ActionErrorResult,
-                                           ActionSuccessResult)
 from fastapi import APIRouter, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -22,12 +13,33 @@ from fastapi.staticfiles import StaticFiles
 from forge.sdk.db import AgentDB
 from forge.sdk.errors import NotFoundError
 from forge.sdk.middlewares import AgentMiddleware
+from forge.sdk.model import (
+    Artifact,
+    Step,
+    StepRequestBody,
+    Task,
+    TaskArtifactsListResponse,
+    TaskListResponse,
+    TaskRequestBody,
+    TaskStepsListResponse,
+)
 from forge.sdk.routes.agent_protocol import base_router
-from forge.sdk.schema import (Artifact, Step, StepRequestBody, Task,
-                              TaskArtifactsListResponse, TaskListResponse,
-                              TaskRequestBody, TaskStepsListResponse)
 from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
+
+from autogpt.agent_factory.configurators import configure_agent_with_state
+from autogpt.agent_factory.generators import generate_agent_for_task
+from autogpt.agent_manager import AgentManager
+from autogpt.commands.system import finish
+from autogpt.commands.user_interaction import ask_user
+from autogpt.config import Config
+from autogpt.core.resource.model_providers import ChatModelProvider
+from autogpt.file_workspace import (
+    FileWorkspace,
+    FileWorkspaceBackendName,
+    get_workspace,
+)
+from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
 logger = logging.getLogger(__name__)
 
@@ -104,15 +116,15 @@ class AgentProtocolServer:
         """
         Create a task for the agent.
         """
-        logger.debug(f"Creating agent for task: '{task_request.input}'")
-        task_agent = await generate_agent_for_task(
-            task=task_request.input,
-            app_config=self.app_config,
-            llm_provider=self.llm_provider,
-        )
         task = await self.db.create_task(
             input=task_request.input,
             additional_input=task_request.additional_input,
+        )
+        logger.debug(f"Creating agent for task: '{task.input}'")
+        task_agent = await generate_agent_for_task(
+            task=task.input,
+            app_config=self.app_config,
+            llm_provider=self._get_task_llm_provider(task),
         )
         agent_id = task_agent.state.agent_id = task_agent_id(task.task_id)
         logger.debug(f"New agent ID: {agent_id}")
@@ -129,7 +141,7 @@ class AgentProtocolServer:
         response = TaskListResponse(tasks=tasks, pagination=pagination)
         return response
 
-    async def get_task(self, task_id: int) -> Task:
+    async def get_task(self, task_id: str) -> Task:
         """
         Get a task by ID.
         """
@@ -153,15 +165,11 @@ class AgentProtocolServer:
         logger.debug(f"Creating a step for task with ID: {task_id}...")
 
         # Restore Agent instance
+        task = await self.get_task(task_id)
         agent = configure_agent_with_state(
             state=self.agent_manager.retrieve_state(task_agent_id(task_id)),
             app_config=self.app_config,
-            llm_provider=self.llm_provider,
-        )
-        agent.workspace.on_write_file = lambda path: self.db.create_artifact(
-            task_id=task_id,
-            file_name=path.parts[-1],
-            relative_path=str(path),
+            llm_provider=self._get_task_llm_provider(task),
         )
 
         # According to the Agent Protocol spec, the first execute_step request contains
@@ -199,10 +207,18 @@ class AgentProtocolServer:
             input=step_request,
             is_last=execute_command == finish.__name__ and execute_approved,
         )
+        agent.llm_provider = self._get_task_llm_provider(task, step.step_id)
 
         # Execute previously proposed action
         if execute_command:
             assert execute_command_args is not None
+            agent.workspace.on_write_file = lambda path: self.db.create_artifact(
+                task_id=step.task_id,
+                step_id=step.step_id,
+                file_name=path.parts[-1],
+                agent_created=True,
+                relative_path=str(path),
+            )
 
             if step.is_last and execute_command == finish.__name__:
                 assert execute_command_args
@@ -333,7 +349,7 @@ class AgentProtocolServer:
         else:
             file_path = os.path.join(relative_path, file_name)
 
-        workspace = get_task_agent_file_workspace(task_id, self.agent_manager)
+        workspace = self._get_task_agent_file_workspace(task_id, self.agent_manager)
         await workspace.write_file(file_path, data)
 
         artifact = await self.db.create_artifact(
@@ -344,9 +360,9 @@ class AgentProtocolServer:
         )
         return artifact
 
-    async def get_artifact(self, task_id: str, artifact_id: str) -> Artifact:
+    async def get_artifact(self, task_id: str, artifact_id: str) -> StreamingResponse:
         """
-        Get an artifact by ID.
+        Download a task artifact by ID.
         """
         try:
             artifact = await self.db.get_artifact(artifact_id)
@@ -354,7 +370,7 @@ class AgentProtocolServer:
                 file_path = os.path.join(artifact.relative_path, artifact.file_name)
             else:
                 file_path = artifact.relative_path
-            workspace = get_task_agent_file_workspace(task_id, self.agent_manager)
+            workspace = self._get_task_agent_file_workspace(task_id, self.agent_manager)
             retrieved_artifact = workspace.read_file(file_path, binary=True)
         except NotFoundError:
             raise
@@ -365,27 +381,53 @@ class AgentProtocolServer:
             BytesIO(retrieved_artifact),
             media_type="application/octet-stream",
             headers={
-                "Content-Disposition": f"attachment; filename={artifact.file_name}"
+                "Content-Disposition": f'attachment; filename="{artifact.file_name}"'
             },
         )
+
+    def _get_task_agent_file_workspace(
+        self,
+        task_id: str | int,
+        agent_manager: AgentManager,
+    ) -> FileWorkspace:
+        use_local_ws = (
+            self.app_config.workspace_backend == FileWorkspaceBackendName.LOCAL
+        )
+        agent_id = task_agent_id(task_id)
+        workspace = get_workspace(
+            backend=self.app_config.workspace_backend,
+            id=agent_id if not use_local_ws else "",
+            root_path=agent_manager.get_agent_dir(
+                agent_id=agent_id,
+                must_exist=True,
+            )
+            / "workspace"
+            if use_local_ws
+            else None,
+        )
+        workspace.initialize()
+        return workspace
+
+    def _get_task_llm_provider(
+        self, task: Task, step_id: str = ""
+    ) -> ChatModelProvider:
+        """
+        Configures the LLM provider with headers to link outgoing requests to the task.
+        """
+        task_llm_provider = copy.deepcopy(self.llm_provider)
+        _extra_request_headers = task_llm_provider._configuration.extra_request_headers
+
+        _extra_request_headers["X-AP-TaskID"] = task.task_id
+        if step_id:
+            _extra_request_headers["X-AP-StepID"] = step_id
+        if task.additional_input and (user_id := task.additional_input.get("user_id")):
+            _extra_request_headers["X-AutoGPT-UserID"] = user_id
+
+        return task_llm_provider
 
 
 def task_agent_id(task_id: str | int) -> str:
     return f"AutoGPT-{task_id}"
-
-
-def get_task_agent_file_workspace(
-    task_id: str | int,
-    agent_manager: AgentManager,
-) -> FileWorkspace:
-    return FileWorkspace(
-        root=agent_manager.get_agent_dir(
-            agent_id=task_agent_id(task_id),
-            must_exist=True,
-        )
-        / "workspace",
-        restrict_to_root=True,
-    )
 
 
 def fmt_kwargs(kwargs: dict) -> str:

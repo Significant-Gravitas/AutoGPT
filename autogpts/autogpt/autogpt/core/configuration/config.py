@@ -10,7 +10,7 @@ import autogpt
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from autogpt.core.configuration.schema import Configurable, SystemSettings, UserConfigurable
-from autogpt.core.resource.model_providers.openai import OPEN_AI_CHAT_MODELS, OpenAICredentials
+from autogpt.core.resource.model_providers.openai.openai import OPEN_AI_CHAT_MODELS, OpenAICredentials
 from autogpt.logs.config import LogFormatName, LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
@@ -49,9 +49,18 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     chat_messages_enabled: bool = UserConfigurable(
         default=True, from_env=lambda: os.getenv("CHAT_MESSAGES_ENABLED") == "True"
     )
+
     # TTS configuration
     tts_config: TTSConfig = TTSConfig()
     logging: LoggingConfig = LoggingConfig()
+
+    # Workspace
+    workspace_backend: FileWorkspaceBackendName = UserConfigurable(
+        default=FileWorkspaceBackendName.LOCAL,
+        from_env=lambda: FileWorkspaceBackendName(v)
+        if (v := os.getenv("WORKSPACE_BACKEND"))
+        else None,
+    )
 
     ##########################
     # Agent Control Settings #
