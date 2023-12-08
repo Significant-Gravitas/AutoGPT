@@ -6,7 +6,7 @@ from pathlib import Path
 import click
 import yaml
 
-from autogpts.autogpt.autogpt.core.agents import \
+from AFAAS.app.core.agents import \
     PlannerAgent  # ## TODO should work for every Agent
 from app.client_lib.logging import \
     get_client_logger

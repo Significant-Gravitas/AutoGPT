@@ -6,7 +6,7 @@ from time import sleep
 import click
 import requests
 
-from autogpts.autogpt.autogpt.core.agents import PlannerAgent
+from AFAAS.app.core.agents import PlannerAgent
 from app.client_lib.logging import \
     get_client_logger
 
