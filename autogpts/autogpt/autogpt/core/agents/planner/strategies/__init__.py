@@ -1,6 +1,6 @@
 from logging import Logger
 
-import autogpts.AFAAS.app.sdk.forge_log as agptlogger
+from  autogpts.AFAAS.app.sdk.forge_log import ForgeLogger
 from autogpts.autogpt.autogpt.core.agents.planner.strategies.initial_plan import (
     InitialPlanStrategy, InitialPlanStrategyConfiguration)
 from autogpts.autogpt.autogpt.core.agents.planner.strategies.select_tool import (
@@ -8,7 +8,7 @@ from autogpts.autogpt.autogpt.core.agents.planner.strategies.select_tool import 
 from autogpts.autogpt.autogpt.core.prompting.base import \
     PromptStrategiesConfiguration
 
-LOG = agptlogger.ForgeLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 
 class StrategiesConfiguration(PromptStrategiesConfiguration):

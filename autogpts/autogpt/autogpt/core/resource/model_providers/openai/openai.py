@@ -13,7 +13,7 @@ aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 import tiktoken
 from openai import APIError, RateLimitError, completions  # , OpenAI, Em
 
-import autogpts.AFAAS.app.sdk.forge_log as agptlogger
+from  autogpts.AFAAS.app.sdk.forge_log import ForgeLogger
 from autogpts.autogpt.autogpt.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
@@ -27,7 +27,7 @@ from autogpts.autogpt.autogpt.core.resource.model_providers.schema import (
     ModelProviderName, ModelProviderService, ModelTokenizer)
 from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
 
-LOG = agptlogger.ForgeLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

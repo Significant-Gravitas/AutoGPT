@@ -2,9 +2,9 @@ import ast
 import json
 import re
 
-import autogpts.AFAAS.app.sdk.forge_log as agptlogger
+from  autogpts.AFAAS.app.sdk.forge_log import ForgeLogger
 
-LOG = agptlogger.ForgeLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 
 def to_numbered_list(
@@ -74,12 +74,12 @@ def json_loads(json_str: str):
         json_str = json_str[json_str.index("{") : json_str.rindex("}") + 1]
         return ast.literal_eval(json_str)
     except Exception as e:
-        LOG(f"First attempt failed: {e}. Trying JSON.loads()")
+        LOG.warning(f"First attempt failed: {e}. Trying JSON.loads()")
     try:
         return json.loads(json_str)
     except Exception as e:
         try:
-            LOG(f"JSON decode error {e}. trying literal eval")
+            LOG.warning(f"JSON decode error {e}. trying literal eval")
 
             def replacer(match):
                 # Escape newlines in the matched value
