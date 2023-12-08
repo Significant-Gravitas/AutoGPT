@@ -207,6 +207,7 @@ class AgentProtocolServer:
             input=step_request,
             is_last=execute_command == finish.__name__ and execute_approved,
         )
+        agent.llm_provider = self._get_task_llm_provider(task, step.step_id)
 
         # Execute previously proposed action
         if execute_command:
@@ -407,7 +408,9 @@ class AgentProtocolServer:
         workspace.initialize()
         return workspace
 
-    def _get_task_llm_provider(self, task: Task) -> ChatModelProvider:
+    def _get_task_llm_provider(
+        self, task: Task, step_id: str = ""
+    ) -> ChatModelProvider:
         """
         Configures the LLM provider with headers to link outgoing requests to the task.
         """
@@ -415,6 +418,8 @@ class AgentProtocolServer:
         _extra_request_headers = task_llm_provider._configuration.extra_request_headers
 
         _extra_request_headers["X-AP-TaskID"] = task.task_id
+        if step_id:
+            _extra_request_headers["X-AP-StepID"] = step_id
         if task.additional_input and (user_id := task.additional_input.get("user_id")):
             _extra_request_headers["X-AutoGPT-UserID"] = user_id
 
