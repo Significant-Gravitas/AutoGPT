@@ -1,7 +1,7 @@
-from AFAAS.app.sdk.forge_log import ForgeLogger
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 import uvicorn
 
-LOG = ForgeLogger(__name__)
+LOG = AFAASLogger(__name__)
 
 
 logo = """\n\n

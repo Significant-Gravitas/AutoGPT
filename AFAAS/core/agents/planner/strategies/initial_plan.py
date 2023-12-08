@@ -2,7 +2,7 @@ import enum
 from logging import Logger
 from typing import Optional
 
-from AFAAS.app.lib.task import Task
+from AFAAS.core.lib.task import Task
 from AFAAS.core.agents.planner.main import PlannerAgent
 from AFAAS.core.prompting.base import (
     BasePromptStrategy, LanguageModelClassification,

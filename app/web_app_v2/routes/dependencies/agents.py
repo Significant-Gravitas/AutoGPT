@@ -1,9 +1,9 @@
 from app.sdk.errors import *
-from AFAAS.app.sdk.forge_log import ForgeLogger
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from app.sdk.schema import *
 from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
 
-LOG = ForgeLogger(__name__)
+LOG = AFAASLogger(__name__)
 from fastapi import APIRouter, FastAPI, Request
 
 from AFAAS.core.agents import PlannerAgent

@@ -6,13 +6,13 @@ from typing import Iterator, Optional, TypeVar
 
 import spacy
 
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.resource.model_providers import (
     BaseChatModelProvider, ChatMessage, ModelTokenizer)
 from AFAAS.core.resource.model_providers.chat_schema import \
     ChatPrompt
 
-logger = forge_log.ForgeLogger(__name__)
+logger = AFAASLogger(__name__)
 logger.notice(
     f"Looking for volunteer to migrate {os.path.relpath(__file__)} library to Langchain."
 )

@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 import yaml
 from pydantic import BaseModel
 
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = forge_log.ForgeLogger(__name__)
+logger = AFAASLogger(__name__)
 
 if TYPE_CHECKING:
     from .main import BaseAgent

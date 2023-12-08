@@ -1,4 +1,4 @@
-from logging import Logger
+from __future__ import annotations
 
 from AFAAS.core.agents.base.features.agentmixin import \
     AgentMixin
@@ -8,11 +8,11 @@ class ToolExecutor(AgentMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        from AFAAS.app.sdk import forge_log
+        from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-        forge_log.ForgeLogger(__name__).debug(
+        AFAASLogger(__name__).debug(
             "ToolExecutor : Has not been implemented yet"
         )
-        forge_log.ForgeLogger(__name__).debug(
+        AFAASLogger(__name__).debug(
             "ToolExecutor : Will be part of a @tool wrapper redisign"
         )

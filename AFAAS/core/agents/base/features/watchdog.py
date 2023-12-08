@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import logging
 from contextlib import ExitStack
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..base import BaseAgentConfiguration
+    from ...base import BaseAgentConfiguration
 
-from AFAAS.app.lib.action_history import EpisodicActionHistory
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.action_history import EpisodicActionHistory
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-from ..base import BaseAgent
+from ...base import BaseAgent
 
-logger = forge_log.ForgeLogger(__name__)
+logger = AFAASLogger(__name__)
 
 
 class WatchdogMixin:

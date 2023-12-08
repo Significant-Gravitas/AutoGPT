@@ -2,7 +2,7 @@ import logging
 
 import click
 
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.sdk import logger
 from AFAAS.core.agents import PlannerAgent
 
 
@@ -25,7 +25,7 @@ async def run_auto_gpt():
     # INFO = 20
     # DEBUG = 10
     # NOTSET = 0
-    client_logger = forge_log.ForgeLogger(__name__)
+    client_logger = logger.AFAASLogger(__name__)
     client_logger.info("Getting agent settings")
 
     import uuid

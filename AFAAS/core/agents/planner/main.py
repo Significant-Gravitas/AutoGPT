@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 from pydantic import Field
 
-from AFAAS.app.lib.task.plan import Plan
+from AFAAS.core.lib.task.plan import Plan
 from AFAAS.core.memory.base import AbstractMemory
 from AFAAS.core.resource.model_providers import (
     OpenAIProvider, OpenAISettings)

@@ -10,17 +10,17 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional
 import yaml
 from pydantic import Field, root_validator
 
-from AFAAS.app.lib.message_agent_agent import MessageAgentAgent
-from AFAAS.app.lib.message_agent_llm import MessageAgentLLM
-from AFAAS.app.lib.message_agent_user import MessageAgentUser
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.message_agent_agent import MessageAgentAgent
+from AFAAS.core.lib.message_agent_llm import MessageAgentLLM
+from AFAAS.core.lib.message_agent_user import MessageAgentUser
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents.base.loop import \
     BaseLoop  # Import only where it's needed
 from AFAAS.core.agents.base.models import \
     BaseAgentConfiguration
 from AFAAS.core.configuration import SystemSettings
 
-LOG = forge_log.ForgeLogger(__name__)
+LOG = AFAASLogger(__name__)
 
 if TYPE_CHECKING:
     from .main import BaseAgent

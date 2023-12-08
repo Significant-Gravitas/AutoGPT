@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Iterator
 
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = forge_log.ForgeLogger(__name__)
+logger = AFAASLogger(__name__)
 
 if TYPE_CHECKING:
     from AFAAS.core.agents.base import BaseAgent

@@ -9,12 +9,12 @@ import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from AFAAS.app.lib.task.task import Task
+from AFAAS.core.lib.task.task import Task
 
 if TYPE_CHECKING:
     from AFAAS.core.agents.base import BaseAgent
 
-from AFAAS.app.lib.context_items import (FileContextItem,
+from AFAAS.core.lib.context_items import (FileContextItem,
                                                   FolderContextItem)
 from AFAAS.core.tools.command_decorator import tool
 from AFAAS.core.utils.exceptions import ToolExecutionError

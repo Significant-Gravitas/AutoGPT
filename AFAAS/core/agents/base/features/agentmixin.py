@@ -4,7 +4,7 @@ from logging import Logger
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.app.lib.task.plan import Plan
+    from AFAAS.core.lib.task.plan import Plan
     from AFAAS.core.memory.table import AbstractTable
     from AFAAS.core.resource.model_providers import \
         CompletionModelFunction

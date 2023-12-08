@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING, Optional
 
 import yaml
 from app.sdk.errors import *
-from AFAAS.app.sdk.forge_log import ForgeLogger
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from app.sdk.schema import *
 from fastapi import APIRouter, FastAPI, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
-LOG = ForgeLogger(__name__)
+LOG = AFAASLogger(__name__)
 
 from AFAAS.core.agents import PlannerAgent
 

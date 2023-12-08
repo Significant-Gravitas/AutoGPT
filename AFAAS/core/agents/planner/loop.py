@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Dict, Optional
 
 from pydantic import Field
 
-from AFAAS.app.lib.action import (ActionErrorResult, ActionResult,
+from AFAAS.core.lib.action import (ActionErrorResult, ActionResult,
                                            ActionSuccessResult)
-from AFAAS.app.lib.context_items import ContextItem
-from AFAAS.app.lib.task import TaskStatusList
-from AFAAS.app.lib.task.plan import Plan
-from AFAAS.app.lib.task.task import Task
+from AFAAS.core.lib.context_items import ContextItem
+from AFAAS.core.lib.task import TaskStatusList
+from AFAAS.core.lib.task.plan import Plan
+from AFAAS.core.lib.task.task import Task
 from AFAAS.core.agents.base.exceptions import (
     AgentException, ToolExecutionError, UnknownToolError)
 from AFAAS.core.tools import ToolOutput

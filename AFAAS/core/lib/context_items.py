@@ -14,10 +14,10 @@ from typing import Optional
 
 from pydantic import Field
 
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.configuration import AFAASModel
 
-logger = forge_log.ForgeLogger(__name__)
+logger = AFAASLogger(__name__)
 
 
 class ContextItem(ABC):

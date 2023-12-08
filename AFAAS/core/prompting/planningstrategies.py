@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
     from AFAAS.core.agents.base.main import BaseAgent
 
-from AFAAS.app.lib.task.plan import Plan
+from AFAAS.core.lib.task.plan import Plan
 from AFAAS.core.configuration import UserConfigurable
 from AFAAS.core.prompting.schema import \
     LanguageModelClassification

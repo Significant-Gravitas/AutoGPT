@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 
-from AFAAS.app.sdk.forge_log import ForgeLogger
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents import AbstractAgent
 from AFAAS.core.configuration import AFAASModel
 
 
-from  AFAAS.app.sdk.forge_log import ForgeLogger
-LOG = ForgeLogger(name=__name__)
+from  AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name=__name__)
 
 
 from typing import TYPE_CHECKING

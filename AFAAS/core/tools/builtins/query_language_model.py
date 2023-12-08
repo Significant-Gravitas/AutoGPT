@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from AFAAS.core.agents.base import BaseAgent
 
-from AFAAS.app.lib.task.task import Task
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.task.task import Task
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
 from AFAAS.core.utils.json_schema import JSONSchema
 
-logger = forge_log.ForgeLogger(__name__)
+logger = AFAASLogger(__name__)
 
 
 @tool(

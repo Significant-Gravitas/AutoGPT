@@ -13,7 +13,7 @@ aclient = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 import tiktoken
 from openai import APIError, RateLimitError, completions  # , OpenAI, Em
 
-from  AFAAS.app.sdk.forge_log import ForgeLogger
+from  AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
@@ -27,7 +27,7 @@ from AFAAS.core.resource.model_providers.schema import (
     ModelProviderName, ModelProviderService, ModelTokenizer)
 from AFAAS.core.utils.json_schema import JSONSchema
 
-LOG = ForgeLogger(__name__)
+LOG = AFAASLogger(__name__)
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

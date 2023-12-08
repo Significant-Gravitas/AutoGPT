@@ -2,14 +2,14 @@ import json
 from typing import Optional
 
 from app.sdk.errors import *
-from AFAAS.app.sdk.forge_log import ForgeLogger
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from app.sdk.schema import *
 from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from .dependencies.agents import get_agent
 
-LOG = ForgeLogger(__name__)
+LOG = AFAASLogger(__name__)
 
 """
 /agents (GET): Returns a list of all agents.

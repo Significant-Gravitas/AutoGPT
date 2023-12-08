@@ -3,12 +3,12 @@ from typing import Callable
 
 from pydantic import BaseModel, Field
 
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.resource.model_providers.chat_schema import \
     CompletionModelFunction
 from AFAAS.core.utils.json_schema import JSONSchema
 
-logger = forge_log.ForgeLogger(__name__)
+logger = AFAASLogger(__name__)
 
 
 class CallableCompletionModelFunction(CompletionModelFunction):

@@ -11,9 +11,9 @@ import yaml
 from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
 
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = forge_log.ForgeLogger(__name__)
+logger = AFAASLogger(__name__)
 
 
 class ParserStrategy:

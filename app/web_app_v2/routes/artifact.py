@@ -6,7 +6,7 @@ from typing import Optional
 from uuid import uuid4
 
 from app.sdk.errors import *
-from AFAAS.app.sdk.forge_log import ForgeLogger
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from app.sdk.schema import *
 from fastapi import (APIRouter, Body, Depends, Query, Request, Response,
                      UploadFile)
@@ -19,7 +19,7 @@ from .dependencies.agents import get_agent
 afaas_artifact_router = APIRouter()
 artifact_router = APIRouter()
 
-LOG = ForgeLogger(__name__)
+LOG = AFAASLogger(__name__)
 
 
 @afaas_artifact_router.get(

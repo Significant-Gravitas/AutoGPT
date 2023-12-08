@@ -22,7 +22,7 @@ from selenium.webdriver.safari.options import Options as SafariOptions
 if TYPE_CHECKING:
     from AFAAS.core.agents.base import BaseAgent
 
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
 from AFAAS.core.utils.exceptions import ToolExecutionError
 from AFAAS.core.utils.json_schema import JSONSchema
@@ -31,7 +31,7 @@ from AFAAS.core.utils.processing.html import (
 from AFAAS.core.utils.processing.text import summarize_text
 from AFAAS.core.utils.url.validators import validate_url
 
-logger = forge_log.ForgeLogger(__name__)
+logger = AFAASLogger(__name__)
 
 FILE_DIR = Path(__file__).parent.parent
 TOKENS_TO_TRIGGER_SUMMARY = 50

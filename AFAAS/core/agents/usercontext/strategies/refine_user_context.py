@@ -27,7 +27,7 @@ import uuid
 from logging import Logger
 from typing import Optional
 
-from AFAAS.app.lib.message_agent_user import Questions
+from AFAAS.core.lib.message_agent_user import Questions
 from AFAAS.core.prompting.base import (
     BasePromptStrategy, PromptStrategiesConfiguration)
 from AFAAS.core.prompting.schema import \

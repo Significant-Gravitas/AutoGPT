@@ -8,13 +8,13 @@ from typing import Any, Literal, Optional, TypedDict
 
 from pydantic import BaseModel
 
-from AFAAS.app.sdk import forge_log
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.configuration import (AFAASModel,
                                                          SystemSettings)
 
 from ..base import AbstractTable
 
-LOG = forge_log.ForgeLogger(__name__)
+LOG = AFAASLogger(__name__)
 
 
 class BaseSQLTable(AbstractTable):

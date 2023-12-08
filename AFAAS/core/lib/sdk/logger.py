@@ -139,12 +139,12 @@ class ConsoleFormatter(logging.Formatter):
 
         if rec.levelno == logging.DEBUG and len(message) > 1000:
             message = (
-                message[:800] + "[...] " + os.path.abspath(ForgeLogger.LOG_FILENAME)
+                message[:800] + "[...] " + os.path.abspath(AFAASLogger.LOG_FILENAME)
             )
         return message
 
 
-class ForgeLogger(logging.Logger):
+class AFAASLogger(logging.Logger):
     """
     This adds extra logging functions such as logger.trade and also
     sets the logger to use the custom formatter
@@ -274,7 +274,7 @@ logging_config: dict = dict(
     formatters={
         "console": {
             "()": ConsoleFormatter,
-            "format": ForgeLogger.COLOR_FORMAT,
+            "format": AFAASLogger.COLOR_FORMAT,
         },
     },
     handlers={
@@ -285,7 +285,7 @@ logging_config: dict = dict(
         },
         "file": {
             "class": "logging.FileHandler",
-            "filename": ForgeLogger.LOG_FILENAME,
+            "filename": AFAASLogger.LOG_FILENAME,
             "formatter": "console",
             "level": FILE_LOG_LEVEL,
         },
@@ -311,6 +311,6 @@ def setup_logger():
     logging.config.dictConfig(logging_config)
 
 
-LOG = ForgeLogger(__name__)
+LOG = AFAASLogger(__name__)
 LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}" )
 LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}" )
