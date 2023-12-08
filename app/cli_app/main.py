@@ -4,8 +4,6 @@ import click
 
 from AFAAS.app.sdk import forge_log
 from AFAAS.app.core.agents import PlannerAgent
-from app.client_lib.logging import \
-    get_client_logger
 
 
 async def handle_user_input_request(prompt):

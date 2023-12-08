@@ -1,9 +1,9 @@
-import app.sdk.forge_log
+from AFAAS.app.sdk.forge_log import ForgeLogger
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-LOG = app.sdk.forge_log.ForgeLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 
 class UserIDMiddleware(BaseHTTPMiddleware):

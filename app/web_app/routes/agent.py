@@ -2,7 +2,7 @@ import json
 from typing import Optional
 
 from app.sdk.errors import *
-from app.sdk.forge_log import ForgeLogger
+from AFAAS.app.sdk.forge_log import ForgeLogger
 from app.sdk.schema import *
 from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse

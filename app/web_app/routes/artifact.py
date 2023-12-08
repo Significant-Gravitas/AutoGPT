@@ -6,7 +6,7 @@ from typing import Optional
 from uuid import uuid4
 
 from app.sdk.errors import *
-from app.sdk.forge_log import ForgeLogger
+from AFAAS.app.sdk.forge_log import ForgeLogger
 from app.sdk.schema import *
 from fastapi import (APIRouter, Body, Depends, Query, Request, Response,
                      UploadFile)

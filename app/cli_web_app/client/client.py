@@ -7,8 +7,7 @@ import click
 import requests
 
 from AFAAS.app.core.agents import PlannerAgent
-from app.client_lib.logging import \
-    get_client_logger
+from AFAAS.app.sdk.forge_log import ForgeLogger
 
 BASE_URL = "http://localhost:8080/api/v1"
 MAX_ATTEMPTS = 3
@@ -91,7 +90,7 @@ input("\n\nPress Enter to start AutoGPT\n\n")
 def run():
     """Run the Auto-GPT CLI client."""
 
-    client_logger = get_client_logger()
+    client_logger = ForgeLogger(name=__name__)
     client_logger.debug("Getting agent settings")
 
     response = requests.get(f"{BASE_URL}/agents/")

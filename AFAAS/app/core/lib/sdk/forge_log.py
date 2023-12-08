@@ -10,8 +10,7 @@ from dotenv import load_dotenv
 # Load the .env file
 load_dotenv()
 
-#CONSOLE_LOG_LEVEL = os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper()
-CONSOLE_LOG_LEVEL = "TRACE"
+CONSOLE_LOG_LEVEL = os.getenv("CONSOLE_LOG_LEVEL", "INFO").upper()
 FILE_LOG_LEVEL = os.getenv("FILE_LOG_LEVEL", "DEBUG").upper()
 
 JSON_LOGGING = os.environ.get("JSON_LOGGING", "false").lower() == "true"
@@ -22,7 +21,7 @@ NOTICE = 15
 TRACE = 5
 logging.addLevelName(CHAT, "CHAT")
 logging.addLevelName(NOTICE, "NOTICE")
-logging.addLevelName(DB_LOG, "TRACE")
+logging.addLevelName(DB_LOG, "DB_LOG")
 logging.addLevelName(TRACE, "TRACE")
 
 RESET_SEQ: str = "\033[0m"

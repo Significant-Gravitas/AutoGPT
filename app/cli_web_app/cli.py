@@ -38,7 +38,6 @@ def autogpt():
 def server(host: str, port: int) -> None:
     """Run the Auto-GPT runner httpserver."""
     click.echo("Running Auto-GPT runner httpserver...")
-    AgentProtocol.handle_task(task_handler).start(port)
 
 
 @autogpt.command()

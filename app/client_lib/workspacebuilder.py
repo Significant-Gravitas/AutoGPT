@@ -8,8 +8,7 @@ import yaml
 
 from AFAAS.app.core.agents import \
     PlannerAgent  # ## TODO should work for every Agent
-from app.client_lib.logging import \
-    get_client_logger
+from AFAAS.app.sdk.forge_log import ForgeLogger
 
 DEFAULT_SETTINGS_FILE = str(Path("~/auto-gpt/default_agent_settings.yml").expanduser())
 
@@ -46,7 +45,7 @@ async def workspace_loader(
 
 
 def get_logger_and_workspace(user_configuration: dict):
-    client_logger = get_client_logger()
+    client_logger = ForgeLogger(name=__name__)
     client_logger.debug("Getting agent settings")
 
     agent_workspace = (

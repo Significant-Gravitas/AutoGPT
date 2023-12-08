@@ -4,24 +4,24 @@ import pathlib
 from io import BytesIO
 from uuid import uuid4
 
-import app.sdk.forge_log
+from AFAAS.app.sdk.forge_log import ForgeLogger
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from routes import (AgentMiddleware, UserIDMiddleware, afaas_agent_router,
+from .routes import (AgentMiddleware, UserIDMiddleware, afaas_agent_router,
                     afaas_artifact_router, afaas_user_router, agent_router,
                     app_router, artifact_router, user_router)
 
-LOG = app.sdk.forge_log.ForgeLogger(__name__)
+LOG = ForgeLogger(__name__)
 
 port = os.getenv("PORT", 8000)
 load_dotenv()
 LOG.info(f"Agent server starting on http://localhost:{port}")
 
 api = FastAPI(
-    title="AutoGPT Forge",
+    title="AFAAS Demo",
     description="Modified version of The Agent Protocol.",
     version="v0.4",
 )

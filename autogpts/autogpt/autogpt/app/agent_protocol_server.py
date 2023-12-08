@@ -63,7 +63,7 @@ class AgentProtocolServer:
         config.bind = [f"localhost:{port}"]
         app = FastAPI(
             title="AutoGPT Server",
-            description="Forked from AutoGPT Forge; "
+            description="Forked from AFAAS Demo; "
             "Modified version of The Agent Protocol.",
             version="v0.4",
         )

@@ -11,7 +11,7 @@ async def root():
     """
     Root endpoint that returns a welcome message.
     """
-    return Response(content="Welcome to the AutoGPT Forge")
+    return Response(content="Welcome to the AFAAS Demo")
 
 
 @app_router.get("/heartbeat", tags=["server"])
