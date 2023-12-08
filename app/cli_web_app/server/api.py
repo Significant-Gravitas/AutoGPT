@@ -26,9 +26,9 @@ import uuid
 from fastapi import APIRouter, FastAPI, Request
 
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
-from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.schema import \
+from app.cli_web_app.server.schema import \
     AgentMessageRequestBody
-from autogpts.autogpt.autogpt.core.runner.client_lib.workspacebuilder import (
+from app.client_lib.workspacebuilder import (
     get_logger_and_workspace, get_settings_from_file)
 
 router = APIRouter()

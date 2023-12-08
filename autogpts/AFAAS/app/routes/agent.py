@@ -40,7 +40,7 @@ import yaml
 from fastapi import APIRouter, FastAPI, Request
 
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
-from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.schema import \
+from app.cli_web_app.server.schema import \
     AgentMessageRequestBody
 
 afaas_agent_router = APIRouter()

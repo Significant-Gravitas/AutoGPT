@@ -8,7 +8,7 @@ import yaml
 
 from autogpts.autogpt.autogpt.core.agents import \
     PlannerAgent  # ## TODO should work for every Agent
-from autogpts.autogpt.autogpt.core.runner.client_lib.logging import \
+from app.client_lib.logging import \
     get_client_logger
 
 DEFAULT_SETTINGS_FILE = str(Path("~/auto-gpt/default_agent_settings.yml").expanduser())

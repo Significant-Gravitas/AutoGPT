@@ -7,7 +7,7 @@ import click
 import requests
 
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
-from autogpts.autogpt.autogpt.core.runner.client_lib.logging import \
+from app.client_lib.logging import \
     get_client_logger
 
 BASE_URL = "http://localhost:8080/api/v1"

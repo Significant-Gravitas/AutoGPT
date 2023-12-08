@@ -4,7 +4,7 @@ import click
 
 from autogpts.AFAAS.app.sdk import forge_log
 from autogpts.autogpt.autogpt.core.agents import PlannerAgent
-from autogpts.autogpt.autogpt.core.runner.client_lib.logging import \
+from app.client_lib.logging import \
     get_client_logger
 
 

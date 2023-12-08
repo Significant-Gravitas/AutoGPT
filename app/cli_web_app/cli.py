@@ -10,11 +10,11 @@ import yaml
 
 from fastapi import requests
 
-from autogpts.autogpt.autogpt.core.runner.cli_web_app.server.api import \
+from app.cli_web_app.server.api import \
     task_handler
-from autogpts.autogpt.autogpt.core.runner.client_lib.shared_click_commands import \
+from app.client_lib.shared_click_commands import \
     DEFAULT_SETTINGS_FILE
-from autogpts.autogpt.autogpt.core.runner.client_lib.utils import coroutine
+from app.client_lib.utils import coroutine
 
 
 @click.group()
@@ -55,7 +55,7 @@ async def client(settings_file) -> None:
     if settings_file.exists():
         settings = yaml.safe_load(settings_file.read_text())
 
-    from autogpts.autogpt.autogpt.core.runner.cli_web_app.client.client import \
+    from app.cli_web_app.client.client import \
         run
 
     # with autogpt_server():
