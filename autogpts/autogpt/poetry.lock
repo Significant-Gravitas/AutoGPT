@@ -331,7 +331,7 @@ benchmark = ["agbenchmark @ git+https://github.com/Significant-Gravitas/AutoGPT.
 type = "git"
 url = "https://github.com/Significant-Gravitas/AutoGPT.git"
 reference = "HEAD"
-resolved_reference = "8b27f2c47bac323edb74b8d36067f674e1320798"
+resolved_reference = "20cf4cce9223565ab5637228e37dc2ddf94ec73e"
 subdirectory = "autogpts/forge"
 
 [[package]]
