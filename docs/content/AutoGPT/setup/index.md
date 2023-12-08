@@ -88,6 +88,28 @@ Once you have cloned or downloaded the project, you can find the AutoGPT Agent i
     ```yaml
     OPENAI_API_KEY=sk-qwertykeys123456
     ```
+
+    !!! info "Using a GPT Azure-instance"
+        If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and
+        make an Azure configuration file.
+
+        Rename `azure.yaml.template` to `azure.yaml` and provide the relevant
+        `azure_api_base`, `azure_api_version` and deployment IDs for the models that you
+        want to use.
+
+        E.g. if you want to use `gpt-3.5-turbo-16k` and `gpt-4-0314`:
+
+        ```yaml
+        # Please specify all of these values as double-quoted strings
+        # Replace string in angled brackets (<>) to your own deployment Name
+        azure_model_map:
+            gpt-3.5-turbo-16k: "<auto-gpt-deployment>"
+            ...
+        ```
+
+        Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.
+        If you're on Windows you may need to install an [MSVC library](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
+
 6. Enter any other API keys or tokens for services you would like to use.
 
     !!! note

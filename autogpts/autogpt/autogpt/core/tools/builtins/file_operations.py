@@ -189,9 +189,9 @@ def ingest_file(
     logger.debug(f"Created memory: {file_memory.dump(True)}")
     memory.add(file_memory)
 
-    #     logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
+    #   logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
     # except Exception as err:
-    #     logger.warn(f"Error while ingesting file '{filename}': {err}")
+    #   logger.warning(f"Error while ingesting file '{filename}': {err}")
 
 
 @tool(

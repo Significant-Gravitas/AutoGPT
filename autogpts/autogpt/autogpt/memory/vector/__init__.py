@@ -69,7 +69,7 @@ def get_memory(config: Config) -> VectorMemory:
                 "https://github.com/Significant-Gravitas/AutoGPT/discussions/4280"
             )
             # if not PineconeMemory:
-            #     logger.warn(
+            #     logger.warning(
             #         "Error: Pinecone is not installed. Please install pinecone"
             #         " to use Pinecone as a memory backend."
             #     )
@@ -84,7 +84,7 @@ def get_memory(config: Config) -> VectorMemory:
                 "the memory system, and has been removed temporarily."
             )
             # if not RedisMemory:
-            #     logger.warn(
+            #     logger.warning(
             #         "Error: Redis is not installed. Please install redis-py to"
             #         " use Redis as a memory backend."
             #     )
@@ -99,7 +99,7 @@ def get_memory(config: Config) -> VectorMemory:
                 "https://github.com/Significant-Gravitas/AutoGPT/discussions/4280"
             )
             # if not WeaviateMemory:
-            #     logger.warn(
+            #     logger.warning(
             #         "Error: Weaviate is not installed. Please install weaviate-client"
             #         " to use Weaviate as a memory backend."
             #     )
@@ -114,7 +114,7 @@ def get_memory(config: Config) -> VectorMemory:
                 "https://github.com/Significant-Gravitas/AutoGPT/discussions/4280"
             )
             # if not MilvusMemory:
-            #     logger.warn(
+            #     logger.warning(
             #         "Error: pymilvus sdk is not installed, but required "
             #         "to use Milvus or Zilliz as memory backend. "
             #         "Please install pymilvus."

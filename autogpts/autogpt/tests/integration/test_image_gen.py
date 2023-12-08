@@ -99,7 +99,8 @@ def generate_and_validate(
 ):
     """Generate an image and validate the output."""
     agent.legacy_config.image_provider = image_provider
-    agent.legacy_config.huggingface_image_model = hugging_face_image_model
+    if hugging_face_image_model:
+        agent.legacy_config.huggingface_image_model = hugging_face_image_model
     prompt = "astronaut riding a horse"
 
     image_path = lst(generate_image(prompt, agent, image_size, **kwargs))

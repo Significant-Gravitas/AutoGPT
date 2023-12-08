@@ -216,7 +216,7 @@ def execute_python_file(
         return exec_result.output.decode("utf-8")
 
     except DockerException as e:
-        logger.warn(
+        logger.warning(
             "Could not run the script in a container. "
             "If you haven't already, please install Docker: "
             "https://docs.docker.com/get-docker/"

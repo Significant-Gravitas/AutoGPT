@@ -6,10 +6,16 @@ from typing import Callable, ClassVar, Protocol
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
-from autogpts.autogpt.autogpt.core.configuration import UserConfigurable
-from autogpts.autogpt.autogpt.core.resource.schema import (
-    BaseProviderBudget, BaseProviderCredentials, BaseProviderSettings,
-    BaseProviderUsage, Embedding, ResourceType)
+from autogpt.core.configuration import SystemConfiguration, UserConfigurable
+from autogpt.core.resource.schema import (
+    Embedding,
+    BaseProviderBudget, 
+    BaseProviderCredentials, 
+    BaseProviderSettings,
+    BaseProviderUsage, 
+    ResourceType,
+)
+from autogpt.core.utils.json_schema import JSONSchema
 
 
 class ModelProviderService(str, enum.Enum):
@@ -46,6 +52,11 @@ class BaseModelResponse(BaseModel):
     model_info: BaseModelInfo
 
 
+class BaseModelProviderConfiguration(SystemConfiguration):
+    retries_per_request: int = UserConfigurable()
+    extra_request_headers: dict[str, str] = Field(default_factory=dict)
+
+
 class BaseModelProviderCredentials(BaseProviderCredentials):
     """Credentials for a model provider."""
 
@@ -55,22 +66,8 @@ class BaseModelProviderCredentials(BaseProviderCredentials):
     api_version: str | None = UserConfigurable(default=None)
     deployment_id: str | None = UserConfigurable(default=None)
 
-    def unmasked(self) -> dict:
-        return unmask(self)
-
     class Config:
         extra = "ignore"
-
-
-def unmask(model: BaseModel):
-    unmasked_fields = {}
-    for field_name, field in model.__fields__.items():
-        value = getattr(model, field_name)
-        if isinstance(value, SecretStr):
-            unmasked_fields[field_name] = value.get_secret_value()
-        else:
-            unmasked_fields[field_name] = value
-    return unmasked_fields
 
 
 class BaseModelProviderUsage(BaseProviderUsage):
@@ -109,11 +106,13 @@ class BaseModelProviderBudget(BaseProviderBudget):
             + model_response.prompt_tokens_used * model_info.prompt_token_cost
         )
         self.total_cost += incurred_cost
-        self.remaining_budget -= incurred_cost
+        if abs(self.remaining_budget) != float("inf"):
+            self.remaining_budget -= incurred_cost
 
 
 class BaseModelProviderSettings(BaseProviderSettings):
-    resource_type = ResourceType.MODEL
+    resource_type: ResourceType = ResourceType.MODEL
+    configuration: BaseModelProviderConfiguration
     credentials: BaseModelProviderCredentials
     budget: BaseModelProviderBudget
 
@@ -122,6 +121,8 @@ class AbstractModelProvider(abc.ABC):
     """A ModelProvider abstracts the details of a particular provider of models."""
 
     default_settings: ClassVar[BaseModelProviderSettings]
+
+    _configuration: BaseModelProviderConfiguration
 
     @abc.abstractmethod
     def count_tokens(self, text: str, model_name: str) -> int:

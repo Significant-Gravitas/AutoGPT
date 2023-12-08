@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Optional
 
 from colorama import Fore, Style
 from forge.sdk.db import AgentDB
-from pydantic import SecretStr
 
 if TYPE_CHECKING:
     from autogpt.agents.agent import Agent
@@ -25,10 +24,14 @@ from autogpt.agent_factory.profile_generator import \
     generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
-from autogpt.agents.utils.exceptions import (AgentTerminated,
-                                             InvalidAgentResponseError)
-from autogpt.config import (AIDirectives, AIProfile, Config, ConfigBuilder,
-                            assert_config_has_openai_api_key)
+from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from autogpt.config import (
+    AIDirectives,
+    AIProfile,
+    Config,
+    ConfigBuilder,
+    assert_config_has_openai_api_key,
+)
 from autogpt.core.resource.model_providers.openai import OpenAIProvider
 from autogpt.core.runner.client_lib.utils import coroutine
 from autogpt.logs.config import configure_chat_plugins, configure_logging
@@ -107,7 +110,7 @@ async def run_auto_gpt(
 
     if config.continuous_mode:
         for line in get_legal_warning().split("\n"):
-            logger.warn(
+            logger.warning(
                 extra={
                     "title": "LEGAL:",
                     "title_color": Fore.RED,
@@ -341,7 +344,10 @@ async def run_auto_gpt_server(
     config.plugins = scan_plugins(config)
 
     # Set up & start server
-    database = AgentDB(os.getenv("AP_SERVER_DB_URL", "sqlite:///data/ap_server.db"))
+    database = AgentDB(
+        database_string=os.getenv("AP_SERVER_DB_URL", "sqlite:///data/ap_server.db"),
+        debug_enabled=debug,
+    )
     server = AgentProtocolServer(
         app_config=config, database=database, llm_provider=llm_provider
     )
@@ -357,19 +363,11 @@ def _configure_openai_provider(config: Config) -> OpenAIProvider:
     Returns:
         A configured OpenAIProvider object.
     """
-    if config.openai_api_key is None:
+    if config.openai_credentials is None:
         raise RuntimeError("OpenAI key is not configured")
 
     openai_settings = OpenAIProvider.default_settings.copy(deep=True)
-    openai_settings.credentials = BaseModelProviderCredentials(
-        api_key=SecretStr(config.openai_api_key),
-        # TODO: support OpenAI Azure credentials
-        api_base=SecretStr(config.openai_api_base) if config.openai_api_base else None,
-        api_type=SecretStr(config.openai_api_type) if config.openai_api_type else None,
-        api_version=SecretStr(config.openai_api_version)
-        if config.openai_api_version
-        else None,
-    )
+    openai_settings.credentials = config.openai_credentials
     return OpenAIProvider(
         settings=openai_settings,
         logger=logging.getLogger("OpenAIProvider"),
@@ -473,7 +471,7 @@ async def run_interaction_loop(
                     assistant_reply_dict,
                 ) = await agent.propose_action()
             except InvalidAgentResponseError as e:
-                logger.warn(f"The agent's thoughts could not be parsed: {e}")
+                logger.warning(f"The agent's thoughts could not be parsed: {e}")
                 consecutive_failures += 1
                 if consecutive_failures >= 3:
                     logger.error(
@@ -535,7 +533,7 @@ async def run_interaction_loop(
                     extra={"color": Fore.MAGENTA},
                 )
             elif user_feedback == UserFeedback.EXIT:
-                logger.warn("Exiting...")
+                logger.warning("Exiting...")
                 exit()
             else:  # user_feedback == UserFeedback.TEXT
                 command_name = "human_feedback"
@@ -571,7 +569,7 @@ async def run_interaction_loop(
                     result, extra={"title": "SYSTEM:", "title_color": Fore.YELLOW}
                 )
             elif result.status == "error":
-                logger.warn(
+                logger.warning(
                     f"Command {command_name} returned an error: "
                     f"{result.error or result.reason}"
                 )
@@ -660,13 +658,13 @@ async def get_user_feedback(
         if console_input.lower().strip() == config.authorise_key:
             user_feedback = UserFeedback.AUTHORIZE
         elif console_input.lower().strip() == "":
-            logger.warn("Invalid input format.")
+            logger.warning("Invalid input format.")
         elif console_input.lower().startswith(f"{config.authorise_key} -"):
             try:
                 user_feedback = UserFeedback.AUTHORIZE
                 new_cycles_remaining = abs(int(console_input.split(" ")[1]))
             except ValueError:
-                logger.warn(
+                logger.warning(
                     f"Invalid input format. "
                     f"Please enter '{config.authorise_key} -N'"
                     " where N is the number of continuous tasks."

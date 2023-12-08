@@ -41,7 +41,8 @@ class TaskStack(AFAASModel):
         Add a task. Can also mark it as ready.
         """
         self._task_ids.append(task.task_id)
-        if isinstance(self.parent_task, Plan):
+        parent_is_plan : bool = isinstance(self.parent_task, Plan)
+        if parent_is_plan:
             plan: Plan = self.parent_task
         else:
             plan: Plan = self.parent_task.agent.plan
@@ -50,11 +51,14 @@ class TaskStack(AFAASModel):
         if(self.parent_task.subtasks == self) : 
             # FIXME: Evaluate what is the best way to evaluate predecessors
             LOG.info(f"Added task ``{LOG.italic(task.task_goal)}`` as subtask of task ``{LOG.italic(self.parent_task.task_goal)}``")
-            LOG.debug((f"As is subtask do not inherit from parent predecessors, 3 options are considered :\n"
-                        + f"- Always add all predecessors of parent task to subtask predecessors\n"
-                        + f"- Smartly/Dynamicaly add all predecessors of parent task to subtask predecessors\n"
-                        + f"- Consider parent predecessor when evaluatin `Task.is_ready()`\n"))
-            LOG.debug(f"Added subtask should only be added if parent_task is READY")
+            # LOG.debug((f"As is subtask do not inherit from parent predecessors, 3 options are considered :\n"
+            #             + f"- Always add all predecessors of parent task to subtask predecessors\n"
+            #             + f"- Smartly/Dynamicaly add all predecessors of parent task to subtask predecessors\n"
+            #             + f"- Consider parent predecessor when evaluatin `Task.is_ready()`\n"))
+            from .meta import TaskStatusList
+            if( not parent_is_plan 
+               and self.parent_task.state != TaskStatusList.READY ) :
+                LOG.warning(f"Added subtask should only be added if parent_task is READY. Current state of {self.parent_task.task_id} is {self.parent_task.state}")
             
 
     def get_task(self, task_id) -> BaseTask:

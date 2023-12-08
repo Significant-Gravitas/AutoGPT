@@ -17,7 +17,7 @@ from sqlalchemy.orm import (DeclarativeBase, joinedload, relationship,
 
 from .errors import NotFoundError
 from .forge_log import ForgeLogger
-from .schema import Artifact, Pagination, Status, Step, StepRequestBody, Task
+from .model import Artifact, Pagination, Status, Step, StepRequestBody, Task
 
 LOG = ForgeLogger(__name__)
 
@@ -253,7 +253,7 @@ class AgentDB:
             LOG.error(f"Unexpected error while creating step: {e}")
             raise
 
-    async def get_task(self, task_id: int) -> Task:
+    async def get_task(self, task_id: str) -> Task:
         """Get a task by its id"""
         if self.debug_enabled:
             LOG.debug(f"Getting task with task_id: {task_id}")

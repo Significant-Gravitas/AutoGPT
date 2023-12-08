@@ -7,7 +7,7 @@ from forge.sdk.db import (AgentDB, ArtifactModel, StepModel, TaskModel,
                           convert_to_artifact, convert_to_step,
                           convert_to_task)
 from forge.sdk.errors import NotFoundError as DataNotFoundError
-from forge.sdk.schema import *
+from autogpts.forge.forge.sdk.model import *
 
 
 @pytest.mark.asyncio

@@ -241,7 +241,7 @@ class PlannerLoop(BaseLoop):
                     # user_input = assistant_reply_dict
                 )
             
-            self._current_task = self.plan().get_next_task(current_task = current_task)
+            self._current_task = self.plan().get_next_task(task = current_task)
 
             self.save_plan()
 
