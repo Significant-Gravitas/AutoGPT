@@ -5,7 +5,7 @@ from firebase_admin import auth
 from pydantic import BaseModel
 
 # TODO : Code using USE_DICTIONARY , users_db , auth to be moved to User
-from AFAAS.app.core.user.user import (USE_DICTIONARY, User,
+from AFAAS.core.user.user import (USE_DICTIONARY, User,
                                                      UserCreate, UserLogin,
                                                      UserResponse, users_db)
 

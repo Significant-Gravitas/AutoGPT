@@ -3,15 +3,15 @@ from logging import Logger
 from typing import Optional
 
 from AFAAS.app.lib.task import Task
-from AFAAS.app.core.agents.planner.main import PlannerAgent
-from AFAAS.app.core.prompting.base import (
+from AFAAS.core.agents.planner.main import PlannerAgent
+from AFAAS.core.prompting.base import (
     BasePromptStrategy, LanguageModelClassification,
     PromptStrategiesConfiguration)
-from AFAAS.app.core.prompting.utils.utils import (
+from AFAAS.core.prompting.utils.utils import (
     json_loads, to_numbered_list)
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.resource.model_providers import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
-from AFAAS.app.core.utils.json_schema import JSONSchema
+from AFAAS.core.utils.json_schema import JSONSchema
 
 
 class InitialPlanFunctionNames(str, enum.Enum):

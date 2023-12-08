@@ -1,9 +1,9 @@
 from logging import Logger
 
-from AFAAS.app.core.agents.usercontext.strategies.refine_user_context import (
+from AFAAS.core.agents.usercontext.strategies.refine_user_context import (
     RefineUserContextFunctionNames, RefineUserContextStrategy,
     RefineUserContextStrategyConfiguration)
-from AFAAS.app.core.prompting.base import (
+from AFAAS.core.prompting.base import (
     BasePromptStrategy, PromptStrategiesConfiguration)
 
 
@@ -12,7 +12,7 @@ class StrategiesSetConfiguration(PromptStrategiesConfiguration):
 
 
 class StrategiesSet:
-    from AFAAS.app.core.prompting.base import (
+    from AFAAS.core.prompting.base import (
         AbstractPromptStrategy, BasePromptStrategy)
 
     @staticmethod

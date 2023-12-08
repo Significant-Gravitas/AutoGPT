@@ -5,15 +5,15 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, Field, validator
 
-from AFAAS.app.core.agents import BaseAgent
+from AFAAS.core.agents import BaseAgent
 
 from ...sdk.forge_log import ForgeLogger
 # from .plan import Plan
 from .base import BaseTask
 from .meta import TaskStatusList
 
-# from AFAAS.app.core.configuration import AFAASModel
-# from AFAAS.app.core.tools.schema import ToolResult
+# from AFAAS.core.configuration import AFAASModel
+# from AFAAS.core.tools.schema import ToolResult
 
 
 
@@ -203,7 +203,7 @@ class Task(BaseTask):
         task_table.add(value=task, id=task.task_id)
 
     def save_in_db(self):
-        from AFAAS.app.core.memory.table import AbstractTable
+        from AFAAS.core.memory.table import AbstractTable
 
         memory = self.agent._memory
         task_table: AbstractTable = memory.get_table("tasks")

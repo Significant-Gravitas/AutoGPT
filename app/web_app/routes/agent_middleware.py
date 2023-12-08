@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from AFAAS.app.core.agents import PlannerAgent
+from AFAAS.core.agents import PlannerAgent
 
 
 class AgentMiddleware(BaseHTTPMiddleware):

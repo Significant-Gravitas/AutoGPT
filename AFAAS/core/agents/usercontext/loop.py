@@ -6,7 +6,7 @@ from ..base import BaseLoop
 
 if TYPE_CHECKING:
     from ..base import BaseAgent
-    from AFAAS.app.core.resource.model_providers import ChatModelResponse
+    from AFAAS.core.resource.model_providers import ChatModelResponse
 
 from .strategies import RefineUserContextFunctionNames
 

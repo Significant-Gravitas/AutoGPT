@@ -4,21 +4,21 @@ import enum
 from logging import Logger
 from typing import TYPE_CHECKING, Callable, Optional
 
-from AFAAS.app.core.agents.base.agent_directives import \
+from AFAAS.core.agents.base.agent_directives import \
     BaseAgentDirectives
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.agents.planner import PlannerAgent
+    from AFAAS.core.agents.planner import PlannerAgent
 
 
 # prompting
 from AFAAS.app.lib.action_history import Episode
-from AFAAS.app.core.prompting.base import (
+from AFAAS.core.prompting.base import (
     DefaultParsedResponse, LanguageModelClassification)
-from AFAAS.app.core.prompting.planningstrategies import (
+from AFAAS.core.prompting.planningstrategies import (
     PlanningPromptStrategiesConfiguration, PlanningPromptStrategy)
-from AFAAS.app.core.prompting.utils.utils import indent
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.prompting.utils.utils import indent
+from AFAAS.core.resource.model_providers import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 
 

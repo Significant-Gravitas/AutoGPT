@@ -7,9 +7,9 @@ from typing import Iterator, Optional, TypeVar
 import spacy
 
 from AFAAS.app.sdk import forge_log
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.resource.model_providers import (
     BaseChatModelProvider, ChatMessage, ModelTokenizer)
-from AFAAS.app.core.resource.model_providers.chat_schema import \
+from AFAAS.core.resource.model_providers.chat_schema import \
     ChatPrompt
 
 logger = forge_log.ForgeLogger(__name__)

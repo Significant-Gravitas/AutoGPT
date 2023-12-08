@@ -4,16 +4,16 @@ import abc
 import re
 from typing import TYPE_CHECKING, Optional
 
-from AFAAS.app.core.utils.json_schema import JSONSchema
+from AFAAS.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.agents.planner.main import PlannerAgent
+    from AFAAS.core.agents.planner.main import PlannerAgent
 
-from AFAAS.app.core.configuration import SystemConfiguration
-from AFAAS.app.core.prompting.schema import \
+from AFAAS.core.configuration import SystemConfiguration
+from AFAAS.core.prompting.schema import \
     LanguageModelClassification
-from AFAAS.app.core.prompting.utils.utils import json_loads
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.prompting.utils.utils import json_loads
+from AFAAS.core.resource.model_providers import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
     ChatPrompt, CompletionModelFunction)
 
@@ -90,7 +90,7 @@ class PromptStrategiesConfiguration(SystemConfiguration):
     presence_penalty: Optional[float] = None  # Avoid certain subjects
 
 
-from AFAAS.app.core.agents.base.features.agentmixin import \
+from AFAAS.core.agents.base.features.agentmixin import \
     AgentMixin
 
 

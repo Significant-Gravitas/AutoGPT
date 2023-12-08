@@ -14,18 +14,18 @@ import tiktoken
 from openai import APIError, RateLimitError, completions  # , OpenAI, Em
 
 from  AFAAS.app.sdk.forge_log import ForgeLogger
-from AFAAS.app.core.configuration import (Configurable,
+from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-from AFAAS.app.core.resource.model_providers.chat_schema import (
+from AFAAS.core.resource.model_providers.chat_schema import (
     AssistantChatMessageDict, AssistantToolCallDict, BaseChatModelProvider,
     ChatMessage, ChatModelInfo, ChatModelResponse, CompletionModelFunction)
-from AFAAS.app.core.resource.model_providers.schema import (
+from AFAAS.core.resource.model_providers.schema import (
     BaseModelProviderBudget, BaseModelProviderCredentials,
     BaseModelProviderSettings, BaseModelProviderUsage, Embedding,
     EmbeddingModelInfo, EmbeddingModelProvider, EmbeddingModelResponse,
     ModelProviderName, ModelProviderService, ModelTokenizer)
-from AFAAS.app.core.utils.json_schema import JSONSchema
+from AFAAS.core.utils.json_schema import JSONSchema
 
 LOG = ForgeLogger(__name__)
 

@@ -20,16 +20,16 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.safari.options import Options as SafariOptions
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.agents.base import BaseAgent
+    from AFAAS.core.agents.base import BaseAgent
 
 from AFAAS.app.sdk import forge_log
-from AFAAS.app.core.tools.command_decorator import tool
-from AFAAS.app.core.utils.exceptions import ToolExecutionError
-from AFAAS.app.core.utils.json_schema import JSONSchema
-from AFAAS.app.core.utils.processing.html import (
+from AFAAS.core.tools.command_decorator import tool
+from AFAAS.core.utils.exceptions import ToolExecutionError
+from AFAAS.core.utils.json_schema import JSONSchema
+from AFAAS.core.utils.processing.html import (
     extract_hyperlinks, format_hyperlinks)
-from AFAAS.app.core.utils.processing.text import summarize_text
-from AFAAS.app.core.utils.url.validators import validate_url
+from AFAAS.core.utils.processing.text import summarize_text
+from AFAAS.core.utils.url.validators import validate_url
 
 logger = forge_log.ForgeLogger(__name__)
 

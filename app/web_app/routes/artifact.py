@@ -12,7 +12,7 @@ from fastapi import (APIRouter, Body, Depends, Query, Request, Response,
                      UploadFile)
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 
-from AFAAS.app.core.agents import PlannerAgent
+from AFAAS.core.agents import PlannerAgent
 
 from .dependencies.agents import get_agent
 

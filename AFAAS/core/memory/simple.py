@@ -1,9 +1,9 @@
 # import json
 # import logging
 
-# from AFAAS.app.core.configuration import Configurable, SystemConfiguration, SystemSettings
-# from AFAAS.app.core.memory.base import Memory
-# from AFAAS.app.core.workspace import Workspace
+# from AFAAS.core.configuration import Configurable, SystemConfiguration, SystemSettings
+# from AFAAS.core.memory.base import Memory
+# from AFAAS.core.workspace import Workspace
 
 
 # class MemoryConfiguration(SystemConfiguration):

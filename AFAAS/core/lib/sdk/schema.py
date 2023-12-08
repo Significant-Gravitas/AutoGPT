@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING, List, Optional
 
 from pydantic import Field
 
-from AFAAS.app.core.configuration import AFAASModel
+from AFAAS.core.configuration import AFAASModel
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.agents import (AbstractAgent,
+    from AFAAS.core.agents import (AbstractAgent,
                                                       PlannerAgent)
 
     from ..routes.artifact import list_agent_artifacts, list_artifacts

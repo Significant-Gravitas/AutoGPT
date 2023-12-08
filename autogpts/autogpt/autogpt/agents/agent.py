@@ -10,9 +10,9 @@ if TYPE_CHECKING:
     from autogpt.config import Config
     from autogpt.models.command_registry import CommandRegistry
 
-from AFAAS.app.core.configuration import Configurable
-from AFAAS.app.core.prompting import ChatPrompt
-from AFAAS.app.core.resource.model_providers import (BaseChatModelProvider,
+from AFAAS.core.configuration import Configurable
+from AFAAS.core.prompting import ChatPrompt
+from AFAAS.core.resource.model_providers import (BaseChatModelProvider,
                                                    ChatMessage,
                                                    ChatModelResponse)
 from autogpt.llm.api_manager import ApiManager

@@ -7,24 +7,24 @@ from typing import TYPE_CHECKING
 
 from pydantic import validator
 
-from AFAAS.app.core.agents.base.features.agentmixin import \
+from AFAAS.core.agents.base.features.agentmixin import \
     AgentMixin
 
 if TYPE_CHECKING:
     pass
 
-from AFAAS.app.core.configuration import (Configurable,
+from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          SystemSettings,
                                                          UserConfigurable)
-from AFAAS.app.core.prompting.base import (
+from AFAAS.core.prompting.base import (
     AbstractPromptStrategy, BasePromptStrategy)
-from AFAAS.app.core.prompting.schema import \
+from AFAAS.core.prompting.schema import \
     LanguageModelClassification
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.resource.model_providers import (
     BaseChatModelProvider, ChatModelResponse, ModelProviderName,
     OpenAIModelName)
-from AFAAS.app.core.workspace import AbstractWorkspace
+from AFAAS.core.workspace import AbstractWorkspace
 
 
 # FIXME : Find somewhere more appropriate

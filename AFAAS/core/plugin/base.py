@@ -4,14 +4,14 @@ from typing import TYPE_CHECKING, Type
 
 from pydantic import BaseModel
 
-from AFAAS.app.core.configuration import (SystemConfiguration,
+from AFAAS.core.configuration import (SystemConfiguration,
                                                          UserConfigurable)
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.memory.base import AbstractMemory
-    from AFAAS.app.core.resource.model_providers import (
+    from AFAAS.core.memory.base import AbstractMemory
+    from AFAAS.core.resource.model_providers import (
         BaseChatModelProvider, EmbeddingModelProvider)
-    from AFAAS.app.core.tools import BaseToolsRegistry, Tool
+    from AFAAS.core.tools import BaseToolsRegistry, Tool
 
     # Expand to other types as needed
     PluginType = (

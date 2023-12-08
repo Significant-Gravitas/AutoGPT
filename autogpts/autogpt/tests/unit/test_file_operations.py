@@ -4,7 +4,7 @@ import re
 from io import TextIOWrapper
 from pathlib import Path
 
-import AFAAS.app.core.tools.builtins.file_operations as file_ops
+import AFAAS.core.tools.builtins.file_operations as file_ops
 import pytest
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import DuplicateOperationError

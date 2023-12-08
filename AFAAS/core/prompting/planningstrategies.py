@@ -5,17 +5,17 @@ from logging import Logger
 from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.agents.planner.main import PlannerAgent
+    from AFAAS.core.agents.planner.main import PlannerAgent
 
-    from AFAAS.app.core.agents.base.main import BaseAgent
+    from AFAAS.core.agents.base.main import BaseAgent
 
 from AFAAS.app.lib.task.plan import Plan
-from AFAAS.app.core.configuration import UserConfigurable
-from AFAAS.app.core.prompting.schema import \
+from AFAAS.core.configuration import UserConfigurable
+from AFAAS.core.prompting.schema import \
     LanguageModelClassification
-from AFAAS.app.core.prompting.utils.utils import \
+from AFAAS.core.prompting.utils.utils import \
     to_numbered_list
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.resource.model_providers import (
     ChatMessage, CompletionModelFunction)
 
 from .base import (RESPONSE_SCHEMA, BasePromptStrategy,
@@ -201,7 +201,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
         #     plugin.post_prompt(self)
 
         # Construct full prompt
-        from autogpt.AFAAS.app.core.agents.base.assistants.prompt_manager import \
+        from autogpt.AFAAS.core.agents.base.assistants.prompt_manager import \
             get_os_info
 
         full_prompt_parts: list[str] = (

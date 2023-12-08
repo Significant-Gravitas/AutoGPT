@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import logging
 
-from AFAAS.app.core.plugin.simple import (PluginLocation,
+from AFAAS.core.plugin.simple import (PluginLocation,
                                                          PluginStorageFormat)
 # from typing import TYPE_CHECKING
 # if TYPE_CHECKING:
-from AFAAS.app.core.tools.base import Tool, ToolConfiguration
-from AFAAS.app.core.tools.schema import ToolResult
+from AFAAS.core.tools.base import Tool, ToolConfiguration
+from AFAAS.core.tools.schema import ToolResult
 
 
 class CreateNewTool(Tool):
     default_configuration = ToolConfiguration(
         location=PluginLocation(
             storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-            storage_route="AFAAS.app.core.tools.builtins.CreateNewTool",
+            storage_route="AFAAS.core.tools.builtins.CreateNewTool",
         ),
     )
 

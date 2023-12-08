@@ -5,7 +5,7 @@ import uuid
 from logging import Logger
 from pathlib import Path
 
-from AFAAS.app.core.memory.base import AbstractMemory
+from AFAAS.core.memory.base import AbstractMemory
 
 
 class SQLLikeJSONFileMemory(AbstractMemory):

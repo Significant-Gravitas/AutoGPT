@@ -4,7 +4,7 @@ from jose import JWTError
 from starlette.middleware.base import (BaseHTTPMiddleware,
                                        RequestResponseEndpoint)
 
-from AFAAS.app.core.user.user import User
+from AFAAS.core.user.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/user/login")
 

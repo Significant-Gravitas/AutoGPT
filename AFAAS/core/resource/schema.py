@@ -3,7 +3,7 @@ import enum
 
 from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
 
-from AFAAS.app.core.configuration import (SystemConfiguration,
+from AFAAS.core.configuration import (SystemConfiguration,
                                                          SystemSettings,
                                                          UserConfigurable)
 

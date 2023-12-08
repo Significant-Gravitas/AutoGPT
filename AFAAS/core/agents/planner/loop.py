@@ -10,19 +10,19 @@ from AFAAS.app.lib.context_items import ContextItem
 from AFAAS.app.lib.task import TaskStatusList
 from AFAAS.app.lib.task.plan import Plan
 from AFAAS.app.lib.task.task import Task
-from AFAAS.app.core.agents.base.exceptions import (
+from AFAAS.core.agents.base.exceptions import (
     AgentException, ToolExecutionError, UnknownToolError)
-from AFAAS.app.core.tools import ToolOutput
+from AFAAS.core.tools import ToolOutput
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.agents.planner import PlannerAgent
+    from AFAAS.core.agents.planner import PlannerAgent
 
-    # from AFAAS.app.core.prompting.schema import ChatModelResponse
-    from AFAAS.app.core.resource.model_providers import (
+    # from AFAAS.core.prompting.schema import ChatModelResponse
+    from AFAAS.core.resource.model_providers import (
         ChatModelResponse,
     )
 
-from AFAAS.app.core.agents.base import BaseLoop, BaseLoopHook
+from AFAAS.core.agents.base import BaseLoop, BaseLoopHook
 
 # aaas = {}
 # try:
@@ -294,7 +294,7 @@ class PlannerLoop(BaseLoop):
     ToolArgs = dict[str, str]
     AgentThoughts = dict[str, Any]
     ThoughtProcessOutput = tuple[ToolName, ToolArgs, AgentThoughts]
-    from AFAAS.app.core.resource.model_providers.chat_schema import (
+    from AFAAS.core.resource.model_providers.chat_schema import (
         ChatMessage, ChatPrompt)
 
     async def select_tool(

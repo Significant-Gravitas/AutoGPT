@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from typing_extensions import TypedDict
 
-from AFAAS.app.core.prompting.base import BasePromptStrategy
+from AFAAS.core.prompting.base import BasePromptStrategy
 
 from .features.agentmixin import AgentMixin
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.resource.model_providers.chat_schema import \
+    from AFAAS.core.resource.model_providers.chat_schema import \
         ChatModelResponse
 
     from . import BaseAgent

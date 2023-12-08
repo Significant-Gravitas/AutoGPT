@@ -9,14 +9,14 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.agents.base import BaseAgent
+    from AFAAS.core.agents.base import BaseAgent
 
 from AFAAS.app.lib.task.task import Task
 from AFAAS.app.sdk import forge_log
-from AFAAS.app.core.agents.routing import RoutingAgent
-from AFAAS.app.core.agents.routing.strategies.routing import \
+from AFAAS.core.agents.routing import RoutingAgent
+from AFAAS.core.agents.routing.strategies.routing import \
     RoutingStrategyConfiguration
-from AFAAS.app.core.tools.command_decorator import tool
+from AFAAS.core.tools.command_decorator import tool
 
 logger = forge_log.ForgeLogger(__name__)
 

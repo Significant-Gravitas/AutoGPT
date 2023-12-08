@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional, overload
 
-from AFAAS.app.core.configuration.schema import SystemConfiguration
+from AFAAS.core.configuration.schema import SystemConfiguration
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ import typing
 from pathlib import Path
 
 if typing.TYPE_CHECKING:
-    from AFAAS.app.core.configuration import AgentConfiguration
+    from AFAAS.core.configuration import AgentConfiguration
 
 
 class AbstractWorkspace(abc.ABC):

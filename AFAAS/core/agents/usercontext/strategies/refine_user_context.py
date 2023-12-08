@@ -28,16 +28,16 @@ from logging import Logger
 from typing import Optional
 
 from AFAAS.app.lib.message_agent_user import Questions
-from AFAAS.app.core.prompting.base import (
+from AFAAS.core.prompting.base import (
     BasePromptStrategy, PromptStrategiesConfiguration)
-from AFAAS.app.core.prompting.schema import \
+from AFAAS.core.prompting.schema import \
     LanguageModelClassification
-from AFAAS.app.core.prompting.utils.utils import (
+from AFAAS.core.prompting.utils.utils import (
     json_loads, to_numbered_list, to_string_list)
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.resource.model_providers import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatMessage,
     ChatPrompt, CompletionModelFunction)
-from AFAAS.app.core.utils.json_schema import JSONSchema
+from AFAAS.core.utils.json_schema import JSONSchema
 
 
 class RefineUserContextFunctionNames(str, enum.Enum):

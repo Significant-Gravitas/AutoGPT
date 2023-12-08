@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema
 from firebase_admin import auth
 
-from AFAAS.app.core.user.user import UserLogin
+from AFAAS.core.user.user import UserLogin
 
 app = FastAPI()
 # bypass_routes = ["/user/login", "/user/register"]

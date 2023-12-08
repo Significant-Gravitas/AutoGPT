@@ -1,13 +1,13 @@
 from importlib import import_module
 
-from AFAAS.app.core.configuration import SystemConfiguration
+from AFAAS.core.configuration import SystemConfiguration
 
-# from AFAAS.app.core.workspace.simple import SimpleWorkspace
+# from AFAAS.core.workspace.simple import SimpleWorkspace
 
 
 class BaseAgentSystems(SystemConfiguration):
-    memory: str = "AFAAS.app.core.memory.base.Memory"
-    workspace: str = "AFAAS.app.core.workspace.SimpleWorkspace"
+    memory: str = "AFAAS.core.memory.base.Memory"
+    workspace: str = "AFAAS.core.workspace.SimpleWorkspace"
 
     class Config(SystemConfiguration.Config):
         extra = "allow"

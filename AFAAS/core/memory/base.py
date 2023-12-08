@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING
 
 from pydantic import Field
 
-from AFAAS.app.core.configuration import (Configurable,
+from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          SystemSettings)
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.memory.table.base import AbstractTable
+    from AFAAS.core.memory.table.base import AbstractTable
 
 
 class MemoryAdapterType(Enum):
@@ -152,7 +152,7 @@ class AbstractMemory(Configurable, abc.ABC):
             return AbstractMemory._instances[config_key]
 
         if adapter_type == MemoryAdapterType.NOSQL_JSON_FILE:
-            from AFAAS.app.core.memory.nosql.jsonfile import \
+            from AFAAS.core.memory.nosql.jsonfile import \
                 JSONFileMemory
 
             logger.notice(
@@ -208,43 +208,43 @@ class AbstractMemory(Configurable, abc.ABC):
             )
 
         if table_name == "agents":
-            from AFAAS.app.core.memory.table import AgentsTable
+            from AFAAS.core.memory.table import AgentsTable
 
             returnvalue = AgentsTable(memory=self)
             return returnvalue
 
         if table_name == "tasks":
-            from AFAAS.app.core.memory.table import TasksTable
+            from AFAAS.core.memory.table import TasksTable
 
             returnvalue = TasksTable(memory=self)
             return returnvalue
 
         elif table_name == "plans":
-            from AFAAS.app.core.memory.table import PlansTable
+            from AFAAS.core.memory.table import PlansTable
 
             returnvalue = PlansTable(memory=self)
             return returnvalue
 
         elif table_name == "message_agent_agent":
-            from AFAAS.app.core.memory.table import \
+            from AFAAS.core.memory.table import \
                 MessagesAgentAgentTable
 
             return MessagesAgentAgentTable(memory=self)
 
         elif table_name == "message_agent_llm":
-            from AFAAS.app.core.memory.table import \
+            from AFAAS.core.memory.table import \
                 MessagesAgentLLMTable
 
             return MessagesAgentLLMTable(memory=self)
 
         elif table_name == "message_user_agent":
-            from AFAAS.app.core.memory.table import \
+            from AFAAS.core.memory.table import \
                 MessagesUserAgentTable
 
             return MessagesUserAgentTable(memory=self)
 
         elif table_name == "users_informations":
-            from AFAAS.app.core.memory.table import \
+            from AFAAS.core.memory.table import \
                 UsersInformationsTable
 
             return UsersInformationsTable(memory=self)

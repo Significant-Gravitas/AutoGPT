@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import Field
 
-# from AFAAS.app.core.memory import
+# from AFAAS.core.memory import
 from ...sdk.forge_log import ForgeLogger
 from .base import BaseTask
 from .meta import TaskStatusList
@@ -16,7 +16,7 @@ from .task import Task
 LOG = ForgeLogger(name=__name__)
 
 
-from AFAAS.app.core.agents import AbstractAgent
+from AFAAS.core.agents import AbstractAgent
 
 
 class Plan(BaseTask):
@@ -348,7 +348,7 @@ class Plan(BaseTask):
         # FIXME: DEACTIVATED FOR TEST PURPOSE
         if False:
             try:
-                import AFAAS.app.core.agents.usercontext
+                import AFAAS.core.agents.usercontext
 
                 refine_user_context_task = Task(
                     # task_parent = self.plan() ,

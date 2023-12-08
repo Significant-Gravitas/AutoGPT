@@ -9,17 +9,17 @@ from typing import Any, Optional, Union
 import autogpt
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from AFAAS.app.core.configuration.schema import Configurable, SystemSettings, UserConfigurable
-from AFAAS.app.core.resource.model_providers.openai.openai import OPEN_AI_CHAT_MODELS, OpenAICredentials
+from AFAAS.core.configuration.schema import Configurable, SystemSettings, UserConfigurable
+from AFAAS.core.resource.model_providers.openai.openai import OPEN_AI_CHAT_MODELS, OpenAICredentials
 from autogpt.logs.config import LogFormatName, LoggingConfig
 from autogpt.plugins.plugins_config import PluginsConfig
 from autogpt.speech import TTSConfig
 from colorama import Fore
 from pydantic import Field, validator
 
-from AFAAS.app.core.configuration.schema import (Configurable,
+from AFAAS.core.configuration.schema import (Configurable,
                                                                 SystemSettings)
-from AFAAS.app.core.resource.model_providers.openai import \
+from AFAAS.core.resource.model_providers.openai import \
     OPEN_AI_CHAT_MODELS
 
 PROJECT_ROOT = Path(autogpt.__file__).parent.parent

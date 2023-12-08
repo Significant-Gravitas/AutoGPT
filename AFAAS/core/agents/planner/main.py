@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 from pydantic import Field
 
 from AFAAS.app.lib.task.plan import Plan
-from AFAAS.app.core.memory.base import AbstractMemory
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.core.resource.model_providers import (
     OpenAIProvider, OpenAISettings)
-from AFAAS.app.core.tools import (TOOL_CATEGORIES,
+from AFAAS.core.tools import (TOOL_CATEGORIES,
                                                  SimpleToolRegistry)
 
 from ..base import BaseAgent, BaseLoopHook, PromptManager, ToolExecutor
@@ -19,7 +19,7 @@ from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
 from .models import PlannerAgentSystems
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.workspace.simple import SimpleWorkspace
+    from AFAAS.core.workspace.simple import SimpleWorkspace
 
 
 class PlannerAgent(BaseAgent):
@@ -205,7 +205,7 @@ class PlannerAgent(BaseAgent):
         agent_settings: PlannerAgent.SystemSettings,
         logger: logging.Logger,
     ):
-        from AFAAS.app.core.workspace import SimpleWorkspace
+        from AFAAS.core.workspace import SimpleWorkspace
 
         return SimpleWorkspace.create_workspace(
             user_id=agent_settings.user_id,
@@ -217,7 +217,7 @@ class PlannerAgent(BaseAgent):
     @classmethod
     def get_strategies(cls) -> list:
         # TODO : Continue refactorization => move to loop ?
-        from AFAAS.app.core.agents.planner.strategies import \
+        from AFAAS.core.agents.planner.strategies import \
             StrategiesSet
 
         return StrategiesSet.get_strategies()
@@ -234,7 +234,7 @@ class PlannerAgent(BaseAgent):
         # #
         # simple_strategies = {}
         # import inspect
-        # from  AFAAS.app.core.agents.simple.lib.base import PromptStrategy
+        # from  AFAAS.core.agents.simple.lib.base import PromptStrategy
         # for strategy_name, strategy_config in strategies_config.__dict__.items():
         #     strategy_module = getattr(strategies, strategy_name)
         #     # Filter classes that are subclasses of PromptStrategy and are defined within that module

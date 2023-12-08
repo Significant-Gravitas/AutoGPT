@@ -15,12 +15,12 @@ from typing import Iterator, Literal
 
 from AFAAS.app.lib.task.task import Task
 from AFAAS.app.sdk import forge_log
-from AFAAS.app.core.agents.base import BaseAgent
-from AFAAS.app.core.memory.base import AbstractMemory
-from AFAAS.app.core.tools.command_decorator import tool
-from AFAAS.app.core.utils.exceptions import \
+from AFAAS.core.agents.base import BaseAgent
+from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.core.tools.command_decorator import tool
+from AFAAS.core.utils.exceptions import \
     DuplicateOperationError
-from AFAAS.app.core.utils.json_schema import JSONSchema
+from AFAAS.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 from .file_operations_utils import read_textual_file

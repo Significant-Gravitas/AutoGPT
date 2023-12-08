@@ -25,7 +25,7 @@ import uuid
 
 from fastapi import APIRouter, FastAPI, Request
 
-from AFAAS.app.core.agents import PlannerAgent
+from AFAAS.core.agents import PlannerAgent
 from app.cli_web_app.server.schema import \
     AgentMessageRequestBody
 from app.client_lib.workspacebuilder import (

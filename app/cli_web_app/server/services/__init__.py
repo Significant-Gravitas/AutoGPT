@@ -1,1 +1,1 @@
-import AFAAS.app.core.runner.client_lib.workspacebuilder
+import AFAAS.core.runner.client_lib.workspacebuilder

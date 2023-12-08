@@ -1,13 +1,13 @@
 from importlib import import_module
 from typing import TYPE_CHECKING
 
-from AFAAS.app.core.plugin.base import (PluginLocation,
+from AFAAS.core.plugin.base import (PluginLocation,
                                                        PluginService,
                                                        PluginStorageFormat,
                                                        PluginStorageRoute)
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.plugin.base import PluginType
+    from AFAAS.core.plugin.base import PluginType
 
 
 class SimplePluginService(PluginService):

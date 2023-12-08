@@ -10,8 +10,8 @@ from pydantic import Field, validator
 
 if TYPE_CHECKING:
     from autogpt.config import Config
-    from AFAAS.app.core.prompting.base import PromptStrategy
-    from AFAAS.app.core.resource.model_providers.schema import (
+    from AFAAS.core.prompting.base import PromptStrategy
+    from AFAAS.core.resource.model_providers.schema import (
         ChatModelInfo,
         BaseChatModelProvider,
         ChatModelResponse,
@@ -22,13 +22,13 @@ from autogpt.agents.utils.prompt_scratchpad import PromptScratchpad
 from autogpt.config import ConfigBuilder
 from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
-from AFAAS.app.core.configuration import (Configurable, SystemConfiguration,
+from AFAAS.core.configuration import (Configurable, SystemConfiguration,
                                         SystemSettings, UserConfigurable)
-from AFAAS.app.core.prompting.schema import (ChatMessage, ChatPrompt,
+from AFAAS.core.prompting.schema import (ChatMessage, ChatPrompt,
                                            CompletionModelFunction)
-from AFAAS.app.core.resource.model_providers.openai import (OPEN_AI_CHAT_MODELS,
+from AFAAS.core.resource.model_providers.openai import (OPEN_AI_CHAT_MODELS,
                                                           OpenAIModelName)
-from AFAAS.app.core.runner.client_lib.logging.helpers import dump_prompt
+from AFAAS.core.runner.client_lib.logging.helpers import dump_prompt
 from autogpt.llm.providers.openai import get_openai_command_specs
 from autogpt.models.action_history import ActionResult, EpisodicActionHistory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT

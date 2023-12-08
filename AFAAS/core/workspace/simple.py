@@ -3,10 +3,10 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from AFAAS.app.core.configuration import (Configurable,
+from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-from AFAAS.app.core.workspace.base import AbstractWorkspace
+from AFAAS.core.workspace.base import AbstractWorkspace
 
 if TYPE_CHECKING:
     # Cyclic import

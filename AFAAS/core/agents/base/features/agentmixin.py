@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from AFAAS.app.lib.task.plan import Plan
-    from AFAAS.app.core.memory.table import AbstractTable
-    from AFAAS.app.core.resource.model_providers import \
+    from AFAAS.core.memory.table import AbstractTable
+    from AFAAS.core.resource.model_providers import \
         CompletionModelFunction
-    from AFAAS.app.core.tools.base import BaseToolsRegistry
-    from AFAAS.app.core.tools.tools import Tool
+    from AFAAS.core.tools.base import BaseToolsRegistry
+    from AFAAS.core.tools.tools import Tool
 
     from ..main import BaseAgent
 

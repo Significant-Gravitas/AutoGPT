@@ -1,11 +1,11 @@
 from logging import Logger
 
 from  AFAAS.app.sdk.forge_log import ForgeLogger
-from AFAAS.app.core.agents.planner.strategies.initial_plan import (
+from AFAAS.core.agents.planner.strategies.initial_plan import (
     InitialPlanStrategy, InitialPlanStrategyConfiguration)
-from AFAAS.app.core.agents.planner.strategies.select_tool import (
+from AFAAS.core.agents.planner.strategies.select_tool import (
     SelectToolStrategy, SelectToolStrategyConfiguration)
-from AFAAS.app.core.prompting.base import \
+from AFAAS.core.prompting.base import \
     PromptStrategiesConfiguration
 
 LOG = ForgeLogger(__name__)
@@ -17,7 +17,7 @@ class StrategiesConfiguration(PromptStrategiesConfiguration):
 
 
 class StrategiesSet:
-    from AFAAS.app.core.prompting.base import (
+    from AFAAS.core.prompting.base import (
         AbstractPromptStrategy, BasePromptStrategy)
 
     @staticmethod

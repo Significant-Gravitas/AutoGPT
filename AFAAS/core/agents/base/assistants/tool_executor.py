@@ -1,6 +1,6 @@
 from logging import Logger
 
-from AFAAS.app.core.agents.base.features.agentmixin import \
+from AFAAS.core.agents.base.features.agentmixin import \
     AgentMixin
 
 

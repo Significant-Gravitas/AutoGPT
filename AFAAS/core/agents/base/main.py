@@ -10,14 +10,14 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 import yaml
 from pydantic import Field, root_validator
 
-from AFAAS.app.core.agents.base.loop import (  # Import only where it's needed
+from AFAAS.core.agents.base.loop import (  # Import only where it's needed
     BaseLoop, BaseLoopHook)
-from AFAAS.app.core.agents.base.models import (
+from AFAAS.core.agents.base.models import (
     BaseAgentConfiguration, BaseAgentDirectives, BaseAgentSystems)
-from AFAAS.app.core.configuration import (Configurable,
+from AFAAS.core.configuration import (Configurable,
                                                          SystemSettings)
-from AFAAS.app.core.memory.base import AbstractMemory
-from AFAAS.app.core.workspace.simple import SimpleWorkspace
+from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.core.workspace.simple import SimpleWorkspace
 
 from .abstract import AbstractAgent
 
@@ -38,7 +38,7 @@ class BaseAgent(Configurable, AbstractAgent):
 
         memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
         workspace: SimpleWorkspace.SystemSettings = SimpleWorkspace.SystemSettings()
-        from AFAAS.app.core.resource.model_providers.openai import \
+        from AFAAS.core.resource.model_providers.openai import \
             OpenAISettings
 
         chat_model_provider: OpenAISettings = OpenAISettings()
@@ -421,7 +421,7 @@ class BaseAgent(Configurable, AbstractAgent):
         BaseAgentSystems.Config.extra = "allow"
         BaseAgentConfiguration.Config.extra = "allow"
 
-        from AFAAS.app.core.memory.base import AbstractMemory
+        from AFAAS.core.memory.base import AbstractMemory
 
         memory_settings = agent_settings.memory
 
@@ -464,8 +464,8 @@ class BaseAgent(Configurable, AbstractAgent):
             agent_settings_list = YourClass.get_agentsetting_list_from_memory(user_id, logger)
             print(agent_settings_list)
         """
-        from AFAAS.app.core.memory.base import AbstractMemory
-        from AFAAS.app.core.memory.table import (AbstractTable,
+        from AFAAS.core.memory.base import AbstractMemory
+        from AFAAS.core.memory.table import (AbstractTable,
                                                                 AgentsTable)
 
         memory_settings = AbstractMemory.SystemSettings()
@@ -508,8 +508,8 @@ class BaseAgent(Configurable, AbstractAgent):
         user_id: uuid.UUID,
         logger: logging.Logger,
     ) -> BaseAgent:
-        from AFAAS.app.core.memory.base import AbstractMemory
-        from AFAAS.app.core.memory.table import AgentsTable
+        from AFAAS.core.memory.base import AbstractMemory
+        from AFAAS.core.memory.table import AgentsTable
 
         # memory_settings = Memory.SystemSettings(configuration=agent_settings.memory)
         memory_settings = agent_settings.memory

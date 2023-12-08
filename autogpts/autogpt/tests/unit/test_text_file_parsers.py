@@ -6,7 +6,7 @@ from xml.etree import ElementTree
 
 import docx
 import yaml
-from AFAAS.app.core.tools.builtins.file_operations_utils import (
+from AFAAS.core.tools.builtins.file_operations_utils import (
     is_file_binary_fn, read_textual_file)
 from bs4 import BeautifulSoup
 

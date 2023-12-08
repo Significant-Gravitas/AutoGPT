@@ -32,8 +32,8 @@ from autogpt.config import (
     ConfigBuilder,
     assert_config_has_openai_api_key,
 )
-from AFAAS.app.core.resource.model_providers.openai import OpenAIProvider
-from AFAAS.app.core.runner.client_lib.utils import coroutine
+from AFAAS.core.resource.model_providers.openai import OpenAIProvider
+from AFAAS.core.runner.client_lib.utils import coroutine
 from autogpt.logs.config import configure_chat_plugins, configure_logging
 from autogpt.logs.helpers import print_attribute, speak
 from autogpt.plugins import scan_plugins

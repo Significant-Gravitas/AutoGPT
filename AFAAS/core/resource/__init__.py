@@ -1,4 +1,4 @@
-from AFAAS.app.core.resource.schema import (
+from AFAAS.core.resource.schema import (
     BaseProviderBudget, BaseProviderCredentials, BaseProviderSettings,
     BaseProviderUsage, ResourceType)
 

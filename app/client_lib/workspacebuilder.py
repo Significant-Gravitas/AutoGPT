@@ -6,7 +6,7 @@ from pathlib import Path
 import click
 import yaml
 
-from AFAAS.app.core.agents import \
+from AFAAS.core.agents import \
     PlannerAgent  # ## TODO should work for every Agent
 from AFAAS.app.sdk.forge_log import ForgeLogger
 

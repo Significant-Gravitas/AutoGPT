@@ -3,7 +3,7 @@ import string
 import tempfile
 from pathlib import Path
 
-import AFAAS.app.core.tools.builtins.execute_code as sut  # system under testing
+import AFAAS.core.tools.builtins.execute_code as sut  # system under testing
 import pytest
 from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import (InvalidArgumentError,

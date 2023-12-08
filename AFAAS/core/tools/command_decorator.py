@@ -5,12 +5,12 @@ import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.agents.base import BaseAgent
-    from AFAAS.app.core.configuration.config import Config
+    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.core.configuration.config import Config
 
-from AFAAS.app.core.tools.tool_parameters import ToolParameter
-from AFAAS.app.core.tools.tools import Tool, ToolOutput
-from AFAAS.app.core.utils.json_schema import JSONSchema
+from AFAAS.core.tools.tool_parameters import ToolParameter
+from AFAAS.core.tools.tools import Tool, ToolOutput
+from AFAAS.core.utils.json_schema import JSONSchema
 
 # Unique identifier for AutoGPT commands
 AUTO_GPT_TOOL_IDENTIFIER = "auto_gpt_command"

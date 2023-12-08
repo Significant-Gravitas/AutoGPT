@@ -9,11 +9,11 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.agents.base import BaseAgent
+    from AFAAS.core.agents.base import BaseAgent
 
 from AFAAS.app.lib.task.task import Task
-from AFAAS.app.core.agents.usercontext import UserContextAgent
-from AFAAS.app.core.tools.command_decorator import tool
+from AFAAS.core.agents.usercontext import UserContextAgent
+from AFAAS.core.tools.command_decorator import tool
 
 logger = logging.getLogger(__name__)
 

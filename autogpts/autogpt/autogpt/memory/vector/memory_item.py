@@ -7,7 +7,7 @@ from typing import Literal
 import ftfy
 import numpy as np
 from autogpt.config import Config
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.resource.model_providers import (
     ChatMessage,
     ChatModelProvider,
     EmbeddingModelProvider,

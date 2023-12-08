@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.prompting import ChatPrompt
+    from AFAAS.core.prompting import ChatPrompt
     from AFAAS.app.lib.context_items import ContextItem
 
     from ..base import BaseAgent
 
-from AFAAS.app.core.resource.model_providers import ChatMessage
+from AFAAS.core.resource.model_providers import ChatMessage
 
 
 class AgentContext:

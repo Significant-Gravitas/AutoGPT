@@ -4,9 +4,9 @@ from typing import Callable
 from pydantic import BaseModel, Field
 
 from AFAAS.app.sdk import forge_log
-from AFAAS.app.core.resource.model_providers.chat_schema import \
+from AFAAS.core.resource.model_providers.chat_schema import \
     CompletionModelFunction
-from AFAAS.app.core.utils.json_schema import JSONSchema
+from AFAAS.core.utils.json_schema import JSONSchema
 
 logger = forge_log.ForgeLogger(__name__)
 

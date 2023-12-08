@@ -1,11 +1,11 @@
-from AFAAS.app.core.resource.model_providers.chat_schema import (
+from AFAAS.core.resource.model_providers.chat_schema import (
     AssistantChatMessage, AssistantChatMessageDict, AssistantFunctionCall,
     AssistantFunctionCallDict, BaseChatModelProvider, ChatMessage,
     ChatModelInfo, ChatModelResponse, ChatPrompt, CompletionModelFunction)
-from AFAAS.app.core.resource.model_providers.openai import (
+from AFAAS.core.resource.model_providers.openai import (
     OPEN_AI_CHAT_MODELS, OPEN_AI_EMBEDDING_MODELS, OPEN_AI_MODELS,
     OpenAIModelName, OpenAIProvider, OpenAISettings)
-from AFAAS.app.core.resource.model_providers.schema import (
+from AFAAS.core.resource.model_providers.schema import (
     AbstractLanguageModelProvider, AbstractModelProvider, BaseModelInfo,
     BaseModelProviderBudget, BaseModelProviderCredentials,
     BaseModelProviderSettings, BaseModelProviderUsage, BaseModelResponse,

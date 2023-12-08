@@ -4,8 +4,8 @@ from typing import Any, Iterator, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from AFAAS.app.core.configuration import AFAASModel
-from AFAAS.app.core.prompting.utils.utils import (
+from AFAAS.core.configuration import AFAASModel
+from AFAAS.core.prompting.utils.utils import (
     indent, to_numbered_list)
 
 

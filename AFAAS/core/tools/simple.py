@@ -12,20 +12,20 @@ from AFAAS.app.sdk import forge_log
 logger = forge_log.ForgeLogger(__name__)
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.agents.base import BaseAgent
+    from AFAAS.core.agents.base import BaseAgent
 
-from AFAAS.app.core.configuration import (Configurable,
+from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration)
-from AFAAS.app.core.memory.base import AbstractMemory
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.core.resource.model_providers import (
     BaseChatModelProvider, CompletionModelFunction, ModelProviderName)
-from AFAAS.app.core.tools.base import (BaseToolsRegistry, Tool,
+from AFAAS.core.tools.base import (BaseToolsRegistry, Tool,
                                                       ToolConfiguration)
-from AFAAS.app.core.tools.command_decorator import \
+from AFAAS.core.tools.command_decorator import \
     AUTO_GPT_TOOL_IDENTIFIER
-# from AFAAS.app.core.tools.builtins import BUILTIN_TOOLS
-from AFAAS.app.core.tools.schema import ToolResult
-from AFAAS.app.core.workspace.base import AbstractWorkspace
+# from AFAAS.core.tools.builtins import BUILTIN_TOOLS
+from AFAAS.core.tools.schema import ToolResult
+from AFAAS.core.workspace.base import AbstractWorkspace
 
 
 class ToolsRegistryConfiguration(SystemConfiguration):

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import enum
 
-from AFAAS.app.core.agents import AbstractAgent
-from AFAAS.app.core.configuration import AFAASModel
+from AFAAS.core.agents import AbstractAgent
+from AFAAS.core.configuration import AFAASModel
 
 # if TYPE_CHECKING:
-# from AFAAS.app.core.agents import BaseAgent
+# from AFAAS.core.agents import BaseAgent
 
 # from .plan import Plan
 

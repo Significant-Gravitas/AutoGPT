@@ -1,24 +1,24 @@
 import logging
 from typing import ClassVar
 
-from AFAAS.app.core.ability.base import Ability, AbilityConfiguration
-from AFAAS.app.core.ability.schema import AbilityResult
-from AFAAS.app.core.planning.simple import LanguageModelConfiguration
-from AFAAS.app.core.plugin.simple import PluginLocation, PluginStorageFormat
-from AFAAS.app.core.resource.model_providers import (
+from AFAAS.core.ability.base import Ability, AbilityConfiguration
+from AFAAS.core.ability.schema import AbilityResult
+from AFAAS.core.planning.simple import LanguageModelConfiguration
+from AFAAS.core.plugin.simple import PluginLocation, PluginStorageFormat
+from AFAAS.core.resource.model_providers import (
     ChatMessage,
     ChatModelProvider,
     ModelProviderName,
     OpenAIModelName,
 )
-from AFAAS.app.core.utils.json_schema import JSONSchema
+from AFAAS.core.utils.json_schema import JSONSchema
 
 
 class QueryLanguageModel(Ability):
     default_configuration = AbilityConfiguration(
         location=PluginLocation(
             storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-            storage_route="AFAAS.app.core.ability.builtins.QueryLanguageModel",
+            storage_route="AFAAS.core.ability.builtins.QueryLanguageModel",
         ),
         language_model_required=LanguageModelConfiguration(
             model_name=OpenAIModelName.GPT3,

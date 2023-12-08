@@ -5,5 +5,5 @@
 # from .message_agent_user import *
 # from .task import *
 
-# from AFAAS.app.core.agents.simple.lib.models.action import Action, ActionErrorResult, ActionHistory, ActionInterruptedByHuman, ActionResult, ActionSuccessResult
-# from AFAAS.app.core.agents.simple.lib.models.context_items import ContextItem , FileContextItem, FolderContextItem, StaticContextItem
+# from AFAAS.core.agents.simple.lib.models.action import Action, ActionErrorResult, ActionHistory, ActionInterruptedByHuman, ActionResult, ActionSuccessResult
+# from AFAAS.core.agents.simple.lib.models.context_items import ContextItem , FileContextItem, FolderContextItem, StaticContextItem

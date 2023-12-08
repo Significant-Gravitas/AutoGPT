@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 import pytest
-from AFAAS.app.core.resource.model_providers import (OPEN_AI_CHAT_MODELS,
+from AFAAS.core.resource.model_providers import (OPEN_AI_CHAT_MODELS,
                                                    OPEN_AI_EMBEDDING_MODELS)
 from autogpt.llm.api_manager import ApiManager
 from pytest_mock import MockerFixture

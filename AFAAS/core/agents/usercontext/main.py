@@ -4,10 +4,10 @@ import logging
 import uuid
 from typing import Awaitable, Callable
 
-from AFAAS.app.core.memory.base import AbstractMemory
-from AFAAS.app.core.resource.model_providers import \
+from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.core.resource.model_providers import \
     OpenAIProvider
-from AFAAS.app.core.workspace.simple import SimpleWorkspace
+from AFAAS.core.workspace.simple import SimpleWorkspace
 
 from ..base import BaseAgent, BaseLoopHook, PromptManager
 from .loop import UserContextLoop
@@ -124,7 +124,7 @@ class UserContextAgent(BaseAgent):
 
     @classmethod
     def get_strategies(cls)-> list :
-        from AFAAS.app.core.agents.usercontext.strategies import \
+        from AFAAS.core.agents.usercontext.strategies import \
             StrategiesSet
         return StrategiesSet.get_strategies()
 

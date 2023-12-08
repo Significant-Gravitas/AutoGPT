@@ -13,7 +13,7 @@ class AgentsTable(BaseNoSQLTable):
     third_key = "agent_type"
 
     if TYPE_CHECKING:
-        from AFAAS.app.core.agents import AbstractAgent
+        from AFAAS.core.agents import AbstractAgent
 
     def add(self, value: dict, id: str = "A" + str(uuid.uuid4())) -> str:
         return super().add(value, id)

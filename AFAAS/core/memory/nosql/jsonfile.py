@@ -5,8 +5,8 @@ from logging import Logger
 from pathlib import Path
 from typing import List
 
-from AFAAS.app.core.memory.base import AbstractMemory
-from AFAAS.app.core.memory.nosqlmemory import NoSQLMemory
+from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.core.memory.nosqlmemory import NoSQLMemory
 
 
 class JSONFileMemory(NoSQLMemory):

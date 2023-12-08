@@ -6,7 +6,7 @@ from time import sleep
 import click
 import requests
 
-from AFAAS.app.core.agents import PlannerAgent
+from AFAAS.core.agents import PlannerAgent
 from AFAAS.app.sdk.forge_log import ForgeLogger
 
 BASE_URL = "http://localhost:8080/api/v1"

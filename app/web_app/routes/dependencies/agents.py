@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
 LOG = ForgeLogger(__name__)
 from fastapi import APIRouter, FastAPI, Request
 
-from AFAAS.app.core.agents import PlannerAgent
+from AFAAS.core.agents import PlannerAgent
 
 
 def get_agent(request: Request, agent_id: str) -> PlannerAgent:

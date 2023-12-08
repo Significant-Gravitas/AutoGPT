@@ -1,7 +1,7 @@
 # Import necessary libraries and modules from the afaas framework and other packages.
-from AFAAS.app.core.core.resource.model_providers import ChatModelResponse
-from AFAAS.app.core.core.resource.model_providers.chat_schema import ChatPrompt
-from AFAAS.app.core.prompting.base import (BasePromptStrategy,
+from AFAAS.core.core.resource.model_providers import ChatModelResponse
+from AFAAS.core.core.resource.model_providers.chat_schema import ChatPrompt
+from AFAAS.core.prompting.base import (BasePromptStrategy,
                                          PromptStrategiesConfiguration)
 from pydantic import BaseModel
 

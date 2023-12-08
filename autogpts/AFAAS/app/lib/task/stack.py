@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 
 from AFAAS.app.sdk.forge_log import ForgeLogger
-from AFAAS.app.core.agents import AbstractAgent
-from AFAAS.app.core.configuration import AFAASModel
+from AFAAS.core.agents import AbstractAgent
+from AFAAS.core.configuration import AFAASModel
 
 
 from  AFAAS.app.sdk.forge_log import ForgeLogger

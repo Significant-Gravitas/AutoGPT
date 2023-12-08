@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING, Optional, Union, get_args
 
 from pydantic import BaseModel, Field
 
-from AFAAS.app.core.agents import AbstractAgent
-from AFAAS.app.core.configuration import AFAASModel
+from AFAAS.core.agents import AbstractAgent
+from AFAAS.core.configuration import AFAASModel
 from ...sdk.forge_log import ForgeLogger
 
-# from AFAAS.app.core.tools.schema import ToolResult
+# from AFAAS.core.tools.schema import ToolResult
 LOG = ForgeLogger(name=__name__)
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ class BaseTask(AFAASModel):
     ### GENERAL properties
     ###
     if TYPE_CHECKING:
-        from AFAAS.app.core.agents import BaseAgent
+        from AFAAS.core.agents import BaseAgent
 
     agent: AbstractAgent = Field(exclude=True)
 
@@ -91,7 +91,7 @@ class BaseTask(AFAASModel):
             return cls._default_command
 
         try:
-            import AFAAS.app.core.agents.routing
+            import AFAAS.core.agents.routing
 
             cls._default_command = "afaas_routing"
         except:

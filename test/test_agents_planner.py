@@ -1,6 +1,6 @@
 
 import uuid
-from AFAAS.app.core.agents import PlannerAgent
+from AFAAS.core.agents import PlannerAgent
 from AFAAS.app.sdk.forge_log import ForgeLogger
 
 client_logger = ForgeLogger(__name__)

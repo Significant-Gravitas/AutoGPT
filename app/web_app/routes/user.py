@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 
 LOG = ForgeLogger(__name__)
 
-from AFAAS.app.core.agents import PlannerAgent
+from AFAAS.core.agents import PlannerAgent
 
 afaas_user_router = APIRouter()
 user_router = APIRouter()

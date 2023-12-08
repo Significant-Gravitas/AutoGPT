@@ -3,7 +3,7 @@ import logging
 import click
 
 from AFAAS.app.sdk import forge_log
-from AFAAS.app.core.agents import PlannerAgent
+from AFAAS.core.agents import PlannerAgent
 
 
 async def handle_user_input_request(prompt):
@@ -137,7 +137,7 @@ async def run_auto_gpt():
         agent_settings.agent_goal_sentence = user_objective
 
         # agent_settings.agent_class = "PlannerAgent"
-        agent_settings._type_ = "AFAAS.app.core.agents.planner.main.PlannerAgent"
+        agent_settings._type_ = "AFAAS.core.agents.planner.main.PlannerAgent"
         # agent_settings.load_root_values()
 
         # Step 3. Create the agent.

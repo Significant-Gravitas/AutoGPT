@@ -11,10 +11,10 @@ from itertools import islice
 
 from duckduckgo_search import DDGS
 
-from AFAAS.app.core.agents.base import BaseAgent
-from AFAAS.app.core.tools.command_decorator import tool
-from AFAAS.app.core.utils.exceptions import ConfigurationError
-from AFAAS.app.core.utils.json_schema import JSONSchema
+from AFAAS.core.agents.base import BaseAgent
+from AFAAS.core.tools.command_decorator import tool
+from AFAAS.core.utils.exceptions import ConfigurationError
+from AFAAS.core.utils.json_schema import JSONSchema
 
 COMMAND_CATEGORY = "web_search"
 COMMAND_CATEGORY_TITLE = "Web Search"

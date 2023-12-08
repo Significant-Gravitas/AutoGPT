@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from AFAAS.app.core.tools.builtins.file_operations_utils import (
+    from AFAAS.core.tools.builtins.file_operations_utils import (
         read_textual_file,
     )
 
@@ -15,7 +15,7 @@ from typing import Optional
 from pydantic import Field
 
 from AFAAS.app.sdk import forge_log
-from AFAAS.app.core.configuration import AFAASModel
+from AFAAS.core.configuration import AFAASModel
 
 logger = forge_log.ForgeLogger(__name__)
 

@@ -16,14 +16,14 @@ best_practices: [
   'Only make use of your information gathering abilities to find information that you don''t yet have knowledge of.'
 ]
 tools : [
-    "AFAAS.app.core.tools.builtins.execute_code",
-    "AFAAS.app.core.tools.builtins.file_operations",
-    "AFAAS.app.core.tools.builtins.user_interaction",
-    "AFAAS.app.core.tools.builtins.web_search",
-    "AFAAS.app.core.tools.builtins.web_selenium",
-    "AFAAS.app.core.tools.builtins.system",
-    "AFAAS.app.core.tools.builtins.image_gen",
+    "AFAAS.core.tools.builtins.execute_code",
+    "AFAAS.core.tools.builtins.file_operations",
+    "AFAAS.core.tools.builtins.user_interaction",
+    "AFAAS.core.tools.builtins.web_search",
+    "AFAAS.core.tools.builtins.web_selenium",
+    "AFAAS.core.tools.builtins.system",
+    "AFAAS.core.tools.builtins.image_gen",
 ]
 agents : [
-    "AFAAS.app.core.agents.planner",
+    "AFAAS.core.agents.planner",
 ]
