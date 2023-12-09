@@ -24,6 +24,10 @@ class GCSFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
 class GCSFileWorkspace(AbstractFileWorkspace):
     """A class that represents a Google Cloud Storage workspace."""
 
+
+    class SystemSettings(AbstractFileWorkspace.SystemSettings):
+        configuration = GCSFileWorkspaceConfiguration
+
     _bucket: storage.Bucket
 
     def __init__(self, config: GCSFileWorkspaceConfiguration):

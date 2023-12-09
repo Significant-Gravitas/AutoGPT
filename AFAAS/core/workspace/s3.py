@@ -35,6 +35,9 @@ class S3FileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
 class S3FileWorkspace(AbstractFileWorkspace):
     """A class that represents an S3 workspace."""
 
+    class SystemSettings(AbstractFileWorkspace.SystemSettings):
+        configuration = S3FileWorkspaceConfiguration
+        
     _bucket: mypy_boto3_s3.service_resource.Bucket
 
     def __init__(self, config: S3FileWorkspaceConfiguration):

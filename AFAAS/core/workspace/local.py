@@ -12,7 +12,7 @@ from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 logger = logging.getLogger(__name__)
 
 
-class LocalFileWorkspace(AbstractFileWorkspace):
+class AGPTLocalFileWorkspace(AbstractFileWorkspace):
     """A class that represents a file workspace."""
 
     def __init__(self, config: AbstractFileWorkspaceConfiguration):

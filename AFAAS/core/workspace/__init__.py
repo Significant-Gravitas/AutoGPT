@@ -2,7 +2,7 @@ import enum
 from pathlib import Path
 from typing import Optional
 
-from .base import AbstractFileWorkspace
+from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
 
 class AbstractFileWorkspaceBackendName(str, enum.Enum):
@@ -20,24 +20,29 @@ def get_workspace(
 
     match backend:
         case AbstractFileWorkspaceBackendName.LOCAL:
-            from .local import AbstractFileWorkspaceConfiguration, LocalFileWorkspace
-
-            config = AbstractFileWorkspaceConfiguration.from_env()
-            config.root = root_path
-            return LocalFileWorkspace(config)
+            from .local import AGPTLocalFileWorkspace
+            workspace_class = AGPTLocalFileWorkspace
+            # config = AbstractFileWorkspace.SystemSettings.configuration.from_env()
+            # config.root = root_path
+            # return AGPTLocalFileWorkspace(config)
         case AbstractFileWorkspaceBackendName.S3:
-            from .s3 import S3FileWorkspace, S3FileWorkspaceConfiguration
-
-            config = S3FileWorkspaceConfiguration.from_env()
-            config.root = root_path
-            return S3FileWorkspace(config)
+            from .s3 import S3FileWorkspace
+            workspace_class = S3FileWorkspace
+            # config = S3FileWorkspace.SystemSettings.configuration.from_env()
+            # config.root = root_path
+            # return S3FileWorkspace(config)
         case AbstractFileWorkspaceBackendName.GCS:
-            from .gcs import GCSFileWorkspace, GCSFileWorkspaceConfiguration
-
-            config = GCSFileWorkspaceConfiguration.from_env()
-            config.root = root_path
-            return GCSFileWorkspace(config)
-
+            from .gcs import GCSFileWorkspace
+            workspace_class = GCSFileWorkspace
+            # config = GCSFileWorkspace.SystemSettings.configuration.from_env()
+            # config.root = root_path
+            # return GCSFileWorkspace(config)
+        case _:
+            raise ValueError(f"Unknown workspace backend {backend}")
+        
+    config : AbstractFileWorkspaceConfiguration =  workspace_class.SystemSettings.configuration.from_env()
+    config.root = root_path
+    return workspace_class(config)
 
 __all__ = [
     "FileWorkspace",
