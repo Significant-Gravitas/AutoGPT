@@ -46,7 +46,7 @@ async def workspace_loader(
 
 def get_logger_and_workspace(user_configuration: dict):
     client_logger = AFAASLogger(name=__name__)
-    client_logger.debug("Getting agent settings")
+    client_logger.trace("Getting agent settings")
 
     agent_workspace = (
         user_configuration.get("workspace", {}).get("configuration", {}).get("root", "")

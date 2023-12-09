@@ -128,12 +128,12 @@ class BaseTask(AFAASModel):
         return self._apply_custom_encoders(data=d)
 
     def add_task(self, task: "BaseTask"):
-        LOG.trace(f"`{self.task_goal} ({self.task_id}) : `Adding subtask `{task.task_goal}` ({task.task_id})")
+        LOG.debug(f"Adding task {self.formated_str()} to {task.formated_str()}")
         self.subtasks.add(task=task)
         self.agent.plan._register_new_task(task=task)
 
     def add_tasks(self, tasks: list["BaseTask"]):
-        LOG.trace(f"Adding {len(tasks)} tasks to {self.task_id}")
+        LOG.debug(f"Adding {len(tasks)} tasks to {self.formated_str()}")
         for task in tasks:
             self.add_task(task=task)
 

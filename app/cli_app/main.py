@@ -2,7 +2,7 @@ import logging
 
 import click
 
-from AFAAS.core.lib.sdk import logger
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents import PlannerAgent
 
 
@@ -25,7 +25,7 @@ async def run_auto_gpt():
     # INFO = 20
     # DEBUG = 10
     # NOTSET = 0
-    client_logger = logger.AFAASLogger(__name__)
+    client_logger = AFAASLogger(name = __name__)
     client_logger.info("Getting agent settings")
 
     import uuid
@@ -79,17 +79,17 @@ async def run_auto_gpt():
             if str(agent_from_memory._configuration) == str(
                 agent_from_list._configuration
             ):
-                client_logger.debug(
+                client_logger.trace(
                     f"Agents from agent list and get_agent_from_memory are equal"
                 )
             else:
-                client_logger.debug(
+                client_logger.trace(
                     f"Agents from agent list and get_agent_from_memory are different"
                 )
-                client_logger.debug(
+                client_logger.trace(
                     f"Agents from agent list : {agent_from_list.agent_id}"
                 )
-                client_logger.debug(
+                client_logger.trace(
                     f"Agents from get_agent_from_memory : {agent_from_memory.agent_id}"
                 )
 

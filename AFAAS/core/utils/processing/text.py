@@ -122,7 +122,7 @@ async def summarize_text(
             )
         ).response["content"]
 
-        logger.debug(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
+        logger.trace(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
         return summary.strip(), None
 
     summaries: list[str] = []

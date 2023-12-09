@@ -78,12 +78,12 @@ class Task(BaseTask):
 
     # @property
     # def state(self) -> Optional[TaskStatusList]:
-    #     LOG.trace(f"Getting state of task {self.task_id}")
+    #     LOG.debug(f"Getting state of task {self.task_id}")
     #     return self._state
     
     # @state.setter
     # def state(self, new_state: TaskStatusList):
-    #     LOG.trace(f"Setting state of task {self.task_id} to {new_state}")
+    #     LOG.debug(f"Setting state of task {self.task_id} to {new_state}")
     #     self.agent.plan._registry_update_task_status_in_list(task_id=self.task_id, status=new_state)
     #     self._state = new_state
 
@@ -92,7 +92,7 @@ class Task(BaseTask):
     def set_state(cls, new_state, values):
         task_id = values.get("task_id")
         if task_id and new_state:
-            LOG.trace(f"Setting state of task {task_id} to {new_state}")
+            LOG.debug(f"Setting state of task {task_id} to {new_state}")
             # Assuming LOG and agent are defined and accessible
             agent = values.get("agent")
             if agent:

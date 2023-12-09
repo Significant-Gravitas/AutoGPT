@@ -135,13 +135,13 @@ class UserContextAgent(BaseAgent):
         agent_settings: UserContextAgent.SystemSettings,
         logger: logging.Logger,
     ) -> dict:
-        logger.debug("Loading OpenAI provider.")
+        logger.trace("Loading OpenAI provider.")
         provider: OpenAIProvider = cls._get_system_instance(
             "chat_model_provider",
             agent_settings,
             logger=logger,
         )
-        logger.debug("Loading agent planner.")
+        logger.trace("Loading agent planner.")
 
         agent_planner: PromptManager = cls._get_system_instance(
             "prompt_manager",
@@ -149,7 +149,7 @@ class UserContextAgent(BaseAgent):
             logger=logger,
             model_providers={"openai": provider},
         )
-        logger.debug("determining agent name and goals.")
+        logger.trace("determining agent name and goals.")
         model_response = await agent_planner.decide_name_and_goals(
             user_objective,
         )

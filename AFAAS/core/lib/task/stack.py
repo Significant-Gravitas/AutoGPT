@@ -43,8 +43,8 @@ class TaskStack(AFAASModel):
         """
         Add a task. Can also mark it as ready.
         """
-        LOG.notice(f"Adding task {LOG.italic(task.formated_str())}) to {LOG.bold(self.description)} of task {LOG.italic(self.parent_task.formated_str())})")
-        LOG.debug(self._task_ids)
+        LOG.notice(f"Adding task {LOG.italic(task.formated_str())}) as **{LOG.bold(self.description)}** of task {LOG.italic(self.parent_task.formated_str())}")
+        LOG.trace(self._task_ids)
 
         self._task_ids.append(task.task_id)
         parent_is_plan : bool = isinstance(self.parent_task, Plan)
@@ -57,7 +57,7 @@ class TaskStack(AFAASModel):
         if(self.parent_task.subtasks == self) : 
             # FIXME: Evaluate what is the best way to evaluate predecessors
             LOG.info(f"Added task ``{LOG.italic(task.task_goal)}`` as subtask of task ``{LOG.italic(self.parent_task.task_goal)}``")
-            # LOG.debug((f"As is subtask do not inherit from parent predecessors, 3 options are considered :\n"
+            # LOG.trace((f"As is subtask do not inherit from parent predecessors, 3 options are considered :\n"
             #             + f"- Always add all predecessors of parent task to subtask predecessors\n"
             #             + f"- Smartly/Dynamicaly add all predecessors of parent task to subtask predecessors\n"
             #             + f"- Consider parent predecessor when evaluatin `Task.is_ready()`\n"))

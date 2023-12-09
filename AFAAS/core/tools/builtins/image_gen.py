@@ -116,7 +116,7 @@ def generate_image_with_hf(
                 error = json.loads(response.text)
                 if "estimated_time" in error:
                     delay = error["estimated_time"]
-                    logger.debug(response.text)
+                    logger.trace(response.text)
                     logger.info("Retrying in", delay)
                     time.sleep(delay)
                 else:

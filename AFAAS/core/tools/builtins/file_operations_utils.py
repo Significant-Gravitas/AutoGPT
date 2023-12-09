@@ -25,7 +25,7 @@ class ParserStrategy:
 class TXTParser(ParserStrategy):
     def read(self, file_path: Path) -> str:
         charset_match = charset_normalizer.from_path(file_path).best()
-        logger.debug(f"Reading '{file_path}' with encoding '{charset_match.encoding}'")
+        logger.trace(f"Reading '{file_path}' with encoding '{charset_match.encoding}'")
         return str(charset_match)
 
 
@@ -105,11 +105,11 @@ class FileContext:
         self.logger = logger
 
     def set_parser(self, parser: ParserStrategy) -> None:
-        self.logger.debug(f"Setting Context Parser to {parser}")
+        self.logger.trace(f"Setting Context Parser to {parser}")
         self.parser = parser
 
     def read_file(self, file_path) -> str:
-        self.logger.debug(f"Reading file {file_path} with parser {self.parser}")
+        self.logger.trace(f"Reading file {file_path} with parser {self.parser}")
         return self.parser.read(file_path)
 
 

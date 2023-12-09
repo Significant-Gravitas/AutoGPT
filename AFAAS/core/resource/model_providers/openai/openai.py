@@ -727,8 +727,8 @@ async def _create_chat_completion(
                 "function": {"name": kwargs["tool_choice"]},
             }
 
-    LOG.debug(raw_messages[0]["content"])
-    LOG.debug(kwargs)
+    LOG.trace(raw_messages[0]["content"])
+    LOG.trace(kwargs)
     return_value = await aclient.chat.completions.create(
         messages=raw_messages, **kwargs
     )
@@ -764,14 +764,14 @@ class _OpenAIRetryHandler:
         self._warn_user = warn_user
 
     def _log_rate_limit_error(self) -> None:
-        LOG.debug(self._retry_limit_msg)
+        LOG.trace(self._retry_limit_msg)
         if self._warn_user:
             LOG.warning(self._api_key_error_msg)
             self._warn_user = False
 
     def _backoff(self, attempt: int) -> None:
         backoff = self._backoff_base ** (attempt + 2)
-        LOG.debug(self._backoff_msg.format(backoff=backoff))
+        LOG.trace(self._backoff_msg.format(backoff=backoff))
         time.sleep(backoff)
 
     def __call__(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
@@ -923,7 +923,7 @@ def _tool_calls_compat_extract_calls(response: str) -> list[AssistantToolCallDic
     import json
     import re
 
-    logging.debug(f"Trying to extract tool calls from response:\n{response}")
+    logging.trace(f"Trying to extract tool calls from response:\n{response}")
 
     if response[0] == "[":
         tool_calls: list[AssistantToolCallDict] = json.loads(response)

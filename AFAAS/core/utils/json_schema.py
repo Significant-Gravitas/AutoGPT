@@ -104,7 +104,7 @@ class JSONSchema(BaseModel):
 
         if errors := sorted(validator.iter_errors(object), key=lambda e: e.path):
             for error in errors:
-                logger.debug(f"JSON Validation Error: {error}")
+                logger.trace(f"JSON Validation Error: {error}")
 
             logger.error(json.dumps(object, indent=4))
             logger.error("The following issues were found:")
@@ -113,7 +113,7 @@ class JSONSchema(BaseModel):
                 logger.error(f"Error: {error.message}")
             return False, errors
 
-        logger.debug("The JSON object is valid.")
+        logger.trace("The JSON object is valid.")
 
         return True, None
 
