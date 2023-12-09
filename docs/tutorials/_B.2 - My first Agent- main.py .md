@@ -52,7 +52,7 @@ class UserContextAgent(BaseAgent, Configurable):
 Implement the `__init__` method to initialize your agent. This method should set up any necessary attributes your agent will need to function correctly.
 
 ```python
-    def __init__(self, settings: UserContextAgentSystemSettings, logger: logging.Logger, memory: Memory, openai_provider: OpenAIProvider, workspace: SimpleWorkspace, planning: SimplePlanner, user_id: uuid.UUID, agent_id: uuid.UUID = None):
+    def __init__(self, settings: UserContextAgentSystemSettings, logger: logging.Logger, memory: Memory, openai_provider: OpenAIProvider, workspace: LocalFileWorkspace, planning: SimplePlanner, user_id: uuid.UUID, agent_id: uuid.UUID = None):
         super().__init__(settings=settings, logger=logger, memory=memory, workspace=workspace, user_id=user_id, agent_id=agent_id)
         # Specific initializations
         self._openai_provider = openai_provider

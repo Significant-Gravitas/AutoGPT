@@ -28,11 +28,11 @@ from pydantic import Field
 
 from .base import BaseAgent, BaseAgentConfiguration, BaseAgentSettings
 from .features.context import ContextMixin
-from .features.file_workspace import FileWorkspaceMixin
+from .features.file_workspace import AbstractFileWorkspaceMixin
 from .features.watchdog import WatchdogMixin
 from .prompt_strategies.one_shot import (OneShotAgentPromptConfiguration,
                                          OneShotAgentPromptStrategy)
-from .utils.exceptions import (AgentException, CommandExecutionError,
+from .lib.sdk.errors import (AgentException, CommandExecutionError,
                                UnknownCommandError)
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class AgentSettings(BaseAgentSettings):
 
 class Agent(
     ContextMixin,
-    FileWorkspaceMixin,
+    AbstractFileWorkspaceMixin,
     WatchdogMixin,
     BaseAgent,
     Configurable[AgentSettings],

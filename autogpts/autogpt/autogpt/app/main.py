@@ -24,7 +24,7 @@ from autogpt.agent_factory.profile_generator import \
     generate_agent_profile_for_task
 from autogpt.agent_manager import AgentManager
 from autogpt.agents import AgentThoughts, CommandArgs, CommandName
-from autogpt.agents.utils.exceptions import AgentTerminated, InvalidAgentResponseError
+from autogpt.agents.lib.sdk.errors import AgentTerminated, InvalidAgentResponseError
 from autogpt.config import (
     AIDirectives,
     AIProfile,

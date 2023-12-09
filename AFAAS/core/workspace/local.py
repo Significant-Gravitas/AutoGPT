@@ -1,5 +1,5 @@
 """
-The LocalFileWorkspace class implements a FileWorkspace that works with local files.
+The LocalFileWorkspace class implements a AbstractFileWorkspace that works with local files.
 """
 from __future__ import annotations
 
@@ -7,15 +7,15 @@ import inspect
 import logging
 from pathlib import Path
 
-from .base import FileWorkspace, FileWorkspaceConfiguration
+from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
 logger = logging.getLogger(__name__)
 
 
-class LocalFileWorkspace(FileWorkspace):
+class LocalFileWorkspace(AbstractFileWorkspace):
     """A class that represents a file workspace."""
 
-    def __init__(self, config: FileWorkspaceConfiguration):
+    def __init__(self, config: AbstractFileWorkspaceConfiguration):
         self._root = self._sanitize_path(config.root)
         self._restrict_to_root = config.restrict_to_root
         super().__init__()
@@ -43,18 +43,10 @@ class LocalFileWorkspace(FileWorkspace):
         with self.open_file(path, "rb" if binary else "r") as file:
             return file.read()
 
-    async def write_file(self, path: str | Path, content: str | bytes):
+    async def _write_file(self, path: str | Path, content: str | bytes):
         """Write to a file in the workspace."""
         with self.open_file(path, "wb" if type(content) is bytes else "w") as file:
             file.write(content)
-
-        if self.on_write_file:
-            path = Path(path)
-            if path.is_absolute():
-                path = path.relative_to(self.root)
-            res = self.on_write_file(path)
-            if inspect.isawaitable(res):
-                await res
 
     def list_files(self, path: str | Path = "."):
         """List all files in a directory in the workspace."""

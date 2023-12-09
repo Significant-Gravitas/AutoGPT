@@ -30,7 +30,7 @@ class InvalidAgentResponseError(AgentException):
     """The LLM deviated from the prescribed response format"""
 
 
-class UnknownCommandError(AgentException):
+class UnknownToolError(AgentException):
     """The AI tried to use an unknown command"""
 
     hint = "Do not try to use this command again."
@@ -40,25 +40,25 @@ class DuplicateOperationError(AgentException):
     """The proposed operation has already been executed"""
 
 
-class CommandExecutionError(AgentException):
-    """An error occurred when trying to execute the command"""
+class ToolExecutionError(AgentException):
+    """An error occured when trying to execute the command"""
 
 
-class InvalidArgumentError(CommandExecutionError):
+class InvalidArgumentError(ToolExecutionError):
     """The command received an invalid argument"""
 
 
-class OperationNotAllowedError(CommandExecutionError):
+class OperationNotAllowedError(ToolExecutionError):
     """The agent is not allowed to execute the proposed operation"""
 
 
-class AccessDeniedError(CommandExecutionError):
+class AccessDeniedError(ToolExecutionError):
     """The operation failed because access to a required resource was denied"""
 
 
-class CodeExecutionError(CommandExecutionError):
+class CodeExecutionError(ToolExecutionError):
     """The operation (an attempt to run arbitrary code) returned an error"""
 
 
-class TooMuchOutputError(CommandExecutionError):
+class TooMuchOutputError(ToolExecutionError):
     """The operation generated more output than what the Agent can process"""

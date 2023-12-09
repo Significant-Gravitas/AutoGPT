@@ -8,23 +8,23 @@ if TYPE_CHECKING:
     from ..base import BaseAgent, Config
 
 from autogpt.file_workspace import (
-    FileWorkspace,
-    FileWorkspaceBackendName,
+    AbstractFileWorkspace,
+    AbstractFileWorkspaceBackendName,
     get_workspace,
 )
 
 from ..base import AgentFileManager, BaseAgentSettings
 
 
-class FileWorkspaceMixin:
+class AbstractFileWorkspaceMixin:
     """Mixin that adds workspace support to a class"""
 
-    workspace: FileWorkspace = None
+    workspace: AbstractFileWorkspace = None
     """Workspace that the agent has access to, e.g. for reading/writing files."""
 
     def __init__(self, **kwargs):
         # Initialize other bases first, because we need the config from BaseAgent
-        super(FileWorkspaceMixin, self).__init__(**kwargs)
+        super(AbstractFileWorkspaceMixin, self).__init__(**kwargs)
 
         file_manager: AgentFileManager = getattr(self, "file_manager")
         if not file_manager:
@@ -33,7 +33,7 @@ class FileWorkspaceMixin:
         self._setup_workspace()
 
     def attach_fs(self, agent_dir: Path):
-        res = super(FileWorkspaceMixin, self).attach_fs(agent_dir)
+        res = super(AbstractFileWorkspaceMixin, self).attach_fs(agent_dir)
 
         self._setup_workspace()
 
@@ -46,7 +46,7 @@ class FileWorkspaceMixin:
         file_manager: AgentFileManager = getattr(self, "file_manager")
 
         ws_backend = app_config.workspace_backend
-        local = ws_backend == FileWorkspaceBackendName.LOCAL
+        local = ws_backend == AbstractFileWorkspaceBackendName.LOCAL
         workspace = get_workspace(
             backend=ws_backend,
             id=settings.agent_id if not local else "",
@@ -58,8 +58,8 @@ class FileWorkspaceMixin:
         self.workspace = workspace
 
 
-def get_agent_workspace(agent: BaseAgent) -> FileWorkspace | None:
-    if isinstance(agent, FileWorkspaceMixin):
+def get_agent_workspace(agent: BaseAgent) -> AbstractFileWorkspace | None:
+    if isinstance(agent, AbstractFileWorkspaceMixin):
         return agent.workspace
 
     return None

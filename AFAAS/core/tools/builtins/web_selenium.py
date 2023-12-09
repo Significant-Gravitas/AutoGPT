@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.utils.exceptions import ToolExecutionError
+from AFAAS.core.lib.sdk.errors import ToolExecutionError
 from AFAAS.core.utils.json_schema import JSONSchema
 from AFAAS.core.utils.processing.html import (
     extract_hyperlinks, format_hyperlinks)

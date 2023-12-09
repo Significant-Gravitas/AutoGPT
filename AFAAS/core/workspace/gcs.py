@@ -12,16 +12,16 @@ from google.cloud import storage
 
 from AFAAS.core.configuration.schema import UserConfigurable
 
-from .base import FileWorkspace, FileWorkspaceConfiguration
+from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
 logger = logging.getLogger(__name__)
 
 
-class GCSFileWorkspaceConfiguration(FileWorkspaceConfiguration):
+class GCSFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
     bucket: str = UserConfigurable("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
 
 
-class GCSFileWorkspace(FileWorkspace):
+class GCSFileWorkspace(AbstractFileWorkspace):
     """A class that represents a Google Cloud Storage workspace."""
 
     _bucket: storage.Bucket
@@ -63,20 +63,12 @@ class GCSFileWorkspace(FileWorkspace):
         )
         return file_content
 
-    async def write_file(self, path: str | Path, content: str | bytes):
+    async def _write_file(self, path: str | Path, content: str | bytes):
         """Write to a file in the workspace."""
         blob = self.open_file(path, "w")
         blob.upload_from_string(content) if isinstance(
             content, str
         ) else blob.upload_from_file(content)
-
-        if self.on_write_file:
-            path = Path(path)
-            if path.is_absolute():
-                path = path.relative_to(self.root)
-            res = self.on_write_file(path)
-            if inspect.isawaitable(res):
-                await res
 
     def list_files(self, path: str | Path = ".") -> list[Path]:
         """List all files in a directory in the workspace."""
