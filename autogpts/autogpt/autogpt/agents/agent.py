@@ -32,7 +32,7 @@ from .features.file_workspace import AbstractFileWorkspaceMixin
 from .features.watchdog import WatchdogMixin
 from .prompt_strategies.one_shot import (OneShotAgentPromptConfiguration,
                                          OneShotAgentPromptStrategy)
-from .utils.exceptions import (AgentException, CommandExecutionError,
+from .lib.sdk.errors import (AgentException, CommandExecutionError,
                                UnknownCommandError)
 
 logger = logging.getLogger(__name__)

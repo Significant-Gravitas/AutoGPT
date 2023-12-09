@@ -16,8 +16,8 @@ from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents.base.features.context import \
     get_agent_context
 from AFAAS.core.tools.command_decorator import tool
-# from AFAAS.core.utils.exceptions import AgentTerminated, InvalidArgumentError
-from AFAAS.core.utils.exceptions import InvalidArgumentError
+# from AFAAS.core.lib.sdk.errors import AgentTerminated, InvalidArgumentError
+from AFAAS.core.lib.sdk.errors import InvalidArgumentError
 from AFAAS.core.utils.json_schema import JSONSchema
 
 logger = AFAASLogger(__name__)

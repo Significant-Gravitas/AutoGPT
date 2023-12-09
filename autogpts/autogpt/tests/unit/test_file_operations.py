@@ -7,7 +7,7 @@ from pathlib import Path
 import AFAAS.core.tools.builtins.file_operations as file_ops
 import pytest
 from autogpt.agents.agent import Agent
-from autogpt.agents.utils.exceptions import DuplicateOperationError
+from autogpt.agents.lib.sdk.errors import DuplicateOperationError
 from autogpt.config import Config
 from autogpt.file_workspace import AbstractFileWorkspace
 from autogpt.memory.vector.memory_item import MemoryItem

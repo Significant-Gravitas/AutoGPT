@@ -2,7 +2,7 @@ import json
 
 import pytest
 from autogpt.agents.agent import Agent
-from autogpt.agents.utils.exceptions import ConfigurationError
+from autogpt.agents.lib.sdk.errors import ConfigurationError
 from AFAAS.core.tools.builtins.web_search import (google,
                                                     safe_google_results,
                                                     web_search)
