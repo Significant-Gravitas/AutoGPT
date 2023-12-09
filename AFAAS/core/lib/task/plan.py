@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, ClassVar
 from pydantic import Field
 
 # from AFAAS.core.memory import
-from ...sdk.forge_log import ForgeLogger
+from ..sdk.logger import AFAASLogger
 from .base import BaseTask
 from .meta import TaskStatusList
 from .task import Task
