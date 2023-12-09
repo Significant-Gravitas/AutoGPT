@@ -205,7 +205,7 @@ class PlannerAgent(BaseAgent):
         agent_settings: PlannerAgent.SystemSettings,
         logger: logging.Logger,
     ):
-        from AFAAS.core.workspace import AbstractFileWorkspaceBackendName, get_workspace
+        from AFAAS.core.workspace import FileWorkspaceBackendName, get_workspace
         from AFAAS.core.workspace.simple import LocalFileWorkspace
 
         return LocalFileWorkspace.create_workspace(

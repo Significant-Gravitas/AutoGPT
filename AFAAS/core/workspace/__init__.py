@@ -3,40 +3,32 @@ from pathlib import Path
 from typing import Optional
 
 from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from .simple import LocalFileWorkspace
 
 
-class AbstractFileWorkspaceBackendName(str, enum.Enum):
+class FileWorkspaceBackendName(str, enum.Enum):
     LOCAL = "local"
     GCS = "gcs"
     S3 = "s3"
 
 
 def get_workspace(
-    backend: AbstractFileWorkspaceBackendName, *, id: str = "", root_path: Optional[Path] = None
+    backend: FileWorkspaceBackendName, *, id: str = "", root_path: Optional[Path] = None
 ) -> AbstractFileWorkspace:
     assert bool(root_path) != bool(id), "Specify root_path or id to get workspace"
     if root_path is None:
         root_path = Path(f"workspaces/{id}")
 
     match backend:
-        case AbstractFileWorkspaceBackendName.LOCAL:
+        case FileWorkspaceBackendName.LOCAL:
             from .local import AGPTLocalFileWorkspace
             workspace_class = AGPTLocalFileWorkspace
-            # config = AbstractFileWorkspace.SystemSettings.configuration.from_env()
-            # config.root = root_path
-            # return AGPTLocalFileWorkspace(config)
-        case AbstractFileWorkspaceBackendName.S3:
-            from .s3 import S3FileWorkspace
-            workspace_class = S3FileWorkspace
-            # config = S3FileWorkspace.SystemSettings.configuration.from_env()
-            # config.root = root_path
-            # return S3FileWorkspace(config)
-        case AbstractFileWorkspaceBackendName.GCS:
-            from .gcs import GCSFileWorkspace
-            workspace_class = GCSFileWorkspace
-            # config = GCSFileWorkspace.SystemSettings.configuration.from_env()
-            # config.root = root_path
-            # return GCSFileWorkspace(config)
+        case FileWorkspaceBackendName.S3:
+            from .s3 import S3FileWorkspace_AlphaRelease
+            workspace_class = S3FileWorkspace_AlphaRelease
+        case FileWorkspaceBackendName.GCS:
+            from .gcs import GCSFileWorkspace_AlphaRealease
+            workspace_class = GCSFileWorkspace_AlphaRealease
         case _:
             raise ValueError(f"Unknown workspace backend {backend}")
         

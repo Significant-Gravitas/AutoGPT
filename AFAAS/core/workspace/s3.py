@@ -32,7 +32,7 @@ class S3FileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
     )
 
 
-class S3FileWorkspace(AbstractFileWorkspace):
+class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
     """A class that represents an S3 workspace."""
 
     class SystemSettings(AbstractFileWorkspace.SystemSettings):
