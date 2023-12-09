@@ -1,9 +1,9 @@
 import json
 from typing import Optional
 
-from app.sdk.errors import *
+from AFAAS.core.lib.sdk.errors import *
 from AFAAS.core.lib.sdk.logger import AFAASLogger
-from app.sdk.schema import *
+from AFAAS.core.lib.sdk.schema import *
 from fastapi import APIRouter, Depends, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 

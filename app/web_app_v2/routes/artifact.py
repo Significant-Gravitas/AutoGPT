@@ -5,9 +5,9 @@ from io import BytesIO
 from typing import Optional
 from uuid import uuid4
 
-from app.sdk.errors import *
+from AFAAS.core.lib.sdk.errors import *
 from AFAAS.core.lib.sdk.logger import AFAASLogger
-from app.sdk.schema import *
+from AFAAS.core.lib.sdk.schema import *
 from fastapi import (APIRouter, Body, Depends, Query, Request, Response,
                      UploadFile)
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
