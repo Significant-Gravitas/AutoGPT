@@ -74,19 +74,19 @@ class Plan(BaseTask):
             elif task.state == TaskStatusList.DONE:
                 self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.DONE)
 
-    def set_task_status(self, task: Task, status: TaskStatusList):
-        """
-        Sets the status of a task and updates it in the task list.
+    # def set_task_status(self, task: Task, status: TaskStatusList):
+    #     """
+    #     Sets the status of a task and updates it in the task list.
 
-        Args:
-            task (Task): The task object whose status needs to be updated.
-            status (TaskStatusList): The new status to be set for the task.
+    #     Args:
+    #         task (Task): The task object whose status needs to be updated.
+    #         status (TaskStatusList): The new status to be set for the task.
 
-        Returns:
-            None
-        """
-        self._registry_update_task_status_in_list(task_id=task.task_id, status=status)
-        task.state = status
+    #     Returns:
+    #         None
+    #     """
+    #     self._registry_update_task_status_in_list(task_id=task.task_id, status=status)
+    #     task.state = status
      
 
     """
@@ -138,9 +138,22 @@ class Plan(BaseTask):
             Task: The next task in the plan.
 
         """
+        LOG.debug(f"Getting next task from plan {self.formated_str()}")
+
         if task is not None :
+            # Get the subtask task, check if it is ready (the check operation will update the status in the index of ready Task (Plan._ready_task_ids)
+            for subtask_id in task.subtasks:
+                subtask = self.get_task(subtask_id)
+                subtask.is_ready()
+                    
+            if len(self._ready_task_ids) > 0:
+                    rv = self.get_task(self._ready_task_ids[0])
+                    LOG.trace(f"{self.formated_str()} : Returning the first ready subtask {rv.formated_str()}")
+                    return rv
+
+
             for successor_id in task.task_successors : 
-                # Get the successor task, check if it is ready (the check operation will update the status in the list `_ready_task_ids`)
+                # Get the successor task, check if it is ready (the check operation will update the status in the  index of ready Task (Plan._ready_task_ids)
                 self.get_task(task_id = successor_id).is_ready()
                 # sucessor_task = self.get_task(task_id = successor_id)
                 # if sucessor_task.is_ready():
@@ -149,9 +162,12 @@ class Plan(BaseTask):
                 #     self._registry_update_task_status_in_list(task_id = sucessor_task.task_id, status = TaskStatusList.READY)
                     
         if len(self._ready_task_ids) > 0:
-                    return self.get_task(self._ready_task_ids[0])
+                    rv = self.get_task(self._ready_task_ids[0])
+                    LOG.trace(f"{self.formated_str()} : Returning the next ready successor {rv.formated_str()}")
+                    return rv
         
         if (task is None):
+            LOG.notice(f"No Task has been provided, we will try to find the first ready task")
             tasks =  self.find_ready_branch()
             if len(tasks) > 0:
                 return tasks[0]
@@ -177,16 +193,16 @@ class Plan(BaseTask):
 
     def get_ready_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
         """
-        Get the first ready tasks.
+        Get the all ready tasks from Plan._ready_task_ids
         """
-
-        # Fetch the Task objects based on the common task IDs
+        LOG.debug(f"Getting ready tasks from plan {self.plan_id}")
         return [self.get_task(task_id = task_id) for task_id in self._ready_task_ids]
     
     def get_active_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
         """
-        Active tasks are tasks not in self._done_task_ids but in self._all_task_ids
+        Active tasks are tasks not in Plan._done_task_ids but in Plan._all_task_ids
         """
+        LOG.debug(f"Getting active tasks from plan {self.plan_id}")
         all_task_ids_set = set(self._all_task_ids)
         done_task_ids_set = set(self._done_task_ids)
         active_task_ids = all_task_ids_set - done_task_ids_set  # Set difference
@@ -195,10 +211,9 @@ class Plan(BaseTask):
 
     def get_first_ready_tasks(self, task_ids_set: list[str] = None) -> Task:
         """
-        Get all ready tasks. If task_ids_set is not None, return only the tasks that are both ready and in the additional_task_ids list.
+        Get the first ready tasks from Plan._ready_task_ids
         """
-
-        # Fetch the Task objects based on the common task IDs
+        LOG.debug(f"Getting first ready tasks from plan {self.plan_id}")
         return self.get_task(self._ready_task_ids[0])
 
     #############################################################################################
@@ -210,6 +225,9 @@ class Plan(BaseTask):
     ########################_#####################################################################
     #############################################################################################
     def unregister_loaded_task(self, task_id: str) -> Task:
+        """
+        Remove a task from the Plan._loaded_tasks_dict and free memory
+        """
         return self._loaded_tasks_dict.pop(task_id)
     
     def _registry_update_task_status_in_list(
@@ -259,7 +277,11 @@ class Plan(BaseTask):
             self._register_new_task(task=task)
 
     def _register_task(self, task: Task):
-        LOG.trace(f"Registering task `{task.task_goal}`")
+        """
+        Register a Task in the index of Task (Plan._all_task_ids).
+        If the Task is READY, the Task is Added to the index of ready tasks (Plan._ready_task_ids)
+        """
+        LOG.debug(f"Registering task {task.formated_str()} in the index of Task")
         self._all_task_ids.append(task.task_id)
         if task.state == TaskStatusList.READY:
             self._ready_task_ids.append(task.task_id)
@@ -274,7 +296,7 @@ class Plan(BaseTask):
 
     def _register_task_as_modified(self, task_id: str):
         """
-        Register a task as modified
+        Register a task as modified in the index of modified Task (Plan._modified_tasks_ids)
         """
         LOG.trace(f"Task {task_id} is registered as modified in the Lazy Loading List")
         if task_id not in self._modified_tasks_ids:
@@ -282,7 +304,7 @@ class Plan(BaseTask):
 
     def _register_task_as_new(self, task_id: str):
         """
-        Register a task as modified
+        Register a task as new in the index of new Task (Plan._new_tasks_ids)
         """
         LOG.trace(f"Task {task_id} is registered as new in the Lazy Loading List")
         if task_id not in self._new_tasks_ids:

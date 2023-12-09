@@ -73,7 +73,7 @@ class TaskStack(AFAASModel):
         """
         return self.parent_task.agent.plan.get_task(task_id)
 
-    def get_all_tasks(self) -> list[BaseTask]:
+    def get_all_tasks_from_stack(self) -> list[BaseTask]:
         """
         Get all tasks. If only_ready is True, return only ready tasks.
         """
@@ -81,7 +81,7 @@ class TaskStack(AFAASModel):
             self.parent_task.agent.plan.get_task(task_id) for task_id in self._task_ids
         ]
 
-    def get_ready_tasks(self) -> list[BaseTask]:
+    def get_ready_tasks_from_stack(self) -> list[BaseTask]:
         """
         Get all ready tasks.
         """
@@ -93,7 +93,7 @@ class TaskStack(AFAASModel):
             self.parent_task.agent.plan.get_task(task_id) for task_id in common_task_ids
         ]
 
-    def get_active_tasks(self) -> list[BaseTask]:
+    def get_active_tasks_from_stack(self) -> list[BaseTask]:
         """
         Get all active tasks.
         """

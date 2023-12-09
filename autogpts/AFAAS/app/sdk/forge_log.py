@@ -138,7 +138,8 @@ class ConsoleFormatter(logging.Formatter):
         if self.use_color:
             message = message.replace(RESET_SEQ, RESET_SEQ + current_color)
 
-        if rec.levelno == logging.DEBUG and len(message) > 1000:
+        #if rec.levelno == logging.DEBUG and len(message) > 1000:
+        if rec.levelno == TRACE and len(message) > 1000:
             message = (
                 message[:800] + "[...] " + os.path.abspath(ForgeLogger.LOG_FILENAME)
             )
