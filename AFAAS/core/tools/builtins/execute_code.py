@@ -125,7 +125,7 @@ def execute_python_file(
         )
 
     if we_are_running_in_a_docker_container():
-        logger.debug(
+        logger.trace(
             "AutoGPT is running in a Docker container; "
             f"executing {file_path} directly..."
         )
@@ -140,7 +140,7 @@ def execute_python_file(
         else:
             raise CodeExecutionError(result.stderr)
 
-    logger.debug("AutoGPT is not running in a Docker container")
+    logger.trace("AutoGPT is not running in a Docker container")
     try:
         assert agent.state.agent_id, "Need Agent ID to attach Docker container"
 
@@ -158,7 +158,7 @@ def execute_python_file(
         except NotFound:
             try:
                 client.images.get(image_name)
-                logger.debug(f"Image '{image_name}' found locally")
+                logger.trace(f"Image '{image_name}' found locally")
             except ImageNotFound:
                 logger.info(
                     f"Image '{image_name}' not found locally,"
@@ -175,7 +175,7 @@ def execute_python_file(
                     elif status:
                         logger.info(status)
 
-            logger.debug(f"Creating new {image_name} container...")
+            logger.trace(f"Creating new {image_name} container...")
             container: DockerContainer = client.containers.run(
                 image_name,
                 ["sleep", "60"],  # Max 60 seconds to prevent permanent hangs
@@ -198,7 +198,7 @@ def execute_python_file(
         elif not container_is_fresh:
             container.restart()
 
-        logger.debug(f"Running {file_path} in container {container.name}...")
+        logger.trace(f"Running {file_path} in container {container.name}...")
         exec_result = container.exec_run(
             [
                 "python",

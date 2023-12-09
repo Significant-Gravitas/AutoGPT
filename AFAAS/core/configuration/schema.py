@@ -3,7 +3,6 @@ from __future__ import annotations
 import abc
 import datetime
 import enum
-import logging
 import uuid
 import os
 from typing import Any, Callable, Generic, Optional, Type, TypeVar, get_args
@@ -15,7 +14,8 @@ from pydantic.main import ModelMetaclass
 T = TypeVar("T")
 M = TypeVar("M", bound=BaseModel)
 
-LOG = logging.Logger(__name__)
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name=__name__)
 
 
 def UserConfigurable(
@@ -123,7 +123,7 @@ class AFAASModel(BaseModel):
     modified_at: datetime.datetime = datetime.datetime.now()
 
     def dict_memory(self, **dumps_kwargs) -> dict:
-        LOG.debug(f"FIXME: Temporary implementation before a to pydantic 2.0.0")
+        LOG.trace(f"FIXME: Temporary implementation before a to pydantic 2.0.0")
         dict = self.dict(**dumps_kwargs)
         return self._apply_custom_encoders(data=dict)
 
@@ -168,10 +168,10 @@ class AFAASModel(BaseModel):
         Returns:
             dict: A dictionary representation of the object.
         """
-        logging.Logger(__name__).warning(
+        AFAASLogger(__name__).warning(
             "Warning : Recomended use json_api() or json_memory()"
         )
-        logging.Logger(__name__).warning("BaseAgent.SystemSettings.json()")
+        AFAASLogger(__name__).warning("BaseAgent.SystemSettings.json()")
         self.prepare_values_before_serialization()  # Call the custom treatment before .json()
         kwargs["exclude"] = self.Config.default_exclude
         return super().json(*args, **kwargs)
@@ -252,7 +252,7 @@ class Configurable(abc.ABC, Generic[S]):
         LOG.warning(f"{__qualname__}.json()")
         return super().json(**dumps_kwargs)
 
-    def __init__(self, settings: S, logger: logging.Logger):
+    def __init__(self, settings: S, logger: AFAASLogger):
         self._settings = settings
         self._configuration = settings.configuration
         self._logger = logger

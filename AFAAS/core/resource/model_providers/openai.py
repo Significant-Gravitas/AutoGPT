@@ -539,14 +539,14 @@ class _OpenAIRetryHandler:
         self._warn_user = warn_user
 
     def _log_rate_limit_error(self) -> None:
-        self._logger.debug(self._retry_limit_msg)
+        self._logger.trace(self._retry_limit_msg)
         if self._warn_user:
             self._logger.warning(self._api_key_error_msg)
             self._warn_user = False
 
     def _backoff(self, attempt: int) -> None:
         backoff = self._backoff_base ** (attempt + 2)
-        self._logger.debug(self._backoff_msg.format(backoff=backoff))
+        self._logger.trace(self._backoff_msg.format(backoff=backoff))
         time.sleep(backoff)
 
     def __call__(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
@@ -698,7 +698,7 @@ def _tool_calls_compat_extract_calls(response: str) -> list[AssistantToolCallDic
     import json
     import re
 
-    logging.debug(f"Trying to extract tool calls from response:\n{response}")
+    logging.trace(f"Trying to extract tool calls from response:\n{response}")
 
     if response[0] == "[":
         tool_calls: list[AssistantToolCallDict] = json.loads(response)

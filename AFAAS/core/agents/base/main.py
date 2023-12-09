@@ -165,7 +165,7 @@ class BaseAgent(Configurable, AbstractAgent):
         user_input_handler: Callable[[str], Awaitable[str]],
         user_message_handler: Callable[[str], Awaitable[str]],
     ) -> None:
-        self._logger.debug(str(self.__class__.__name__) + ".start()")
+        self._logger.trace(str(self.__class__.__name__) + ".start()")
         return_var = await self._loop.start(
             agent=self,
             user_input_handler=user_input_handler,
@@ -229,7 +229,7 @@ class BaseAgent(Configurable, AbstractAgent):
             agent = YourClass()
             await agent.run(input_handler, message_handler)
         """
-        self._logger.debug(
+        self._logger.trace(
             str(self.__class__.__name__) + ".run() *kwarg : " + str(kwargs)
         )
         self._user_input_handler = user_input_handler
@@ -337,7 +337,7 @@ class BaseAgent(Configurable, AbstractAgent):
         system_instance = system_class(
             system_settings,
             *args,
-            logger=logger.getChild(new_system_name),
+            logger=logger,
             agent_systems=existing_systems,
             **kwargs,
         )
@@ -374,7 +374,7 @@ class BaseAgent(Configurable, AbstractAgent):
             agent = YourClass.create_agent(settings, logger)
         """
         logger.info(f"Starting creation of {cls.__name__}")
-        logger.debug(f"Debug : Starting creation of  {cls.__module__}.{cls.__name__}")
+        logger.trace(f"Debug : Starting creation of  {cls.__module__}.{cls.__name__}")
 
         if not isinstance(agent_settings, cls.SystemSettings):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
@@ -433,7 +433,7 @@ class BaseAgent(Configurable, AbstractAgent):
         return agent_id
 
     def save_agent_in_memory(self) -> uuid.UUID:
-        self._logger.debug(self._memory)
+        self._logger.trace(self._memory)
         agent_table = self._memory.get_table("agents")
         agent_id = agent_table.update(
             agent_id=self.agent_id, user_id=self.user_id, value=self

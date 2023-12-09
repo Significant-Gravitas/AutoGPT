@@ -356,7 +356,7 @@ class PlannerLoop(BaseLoop):
             # if type(return_value) == tuple and isinstance(return_value[1], ContextItem):
             #     context_item = return_value[1]
             #     return_value = return_value[0]
-            #     self._agent._logger.debug(
+            #     self._agent._logger.trace(
             #         f"Tool {command_name} returned a ContextItem: {context_item}"
             #     )
             #     self.context.add(context_item)

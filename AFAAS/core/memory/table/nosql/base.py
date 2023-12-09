@@ -127,10 +127,10 @@ class BaseNoSQLTable(AbstractTable):
             key["secondary_key"] = str(value[self.secondary_key])
             value[self.secondary_key] = str(value[self.secondary_key])
 
-        self.memory._logger.debug(
+        self.memory._logger.trace(
             "add new " + str(self.__class__.__name__) + "with keys " + str(key)
         )
-        self.memory._logger.debug(
+        self.memory._logger.trace(
             "add new " + str(self.__class__.__name__) + "with values " + str(value)
         )
 
@@ -150,10 +150,10 @@ class BaseNoSQLTable(AbstractTable):
         # if hasattr(self, "secondary_key") and self.secondary_key in value:
         #     key["secondary_key"] = value[self.secondary_key]
 
-        self.memory._logger.debug(
+        self.memory._logger.trace(
             "Update new " + str(self.__class__.__name__) + "with keys " + str(key)
         )
-        self.memory._logger.debug(
+        self.memory._logger.trace(
             "Update new " + str(self.__class__.__name__) + "with values " + str(value)
         )
 

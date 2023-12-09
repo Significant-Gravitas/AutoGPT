@@ -47,7 +47,7 @@ async def clean_input(config: Config, prompt: str = ""):
                 return plugin_response
 
         # ask for input, default when just pressing Enter is y
-        logger.debug("Asking user via keyboard...")
+        logger.trace("Asking user via keyboard...")
 
         # handle_sigint must be set to False, so the signal handler in the
         # autogpt/main.py could be employed properly. This referes to

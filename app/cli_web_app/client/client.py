@@ -91,7 +91,7 @@ def run():
     """Run the Auto-GPT CLI client."""
 
     client_logger = AFAASLogger(name=__name__)
-    client_logger.debug("Getting agent settings")
+    client_logger.trace("Getting agent settings")
 
     response = requests.get(f"{BASE_URL}/agents/")
     response_data = response.json()

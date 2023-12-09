@@ -129,7 +129,7 @@ def log_operation(
     log_entry = f"{operation}: {file_path}"
     if checksum is not None:
         log_entry += f" #{checksum}"
-    logger.debug(f"Logging file operation: {log_entry}")
+    logger.trace(f"Logging file operation: {log_entry}")
     append_to_file(
         agent.file_manager.file_ops_log_path, f"{log_entry}\n", agent, should_log=False
     )
@@ -186,7 +186,7 @@ def ingest_file(
 
     # TODO: differentiate between different types of files
     file_memory = MemoryItemFactory.from_text_file(content, filename)
-    logger.debug(f"Created memory: {file_memory.dump(True)}")
+    logger.trace(f"Created memory: {file_memory.dump(True)}")
     memory.add(file_memory)
 
     #   logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")

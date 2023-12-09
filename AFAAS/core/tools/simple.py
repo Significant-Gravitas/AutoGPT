@@ -426,7 +426,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         )
         SimpleToolRegistry._agent = agent
 
-        # logger.debug(
+        # logger.trace(
         #     f"The following tool categories are disabled: {config.disabled_tool_categories}"
         # )
         # enabled_tool_modules = [
@@ -434,7 +434,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         # ]
         enabled_tool_modules = [x for x in modules]
 
-        logger.debug(
+        logger.trace(
             f"The following tool categories are enabled: {enabled_tool_modules}"
         )
 
@@ -445,7 +445,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         # for tool in [c for c in new_registry.tools.values()]:
         #     if callable(tool.enabled) and not tool.enabled(config):
         #         new_registry.unregister(tool)
-        #         logger.debug(
+        #         logger.trace(
         #             f"Unregistering incompatible tool '{tool.name()}': \"{tool.disabled_reason or 'Disabled by current config.'}\""
         #         )
 
