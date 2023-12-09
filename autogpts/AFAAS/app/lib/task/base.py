@@ -256,11 +256,11 @@ class BaseTask(AFAASModel):
 
             # Check subtasks recursively
             for subtask in task.subtasks:
-                check_task(subtask)
+                check_task(self.agent.plan.get_task(subtask))
 
         # Start checking from the root tasks in the plan
         for task in self.subtasks:
-            check_task(task)
+            check_task(self.agent.plan.get_task(task))
 
         return ready_tasks
 
@@ -296,7 +296,7 @@ class BaseTask(AFAASModel):
 
         # Start checking from the root tasks in the plan
         for task in self.subtasks:
-            found_task = check_task(task)
+            found_task = check_task(self.agent.plan.get_task(task))
             if found_task:
                 return found_task
 
@@ -325,7 +325,7 @@ class BaseTask(AFAASModel):
 
         # Start checking from the root tasks in the plan
         for task in self.subtasks:
-            if check_task(task, False):
+            if check_task(self.agent.plan.get_task(task), False):
                 break  # Break after finding the first ready task and its siblings
 
         return ready_tasks
