@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-COMMAND_CATEGORY = "file_operations"
-COMMAND_CATEGORY_TITLE = "File Operations"
-
 import contextlib
 import hashlib
 import logging
@@ -17,11 +14,16 @@ from autogpt.agents.agent import Agent
 from autogpt.agents.utils.exceptions import DuplicateOperationError
 from autogpt.command_decorator import command
 from autogpt.core.utils.json_schema import JSONSchema
-from autogpt.memory.vector import MemoryItem, VectorMemory
+from autogpt.memory.vector import MemoryItemFactory, VectorMemory
 
 from .decorators import sanitize_path_arg
-from .file_context import open_file, open_folder  # NOQA
 from .file_operations_utils import read_textual_file
+
+COMMAND_CATEGORY = "file_operations"
+COMMAND_CATEGORY_TITLE = "File Operations"
+
+
+from .file_context import open_file, open_folder  # NOQA
 
 logger = logging.getLogger(__name__)
 
@@ -182,13 +184,13 @@ def ingest_file(
         content = read_file(filename)
 
         # TODO: differentiate between different types of files
-        file_memory = MemoryItem.from_text_file(content, filename)
+        file_memory = MemoryItemFactory.from_text_file(content, filename)
         logger.debug(f"Created memory: {file_memory.dump(True)}")
         memory.add(file_memory)
 
         logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
     except Exception as err:
-        logger.warn(f"Error while ingesting file '{filename}': {err}")
+        logger.warning(f"Error while ingesting file '{filename}': {err}")
 
 
 @command(

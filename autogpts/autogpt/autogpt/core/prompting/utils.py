@@ -14,9 +14,10 @@ def to_numbered_list(
 
 
 def json_loads(json_str: str):
-    # TODO: this is a hack function for now. Trying to see what errors show up in testing.
-    #   Can hopefully just replace with a call to ast.literal_eval (the function api still
-    #   sometimes returns json strings with minor issues like trailing commas).
+    # TODO: this is a hack function for now. We'll see what errors show up in testing.
+    #   Can hopefully just replace with a call to ast.literal_eval.
+    # Can't use json.loads because the function API still sometimes returns json strings
+    #   with minor issues like trailing commas.
     try:
         json_str = json_str[json_str.index("{") : json_str.rindex("}") + 1]
         return ast.literal_eval(json_str)

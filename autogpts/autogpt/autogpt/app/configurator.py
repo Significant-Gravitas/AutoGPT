@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 import click
 from colorama import Back, Fore, Style
@@ -12,8 +12,12 @@ from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.config import GPT_3_MODEL, GPT_4_MODEL
 from autogpt.llm.api_manager import ApiManager
+from autogpt.logs.config import LogFormatName
 from autogpt.logs.helpers import print_attribute, request_user_double_check
 from autogpt.memory.vector import get_supported_memory_backends
+
+if TYPE_CHECKING:
+    from autogpt.core.resource.model_providers.openai import OpenAICredentials
 
 logger = logging.getLogger(__name__)
 
@@ -27,37 +31,51 @@ def apply_overrides_to_config(
     skip_reprompt: bool = False,
     speak: bool = False,
     debug: bool = False,
+    log_level: Optional[str] = None,
+    log_format: Optional[str] = None,
+    log_file_format: Optional[str] = None,
     gpt3only: bool = False,
     gpt4only: bool = False,
-    memory_type: str = "",
-    browser_name: str = "",
+    memory_type: Optional[str] = None,
+    browser_name: Optional[str] = None,
     allow_downloads: bool = False,
     skip_news: bool = False,
 ) -> None:
     """Updates the config object with the given arguments.
 
     Args:
-        continuous (bool): Whether to run in continuous mode
-        continuous_limit (int): The number of times to run in continuous mode
-        ai_settings_file (Path): The path to the ai_settings.yaml file
-        prompt_settings_file (Path): The path to the prompt_settings.yaml file
-        skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
-        speak (bool): Whether to enable speak mode
-        debug (bool): Whether to enable debug mode
-        gpt3only (bool): Whether to enable GPT3.5 only mode
-        gpt4only (bool): Whether to enable GPT4 only mode
-        memory_type (str): The type of memory backend to use
-        browser_name (str): The name of the browser to use when using selenium to scrape the web
-        allow_downloads (bool): Whether to allow AutoGPT to download files natively
-        skips_news (bool): Whether to suppress the output of latest news on startup
+        config (Config): The config object to update.
+        continuous (bool): Whether to run in continuous mode.
+        continuous_limit (int): The number of times to run in continuous mode.
+        ai_settings_file (Path): The path to the ai_settings.yaml file.
+        prompt_settings_file (Path): The path to the prompt_settings.yaml file.
+        skip_reprompt (bool): Whether to skip the re-prompting messages on start.
+        speak (bool): Whether to enable speak mode.
+        debug (bool): Whether to enable debug mode.
+        log_level (int): The global log level for the application.
+        log_format (str): The format for the log(s).
+        log_file_format (str): Override the format for the log file.
+        gpt3only (bool): Whether to enable GPT3.5 only mode.
+        gpt4only (bool): Whether to enable GPT4 only mode.
+        memory_type (str): The type of memory backend to use.
+        browser_name (str): The name of the browser to use for scraping the web.
+        allow_downloads (bool): Whether to allow AutoGPT to download files natively.
+        skips_news (bool): Whether to suppress the output of latest news on startup.
     """
-    config.debug_mode = False
     config.continuous_mode = False
     config.tts_config.speak_mode = False
 
+    # Set log level
     if debug:
-        print_attribute("Debug mode", "ENABLED")
-        config.debug_mode = True
+        config.logging.level = logging.DEBUG
+    elif log_level and type(_level := logging.getLevelName(log_level.upper())) is int:
+        config.logging.level = _level
+
+    # Set log format
+    if log_format and log_format in LogFormatName._value2member_map_:
+        config.logging.log_format = LogFormatName(log_format)
+    if log_file_format and log_file_format in LogFormatName._value2member_map_:
+        config.logging.log_file_format = LogFormatName(log_file_format)
 
     if continuous:
         print_attribute("Continuous Mode", "ENABLED", title_color=Fore.YELLOW)
@@ -88,7 +106,11 @@ def apply_overrides_to_config(
         config.smart_llm = GPT_3_MODEL
     elif (
         gpt4only
-        and check_model(GPT_4_MODEL, model_type="smart_llm", config=config)
+        and check_model(
+            GPT_4_MODEL,
+            model_type="smart_llm",
+            api_credentials=config.openai_credentials,
+        )
         == GPT_4_MODEL
     ):
         print_attribute("GPT4 Only Mode", "ENABLED")
@@ -96,8 +118,12 @@ def apply_overrides_to_config(
         config.fast_llm = GPT_4_MODEL
         config.smart_llm = GPT_4_MODEL
     else:
-        config.fast_llm = check_model(config.fast_llm, "fast_llm", config=config)
-        config.smart_llm = check_model(config.smart_llm, "smart_llm", config=config)
+        config.fast_llm = check_model(
+            config.fast_llm, "fast_llm", api_credentials=config.openai_credentials
+        )
+        config.smart_llm = check_model(
+            config.smart_llm, "smart_llm", api_credentials=config.openai_credentials
+        )
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
@@ -152,12 +178,16 @@ def apply_overrides_to_config(
 
     if allow_downloads:
         print_attribute("Native Downloading", "ENABLED")
-        logger.warn(
-            msg=f"{Back.LIGHTYELLOW_EX}AutoGPT will now be able to download and save files to your machine.{Back.RESET}"
+        logger.warning(
+            msg=f"{Back.LIGHTYELLOW_EX}"
+            "AutoGPT will now be able to download and save files to your machine."
+            f"{Back.RESET}"
             " It is recommended that you monitor any files it downloads carefully.",
         )
-        logger.warn(
-            msg=f"{Back.RED + Style.BRIGHT}ALWAYS REMEMBER TO NEVER OPEN FILES YOU AREN'T SURE OF!{Style.RESET_ALL}",
+        logger.warning(
+            msg=f"{Back.RED + Style.BRIGHT}"
+            "NEVER OPEN FILES YOU AREN'T SURE OF!"
+            f"{Style.RESET_ALL}",
         )
         config.allow_downloads = True
 
@@ -168,17 +198,16 @@ def apply_overrides_to_config(
 def check_model(
     model_name: str,
     model_type: Literal["smart_llm", "fast_llm"],
-    config: Config,
+    api_credentials: OpenAICredentials,
 ) -> str:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
-    openai_credentials = config.get_openai_credentials(model_name)
     api_manager = ApiManager()
-    models = api_manager.get_models(**openai_credentials)
+    models = api_manager.get_models(**api_credentials.get_api_access_kwargs(model_name))
 
     if any(model_name in m["id"] for m in models):
         return model_name
 
-    logger.warn(
-        f"You do not have access to {model_name}. Setting {model_type} to gpt-3.5-turbo."
+    logger.warning(
+        f"You don't have access to {model_name}. Setting {model_type} to gpt-3.5-turbo."
     )
     return "gpt-3.5-turbo"

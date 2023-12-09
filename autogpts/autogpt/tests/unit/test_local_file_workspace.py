@@ -1,9 +1,8 @@
-import itertools
 from pathlib import Path
 
 import pytest
 
-from autogpt.file_workspace import FileWorkspace
+from autogpt.file_workspace.local import FileWorkspaceConfiguration, LocalFileWorkspace
 
 _WORKSPACE_ROOT = Path("home/users/monty/auto_gpt_workspace")
 
@@ -31,17 +30,11 @@ _INACCESSIBLE_PATHS = (
         Path("test_folder/../../not_auto_gpt_workspace/test_file.txt"),
     ]
     + [
-        # Contains null bytes
-        Path(template.format(null_byte=null_byte))
-        for template, null_byte in itertools.product(
-            [
-                "{null_byte}",
-                "{null_byte}test_file.txt",
-                "test_folder/{null_byte}",
-                "test_folder/{null_byte}test_file.txt",
-            ],
-            FileWorkspace.NULL_BYTES,
-        )
+        # Contains null byte
+        Path("\0"),
+        Path("\0test_file.txt"),
+        Path("test_folder/\0"),
+        Path("test_folder/\0test_file.txt"),
     ]
     + [
         # Absolute paths
@@ -68,7 +61,7 @@ def inaccessible_path(request):
 
 
 def test_sanitize_path_accessible(accessible_path, workspace_root):
-    full_path = FileWorkspace._sanitize_path(
+    full_path = LocalFileWorkspace._sanitize_path(
         accessible_path,
         root=workspace_root,
         restrict_to_root=True,
@@ -79,7 +72,7 @@ def test_sanitize_path_accessible(accessible_path, workspace_root):
 
 def test_sanitize_path_inaccessible(inaccessible_path, workspace_root):
     with pytest.raises(ValueError):
-        FileWorkspace._sanitize_path(
+        LocalFileWorkspace._sanitize_path(
             inaccessible_path,
             root=workspace_root,
             restrict_to_root=True,
@@ -87,13 +80,13 @@ def test_sanitize_path_inaccessible(inaccessible_path, workspace_root):
 
 
 def test_get_path_accessible(accessible_path, workspace_root):
-    workspace = FileWorkspace(workspace_root, True)
+    workspace = LocalFileWorkspace(FileWorkspaceConfiguration(root=workspace_root))
     full_path = workspace.get_path(accessible_path)
     assert full_path.is_absolute()
     assert full_path.is_relative_to(workspace_root)
 
 
 def test_get_path_inaccessible(inaccessible_path, workspace_root):
-    workspace = FileWorkspace(workspace_root, True)
+    workspace = LocalFileWorkspace(FileWorkspaceConfiguration(root=workspace_root))
     with pytest.raises(ValueError):
         workspace.get_path(inaccessible_path)

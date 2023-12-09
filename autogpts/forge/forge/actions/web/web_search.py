@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -7,12 +6,12 @@ from itertools import islice
 
 from duckduckgo_search import DDGS
 
-from ..registry import ability
+from ..registry import action
 
 DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 
-@ability(
+@action(
     name="web_search",
     description="Searches the web",
     parameters=[

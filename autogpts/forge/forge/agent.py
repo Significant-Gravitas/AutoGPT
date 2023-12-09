@@ -6,13 +6,10 @@ from forge.sdk import (
     StepRequestBody,
     Task,
     TaskRequestBody,
-    Workspace,    
-    PromptEngine,	
-    chat_completion_request,	
-    ChromaMemStore	
+    Workspace,
 )
-import json	
-import pprint
+from forge.actions import ActionRegister
+
 
 LOG = ForgeLogger(__name__)
 
@@ -78,6 +75,7 @@ class ForgeAgent(Agent):
         Feel free to create subclasses of the database and workspace to implement your own storage
         """
         super().__init__(database, workspace)
+        self.abilities = ActionRegister(self)
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """
@@ -139,9 +137,11 @@ class ForgeAgent(Agent):
 
         step.output = "Washington D.C"
 
-        LOG.info(f"\t✅ Final Step completed: {step.step_id}. \n" +
-                 f"Output should be placeholder text Washington D.C. You'll need to \n" +
-                 f"modify execute_step to include LLM behavior. Follow the tutorial " +
-                 f"if confused. ")
+        LOG.info(
+            f"\t✅ Final Step completed: {step.step_id}. \n"
+            + f"Output should be placeholder text Washington D.C. You'll need to \n"
+            + f"modify execute_step to include LLM behavior. Follow the tutorial "
+            + f"if confused. "
+        )
 
         return step

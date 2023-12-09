@@ -1,7 +1,7 @@
 import abc
 import enum
 
-from pydantic import SecretBytes, SecretField, SecretStr
+from pydantic import BaseModel, SecretBytes, SecretField, SecretStr
 
 from autogpt.core.configuration import (
     SystemConfiguration,
@@ -39,12 +39,26 @@ class ProviderBudget(SystemConfiguration):
 class ProviderCredentials(SystemConfiguration):
     """Struct for credentials."""
 
+    def unmasked(self) -> dict:
+        return unmask(self)
+
     class Config:
         json_encoders = {
             SecretStr: lambda v: v.get_secret_value() if v else None,
             SecretBytes: lambda v: v.get_secret_value() if v else None,
             SecretField: lambda v: v.get_secret_value() if v else None,
         }
+
+
+def unmask(model: BaseModel):
+    unmasked_fields = {}
+    for field_name, _ in model.__fields__.items():
+        value = getattr(model, field_name)
+        if isinstance(value, SecretStr):
+            unmasked_fields[field_name] = value.get_secret_value()
+        else:
+            unmasked_fields[field_name] = value
+    return unmasked_fields
 
 
 class ProviderSettings(SystemSettings):

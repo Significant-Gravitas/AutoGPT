@@ -1,4 +1,5 @@
 import os
+import uuid
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -10,10 +11,13 @@ from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
 from autogpt.app.main import _configure_openai_provider
 from autogpt.config import AIProfile, Config, ConfigBuilder
 from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
-from autogpt.file_workspace import FileWorkspace
+from autogpt.file_workspace.local import (
+    FileWorkspace,
+    FileWorkspaceConfiguration,
+    LocalFileWorkspace,
+)
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs.config import configure_logging
-from autogpt.memory.vector import get_memory
 from autogpt.models.command_registry import CommandRegistry
 
 pytest_plugins = [
@@ -30,7 +34,9 @@ def tmp_project_root(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def app_data_dir(tmp_project_root: Path) -> Path:
-    return tmp_project_root / "data"
+    dir = tmp_project_root / "data"
+    dir.mkdir(parents=True, exist_ok=True)
+    return dir
 
 
 @pytest.fixture()
@@ -45,14 +51,17 @@ def workspace_root(agent_data_dir: Path) -> Path:
 
 @pytest.fixture()
 def workspace(workspace_root: Path) -> FileWorkspace:
-    workspace = FileWorkspace(workspace_root, restrict_to_root=True)
+    workspace = LocalFileWorkspace(FileWorkspaceConfiguration(root=workspace_root))
     workspace.initialize()
     return workspace
 
 
 @pytest.fixture
 def temp_plugins_config_file():
-    """Create a plugins_config.yaml file in a temp directory so that it doesn't mess with existing ones"""
+    """
+    Create a plugins_config.yaml file in a temp directory
+    so that it doesn't mess with existing ones.
+    """
     config_directory = TemporaryDirectory()
     config_file = Path(config_directory.name) / "plugins_config.yaml"
     with open(config_file, "w+") as f:
@@ -68,17 +77,18 @@ def config(
     app_data_dir: Path,
     mocker: MockerFixture,
 ):
-    config = ConfigBuilder.build_config_from_env(project_root=tmp_project_root)
     if not os.environ.get("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = "sk-dummy"
+    config = ConfigBuilder.build_config_from_env(project_root=tmp_project_root)
 
     config.app_data_dir = app_data_dir
 
     config.plugins_dir = "tests/unit/data/test_plugins"
     config.plugins_config_file = temp_plugins_config_file
 
+    config.logging.log_dir = Path(__file__).parent / "logs"
+    config.logging.plain_console_output = True
     config.noninteractive_mode = True
-    config.plain_output = True
 
     # avoid circular dependency
     from autogpt.plugins.plugins_config import PluginsConfig
@@ -93,11 +103,7 @@ def config(
 
 @pytest.fixture(scope="session")
 def setup_logger(config: Config):
-    configure_logging(
-        debug_mode=config.debug_mode,
-        plain_output=config.plain_output,
-        log_dir=Path(__file__).parent / "logs",
-    )
+    configure_logging(**config.logging.dict())
 
 
 @pytest.fixture()
@@ -130,6 +136,7 @@ def agent(
     agent_settings = AgentSettings(
         name=Agent.default_settings.name,
         description=Agent.default_settings.description,
+        agent_id=f"AutoGPT-test-agent-{str(uuid.uuid4())[:8]}",
         ai_profile=ai_profile,
         config=AgentConfiguration(
             fast_llm=config.fast_llm,

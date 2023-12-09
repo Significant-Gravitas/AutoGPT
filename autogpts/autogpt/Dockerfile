@@ -6,7 +6,7 @@ FROM python:3.10-slim AS autogpt-base
 
 # Install browsers
 RUN apt-get update && apt-get install -y \
-    chromium-driver firefox-esr ca-certificates gcc \
+    chromium-driver ca-certificates gcc \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install utilities
@@ -19,6 +19,7 @@ ENV PIP_NO_CACHE_DIR=yes \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_PATH="/venv" \
     POETRY_VIRTUALENVS_IN_PROJECT=0 \
     POETRY_NO_INTERACTION=1
 
@@ -36,12 +37,14 @@ CMD []
 
 # dev build -> include everything
 FROM autogpt-base as autogpt-dev
-RUN poetry install --no-root
+RUN poetry install --no-cache --no-root \
+    && rm -rf $(poetry env info --path)/src
 ONBUILD COPY . ./
 
 # release build -> include bare minimum
 FROM autogpt-base as autogpt-release
-RUN poetry install --no-root --without dev
+RUN poetry install --no-cache --no-root --without dev \
+    && rm -rf $(poetry env info --path)/src
 ONBUILD COPY autogpt/ ./autogpt
 ONBUILD COPY scripts/ ./scripts
 ONBUILD COPY plugins/ ./plugins

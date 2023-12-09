@@ -31,7 +31,7 @@ class VoiceBase:
             voice_index (int): The index of the voice to use.
         """
         text = re.sub(
-            r"\b(?:https?://[-\w_.]+/?\w[-\w_.]*\.(?:[-\w_.]+/?\w[-\w_.]*\.)?[a-z]+(?:/[-\w_.%]+)*\b(?!\.))",
+            r"\b(?:https?://[-\w_.]+/?\w[-\w_.]*\.(?:[-\w_.]+/?\w[-\w_.]*\.)?[a-z]+(?:/[-\w_.%]+)*\b(?!\.))",  # noqa: E501
             "",
             text,
         )
