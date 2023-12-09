@@ -24,6 +24,9 @@ if TYPE_CHECKING:
 
 from AFAAS.core.agents.base import BaseLoop, BaseLoopHook
 
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name=__name__)
+
 # aaas = {}
 # try:
 #     pass
@@ -224,12 +227,14 @@ class PlannerLoop(BaseLoop):
                     command_args = current_task.arguments
                     assistant_reply_dict = current_task.long_decription
                 else:
-                    # FIXME: REPLACE WITH ROUTING ?
+                    LOG.error("No command to execute")
                     (
                         command_name,
                         command_args,
                         assistant_reply_dict,
                     ) = await self.select_tool()
+
+
 
                 ##############################################################
                 ### Step 6 : execute_tool() #
