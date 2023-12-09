@@ -11,7 +11,7 @@ from  autogpts.AFAAS.app.sdk.forge_log import ForgeLogger
 LOG = ForgeLogger(name=__name__)
 
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import Field
 
@@ -21,7 +21,11 @@ from .plan import Plan
 
 class TaskStack(AFAASModel):
     parent_task: BaseTask = Field(..., exclude=True)
-    _task_ids: list[str] = []
+    _task_ids: list[str] = Field(default=[])
+
+    def __init__(self, **data: Any):
+        super().__init__(**data)
+        self._task_ids = []
 
     def dict(self, *args, **kwargs) -> dict:
         return {"task_ids": self._task_ids}
@@ -36,10 +40,12 @@ class TaskStack(AFAASModel):
         return iter(self._task_ids)
 
     def add(self, task: BaseTask):
-        LOG.trace(f"Adding task ``{LOG.italic(task.task_goal)}`` to stack")
         """
         Add a task. Can also mark it as ready.
         """
+        LOG.notice(f"Adding task {LOG.italic(task.formated_str())}) to {LOG.bold(self.description)} of task {LOG.italic(self.parent_task.formated_str())})")
+        LOG.debug(self._task_ids)
+
         self._task_ids.append(task.task_id)
         parent_is_plan : bool = isinstance(self.parent_task, Plan)
         if parent_is_plan:
@@ -58,7 +64,7 @@ class TaskStack(AFAASModel):
             from .meta import TaskStatusList
             if( not parent_is_plan 
                and self.parent_task.state != TaskStatusList.READY ) :
-                LOG.warning(f"Added subtask should only be added if parent_task is READY. Current state of {self.parent_task.task_id} is {self.parent_task.state}")
+                LOG.warning(f"Added subtask should only be added if parent_task is READY. Current state of {self.parent_task.formated_str()} is {self.parent_task.state}")
             
 
     def get_task(self, task_id) -> BaseTask:
@@ -98,6 +104,12 @@ class TaskStack(AFAASModel):
         return [
             self.parent_task.agent.plan.get_task(task_id) for task_id in common_task_ids
         ]
+    
+    def __repr__(self):
+        return f"Stack Type : {self.description}\n" + super().__repr__()
+    
+    def __str__(self):
+        return self._task_ids.__str__()
 
 
 # Additional methods can be added as needed
