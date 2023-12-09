@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
-from autogpt.core.tools.builtins.file_operations_utils import read_textual_file
+from AFAAS.core.tools.builtins.file_operations_utils import read_textual_file
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)

@@ -28,17 +28,18 @@ def setup():
 
     click.echo(
         click.style(
-            """
-       d8888          888             .d8888b.  8888888b. 88888888888 
-      d88888          888            d88P  Y88b 888   Y88b    888     
-     d88P888          888            888    888 888    888    888     
-    d88P 888 888  888 888888 .d88b.  888        888   d88P    888     
-   d88P  888 888  888 888   d88""88b 888  88888 8888888P"     888     
-  d88P   888 888  888 888   888  888 888    888 888           888     
- d8888888888 Y88b 888 Y88b. Y88..88P Y88b  d88P 888           888     
-d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888     
-                                                                                                                                       
-""",
+            """\n\n
+          AAA         FFFFFFFFFFFF      AAA              AAA           SSSSSSSSSSSSSSSSSSSSSSS 
+         AAAAA        FFFFFFFFFF       AAAAA            AAAAA        SSSSSSSSSSSSSSSSSSSSSSSS     
+        AA   AA       FF              AA   AA          AA   AA      SSS   
+       AA     AA      FF             AA     AA        AA     AA      SSSS 
+      AA       AA     FF            AA       AA      AA       AA      SSSSSSSSSSSSSSS 
+     AAAAAAAAAAAAA    FFFFFF       AAAAAAAAAAAAA    AAAAAAAAAAAAA         SSSSSSSSSSSSS
+    AAAAAAAAAAAAAAA   FF          AAAAAAAAAAAAAAA  AAAAAAAAAAAAAAA                  SSSS
+   AA             AA  FF         AA             AAAA             AA                 SSSS
+  AA               AA FF        AA               AAA              AA  SSSSSSSSSSSSSSSSS
+ AA                 AAFF       AA                AAA               AASSSSSSSSSSSSSSSS
+  \n\n""",
             fg="green",
         )
     )
@@ -207,153 +208,6 @@ d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 
 
 @cli.group()
-def agent():
-    """Commands to create, start and stop agents"""
-    pass
-
-
-@agent.command()
-@click.argument("agent_name")
-def create(agent_name):
-    """Create's a new agent with the agent name provided"""
-    import os
-    import re
-    import shutil
-
-    if not re.match(r"\w*$", agent_name):
-        click.echo(
-            click.style(
-                f"😞 Agent name '{agent_name}' is not valid. It should not contain spaces or special characters other than -_",
-                fg="red",
-            )
-        )
-        return
-    try:
-        new_agent_dir = f"./autogpts/{agent_name}"
-        new_agent_name = f"{agent_name.lower()}.json"
-
-        existing_arena_files = [name.lower() for name in os.listdir("./arena/")]
-
-        if (
-            not os.path.exists(new_agent_dir)
-            and not new_agent_name in existing_arena_files
-        ):
-            shutil.copytree("./autogpts/forge", new_agent_dir)
-            click.echo(
-                click.style(
-                    f"🎉 New agent '{agent_name}' created. The code for your new agent is in: autogpts/{agent_name}",
-                    fg="green",
-                )
-            )
-        else:
-            click.echo(
-                click.style(
-                    f"😞 Agent '{agent_name}' already exists. Enter a different name for your agent, the name needs to be unique regardless of case",
-                    fg="red",
-                )
-            )
-    except Exception as e:
-        click.echo(click.style(f"😢 An error occurred: {e}", fg="red"))
-
-
-@agent.command()
-@click.argument("agent_name")
-@click.option(
-    "--no-setup",
-    is_flag=True,
-    help="Disables running the setup script before starting the agent",
-)
-def start(agent_name, no_setup):
-    """Start agent command"""
-    import os
-    import subprocess
-
-    script_dir = os.path.dirname(os.path.realpath(__file__))
-    agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
-    run_command = os.path.join(agent_dir, "run")
-    run_bench_command = os.path.join(agent_dir, "run_benchmark")
-    if (
-        os.path.exists(agent_dir)
-        and os.path.isfile(run_command)
-        and os.path.isfile(run_bench_command)
-    ):
-        os.chdir(agent_dir)
-        if not no_setup:
-            setup_process = subprocess.Popen(["./setup"], cwd=agent_dir)
-            setup_process.wait()
-        subprocess.Popen(["./run_benchmark", "serve"], cwd=agent_dir)
-        click.echo(f"Benchmark Server starting please wait...")
-        subprocess.Popen(["./run"], cwd=agent_dir)
-        click.echo(f"Agent '{agent_name}' starting please wait...")
-    elif not os.path.exists(agent_dir):
-        click.echo(
-            click.style(
-                f"😞 Agent '{agent_name}' does not exist. Please create the agent first.",
-                fg="red",
-            )
-        )
-    else:
-        click.echo(
-            click.style(
-                f"😞 Run command does not exist in the agent '{agent_name}' directory.",
-                fg="red",
-            )
-        )
-
-
-@agent.command()
-def stop():
-    """Stop agent command"""
-    import os
-    import signal
-    import subprocess
-
-    try:
-        pids = subprocess.check_output(["lsof", "-t", "-i", ":8000"]).split()
-        if isinstance(pids, int):
-            os.kill(int(pids), signal.SIGTERM)
-        else:
-            for pid in pids:
-                os.kill(int(pid), signal.SIGTERM)
-    except subprocess.CalledProcessError:
-        click.echo("No process is running on port 8000")
-
-    try:
-        pids = int(subprocess.check_output(["lsof", "-t", "-i", ":8080"]))
-        if isinstance(pids, int):
-            os.kill(int(pids), signal.SIGTERM)
-        else:
-            for pid in pids:
-                os.kill(int(pid), signal.SIGTERM)
-    except subprocess.CalledProcessError:
-        click.echo("No process is running on port 8080")
-
-
-@agent.command()
-def list():
-    """List agents command"""
-    import os
-
-    try:
-        agents_dir = "./autogpts"
-        agents_list = [
-            d
-            for d in os.listdir(agents_dir)
-            if os.path.isdir(os.path.join(agents_dir, d))
-        ]
-        if agents_list:
-            click.echo(click.style("Available agents: 🤖", fg="green"))
-            for agent in agents_list:
-                click.echo(click.style(f"\t🐙 {agent}", fg="blue"))
-        else:
-            click.echo(click.style("No agents found 😞", fg="red"))
-    except FileNotFoundError:
-        click.echo(click.style("The autogpts directory does not exist 😢", fg="red"))
-    except Exception as e:
-        click.echo(click.style(f"An error occurred: {e} 😢", fg="red"))
-
-
-@cli.group()
 def benchmark():
     """Commands to start the benchmark and list tests and categories"""
     pass
@@ -364,29 +218,29 @@ def benchmark():
         ignore_unknown_options=True,
     )
 )
-@click.argument("agent_name")
+#@click.argument("agent_name")
 @click.argument("subprocess_args", nargs=-1, type=click.UNPROCESSED)
-def start(agent_name, subprocess_args):
+def start(subprocess_args):
     """Starts the benchmark command"""
     import os
     import subprocess
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    agent_dir = os.path.join(script_dir, f"autogpts/{agent_name}")
+    agent_dir = os.path.join(script_dir, f"app/")
     benchmark_script = os.path.join(agent_dir, "run_benchmark")
     if os.path.exists(agent_dir) and os.path.isfile(benchmark_script):
         os.chdir(agent_dir)
         subprocess.Popen([benchmark_script, *subprocess_args], cwd=agent_dir)
         click.echo(
             click.style(
-                f"🚀 Running benchmark for '{agent_name}' with subprocess arguments: {' '.join(subprocess_args)}",
+                f"🚀 Running benchmark for with subprocess arguments: {' '.join(subprocess_args)}",
                 fg="green",
             )
         )
     else:
         click.echo(
             click.style(
-                f"😞 Agent '{agent_name}' does not exist. Please create the agent first.",
+                f"😞 Agent does not exist. Please create the agent first.",
                 fg="red",
             )
         )
@@ -596,305 +450,6 @@ def benchmark_tests_details(test_name):
                 print(f"IOError: file could not be read: {data_file}")
                 continue
 
-
-@cli.group()
-def arena():
-    """Commands to enter the arena"""
-    pass
-
-
-@arena.command()
-@click.argument("agent_name")
-@click.option("--branch", default="master", help="Branch to use instead of master")
-def enter(agent_name, branch):
-    import json
-    import os
-    import subprocess
-    from datetime import datetime
-
-    from github import Github
-
-    # Check if the agent_name directory exists in the autogpts directory
-    agent_dir = f"./autogpts/{agent_name}"
-    if not os.path.exists(agent_dir):
-        click.echo(
-            click.style(
-                f"❌ The directory for agent '{agent_name}' does not exist in the autogpts directory.",
-                fg="red",
-            )
-        )
-        click.echo(
-            click.style(
-                f"🚀 Run './run agent create {agent_name}' to create the agent.",
-                fg="yellow",
-            )
-        )
-
-        return
-    else:
-        # Check if the agent has already entered the arena
-        try:
-            subprocess.check_output(
-                [
-                    "git",
-                    "rev-parse",
-                    "--verify",
-                    "--quiet",
-                    f"arena_submission_{agent_name}",
-                ]
-            )
-        except subprocess.CalledProcessError:
-            pass
-        else:
-            click.echo(
-                click.style(
-                    f"⚠️  The agent '{agent_name}' has already entered the arena. To update your submission, follow these steps:",
-                    fg="yellow",
-                )
-            )
-            click.echo(
-                click.style(
-                    f"1. Get the git hash of your submission by running 'git rev-parse HEAD' on the branch you want to submit to the arena.",
-                    fg="yellow",
-                )
-            )
-            click.echo(
-                click.style(
-                    f"2. Change the branch to 'arena_submission_{agent_name}' by running 'git checkout arena_submission_{agent_name}'.",
-                    fg="yellow",
-                )
-            )
-            click.echo(
-                click.style(
-                    f"3. Modify the 'arena/{agent_name}.json' to include the new commit hash of your submission (the hash you got from step 1) and an up-to-date timestamp by running './run arena update {agent_name} hash --branch x'.",
-                    fg="yellow",
-                )
-            )
-            click.echo(
-                click.style(
-                    f"Note: The '--branch' option is only needed if you want to change the branch that will be used.",
-                    fg="yellow",
-                )
-            )
-            return
-
-    # Check if there are staged changes
-    staged_changes = [
-        line
-        for line in subprocess.check_output(["git", "status", "--porcelain"])
-        .decode("utf-8")
-        .split("\n")
-        if line and line[0] in ("A", "M", "D", "R", "C")
-    ]
-    if staged_changes:
-        click.echo(
-            click.style(
-                f"❌ There are staged changes. Please commit or stash them and run the command again.",
-                fg="red",
-            )
-        )
-        return
-
-    try:
-        # Load GitHub access token from file
-        with open(".github_access_token", "r") as file:
-            github_access_token = file.read().strip()
-
-        # Get GitHub repository URL
-        github_repo_url = (
-            subprocess.check_output(["git", "config", "--get", "remote.origin.url"])
-            .decode("utf-8")
-            .strip()
-        )
-
-        if github_repo_url.startswith("git@"):
-            github_repo_url = (
-                github_repo_url.replace(":", "/")
-                .replace("git@", "https://")
-                .replace(".git", "")
-            )
-
-        # If --branch is passed, use it instead of master
-        if branch:
-            branch_to_use = branch
-        else:
-            branch_to_use = "master"
-
-        # Get the commit hash of HEAD of the branch_to_use
-        commit_hash_to_benchmark = (
-            subprocess.check_output(["git", "rev-parse", branch_to_use])
-            .decode("utf-8")
-            .strip()
-        )
-
-        arena_submission_branch = f"arena_submission_{agent_name}"
-        # Create a new branch called arena_submission_{agent_name}
-        subprocess.check_call(["git", "checkout", "-b", arena_submission_branch])
-        # Create a dictionary with the necessary fields
-        data = {
-            "github_repo_url": github_repo_url,
-            "timestamp": datetime.utcnow().isoformat(),
-            "commit_hash_to_benchmark": commit_hash_to_benchmark,
-        }
-
-        # If --branch was passed, add branch_to_benchmark to the JSON file
-        if branch:
-            data["branch_to_benchmark"] = branch
-
-        # Create agent directory if it does not exist
-        subprocess.check_call(["mkdir", "-p", "arena"])
-
-        # Create a JSON file with the data
-        with open(f"arena/{agent_name}.json", "w") as json_file:
-            json.dump(data, json_file, indent=4)
-
-        # Create a commit with the specified message
-        subprocess.check_call(["git", "add", f"arena/{agent_name}.json"])
-        subprocess.check_call(
-            ["git", "commit", "-m", f"{agent_name} entering the arena"]
-        )
-
-        # Push the commit
-        subprocess.check_call(["git", "push", "origin", arena_submission_branch])
-
-        # Create a PR into the parent repository
-        g = Github(github_access_token)
-        repo_name = github_repo_url.replace("https://github.com/", "")
-        repo = g.get_repo(repo_name)
-        parent_repo = repo.parent
-        if parent_repo:
-            pr_message = f"""
-### 🌟 Welcome to the AutoGPT Arena Hacks Hackathon! 🌟
-
-Hey there amazing builders! We're thrilled to have you join this exciting journey. Before you dive deep into building, we'd love to know more about you and the awesome project you are envisioning. Fill out the template below to kickstart your hackathon journey. May the best agent win! 🏆
-
-#### 🤖 Team Introduction
-
-- **Agent Name:** {agent_name}
-- **Team Members:** (Who are the amazing minds behind this team? Do list everyone along with their roles!)
-- **Repository Link:** [{github_repo_url.replace('https://github.com/', '')}]({github_repo_url})
-
-#### 🌟 Project Vision
-
-- **Starting Point:** (Are you building from scratch or starting with an existing agent? Do tell!)
-- **Preliminary Ideas:** (Share your initial ideas and what kind of project you are aiming to build. We are all ears!)
-  
-#### 🏆 Prize Category
-
-- **Target Prize:** (Which prize caught your eye? Which one are you aiming for?)
-- **Why this Prize:** (We'd love to know why this prize feels like the right fit for your team!)
-
-#### 🎬 Introduction Video
-
-- **Video Link:** (If you'd like, share a short video where you introduce your team and talk about your project. We'd love to see your enthusiastic faces!)
-
-#### 📝 Notes and Compliance
-
-- **Additional Notes:** (Any other things you want to share? We're here to listen!)
-- **Compliance with Hackathon Rules:** (Just a gentle reminder to stick to the rules outlined for the hackathon)
-
-#### ✅ Checklist
-
-- [ ] We have read and are aligned with the [Hackathon Rules](https://lablab.ai/event/autogpt-arena-hacks).
-- [ ] We confirm that our project will be open-source and adhere to the MIT License.
-- [ ] Our lablab.ai registration email matches our OpenAI account to claim the bonus credits (if applicable).
-"""
-            head = f"{repo.owner.login}:{arena_submission_branch}"
-            pr = parent_repo.create_pull(
-                title=f"{agent_name} entering the arena",
-                body=pr_message,
-                head=head,
-                base=branch_to_use,
-            )
-            click.echo(
-                click.style(
-                    f"🚀 {agent_name} has entered the arena! Please edit your PR description at the following URL: {pr.html_url}",
-                    fg="green",
-                )
-            )
-        else:
-            click.echo(
-                click.style(
-                    "❌ This repository does not have a parent repository to sync with.",
-                    fg="red",
-                )
-            )
-            return
-
-        # Switch back to the master branch
-        subprocess.check_call(["git", "checkout", branch_to_use])
-
-    except Exception as e:
-        click.echo(click.style(f"❌ An error occurred: {e}", fg="red"))
-        # Switch back to the master branch
-        subprocess.check_call(["git", "checkout", branch_to_use])
-
-
-@arena.command()
-@click.argument("agent_name")
-@click.argument("hash")
-@click.option("--branch", default=None, help="Branch to use instead of current branch")
-def update(agent_name, hash, branch):
-    import json
-    import os
-    import subprocess
-    from datetime import datetime
-
-    # Check if the agent_name.json file exists in the arena directory
-    agent_json_file = f"./arena/{agent_name}.json"
-    # Check if they are on the correct branch
-    current_branch = (
-        subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-        .decode("utf-8")
-        .strip()
-    )
-    correct_branch = f"arena_submission_{agent_name}"
-    if current_branch != correct_branch:
-        click.echo(
-            click.style(
-                f"❌ You are not on the correct branch. Please switch to the '{correct_branch}' branch.",
-                fg="red",
-            )
-        )
-        return
-
-    if not os.path.exists(agent_json_file):
-        click.echo(
-            click.style(
-                f"❌ The file for agent '{agent_name}' does not exist in the arena directory.",
-                fg="red",
-            )
-        )
-        click.echo(
-            click.style(
-                f"⚠️ You need to enter the arena first. Run './run arena enter {agent_name}'",
-                fg="yellow",
-            )
-        )
-        return
-    else:
-        # Load the existing data
-        with open(agent_json_file, "r") as json_file:
-            data = json.load(json_file)
-
-        # Update the commit hash and timestamp
-        data["commit_hash_to_benchmark"] = hash
-        data["timestamp"] = datetime.utcnow().isoformat()
-
-        # If --branch was passed, update the branch_to_benchmark in the JSON file
-        if branch:
-            data["branch_to_benchmark"] = branch
-
-        # Write the updated data back to the JSON file
-        with open(agent_json_file, "w") as json_file:
-            json.dump(data, json_file, indent=4)
-
-        click.echo(
-            click.style(
-                f"🚀 The file for agent '{agent_name}' has been updated in the arena directory.",
-                fg="green",
-            )
-        )
 
 
 if __name__ == "__main__":

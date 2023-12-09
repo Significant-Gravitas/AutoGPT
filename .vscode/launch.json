@@ -33,7 +33,7 @@
             "name": "Mac Cli",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/autogpts/autogpt/autogpt/core/runner/cli_app/cli.py",
+            "program": "${workspaceFolder}/app/cli_app/cli.py",
             "args": ["run"],
             "console": "integratedTerminal",
             "env": {
@@ -45,7 +45,7 @@
             "name": "Windows Cli",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/autogpts/autogpt/autogpt/core/runner/cli_app/cli.py",
+            "program": "${workspaceFolder}/app/cli_app/cli.py",
             "args": ["run"],
             "console": "integratedTerminal",
             "env": {

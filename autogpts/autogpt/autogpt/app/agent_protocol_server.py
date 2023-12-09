@@ -33,7 +33,7 @@ from autogpt.agent_manager import AgentManager
 from autogpt.commands.system import finish
 from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
-from autogpt.core.resource.model_providers import ChatModelProvider
+from AFAAS.core.resource.model_providers import ChatModelProvider
 from autogpt.file_workspace import (
     FileWorkspace,
     FileWorkspaceBackendName,
@@ -63,7 +63,7 @@ class AgentProtocolServer:
         config.bind = [f"localhost:{port}"]
         app = FastAPI(
             title="AutoGPT Server",
-            description="Forked from AutoGPT Forge; "
+            description="Forked from AFAAS Demo; "
             "Modified version of The Agent Protocol.",
             version="v0.4",
         )

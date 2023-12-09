@@ -31,7 +31,7 @@ class Agent:
         """
 
         app = FastAPI(
-            title="AutoGPT Forge",
+            title="AFAAS Demo",
             description="Modified version of The Agent Protocol.",
             version="v0.4",
         )

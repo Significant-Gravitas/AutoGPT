@@ -10,7 +10,7 @@ from pathlib import Path
 
 from google.cloud import storage
 
-from autogpt.core.configuration.schema import UserConfigurable
+from AFAAS.core.configuration.schema import UserConfigurable
 
 from .base import FileWorkspace, FileWorkspaceConfiguration
 

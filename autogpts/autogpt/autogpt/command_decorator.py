@@ -47,7 +47,7 @@ print(
 print(
     "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((())))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))"
 )
-from autogpt.core.utils.json_schema import JSONSchema
+from AFAAS.core.utils.json_schema import JSONSchema
 from autogpt.models.command import Command, CommandOutput, CommandParameter
 
 # Unique identifier for AutoGPT commands

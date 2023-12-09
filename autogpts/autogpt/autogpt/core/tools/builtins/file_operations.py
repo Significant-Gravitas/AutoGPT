@@ -13,19 +13,19 @@ import os.path
 from pathlib import Path
 from typing import Iterator, Literal
 
-from autogpts.AFAAS.app.lib.task.task import Task
-from autogpts.AFAAS.app.sdk import forge_log
-from autogpts.autogpt.autogpt.core.agents.base import BaseAgent
-from autogpts.autogpt.autogpt.core.memory.base import AbstractMemory
-from autogpts.autogpt.autogpt.core.tools.command_decorator import tool
-from autogpts.autogpt.autogpt.core.utils.exceptions import \
+from AFAAS.app.lib.task.task import Task
+from AFAAS.core.lib.sdk import logger
+from AFAAS.core.agents.base import BaseAgent
+from AFAAS.core.memory.base import AbstractMemory
+from AFAAS.core.tools.command_decorator import tool
+from AFAAS.core.utils.exceptions import \
     DuplicateOperationError
-from autogpts.autogpt.autogpt.core.utils.json_schema import JSONSchema
+from AFAAS.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 from .file_operations_utils import read_textual_file
 
-logger = forge_log.ForgeLogger(__name__)
+logger = logger.AFAASLogger(__name__)
 
 Operation = Literal["write", "append", "delete"]
 
