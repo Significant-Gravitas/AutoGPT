@@ -80,7 +80,7 @@ class BaseTask(AFAASModel):
         if self._subtasks is None:
             from .stack import TaskStack
 
-            self._subtasks = TaskStack(parent_task=self)
+            self._subtasks = TaskStack(parent_task=self, description="Subtasks")
         return self._subtasks
 
     _default_command: str = None
@@ -128,7 +128,7 @@ class BaseTask(AFAASModel):
         return self._apply_custom_encoders(data=d)
 
     def add_task(self, task: "BaseTask"):
-        LOG.trace(f"Adding task {task.task_id} to {self.task_id}")
+        LOG.trace(f"`{self.task_goal} ({self.task_id}) : `Adding subtask `{task.task_goal}` ({task.task_id})")
         self.subtasks.add(task=task)
         self.agent.plan._register_new_task(task=task)
 
@@ -408,6 +408,9 @@ class BaseTask(AFAASModel):
     @abc.abstractmethod
     def create_in_db(self, agent: BaseAgent):
         ...
+
+    def formated_str(self) -> str:
+        return f"`{LOG.italic(self.task_goal)}` ({LOG.bold(self.task_id)})"
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.

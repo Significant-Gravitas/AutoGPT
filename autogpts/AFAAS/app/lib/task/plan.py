@@ -13,7 +13,7 @@ from .base import BaseTask
 from .meta import TaskStatusList
 from .task import Task
 
-LOG = ForgeLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 from autogpts.autogpt.autogpt.core.agents import AbstractAgent
@@ -69,7 +69,7 @@ class Plan(BaseTask):
             self._register_task(task=task)
             self._all_task_ids.append(task.task_id)
             if task.state == TaskStatusList.READY:
-                LOG.notice("DEBUG : Task is ready may may have subtasks...")
+                LOG.notice("DEBUG : Task is ready may have subtasks...")
                 self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.READY)
             elif task.state == TaskStatusList.DONE:
                 self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.DONE)
