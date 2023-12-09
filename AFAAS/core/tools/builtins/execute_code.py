@@ -16,7 +16,7 @@ from AFAAS.core.lib.task.task import Task
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents.base import BaseAgent
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.utils.exceptions import (
+from AFAAS.core.lib.sdk.errors import (
     CodeExecutionError, InvalidArgumentError, ToolExecutionError)
 from AFAAS.core.utils.json_schema import JSONSchema
 

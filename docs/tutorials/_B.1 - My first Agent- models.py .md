@@ -1,12 +1,14 @@
 # Tutorial: Creating Your First Agent with a `models.py` Module in the afaas Framework
 
 ## **Prerequisites:**
+
 - Familiarity with Python programming.
 - A basic understanding of the afaas framework and its Agent architecture.
 
 ## **Step 1: Setting Up Your Project Structure**
 
 ## **1.1 Project Directory Structure:**
+
 Creating a well-organized directory structure is crucial for managing your project effectively. Here is how you should structure your project:
 
 ```plaintext
@@ -28,6 +30,7 @@ Creating a well-organized directory structure is crucial for managing your proje
 In this step, we will define configurations for your agent. These configurations will determine how your agent operates within the afaas framework.
 
 ## **2.1 Importing Necessary Libraries and Classes:**
+
 We'll start by importing the necessary libraries and classes. This includes importing the base models from the afaas framework, and other necessary libraries like `uuid` for generating unique identifiers, and `pydantic` for data validation.
 
 ```python
@@ -51,6 +54,7 @@ from AFAAS.core.resource.model_providers import OpenAISettings
 ```
 
 ### **2.1 Agent Systems Class:**
+
 The Agent Systems class defines the systems that your agent will use. These systems could include memory, workspace, and other essential components for your agent's operation.
 
 ```python
@@ -63,6 +67,7 @@ class BaseAgentSystems(SystemConfiguration):
 ```
 
 ### **2.2 Agent Configuration Class:**
+
 The Agent Configuration class specifies the configurations for your agent. It includes the systems it uses, cycle count, and identifiers like user ID and agent ID.
 
 ```python
@@ -79,6 +84,7 @@ class BaseAgentConfiguration(SystemConfiguration):
 ```
 
 ### **2.3 Agent System Settings Class:**
+
 The Agent System Settings class specifies settings for your agent's systems. It holds a reference to the Agent Configuration class.
 
 ```python
@@ -90,6 +96,7 @@ class BaseAgentSystemSettings(SystemSettings):
 ```
 
 ### **2.4 Agent Settings Class:**
+
 The Agent Settings class aggregates all settings required for initializing your agent. It includes references to the Agent System Settings class, Memory Settings, and Workspace Settings, among others.
 
 ```python
@@ -108,6 +115,7 @@ class BaseAgentSettings(BaseModel):
 Now, let's look at an example implementation from `UserContextAgent` to see how these classes can be subclassed and used in a practical scenario.
 
 ### **2.2.1 Defining Agent Systems:**
+
 ```python
 class UserContextAgentSystems(BaseAgentSystems):
     ability_registry: PluginLocation
@@ -119,6 +127,7 @@ class UserContextAgentSystems(BaseAgentSystems):
 ```
 
 ### **2.3.1 Defining Agent Configuration:**
+
 ```python
 class UserContextAgentConfiguration(BaseAgentConfiguration):
     systems: UserContextAgentSystems
@@ -129,6 +138,7 @@ class UserContextAgentConfiguration(BaseAgentConfiguration):
 ```
 
 ### **2.4.1 Defining Agent System Settings:**
+
 ```python
 class UserContextAgentSystemSettings(BaseAgentSystemSettings):
     configuration: UserContextAgentConfiguration
@@ -140,6 +150,7 @@ class UserContextAgentSystemSettings(BaseAgentSystemSettings):
 ```
 
 ### **2.5.1 Defining Agent Settings:**
+
 ```python
 class UserContextAgentSettings(BaseAgentSettings):
     # ... (content from UserContextAgent models.py)
@@ -150,4 +161,5 @@ class UserContextAgentSettings(BaseAgentSettings):
 In this example, we subclass the base classes provided in the framework to create custom configurations, systems, and settings for the `UserContextAgent`. This pattern can be followed to create configurations for other types of agents within the afaas framework, adjusting the attributes and methods as needed for your specific use case.
 
 # **Further Steps:**
+
 Now, we will proceed to implement the `agent.py` and `loop.py` files, and initialize your agent. Each step will be explained in detail to ensure you have a clear understanding of how to create and manage your agent within the afaas framework.

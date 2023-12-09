@@ -1,7 +1,7 @@
 # Section B2: Creating Your First Agent by Implementing a `main.py` Module
 
-The main.py module, serves as a nexus point orchestrating how various components work together to drive the functionality of an agent. **The `Agent` classes located in `main.py` focus on representing an agent and it's resources. It doesn't handle the logic processing**. 
-This segregation is purposeful to allow teams to work separately on different aspects of the agent, ensuring that each module focuses on a specific functionality, thus promoting modularity and ease of collaborative development. 
+The main.py module, serves as a nexus point orchestrating how various components work together to drive the functionality of an agent. **The `Agent` classes located in `main.py` focus on representing an agent and it's resources. It doesn't handle the logic processing**.
+This segregation is purposeful to allow teams to work separately on different aspects of the agent, ensuring that each module focuses on a specific functionality, thus promoting modularity and ease of collaborative development.
 In this section, we will use the `UserContextAgent` as an illustrative example to demonstrate how to create and structure the main.py module.
 
 ``````
@@ -52,7 +52,7 @@ class UserContextAgent(BaseAgent, Configurable):
 Implement the `__init__` method to initialize your agent. This method should set up any necessary attributes your agent will need to function correctly.
 
 ```python
-    def __init__(self, settings: UserContextAgentSystemSettings, logger: logging.Logger, memory: Memory, openai_provider: OpenAIProvider, workspace: SimpleWorkspace, planning: SimplePlanner, user_id: uuid.UUID, agent_id: uuid.UUID = None):
+    def __init__(self, settings: UserContextAgentSystemSettings, logger: logging.Logger, memory: Memory, openai_provider: OpenAIProvider, workspace: LocalFileWorkspace, planning: SimplePlanner, user_id: uuid.UUID, agent_id: uuid.UUID = None):
         super().__init__(settings=settings, logger=logger, memory=memory, workspace=workspace, user_id=user_id, agent_id=agent_id)
         # Specific initializations
         self._openai_provider = openai_provider

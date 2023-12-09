@@ -3,12 +3,12 @@
 import orjson
 import pytest
 from autogpt.config import Config
-from autogpt.file_workspace import FileWorkspace
+from autogpt.file_workspace import AbstractFileWorkspace
 from autogpt.memory.vector import JSONFileMemory, MemoryItem
 
 
 def test_json_memory_init_without_backing_file(
-    config: Config, workspace: FileWorkspace
+    config: Config, workspace: AbstractFileWorkspace
 ):
     index_file = workspace.root / f"{config.memory_index}.json"
 
@@ -19,7 +19,7 @@ def test_json_memory_init_without_backing_file(
 
 
 def test_json_memory_init_with_backing_empty_file(
-    config: Config, workspace: FileWorkspace
+    config: Config, workspace: AbstractFileWorkspace
 ):
     index_file = workspace.root / f"{config.memory_index}.json"
     index_file.touch()
@@ -31,7 +31,7 @@ def test_json_memory_init_with_backing_empty_file(
 
 
 def test_json_memory_init_with_backing_invalid_file(
-    config: Config, workspace: FileWorkspace
+    config: Config, workspace: AbstractFileWorkspace
 ):
     index_file = workspace.root / f"{config.memory_index}.json"
     index_file.touch()

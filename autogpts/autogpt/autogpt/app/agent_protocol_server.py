@@ -35,8 +35,8 @@ from autogpt.commands.user_interaction import ask_user
 from autogpt.config import Config
 from AFAAS.core.resource.model_providers import ChatModelProvider
 from autogpt.file_workspace import (
-    FileWorkspace,
-    FileWorkspaceBackendName,
+    AbstractFileWorkspace,
+    AbstractFileWorkspaceBackendName,
     get_workspace,
 )
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
@@ -389,9 +389,9 @@ class AgentProtocolServer:
         self,
         task_id: str | int,
         agent_manager: AgentManager,
-    ) -> FileWorkspace:
+    ) -> AbstractFileWorkspace:
         use_local_ws = (
-            self.app_config.workspace_backend == FileWorkspaceBackendName.LOCAL
+            self.app_config.workspace_backend == AbstractFileWorkspaceBackendName.LOCAL
         )
         agent_id = task_agent_id(task_id)
         workspace = get_workspace(

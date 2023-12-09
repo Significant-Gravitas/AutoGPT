@@ -24,7 +24,7 @@ from AFAAS.core.prompting.schema import \
 from AFAAS.core.resource.model_providers import (
     BaseChatModelProvider, ChatModelResponse, ModelProviderName,
     OpenAIModelName)
-from AFAAS.core.workspace import AbstractWorkspace
+from AFAAS.core.workspace import AbstractFileWorkspace
 
 
 # FIXME : Find somewhere more appropriate
@@ -113,7 +113,7 @@ class PromptManager(Configurable, AgentMixin):
             "openai": agent_systems["chat_model_provider"]
         }
         strategies: dict[str, AbstractPromptStrategy] = agent_systems["strategies"]
-        workspace: AbstractWorkspace = agent_systems["workspace"]
+        workspace: AbstractFileWorkspace = agent_systems["workspace"]
 
         self._workspace = workspace
 

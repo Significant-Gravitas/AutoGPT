@@ -69,7 +69,7 @@ class Plan(BaseTask):
             self._register_task(task=task)
             self._all_task_ids.append(task.task_id)
             if task.state == TaskStatusList.READY:
-                LOG.notice("DEBUG : Task is ready may may have subtasks...")
+                LOG.notice("DEBUG : Task is ready may have subtasks...")
                 self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.READY)
             elif task.state == TaskStatusList.DONE:
                 self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.DONE)

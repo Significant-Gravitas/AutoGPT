@@ -18,7 +18,7 @@ from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents.base import BaseAgent
 from AFAAS.core.memory.base import AbstractMemory
 from AFAAS.core.tools.command_decorator import tool
-from AFAAS.core.utils.exceptions import \
+from AFAAS.core.lib.sdk.errors import \
     DuplicateOperationError
 from AFAAS.core.utils.json_schema import JSONSchema
 

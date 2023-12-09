@@ -19,7 +19,7 @@ from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
 from .models import PlannerAgentSystems
 
 if TYPE_CHECKING:
-    from AFAAS.core.workspace.simple import SimpleWorkspace
+    from AFAAS.core.workspace.simple import LocalFileWorkspace
 
 
 class PlannerAgent(BaseAgent):
@@ -61,7 +61,7 @@ class PlannerAgent(BaseAgent):
         logger: logging.Logger,
         memory: AbstractMemory,
         chat_model_provider: OpenAIProvider,
-        workspace: SimpleWorkspace,
+        workspace: LocalFileWorkspace,
         prompt_manager: PromptManager,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
@@ -205,9 +205,10 @@ class PlannerAgent(BaseAgent):
         agent_settings: PlannerAgent.SystemSettings,
         logger: logging.Logger,
     ):
-        from AFAAS.core.workspace import SimpleWorkspace
+        from AFAAS.core.workspace import FileWorkspaceBackendName, get_workspace
+        from AFAAS.core.workspace.simple import LocalFileWorkspace
 
-        return SimpleWorkspace.create_workspace(
+        return LocalFileWorkspace.create_workspace(
             user_id=agent_settings.user_id,
             agent_id=agent_settings.agent_id,
             settings=agent_settings,

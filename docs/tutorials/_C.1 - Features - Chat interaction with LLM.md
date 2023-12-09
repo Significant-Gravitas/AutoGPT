@@ -15,6 +15,7 @@ user_message = ChatMessage(role=Role.USER, content="I need help with my math hom
 # Assistant acknowledges and asks for specifics
 assistant_message1 = ChatMessage(role=Role.ASSISTANT, content="Of course! What topic are you struggling with?")
 ```
+
 [Source File](https://github.com/ph-ausseil/afaas/blob/5as-autogpt-integration/autogpts/autogpt/autogpt/core/agents/usercontext/strategies/refine_user_context.py)
 
 ## 2. Defining The Action with `CompletionModelFunction`
@@ -48,6 +49,7 @@ solve_linear = CompletionModelFunction(
     )
 )
 ```
+
 [Source File](https://github.com/ph-ausseil/afaas/blob/5as-autogpt-integration/autogpts/autogpt/autogpt/core/core/resource/model_providers/openai.py)
 
 ## 3. Assembling The Request with `ChatPrompt`
@@ -72,6 +74,7 @@ Upon receiving the LLM's response, `PromptStrategy` aids in parsing and understa
 # (Within a PromptStrategy method)
 parsed_result = self.parse_prompt_response(llm_response)
 ```
+
 [Source File](https://github.com/ph-ausseil/afaas/blob/5as-autogpt-integration/autogpts/autogpt/autogpt/core/agents/usercontext/strategies/refine_user_context.py)
 
 ## 5. Harnessing the Response with `ChatModelResponse` in `loop.py`
@@ -85,6 +88,7 @@ model_response : ChatModelResponse = await self.execute_strategy(
     user_objective=user_objectives,
 )
 ```
+
 [Source File](https://raw.githubusercontent.com/ph-ausseil/afaas/5as-autogpt-integration/autogpts/autogpt/autogpt/core/agents/usercontext/loop.py)
 
 In this walkthrough, we have woven the chat completion classes within a narrative that mirrors a real-world interaction between a user and an agent. Through each step, we have seen how these classes play pivotal roles in orchestrating a coherent and meaningful dialogue, steering towards a helpful resolution for the user's request.

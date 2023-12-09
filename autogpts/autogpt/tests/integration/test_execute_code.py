@@ -6,7 +6,7 @@ from pathlib import Path
 import AFAAS.core.tools.builtins.execute_code as sut  # system under testing
 import pytest
 from autogpt.agents.agent import Agent
-from autogpt.agents.utils.exceptions import (InvalidArgumentError,
+from autogpt.agents.lib.sdk.errors import (InvalidArgumentError,
                                              OperationNotAllowedError)
 
 

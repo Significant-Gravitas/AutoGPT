@@ -17,7 +17,7 @@ from pydantic import SecretStr
 
 from AFAAS.core.configuration.schema import UserConfigurable
 
-from .base import FileWorkspace, FileWorkspaceConfiguration
+from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
 if TYPE_CHECKING:
     import mypy_boto3_s3
@@ -25,16 +25,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class S3FileWorkspaceConfiguration(FileWorkspaceConfiguration):
+class S3FileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
     bucket: str = UserConfigurable("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
     s3_endpoint_url: Optional[SecretStr] = UserConfigurable(
         from_env=lambda: SecretStr(v) if (v := os.getenv("S3_ENDPOINT_URL")) else None
     )
 
 
-class S3FileWorkspace(FileWorkspace):
+class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
     """A class that represents an S3 workspace."""
 
+    class SystemSettings(AbstractFileWorkspace.SystemSettings):
+        configuration = S3FileWorkspaceConfiguration
+        
     _bucket: mypy_boto3_s3.service_resource.Bucket
 
     def __init__(self, config: S3FileWorkspaceConfiguration):
@@ -86,18 +89,10 @@ class S3FileWorkspace(FileWorkspace):
         file_content = self.open_file(path, "r").get()["Body"].read()
         return file_content if binary else file_content.decode()
 
-    async def write_file(self, path: str | Path, content: str | bytes):
+    async def _write_file(self, path: str | Path, content: str | bytes):
         """Write to a file in the workspace."""
         obj = self.open_file(path, "w")
         obj.put(Body=content)
-
-        if self.on_write_file:
-            path = Path(path)
-            if path.is_absolute():
-                path = path.relative_to(self.root)
-            res = self.on_write_file(path)
-            if inspect.isawaitable(res):
-                await res
 
     def list_files(self, path: str | Path = ".") -> list[Path]:
         """List all files in a directory in the workspace."""

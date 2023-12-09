@@ -25,7 +25,7 @@ from AFAAS.core.tools.command_decorator import \
     AUTO_GPT_TOOL_IDENTIFIER
 # from AFAAS.core.tools.builtins import BUILTIN_TOOLS
 from AFAAS.core.tools.schema import ToolResult
-from AFAAS.core.workspace.base import AbstractWorkspace
+from AFAAS.core.workspace.base import AbstractFileWorkspace
 
 
 class ToolsRegistryConfiguration(SystemConfiguration):
@@ -90,7 +90,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         settings: SimpleToolRegistry.SystemSettings,
         logger: logging.Logger,
         memory: AbstractMemory,
-        workspace: AbstractWorkspace,
+        workspace: AbstractFileWorkspace,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
     ):
         """
@@ -404,7 +404,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         agent: BaseAgent,
         logger: logging.Logger,
         memory: AbstractMemory,
-        workspace: AbstractWorkspace,
+        workspace: AbstractFileWorkspace,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
     ) -> "SimpleToolRegistry":
         """

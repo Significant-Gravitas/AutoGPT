@@ -59,7 +59,7 @@ class Task(BaseTask):
         if self._task_predecessors is None:
             from .stack import TaskStack
 
-            self._task_predecessors = TaskStack(parent_task=self)
+            self._task_predecessors = TaskStack(parent_task=self, description="Predecessors")
         return self._task_predecessors
 
     # task_successors: Optional[list[Task]]  = []
@@ -71,7 +71,7 @@ class Task(BaseTask):
         if self._task_successors is None:
             from .stack import TaskStack
 
-            self._task_successors = TaskStack(parent_task=self)
+            self._task_successors = TaskStack(parent_task=self, description="Successors")
         return self._task_successors
 
     # _state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
@@ -245,6 +245,14 @@ class Task(BaseTask):
             indented_structure += "  " * i + "-> " + task.task_goal + "\n"
 
         return indented_structure
+    
+    def __hash__(self):
+        return hash(self.task_id)
+    
+    def __eq__(self, other):
+        if isinstance(other, Task):
+            return self.task_id == other.task_id
+        return False
 
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
