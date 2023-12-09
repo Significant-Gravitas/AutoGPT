@@ -21,8 +21,12 @@ class GCSFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):
     bucket: str = UserConfigurable("autogpt", from_env="WORKSPACE_STORAGE_BUCKET")
 
 
-class GCSFileWorkspace(AbstractFileWorkspace):
+class GCSFileWorkspace_AlphaRealease(AbstractFileWorkspace):
     """A class that represents a Google Cloud Storage workspace."""
+
+
+    class SystemSettings(AbstractFileWorkspace.SystemSettings):
+        configuration = GCSFileWorkspaceConfiguration
 
     _bucket: storage.Bucket
 

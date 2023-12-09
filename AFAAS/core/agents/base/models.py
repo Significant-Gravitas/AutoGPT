@@ -7,7 +7,7 @@ from AFAAS.core.configuration import SystemConfiguration
 
 class BaseAgentSystems(SystemConfiguration):
     memory: str = "AFAAS.core.memory.base.Memory"
-    workspace: str = "AFAAS.core.workspace.LocalFileWorkspace"
+    workspace: str = "AFAAS.core.workspace.simple.LocalFileWorkspace"
 
     class Config(SystemConfiguration.Config):
         extra = "allow"
