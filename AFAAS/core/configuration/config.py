@@ -55,9 +55,9 @@ class Config(SystemSettings, arbitrary_types_allowed=True):
     logging: LoggingConfig = LoggingConfig()
 
     # Workspace
-    workspace_backend: FileWorkspaceBackendName = UserConfigurable(
+    workspace_backend: AbstractFileWorkspaceBackendName = UserConfigurable(
         default=FileWorkspaceBackendName.LOCAL,
-        from_env=lambda: FileWorkspaceBackendName(v)
+        from_env=lambda: AbstractFileWorkspaceBackendName(v)
         if (v := os.getenv("WORKSPACE_BACKEND"))
         else None,
     )

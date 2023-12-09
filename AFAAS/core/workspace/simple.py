@@ -1,3 +1,9 @@
+"""
+The LocalFileWorkspace class implements a AbstractFileWorkspace that works with local files.
+"""
+from __future__ import annotations
+
+import inspect
 import logging
 import uuid
 from pathlib import Path
@@ -6,138 +12,95 @@ from typing import TYPE_CHECKING
 from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-from AFAAS.core.workspace.base import AbstractWorkspace
+
+from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
 if TYPE_CHECKING:
     # Cyclic import
     pass
 
 
-class WorkspaceConfiguration(SystemConfiguration):
+class AbstractFileWorkspaceConfiguration(SystemConfiguration):
     root: str = ""
     parent: str = UserConfigurable(default="~/auto-gpt/agents")
-    restrict_to_workspace: bool = UserConfigurable(default=True)
+    restrict_to_root: bool = UserConfigurable(default=True)
 
 
-class SimpleWorkspace(Configurable, AbstractWorkspace):
-    class SystemSettings(Configurable.SystemSettings):
+class LocalFileWorkspace(AbstractFileWorkspace):
+
+    class SystemSettings(AbstractFileWorkspace.SystemSettings):
         name = "workspace"
         description = "The workspace is the root directory for all agent activity."
-        configuration: WorkspaceConfiguration = WorkspaceConfiguration()
+        configuration: AbstractFileWorkspaceConfiguration = AbstractFileWorkspaceConfiguration()
 
     NULL_BYTES = ["\0", "\000", "\x00", "\u0000", "%00"]
 
     def __init__(
         self,
-        settings: Configurable.SystemSettings,
+        settings: LocalFileWorkspace.SystemSettings,
         agent_systems: list[Configurable],
         logger: logging.Logger,
     ):
-        super().__init__(settings, logger.getChild("workspace"))
         # self._configuration = settings.configuration
         # self._logger = logger
         # self._logger = logger.getChild("workspace")
+        self._root = self._sanitize_path(settings.configuration.root)
+        self._restrict_to_root = settings.configuration.restrict_to_root
+        super().__init__(settings, logger.getChild("workspace"))
 
     @property
     def root(self) -> Path:
-        return Path(self._configuration.root)
+        """The root directory of the file workspace."""
+        return self._root
+
+    # @property
+    # def debug_log_path(self) -> Path:
+    #     return self.root / "logs" / "debug.log"
+
+    # @property
+    # def cycle_log_path(self) -> Path:
+    #     return self.root / "logs" / "cycle.log"
+
+    # @property
+    # def configuration_path(self) -> Path:
+    #     return self.root / "configuration.yml"
 
     @property
-    def debug_log_path(self) -> Path:
-        return self.root / "logs" / "debug.log"
+    def restrict_to_root(self):
+        """Whether to restrict generated paths to the root."""
+        return self._restrict_to_root
 
-    @property
-    def cycle_log_path(self) -> Path:
-        return self.root / "logs" / "cycle.log"
+    def initialize(self) -> None:
+        self.root.mkdir(exist_ok=True, parents=True)
 
-    @property
-    def configuration_path(self) -> Path:
-        return self.root / "configuration.yml"
+    def open_file(self, path: str | Path, mode: str = "r"):
+        """Open a file in the workspace."""
+        full_path = self.get_path(path)
+        return open(full_path, mode)
 
-    @property
-    def restrict_to_workspace(self) -> bool:
-        return self._configuration.restrict_to_workspace
+    def read_file(self, path: str | Path, binary: bool = False):
+        """Read a file in the workspace."""
+        with self.open_file(path, "rb" if binary else "r") as file:
+            return file.read()
 
-    def get_path(self, relative_path: str | Path) -> Path:
-        """Get the full path for an item in the workspace.
+    async def _write_file(self, path: str | Path, content: str | bytes):
+        """Write to a file in the workspace."""
+        with self.open_file(path, "wb" if type(content) is bytes else "w") as file:
+            file.write(content)
 
-        Parameters
-        ----------
-        relative_path
-            The relative path to resolve in the workspace.
 
-        Returns
-        -------
-        Path
-            The resolved path relative to the workspace.
 
-        """
-        return self._sanitize_path(
-            relative_path,
-            root=self.root,
-            restrict_to_root=self.restrict_to_workspace,
-        )
+    def list_files(self, path: str | Path = "."):
+        """List all files in a directory in the workspace."""
+        full_path = self.get_path(path)
+        return [str(file) for file in full_path.glob("*") if file.is_file()]
 
-    def _sanitize_path(
-        self,
-        relative_path: str | Path,
-        root: str | Path = None,
-        restrict_to_root: bool = True,
-    ) -> Path:
-        """Resolve the relative path within the given root if possible.
+    def delete_file(self, path: str | Path):
+        """Delete a file in the workspace."""
+        full_path = self.get_path(path)
+        full_path.unlink()
 
-        Parameters
-        ----------
-        relative_path
-            The relative path to resolve.
-        root
-            The root path to resolve the relative path within.
-        restrict_to_root
-            Whether to restrict the path to the root.
 
-        Returns
-        -------
-        Path
-            The resolved path.
-
-        Raises
-        ------
-        ValueError
-            If the path is absolute and a root is provided.
-        ValueError
-            If the path is outside the root and the root is restricted.
-
-        """
-
-        # Posix systems disallow null bytes in paths. Windows is agnostic about it.
-        # Do an explicit check here for all sorts of null byte representations.
-
-        for null_byte in self.NULL_BYTES:
-            if null_byte in str(relative_path) or null_byte in str(root):
-                raise ValueError("embedded null byte")
-
-        if root is None:
-            return Path(relative_path).resolve()
-
-        self._logger.debug(f"Resolving path '{relative_path}' in workspace '{root}'")
-        root, relative_path = Path(root).resolve(), Path(relative_path)
-        self._logger.debug(f"Resolved root as '{root}'")
-
-        if relative_path.is_absolute():
-            raise ValueError(
-                f"Attempted to access absolute path '{relative_path}' "
-                f"in workspace '{root}'."
-            )
-        full_path = root.joinpath(relative_path).resolve()
-
-        self._logger.debug(f"Joined paths as '{full_path}'")
-
-        if restrict_to_root and not full_path.is_relative_to(root):
-            raise ValueError(
-                f"Attempted to access path '{full_path}' outside of workspace '{root}'."
-            )
-
-        return full_path
 
     ###################################
     # Factory methods for agent setup #
@@ -148,7 +111,7 @@ class SimpleWorkspace(Configurable, AbstractWorkspace):
         cls,
         user_id: uuid.UUID,
         agent_id: uuid.UUID,
-        settings,
+        settings : LocalFileWorkspace.SystemSettings,
         logger: logging.Logger,
     ) -> Path:
         workspace_parent = cls.SystemSettings().configuration.parent
@@ -168,11 +131,3 @@ class SimpleWorkspace(Configurable, AbstractWorkspace):
         (log_path / "cycle.log").touch()
 
         return workspace_root
-
-    # @staticmethod
-    # def load_agent_settings(workspace_root: Path) -> PlannerAgent.SystemSettings:
-
-    #     with (workspace_root / "agent_settings.json").open("r") as f:
-    #         agent_settings = json.load(f)
-
-    #     return PlannerAgent.SystemSettings.parse_obj(agent_settings)

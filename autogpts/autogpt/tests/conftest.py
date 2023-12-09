@@ -10,8 +10,8 @@ from autogpt.app.main import _configure_openai_provider
 from autogpt.config import AIProfile, Config, ConfigBuilder
 from AFAAS.core.resource.model_providers import ChatModelProvider, OpenAIProvider
 from autogpt.file_workspace.local import (
-    FileWorkspace,
-    FileWorkspaceConfiguration,
+    AbstractFileWorkspace,
+    AbstractFileWorkspaceConfiguration,
     LocalFileWorkspace,
 )
 from autogpt.llm.api_manager import ApiManager
@@ -49,8 +49,8 @@ def workspace_root(agent_data_dir: Path) -> Path:
 
 
 @pytest.fixture()
-def workspace(workspace_root: Path) -> FileWorkspace:
-    workspace = LocalFileWorkspace(FileWorkspaceConfiguration(root=workspace_root))
+def workspace(workspace_root: Path) -> AbstractFileWorkspace:
+    workspace = LocalFileWorkspace(AbstractFileWorkspaceConfiguration(root=workspace_root))
     workspace.initialize()
     return workspace
 

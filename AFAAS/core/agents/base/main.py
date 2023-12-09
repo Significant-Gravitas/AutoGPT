@@ -17,7 +17,7 @@ from AFAAS.core.agents.base.models import (
 from AFAAS.core.configuration import (Configurable,
                                                          SystemSettings)
 from AFAAS.core.memory.base import AbstractMemory
-from AFAAS.core.workspace.simple import SimpleWorkspace
+from AFAAS.core.workspace.simple import LocalFileWorkspace
 
 from .abstract import AbstractAgent
 
@@ -37,7 +37,7 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_setting_class: Optional[str]
 
         memory: AbstractMemory.SystemSettings = AbstractMemory.SystemSettings()
-        workspace: SimpleWorkspace.SystemSettings = SimpleWorkspace.SystemSettings()
+        workspace: LocalFileWorkspace.SystemSettings = LocalFileWorkspace.SystemSettings()
         from AFAAS.core.resource.model_providers.openai import \
             OpenAISettings
 
@@ -107,7 +107,7 @@ class BaseAgent(Configurable, AbstractAgent):
         settings: BaseAgent.SystemSettings,
         logger: logging.Logger,
         memory: AbstractMemory,
-        workspace: SimpleWorkspace,
+        workspace: LocalFileWorkspace,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
     ) -> Any:
