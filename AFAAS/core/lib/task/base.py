@@ -7,10 +7,10 @@ from pydantic import BaseModel, Field
 
 from AFAAS.core.agents import AbstractAgent
 from AFAAS.core.configuration import AFAASModel
-from ...sdk.forge_log import ForgeLogger
+from ..sdk.logger import AFAASLogger
 
 # from AFAAS.core.tools.schema import ToolResult
-LOG = ForgeLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .stack import TaskStack

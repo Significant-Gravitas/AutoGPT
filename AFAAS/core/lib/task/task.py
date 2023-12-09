@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, validator
 
 from AFAAS.core.agents import BaseAgent
 
-from ...sdk.forge_log import ForgeLogger
+from ..sdk.logger import AFAASLogger
 # from .plan import Plan
 from .base import BaseTask
 from .meta import TaskStatusList
@@ -17,7 +17,7 @@ from .meta import TaskStatusList
 
 
 
-LOG = ForgeLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .stack import TaskStack
