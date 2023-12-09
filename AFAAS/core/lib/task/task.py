@@ -128,14 +128,24 @@ class Task(BaseTask):
     
     def is_ready(self)-> bool:
         if (
-            len(self.task_predecessors.get_active_tasks()) == 0 
-            and len(self.subtasks.get_active_tasks()) == 0
+            len(self.task_predecessors.get_active_tasks_from_stack()) == 0 
+            and len(self.subtasks.get_active_tasks_from_stack()) == 0
             and (
                 self.state == TaskStatusList.BACKLOG
                 or self.state == TaskStatusList.READY
                 )
             ) : 
-            self.state = TaskStatusList.READY
+
+            #NOTE: This remove subtasks stored in the plan as they should not be required anymore
+            for task_id in self.subtasks:
+                self.agent.plan.unregister_loaded_task(task_id=task_id)
+
+            # NOTE: Normaly the task should already be ready .
+            # NOTE: Create two different states for ready & ready with active subtasks
+            if self.state != TaskStatusList.READY :
+                LOG.error("Task is ready but not in the ready state. This should not happen.")
+                self.state = TaskStatusList.READY
+            
             return True
         
         return False

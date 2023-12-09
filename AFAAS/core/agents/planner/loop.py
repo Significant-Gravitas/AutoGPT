@@ -366,8 +366,8 @@ class PlannerLoop(BaseLoop):
             #FIXME : Implement retry mechanism if a fail
             return_value = ActionErrorResult(reason=e.message, error=e)
 
-        
-        self.plan().set_task_status(task= current_task, status= TaskStatusList.DONE)
+        current_task.state = TaskStatusList.DONE
+        #self.plan().set_task_status(task= current_task, status= TaskStatusList.DONE)
 
         return return_value
 
