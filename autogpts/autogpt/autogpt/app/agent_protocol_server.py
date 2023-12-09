@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import pathlib
@@ -115,15 +116,15 @@ class AgentProtocolServer:
         """
         Create a task for the agent.
         """
-        logger.debug(f"Creating agent for task: '{task_request.input}'")
-        task_agent = await generate_agent_for_task(
-            task=task_request.input,
-            app_config=self.app_config,
-            llm_provider=self.llm_provider,
-        )
         task = await self.db.create_task(
             input=task_request.input,
             additional_input=task_request.additional_input,
+        )
+        logger.debug(f"Creating agent for task: '{task.input}'")
+        task_agent = await generate_agent_for_task(
+            task=task.input,
+            app_config=self.app_config,
+            llm_provider=self._get_task_llm_provider(task),
         )
         agent_id = task_agent.state.agent_id = task_agent_id(task.task_id)
         logger.debug(f"New agent ID: {agent_id}")
@@ -140,7 +141,7 @@ class AgentProtocolServer:
         response = TaskListResponse(tasks=tasks, pagination=pagination)
         return response
 
-    async def get_task(self, task_id: int) -> Task:
+    async def get_task(self, task_id: str) -> Task:
         """
         Get a task by ID.
         """
@@ -164,10 +165,11 @@ class AgentProtocolServer:
         logger.debug(f"Creating a step for task with ID: {task_id}...")
 
         # Restore Agent instance
+        task = await self.get_task(task_id)
         agent = configure_agent_with_state(
             state=self.agent_manager.retrieve_state(task_agent_id(task_id)),
             app_config=self.app_config,
-            llm_provider=self.llm_provider,
+            llm_provider=self._get_task_llm_provider(task),
         )
 
         # According to the Agent Protocol spec, the first execute_step request contains
@@ -205,6 +207,7 @@ class AgentProtocolServer:
             input=step_request,
             is_last=execute_command == finish.__name__ and execute_approved,
         )
+        agent.llm_provider = self._get_task_llm_provider(task, step.step_id)
 
         # Execute previously proposed action
         if execute_command:
@@ -357,9 +360,9 @@ class AgentProtocolServer:
         )
         return artifact
 
-    async def get_artifact(self, task_id: str, artifact_id: str) -> Artifact:
+    async def get_artifact(self, task_id: str, artifact_id: str) -> StreamingResponse:
         """
-        Get an artifact by ID.
+        Download a task artifact by ID.
         """
         try:
             artifact = await self.db.get_artifact(artifact_id)
@@ -378,7 +381,7 @@ class AgentProtocolServer:
             BytesIO(retrieved_artifact),
             media_type="application/octet-stream",
             headers={
-                "Content-Disposition": f"attachment; filename={artifact.file_name}"
+                "Content-Disposition": f'attachment; filename="{artifact.file_name}"'
             },
         )
 
@@ -404,6 +407,23 @@ class AgentProtocolServer:
         )
         workspace.initialize()
         return workspace
+
+    def _get_task_llm_provider(
+        self, task: Task, step_id: str = ""
+    ) -> ChatModelProvider:
+        """
+        Configures the LLM provider with headers to link outgoing requests to the task.
+        """
+        task_llm_provider = copy.deepcopy(self.llm_provider)
+        _extra_request_headers = task_llm_provider._configuration.extra_request_headers
+
+        _extra_request_headers["X-AP-TaskID"] = task.task_id
+        if step_id:
+            _extra_request_headers["X-AP-StepID"] = step_id
+        if task.additional_input and (user_id := task.additional_input.get("user_id")):
+            _extra_request_headers["X-AutoGPT-UserID"] = user_id
+
+        return task_llm_provider
 
 
 def task_agent_id(task_id: str | int) -> str:

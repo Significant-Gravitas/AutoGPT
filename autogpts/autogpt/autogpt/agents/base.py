@@ -124,7 +124,7 @@ class BaseAgentConfiguration(SystemConfiguration):
 
 
 class BaseAgentSettings(SystemSettings):
-    agent_id: Optional[str] = None
+    agent_id: str = ""
     agent_data_dir: Optional[Path] = None
 
     ai_profile: AIProfile = Field(default_factory=lambda: AIProfile(ai_name="AutoGPT"))
