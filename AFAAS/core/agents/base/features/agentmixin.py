@@ -34,7 +34,7 @@ class AgentMixin:
         return self._agent.save_agent_in_memory()
 
     async def save_plan(self):
-        return self._agent.plan.save()
+        return await self._agent.plan.save()
 
     ###
     ## Messaging

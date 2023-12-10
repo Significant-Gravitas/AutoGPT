@@ -43,7 +43,7 @@ class TaskStack(AFAASModel):
         """
         Add a task. Can also mark it as ready.
         """
-        LOG.debug(f"Adding task {LOG.italic(task.formated_str())}) as **{LOG.bold(self.description)}** of task {LOG.italic(self.parent_task.formated_str())}")
+        LOG.debug(f"Adding task {LOG.italic(task.debug_formated_str())}) as **{LOG.bold(self.description)}** of task {LOG.italic(self.parent_task.debug_formated_str())}")
         LOG.trace(self._task_ids)
 
         self._task_ids.append(task.task_id)
@@ -64,7 +64,7 @@ class TaskStack(AFAASModel):
             from .meta import TaskStatusList
             if( not parent_is_plan 
                and self.parent_task.state != TaskStatusList.READY ) :
-                LOG.warning(f"Added subtask should only be added if parent_task is READY. Current state of {self.parent_task.formated_str()} is {self.parent_task.state}")
+                LOG.warning(f"Added subtask should only be added if parent_task is READY. Current state of {self.parent_task.debug_formated_str()} is {self.parent_task.state}")
             
 
     def get_task(self, task_id) -> BaseTask:

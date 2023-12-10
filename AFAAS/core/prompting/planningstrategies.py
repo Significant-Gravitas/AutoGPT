@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
     from AFAAS.core.agents.base.main import BaseAgent
 
+from AFAAS.core.lib.sdk import AFAASLogger
 from AFAAS.core.lib.task.plan import Plan
 from AFAAS.core.configuration import UserConfigurable
 from AFAAS.core.prompting.schema import \
@@ -21,6 +22,7 @@ from AFAAS.core.resource.model_providers import (
 from .base import (RESPONSE_SCHEMA, BasePromptStrategy,
                    PromptStrategiesConfiguration)
 
+LOG = AFAASLogger(name=__name__)
 
 class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
     # DEFAULT_PROMPT_SCRATCHPAD = PromptScratchpad(
@@ -159,14 +161,14 @@ class PlanningPromptStrategy(BasePromptStrategy):
             "{best_practices}"
         )
 
-        print(
-            f"""################################################################################################################################################################################################################################
-              DEBUG PLAN : Plan :\n{agent.plan.dump(depth=1)}\n\n
+        LOG.trace(
+            f"""
+              DEBUG PLAN : Plan :\n{agent.plan.debug_dump(depth=1)}\n\n
               """
         )
-        print(
-            f"""################################################################################################################################################################################################################################
-              DEBUG PLAN : Plan :\n{Plan.info_parse_task(agent.plan)}\n\n
+        LOG.trace(
+            f"""
+              DEBUG PLAN : Plan :\n{Plan.debug_info_parse_task(agent.plan)}\n\n
               """
         )
 

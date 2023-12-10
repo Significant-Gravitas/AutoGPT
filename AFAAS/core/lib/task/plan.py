@@ -149,7 +149,8 @@ class Plan(BaseTask):
             Task: The next task in the plan.
 
         """
-        LOG.debug(f"Getting next task from plan {self.formated_str()}")
+        LOG.debug(f"Getting next task from plan {self.debug_formated_str()}")
+        LOG.trace(f"get_next_task() : Current tasks that are ready are  Task : {self._ready_task_ids}")
 
         if task is not None :
             # Get the subtask task, check if it is ready (the check operation will update the status in the index of ready Task (Plan._ready_task_ids)
@@ -159,7 +160,7 @@ class Plan(BaseTask):
                     
             if len(self._ready_task_ids) > 0:
                     rv = self.get_task(self._ready_task_ids[0])
-                    LOG.trace(f"{self.formated_str()} : Returning the first ready subtask {rv.formated_str()}")
+                    LOG.trace(f"{self.debug_formated_str()} : Returning the first ready subtask {rv.debug_formated_str()}")
                     return rv
 
 
@@ -174,7 +175,7 @@ class Plan(BaseTask):
                     
         if len(self._ready_task_ids) > 0:
                     rv = self.get_task(self._ready_task_ids[0])
-                    LOG.trace(f"{self.formated_str()} : Returning the next ready successor {rv.formated_str()}")
+                    LOG.trace(f"{self.debug_formated_str()} : Returning the next ready successor {rv.debug_formated_str()}")
                     return rv
         
         if (task is None):
@@ -303,10 +304,10 @@ class Plan(BaseTask):
         Register a Task in the index of Task (Plan._all_task_ids).
         If the Task is READY, the Task is Added to the index of ready tasks (Plan._ready_task_ids)
         """
-        LOG.debug(f"Registering task {task.formated_str()} in the index of Task")
+        LOG.debug(f"Registering task {task.debug_formated_str()} in the index of Task")
         self._all_task_ids.append(task.task_id)
-        if task.state == TaskStatusList.READY:
-            self._ready_task_ids.append(task.task_id)
+        # if task.state == TaskStatusList.READY:
+        #     self._ready_task_ids.append(task.task_id)
 
     def _register_tasks(self, tasks: list[Task]):
         """
@@ -444,7 +445,7 @@ class Plan(BaseTask):
         ###
         # Step 3 : Save the Plan
         ###
-        agent = self._agent
+        agent = self.agent
         if agent:
             memory = agent._memory
             plan_table = memory.get_table("plans")

@@ -97,7 +97,23 @@ class Task(BaseTask):
             agent = values.get("agent")
             if agent:
                 agent.plan._registry_update_task_status_in_list(task_id=task_id, status=new_state)
+        else : 
+            LOG.error(f"Task {task_id} has state is None")
+        
         return new_state
+
+
+
+    def __setattr__(self, key, value):
+        # Set attribute as normal
+        super().__setattr__(key, value)
+        # If the key is a model field, mark the instance as modified
+        if key in self.__fields__:
+            self.agent.plan._register_task_as_modified(task_id=self.task_id)
+
+        if key == "state":
+            self.agent.plan._registry_update_task_status_in_list(task_id=self.task_id, status=value)
+
 
     task_text_output: Optional[str]
     """ Placeholder : The agent summary of his own doing while performing the task"""
@@ -224,12 +240,6 @@ class Task(BaseTask):
         )
     #endregion
 
-    def __setattr__(self, key, value):
-        # Set attribute as normal
-        super().__setattr__(key, value)
-        # If the key is a model field, mark the instance as modified
-        if key in self.__fields__:
-            self.agent.plan._register_task_as_modified(task_id=self.task_id)
 
     def find_task_path(self) -> list[Task]:
         """

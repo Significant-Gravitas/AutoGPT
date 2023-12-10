@@ -199,7 +199,7 @@ class PlannerLoop(BaseLoop):
             #     self._agent.plan.tasks.append(Task(data = task))
 
             # Debugging :)
-            self._agent._logger.info(Plan.info_parse_task(self._agent.plan))
+            self._agent._logger.info(Plan.debug_info_parse_task(self._agent.plan))
 
             ###
             ### Assign task
@@ -246,9 +246,11 @@ class PlannerLoop(BaseLoop):
                     # user_input = assistant_reply_dict
                 )
             
+            LOG.info(f"Terminating Task : {current_task.debug_formated_str()}")
+            LOG.debug(self.plan().debug_dump_str(depth= 2))
             self._current_task = self.plan().get_next_task(task = current_task)
 
-            self.save_plan()
+            await self.save_plan()
 
             if (len(self.plan().get_all_tasks_ids()) == len(self.plan().get_all_done_tasks_ids())):
                 LOG.info("All tasks are done 😄") 
@@ -258,7 +260,7 @@ class PlannerLoop(BaseLoop):
                 LOG.info("The sofware is still in deveopment and  availableas a preview. Such anomaly are a priority and we would be working on it.")
                 self._is_running = False
 
-            plan_history : list[Task] = self.plan().get_last_achieved_task(count=10)
+            plan_history : list[Task] = self.plan().get_last_achieved_tasks(count=10)
             for i, task in enumerate(plan_history):
                 LOG.info(f"{i}.Task : {task.task_id} : {task.task_goal} : {task.task_text_output}")
 

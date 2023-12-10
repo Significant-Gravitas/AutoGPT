@@ -128,12 +128,12 @@ class BaseTask(AFAASModel):
         return self._apply_custom_encoders(data=d)
 
     def add_task(self, task: "BaseTask"):
-        LOG.debug(f"Adding task {self.formated_str()} to {task.formated_str()}")
+        LOG.debug(f"Adding task {self.debug_formated_str()} to {task.debug_formated_str()}")
         self.subtasks.add(task=task)
         self.agent.plan._register_new_task(task=task)
 
     def add_tasks(self, tasks: list["BaseTask"]):
-        LOG.debug(f"Adding {len(tasks)} tasks to {self.formated_str()}")
+        LOG.debug(f"Adding {len(tasks)} tasks to {self.debug_formated_str()}")
         for task in tasks:
             self.add_task(task=task)
 
@@ -330,44 +330,6 @@ class BaseTask(AFAASModel):
 
         return ready_tasks
         
-    @staticmethod
-    def info_parse_task(task: BaseTask) -> str:
-        from .task import Task
-
-        parsed_response = f"Agent Plan:\n"
-        task: Task
-        for i, task in enumerate(task.subtasks):
-            parsed_response += f"{i+1}. {task.task_id} - {task.task_goal}\n"
-            parsed_response += f"Description {task.long_decription}\n"
-            # parsed_response += f"Task type: {task.type}  "
-            # parsed_response += f"Priority: {task.priority}\n"
-            parsed_response += f"Predecessors:\n"
-            for j, predecessor in enumerate(task.task_predecessors):
-                parsed_response += f"    {j+1}. {predecessor}\n"
-            parsed_response += f"Successors:\n"
-            for j, succesors in enumerate(task.task_successors):
-                parsed_response += f"    {j+1}. {succesors}\n"
-            parsed_response += f"Acceptance Criteria:\n"
-            for j, criteria in enumerate(task.acceptance_criteria):
-                parsed_response += f"    {j+1}. {criteria}\n"
-            parsed_response += "\n"
-
-        return parsed_response
-
-    def dump(self, depth=0) -> dict:
-        if depth < 0:
-            raise ValueError("Depth must be a non-negative integer.")
-
-        # Initialize the return dictionary
-        return_dict = self.dict()
-
-        # Recursively process subtasks up to the specified depth
-        if depth > 0 and self.subtasks:
-            return_dict["subtasks"] = [
-                subtask.dump(depth=depth - 1) for subtask in self.subtasks
-            ]
-
-        return return_dict
 
     def find_task(self, task_id: str):
         """
@@ -409,9 +371,63 @@ class BaseTask(AFAASModel):
     def create_in_db(self, agent: BaseAgent):
         ...
 
-    def formated_str(self) -> str:
+    def debug_formated_str(self) -> str:
         return f"`{LOG.italic(self.task_goal)}` ({LOG.bold(self.task_id)})"
 
+    @staticmethod
+    def debug_info_parse_task(task: BaseTask) -> str:
+        from .task import Task
+
+        parsed_response = f"Agent Plan:\n"
+        task: Task
+        for i, task in enumerate(task.subtasks):
+            parsed_response += f"{i+1}. {task.task_id} - {task.task_goal}\n"
+            parsed_response += f"Description {task.long_decription}\n"
+            # parsed_response += f"Task type: {task.type}  "
+            # parsed_response += f"Priority: {task.priority}\n"
+            parsed_response += f"Predecessors:\n"
+            for j, predecessor in enumerate(task.task_predecessors):
+                parsed_response += f"    {j+1}. {predecessor}\n"
+            parsed_response += f"Successors:\n"
+            for j, succesors in enumerate(task.task_successors):
+                parsed_response += f"    {j+1}. {succesors}\n"
+            parsed_response += f"Acceptance Criteria:\n"
+            for j, criteria in enumerate(task.acceptance_criteria):
+                parsed_response += f"    {j+1}. {criteria}\n"
+            parsed_response += "\n"
+
+        return parsed_response
+
+    def debug_dump(self, depth=0) -> dict:
+        if depth < 0:
+            raise ValueError("Depth must be a non-negative integer.")
+
+        # Initialize the return dictionary
+        return_dict = self.dict()
+
+        # Recursively process subtasks up to the specified depth
+        if depth > 0 and self.subtasks:
+            return_dict["subtasks"] = [
+                subtask.dump(depth=depth - 1) for subtask in self.subtasks
+            ]
+
+        return return_dict
+    
+
+    def debug_dump_str(self, depth : int =0 , iteration : int = 0) -> str:
+        if depth < 0:
+            raise ValueError("Depth must be a non-negative integer.")
+
+        # Initialize the return dictionary
+        return_str = self.debug_formated_str() + "\n"
+
+        # Recursively process subtasks up to the specified depth
+        if depth > 0 and self.subtasks:
+            for i, subtask in enumerate(self.subtasks) :
+                task : BaseTask = self.agent.plan.get_task(task_id = subtask)
+                return_str += "  "* iteration + f"{i+1}."+ task.debug_dump_str(depth = depth - 1, iteration = iteration + 1)  + "\n"
+
+        return return_str
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
 BaseTask.update_forward_refs()
