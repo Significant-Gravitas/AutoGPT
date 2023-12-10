@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 from AFAAS.core.agents.base import BaseLoop, BaseLoopHook
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger
+from AFAAS.core.lib.sdk.logger import AFAASLogger, NOTICE
 LOG = AFAASLogger(name=__name__)
 
 # aaas = {}
@@ -250,6 +250,23 @@ class PlannerLoop(BaseLoop):
 
             self.save_plan()
 
+            if (len(self.plan().get_all_tasks_ids()) == len(self.plan().get_all_done_tasks_ids())):
+                LOG.info("All tasks are done 😄") 
+                self._is_running = False
+            elif self._current_task is None : 
+                LOG.error("The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it.")
+                LOG.info("The sofware is still in deveopment and  availableas a preview. Such anomaly are a priority and we would be working on it.")
+                self._is_running = False
+
+            plan_history : list[Task] = self.plan().get_last_achieved_task(count=10)
+            for i, task in enumerate(plan_history):
+                LOG.info(f"{i}.Task : {task.task_id} : {task.task_goal} : {task.task_text_output}")
+
+            LOG.info(f"Current task : {self._current_task.task_id} : {self._current_task.task_goal}")
+
+            if(LOG.isEnabledFor(NOTICE)):
+                input("Press Enter to continue...")
+
     async def start(
         self,
         agent: PlannerAgent = None,
@@ -436,7 +453,7 @@ def execute_command(
     if tool := agent._tool_registry.get_tool(tool_name=command_name):
         try:
             result = tool(**arguments, task=task, agent=agent)
-            tool.success_check_callback(task=task, tool_output=result)
+            tool.success_check_callback(self = tool , task=task, tool_output=result)
             return result
         except AgentException:
             raise

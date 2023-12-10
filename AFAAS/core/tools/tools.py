@@ -4,13 +4,14 @@ import inspect
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 if TYPE_CHECKING:
-    from autogpt.agents.base import BaseAgent
-    from autogpt.config import Any
+    from AFAAS.core.agents.base import BaseAgent
+    from AFAAS.core.configuration import *
     from .tool_parameters import ToolParameter
 
 from AFAAS.core.lib.context_items import ContextItem
 from AFAAS.core.lib.task import Task
 from AFAAS.core.lib.sdk.logger import AFAASLogger
+from langchain.tools.base import BaseTool
 
 LOG = AFAASLogger(__name__)
 
@@ -77,11 +78,11 @@ class Tool:
         ]
         return f"{self.name}: {self.description.rstrip('.')}. Params: ({', '.join(params)})"
 
-    @classmethod
-    def default_success_check_callback(cls, task: Task, tool_output: Any):
-        LOG.notice(f"Tool.default_summary() not yet implemented")
+    def default_success_check_callback(self , task: Task, tool_output: Any):
+        LOG.trace(f"Tool.default_success_check_callback() called for {self}")
+        LOG.debug(f"Task = {task}")
+        LOG.debug(f"Tool output = {tool_output}")
+        
+        return self.description
 
-        def summary(self, *args, **kwargs):
-            return self.description
-
-        return summary
+        #return summary

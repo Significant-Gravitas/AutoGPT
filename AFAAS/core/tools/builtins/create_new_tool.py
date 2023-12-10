@@ -6,11 +6,11 @@ from AFAAS.core.plugin.simple import (PluginLocation,
                                                          PluginStorageFormat)
 # from typing import TYPE_CHECKING
 # if TYPE_CHECKING:
-from AFAAS.core.tools.base import Tool, ToolConfiguration
+from AFAAS.core.tools.base import BaseTool, ToolConfiguration
 from AFAAS.core.tools.schema import ToolResult
 
 
-class CreateNewTool(Tool):
+class CreateNewTool(BaseTool):
     default_configuration = ToolConfiguration(
         location=PluginLocation(
             storage_format=PluginStorageFormat.INSTALLED_PACKAGE,

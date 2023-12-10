@@ -30,7 +30,7 @@ class ToolConfiguration(SystemConfiguration):
 ToolConfiguration.update_forward_refs()
 
 
-class Tool(AgentMixin, abc.ABC):
+class BaseTool(AgentMixin, abc.ABC):
     """A class representing an agent ability."""
 
     default_configuration: ClassVar[ToolConfiguration]
@@ -100,7 +100,7 @@ class BaseToolsRegistry(AgentMixin, abc.ABC):
         ...
 
     @abc.abstractmethod
-    def get_tool(self, tool_name: str) -> Tool:
+    def get_tool(self, tool_name: str) -> BaseTool:
         ...
 
     @abc.abstractmethod

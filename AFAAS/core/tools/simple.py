@@ -19,7 +19,7 @@ from AFAAS.core.configuration import (Configurable,
 from AFAAS.core.memory.base import AbstractMemory
 from AFAAS.core.resource.model_providers import (
     BaseChatModelProvider, CompletionModelFunction, ModelProviderName)
-from AFAAS.core.tools.base import (BaseToolsRegistry, Tool,
+from AFAAS.core.tools.base import (BaseToolsRegistry, BaseTool,
                                                       ToolConfiguration)
 from AFAAS.core.tools.command_decorator import \
     AUTO_GPT_TOOL_IDENTIFIER
@@ -79,7 +79,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         name: str
         title: str
         description: str
-        tools: list[Tool] = field(default_factory=list[Tool])
+        tools: list[BaseTool] = field(default_factory=list[BaseTool])
         modules: list[ModuleType] = field(default_factory=list[ModuleType])
 
         class Config:
@@ -139,7 +139,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         aliases: list[str] = [],
         category: str = None,
     ) -> None:
-        return self.register(Tool(tool_configuration))
+        return self.register(BaseTool(tool_configuration))
 
     #     """
     #     Register a new tool with the registry.
@@ -190,7 +190,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
     #             )
     #         self.categories[category].tools.append(tool_name)
 
-    def register(self, cmd: Tool) -> None:
+    def register(self, cmd: BaseTool) -> None:
         """
         Register a new tool with the registry.
 
@@ -220,7 +220,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         for alias in cmd.aliases:
             self.tool_aliases[alias] = cmd
 
-    def unregister(self, tool: Tool) -> None:
+    def unregister(self, tool: BaseTool) -> None:
         """
         Unregister an tool from the registry.
 
@@ -289,7 +289,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
             if hasattr(reloaded_module, "register"):
                 reloaded_module.register(self)
 
-    def get_tool(self, tool_name: str) -> Tool | None:
+    def get_tool(self, tool_name: str) -> BaseTool | None:
         """
         Retrieve a specific tool by its name.
 
@@ -345,7 +345,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
             return command(**kwargs, agent=agent)
         raise KeyError(f"Tool '{command_name}' not found in registry")
 
-    def list_available_tools(self, agent: BaseAgent) -> Iterator[Tool]:
+    def list_available_tools(self, agent: BaseAgent) -> Iterator[BaseTool]:
         """Iterates over all registered tools and yields those that are available.
 
         Params:
@@ -391,7 +391,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
     def get_tools_names(self) -> list[str]:
         return [tool.name() for tool in self.tools]
 
-    def get_tool_list(self) -> list[Tool]:
+    def get_tool_list(self) -> list[BaseTool]:
         logger.warning(
             "### Warning this function has not being tested, we recommand against using it###"
         )
@@ -485,7 +485,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
                 tool = attr.tool
 
             # Register tool classes
-            elif inspect.isclass(attr) and issubclass(attr, Tool) and attr != Tool:
+            elif inspect.isclass(attr) and issubclass(attr, BaseTool) and attr != BaseTool:
                 tool = attr()
 
             if tool:

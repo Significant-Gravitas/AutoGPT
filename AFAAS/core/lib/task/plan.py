@@ -112,7 +112,18 @@ class Plan(BaseTask):
     #############################################################################################
     #############################################################################################
     #############################################################################################
+    def get_all_tasks_ids(self)-> list[str]:
+        """
+        Get all the tasks ids from the plan
+        """
+        return self._all_task_ids
 
+    def get_all_done_tasks_ids(self)-> list[str]:
+        """
+        Get all the tasks ids from the plan
+        """
+        return self._done_task_ids
+    
     def get_task(self, task_id: str) -> Task:
         """
         Get a task from the plan
@@ -177,18 +188,22 @@ class Plan(BaseTask):
             return self._find_outer_next_task(task = task)
               
 
-    def _find_outer_next_task(self, task: Task = None, origin_task: Task = None) -> Task:
+    def _find_outer_next_task(self, task: Task, origin_task: Task = None) -> Task:
         
         if(task == origin_task):
             return None
 
         LOG.warning(f"We are browsing the tree from leaf to root. This use case is not yet supported. This functionality is in alpha version.")
-        if task is not None and task.task_parent is not None:
+        if task.task_parent is not None:
             t = task.task_parent.find_ready_branch()
             if len(t) > 0:
                 return t[0]
             else :
                 return self._find_outer_next_task(task = task.task_parent , origin_task = task)
+        elif task.parent_task_id is None:
+            if (not isinstance(task, Plan)):
+                LOG.error(f"Task {task.formated_str()} is not a plan and has no parent")
+            return None
 
 
     def get_ready_tasks(self, task_ids_set: list[str] = None) -> list[Task]:
@@ -215,6 +230,13 @@ class Plan(BaseTask):
         """
         LOG.debug(f"Getting first ready tasks from plan {self.plan_id}")
         return self.get_task(self._ready_task_ids[0])
+    
+    def get_last_achieved_tasks(self, count: int = 1) -> list[Task]:
+        """
+        Get the n last achieved tasks from Plan._done_task_ids
+        """
+        LOG.debug(f"Getting last achieved tasks from plan {self.plan_id}")
+        return [self.get_task(task_id) for task_id in self._done_task_ids[-count:]]
 
     #############################################################################################
     #############################################################################################

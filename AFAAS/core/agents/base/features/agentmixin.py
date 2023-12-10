@@ -7,9 +7,10 @@ if TYPE_CHECKING:
     from AFAAS.core.lib.task.plan import Plan
     from AFAAS.core.memory.table import AbstractTable
     from AFAAS.core.resource.model_providers import \
-        CompletionModelFunction
+        CompletionModelFunction , ChatModelResponse
     from AFAAS.core.tools.base import BaseToolsRegistry
     from AFAAS.core.tools.tools import Tool
+    from AFAAS.core.prompting.base import BasePromptStrategy
 
     from ..main import BaseAgent
 
@@ -64,3 +65,13 @@ class AgentMixin:
 
     def get_table(self, table_name: str) -> AbstractTable:
         return self._agent._memory.get_table(table_name=table_name)
+
+    def get_strategy(self, strategy_name: str) -> BasePromptStrategy:
+        return self._agent._prompt_manager._prompt_strategies[strategy_name]
+
+    async def _execute_strategy(
+        self, strategy_name: str, **kwargs
+    ) -> ChatModelResponse:
+        return await self._agent._prompt_manager.execute_strategy(
+            strategy_name=strategy_name, **kwargs
+        )
