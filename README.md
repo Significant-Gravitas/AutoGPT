@@ -1,6 +1,14 @@
 # afaas: Agent Framework as a Service
 
-Welcome to the **afaas: Agent Framework as a Service** project! This project is a fork **AutoGPT** it aims to facilitate developments and provide additional functionalities, namely : 
+Welcome to the **afaas: Agent Framework as a Service** project! This project is a fork **AutoGPT** it aims to facilitate developments of AI Agents & AI Autonomous Agents byt providing a more simple, modular & extendable architecture.
+
+🚧 **Work in progress** 🚧 
+
+Decription/Functionalities, InstallationgGuide, Documentation & Tutorials  will be released once a MVP + Documentation is achieved.
+
+
+<!--
+and provide additional functionalities, namely : 
 
 1. **Separate Agent Functionalities**: Facilitate teamwork by dividing agent functionalities into four parts:
    - **Agent Main**: Focuses on UI ↔ Agent ↔ Database interfaces, supporting CRUD & Execution.
@@ -16,7 +24,7 @@ Welcome to the **afaas: Agent Framework as a Service** project! This project is 
 
 5. **Support Various Memory Back-ends**: Including AWS, Azure, and MongoDB.
 
-<!--🚧 **Work in progress**: Please check the branch status for further information. 🚧-->
+<!--🚧 **Work in progress**: Please check the branch status for further information. 🚧
 
 ## Table of Contents
 
@@ -83,7 +91,7 @@ Miscellaneous:
 🛑 (U+1F6D1) - Stop, Halt
 📆 (U+1F4C6) - Date, Schedule
 📊 (U+1F4CA) - Statistics, Data
--->
+
 
 ## Tutorials
 
@@ -153,6 +161,7 @@ As a developper of agents you would only need to focus on `core/agents` & eventu
   - _Team comment : **Firebase Expert can contact us**_
 - **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/utils** : Library that help us achieving simple actions such as Logging or Parsing JSON
 - **[core](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration/autogpts/autogpt/autogpt/core/)/workspace** : Library to store file.
+-->
 
 ## Contact
 
