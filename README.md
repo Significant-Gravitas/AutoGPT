@@ -1,10 +1,10 @@
 # afaas: Agent Framework as a Service
 
-Welcome to the **afaas: Agent Framework as a Service** project! This project is a fork **AutoGPT** it aims to facilitate developments of AI Agents & AI Autonomous Agents byt providing a more simple, modular & extendable architecture.
+Welcome to the **afaas: Agent Framework as a Service** project! This project is a fork **AutoGPT** it aims to facilitate developments of AI Agents & AI Autonomous Agents by providing a more simple, modular & extendable architecture.
 
 🚧 **Work in progress** 🚧 
 
-Decription/Functionalities, InstallationgGuide, Documentation & Tutorials  will be released once a MVP + Documentation is achieved.
+Decription/Functionalities, Installation Guide, Documentation & Tutorials  will be released once a MVP + Documentation is achieved.
 
 
 <!--
