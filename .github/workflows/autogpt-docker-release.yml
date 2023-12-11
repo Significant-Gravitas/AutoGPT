@@ -20,6 +20,7 @@ env:
 
 jobs:
   build:
+    if: startsWith(github.ref, 'refs/tags/autogpt-')
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
