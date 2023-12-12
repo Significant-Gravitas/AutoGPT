@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+from io import IOBase
 from pathlib import Path
 
 from google.cloud import storage
@@ -40,7 +41,7 @@ class GCSFileWorkspace(FileWorkspace):
         return self._root
 
     @property
-    def restrict_to_root(self):
+    def restrict_to_root(self) -> bool:
         """Whether to restrict generated paths to the root."""
         return True
 
@@ -50,26 +51,28 @@ class GCSFileWorkspace(FileWorkspace):
     def get_path(self, relative_path: str | Path) -> Path:
         return super().get_path(relative_path).relative_to("/")
 
-    def open_file(self, path: str | Path, mode: str = "r"):
-        """Open a file in the workspace."""
+    def _get_blob(self, path: str | Path) -> storage.Blob:
         path = self.get_path(path)
-        blob = self._bucket.blob(str(path))
-        return blob
+        return self._bucket.blob(str(path))
+
+    def open_file(self, path: str | Path, binary: bool = False) -> IOBase:
+        """Open a file in the workspace."""
+        blob = self._get_blob(path)
+        blob.reload()  # pin revision number to prevent version mixing while reading
+        return blob.open("rb" if binary else "r")
 
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the workspace."""
-        blob = self.open_file(path, "r")
-        file_content = (
-            blob.download_as_text() if not binary else blob.download_as_bytes()
-        )
-        return file_content
+        return self.open_file(path, binary).read()
 
-    async def write_file(self, path: str | Path, content: str | bytes):
+    async def write_file(self, path: str | Path, content: str | bytes) -> None:
         """Write to a file in the workspace."""
-        blob = self.open_file(path, "w")
-        blob.upload_from_string(content) if isinstance(
-            content, str
-        ) else blob.upload_from_file(content)
+        blob = self._get_blob(path)
+
+        if isinstance(content, str):
+            blob.upload_from_string(content)
+        else:
+            blob.upload_from_file(content)
 
         if self.on_write_file:
             path = Path(path)

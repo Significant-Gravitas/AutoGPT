@@ -16,7 +16,7 @@ from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.memory.vector import MemoryItemFactory, VectorMemory
 
 from .decorators import sanitize_path_arg
-from .file_operations_utils import read_textual_file
+from .file_operations_utils import decode_textual_file
 
 COMMAND_CATEGORY = "file_operations"
 COMMAND_CATEGORY_TITLE = "File Operations"
@@ -140,8 +140,7 @@ def log_operation(
         )
     },
 )
-@sanitize_path_arg("filename")
-def read_file(filename: Path, agent: Agent) -> str:
+def read_file(filename: str | Path, agent: Agent) -> str:
     """Read a file and return the contents
 
     Args:
@@ -150,8 +149,8 @@ def read_file(filename: Path, agent: Agent) -> str:
     Returns:
         str: The contents of the file
     """
-    content = read_textual_file(filename, logger)
-    # TODO: content = agent.workspace.read_file(filename)
+    file = agent.workspace.open_file(filename, binary=True)
+    content = decode_textual_file(file, logger)
 
     # # TODO: invalidate/update memory when file is edited
     # file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
