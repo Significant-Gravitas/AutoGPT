@@ -1,0 +1,46 @@
+name: Label Contributor
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+jobs:
+  add-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add Contributor label to specific users' issues and PRs
+        uses: actions/github-script@v5
+        with:
+          script: |
+            const github = require('@actions/github');
+            const context = github.context;
+            const exemptLabel = 'Contributor';
+            const exemptUsers = ['ph-ausseil'];  // Add usernames here
+            
+            async function isPreviousContributor(username) {
+              const contributors = await github.rest.repos.listContributors({
+                owner: context.repo.owner,
+                repo: context.repo.repo
+              });
+
+              return contributors.data.some(contributor => contributor.login === username);
+            }
+
+            async function run() {
+              const isExemptUser = exemptUsers.includes(context.actor);
+              const isContributor = await isPreviousContributor(context.actor);
+
+              if (isExemptUser || isContributor) {
+                const issueOrPrNumber = (context.payload.issue || context.payload.pull_request).number;
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueOrPrNumber,
+                  labels: [exemptLabel]
+                });
+              }
+            }
+
+            run();
