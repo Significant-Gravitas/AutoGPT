@@ -8,6 +8,7 @@ import contextlib
 import inspect
 import logging
 import os
+from io import IOBase, TextIOWrapper
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -74,22 +75,27 @@ class S3FileWorkspace(FileWorkspace):
     def get_path(self, relative_path: str | Path) -> Path:
         return super().get_path(relative_path).relative_to("/")
 
-    def open_file(self, path: str | Path, mode: str = "r"):
-        """Open a file in the workspace."""
+    def _get_obj(self, path: str | Path) -> mypy_boto3_s3.service_resource.Object:
+        """Get an S3 object."""
         path = self.get_path(path)
         obj = self._bucket.Object(str(path))
         with contextlib.suppress(botocore.exceptions.ClientError):
             obj.load()
         return obj
 
+    def open_file(self, path: str | Path, binary: bool = False) -> IOBase:
+        """Open a file in the workspace."""
+        obj = self._get_obj(path)
+        return obj.get()["Body"] if not binary else TextIOWrapper(obj.get()["Body"])
+
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the workspace."""
-        file_content = self.open_file(path, "r").get()["Body"].read()
+        file_content = self.open_file(path, binary).read()
         return file_content if binary else file_content.decode()
 
-    async def write_file(self, path: str | Path, content: str | bytes):
+    async def write_file(self, path: str | Path, content: str | bytes) -> None:
         """Write to a file in the workspace."""
-        obj = self.open_file(path, "w")
+        obj = self._get_obj(path)
         obj.put(Body=content)
 
         if self.on_write_file:
