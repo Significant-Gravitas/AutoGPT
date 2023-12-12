@@ -273,13 +273,13 @@ class AgentProtocolServer:
                 + ("\n\n" if "\n" in str(execute_result) else " ")
                 + f"{execute_result}\n\n"
             )
-            if execute_command_args and execute_command != "ask_user"
+            if execute_command_args and execute_command != ask_user.__name__
             else ""
         )
         output += f"{raw_output['thoughts']['speak']}\n\n"
         output += (
             f"Next Command: {next_command}({fmt_kwargs(next_command_args)})"
-            if next_command != "ask_user"
+            if next_command != ask_user.__name__
             else next_command_args["question"]
         )
 
@@ -417,11 +417,11 @@ class AgentProtocolServer:
         task_llm_provider = copy.deepcopy(self.llm_provider)
         _extra_request_headers = task_llm_provider._configuration.extra_request_headers
 
-        _extra_request_headers["X-AP-TaskID"] = task.task_id
+        _extra_request_headers["AP-TaskID"] = task.task_id
         if step_id:
-            _extra_request_headers["X-AP-StepID"] = step_id
+            _extra_request_headers["AP-StepID"] = step_id
         if task.additional_input and (user_id := task.additional_input.get("user_id")):
-            _extra_request_headers["X-AutoGPT-UserID"] = user_id
+            _extra_request_headers["AutoGPT-UserID"] = user_id
 
         return task_llm_provider
 
