@@ -72,8 +72,8 @@ class FileWorkspace(ABC):
         """Write to a file in the workspace."""
 
     @abstractmethod
-    def list_files(self, path: str | Path = ".") -> list[Path]:
-        """List all files in a directory in the workspace."""
+    def list(self, path: str | Path = ".") -> list[Path]:
+        """List all files (recursively) in a directory in the workspace."""
 
     @abstractmethod
     def delete_file(self, path: str | Path) -> None:

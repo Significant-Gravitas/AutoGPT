@@ -29,6 +29,7 @@ class GCSFileWorkspace(FileWorkspace):
     def __init__(self, config: GCSFileWorkspaceConfiguration):
         self._bucket_name = config.bucket
         self._root = config.root
+        assert self._root.is_absolute()
 
         self._gcs = storage.Client()
         super().__init__()
@@ -47,7 +48,7 @@ class GCSFileWorkspace(FileWorkspace):
         self._bucket = self._gcs.get_bucket(self._bucket_name)
 
     def get_path(self, relative_path: str | Path) -> Path:
-        return super().get_path(relative_path).relative_to(Path("/"))
+        return super().get_path(relative_path).relative_to("/")
 
     def open_file(self, path: str | Path, mode: str = "r"):
         """Open a file in the workspace."""
@@ -78,11 +79,13 @@ class GCSFileWorkspace(FileWorkspace):
             if inspect.isawaitable(res):
                 await res
 
-    def list_files(self, path: str | Path = ".") -> list[Path]:
-        """List all files in a directory in the workspace."""
+    def list(self, path: str | Path = ".") -> list[Path]:
+        """List all files (recursively) in a directory in the workspace."""
         path = self.get_path(path)
-        blobs = self._bucket.list_blobs(prefix=str(path))
-        return [Path(blob.name) for blob in blobs if not blob.name.endswith("/")]
+        blobs = self._bucket.list_blobs(
+            prefix=f"{path}/" if path != Path(".") else None
+        )
+        return [Path(blob.name).relative_to(path) for blob in blobs]
 
     def delete_file(self, path: str | Path) -> None:
         """Delete a file in the workspace."""

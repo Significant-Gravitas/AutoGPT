@@ -40,6 +40,7 @@ class S3FileWorkspace(FileWorkspace):
     def __init__(self, config: S3FileWorkspaceConfiguration):
         self._bucket_name = config.bucket
         self._root = config.root
+        assert self._root.is_absolute()
 
         # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html
         self._s3 = boto3.resource(
@@ -71,7 +72,7 @@ class S3FileWorkspace(FileWorkspace):
             self._bucket = self._s3.create_bucket(Bucket=self._bucket_name)
 
     def get_path(self, relative_path: str | Path) -> Path:
-        return super().get_path(relative_path).relative_to(Path("/"))
+        return super().get_path(relative_path).relative_to("/")
 
     def open_file(self, path: str | Path, mode: str = "r"):
         """Open a file in the workspace."""
@@ -99,20 +100,14 @@ class S3FileWorkspace(FileWorkspace):
             if inspect.isawaitable(res):
                 await res
 
-    def list_files(self, path: str | Path = ".") -> list[Path]:
-        """List all files in a directory in the workspace."""
+    def list(self, path: str | Path = ".") -> list[Path]:
+        """List all files (recursively) in a directory in the workspace."""
         path = self.get_path(path)
         if path == Path("."):
-            return [
-                Path(obj.key)
-                for obj in self._bucket.objects.all()
-                if not obj.key.endswith("/")
-            ]
+            return [Path(obj.key) for obj in self._bucket.objects.all()]
         else:
             return [
-                Path(obj.key)
-                for obj in self._bucket.objects.filter(Prefix=str(path))
-                if not obj.key.endswith("/")
+                Path(obj.key) for obj in self._bucket.objects.filter(Prefix=f"{path}/")
             ]
 
     def delete_file(self, path: str | Path) -> None:
