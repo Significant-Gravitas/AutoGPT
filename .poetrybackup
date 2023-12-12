@@ -310,7 +310,7 @@ aiohttp = "^3.8.5"
 bs4 = "^0.0.1"
 chromadb = "^0.4.10"
 colorlog = "^6.7.0"
-duckduckgo-search = "^4.0.0"
+duckduckgo-search = "^3.8.0"
 google-cloud-storage = "^2.13.0"
 jinja2 = "^3.1.2"
 litellm = "^0.1.821"
@@ -1709,13 +1709,13 @@ ssh = ["paramiko (>=2.4.3)"]
 
 [[package]]
 name = "duckduckgo-search"
-version = "4.0.0"
+version = "3.8.5"
 description = "Search for words, documents, images, news, maps and text translation using the DuckDuckGo.com search engine."
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "duckduckgo_search-4.0.0-py3-none-any.whl", hash = "sha256:9c85190c439f29e95d0cc9509a77d63dbcdbda49a4f9bdf8ff4b567f4a10a44d"},
-    {file = "duckduckgo_search-4.0.0.tar.gz", hash = "sha256:584ea097fa0475cebc278ee464ccd54ba78019dec15a0243723923dc40bc3939"},
+    {file = "duckduckgo_search-3.8.5-py3-none-any.whl", hash = "sha256:9c85190c439f29e95d0cc9509a77d63dbcdbda49a4f9bdf8ff4b567f4a10a44d"},
+    {file = "duckduckgo_search-3.8.5.tar.gz", hash = "sha256:584ea097fa0475cebc278ee464ccd54ba78019dec15a0243723923dc40bc3939"},
 ]
 
 [package.dependencies]

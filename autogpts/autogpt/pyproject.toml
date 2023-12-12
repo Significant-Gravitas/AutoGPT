@@ -22,8 +22,9 @@ serve = "autogpt.app.cli:serve"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-# autogpt-forge = { path = "../forge" }
-autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge"}
+#TODO: Add this to the documentation so people can use the local or remote version. E.g. setting to local was the only way to fix the duck duck go dependency issue.
+autogpt-forge = { path = "../forge" }
+#autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "autogpts/forge"}
 beautifulsoup4 = "^4.12.2"
 boto3 = "^1.33.6"
 charset-normalizer = "^3.1.0"
@@ -31,7 +32,7 @@ click = "*"
 colorama = "^0.4.6"
 distro = "^1.8.0"
 docker = "*"
-duckduckgo-search = "^3.0.2"
+duckduckgo-search = "^4.0.0"
 en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl"}
 fastapi = "*"
 ftfy = "^6.1.1"
