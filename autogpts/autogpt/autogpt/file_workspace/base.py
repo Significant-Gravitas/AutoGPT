@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from io import IOBase, TextIOBase
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, overload
+from typing import IO, Any, BinaryIO, Callable, Literal, Optional, TextIO, overload
 
 from autogpt.core.configuration.schema import SystemConfiguration
 
@@ -47,9 +48,23 @@ class FileWorkspace(ABC):
         doesn't exist yet. E.g. a folder on disk, or an S3 Bucket.
         """
 
+    @overload
     @abstractmethod
-    def open_file(self, path: str | Path, mode: str = "r"):
-        """Open a file in the workspace."""
+    def open_file(
+        self, path: str | Path, binary: Literal[False] = False
+    ) -> TextIO | TextIOBase:
+        """Returns a readable text file-like object representing the file."""
+
+    @overload
+    @abstractmethod
+    def open_file(
+        self, path: str | Path, binary: Literal[True] = True
+    ) -> BinaryIO | IOBase:
+        """Returns a readable binary file-like object representing the file."""
+
+    @abstractmethod
+    def open_file(self, path: str | Path, binary: bool = False) -> IO | IOBase:
+        """Returns a readable file-like object representing the file."""
 
     @overload
     @abstractmethod
