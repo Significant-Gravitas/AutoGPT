@@ -60,8 +60,8 @@ def gcs_workspace(gcs_workspace_uninitialized: GCSFileWorkspace) -> GCSFileWorks
 
 TEST_FILES: list[tuple[str | Path, str]] = [
     ("existing_test_file_1", "test content 1"),
-    ("existing_test_file_2.txt", "test content 2"),
-    (Path("existing_test_file_3"), "test content 3"),
+    ("/existing_test_file_2.txt", "test content 2"),
+    (Path("/existing_test_file_3"), "test content 3"),
     (Path("existing/test/file/4"), "test content 4"),
 ]
 
@@ -69,7 +69,9 @@ TEST_FILES: list[tuple[str | Path, str]] = [
 @pytest_asyncio.fixture
 async def gcs_workspace_with_files(gcs_workspace: GCSFileWorkspace) -> GCSFileWorkspace:
     for file_name, file_content in TEST_FILES:
-        gcs_workspace._bucket.blob(str(file_name)).upload_from_string(file_content)
+        gcs_workspace._bucket.blob(
+            str(gcs_workspace.get_path(file_name))
+        ).upload_from_string(file_content)
     yield gcs_workspace  # type: ignore
 
 
@@ -84,8 +86,24 @@ async def test_read_file(gcs_workspace_with_files: GCSFileWorkspace):
 
 
 def test_list_files(gcs_workspace_with_files: GCSFileWorkspace):
-    files = gcs_workspace_with_files.list_files()
-    assert set(files) == set(Path(file_name) for file_name, _ in TEST_FILES)
+    # List at root level
+    assert (files := gcs_workspace_with_files.list()) == gcs_workspace_with_files.list()
+    assert len(files) > 0
+    assert set(files) == set(
+        p.relative_to("/") if (p := Path(file_name)).is_absolute() else p
+        for file_name, _ in TEST_FILES
+    )
+
+    # List at nested path
+    assert (
+        nested_files := gcs_workspace_with_files.list("existing")
+    ) == gcs_workspace_with_files.list("existing")
+    assert len(nested_files) > 0
+    assert set(nested_files) == set(
+        p
+        for file_name, _ in TEST_FILES
+        if (p := Path(file_name)).is_relative_to("existing")
+    )
 
 
 @pytest.mark.asyncio

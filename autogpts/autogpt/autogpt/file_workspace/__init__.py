@@ -16,7 +16,7 @@ def get_workspace(
 ) -> FileWorkspace:
     assert bool(root_path) != bool(id), "Specify root_path or id to get workspace"
     if root_path is None:
-        root_path = Path(f"workspaces/{id}")
+        root_path = Path(f"/workspaces/{id}")
 
     match backend:
         case FileWorkspaceBackendName.LOCAL:

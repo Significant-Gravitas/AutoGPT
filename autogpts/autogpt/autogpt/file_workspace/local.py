@@ -56,10 +56,10 @@ class LocalFileWorkspace(FileWorkspace):
             if inspect.isawaitable(res):
                 await res
 
-    def list_files(self, path: str | Path = "."):
-        """List all files in a directory in the workspace."""
-        full_path = self.get_path(path)
-        return [str(file) for file in full_path.glob("*") if file.is_file()]
+    def list(self, path: str | Path = ".") -> list[Path]:
+        """List all files (recursively) in a directory in the workspace."""
+        path = self.get_path(path)
+        return [file.relative_to(path) for file in path.rglob("*") if file.is_file()]
 
     def delete_file(self, path: str | Path):
         """Delete a file in the workspace."""

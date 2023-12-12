@@ -58,8 +58,8 @@ def s3_workspace(s3_workspace_uninitialized: S3FileWorkspace) -> S3FileWorkspace
 
 TEST_FILES: list[tuple[str | Path, str]] = [
     ("existing_test_file_1", "test content 1"),
-    ("existing_test_file_2.txt", "test content 2"),
-    (Path("existing_test_file_3"), "test content 3"),
+    ("/existing_test_file_2.txt", "test content 2"),
+    (Path("/existing_test_file_3"), "test content 3"),
     (Path("existing/test/file/4"), "test content 4"),
 ]
 
@@ -67,7 +67,9 @@ TEST_FILES: list[tuple[str | Path, str]] = [
 @pytest_asyncio.fixture
 async def s3_workspace_with_files(s3_workspace: S3FileWorkspace) -> S3FileWorkspace:
     for file_name, file_content in TEST_FILES:
-        s3_workspace._bucket.Object(str(file_name)).put(Body=file_content)
+        s3_workspace._bucket.Object(str(s3_workspace.get_path(file_name))).put(
+            Body=file_content
+        )
     yield s3_workspace  # type: ignore
 
 
@@ -82,8 +84,24 @@ async def test_read_file(s3_workspace_with_files: S3FileWorkspace):
 
 
 def test_list_files(s3_workspace_with_files: S3FileWorkspace):
-    files = s3_workspace_with_files.list_files()
-    assert set(files) == set(Path(file_name) for file_name, _ in TEST_FILES)
+    # List at root level
+    assert (files := s3_workspace_with_files.list()) == s3_workspace_with_files.list()
+    assert len(files) > 0
+    assert set(files) == set(
+        p.relative_to("/") if (p := Path(file_name)).is_absolute() else p
+        for file_name, _ in TEST_FILES
+    )
+
+    # List at nested path
+    assert (
+        nested_files := s3_workspace_with_files.list("existing")
+    ) == s3_workspace_with_files.list("existing")
+    assert len(nested_files) > 0
+    assert set(nested_files) == set(
+        p
+        for file_name, _ in TEST_FILES
+        if (p := Path(file_name)).is_relative_to("existing")
+    )
 
 
 @pytest.mark.asyncio
