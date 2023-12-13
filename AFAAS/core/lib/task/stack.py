@@ -11,7 +11,7 @@ from  AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name=__name__)
 
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generator
 
 from pydantic import Field
 
@@ -25,10 +25,12 @@ class TaskStack(AFAASModel):
 
     def __init__(self, **data: Any):
         super().__init__(**data)
-        self._task_ids = []
+        if not '_task_ids' in data.keys():
+            self._task_ids = []
 
-    def dict(self, *args, **kwargs) -> dict:
-        return {"task_ids": self._task_ids}
+
+    def dict(self, *args, **kwargs) -> list[str]:
+        return self._task_ids
 
     def json(self, *args, **kwargs):
         return json.dumps(self.dict())
@@ -37,7 +39,25 @@ class TaskStack(AFAASModel):
         return len(self._task_ids)
 
     def __iter__(self):
+        LOG.error('Iterating over TaskStack')
         return iter(self._task_ids)
+    
+    @classmethod
+    def __get_validators__(cls) -> Generator:
+        LOG.trace(f"{cls.__name__}.__get_validators__()")
+        yield cls.validate
+
+    @classmethod
+    def validate(cls, v: Any) -> "TaskStack":
+        LOG.trace(f"{cls.__name__}.validate()")
+        if isinstance(v, cls):
+            return v
+        elif isinstance(v, dict):
+            # Assuming the dictionary contains the necessary data to create a TaskStack
+            return cls(**v)  # Adjust this line as needed based on how TaskStack is initialized
+        else:
+            raise TypeError(f"Expected TaskStack or dict, received {type(v)}")
+
 
     def add(self, task: BaseTask):
         """
@@ -80,6 +100,15 @@ class TaskStack(AFAASModel):
         return [
             self.parent_task.agent.plan.get_task(task_id) for task_id in self._task_ids
         ]
+    
+
+    def get_all_task_ids_from_stack(self) -> list[BaseTask]:
+        """
+        Get all tasks. If only_ready is True, return only ready tasks.
+        """
+        return [
+            task_id for task_id in self._task_ids
+        ]
 
     def get_ready_tasks_from_stack(self) -> list[BaseTask]:
         """
@@ -88,6 +117,19 @@ class TaskStack(AFAASModel):
         ready_task_ids_set = set(self.parent_task.agent.plan.get_ready_tasks())
 
         common_task_ids = ready_task_ids_set.intersection(self._task_ids)
+
+        return [
+            self.parent_task.agent.plan.get_task(task_id) for task_id in common_task_ids
+        ]
+    
+
+    def get_done_tasks_from_stack(self) -> list[BaseTask]:
+        """
+        Get all ready tasks.
+        """
+        done_task_ids_set = set(self.parent_task.agent.plan.get_done_tasks())
+
+        common_task_ids = done_task_ids_set.intersection(self._task_ids)
 
         return [
             self.parent_task.agent.plan.get_task(task_id) for task_id in common_task_ids

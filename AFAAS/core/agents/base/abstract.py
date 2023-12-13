@@ -82,12 +82,18 @@ class AbstractAgent(ABC):
 
         @property
         def _type_(self):
+            # == "".join(self.__class__.__qualname__.split(".")[:-1])  
+            return self.__class__.__qualname__.split(".")[0]    
+
+        
+        @property
+        def _module_(self):
             # Nested Class
-            return (
-                self.__module__
-                + "."
-                + ".".join(self.__class__.__qualname__.split(".")[:-1])
-            )
+            return self.__module__ + "." + self._type_
+        
+        class Config(SystemSettings.Config):
+            AGENT_CLASS_FIELD_NAME : str = "_type_"
+            AGENT_CLASS_MODULE_NAME : str = "_module_"
 
         @classmethod
         @property
@@ -99,8 +105,8 @@ class AbstractAgent(ABC):
         def settings_agent_module_(cls):
             return cls.__module__ + "." + ".".join(cls.__qualname__.split(".")[:-1])
 
-    _type_: ClassVar[str] = __name__
-    _module_: ClassVar[str] = __module__ + "." + __name__
+    _agent_type_: ClassVar[str] = __name__
+    _agent_module_: ClassVar[str] = __module__ + "." + __name__
 
     @abstractmethod
     def __init__(self, *args, **kwargs):

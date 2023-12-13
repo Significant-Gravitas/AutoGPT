@@ -16,36 +16,14 @@ from AFAAS.core.tools import ToolOutput
 
 if TYPE_CHECKING:
     from AFAAS.core.agents.planner import PlannerAgent
-
-    # from AFAAS.core.prompting.schema import ChatModelResponse
     from AFAAS.core.resource.model_providers import (
         ChatModelResponse,
     )
 
 from AFAAS.core.agents.base import BaseLoop, BaseLoopHook
 
-from AFAAS.core.lib.sdk.logger import AFAASLogger, NOTICE
+from AFAAS.core.lib.sdk.logger import AFAASLogger, NOTICE, TRACE
 LOG = AFAASLogger(name=__name__)
-
-# aaas = {}
-# try:
-#     pass
-
-#     Task.command: Optional[str] = Field(default="afaas_routing")
-#     aaas["routing"] = True
-# except:
-#     aaas["routing"] = False
-
-# try:
-#     pass
-
-#     aaas["usercontext"] = True
-# except:
-#     aaas["usercontext"] = False
-
-# # FIXME: Deactivated for as long as we don't have the UI to support it
-# aaas["usercontext"] = False
-# # aaas['routing'] = False
 
 
 class PlannerLoop(BaseLoop):
@@ -57,77 +35,12 @@ class PlannerLoop(BaseLoop):
 
     def __init__(self) -> None:
         super().__init__()
-        # AgentMixin.__init__()
 
         self._active = False
         self.remaining_cycles = 1
 
     def set_current_task(self, task=Task):
         self._current_task: Task = task
-
-    """
-    def add_initial_tasks(self):
-        ###
-        ### Step 1 : add routing to the tasks
-        ###
-        if aaas["routing"]:
-            initial_task = Task(
-                # task_parent = self.plan() ,
-                task_parent_id=None,
-                task_predecessor_id=None,
-                responsible_agent_id=None,
-                # task_goal="Define an agent approach to tackle a tasks",
-                task_goal= self._agent.agent_goal_sentence,
-                command="afaas_routing",
-                arguments = {'note_to_agent_length' : 400},
-                acceptance_criteria=[
-                    "A plan has been made to achieve the specific task"
-                ],
-                state=TaskStatusList.READY,
-            )
-        else:
-            initial_task = Task(
-                # task_parent = self.plan() ,
-                task_parent_id=None,
-                task_predecessor_id=None,
-                responsible_agent_id=None,
-                # task_goal="Make a plan to tacke a tasks",
-                task_goal= self._agent.agent_goal_sentence,
-                command="afaas_make_initial_plan",
-                arguments={},
-                acceptance_criteria=[
-                    "Contextual information related to the task has been provided"
-                ],
-                state=TaskStatusList.READY,
-            )
-
-        self._current_task = initial_task  # .task_id
-        initial_task_list = [initial_task]
-
-        ###
-        ### Step 2 : Prepend usercontext
-        ###
-        if aaas["usercontext"]:
-            refine_user_context_task = Task(
-                # task_parent = self.plan() ,
-                task_parent_id=None,
-                task_predecessor_id=None,
-                responsible_agent_id=None,
-                name="afaas_refine_user_context",
-                task_goal="Refine a user requirements for better exploitation by Agents",
-                command="afaas_refine_user_context",
-                arguments={},
-                state=TaskStatusList.READY,
-            )
-            initial_task_list = [refine_user_context_task] + initial_task_list
-            self._current_task = refine_user_context_task  # .task_id
-        else:
-            self._agent.agent_goals = [self._agent.agent_goal_sentence]
-
-        self._current_task_routing_description = ""
-        self._current_task_routing_feedbacks = ""
-        self.plan().add_tasks(tasks=initial_task_list, agent=self._agent)
-    """
 
     async def run(
         self,
@@ -194,9 +107,6 @@ class PlannerLoop(BaseLoop):
             llm_response = await self.build_initial_plan(
                 description=description, routing_feedbacks=routing_feedbacks
             )
-            # self._agent.plan = Plan()
-            # for task in plan['task_list'] :
-            #     self._agent.plan.tasks.append(Task(data = task))
 
             # Debugging :)
             self._agent._logger.info(Plan.debug_info_parse_task(self._agent.plan))
@@ -234,10 +144,13 @@ class PlannerLoop(BaseLoop):
                         assistant_reply_dict,
                     ) = await self.select_tool()
 
-
+                ##############################################################
+                ### Step 6 : Prepare RAG #
+                ##############################################################
+                current_task.task_context = current_task.prepare_rag()
 
                 ##############################################################
-                ### Step 6 : execute_tool() #
+                ### Step 7 : execute_tool() #
                 ##############################################################
                 result = await self.execute_tool(
                     command_name=command_name,
@@ -246,7 +159,21 @@ class PlannerLoop(BaseLoop):
                     # user_input = assistant_reply_dict
                 )
             
-            LOG.info(f"Terminating Task : {current_task.debug_formated_str()}")
+
+            if current_task.is_ready() : 
+                """If the task still still match readiness criterias at this point, it means that we can close it"""
+                current_task.state = TaskStatusList.DONE
+                LOG.info(f"Terminating Task : {current_task.debug_formated_str()}")
+            else :
+                """
+                If the task doesn't match readiness criterias at this point, it means that we can't close it
+                this situation is most likely due to the adition of subbtasks or predecessor during the excecution of the task
+                #TODO: Concider implementing this feature as a Tool Callback for Tools that can create subtasks
+                """
+                self.plan()._ready_task_ids.remove(current_task.task_id)
+
+                
+
             LOG.debug(self.plan().debug_dump_str(depth= 2))
             self._current_task = self.plan().get_next_task(task = current_task)
 
@@ -257,17 +184,46 @@ class PlannerLoop(BaseLoop):
                 self._is_running = False
             elif self._current_task is None : 
                 LOG.error("The agent can't find the next task to execute 😱 ! This is an anomaly and we would be working on it.")
-                LOG.info("The sofware is still in deveopment and  availableas a preview. Such anomaly are a priority and we would be working on it.")
+                LOG.info("The software is still in deveopment and  availableas a preview. Such anomaly are a priority and we would be working on it.")
                 self._is_running = False
+            else : 
+                LOG.trace(f"Next task : {self._current_task.debug_formated_str()}")
+                
+                LOG.info("Task history : (Max. 10 tasks)")
+                plan_history : list[Task] = self.plan().get_last_achieved_tasks(count=10)
+                for i, task in enumerate(plan_history):
+                    LOG.info(f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}")
+                    
+                if(LOG.isEnabledFor(TRACE)):
+                    input("Press Enter to continue...")
 
-            plan_history : list[Task] = self.plan().get_last_achieved_tasks(count=10)
-            for i, task in enumerate(plan_history):
-                LOG.info(f"{i}.Task : {task.task_id} : {task.task_goal} : {task.task_text_output}")
+                LOG.info(f"Task Path : {self._current_task.get_formated_task_path()}")
+                task_path : list[Task] = self._current_task.get_task_path()
+                for i, task in enumerate(task_path):
+                    LOG.trace(f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}")
 
-            LOG.info(f"Current task : {self._current_task.task_id} : {self._current_task.task_goal}")
 
-            if(LOG.isEnabledFor(NOTICE)):
-                input("Press Enter to continue...")
+                if(LOG.isEnabledFor(TRACE)):
+                    input("Press Enter to continue...")
+
+                LOG.trace(f"Task Sibblings :")
+                task_sibblings : list[Task] = self._current_task.get_sibblings()
+                for i, task in enumerate(task_sibblings):
+                    LOG.trace(f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}")
+
+                
+                if(LOG.isEnabledFor(TRACE)):
+                    input("Press Enter to continue...")
+
+                LOG.trace(f"Task Predecessor :")
+                task_predecessors: list[Task] = self._current_task.task_predecessors.get_all_tasks_from_stack()
+                for i, task in enumerate(task_predecessors):
+                    LOG.trace(f"{i+1}.Task : {task.debug_formated_str()} : {task.task_text_output or ''}")
+
+                if(LOG.isEnabledFor(NOTICE)):
+                    input("Press Enter to continue...")
+
+
 
     async def start(
         self,
@@ -284,30 +240,10 @@ class PlannerLoop(BaseLoop):
         if not self.remaining_cycles:
             self.remaining_cycles = 1
 
-    # async def build_initial_plan(self, description="", routing_feedbacks="") -> dict:
-    #     # plan =  self.execute_strategy(
-    #     self.tool_registry().list_tools_descriptions()
-    #     plan = await self.execute_strategy(
-    #         strategy_name="make_initial_plan",
-    #         agent_name=self._agent.agent_name,
-    #         agent_role=self._agent.agent_role,
-    #         agent_goals=self._agent.agent_goals,
-    #         agent_goal_sentence=self._agent.agent_goal_sentence,
-    #         description=description,
-    #         routing_feedbacks=routing_feedbacks,
-    #         tools=self.tool_registry().list_tools_descriptions(),
-    #     )
-
     #     # TODO: Should probably do a step to evaluate the quality of the generated tasks,
     #     #  and ensure that they have actionable ready and acceptance criteria
 
-    #     self._agent.plan = Plan(
-    #         tasks=[Task.parse_obj(task) for task in plan.parsed_result["task_list"]]
-    #     )
-    #     self._agent.plan.tasks.sort(key=lambda t: t.priority, reverse=True)
-    #     self._agent.current_task = self._agent.plan[-1]
-    #     self._agent.current_task.context.status = TaskStatusList.READY
-    #     return plan
+   
 
     def __repr__(self):
         return "SimpleLoop()"
@@ -371,69 +307,12 @@ class PlannerLoop(BaseLoop):
                 agent=self._agent,
             )
 
-            # # Intercept ContextItem if one is returned by the command
-            # if type(return_value) == tuple and isinstance(return_value[1], ContextItem):
-            #     context_item = return_value[1]
-            #     return_value = return_value[0]
-            #     self._agent._logger.trace(
-            #         f"Tool {command_name} returned a ContextItem: {context_item}"
-            #     )
-            #     self.context.add(context_item)
-
-            # result = ActionSuccessResult(outputs=return_value)
         except AgentException as e:
             #FIXME : Implement retry mechanism if a fail
             return_value = ActionErrorResult(reason=e.message, error=e)
 
-        current_task.state = TaskStatusList.DONE
-        #self.plan().set_task_status(task= current_task, status= TaskStatusList.DONE)
-
         return return_value
 
-        ###
-        ### TODO : Low priority : Save results of tool execution & manage errors
-        ###
-
-        # # Check if there's a result from the command append it to the message
-        # if result.status == "success":
-        #     ###
-        #     ### NOT IMPLEMENTED : Save the result of all tool execution
-        #     ###
-        #     self._agent.tool_result_history = []
-        #     def add_result_history(command_name, result) :
-        #         # TODO : Implement tool result history
-        #         self._agent.tool_result_history = self._agent.tool_result_history_table.list()
-        #         self._agent.tool_result_history_table = self.get_table("tool_result_history")
-        #         self._agent.tool_result_history_table.add(
-        #             "system",
-        #             f"Tool {command_name} returned: {result.outputs}",
-        #             "action_result",
-        #         )
-        #     self._agent.tool_result_history.append(command_name, result)
-
-        # elif result.status == "error":
-        #     message = f"Tool {command_name} failed: {result.reason}"
-
-        #     # Append hint to the error message if the exception has a hint
-        #     if (
-        #         result.error
-        #         and isinstance(result.error, AgentException)
-        #         and result.error.hint
-        #     ):
-        #         message = message.rstrip(".") + f". {result.error.hint}"
-
-        #     self._agent.message_history.add("system", message, "action_result")
-
-        if result.status == "success":
-            self._agent._logger.info(result)
-        elif result.status == "error":
-            self._agent._logger.warn(
-                f"Tool {command_name} returned an error: {result.error or result.reason}"
-            )
-
-        self.plan().set_task_status(task=current_task, status=TaskStatusList.DONE.value)
-
-        return result
 
 
 def execute_command(

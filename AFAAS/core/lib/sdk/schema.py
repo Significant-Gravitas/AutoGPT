@@ -14,10 +14,8 @@ from pydantic import Field
 from AFAAS.core.configuration import AFAASModel
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents import (AbstractAgent,
-                                                      PlannerAgent)
-
-    from ..routes.artifact import list_agent_artifacts, list_artifacts
+    from AFAAS.core.agents import (AbstractAgent,                                                PlannerAgent)
+    from app.web_app_v2.routes.artifact import list_agent_artifacts, list_artifacts
 
 
 class ArtifactUpload(AFAASModel):

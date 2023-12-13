@@ -116,7 +116,7 @@ class BaseNoSQLTable(AbstractTable):
         if isinstance(value, AFAASModel):
             value = value.dict_memory()
         else:
-            self.memory._logger.warning("Class not hinheriting from AFAASModel")
+            LOG.warning("Class not hinheriting from AFAASModel")
             value = self.__class__.serialize_value(value)
 
         # Assigning primary key
@@ -127,10 +127,10 @@ class BaseNoSQLTable(AbstractTable):
             key["secondary_key"] = str(value[self.secondary_key])
             value[self.secondary_key] = str(value[self.secondary_key])
 
-        self.memory._logger.trace(
+        LOG.trace(
             "add new " + str(self.__class__.__name__) + "with keys " + str(key)
         )
-        self.memory._logger.trace(
+        LOG.trace(
             "add new " + str(self.__class__.__name__) + "with values " + str(value)
         )
 
@@ -150,10 +150,10 @@ class BaseNoSQLTable(AbstractTable):
         # if hasattr(self, "secondary_key") and self.secondary_key in value:
         #     key["secondary_key"] = value[self.secondary_key]
 
-        self.memory._logger.trace(
+        LOG.trace(
             "Update new " + str(self.__class__.__name__) + "with keys " + str(key)
         )
-        self.memory._logger.trace(
+        LOG.trace(
             "Update new " + str(self.__class__.__name__) + "with values " + str(value)
         )
 
@@ -234,11 +234,11 @@ class BaseNoSQLTable(AbstractTable):
             result = base_table.list(filter_dict)
             # Output: [{'name': 'Alice', 'age': 30, 'city': 'Los Angeles'}]
         """
-        data_list = self.memory.list(table_name=self.table_name)
+        LOG.trace(f"{self.__class__.__name__}.list()")
+        data_list : dict = self.memory.list(table_name=self.table_name, filter=filter) 
         filtered_data_list: list = []
 
         LOG.notice("May need to be moved to JSONFileMemory")
-
         for data in data_list:
             remove_entry = False
             for filter_column_name, filters in filter.items():

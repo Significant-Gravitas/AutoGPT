@@ -47,7 +47,7 @@ async def afaas_refine_user_context(task: Task, agent: BaseAgent) -> None:
         # FIXME: REMOVE WHEN WE GO LIVE
         # USER CONTEXT AGENT : Save UserContextAgent Settings in DB (for POW / POC)
         new_user_context_agent = UserContextAgent.create_agent(
-            agent_settings=usercontext_settings, logger=agent._logger
+            agent_settings=usercontext_settings
         )
         # USER CONTEXT AGENT : Get UserContextAgent from DB (for POW / POC)
         usercontext_settings.agent_id = new_user_context_agent.agent_id

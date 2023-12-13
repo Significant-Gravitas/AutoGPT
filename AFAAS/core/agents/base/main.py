@@ -20,6 +20,8 @@ from AFAAS.core.memory.base import AbstractMemory
 from AFAAS.core.workspace.simple import LocalFileWorkspace
 
 from .abstract import AbstractAgent
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name = __name__)
 
 
 class BaseAgent(Configurable, AbstractAgent):
@@ -31,7 +33,6 @@ class BaseAgent(Configurable, AbstractAgent):
 
         user_id: str
         agent_id: str = Field(default_factory=lambda: "A" + str(uuid.uuid4()))
-        # agent_class: Optional[str]
 
         agent_setting_module: Optional[str]
         agent_setting_class: Optional[str]
@@ -280,7 +281,7 @@ class BaseAgent(Configurable, AbstractAgent):
 
         from importlib import import_module
 
-        module_path, class_name = agent_settings._type_.rsplit(".", 1)
+        module_path, class_name = agent_settings._module_.rsplit(".", 1)
         module = import_module(module_path)
         agent_class: BaseAgent = getattr(module, class_name)
 
@@ -355,8 +356,7 @@ class BaseAgent(Configurable, AbstractAgent):
     @classmethod
     def create_agent(
         cls,
-        agent_settings: BaseAgent.SystemSettings,
-        logger: logging.Logger,
+        agent_settings: BaseAgent.SystemSettings
     ) -> AbstractAgent:
         """
         Create and return a new agent based on the provided settings and logger.
@@ -371,29 +371,29 @@ class BaseAgent(Configurable, AbstractAgent):
         Example:
             logger = logging.getLogger()
             settings = BaseAgent.SystemSettings(user_id="123", ...other_settings...)
-            agent = YourClass.create_agent(settings, logger)
+            agent = YourClass.create_agent(settings)
         """
-        logger.info(f"Starting creation of {cls.__name__}")
-        logger.trace(f"Debug : Starting creation of  {cls.__module__}.{cls.__name__}")
+        LOG.info(f"Starting creation of {cls.__name__}")
+        LOG.trace(f"Debug : Starting creation of  {cls.__module__}.{cls.__name__}")
 
         if not isinstance(agent_settings, cls.SystemSettings):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
 
-        agent_id = cls._create_in_db(agent_settings=agent_settings, logger=logger)
-        logger.info(
+        agent_id = cls._create_in_db(agent_settings=agent_settings, logger=LOG)
+        LOG.info(
             f"{cls.__name__} id #{agent_id} created in memory. Now, finalizing creation..."
         )
         # Adding agent_id to the settingsagent_id
         agent_settings.agent_id = agent_id
 
         # Processing to custom treatments
-        cls._create_agent_custom_treatment(agent_settings=agent_settings, logger=logger)
+        cls._create_agent_custom_treatment(agent_settings=agent_settings)
 
-        logger.info(f"Loaded Agent ({cls.__name__}) with ID {agent_id}")
+        LOG.info(f"Loaded Agent ({cls.__name__}) with ID {agent_id}")
 
         agent = cls.get_instance_from_settings(
             agent_settings=agent_settings,
-            logger=logger,
+            logger=LOG,
         )
 
         return agent
@@ -401,7 +401,7 @@ class BaseAgent(Configurable, AbstractAgent):
     @classmethod
     @abstractmethod
     def _create_agent_custom_treatment(
-        cls, agent_settings: BaseAgent.SystemSettings, logger: logging.Logger
+        cls, agent_settings: BaseAgent.SystemSettings
     ) -> None:
         pass
 
@@ -444,7 +444,6 @@ class BaseAgent(Configurable, AbstractAgent):
     def list_users_agents_from_memory(
         cls,
         user_id: uuid.UUID,
-        logger: logging.Logger = logging.Logger(__name__),
         page: int = 1,
         page_size: int = 10,
     ) -> list[BaseAgent.SystemSettings]:
@@ -464,6 +463,7 @@ class BaseAgent(Configurable, AbstractAgent):
             agent_settings_list = YourClass.get_agentsetting_list_from_memory(user_id, logger)
             print(agent_settings_list)
         """
+        LOG.trace(f"Entering : {cls.__name__}.list_users_agents_from_memory()")
         from AFAAS.core.memory.base import AbstractMemory
         from AFAAS.core.memory.table import (AbstractTable,
                                                                 AgentsTable)
@@ -471,7 +471,7 @@ class BaseAgent(Configurable, AbstractAgent):
         memory_settings = AbstractMemory.SystemSettings()
 
         memory = AbstractMemory.get_adapter(
-            memory_settings=memory_settings, logger=logger
+            memory_settings=memory_settings, logger=LOG
         )
         agent_table: AgentsTable = memory.get_table("agents")
 
@@ -482,7 +482,7 @@ class BaseAgent(Configurable, AbstractAgent):
                         value=str(user_id), operator=AbstractTable.Operators.EQUAL_TO
                     )
                 ],
-                "settings_agent_class_": [
+                AbstractAgent.SystemSettings.Config.AGENT_CLASS_FIELD_NAME: [
                     AbstractTable.FilterItem(
                         value=str(cls.__name__),
                         operator=AbstractTable.Operators.EQUAL_TO,

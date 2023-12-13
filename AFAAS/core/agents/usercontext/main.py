@@ -118,7 +118,7 @@ class UserContextAgent(BaseAgent):
 
     @classmethod
     def _create_agent_custom_treatment(
-        cls, agent_settings: UserContextAgent.SystemSettings, logger: logging.Logger
+        cls, agent_settings: UserContextAgent.SystemSettings, 
     ) -> None:
         pass
 
@@ -128,34 +128,6 @@ class UserContextAgent(BaseAgent):
             StrategiesSet
         return StrategiesSet.get_strategies()
 
-    @classmethod
-    async def determine_agent_name_and_goals(
-        cls,
-        user_objective: str,
-        agent_settings: UserContextAgent.SystemSettings,
-        logger: logging.Logger,
-    ) -> dict:
-        logger.trace("Loading OpenAI provider.")
-        provider: OpenAIProvider = cls._get_system_instance(
-            "chat_model_provider",
-            agent_settings,
-            logger=logger,
-        )
-        logger.trace("Loading agent planner.")
-
-        agent_planner: PromptManager = cls._get_system_instance(
-            "prompt_manager",
-            agent_settings,
-            logger=logger,
-            model_providers={"openai": provider},
-        )
-        logger.trace("determining agent name and goals.")
-        model_response = await agent_planner.decide_name_and_goals(
-            user_objective,
-        )
-
-        return model_response.content
-    
     def load_prompt_settings(self) :
         self._logger.warning("TODO : load prompts via a jinja file")
 

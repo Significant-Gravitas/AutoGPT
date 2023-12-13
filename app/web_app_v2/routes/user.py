@@ -150,7 +150,7 @@ async def create_agent(request: Request, task_request: AgentRequestBody) -> Agen
 
         agent = PlannerAgent.create_agent(
             agent_settings=agent_settings,
-            logger=LOG,
+            LOG=LOG,
         )
         api_agent = Agent.from_afaas(agent=agent_settings)
         LOG.info(api_agent.json())

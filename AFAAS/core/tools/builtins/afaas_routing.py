@@ -53,7 +53,7 @@ async def afaas_routing(
 
         # USER CONTEXT AGENT : Save RoutingAgent Settings in DB (for POW / POC)
         new_routing_agent: RoutingAgent = RoutingAgent.create_agent(
-            agent_settings=routing_settings, logger=agent._logger
+            agent_settings=routing_settings
         )
 
         # # USER CONTEXT AGENT : Get RoutingAgent from DB (for POW / POC)

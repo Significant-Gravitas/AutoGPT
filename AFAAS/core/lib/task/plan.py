@@ -59,41 +59,34 @@ class Plan(BaseTask):
         self.agent.plan: Plan = self
 
         # Load the tasks from the database
+        from AFAAS.core.memory.base import AbstractMemory
+        from AFAAS.core.memory.table import AbstractTable
         agent: AbstractAgent = kwargs["agent"]
-        memory = agent._memory
-        task_table = memory.get_table("tasks")
-        all_task = task_table.list(filter={"plan_id": self.plan_id})
+        memory : AbstractMemory = agent._memory
+        task_table : AbstractTable = memory.get_table("tasks")
+
+        filter = AbstractTable.FilterDict(
+            {
+                "plan_id": [
+                    AbstractTable.FilterItem(
+                        value=str(self.plan_id), operator=AbstractTable.Operators.EQUAL_TO
+                    )
+                ],
+            }
+        )
+        all_tasks_from_db_dict = task_table.list(filter=filter)
 
         # Update the static variables
-        for task in all_task:
+        for task_as_dict in all_tasks_from_db_dict:
+            task = Task(**task_as_dict, agent=agent)
             self._register_task(task=task)
-            self._all_task_ids.append(task.task_id)
+
+            #self._all_task_ids.append(task.task_id)
             if task.state == TaskStatusList.READY:
                 LOG.notice("DEBUG : Task is ready may have subtasks...")
                 self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.READY)
             elif task.state == TaskStatusList.DONE:
                 self._registry_update_task_status_in_list(task_id=task.task_id, status=TaskStatusList.DONE)
-
-    # def set_task_status(self, task: Task, status: TaskStatusList):
-    #     """
-    #     Sets the status of a task and updates it in the task list.
-
-    #     Args:
-    #         task (Task): The task object whose status needs to be updated.
-    #         status (TaskStatusList): The new status to be set for the task.
-
-    #     Returns:
-    #         None
-    #     """
-    #     self._registry_update_task_status_in_list(task_id=task.task_id, status=status)
-    #     task.state = status
-     
-
-    """
-    Represents a plan consisting of a list of tasks.
-    """
-    # class Config(BaseTask):
-    #     allow_population_by_field_name = True
 
     task_id: str = Field(default_factory=lambda: Plan.generate_uuid(), alias="plan_id")
 
@@ -129,10 +122,12 @@ class Plan(BaseTask):
         Get a task from the plan
         """
         task: Task = None
+        if(task_id == self.agent.plan.plan_id) :
+            return  self.agent.plan
         if task_id in self._all_task_ids:
             task = self._loaded_tasks_dict.get(task_id)
             if task is None:
-                task = Task.get_task_from_db(task_id)
+                task = Task.get_task_from_db(task_id=task_id, agent=self.agent)
                 self._loaded_tasks_dict[task_id] = task
             return task
         else:
@@ -149,8 +144,8 @@ class Plan(BaseTask):
             Task: The next task in the plan.
 
         """
-        LOG.debug(f"Getting next task from plan {self.debug_formated_str()}")
         LOG.trace(f"get_next_task() : Current tasks that are ready are  Task : {self._ready_task_ids}")
+        LOG.debug(f"Getting next task from plan {self.debug_formated_str()}")
 
         if task is not None :
             # Get the subtask task, check if it is ready (the check operation will update the status in the index of ready Task (Plan._ready_task_ids)
@@ -271,7 +266,8 @@ class Plan(BaseTask):
         if status == TaskStatusList.READY:
             self._ready_task_ids.append(task_id)
         elif status == TaskStatusList.DONE:
-            self._ready_task_ids.remove(task_id)
+            if task_id in self._ready_task_ids:
+                self._ready_task_ids.remove(task_id)
             self._done_task_ids.append(task_id)
 
     def _register_new_task(self, task: Task):
@@ -373,10 +369,10 @@ class Plan(BaseTask):
         LOG.debug(f"Creating initial task for plan {self.plan_id}")
         initial_task = Task(
             agent=self.agent,
-            # plan=self,
+            plan_id=self.plan_id,
             task_parent=self,
-            _task_parent_id=self.plan_id,
             state=status,
+            _task_parent_id=self.plan_id,
             _task_predecessors_id=None,
             responsible_agent_id=None,
             task_goal=self.task_goal,
@@ -396,10 +392,11 @@ class Plan(BaseTask):
                 import AFAAS.core.agents.usercontext
 
                 refine_user_context_task = Task(
-                    # task_parent = self.plan() ,
                     agent=self.agent,
-                    plan=self,
-                    _task_parent_id=None,
+                    plan_id=self.plan_id,
+                    task_parent=self,
+                    state=status,
+                    _task_parent_id=self.plan_id,
                     _task_predecessors_id=None,
                     responsible_agent_id=None,
                     task_goal="Refine a user requirements for better exploitation by Agents",
@@ -408,7 +405,6 @@ class Plan(BaseTask):
                         "The user has clearly and undoubtly stated his willingness to quit the process"
                     ],
                     arguments={},
-                    state=TaskStatusList.READY,
                 )
                 initial_task_list = [refine_user_context_task] + initial_task_list
                 # self._current_task = refine_user_context_task  # .task_id
@@ -449,16 +445,19 @@ class Plan(BaseTask):
         if agent:
             memory = agent._memory
             plan_table = memory.get_table("plans")
-            plan_table.update(self.plan_id, self)
+            plan_table.update(plan_id = self.plan_id,
+                              agent_id = self.agent.agent_id,
+                              value = self)
 
     @classmethod
     def get_plan_from_db(cls, plan_id: str, agent: AbstractAgent):
         """
         Get a plan from the database
         """
-        memory = agent._memory
+        from AFAAS.core.memory.base import AbstractMemory
+        memory : AbstractMemory = agent._memory
         plan_table = memory.get_table("plans")
-        plan_dict = plan_table.get(plan_id)
+        plan_dict = plan_table.get(plan_id = plan_id, agent_id = agent.agent_id)
         return cls(**plan_dict, agent=agent)
 
     # endregion
@@ -501,7 +500,10 @@ class Plan(BaseTask):
         )
 
         return pitch
-
+    
+    
+    def __hash__(self):
+        return hash(self.plan_id)
 
 Plan.update_forward_refs()
 

@@ -64,7 +64,11 @@ class JSONFileMemory(NoSQLMemory):
         else:
             raise KeyError(f"No such key '{key}' in table {table_name}")
 
-    def list(self, table_name: str) -> list[dict]:
+    from AFAAS.core.memory.table import AbstractTable 
+    def list(self, 
+             table_name: str,
+             filter: AbstractTable.FilterDict = {},
+             ) -> list[dict]:
         table_path = Path(self._configuration.json_file_path, table_name)
         data = []
         for json_file in table_path.glob("**/*.json"):

@@ -18,23 +18,20 @@ async def handle_user_message(prompt):
     print(prompt)
 
 
-async def run_auto_gpt():
-    """Run the Auto-GPT CLI client."""
+async def run_cli_demo():
+    """Run the AFAAS CLI (Command Line Interface) Demonstration"""
 
-    DEMO = True
-    # INFO = 20
-    # DEBUG = 10
-    # NOTSET = 0
-    client_logger = AFAASLogger(name = __name__)
-    client_logger.info("Getting agent settings")
+    LOG = AFAASLogger(name = __name__)
+    LOG.info("Getting agent settings")
 
     import uuid
 
     #
-    # We support multiple users however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b
+    # Step 1. Get the user
+    # 
     #
+    LOG.notice("AFAAS Data Structure support multiple users (however since there is no UI to enforce that we will be using a user with ID : a1621e69-970a-4340-86e7-778d82e2137b")
     user_id: str = "A" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
-    # Step 1. Collate the user's settings with the default system settings.
     agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings(
         user_id=user_id
     )
@@ -43,89 +40,55 @@ async def run_auto_gpt():
     agent_dict_list: list[
         PlannerAgent.SystemSettings
     ] = PlannerAgent.list_users_agents_from_memory(
-        user_id=user_id, logger=client_logger
+        user_id=user_id
     )
 
-    agent_from_list = None
-    agent_from_memory = None
-    # NOTE : This is a demonstration
-    # In our demonstration we will instanciate the first agent of a given user if it exists
-    if agent_dict_list:
-        client_logger.info(f"User {user_id} has {len(agent_dict_list)} agents.")
-        agent_id = agent_dict_list[0].agent_id
+    if len(agent_dict_list) > 0 : 
+        LOG.info(f"User {user_id} has {len(agent_dict_list)} agents.")
+        if  LOG.level >= logging.DEBUG:
+            print("This is the agents thathave been saved :")
+            for i, agent_dict in enumerate(agent_dict_list):
+                print(f"{i+1}. {agent_dict.agent_name}({agent_dict.agent_id}) : {agent_dict.agent_goal_sentence}")
 
-        client_logger.info(
+            selected_agent_index : int = 0 
+            i : int = 0
+            while selected_agent_index < 1 or selected_agent_index > len(agent_dict_list):
+                if i > 0 :
+                    print("Ooops ! The selected agent is not in the list. Please select a valid agent.")
+                i += 1
+                selected_agent_index = input("Select an agent to load (Press \"C\" to create a new agent) : ")
+                if selected_agent_index.lower() == "c":
+                    selected_agent_index = 0
+                    break
+
+                if selected_agent_index.isdigit():
+                    selected_agent_index = int(selected_agent_index)
+        else :
+            selected_agent_index : int = 1 
+        
+        agent_id = agent_dict_list[selected_agent_index - 1].agent_id
+        LOG.info(
             f"Loading agent {agent_id} from get_agentsetting_list_from_memory"
         )
-        # agent_settings.update_agent_name_and_goals(agent_dict_list[0])
-        agent_from_list: PlannerAgent = PlannerAgent.get_instance_from_settings(
-            agent_settings=agent_dict_list[0],
-            logger=client_logger,
+        agent : PlannerAgent = PlannerAgent.get_instance_from_settings(
+            agent_settings=agent_dict_list[selected_agent_index - 1],
+            logger=LOG,
         )
 
-        client_logger.info(f"Loading agent {agent_id} from get_agent_from_memory")
-        agent_from_memory: PlannerAgent = PlannerAgent.get_agent_from_memory(
-            agent_settings=agent_settings,
-            agent_id=agent_id,
-            user_id=user_id,
-            logger=client_logger,
-        )
-
-        client_logger.info(
-            f"Comparing agents from agent list and get_agent_from_memory"
-        )
-
-        if client_logger.level == logging.DEBUG:
-            if str(agent_from_memory._configuration) == str(
-                agent_from_list._configuration
-            ):
-                client_logger.trace(
-                    f"Agents from agent list and get_agent_from_memory are equal"
-                )
-            else:
-                client_logger.trace(
-                    f"Agents from agent list and get_agent_from_memory are different"
-                )
-                client_logger.trace(
-                    f"Agents from agent list : {agent_from_list.agent_id}"
-                )
-                client_logger.trace(
-                    f"Agents from get_agent_from_memory : {agent_from_memory.agent_id}"
-                )
-
-    # NOTE : We continue our tests with the agent from the memory as it more realistic
-    agent = agent_from_memory
-
-    if not agent:  # We don't have an agent matching this ID
-        # # Step 2. Get a name and goals for the agent.
-        # # First we need to figure out what the user wants to do with the agent.
-        # if DEMO:
-        #     # We'll use a default objective for the demo.
-        #     name_and_goals = {'agent_name': 'FactoryBuilderTest',
-        #                       'agent_role': 'An automated engineering expert AI, specializing in settling factories in new countries.',
-        #                       'agent_goals': ['Provide a step-by-step guide on how to build a plant.',
-        #                                       'Ensure compliance with local regulation',
-        #                                       'Identification & selection of partners.',
-        #                                       'Follow implementation untill completion',
-        #                                         'Ensure realization meet quality standards.'],
-        #                                         }
-        # else :
-        #     # We'll do this by asking the user for a prompt.
-        #     user_objective = click.prompt("What do you want Auto-GPT to do? (We will make Pancakes for our tests...)")
-        #     # Ask a language model to determine a name and goals for a suitable agent.
-        #     name_and_goals = await PlannerAgent.determine_agent_name_and_goals(
-        #         user_objective,
-        #         agent_settings,
-        #         client_logger,
+        # agent_from_memory = None
+        # LOG.info(f"Loading agent {agent_id} from get_agent_from_memory")
+        # agent_from_memory: PlannerAgent = PlannerAgent.get_agent_from_memory(
+        #     agent_settings=agent_settings,
+        #     agent_id=agent_id,
+        #     user_id=user_id,
+        #     logger=LOG,
         #     )
 
-        # # Finally, update the agent settings with the name and goals.
-        # agent_settings.update_agent_name_and_goals(name_and_goals)
-
+    else :
         #
         # New requirement gathering process
         #
-        if DEMO:
+        if LOG.level <= logging.DEBUG :
             user_objective = (
                 "Provide a step-by-step guide on how to build a Pizza oven."
             )
@@ -143,7 +106,7 @@ async def run_auto_gpt():
         # Step 3. Create the agent.
         agent: PlannerAgent = PlannerAgent.create_agent(
             agent_settings=agent_settings,
-            logger=client_logger,
+            LOG=LOG,
         )
 
     await agent.run(

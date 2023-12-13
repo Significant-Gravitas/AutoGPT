@@ -11,6 +11,7 @@ from ..sdk.logger import AFAASLogger
 # from .plan import Plan
 from .base import BaseTask
 from .meta import TaskStatusList
+from .rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
 
 # from AFAAS.core.configuration import AFAASModel
 # from AFAAS.core.tools.schema import ToolResult
@@ -45,14 +46,32 @@ class Task(BaseTask):
     ###
     ### GENERAL properties
     ###
-
     task_id: str = Field(default_factory=lambda: Task.generate_uuid())
-    task_parent: BaseTask
-    _task_parent_id: str
+    plan_id: str = Field()
 
-    # task_predecessors: Optional[list[Task]]  = []
-    # _task_predecessors_id: Optional[list[str]]  = []
-    _task_predecessors: Optional[TaskStack] = None
+
+    command: Optional[str] = Field(default_factory=lambda: Task.default_command())
+    arguments: Optional[dict] = Field(default={})
+
+    _task_parent_id: str = Field()
+    @property
+    def task_parent(self) -> BaseTask:
+        LOG.trace(f"{self.__class__.__name__}.task_parent()")
+        # Lazy load the parent task
+        try:
+            return self.agent.plan.get_task(self._task_parent_id)
+        except KeyError:
+            raise ValueError(f"No parent task found with ID {self._task_parent_id}")
+
+    @task_parent.setter
+    def task_parent(self, task: BaseTask):
+        LOG.trace(f"{self.__class__.__name__}.task_parent.setter()")
+        if not isinstance(task, Task):
+            raise ValueError("task_parent must be an instance of Task")
+        self._task_parent_id = task.task_id
+    
+    _task_predecessors: Optional[TaskStack] = Field()
+    _task_successors: Optional[TaskStack] = Field(default=None)
 
     @property
     def task_predecessors(self) -> TaskStack:
@@ -61,11 +80,7 @@ class Task(BaseTask):
 
             self._task_predecessors = TaskStack(parent_task=self, description="Predecessors")
         return self._task_predecessors
-
-    # task_successors: Optional[list[Task]]  = []
-    # _task_successors_id: Optional[list[str]] = []
-    _task_successors: Optional[TaskStack] = None
-
+    
     @property
     def task_successors(self) -> TaskStack:
         if self._task_successors is None:
@@ -73,19 +88,6 @@ class Task(BaseTask):
 
             self._task_successors = TaskStack(parent_task=self, description="Successors")
         return self._task_successors
-
-    # _state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
-
-    # @property
-    # def state(self) -> Optional[TaskStatusList]:
-    #     LOG.debug(f"Getting state of task {self.task_id}")
-    #     return self._state
-    
-    # @state.setter
-    # def state(self, new_state: TaskStatusList):
-    #     LOG.debug(f"Setting state of task {self.task_id} to {new_state}")
-    #     self.agent.plan._registry_update_task_status_in_list(task_id=self.task_id, status=new_state)
-    #     self._state = new_state
 
     state: Optional[TaskStatusList] = Field(default=TaskStatusList.BACKLOG)
     @validator('state', pre=True, always=True)
@@ -99,10 +101,7 @@ class Task(BaseTask):
                 agent.plan._registry_update_task_status_in_list(task_id=task_id, status=new_state)
         else : 
             LOG.error(f"Task {task_id} has state is None")
-        
         return new_state
-
-
 
     def __setattr__(self, key, value):
         # Set attribute as normal
@@ -117,14 +116,8 @@ class Task(BaseTask):
 
     task_text_output: Optional[str]
     """ Placeholder : The agent summary of his own doing while performing the task"""
-
-    ###
-    ### Task Management properties
-    ###
-    task_history: Optional[list[dict]]
-
-    command: Optional[str] = Field(default_factory=lambda: Task.default_command())
-    arguments: Optional[dict] = Field(default={})
+    task_text_output_as_uml: Optional[str]
+    """ Placeholder : The agent summary of his own doing while performing the task as a UML diagram"""
 
     class Config(BaseTask.Config):
         default_exclude = set(BaseTask.Config.default_exclude) | {
@@ -133,6 +126,16 @@ class Task(BaseTask):
             "task_predecessors",
             "task_successors",
         }
+    
+    def __init__(self, **data):
+        LOG.trace(f"{self.__class__.__name__}.__init__() : {data['task_goal']} ({data['task_id']+'/'+data['state']})")
+        super().__init__(**data)
+        if '_task_predecessors' in data and isinstance(data['_task_predecessors'], list):
+            from AFAAS.core.lib.task.stack import TaskStack
+            self._task_predecessors = TaskStack(parent_task = self, _task_ids = data['_task_predecessors'])
+        if '_task_successors' in data and isinstance(data['_task_successors'], list):
+            from AFAAS.core.lib.task.stack import TaskStack
+            self._task_successors = TaskStack(parent_task = self, _task_ids = data['_task_successors'])
 
     @property
     def plan_id(self) -> str:
@@ -159,7 +162,7 @@ class Task(BaseTask):
             # NOTE: Normaly the task should already be ready .
             # NOTE: Create two different states for ready & ready with active subtasks
             if self.state != TaskStatusList.READY :
-                LOG.error("Task is ready but not in the ready state. This should not happen.")
+                LOG.error(f"Task {self.debug_formated_str()} is ready but not in the ready state. This should not happen.")
                 self.state = TaskStatusList.READY
             
             return True
@@ -219,7 +222,7 @@ class Task(BaseTask):
     def get_task_from_db(cls, task_id: str, agent: BaseAgent) -> Task:
         memory = agent._memory
         task_table = memory.get_table("tasks")
-        task = task_table.get(task_id)
+        task = task_table.get(task_id= task_id, plan_id = agent.plan.plan_id)
         return cls(**task, agent=agent)
 
     @classmethod
@@ -241,12 +244,17 @@ class Task(BaseTask):
     #endregion
 
 
-    def find_task_path(self) -> list[Task]:
+    def get_task_path(self , task_to_root = False , include_self = False) -> list[Task]:
         """
-        Finds the path from this task to the root.
+        Finds the path from the root to the task ( not including the task itself by default)
+        If task_to_root is True, the path will be from the task to the root.
+        If include_self is True, the task will be included in the path.
         """
-        path = [self]
-        current_task: BaseTask = self
+        path : list[Task] = []
+        if include_self:
+            path.append(self)
+
+        current_task: Task = self
 
         while (
             hasattr(current_task, "task_parent")
@@ -255,16 +263,28 @@ class Task(BaseTask):
             path.append(current_task.task_parent)
             current_task = current_task.task_parent
 
+        if task_to_root:
+            path.reverse()
+
         return path
 
-    def get_path_structure(self) -> str:
-        path_to_task = self.find_task_path()
+    def get_formated_task_path(self) -> str:
+        path_to_task = self.get_task_path()
         indented_structure = ""
 
         for i, task in enumerate(path_to_task):
-            indented_structure += "  " * i + "-> " + task.task_goal + "\n"
+            indented_structure += "  " * i + "-> " + task.debug_formated_str() + "\n"
 
         return indented_structure
+
+    def get_sibblings(self) -> list[Task]:
+        """
+        Finds the sibblings of this task.
+        """
+        if self.task_parent is None:
+            return []
+
+        return self.task_parent.subtasks.get_all_tasks_from_stack()
     
     def __hash__(self):
         return hash(self.task_id)
@@ -274,6 +294,46 @@ class Task(BaseTask):
             return self.task_id == other.task_id
         return False
 
+    def prepare_rag(self, 
+                    predecessors: bool = True,
+                    successors: bool = False,
+                    history : int = 10,
+                    sibblings = True,
+                    path = True,
+                    similar_tasks : int = 0,
+                    avoid_redondancy : bool = True):
+        return ""
+          
+        plan_history : list[Task] = [] 
+        if history > 0 :
+            plan_history = self.agent.plan.get_last_achieved_tasks(count=history) 
+        task_predecessors : list[Task] = []
+        if predecessors :
+            task_predecessors = self.task_predecessors.get_all_tasks_from_stack()
+
+        history_and_predecessors = set(plan_history) | set(task_predecessors)
+
+        task_path : list[Task] = []
+        if path :
+            if avoid_redondancy :
+                task_path = list(set(self.get_task_path()) - history_and_predecessors)
+            else :
+                task_path = self.get_task_path()
+
+        task_sibblings : list[Task] = []
+        if sibblings :
+            if avoid_redondancy :
+                task_sibblings = list(set(self.get_sibblings())- history_and_predecessors)
+            else :
+                task_sibblings = self.get_sibblings()
+        
+        self.agent._loop._agent._prompt_manager._execute_strategy(strategy_name = AFAAS_SMART_RAG_Strategy.STRATEGY_NAME, 
+            task=self,
+            task_history= list(history_and_predecessors).sort(key=lambda task: task.modified_at),
+            task_sibblings=task_sibblings,
+            task_path=task_path,
+            related_tasks = None
+        )
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
 Task.update_forward_refs()

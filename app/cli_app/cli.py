@@ -1,6 +1,6 @@
 import click
 
-from main import run_auto_gpt
+from main import run_cli_demo
 from app.client_lib.utils import (
     coroutine, handle_exceptions)
 
@@ -21,7 +21,7 @@ def autogpt():
 async def run(pdb: bool) -> None:
     """Run the AFAAS-Demo agent."""
     click.echo("Running AFAAS-Demo agent...")
-    main = handle_exceptions(run_auto_gpt, with_debugger=pdb)
+    main = handle_exceptions(run_cli_demo, with_debugger=pdb)
     await main()
 
 
