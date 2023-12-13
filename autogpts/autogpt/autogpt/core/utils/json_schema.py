@@ -1,5 +1,4 @@
 import enum
-import json
 from logging import Logger
 from textwrap import indent
 from typing import Literal, Optional
