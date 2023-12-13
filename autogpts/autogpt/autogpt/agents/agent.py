@@ -250,6 +250,8 @@ class Agent(
                     self.context.add(context_item)
 
                 result = ActionSuccessResult(outputs=return_value)
+            except AgentTerminated:
+                raise
             except AgentException as e:
                 result = ActionErrorResult.from_exception(e)
 
