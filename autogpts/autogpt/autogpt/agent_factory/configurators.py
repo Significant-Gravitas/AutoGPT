@@ -6,7 +6,6 @@ from autogpt.commands import COMMAND_CATEGORIES
 from autogpt.config import AIDirectives, AIProfile, Config
 from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.logs.config import configure_chat_plugins
-from autogpt.logs.helpers import print_attribute
 from autogpt.models.command_registry import CommandRegistry
 from autogpt.plugins import scan_plugins
 
@@ -78,8 +77,6 @@ def _configure_agent(
     )
 
     # TODO: configure memory
-
-    print_attribute("Configured Browser", app_config.selenium_web_browser)
 
     return Agent(
         settings=agent_state,
