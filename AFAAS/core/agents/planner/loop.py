@@ -147,7 +147,7 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 ### Step 6 : Prepare RAG #
                 ##############################################################
-                await current_task.prepare_rag()
+                #await current_task.prepare_rag()
 
                 ##############################################################
                 ### Step 7 : execute_tool() #

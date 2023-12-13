@@ -74,6 +74,7 @@ class PlannerAgent(BaseAgent):
             logger=logger,
             memory=memory,
             workspace=workspace,
+            prompt_manager = prompt_manager,
             user_id=user_id,
             agent_id=agent_id,
         )
@@ -97,8 +98,8 @@ class PlannerAgent(BaseAgent):
         #
         # Step 3 : Set the chat model provider
         #
-        self._prompt_manager = prompt_manager
-        self._prompt_manager.set_agent(agent=self)
+        # self._prompt_manager = prompt_manager
+        # self._prompt_manager.set_agent(agent=self)
 
         #
         # Step 4 : Set the ToolRegistry

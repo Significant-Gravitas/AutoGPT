@@ -10,10 +10,11 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 import yaml
 from pydantic import Field, root_validator
 
-from AFAAS.core.agents.base.loop import (  # Import only where it's needed
-    BaseLoop, BaseLoopHook)
+from AFAAS.core.agents.base import PromptManager
 from AFAAS.core.agents.base.models import (
     BaseAgentConfiguration, BaseAgentDirectives, BaseAgentSystems)
+from AFAAS.core.agents.base.loop import (  # Import only where it's needed
+    BaseLoop, BaseLoopHook)
 from AFAAS.core.configuration import (Configurable,
                                                          SystemSettings)
 from AFAAS.core.memory.base import AbstractMemory
@@ -109,6 +110,7 @@ class BaseAgent(Configurable, AbstractAgent):
         logger: logging.Logger,
         memory: AbstractMemory,
         workspace: LocalFileWorkspace,
+        prompt_manager: PromptManager,
         user_id: uuid.UUID,
         agent_id: uuid.UUID = None,
     ) -> Any:
@@ -123,6 +125,9 @@ class BaseAgent(Configurable, AbstractAgent):
 
         self.settings_agent_class_ = settings.settings_agent_class_
         self.settings_agent_module_ = settings.settings_agent_module_
+
+        self._prompt_manager = prompt_manager
+        self._prompt_manager.set_agent(agent=self)
 
     def add_hook(self, hook: BaseLoopHook, hook_id: uuid.UUID = uuid.uuid4()):
         """
