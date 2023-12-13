@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "agpt"
-version = "0.4.7"
+version = "0.5.0"
 authors = [
   "Significant Gravitas <support@agpt.co>",
 ]
