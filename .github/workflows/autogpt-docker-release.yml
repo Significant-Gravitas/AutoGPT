@@ -38,7 +38,9 @@ jobs:
       # slashes are not allowed in image tags, but can appear in git branch or tag names
     - id: sanitize_tag
       name: Sanitize image tag
-      run: echo tag=${${raw_tag//\//-}/autogpt-/} >> $GITHUB_OUTPUT
+      run: |
+        tag=${raw_tag//\//-}
+        echo tag=${tag#autogpt-} >> $GITHUB_OUTPUT
       env:
         raw_tag: ${{ github.ref_name }}
 
