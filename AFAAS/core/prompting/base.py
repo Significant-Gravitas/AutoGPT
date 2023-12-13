@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Optional
 from AFAAS.core.utils.json_schema import JSONSchema
 
 if TYPE_CHECKING:
-    from AFAAS.core.agents.planner.main import PlannerAgent
+    #from AFAAS.core.agents.planner.main import PlannerAgent
+    pass
 
 from AFAAS.core.configuration import SystemConfiguration
 from AFAAS.core.prompting.schema import \

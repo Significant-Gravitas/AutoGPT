@@ -123,11 +123,11 @@ class UserContextAgent(BaseAgent):
     ) -> None:
         pass
 
-    @classmethod
-    def get_strategies(cls)-> list :
-        from AFAAS.core.agents.usercontext.strategies import \
-            StrategiesSet
-        return StrategiesSet.get_strategies()
+    # @classmethod
+    # def get_strategies(cls)-> list :
+    #     from AFAAS.core.agents.usercontext.strategies import \
+    #         StrategiesSet
+    #     return StrategiesSet.get_strategies()
 
     def load_prompt_settings(self) :
         self._logger.warning("TODO : load prompts via a jinja file")

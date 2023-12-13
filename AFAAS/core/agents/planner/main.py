@@ -219,13 +219,16 @@ class PlannerAgent(BaseAgent):
             logger=LOG,
         )
 
-    @classmethod
-    def get_strategies(cls) -> list:
-        # TODO: Continue refactorization => move to loop ?
-        from AFAAS.core.agents.planner.strategies import \
-            StrategiesSet
+    # @classmethod
+    # def get_strategies(cls) -> list:
+    #     # TODO: Continue refactorization => move to loop ?
+    #     val = super().get_strategies()
 
-        return StrategiesSet.get_strategies()
+    #     from AFAAS.core.agents.planner.strategies import \
+    #         StrategiesSet
+    #     rv = StrategiesSet.get_strategies()
+    #     print(val == rv)
+    #     return rv
 
     # @classmethod
     # async def determine_agent_name_and_goals(

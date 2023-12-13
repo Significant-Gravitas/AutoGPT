@@ -327,7 +327,7 @@ class Task(BaseTask):
                 task_sibblings = self.get_sibblings()
         
         #TODO: Build it in a Pipeline for Autocorrection
-        rv : str =  await self.agent._prompt_manager._execute_strategy(strategy_name = AFAAS_SMART_RAG_Strategy.STRATEGY_NAME, 
+        rv : str =  await self.agent.execute_strategy(strategy_name = AFAAS_SMART_RAG_Strategy.STRATEGY_NAME, 
             task=self,
             task_history= list(history_and_predecessors).sort(key=lambda task: task.modified_at),
             task_sibblings=task_sibblings,

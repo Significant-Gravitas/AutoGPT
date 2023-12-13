@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import importlib
 import os
 import uuid
 from abc import ABC, abstractmethod
@@ -349,14 +350,46 @@ class BaseAgent(Configurable, AbstractAgent):
         )
         return system_instance
 
+    from AFAAS.core.prompting.base import (BasePromptStrategy)
     @classmethod
-    @abstractmethod
-    def get_strategies(cls) -> list:
-        ...
+    def get_strategies(cls) -> list[BasePromptStrategy]:
 
-    def execute_strategy(self, strategy_name : str) :
+        module = cls.__module__.rsplit('.', 1)[0]
+        LOG.trace(f"Entering : {module}.get_strategies()")
+
+        from AFAAS.core.prompting.base import (BasePromptStrategy)
+        stategies : list[BasePromptStrategy] = []
+
+        try:
+            # Dynamically import the strategies from the module
+            strategies_module = importlib.import_module(f"{module}.strategies")
+
+            # Check if StrategiesSet and get_strategies exist
+            if hasattr(strategies_module, 'StrategiesSet') and callable(getattr(strategies_module.StrategiesSet, 'get_strategies', None)):
+                strategies = strategies_module.StrategiesSet.get_strategies()
+            else:
+                LOG.notice(f"{module}.strategies.StrategiesSet or get_strategies method not found")
+                raise ImportError("StrategiesSet or get_strategies method not found in the module")
+
+        except ImportError as e:
+            LOG.notice(f"Failed to import {module}.strategies: {e}")
+
+        from .strategies.autocorrection import AutoCorrectionStrategy
+        from AFAAS.core.lib.task.rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
+        common_strategies = [AutoCorrectionStrategy(
+                logger=LOG, **AutoCorrectionStrategy.default_configuration.dict()
+            ),
+        AFAAS_SMART_RAG_Strategy(
+                logger=LOG, **AFAAS_SMART_RAG_Strategy.default_configuration.dict()
+        )]
+
+        return  stategies + common_strategies
+    
+    from AFAAS.core.prompting.base import (ChatModelResponse)
+    async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
-        self._prompt_manager._execute_strategy(strategy_name = strategy_name)
+        return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)
+
 
     ################################################################
     # Factory interface for agent bootstrapping and initialization #

@@ -23,7 +23,7 @@ class StrategiesSet:
     @staticmethod
     def get_strategies(
         logger: Logger = Logger(__name__),
-    ) -> list[AbstractPromptStrategy]:
+    ) -> list[BasePromptStrategy]:
         return [
             InitialPlanStrategy(
                 logger=logger, **InitialPlanStrategy.default_configuration.dict()
