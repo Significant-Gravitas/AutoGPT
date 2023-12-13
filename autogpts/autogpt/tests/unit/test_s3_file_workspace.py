@@ -21,6 +21,7 @@ def s3_bucket_name() -> str:
 def s3_workspace_uninitialized(s3_bucket_name: str) -> S3FileWorkspace:
     os.environ["WORKSPACE_STORAGE_BUCKET"] = s3_bucket_name
     ws_config = S3FileWorkspaceConfiguration.from_env()
+    ws_config.root = Path("/workspaces/AutoGPT-some-unique-task-id")
     workspace = S3FileWorkspace(ws_config)
     yield workspace  # type: ignore
     del os.environ["WORKSPACE_STORAGE_BUCKET"]
@@ -56,11 +57,12 @@ def s3_workspace(s3_workspace_uninitialized: S3FileWorkspace) -> S3FileWorkspace
     s3_workspace._bucket.delete()
 
 
+NESTED_DIR = "existing/test/dir"
 TEST_FILES: list[tuple[str | Path, str]] = [
     ("existing_test_file_1", "test content 1"),
-    ("/existing_test_file_2.txt", "test content 2"),
-    (Path("/existing_test_file_3"), "test content 3"),
-    (Path("existing/test/file/4"), "test content 4"),
+    ("existing_test_file_2.txt", "test content 2"),
+    (Path("existing_test_file_3"), "test content 3"),
+    (Path(f"{NESTED_DIR}/test/file/4"), "test content 4"),
 ]
 
 
@@ -87,20 +89,17 @@ def test_list_files(s3_workspace_with_files: S3FileWorkspace):
     # List at root level
     assert (files := s3_workspace_with_files.list()) == s3_workspace_with_files.list()
     assert len(files) > 0
-    assert set(files) == set(
-        p.relative_to("/") if (p := Path(file_name)).is_absolute() else p
-        for file_name, _ in TEST_FILES
-    )
+    assert set(files) == set(Path(file_name) for file_name, _ in TEST_FILES)
 
     # List at nested path
     assert (
-        nested_files := s3_workspace_with_files.list("existing")
-    ) == s3_workspace_with_files.list("existing")
+        nested_files := s3_workspace_with_files.list(NESTED_DIR)
+    ) == s3_workspace_with_files.list(NESTED_DIR)
     assert len(nested_files) > 0
     assert set(nested_files) == set(
-        p
+        p.relative_to(NESTED_DIR)
         for file_name, _ in TEST_FILES
-        if (p := Path(file_name)).is_relative_to("existing")
+        if (p := Path(file_name)).is_relative_to(NESTED_DIR)
     )
 
 
