@@ -1,0 +1,22 @@
+## Objective:
+A new individual is charged to do the following task {{task.task_goal}}. We are charged to provide him with all the informations he needs to do his work.
+
+{% if task.parent_task %}
+### Context : 
+This task is part of a projects and is located as follow (task.parent_task -> subtask) 
+      {% if task_sibblings %} 
+        {{task_sibbling.task_goal}}, task_sibblings.state
+      {% endif %}
+{% endif %}
+
+{% if task_history %}
+### History : 
+This are the task that have been done previously :
+{{task.task_goal}} , {{task.task_text_output}} , {{task_text_output_as_uml}}
+{% endif %}
+
+{% if similar_tasks %}
+### Various task : 
+This are the tasks that might be related :
+{{task.task_goal}} , {{task.task_text_output}} , {{task_text_output_as_uml}}
+{% endif %}

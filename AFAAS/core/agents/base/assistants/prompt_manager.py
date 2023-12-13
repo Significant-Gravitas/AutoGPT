@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import platform
 import time
 from typing import TYPE_CHECKING
@@ -25,9 +24,12 @@ from AFAAS.core.resource.model_providers import (
     BaseChatModelProvider, ChatModelResponse, ModelProviderName,
     OpenAIModelName)
 from AFAAS.core.workspace import AbstractFileWorkspace
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+
+LOG = AFAASLogger(name=__name__)
 
 
-# FIXME : Find somewhere more appropriate
+# FIXME: Find somewhere more appropriate
 class SystemInfo(dict):
     os_info: str
     # provider : OpenAIProvider
@@ -85,14 +87,6 @@ class PromptManagerConfiguration(SystemConfiguration):
 
         return models
 
-
-# class PromptManager.SystemSettings(SystemSettings):
-#     """Settings for the PromptManager subsystem."""
-#     name="prompt_manager"
-#     description="Manages the agent's planning and goal-setting by constructing language model prompts."
-#     configuration: PromptManagerConfiguration = PromptManagerConfiguration()
-
-
 class PromptManager(Configurable, AgentMixin):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
@@ -105,7 +99,7 @@ class PromptManager(Configurable, AgentMixin):
     def __init__(
         self,
         settings: PromptManager.SystemSettings,
-        logger: logging.Logger,
+        logger: AFAASLogger,
         agent_systems: list[Configurable],
     ) -> None:
         super().__init__(settings=settings, logger=logger)
@@ -128,12 +122,6 @@ class PromptManager(Configurable, AgentMixin):
         logger.trace(
             f"PromptManager created with strategies : {self._prompt_strategies}"
         )
-        # self._prompt_strategies = strategies
-
-    # def set_agent(self,agent : BaseAgent) :
-    #     self._agent = agent
-    #     for strategy in self._prompt_strategies:
-    #         self._prompt_strategies[strategy.STRATEGY_NAME].set_agent(agent)
 
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse:
         """
@@ -177,7 +165,6 @@ class PromptManager(Configurable, AgentMixin):
 
         prompt = prompt_strategy.build_prompt(**template_kwargs)
 
-        # self._logger.trace(f"Using prompt:\n{prompt}\n\n")
         response: ChatModelResponse = await provider.create_chat_completion(
             chat_messages=prompt.messages,
             tools=prompt.tools,
@@ -200,17 +187,13 @@ class PromptManager(Configurable, AgentMixin):
             "current_time": time.strftime("%c"),
         }
         return template_kwargs
-
-
-# FIXME : Only import distro when required
-import distro
-
+    
 
 def get_os_info() -> str:
+
     os_name = platform.system()
-    os_info = (
-        platform.platform(terse=True)
-        if os_name != "Linux"
-        else distro.name(pretty=True)
-    )
-    return os_info
+    if os_name != "Linux" :
+        return platform.platform(terse=True)
+    else :
+        import distro
+        return distro.name(pretty=True)

@@ -349,6 +349,10 @@ class BaseAgent(Configurable, AbstractAgent):
     def get_strategies(cls) -> list:
         ...
 
+    def execute_strategy(self, strategy_name : str) :
+        LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
+        self._prompt_manager._execute_strategy(strategy_name = strategy_name)
+
     ################################################################
     # Factory interface for agent bootstrapping and initialization #
     ################################################################

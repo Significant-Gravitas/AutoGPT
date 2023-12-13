@@ -63,7 +63,7 @@ class TaskStack(AFAASModel):
         """
         Add a task. Can also mark it as ready.
         """
-        LOG.debug(f"Adding task {LOG.italic(task.debug_formated_str())}) as **{LOG.bold(self.description)}** of task {LOG.italic(self.parent_task.debug_formated_str())}")
+        LOG.debug(f"Adding task {LOG.italic(task.debug_formated_str())})in a stack of task {LOG.italic(self.parent_task.debug_formated_str())}")
         LOG.trace(self._task_ids)
 
         self._task_ids.append(task.task_id)

@@ -56,9 +56,9 @@ class Task(BaseTask):
     _task_parent_id: str = Field()
     @property
     def task_parent(self) -> BaseTask:
-        LOG.trace(f"{self.__class__.__name__}.task_parent()")
-        # Lazy load the parent task
+        LOG.trace(f"{self.debug_formated_str(True)} {self.__class__.__name__}.task_parent({self._task_parent_id})")
         try:
+            # Lazy load the parent task
             return self.agent.plan.get_task(self._task_parent_id)
         except KeyError:
             raise ValueError(f"No parent task found with ID {self._task_parent_id}")
@@ -128,7 +128,7 @@ class Task(BaseTask):
         }
     
     def __init__(self, **data):
-        LOG.trace(f"{self.__class__.__name__}.__init__() : {data['task_goal']} ({data['task_id']+'/'+data['state']})")
+        LOG.trace(f"{self.__class__.__name__}.__init__() : {data['task_goal']}")
         super().__init__(**data)
         if '_task_predecessors' in data and isinstance(data['_task_predecessors'], list):
             from AFAAS.core.lib.task.stack import TaskStack
@@ -294,7 +294,7 @@ class Task(BaseTask):
             return self.task_id == other.task_id
         return False
 
-    def prepare_rag(self, 
+    async def prepare_rag(self, 
                     predecessors: bool = True,
                     successors: bool = False,
                     history : int = 10,
@@ -302,7 +302,6 @@ class Task(BaseTask):
                     path = True,
                     similar_tasks : int = 0,
                     avoid_redondancy : bool = True):
-        return ""
           
         plan_history : list[Task] = [] 
         if history > 0 :
@@ -327,13 +326,17 @@ class Task(BaseTask):
             else :
                 task_sibblings = self.get_sibblings()
         
-        self.agent._loop._agent._prompt_manager._execute_strategy(strategy_name = AFAAS_SMART_RAG_Strategy.STRATEGY_NAME, 
+        #TODO: Build it in a Pipeline for Autocorrection
+        rv : str =  await self.agent._prompt_manager._execute_strategy(strategy_name = AFAAS_SMART_RAG_Strategy.STRATEGY_NAME, 
             task=self,
             task_history= list(history_and_predecessors).sort(key=lambda task: task.modified_at),
             task_sibblings=task_sibblings,
             task_path=task_path,
             related_tasks = None
         )
+        self.task_context = rv 
+        return rv
+
 
 # Need to resolve the circular dependency between Task and TaskContext once both models are defined.
 Task.update_forward_refs()

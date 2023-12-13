@@ -190,15 +190,19 @@ class Plan(BaseTask):
             return None
 
         LOG.warning(f"We are browsing the tree from leaf to root. This use case is not yet supported. This functionality is in alpha version.")
-        if task.task_parent is not None:
+
+        if task.parent_task_id is None:
+            if (not isinstance(task, Plan)):
+                LOG.error(f"Task {task.formated_str()} is not a plan and has no parent")
+            return None
+        elif task.task_parent is not None:
             t = task.task_parent.find_ready_branch()
             if len(t) > 0:
                 return t[0]
             else :
                 return self._find_outer_next_task(task = task.task_parent , origin_task = task)
-        elif task.parent_task_id is None:
-            if (not isinstance(task, Plan)):
-                LOG.error(f"Task {task.formated_str()} is not a plan and has no parent")
+        else :
+            LOG.critical(f"Task {task.debug_formated_str(status=True)} has no parent")
             return None
 
 
@@ -394,9 +398,9 @@ class Plan(BaseTask):
                 refine_user_context_task = Task(
                     agent=self.agent,
                     plan_id=self.plan_id,
+                    _task_parent_id=self.plan_id,
                     task_parent=self,
                     state=status,
-                    _task_parent_id=self.plan_id,
                     _task_predecessors_id=None,
                     responsible_agent_id=None,
                     task_goal="Refine a user requirements for better exploitation by Agents",
@@ -462,17 +466,17 @@ class Plan(BaseTask):
 
     # endregion
 
-    def generate_pitch(self, task=None):
+    def generate_pitch(self, task : Task =None):
         if task is None:
             task = self.find_first_ready_task()
 
         # Extract the task's siblings and path
-        siblings = [
+        siblings : list[Task] = [
             sib
             for sib in self.subtasks
             if sib.task_parent_id == task.task_parent_id and sib != task
         ]
-        path_to_task = task.find_task_path()
+        path_to_task = task.get_task_path()
 
         # Build the pitch
         pitch = """
@@ -506,17 +510,3 @@ class Plan(BaseTask):
         return hash(self.plan_id)
 
 Plan.update_forward_refs()
-
-
-# # 1. Find the first ready task
-# first_ready_task = plan.get_first_ready_task()
-
-# # 2. Retrieve the task and its siblings
-# task_parent_id = first_ready_task.task_parent_id
-# siblings = []
-# if task_parent_id:
-#     task_parent = plan.find_task(task_parent_id)
-#     siblings = task_parent.subtasks
-
-# # 3. Retrieve the list of tasks on the path
-# path_to_task = plan.find_task_path(first_ready_task.task_id)

@@ -139,11 +139,6 @@ class BaseTask(AFAASModel):
                     # Replace the list of BaseTask instances with a list of their task_ids
                     d[field] = [v.task_id for v in field_value]
 
-                # # Check for lists of BaseTask instances
-                # if isinstance(field_value, TaskStack):
-                #     # Replace the list of BaseTask instances with a list of their task_ids
-                #     d[field] = [v.task_id for v in field_value._task_ids]
-
         return self._apply_custom_encoders(data=d)
 
     def add_task(self, task: "BaseTask"):
@@ -373,14 +368,14 @@ class BaseTask(AFAASModel):
         Returns the parent task and all child tasks on the path to the desired task.
         """
 
-        LOG.warning("Deprecated : Recommended function is Task.find_task_path()")
+        LOG.warning("Deprecated : Recommended function is Task.get_task_path()")
 
         if self.task_id == search_task_id:
             return self
 
         if self.subtasks:
             for subtask in self.subtasks:
-                found_task = subtask.find_task_path_with_id(search_task_id)
+                found_task = subtask.find_task_path_with_id(search_task_id = search_task_id)
                 if found_task:
                     return [self] + [found_task]
         return None
