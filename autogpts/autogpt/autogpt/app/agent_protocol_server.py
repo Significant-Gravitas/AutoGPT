@@ -39,6 +39,7 @@ from autogpt.file_workspace import (
     FileWorkspaceBackendName,
     get_workspace,
 )
+from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import ActionErrorResult, ActionSuccessResult
 
 logger = logging.getLogger(__name__)
@@ -428,7 +429,3 @@ class AgentProtocolServer:
 
 def task_agent_id(task_id: str | int) -> str:
     return f"AutoGPT-{task_id}"
-
-
-def fmt_kwargs(kwargs: dict) -> str:
-    return ", ".join(f"{n}={repr(v)}" for n, v in kwargs.items())
