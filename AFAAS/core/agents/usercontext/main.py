@@ -36,7 +36,7 @@ class UserContextAgent(BaseAgent):
     def __init__(
         self,
         settings: UserContextAgent.SystemSettings,
-        logger: logging.Logger,
+        
         memory: AbstractMemory,
         chat_model_provider: OpenAIProvider,
         workspace: LocalFileWorkspace,
@@ -47,7 +47,6 @@ class UserContextAgent(BaseAgent):
     ):
         super().__init__(
             settings=settings,
-            logger=logger,
             memory=memory,
             workspace=workspace,
             prompt_manager = prompt_manager,

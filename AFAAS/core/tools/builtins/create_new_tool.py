@@ -20,7 +20,7 @@ class CreateNewTool(BaseTool):
 
     def __init__(
         self,
-        logger: logging.Logger,
+        
         configuration: ToolConfiguration,
     ):
         self._logger = logger

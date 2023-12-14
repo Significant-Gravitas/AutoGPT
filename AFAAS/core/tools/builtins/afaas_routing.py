@@ -61,7 +61,6 @@ async def afaas_routing(
 
         routing_agent: RoutingAgent = RoutingAgent.get_instance_from_settings(
             agent_settings=routing_settings,
-            logger=agent._logger,
         )
 
         routing_return: dict = await routing_agent.run(

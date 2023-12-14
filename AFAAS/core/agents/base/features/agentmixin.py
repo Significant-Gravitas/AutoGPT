@@ -13,7 +13,8 @@ if TYPE_CHECKING:
     from AFAAS.core.prompting.base import BasePromptStrategy
 
     from ..main import BaseAgent
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name = __name__)
 
 class AgentMixin:
     _agent: BaseAgent
@@ -46,7 +47,7 @@ class AgentMixin:
         return self._agent._user_input_handler(message)
 
     def logger(self) -> Logger:
-        return self._agent._logger
+        return LOG
 
     ###
     ## Shorcuts

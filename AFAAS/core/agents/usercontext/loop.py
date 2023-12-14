@@ -9,7 +9,8 @@ if TYPE_CHECKING:
     from AFAAS.core.resource.model_providers import ChatModelResponse
 
 from .strategies import RefineUserContextFunctionNames
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name = __name__)
 
 class UserContextLoop(BaseLoop):
     """A loop responsible for managing the user context in an agent.
@@ -80,7 +81,7 @@ class UserContextLoop(BaseLoop):
             )
             ```
         """
-        self._agent._logger.info(f"Running UserContextLoop")
+        LOG.info(f"Running UserContextLoop")
 
         self.loop_count = 0
         user_input = ""
@@ -93,7 +94,7 @@ class UserContextLoop(BaseLoop):
             # if _active is false, then the loop is paused
             if self._active:
                 self.loop_count += 1
-                self._agent._logger.info(
+                LOG.info(
                     f"Starting loop iteration number {self.loop_count}"
                 )
 
@@ -123,14 +124,14 @@ class UserContextLoop(BaseLoop):
                     == RefineUserContextFunctionNames.VALIDATE_REQUIREMENTS
                     and reformulated_goal is not None
                 ):
-                    self._agent._logger.info(f"Exiting UserContextLoop")
+                    LOG.info(f"Exiting UserContextLoop")
                     return_value: dict = {
                         "agent_goal_sentence": reformulated_goal,
                         "agent_goals": model_response.parsed_result["goal_list"],
                     }
                     return return_value
                 else:
-                    self._agent._logger.error(model_response.parsed_result)
+                    LOG.error(model_response.parsed_result)
                     raise Exception
 
                 if user_objectives.lower() == "y" and self.loop_count > 1:

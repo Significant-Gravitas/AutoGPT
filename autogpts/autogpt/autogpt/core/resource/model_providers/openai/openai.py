@@ -195,7 +195,7 @@ class OpenAIProvider(
     def __init__(
         self,
         settings: OpenAISettings,
-        logger: logging.Logger,
+        
         agent_systems: list[Configurable],
     ):
         """
@@ -753,7 +753,7 @@ class _OpenAIRetryHandler:
 
     def __init__(
         self,
-        logger: logging.Logger,
+        
         num_retries: int = 10,
         backoff_base: float = 2.0,
         warn_user: bool = True,

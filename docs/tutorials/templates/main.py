@@ -29,7 +29,7 @@ class MyCustomAgent(BaseAgent, Configurable):
     def __init__(
         self,
         settings: MyCustomAgentSystemSettings,
-        logger: logging.Logger,
+        
         memory: Memory,
         openai_provider: OpenAIProvider,
         workspace: LocalFileWorkspace,
@@ -114,7 +114,7 @@ class MyCustomAgent(BaseAgent, Configurable):
         cls,
         user_objective: str,
         agent_settings: MyCustomAgentSettings,
-        logger: logging.Logger,
+        
     ) -> dict:
         """Determine the agent name and goals based on the user objective and settings.
 

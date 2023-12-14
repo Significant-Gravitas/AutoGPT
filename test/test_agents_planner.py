@@ -12,5 +12,4 @@ agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings(
 
 PLANNERAGENT = PlannerAgent.get_instance_from_settings(
             agent_settings=agent_settings,
-            logger=client_logger,
         )

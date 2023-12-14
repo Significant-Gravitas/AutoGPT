@@ -15,7 +15,8 @@ if TYPE_CHECKING:
         ChatModelResponse
 
     from . import BaseAgent
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name = __name__)
 
 class BaseLoopMeta(abc.ABCMeta):
     def __call__(cls, *args, **kwargs):
@@ -111,8 +112,8 @@ class BaseLoop(AgentMixin, abc.ABC, metaclass=BaseLoopMeta):
         if self._loophooks.get(hook_key):
             for key, hook in self._loophooks[hook_key].items():
                 # if isinstance(hook, BaseLoopHook):
-                self._agent._logger.trace(f"Executing hook {key}")
-                self._agent._logger.debug(f"Hook class is {hook.__class__}'")
+                LOG.trace(f"Executing hook {key}")
+                LOG.debug(f"Hook class is {hook.__class__}'")
                 await self.execute_hook(hook=hook, agent=agent)
                 # else :
                 #     raise TypeError(f"Hook {key} is not a BaseLoopHook but is a {hook.__class__}")
@@ -158,7 +159,7 @@ class BaseLoop(AgentMixin, abc.ABC, metaclass=BaseLoopMeta):
                 "`user_message_handler` must be a callable or set previously."
             )
 
-        self._agent._logger.trace("Starting loop")
+        LOG.trace("Starting loop")
         self._active = True
 
     async def stop(
@@ -184,7 +185,7 @@ class BaseLoop(AgentMixin, abc.ABC, metaclass=BaseLoopMeta):
                 "`user_message_handler` must be a callable or set previously."
             )
 
-        self._agent._logger.trace("Stoping loop")
+        LOG.trace("Stoping loop")
         self._active = False
 
     def __repr__(self):

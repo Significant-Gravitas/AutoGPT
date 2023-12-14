@@ -18,7 +18,7 @@ from AFAAS.core.lib.task.task import Task
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
 
-logger = AFAASLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 @tool(
@@ -30,7 +30,7 @@ logger = AFAASLogger(name=__name__)
 async def afaas_make_initial_plan(task: Task, agent: BaseAgent) -> None:
     # plan =  self.execute_strategy(
     agent._loop.tool_registry().list_tools_descriptions()
-    agent._logger.warning(
+    LOG.warning(
         f"This function is not maintained and should only be used at your own risk."
     )
     plan = await agent._loop._execute_strategy(

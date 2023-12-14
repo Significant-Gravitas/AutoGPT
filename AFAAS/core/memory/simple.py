@@ -29,7 +29,7 @@
 #     def __init__(
 #         self,
 #         settings: Memory.SystemSettings,
-#         logger: logging.Logger,
+#         
 #         workspace: Workspace,
 #     ):
 #         self._configuration = settings.configuration

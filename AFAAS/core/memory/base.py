@@ -18,7 +18,8 @@ from AFAAS.core.configuration import (Configurable,
 if TYPE_CHECKING:
     from AFAAS.core.memory.table.base import AbstractTable
 
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name=__name__)
 class MemoryAdapterType(Enum):
     SQLLIKE_JSON_FILE = "json_file"
     NOSQL_JSON_FILE = "nosqljson_file"
@@ -120,7 +121,6 @@ class AbstractMemory(Configurable, abc.ABC):
     def get_adapter(
         cls,
         memory_settings: AbstractMemory.SystemSettings,
-        logger=Logger,
         *args,
         **kwargs,
     ) -> "AbstractMemory":
@@ -155,10 +155,10 @@ class AbstractMemory(Configurable, abc.ABC):
             from AFAAS.core.memory.nosql.jsonfile import \
                 JSONFileMemory
 
-            logger.notice(
+            LOG.notice(
                 "Started using a local JSONFile backend. Help us to implement/test DynamoDB & CosmoDB backends !"
             )
-            instance = JSONFileMemory(settings=memory_settings, logger=logger)
+            instance = JSONFileMemory(settings=memory_settings)
 
         elif adapter_type == MemoryAdapterType.SQLLIKE_JSON_FILE:
             raise NotImplementedError("SQLLikeJSONFileMemory")

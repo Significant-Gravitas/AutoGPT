@@ -195,7 +195,7 @@ class OpenAIProvider(
     def __init__(
         self,
         settings: OpenAISettings,
-        logger: logging.Logger,
+        
         agent_systems: list[Configurable],
     ):
         """
@@ -204,7 +204,7 @@ class OpenAIProvider(
         Args:
             settings (OpenAISettings, optional): Specific settings for the OpenAI provider. Uses default settings if none provided.
         """
-        super().__init__(settings, logger)
+        super().__init__(settings)
         self._credentials = settings.credentials
         self._budget = settings.budget
 
@@ -753,12 +753,11 @@ class _OpenAIRetryHandler:
 
     def __init__(
         self,
-        logger: logging.Logger,
+        
         num_retries: int = 10,
         backoff_base: float = 2.0,
         warn_user: bool = True,
     ):
-        self._logger = logger
         self._num_retries = num_retries
         self._backoff_base = backoff_base
         self._warn_user = warn_user

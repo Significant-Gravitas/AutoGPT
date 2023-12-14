@@ -88,7 +88,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
     def __init__(
         self,
         settings: SimpleToolRegistry.SystemSettings,
-        logger: logging.Logger,
+        
         memory: AbstractMemory,
         workspace: AbstractFileWorkspace,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],
@@ -402,7 +402,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
     def with_tool_modules(
         modules: list[str],
         agent: BaseAgent,
-        logger: logging.Logger,
+        
         memory: AbstractMemory,
         workspace: AbstractFileWorkspace,
         model_providers: dict[ModelProviderName, BaseChatModelProvider],

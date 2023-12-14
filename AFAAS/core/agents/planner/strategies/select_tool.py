@@ -260,7 +260,7 @@ class SelectToolStrategy(PlanningPromptStrategy):
     #             ]
     #             for i, cycle in enumerate(agent.event_history, 1):
     #                 if not (cycle.action and cycle.result):
-    #                     agent._logger.warn(f"Incomplete action in history: {cycle}")
+    #                     LOG.warn(f"Incomplete action in history: {cycle}")
     #                     continue
 
     #                 plan_section.append(

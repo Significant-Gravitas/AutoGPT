@@ -54,7 +54,6 @@ async def afaas_refine_user_context(task: Task, agent: BaseAgent) -> None:
 
         user_context_agent = UserContextAgent.get_instance_from_settings(
             agent_settings=usercontext_settings,
-            logger=agent._logger,
         )
 
         user_context_return: dict = await user_context_agent.run(

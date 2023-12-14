@@ -60,7 +60,6 @@ class PlannerAgent(BaseAgent):
     def __init__(
         self,
         settings: PlannerAgent.SystemSettings,
-        logger: logging.Logger,
         memory: AbstractMemory,
         chat_model_provider: OpenAIProvider,
         workspace: LocalFileWorkspace,
@@ -71,7 +70,6 @@ class PlannerAgent(BaseAgent):
     ):
         super().__init__(
             settings=settings,
-            logger=logger,
             memory=memory,
             workspace=workspace,
             prompt_manager = prompt_manager,
@@ -235,7 +233,7 @@ class PlannerAgent(BaseAgent):
     #     cls,
     #     user_objective: str,
     #     agent_settings: PlannerAgent.SystemSettings,
-    #     logger: logging.Logger,
+    #     
     # ) -> dict:
     #     logger.trace("Loading OpenAI provider.")
     #     provider: OpenAIProvider = cls._get_system_instance(
@@ -266,11 +264,10 @@ class PlannerAgent(BaseAgent):
 
 
 def test_hook(**kwargs):
-    logger: logging.Logger = kwargs["agent"]._logger
-    logger.notice("Entering test_hook Function")
-    logger.notice(
+    LOG.notice("Entering test_hook Function")
+    LOG.notice(
         "Hooks are an experimental plug-in system that may fade away as we are transiting from a Loop logic to a Pipeline logic."
     )
     test = "foo_bar"
     for key, value in kwargs.items():
-        logger.debug(f"{key}: {value}")
+        LOG.debug(f"{key}: {value}")

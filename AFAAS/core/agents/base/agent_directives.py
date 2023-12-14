@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = AFAASLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .main import BaseAgent

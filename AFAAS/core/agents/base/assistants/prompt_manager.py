@@ -138,7 +138,7 @@ class PromptManager(Configurable, AgentMixin):
 
         kwargs.update(self.get_system_info(prompt_strategy))
 
-        prompt_strategy._agent._logger.trace(
+        LOG.trace(
             f"Executing strategy : {prompt_strategy.STRATEGY_NAME}"
         )
 

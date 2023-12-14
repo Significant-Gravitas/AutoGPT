@@ -174,7 +174,6 @@ async def interactively_revise_ai_settings(
 def print_ai_settings(
     ai_profile: AIProfile,
     directives: AIDirectives,
-    logger: logging.Logger,
     title: str = "AI Settings",
 ):
     print_attribute(title, "")

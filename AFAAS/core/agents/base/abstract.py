@@ -122,7 +122,6 @@ class AbstractAgent(ABC):
     def get_instance_from_settings(
         cls,
         agent_settings: BaseAgent.SystemSettings,
-        logger: logging.Logger,
     ) -> "AbstractAgent":
         """
         Abstract method to retrieve an agent instance using provided settings.
