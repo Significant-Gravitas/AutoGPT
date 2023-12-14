@@ -16,12 +16,12 @@ except GoogleAuthError:
     pytest.skip("Google Cloud Authentication not configured", allow_module_level=True)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def gcs_bucket_name() -> str:
     return f"test-bucket-{str(uuid.uuid4())[:8]}"
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def gcs_workspace_uninitialized(gcs_bucket_name: str) -> GCSFileWorkspace:
     os.environ["WORKSPACE_STORAGE_BUCKET"] = gcs_bucket_name
     ws_config = GCSFileWorkspaceConfiguration.from_env()
@@ -49,7 +49,7 @@ def test_initialize(
     bucket.delete(force=True)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def gcs_workspace(gcs_workspace_uninitialized: GCSFileWorkspace) -> GCSFileWorkspace:
     (gcs_workspace := gcs_workspace_uninitialized).initialize()
     yield gcs_workspace  # type: ignore
