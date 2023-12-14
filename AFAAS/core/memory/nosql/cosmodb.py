@@ -10,6 +10,8 @@ if TYPE_CHECKING:
 
 from AFAAS.core.memory.nosqlmemory import NoSQLMemory
 
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG=AFAASLogger(name=__name__)
 
 class CosmosDBMemory(NoSQLMemory):
     """
@@ -22,12 +24,10 @@ class CosmosDBMemory(NoSQLMemory):
     def __init__(
         self,
         settings: AbstractMemory.SystemSettings,
-        logger: Logger,
     ):
-        super().__init__(settings, logger)
+        super().__init__(settings)
         self._client = None
         self._database = None
-        self._logger = logger
 
     def connect(self, cosmos_endpoint=None, cosmos_key=None, cosmos_database_name=None):
         endpoint = cosmos_endpoint | self.cosmos_endpoint
@@ -38,10 +38,10 @@ class CosmosDBMemory(NoSQLMemory):
         try:
             self._database.read()
         except Exception as e:
-            self._logger.error(f"Unable to connect to Cosmos DB: {e}")
+            LOG.error(f"Unable to connect to Cosmos DB: {e}")
             raise e
         else:
-            self._logger.info("Successfully connected to Cosmos DB.")
+            LOG.info("Successfully connected to Cosmos DB.")
 
     def get(self, key: dict, table_name: str):
         container = self._database.get_container_client(table_name)

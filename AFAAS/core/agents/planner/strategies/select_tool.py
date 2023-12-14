@@ -47,12 +47,10 @@ class SelectToolStrategy(PlanningPromptStrategy):
 
     def __init__(
         self,
-        logger: Logger,
         model_classification: LanguageModelClassification,
         **kwargs,
     ):
-        super().__init__(
-            logger=logger, model_classification=model_classification, **kwargs
+        super().__init__(model_classification=model_classification, **kwargs
         )
 
     @property

@@ -31,7 +31,7 @@ from AFAAS.core.utils.processing.html import (
 from AFAAS.core.utils.processing.text import summarize_text
 from AFAAS.core.utils.url.validators import validate_url
 
-logger = AFAASLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 FILE_DIR = Path(__file__).parent.parent
 TOKENS_TO_TRIGGER_SUMMARY = 50
@@ -271,7 +271,7 @@ async def summarize_memorize_webpage(
         raise ValueError("No text to summarize")
 
     text_length = len(text)
-    logger.info(f"Text length: {text_length} characters")
+    LOG.info(f"Text length: {text_length} characters")
 
     # memory = get_memory(agent.legacy_config)
 

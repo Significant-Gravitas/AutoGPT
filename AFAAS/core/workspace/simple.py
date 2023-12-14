@@ -42,8 +42,8 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         
     ):
         # self._configuration = settings.configuration
-        # self._logger = logger
-        # self._logger = logger.getChild("workspace")
+        # LOG = logger
+        # LOG = LOG.getChild("workspace")
         self._root = self._sanitize_path(settings.configuration.root)
         self._restrict_to_root = settings.configuration.restrict_to_root
         super().__init__(settings)

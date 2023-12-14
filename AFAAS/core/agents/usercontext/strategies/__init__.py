@@ -18,7 +18,6 @@ class StrategiesSet:
     @staticmethod
     def get_strategies(logger : Logger = Logger(__name__))-> list[BasePromptStrategy]:
         return [
-            RefineUserContextStrategy(
-                logger=logger, **RefineUserContextStrategy.default_configuration.dict()
+            RefineUserContextStrategy(**RefineUserContextStrategy.default_configuration.dict()
             ),
         ]

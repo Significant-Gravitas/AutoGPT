@@ -12,7 +12,7 @@ from prompt_toolkit.history import InMemoryHistory
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = AFAASLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 session = PromptSession(history=InMemoryHistory())
 
 
@@ -47,7 +47,7 @@ async def clean_input(config: Config, prompt: str = ""):
                 return plugin_response
 
         # ask for input, default when just pressing Enter is y
-        logger.trace("Asking user via keyboard...")
+        LOG.trace("Asking user via keyboard...")
 
         # handle_sigint must be set to False, so the signal handler in the
         # autogpt/main.py could be employed properly. This referes to
@@ -55,8 +55,8 @@ async def clean_input(config: Config, prompt: str = ""):
         answer = await session.prompt_async(ANSI(prompt + " "), handle_sigint=False)
         return answer
     except KeyboardInterrupt:
-        logger.info("You interrupted AutoGPT")
-        logger.info("Quitting...")
+        LOG.info("You interrupted AutoGPT")
+        LOG.info("Quitting...")
         exit(0)
 
 
@@ -155,7 +155,7 @@ def print_motd(config: Config, logger: logging.Logger):
     if motd:
         motd = markdown_to_ansi_style(motd)
         for motd_line in motd.split("\n"):
-            logger.info(
+            LOG.info(
                 extra={
                     "title": "NEWS:",
                     "title_color": Fore.GREEN,
@@ -175,7 +175,7 @@ def print_motd(config: Config, logger: logging.Logger):
 def print_git_branch_info(logger: logging.Logger):
     git_branch = get_current_git_branch()
     if git_branch and git_branch != "master":
-        logger.warning(
+        LOG.warning(
             f"You are running on `{git_branch}` branch"
             " - this is not a supported branch."
         )
@@ -183,7 +183,7 @@ def print_git_branch_info(logger: logging.Logger):
 
 def print_python_version_info(logger: logging.Logger):
     if sys.version_info < (3, 10):
-        logger.error(
+        LOG.error(
             "WARNING: You are running on an older version of Python. "
             "Some people have observed problems with certain "
             "parts of AutoGPT with this version. "

@@ -99,10 +99,9 @@ class PromptManager(Configurable, AgentMixin):
     def __init__(
         self,
         settings: PromptManager.SystemSettings,
-        logger: AFAASLogger,
         agent_systems: list[Configurable],
     ) -> None:
-        super().__init__(settings=settings, logger=logger)
+        super().__init__(settings=settings)
         model_providers: dict[ModelProviderName, BaseChatModelProvider] = {
             "openai": agent_systems["chat_model_provider"]
         }
@@ -119,7 +118,7 @@ class PromptManager(Configurable, AgentMixin):
         for strategy in strategies:
             self._prompt_strategies[strategy.STRATEGY_NAME] = strategy
 
-        logger.trace(
+        LOG.trace(
             f"PromptManager created with strategies : {self._prompt_strategies}"
         )
 
@@ -154,7 +153,7 @@ class PromptManager(Configurable, AgentMixin):
     ) -> ChatModelResponse:
         model_classification = prompt_strategy.model_classification
         model_configuration = self._configuration.models[model_classification].dict()
-        self._logger.trace(f"Using model configuration: {model_configuration}")
+        LOG.trace(f"Using model configuration: {model_configuration}")
         del model_configuration["provider_name"]
         provider = self._providers[model_classification]
 

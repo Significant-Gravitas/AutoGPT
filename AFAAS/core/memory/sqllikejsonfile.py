@@ -9,10 +9,9 @@ from AFAAS.core.memory.base import AbstractMemory
 
 
 class SQLLikeJSONFileMemory(AbstractMemory):
-    def __init__(self, config: dict, logger: Logger):
+    def __init__(self, config: dict):
         raise NotImplementedError("SQLLikeJSONFileMemory")
         self._json_file_path = config.json_file_path
-        self._logger = logger
 
     def connect(self, *kwargs):
         pass

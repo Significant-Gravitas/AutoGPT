@@ -154,7 +154,7 @@ def test_parsers():
         c_file_creator,
     ) in respective_file_creation_functions.items():
         created_file_path = Path(c_file_creator())
-        loaded_text = read_textual_file(created_file_path, logger)
+        loaded_text = read_textual_file(created_file_path)
 
         assert plain_text_str in loaded_text
 

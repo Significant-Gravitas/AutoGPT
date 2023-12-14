@@ -255,7 +255,6 @@ class Configurable(abc.ABC, Generic[S]):
     def __init__(self, settings: S, logger: AFAASLogger):
         self._settings = settings
         self._configuration = settings.configuration
-        self._logger = logger
 
 
 class AFAASMessageType(str, enum.Enum):

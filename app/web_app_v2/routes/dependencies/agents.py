@@ -12,8 +12,7 @@ from AFAAS.core.agents import PlannerAgent
 def get_agent(request: Request, agent_id: str) -> PlannerAgent:
     agent: PlannerAgent = PlannerAgent.get_agent_from_memory(
         agent_id=agent_id,
-        user_id=request.state.user_id,
-        logger=LOG,
+        user_id=request.state.user_id
     )
     if agent is None:
         raise NotFoundError

@@ -13,7 +13,7 @@ from pylatexenc.latex2text import LatexNodes2Text
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = AFAASLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 class ParserStrategy:
@@ -25,7 +25,7 @@ class ParserStrategy:
 class TXTParser(ParserStrategy):
     def read(self, file_path: Path) -> str:
         charset_match = charset_normalizer.from_path(file_path).best()
-        logger.trace(f"Reading '{file_path}' with encoding '{charset_match.encoding}'")
+        LOG.trace(f"Reading '{file_path}' with encoding '{charset_match.encoding}'")
         return str(charset_match)
 
 
@@ -105,11 +105,11 @@ class FileContext:
         self.logger = logger
 
     def set_parser(self, parser: ParserStrategy) -> None:
-        self.logger.trace(f"Setting Context Parser to {parser}")
+        self.LOG.trace(f"Setting Context Parser to {parser}")
         self.parser = parser
 
     def read_file(self, file_path) -> str:
-        self.logger.trace(f"Reading file {file_path} with parser {self.parser}")
+        self.LOG.trace(f"Reading file {file_path} with parser {self.parser}")
         return self.parser.read(file_path)
 
 
@@ -167,5 +167,5 @@ def read_textual_file(file_path: Path, logger: logging.Logger) -> str:
             raise ValueError(f"Unsupported binary file format: {file_extension}")
         # fallback to txt file parser (to support script and code files loading)
         parser = TXTParser()
-    file_context = FileContext(parser, logger)
+    file_context = FileContext(parser)
     return file_context.read_file(file_path)

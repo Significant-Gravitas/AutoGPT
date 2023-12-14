@@ -46,9 +46,6 @@ class AgentMixin:
     def get_user_input(self, message: str):
         return self._agent._user_input_handler(message)
 
-    def logger(self) -> Logger:
-        return LOG
-
     ###
     ## Shorcuts
     ###

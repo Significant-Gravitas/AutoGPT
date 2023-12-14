@@ -26,9 +26,9 @@ class StrategiesSet:
     ) -> list[BasePromptStrategy]:
         return [
             InitialPlanStrategy(
-                logger=logger, **InitialPlanStrategy.default_configuration.dict()
+                **InitialPlanStrategy.default_configuration.dict()
             ),
             # SelectToolStrategy(
-            #     logger=logger, **SelectToolStrategy.default_configuration.dict()
+            #     **SelectToolStrategy.default_configuration.dict()
             # ),
         ]

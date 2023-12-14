@@ -204,12 +204,11 @@ class OpenAIProvider(
         Args:
             settings (OpenAISettings, optional): Specific settings for the OpenAI provider. Uses default settings if none provided.
         """
-        super().__init__(settings, logger)
+        super().__init__(settings)
         self._credentials = settings.credentials
         self._budget = settings.budget
 
         retry_handler = _OpenAIRetryHandler(
-            logger=self._logger,
             num_retries=self._configuration.retries_per_request,
         )
 
@@ -758,7 +757,6 @@ class _OpenAIRetryHandler:
         backoff_base: float = 2.0,
         warn_user: bool = True,
     ):
-        self._logger = logger
         self._num_retries = num_retries
         self._backoff_base = backoff_base
         self._warn_user = warn_user

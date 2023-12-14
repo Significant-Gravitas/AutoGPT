@@ -105,7 +105,6 @@ class PlannerAgent(BaseAgent):
         self._tool_registry = SimpleToolRegistry.with_tool_modules(
             modules=TOOL_CATEGORIES,
             agent=self,
-            logger=self._logger,
             memory=memory,
             workspace=workspace,
             model_providers=chat_model_provider,
@@ -213,8 +212,7 @@ class PlannerAgent(BaseAgent):
         return LocalFileWorkspace.create_workspace(
             user_id=agent_settings.user_id,
             agent_id=agent_settings.agent_id,
-            settings=agent_settings,
-            logger=LOG,
+            settings=agent_settings
         )
 
     # @classmethod
@@ -235,20 +233,20 @@ class PlannerAgent(BaseAgent):
     #     agent_settings: PlannerAgent.SystemSettings,
     #     
     # ) -> dict:
-    #     logger.trace("Loading OpenAI provider.")
+    #     LOG.trace("Loading OpenAI provider.")
     #     provider: OpenAIProvider = cls._get_system_instance(
     #         "chat_model_provider",
     #         agent_settings,
     #         logger=logger,
     #     )
-    #     logger.trace("Loading agent planner.")
+    #     LOG.trace("Loading agent planner.")
     #     agent_planner: PromptManager = cls._get_system_instance(
     #         "prompt_manager",
     #         agent_settings,
     #         logger=logger,
     #         model_providers={"openai": provider},
     #     )
-    #     logger.trace("determining agent name and goals.")
+    #     LOG.trace("determining agent name and goals.")
     #     model_response = await agent_planner.decide_name_and_goals(
     #         user_objective,
     #     )

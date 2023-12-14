@@ -20,7 +20,7 @@ from AFAAS.core.tools.command_decorator import tool
 from AFAAS.core.lib.sdk.errors import InvalidArgumentError
 from AFAAS.core.utils.json_schema import JSONSchema
 
-logger = AFAASLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 @tool(

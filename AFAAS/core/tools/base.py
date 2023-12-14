@@ -82,7 +82,7 @@ class BaseTool(AgentMixin, abc.ABC):
 
 
 class BaseToolsRegistry(AgentMixin, abc.ABC):
-    def __init__(self, settings, logger):
+    def __init__(self, settings):
         pass  # NOTE : Avoid passing too many arguments to AgentMixin
 
     @abc.abstractmethod

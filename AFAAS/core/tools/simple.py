@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = AFAASLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from AFAAS.core.agents.base import BaseAgent
@@ -158,7 +158,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
     #     """
     #     tool_class = SimplePluginService.get_plugin(tool_configuration.location)
     #     tool_args = {
-    #         "logger": self._logger.getChild(tool_name),
+    #         "logger": LOG.getChild(tool_name),
     #         "configuration": tool_configuration,
     #     }
     #     if tool_configuration.packages_required:
@@ -207,13 +207,13 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         ```
         """
         if cmd.name in self.tools:
-            logger.warn(
+            LOG.warn(
                 f"Tool '{cmd.name}' already registered and will be overwritten!"
             )
         self.tools[cmd.name] = cmd
 
         if cmd.name in self.tool_aliases:
-            logger.warn(
+            LOG.warn(
                 f"Tool '{cmd.name}' will overwrite alias with the same name of "
                 f"'{self.tool_aliases[cmd.name]}'!"
             )
@@ -246,7 +246,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
     def dump_tools(self, available=None) -> list[CompletionModelFunction]:
         if available is not None:
-            self._logger.warning("Parameter `available` not implemented")
+            LOG.warning("Parameter `available` not implemented")
 
         param_dict = {}
         function_list: list[CompletionModelFunction] = []
@@ -330,7 +330,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         Example:
             tool = registry.get_tool("example_tool")
         """
-        logger.warning("### FUNCTION DEPRECATED !!! ###")
+        LOG.warning("### FUNCTION DEPRECATED !!! ###")
         tool = self.get_tool(tool_name)
         if tool:
             if tool.is_async == True:
@@ -385,14 +385,14 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
             print(desc)
         ```
         """
-        logger.warning("Function deprecated")
+        LOG.warning("Function deprecated")
         return [f"{tool.name}: {tool.description}" for tool in self.tools.values()]
 
     def get_tools_names(self) -> list[str]:
         return [tool.name() for tool in self.tools]
 
     def get_tool_list(self) -> list[BaseTool]:
-        logger.warning(
+        LOG.warning(
             "### Warning this function has not being tested, we recommand against using it###"
         )
         # return self.tools
@@ -418,7 +418,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         #     model_providers={},
         # )
         new_registry = SimpleToolRegistry(
-            logger=logger,
+            logger=LOG,
             settings=SimpleToolRegistry.SystemSettings(),
             memory=memory,
             workspace=workspace,
@@ -426,7 +426,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         )
         SimpleToolRegistry._agent = agent
 
-        # logger.trace(
+        # LOG.trace(
         #     f"The following tool categories are disabled: {config.disabled_tool_categories}"
         # )
         # enabled_tool_modules = [
@@ -434,7 +434,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         # ]
         enabled_tool_modules = [x for x in modules]
 
-        logger.trace(
+        LOG.trace(
             f"The following tool categories are enabled: {enabled_tool_modules}"
         )
 
@@ -445,7 +445,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         # for tool in [c for c in new_registry.tools.values()]:
         #     if callable(tool.enabled) and not tool.enabled(config):
         #         new_registry.unregister(tool)
-        #         logger.trace(
+        #         LOG.trace(
         #             f"Unregistering incompatible tool '{tool.name()}': \"{tool.disabled_reason or 'Disabled by current config.'}\""
         #         )
 
@@ -529,6 +529,6 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
 
     async def call(self, tool_name: str, **kwargs) -> ToolResult:
         logger = logging.getLogger(__name__)
-        logger.warning("ToolRegistry.call() is deprecated")
+        LOG.warning("ToolRegistry.call() is deprecated")
 
         return await self.perform(tool_name=tool_name, **kwargs)

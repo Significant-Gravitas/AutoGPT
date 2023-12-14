@@ -209,7 +209,6 @@ class OpenAIProvider(
         self._budget = settings.budget
 
         retry_handler = _OpenAIRetryHandler(
-            logger=self._logger,
             num_retries=self._configuration.retries_per_request,
         )
 

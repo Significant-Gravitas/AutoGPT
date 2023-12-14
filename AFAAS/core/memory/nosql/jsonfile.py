@@ -7,29 +7,29 @@ from typing import List
 
 from AFAAS.core.memory.base import AbstractMemory
 from AFAAS.core.memory.nosqlmemory import NoSQLMemory
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger   
+LOG = AFAASLogger(name=__name__)
 
 class JSONFileMemory(NoSQLMemory):
     def __init__(
         self,
         settings: AbstractMemory.SystemSettings,
-        logger: Logger,
     ):
-        super().__init__(settings, logger)
+        super().__init__(settings)
 
     def connect(self, *kwargs):
         pass
 
     def _load_file(self, key: dict, table_name: str):
         file = self._get_file_path(key, table_name)
-        self._logger.trace(f"Loading data from {file}")
+        LOG.trace(f"Loading data from {file}")
         if file.is_file():
             with file.open() as f:
                 data = json.load(f)
-            self._logger.trace(f"Loaded {table_name} \n {str(data)[:250]}")
+            LOG.trace(f"Loaded {table_name} \n {str(data)[:250]}")
         else:
             data = {}
-            self._logger.trace(f"No {table_name} found")
+            LOG.trace(f"No {table_name} found")
         return data
 
     def _save_file(self, key: dict, table_name: str, data: dict):
@@ -39,7 +39,7 @@ class JSONFileMemory(NoSQLMemory):
         with file.open("w") as f:
             json.dump(data, f)
 
-        self._logger.trace(f"Saved {table_name} to {file} \n {str(data)}")
+        LOG.trace(f"Saved {table_name} to {file} \n {str(data)}")
 
     def get(self, key: dict, table_name: str):
         return self._load_file(key, table_name)

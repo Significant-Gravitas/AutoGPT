@@ -8,7 +8,7 @@ from AFAAS.core.resource.model_providers.chat_schema import \
     CompletionModelFunction
 from AFAAS.core.utils.json_schema import JSONSchema
 
-logger = AFAASLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 class CallableCompletionModelFunction(CompletionModelFunction):
@@ -57,7 +57,7 @@ class PromptScratchpad(BaseModel):
             invalid = False
             if type(s) is str and s not in JSONSchema.Type._value2member_map_:
                 invalid = True
-                logger.warning(
+                LOG.warning(
                     f"Cannot add command '{name}':"
                     f" parameter '{p}' has invalid type '{s}'."
                     f" Valid types are: {JSONSchema.Type._value2member_map_.keys()}"
@@ -85,7 +85,7 @@ class PromptScratchpad(BaseModel):
         if name in self.commands:
             if description == self.commands[name].description:
                 return
-            logger.warning(
+            LOG.warning(
                 f"Replacing command {self.commands[name]} with conflicting {command}"
             )
         self.commands[name] = command

@@ -36,7 +36,7 @@ def sanitize_path_arg(
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            logger.trace(f"Sanitizing arg '{arg_name}' on function '{func.__name__}'")
+            LOG.trace(f"Sanitizing arg '{arg_name}' on function '{func.__name__}'")
 
             # Get Agent from the called function's arguments
             agent = kwargs.get(

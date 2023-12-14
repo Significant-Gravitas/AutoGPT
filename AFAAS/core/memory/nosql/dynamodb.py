@@ -23,11 +23,9 @@ class DynamoDBMemory(NoSQLMemory):
     def __init__(
         self,
         settings: AbstractMemory.SystemSettings,
-        logger: Logger,
     ):
-        super().__init__(settings, logger)
+        super().__init__(settings)
         self._dynamodb = None
-        self._logger = logger
 
     def connect(
         self,
@@ -56,13 +54,13 @@ class DynamoDBMemory(NoSQLMemory):
             )
             dynamodb_client.list_tables()
         except NoCredentialsError:
-            self._logger.error("No AWS credentials found.")
+            LOG.error("No AWS credentials found.")
             raise
         except Exception as e:
-            self._logger.error(f"Unable to connect to DynamoDB: {e}")
+            LOG.error(f"Unable to connect to DynamoDB: {e}")
             raise e
         else:
-            self._logger.info("Successfully connected to DynamoDB.")
+            LOG.info("Successfully connected to DynamoDB.")
 
     def get(self, key: dict, table_name: str):
         table = self._dynamodb.Table(table_name)

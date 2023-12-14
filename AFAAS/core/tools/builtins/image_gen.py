@@ -29,7 +29,7 @@ COMMAND_CATEGORY_TITLE = "Text to Image"
 logger = logging.getLogger(__name__)
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = AFAASLogger(name=__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 @tool(
@@ -105,24 +105,24 @@ def generate_image_with_hf(
         if response.ok:
             try:
                 image = Image.open(io.BytesIO(response.content))
-                logger.info(f"Image Generated for prompt:{prompt}")
+                LOG.info(f"Image Generated for prompt:{prompt}")
                 image.save(output_file)
                 return f"Saved to disk: {output_file}"
             except Exception as e:
-                logger.error(e)
+                LOG.error(e)
                 break
         else:
             try:
                 error = json.loads(response.text)
                 if "estimated_time" in error:
                     delay = error["estimated_time"]
-                    logger.trace(response.text)
-                    logger.info("Retrying in", delay)
+                    LOG.trace(response.text)
+                    LOG.info("Retrying in", delay)
                     time.sleep(delay)
                 else:
                     break
             except Exception as e:
-                logger.error(e)
+                LOG.error(e)
                 break
 
         retry_count += 1
@@ -147,7 +147,7 @@ def generate_image_with_dalle(
     # Check for supported image sizes
     if size not in [256, 512, 1024]:
         closest = min([256, 512, 1024], key=lambda x: abs(x - size))
-        logger.info(
+        LOG.info(
             "DALL-E only supports image sizes of 256x256, 512x512, or 1024x1024. "
             f"Setting to {closest}, was {size}."
         )
@@ -161,7 +161,7 @@ def generate_image_with_dalle(
         api_key=agent.legacy_config.openai_credentials.api_key.get_secret_value(),
     )
 
-    logger.info(f"Image Generated for prompt:{prompt}")
+    LOG.info(f"Image Generated for prompt:{prompt}")
 
     image_data = b64decode(response["data"][0]["b64_json"])
 
@@ -211,7 +211,7 @@ def generate_image_with_sd_webui(
         },
     )
 
-    logger.info(f"Image Generated for prompt: '{prompt}'")
+    LOG.info(f"Image Generated for prompt: '{prompt}'")
 
     # Save the image to disk
     response = response.json()

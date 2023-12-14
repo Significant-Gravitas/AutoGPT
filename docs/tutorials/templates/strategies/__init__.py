@@ -38,7 +38,7 @@ class Strategies:
         # Use the logger and any necessary configuration from StrategiesConfiguration.
         return [
             YourStrategyName(
-                logger=logger, **YourStrategyName.default_configuration.dict()
+                **YourStrategyName.default_configuration.dict()
             ),
             # Instantiate other strategy objects and add them to the list.
         ]

@@ -110,12 +110,11 @@ class AbstractMemory(Configurable, abc.ABC):
     def __init__(
         self,
         settings: AbstractMemory.SystemSettings,
-        logger: Logger,
     ):
         AbstractMemory._instances = {}
-        super().__init__(settings, logger)
+        super().__init__(settings)
         # self._configuration = settings.configuration
-        # self._logger = logger
+        # LOG = logger
 
     @classmethod
     def get_adapter(

@@ -23,7 +23,6 @@ class CreateNewTool(BaseTool):
         
         configuration: ToolConfiguration,
     ):
-        self._logger = logger
         self._configuration = configuration
 
     @classmethod

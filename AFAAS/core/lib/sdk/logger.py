@@ -147,7 +147,7 @@ class ConsoleFormatter(logging.Formatter):
 
 class AFAASLogger(logging.Logger):
     """
-    This adds extra logging functions such as logger.trade and also
+    This adds extra logging functions such as LOG.trade and also
     sets the logger to use the custom formatter
     """
 

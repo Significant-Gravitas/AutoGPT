@@ -55,7 +55,7 @@ class FileContextItem(BaseModel, ContextItem):
 
     @property
     def content(self) -> str:
-        return read_textual_file(self.file_path, logger)
+        return read_textual_file(self.file_path)
 
 
 class FolderContextItem(BaseModel, ContextItem):

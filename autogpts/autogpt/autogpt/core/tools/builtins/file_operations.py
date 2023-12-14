@@ -156,7 +156,7 @@ def read_file(filename: Path, task: Task, agent: BaseAgent) -> str:
     Returns:
         str: The contents of the file
     """
-    content = read_textual_file(filename, logger)
+    content = read_textual_file(filename)
     # TODO: content = agent.workspace.read_file(filename)
 
     # # TODO: invalidate/update memory when file is edited

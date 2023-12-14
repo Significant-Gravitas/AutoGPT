@@ -33,7 +33,7 @@
 #         workspace: Workspace,
 #     ):
 #         self._configuration = settings.configuration
-#         self._logger = logger
+#         LOG = logger
 #         self._message_history = self._load_message_history(workspace)
 
 #     @staticmethod

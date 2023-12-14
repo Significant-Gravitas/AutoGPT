@@ -80,7 +80,7 @@ async def run_cli_demo():
         #     agent_settings=agent_settings,
         #     agent_id=agent_id,
         #     user_id=user_id,
-        #     logger=LOG,
+        #    ,
         #     )
 
     else :

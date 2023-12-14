@@ -120,7 +120,7 @@ async def run_auto_gpt(
             )
 
     if not config.skip_news:
-        print_motd(config, logger)
+        print_motd(config)
         print_git_branch_info(logger)
         print_python_version_info(logger)
 
