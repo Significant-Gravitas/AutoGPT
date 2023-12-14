@@ -26,6 +26,7 @@ from autogpt.logs.log_cycle import (
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
+from autogpt.logs.utils import fmt_kwargs
 from autogpt.models.action_history import (
     Action,
     ActionErrorResult,
@@ -254,6 +255,9 @@ class Agent(
                 raise
             except AgentException as e:
                 result = ActionErrorResult.from_exception(e)
+                logger.warning(
+                    f"{command_name}({fmt_kwargs(command_args)}) raised an error: {e}"
+                )
 
             result_tlength = self.llm_provider.count_tokens(str(result), self.llm.name)
             if result_tlength > self.send_token_limit // 3:
