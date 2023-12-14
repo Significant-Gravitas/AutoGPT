@@ -36,6 +36,7 @@ duckduckgo-search = "^4.0.0"
 en-core-web-sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl"}
 fastapi = "*"
 ftfy = "^6.1.1"
+gitpython = "^3.1.32"
 google-api-python-client = "*"
 gTTS = "^2.3.1"
 hypercorn = "^0.14.4"
@@ -140,15 +141,10 @@ extend_skip = [
 follow_imports = 'skip'
 check_untyped_defs = true
 disallow_untyped_calls = true
-disallow_untyped_defs = true
 files = [
     'autogpt/**/*.py',
     'tests/**/*.py'
 ]
-
-[[tool.mypy.overrides]]
-module = 'tests.*'
-disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
 module = [
