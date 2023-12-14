@@ -150,7 +150,7 @@ By using the System, you agree to indemnify, defend, and hold harmless the Proje
     return legal_text
 
 
-def print_motd(config: Config, logger: logging.Logger):
+def print_motd(config: Config):
     motd, is_new_motd = get_latest_bulletin()
     if motd:
         motd = markdown_to_ansi_style(motd)
@@ -172,7 +172,7 @@ def print_motd(config: Config, logger: logging.Logger):
             )
 
 
-def print_git_branch_info(logger: logging.Logger):
+def print_git_branch_info():
     git_branch = get_current_git_branch()
     if git_branch and git_branch != "master":
         LOG.warning(
@@ -181,7 +181,7 @@ def print_git_branch_info(logger: logging.Logger):
         )
 
 
-def print_python_version_info(logger: logging.Logger):
+def print_python_version_info():
     if sys.version_info < (3, 10):
         LOG.error(
             "WARNING: You are running on an older version of Python. "

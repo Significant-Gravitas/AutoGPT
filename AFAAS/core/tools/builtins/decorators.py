@@ -6,6 +6,7 @@ from typing import Callable, ParamSpec, TypeVar
 P = ParamSpec("P")
 T = TypeVar("T")
 
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
 

@@ -417,7 +417,6 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         #     model_providers={},
         # )
         new_registry = SimpleToolRegistry(
-            logger=LOG,
             settings=SimpleToolRegistry.SystemSettings(),
             memory=memory,
             workspace=workspace,

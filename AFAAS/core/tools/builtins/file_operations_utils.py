@@ -99,7 +99,7 @@ class LaTeXParser(ParserStrategy):
 
 
 class FileContext:
-    def __init__(self, parser: ParserStrategy, logger: logging.Logger):
+    def __init__(self, parser: ParserStrategy):
         self.parser = parser
         self.logger = logger
 
@@ -146,7 +146,7 @@ def is_file_binary_fn(file_path: Path):
     return False
 
 
-def read_textual_file(file_path: Path, logger: logging.Logger) -> str:
+def read_textual_file(file_path: Path) -> str:
     if not file_path.is_absolute():
         raise ValueError("File path must be absolute")
 

@@ -24,7 +24,7 @@ from AFAAS.core.utils.json_schema import JSONSchema
 COMMAND_CATEGORY = "text_to_image"
 COMMAND_CATEGORY_TITLE = "Text to Image"
 
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 

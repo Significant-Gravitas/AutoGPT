@@ -14,6 +14,7 @@ from AFAAS.core.lib.task.task import Task
 from AFAAS.core.agents.usercontext import UserContextAgent
 from AFAAS.core.tools.command_decorator import tool
 
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
 

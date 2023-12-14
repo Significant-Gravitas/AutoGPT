@@ -252,7 +252,7 @@ class Configurable(abc.ABC, Generic[S]):
         LOG.warning(f"{__qualname__}.json()")
         return super().json(**dumps_kwargs)
 
-    def __init__(self, settings: S, logger: AFAASLogger):
+    def __init__(self, settings: S):
         self._settings = settings
         self._configuration = settings.configuration
 

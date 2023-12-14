@@ -12,7 +12,7 @@ from AFAAS.core.configuration.schema import SystemConfiguration
 from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG =  AFAASLogger(name=__name__)
 
 

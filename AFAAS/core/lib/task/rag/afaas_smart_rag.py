@@ -44,7 +44,6 @@ class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
 
     def __init__(
         self,
-        logger: AFAASLogger,
         model_classification: LanguageModelClassification,
         default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames,
         temperature : float , #if coding 0.05
