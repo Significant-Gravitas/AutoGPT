@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 
 from .dependencies.agents import get_agent
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 """
 /agents (GET): Returns a list of all agents.

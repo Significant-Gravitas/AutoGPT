@@ -11,7 +11,7 @@ from AFAAS.core.lib.sdk.logger import AFAASLogger
 
 from ...base import BaseAgent
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 
 
 class WatchdogMixin:

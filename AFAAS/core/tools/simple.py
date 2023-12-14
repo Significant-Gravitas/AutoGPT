@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from AFAAS.core.agents.base import BaseAgent

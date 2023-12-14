@@ -19,7 +19,7 @@ from .dependencies.agents import get_agent
 afaas_artifact_router = APIRouter()
 artifact_router = APIRouter()
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 @afaas_artifact_router.get(

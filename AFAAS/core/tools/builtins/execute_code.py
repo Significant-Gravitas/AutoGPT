@@ -22,7 +22,7 @@ from AFAAS.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 TOOL_CATEGORY = "execute_code"
 TOOL_CATEGORY_TITLE = "Execute Code"
 

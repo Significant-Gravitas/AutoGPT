@@ -20,7 +20,7 @@ from AFAAS.core.agents.base.models import \
     BaseAgentConfiguration
 from AFAAS.core.configuration import SystemSettings
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .main import BaseAgent

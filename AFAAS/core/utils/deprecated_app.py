@@ -12,7 +12,7 @@ from prompt_toolkit.history import InMemoryHistory
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 session = PromptSession(history=InMemoryHistory())
 
 

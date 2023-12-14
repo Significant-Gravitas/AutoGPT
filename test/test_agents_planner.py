@@ -3,7 +3,7 @@ import uuid
 from AFAAS.core.agents import PlannerAgent
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-client_logger = AFAASLogger(__name__)
+client_logger = AFAASLogger(name=__name__)
 
 user_id: str = "A" + str(uuid.UUID("a1621e69-970a-4340-86e7-778d82e2137b"))
 agent_settings: PlannerAgent.SystemSettings = PlannerAgent.SystemSettings(

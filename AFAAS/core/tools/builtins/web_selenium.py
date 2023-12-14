@@ -31,7 +31,7 @@ from AFAAS.core.utils.processing.html import (
 from AFAAS.core.utils.processing.text import summarize_text
 from AFAAS.core.utils.url.validators import validate_url
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 
 FILE_DIR = Path(__file__).parent.parent
 TOKENS_TO_TRIGGER_SUMMARY = 50

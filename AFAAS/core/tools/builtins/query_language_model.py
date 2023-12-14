@@ -14,7 +14,7 @@ from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
 from AFAAS.core.utils.json_schema import JSONSchema
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 
 
 @tool(

@@ -12,7 +12,7 @@ from AFAAS.core.resource.model_providers import (
 from AFAAS.core.resource.model_providers.chat_schema import \
     ChatPrompt
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 logger.notice(
     f"Looking for volunteer to migrate {os.path.relpath(__file__)} library to Langchain."
 )

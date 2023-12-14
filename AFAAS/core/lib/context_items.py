@@ -17,7 +17,7 @@ from pydantic import Field
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.configuration import AFAASModel
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 
 
 class ContextItem(ABC):

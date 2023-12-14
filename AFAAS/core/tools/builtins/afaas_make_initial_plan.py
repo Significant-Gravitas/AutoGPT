@@ -18,7 +18,7 @@ from AFAAS.core.lib.task.task import Task
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.tools.command_decorator import tool
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 
 
 @tool(

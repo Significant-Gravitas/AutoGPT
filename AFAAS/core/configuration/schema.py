@@ -168,10 +168,10 @@ class AFAASModel(BaseModel):
         Returns:
             dict: A dictionary representation of the object.
         """
-        AFAASLogger(__name__).warning(
+        AFAASLogger(name=__name__).warning(
             "Warning : Recomended use json_api() or json_memory()"
         )
-        AFAASLogger(__name__).warning("BaseAgent.SystemSettings.json()")
+        AFAASLogger(name=__name__).warning("BaseAgent.SystemSettings.json()")
         self.prepare_values_before_serialization()  # Call the custom treatment before .json()
         kwargs["exclude"] = self.Config.default_exclude
         return super().json(*args, **kwargs)

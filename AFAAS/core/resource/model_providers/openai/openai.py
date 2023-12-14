@@ -27,7 +27,7 @@ from AFAAS.core.resource.model_providers.schema import (
     ModelProviderName, ModelProviderService, ModelTokenizer)
 from AFAAS.core.utils.json_schema import JSONSchema
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")

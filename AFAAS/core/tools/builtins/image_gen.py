@@ -29,7 +29,7 @@ COMMAND_CATEGORY_TITLE = "Text to Image"
 logger = logging.getLogger(__name__)
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 
 
 @tool(

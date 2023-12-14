@@ -8,7 +8,7 @@ from AFAAS.core.resource.model_providers.chat_schema import \
     CompletionModelFunction
 from AFAAS.core.utils.json_schema import JSONSchema
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 
 
 class CallableCompletionModelFunction(CompletionModelFunction):

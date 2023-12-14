@@ -25,7 +25,7 @@ from AFAAS.core.utils.json_schema import JSONSchema
 from .decorators import sanitize_path_arg
 from .file_operations_utils import read_textual_file
 
-logger = logger.AFAASLogger(__name__)
+logger = logger.AFAASLogger(name=__name__)
 
 Operation = Literal["write", "append", "delete"]
 

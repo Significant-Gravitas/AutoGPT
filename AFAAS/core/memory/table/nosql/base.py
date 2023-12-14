@@ -14,7 +14,7 @@ from AFAAS.core.configuration import (AFAASModel,
 
 from ..base import AbstractTable
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 class BaseSQLTable(AbstractTable):

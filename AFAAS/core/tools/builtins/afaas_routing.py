@@ -18,7 +18,7 @@ from AFAAS.core.agents.routing.strategies.routing import \
     RoutingStrategyConfiguration
 from AFAAS.core.tools.command_decorator import tool
 
-logger = AFAASLogger(__name__)
+logger = AFAASLogger(name=__name__)
 
 
 @tool(

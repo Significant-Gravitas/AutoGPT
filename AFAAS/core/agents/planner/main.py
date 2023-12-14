@@ -18,7 +18,7 @@ from .loop import PlannerLoop
 from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
 from .models import PlannerAgentSystems
 from AFAAS.core.lib.sdk.logger import AFAASLogger
-LOG =  AFAASLogger(__name__)
+LOG =  AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from AFAAS.core.workspace.simple import LocalFileWorkspace

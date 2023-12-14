@@ -312,6 +312,6 @@ def setup_logger():
     logging.config.dictConfig(logging_config)
 
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}" )
 LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}" )
