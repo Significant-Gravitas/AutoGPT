@@ -263,7 +263,7 @@ class Task(BaseTask):
             path.append(current_task.task_parent)
             current_task = current_task.task_parent
 
-        if task_to_root:
+        if not task_to_root:
             path.reverse()
 
         return path
@@ -301,7 +301,7 @@ class Task(BaseTask):
                     sibblings = True,
                     path = True,
                     similar_tasks : int = 0,
-                    avoid_redondancy : bool = True):
+                    avoid_redondancy : bool = False):
           
         plan_history : list[Task] = [] 
         if history > 0 :
@@ -327,14 +327,18 @@ class Task(BaseTask):
                 task_sibblings = self.get_sibblings()
         
         #TODO: Build it in a Pipeline for Autocorrection
+        task_history = list(history_and_predecessors)
+        task_history.sort(key=lambda task: task.modified_at)
         rv : str =  await self.agent.execute_strategy(strategy_name = AFAAS_SMART_RAG_Strategy.STRATEGY_NAME, 
             task=self,
-            task_history= list(history_and_predecessors).sort(key=lambda task: task.modified_at),
+            task_history= task_history,
             task_sibblings=task_sibblings,
             task_path=task_path,
             related_tasks = None
         )
-        self.task_context = rv 
+        
+        self.task_context = rv.parsed_result[0]['command_args']['resume']
+        self.long_description = rv.parsed_result[0]['command_args']['long_description']
         return rv
 
 

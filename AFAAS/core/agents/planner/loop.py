@@ -135,7 +135,7 @@ class PlannerLoop(BaseLoop):
                 if current_task.command is not None:
                     command_name = current_task.command
                     command_args = current_task.arguments
-                    assistant_reply_dict = current_task.long_decription
+                    assistant_reply_dict = current_task.long_description
                 else:
                     LOG.error("No command to execute")
                     (
@@ -147,7 +147,7 @@ class PlannerLoop(BaseLoop):
                 ##############################################################
                 ### Step 6 : Prepare RAG #
                 ##############################################################
-                #await current_task.prepare_rag()
+                await current_task.prepare_rag()
 
                 ##############################################################
                 ### Step 7 : execute_tool() #

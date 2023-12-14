@@ -4,7 +4,7 @@ import enum
 import os
 import uuid
 from typing import Optional,TYPE_CHECKING
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 if  TYPE_CHECKING: 
     from AFAAS.core.lib.task import Task
@@ -16,11 +16,10 @@ from AFAAS.core.prompting.schema import \
 from AFAAS.core.resource.model_providers import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 from AFAAS.core.utils.json_schema import JSONSchema
-from AFAAS.core.lib.sdk.logger import AFAASLogger 
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name = __name__)
 
-LOG = AFAASLogger(name= __name__)
-
-
+from AFAAS.core.prompting.utils.utils import to_md_quotation        
 class AFAAS_SMART_RAGStrategyFunctionNames(str, enum.Enum):
     MAKE_SMART_RAG: str = "afaas_smart_rag"
 
@@ -35,7 +34,7 @@ class AFAAS_SMART_RAGStrategyConfiguration(PromptStrategiesConfiguration):
     default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames = (
         AFAAS_SMART_RAGStrategyFunctionNames.MAKE_SMART_RAG
     )
-    note_to_agent_length : int = 250
+    task_context_length: int = 300
     temperature : float = 0.4
 
 
@@ -55,48 +54,43 @@ class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
         presence_penalty : Optional[float], # Avoid certain subjects
         count=0,
         exit_token: str = str(uuid.uuid4()),
-        use_message: bool = False,
-        note_to_agent_length : int = 250
+        task_context_length: int = 300,
     ):
         self._model_classification = model_classification
         self._count = count
         self._config = self.default_configuration
-        self.note_to_agent_length = note_to_agent_length
+        self.default_tool_choice = default_tool_choice
+        self.task_context_length = task_context_length
 
-
-
-    def set_tools(self,**kwargs):
+    def set_tools(self, 
+                    task :Task, 
+                    task_history : list[Task],
+                    task_sibblings : list[Task],
+              **kwargs):
         self.afaas_smart_rag : CompletionModelFunction = CompletionModelFunction(
             name=AFAAS_SMART_RAGStrategyFunctionNames.MAKE_SMART_RAG.value,
             description="Provide accurate information to perform a task",
             parameters={
-                "task_history": JSONSchema(
+                "uml_diagrams": JSONSchema(
+                    type=JSONSchema.Type.ARRAY,
+                    items=JSONSchema(
+                        type=JSONSchema.Type.STRING,
+                        description= f"A list of the task identified by their IF with UML diagrams relevant to the task",
+                        required=True,
+                        enum=[task.task_id for task in task_history + task_sibblings]
+                    )
+                ),
+                "resume": JSONSchema(
                     type=JSONSchema.Type.STRING,
-                    description= f"Detailed history of the task",
+                    description= f"Information related to past tasks that can be relevant to the execution of the task {task.task_goal}task but the \"situational context\" and the \"task goal\". This note should be {str(self.task_context_length * 0.8)} to {str(self.task_context_length *  1.25)}  words long.",
                     required=True,
                 ),
-                "task_sibblings": JSONSchema(
+                "long_description" : JSONSchema(
                     type=JSONSchema.Type.STRING,
-                    description= f"List of sibblings of the task",
-                    required=True,
-                ),
-                "task_path": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    description= f"Path to the task",
-                    required=True,
-                ),
-                "related_tasks": JSONSchema(
-                    type=JSONSchema.Type.STRING,
-                    description= f"Token to be used for a similarity search in a Vector DB",
+                    description= f"Description of the tasks (minimum 80 words long).",
                     required=True,
                 ),
             }
-            # task=self,
-            # task_history= list(history_and_predecessors).sort(key=lambda task: task.modified_at),
-            # task_sibblings=task_sibblings,
-            # task_path=task_path,
-            # related_tasks = None
-            # },
         )   
         
 
@@ -106,47 +100,62 @@ class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
 
 
     def build_prompt(
-        self, task : Task ,**kwargs
+        self, task : Task , **kwargs
     ) -> ChatPrompt:
-
-        # Get the directory containing the currently executing script
-        current_directory = os.path.dirname(os.path.abspath(__file__))
-
-        file_loader = FileSystemLoader(current_directory)
-        env = Environment(loader=file_loader)
-        template = env.get_template('10_routing.jinja')
-        
-        self.logger().notice("Building prompt for task : " + str(task) )
-        routing_param = {
-            "step" : 'ROUTING',
-            "task" : task, 
+        LOG.debug("Building prompt for task : " + task.debug_dump_str())
+        self._task : Task = task
+        self._model_name = kwargs.get("model_name")
+        smart_rag_param = {
             "task_goal" : task.task_goal,
             "additional_context_description": str(task.task_context),
+            'task_history' : kwargs.get('task_history', None),
+            'task_sibblings' : kwargs.get('task_sibblings', None),
+            'task_path' : kwargs.get('task_path', None),
+            'related_tasks' : kwargs.get('related_tasks', None),
         }
-        content = template.render(routing_param)
+        return self.build_prompt_common(task, template_name= f'{self.STRATEGY_NAME}.jinja', template_params = smart_rag_param)
+
+    
+    def build_prompt_common(self, task : Task, template_name : str, template_params : dict):
+        LOG.debug("Building common prompt for task : " + task.debug_dump_str())
+
+        current_directory = os.path.dirname(os.path.abspath(__file__))
+        file_loader = FileSystemLoader(current_directory)
+        env = Environment(loader=file_loader,
+            autoescape=select_autoescape(['html', 'xml']),
+            extensions=["jinja2.ext.loopcontrols"]
+            )
+        template = env.get_template(template_name)
+
+        template_params.update({"to_md_quotation": to_md_quotation,
+                                "task" : self._task})
+        content = template.render(template_params)
         messages = [ChatMessage.system(content)]
         strategy_tools = self.get_tools()
 
-        #
-        # Step 5 :
-        #
+        messages.append(ChatMessage.system(self.response_format_instruction(
+            model_name=self._model_name,
+        )))
+
         prompt = ChatPrompt(
             messages=messages,
             tools=strategy_tools,
-            tool_choice = "auto", 
-            default_tool_choice=AFAAS_SMART_RAGStrategyFunctionNames.MAKE_SMART_RAG,
-            # TODO
+            tool_choice="auto",
+            default_tool_choice=self.default_tool_choice,
             tokens_used=0,
         )
-        
+
         return prompt
 
     def parse_response_content(
         self,
         response_content: AssistantChatMessageDict,
-    )   -> DefaultParsedResponse:
-        return self.default_parse_response_content(response_content )    
-    
+    )   -> DefaultParsedResponse:  
+        return self.default_parse_response_content(response_content ) 
+        # parsed_response : DefaultParsedResponse = self.default_parse_response_content(response_content ) 
+        # parsed_response.command_name
+        # self._task.task_context = response_content.get("task_context", None)
+        # self._task.task_context = response_content.get("task_context", None)
     
     def response_format_instruction(self, model_name: str) -> str:
         model_provider = self._agent._chat_model_provider

@@ -60,8 +60,7 @@ class BaseTask(AFAASModel):
     task_context: Optional[str]
     """ Placeholder : Context given by RAG & other elements """
 
-    long_decription: Optional[str]
-    """ Placeholder : A longer description of the task than `task_goal` """
+    long_description: Optional[str]
 
     ###
     ### Task Management properties
@@ -398,7 +397,7 @@ class BaseTask(AFAASModel):
         task: Task
         for i, task in enumerate(task.subtasks.get_all_tasks_from_stack()):
             parsed_response += f"{i+1}. {task.debug_formated_str()}\n"
-            parsed_response += f"Description {task.long_decription}\n"
+            parsed_response += f"Description {task.long_description}\n"
             # parsed_response += f"Task type: {task.type}  "
             # parsed_response += f"Priority: {task.priority}\n"
             parsed_response += f"Predecessors:\n"
