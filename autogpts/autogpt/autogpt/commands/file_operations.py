@@ -150,7 +150,7 @@ def read_file(filename: str | Path, agent: Agent) -> str:
         str: The contents of the file
     """
     file = agent.workspace.open_file(filename, binary=True)
-    content = decode_textual_file(file, logger)
+    content = decode_textual_file(file, os.path.splitext(filename)[1], logger)
 
     # # TODO: invalidate/update memory when file is edited
     # file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
