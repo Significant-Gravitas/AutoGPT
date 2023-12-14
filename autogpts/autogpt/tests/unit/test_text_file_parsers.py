@@ -1,5 +1,6 @@
 import json
 import logging
+import os.path
 import tempfile
 from pathlib import Path
 from xml.etree import ElementTree
@@ -159,7 +160,7 @@ binary_files_extensions = [".pdf", ".docx"]
 def test_parsers(file_extension, c_file_creator):
     created_file_path = Path(c_file_creator())
     with open(created_file_path, "rb") as file:
-        loaded_text = decode_textual_file(file, logger)
+        loaded_text = decode_textual_file(file, os.path.splitext(file.name)[1], logger)
 
         assert plain_text_str in loaded_text
 
