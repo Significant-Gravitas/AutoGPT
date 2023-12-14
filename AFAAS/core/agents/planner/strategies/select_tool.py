@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from logging import Logger
+
 from typing import TYPE_CHECKING, Callable, Optional
 
 from AFAAS.core.agents.base.agent_directives import \

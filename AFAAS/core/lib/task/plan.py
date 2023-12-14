@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from abc import ABCMeta
-from logging import Logger
+
 from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import Field

@@ -5,7 +5,6 @@ from __future__ import annotations
 TOOL_CATEGORY = "web_browse"
 TOOL_CATEGORY_TITLE = "Web Browsing"
 
-import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Type

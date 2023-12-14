@@ -5,7 +5,6 @@ from __future__ import annotations
 TOOL_CATEGORY = "system"
 TOOL_CATEGORY_TITLE = "System"
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

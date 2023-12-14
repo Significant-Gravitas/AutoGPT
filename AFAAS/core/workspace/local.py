@@ -4,12 +4,11 @@ The LocalFileWorkspace class implements a AbstractFileWorkspace that works with 
 from __future__ import annotations
 
 import inspect
-import logging
 from pathlib import Path
 
 from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
-logger = logging.getLogger(__name__)
+LOG =  AFAASLogger(name=__name__)
 
 
 class AGPTLocalFileWorkspace(AbstractFileWorkspace):

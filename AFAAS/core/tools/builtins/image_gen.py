@@ -5,7 +5,6 @@ TOOL_CATEGORY_TITLE = "Text to Image"
 
 import io
 import json
-import logging
 import time
 import uuid
 from base64 import b64decode
@@ -26,7 +25,7 @@ COMMAND_CATEGORY = "text_to_image"
 COMMAND_CATEGORY_TITLE = "Text to Image"
 
 
-logger = logging.getLogger(__name__)
+LOG =  AFAASLogger(name=__name__)
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
 LOG = AFAASLogger(name=__name__)

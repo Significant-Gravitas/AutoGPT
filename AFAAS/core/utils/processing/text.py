@@ -1,5 +1,4 @@
 """Text processing functions"""
-import logging
 import math
 import os
 from typing import Iterator, Optional, TypeVar

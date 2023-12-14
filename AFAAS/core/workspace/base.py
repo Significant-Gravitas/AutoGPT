@@ -3,7 +3,6 @@ The AbstractFileWorkspace class provides an interface for interacting with a fil
 """
 from __future__ import annotations
 import inspect
-import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional, overload
@@ -14,7 +13,7 @@ from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
 
-logger = logging.getLogger(__name__)
+LOG =  AFAASLogger(name=__name__)
 
 
 class AbstractFileWorkspaceConfiguration(SystemConfiguration):

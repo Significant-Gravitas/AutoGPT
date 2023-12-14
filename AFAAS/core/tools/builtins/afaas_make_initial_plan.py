@@ -7,7 +7,6 @@ from AFAAS.core.lib.task.meta import TaskStatusList
 TOOL_CATEGORY = "framework"
 TOOL_CATEGORY_TITLE = "Framework"
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

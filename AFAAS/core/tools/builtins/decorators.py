@@ -1,5 +1,4 @@
 import functools
-import logging
 import re
 from pathlib import Path
 from typing import Callable, ParamSpec, TypeVar
@@ -7,7 +6,7 @@ from typing import Callable, ParamSpec, TypeVar
 P = ParamSpec("P")
 T = TypeVar("T")
 
-logger = logging.getLogger(__name__)
+LOG =  AFAASLogger(name=__name__)
 
 
 def sanitize_path_arg(

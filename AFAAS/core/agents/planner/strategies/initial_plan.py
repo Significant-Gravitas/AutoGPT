@@ -1,5 +1,5 @@
 import enum
-from logging import Logger
+
 from typing import Optional
 
 from AFAAS.core.lib.task import Task

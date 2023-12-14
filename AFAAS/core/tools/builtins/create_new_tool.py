@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 
 from AFAAS.core.plugin.simple import (PluginLocation,
                                                          PluginStorageFormat)

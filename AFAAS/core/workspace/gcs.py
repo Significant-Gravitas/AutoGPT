@@ -5,7 +5,6 @@ stores the files in a Google Cloud Storage bucket.
 from __future__ import annotations
 
 import inspect
-import logging
 from pathlib import Path
 
 from google.cloud import storage
@@ -14,7 +13,7 @@ from AFAAS.core.configuration.schema import UserConfigurable
 
 from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
-logger = logging.getLogger(__name__)
+LOG =  AFAASLogger(name=__name__)
 
 
 class GCSFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):

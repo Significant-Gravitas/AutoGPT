@@ -5,7 +5,6 @@ from __future__ import annotations
 TOOL_CATEGORY = "framework"
 TOOL_CATEGORY_TITLE = "Framework"
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -15,7 +14,7 @@ from AFAAS.core.lib.task.task import Task
 from AFAAS.core.agents.usercontext import UserContextAgent
 from AFAAS.core.tools.command_decorator import tool
 
-logger = logging.getLogger(__name__)
+LOG =  AFAASLogger(name=__name__)
 
 
 @tool(

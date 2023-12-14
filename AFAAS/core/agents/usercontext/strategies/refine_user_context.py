@@ -24,7 +24,7 @@ To initialize and use the `RefineUserContextStrategy`:
 """
 import enum
 import uuid
-from logging import Logger
+
 from typing import Optional
 
 from AFAAS.core.lib.message_agent_user import Questions

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING

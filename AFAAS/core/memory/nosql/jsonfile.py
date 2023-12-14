@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from logging import Logger
+
 from pathlib import Path
 from typing import List
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import inspect
-import logging
 from dataclasses import dataclass, field
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Iterator
@@ -528,7 +527,7 @@ class SimpleToolRegistry(Configurable, BaseToolsRegistry):
         return category
 
     async def call(self, tool_name: str, **kwargs) -> ToolResult:
-        logger = logging.getLogger(__name__)
+        LOG =  AFAASLogger(name=__name__)
         LOG.warning("ToolRegistry.call() is deprecated")
 
         return await self.perform(tool_name=tool_name, **kwargs)

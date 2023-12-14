@@ -7,7 +7,6 @@ TOOL_CATEGORY_TITLE = "File Operations"
 
 import contextlib
 import hashlib
-import logging
 import os
 import os.path
 from pathlib import Path

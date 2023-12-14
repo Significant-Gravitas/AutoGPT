@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import contextlib
 import inspect
-import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -22,7 +21,7 @@ from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 if TYPE_CHECKING:
     import mypy_boto3_s3
 
-logger = logging.getLogger(__name__)
+LOG =  AFAASLogger(name=__name__)
 
 
 class S3FileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from logging import Logger
+
 from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:

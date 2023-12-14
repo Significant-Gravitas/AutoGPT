@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from logging import Logger
+
 from typing import TYPE_CHECKING, List
 
 import boto3

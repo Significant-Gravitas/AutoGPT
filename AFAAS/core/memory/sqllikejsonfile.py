@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from logging import Logger
+
 from pathlib import Path
 
 from AFAAS.core.memory.base import AbstractMemory
