@@ -8,6 +8,7 @@ import contextlib
 import inspect
 import logging
 import os
+from io import IOBase, TextIOWrapper
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -43,6 +44,7 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
     def __init__(self, config: S3FileWorkspaceConfiguration):
         self._bucket_name = config.bucket
         self._root = config.root
+        assert self._root.is_absolute()
 
         # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html
         self._s3 = boto3.resource(
@@ -65,49 +67,58 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
         return True
 
     def initialize(self) -> None:
+        logger.debug(f"Initializing {repr(self)}...")
         try:
             self._s3.meta.client.head_bucket(Bucket=self._bucket_name)
             self._bucket = self._s3.Bucket(self._bucket_name)
         except botocore.exceptions.ClientError as e:
             if "(404)" not in str(e):
                 raise
+            logger.info(f"Bucket '{self._bucket_name}' does not exist; creating it...")
             self._bucket = self._s3.create_bucket(Bucket=self._bucket_name)
 
     def get_path(self, relative_path: str | Path) -> Path:
-        return super().get_path(relative_path).relative_to(Path("/"))
+        return super().get_path(relative_path).relative_to("/")
 
-    def open_file(self, path: str | Path, mode: str = "r"):
-        """Open a file in the workspace."""
+    def _get_obj(self, path: str | Path) -> mypy_boto3_s3.service_resource.Object:
+        """Get an S3 object."""
         path = self.get_path(path)
         obj = self._bucket.Object(str(path))
         with contextlib.suppress(botocore.exceptions.ClientError):
             obj.load()
         return obj
 
+    def open_file(self, path: str | Path, binary: bool = False) -> IOBase:
+        """Open a file in the workspace."""
+        obj = self._get_obj(path)
+        return obj.get()["Body"] if binary else TextIOWrapper(obj.get()["Body"])
+
     def read_file(self, path: str | Path, binary: bool = False) -> str | bytes:
         """Read a file in the workspace."""
-        file_content = self.open_file(path, "r").get()["Body"].read()
-        return file_content if binary else file_content.decode()
+        return self.open_file(path, binary).read()
 
-    async def _write_file(self, path: str | Path, content: str | bytes):
+    async def write_file(self, path: str | Path, content: str | bytes) -> None:
         """Write to a file in the workspace."""
-        obj = self.open_file(path, "w")
+        obj = self._get_obj(path)
         obj.put(Body=content)
 
-    def list_files(self, path: str | Path = ".") -> list[Path]:
-        """List all files in a directory in the workspace."""
+        if self.on_write_file:
+            path = Path(path)
+            if path.is_absolute():
+                path = path.relative_to(self.root)
+            res = self.on_write_file(path)
+            if inspect.isawaitable(res):
+                await res
+
+    def list(self, path: str | Path = ".") -> list[Path]:
+        """List all files (recursively) in a directory in the workspace."""
         path = self.get_path(path)
-        if path == Path("."):
-            return [
-                Path(obj.key)
-                for obj in self._bucket.objects.all()
-                if not obj.key.endswith("/")
-            ]
+        if path == Path("."):  # root level of bucket
+            return [Path(obj.key) for obj in self._bucket.objects.all()]
         else:
             return [
-                Path(obj.key)
-                for obj in self._bucket.objects.filter(Prefix=str(path))
-                if not obj.key.endswith("/")
+                Path(obj.key).relative_to(path)
+                for obj in self._bucket.objects.filter(Prefix=f"{path}/")
             ]
 
     def delete_file(self, path: str | Path) -> None:
@@ -115,3 +126,6 @@ class S3FileWorkspace_AlphaRelease(AbstractFileWorkspace):
         path = self.get_path(path)
         obj = self._s3.Object(self._bucket_name, str(path))
         obj.delete()
+
+    def __repr__(self) -> str:
+        return f"{__class__.__name__}(bucket='{self._bucket_name}', root={self._root})"
