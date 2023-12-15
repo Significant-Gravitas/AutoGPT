@@ -5,7 +5,7 @@ stores the files in a Google Cloud Storage bucket.
 from __future__ import annotations
 
 import inspect
-import logging
+
 from io import IOBase
 from pathlib import Path
 
@@ -15,6 +15,7 @@ from google.cloud.exceptions import NotFound
 from AFAAS.core.configuration.schema import UserConfigurable
 
 from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
+from AFAAS.core.lib.sdk.logger import AFAASLogger
 
 LOG =  AFAASLogger(name=__name__)
 
@@ -51,11 +52,11 @@ class GCSFileWorkspace_AlphaRealease(AbstractFileWorkspace):
         return True
 
     def initialize(self) -> None:
-        logger.debug(f"Initializing {repr(self)}...")
+        LOG.debug(f"Initializing {repr(self)}...")
         try:
             self._bucket = self._gcs.get_bucket(self._bucket_name)
         except NotFound:
-            logger.info(f"Bucket '{self._bucket_name}' does not exist; creating it...")
+            LOG.info(f"Bucket '{self._bucket_name}' does not exist; creating it...")
             self._bucket = self._gcs.create_bucket(self._bucket_name)
 
     def get_path(self, relative_path: str | Path) -> Path:

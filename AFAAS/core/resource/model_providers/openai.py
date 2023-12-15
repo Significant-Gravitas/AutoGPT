@@ -717,7 +717,7 @@ def _tool_calls_compat_extract_calls(response: str) -> list[AssistantToolCallDic
     import json
     import re
 
-    logging.trace(f"Trying to extract tool calls from response:\n{response}")
+    LOG.trace(f"Trying to extract tool calls from response:\n{response}")
 
     if response[0] == "[":
         tool_calls: list[AssistantToolCallDict] = json.loads(response)

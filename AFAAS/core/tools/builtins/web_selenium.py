@@ -179,7 +179,7 @@ def open_page_in_browser(url: str) -> WebDriver:
     Returns:
         driver (WebDriver): A driver object representing the browser window to scrape
     """
-    logging.getLogger("selenium").setLevel(logging.CRITICAL)
+    LOG.getLogger("selenium").setLevel(LOG.CRITICAL)
 
     options_available: dict[str, Type[BrowserOptions]] = {
         "chrome": ChromeOptions,

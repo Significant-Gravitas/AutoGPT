@@ -1,4 +1,4 @@
-import logging
+
 from typing import ClassVar
 
 from AFAAS.core.ability.base import Ability, AbilityConfiguration
