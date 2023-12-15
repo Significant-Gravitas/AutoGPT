@@ -39,23 +39,10 @@ and provide additional functionalities, namely :
 - [Contact](#contact)
 
 ## afaas - GitHub Branches
-
-[master](https://github.com/ph-ausseil/Auto-GPT/tree/master) : **Will be** the framework is located in  `autogpts/autogpt/autogpt/core/`  , sample agents are under implementation `autogpts/autogpt/autogpt/core/agent/simple`  (🚧 **Work in progress**) .
-[5as-autogpt-integration](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration) : Is a working branch that integrate latest changes from autogpt ensuring we are up to date (🚧 **Work in progress**)
+)
 
 <!--
 
-For historical reasons, the branches of this project have undergone general improvements towards the goals mentioned above. The future direction will be more streamlined.
-
-The [5as-autogpt-integration](https://github.com/ph-ausseil/Auto-GPT/tree/5as-autogpt-integration) branch, although open-source, is not licensed under MIT. This branch integrates different libraries together, representing a significant leap in the project's evolution.
-
-Key branches with their respective focuses:
-
-- **[afaas-prompting](https://github.com/ph-ausseil/Auto-GPT/tree/afaas-prompting)**: Improvements in core prompting. Licensed under MIT.
-- **[afaas-planning-model](https://github.com/ph-ausseil/Auto-GPT/tree/afaas-planning-model)**: Enhancements in core planning and modeling. Licensed under MIT.
-- **[afaas-ability](https://github.com/ph-ausseil/Auto-GPT/tree/afaas-ability)**: Upgrades in core abilities. Licensed under MIT.
-
-❗ **Warning**: Some branches may not be under the MIT License. I am actively working on license clarification and clean-up. If you have questions about a specific branch's license, please raise an issue with the branch name to inquire further.
 
 Status Indicators:
 ✅ (U+2705) - OK, Completed, Success
