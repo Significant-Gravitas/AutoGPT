@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import os
 import os.path
 from pathlib import Path
@@ -21,7 +20,7 @@ from AFAAS.core.utils.json_schema import JSONSchema
 from .decorators import sanitize_path_arg
 from .file_operations_utils import decode_textual_file
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 Operation = Literal["write", "append", "delete"]
 
@@ -110,7 +109,7 @@ def log_operation(
     agent: BaseAgent, 
     checksum: str | None = None
 ) -> None:
-    """Log the file operation to the file_logger.log
+    """Log the file operation to the file_LOG.log
 
     Args:
         operation: The operation to log
@@ -120,7 +119,7 @@ def log_operation(
     log_entry = f"{operation}: {file_path}"
     if checksum is not None:
         log_entry += f" #{checksum}"
-    logger.trace(f"Logging file operation: {log_entry}")
+    LOG.trace(f"Logging file operation: {log_entry}")
     append_to_file(
         agent.file_manager.file_ops_log_path, f"{log_entry}\n", agent, should_log=False
     )
@@ -147,7 +146,7 @@ def read_file(filename: Path, task: Task, agent: BaseAgent) -> str:
         str: The contents of the file
     """
     file = agent.workspace.open_file(filename, binary=True)
-    content = decode_textual_file(file, os.path.splitext(filename)[1], logger)
+    content = decode_textual_file(file, os.path.splitext(filename)[1])
 
     # # TODO: invalidate/update memory when file is edited
     # file_memory = MemoryItem.from_text_file(content, str(filename), agent.config)
@@ -171,17 +170,17 @@ def ingest_file(
     #     memory: An object with an add() method to store the chunks in memory
     # """
     # try:
-    #     logger.info(f"Ingesting file {filename}")
+    #     LOG.info(f"Ingesting file {filename}")
     #     content = read_file(filename)
 
     # TODO: differentiate between different types of files
     file_memory = MemoryItemFactory.from_text_file(content, filename)
-    logger.trace(f"Created memory: {file_memory.dump(True)}")
+    LOG.trace(f"Created memory: {file_memory.dump(True)}")
     memory.add(file_memory)
 
-    #   logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
+    #   LOG.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
     # except Exception as err:
-    #   logger.warning(f"Error while ingesting file '{filename}': {err}")
+    #   LOG.warning(f"Error while ingesting file '{filename}': {err}")
 
 
 @tool(

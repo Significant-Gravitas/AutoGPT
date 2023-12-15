@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Awaitable, Callable
 
@@ -12,6 +11,8 @@ from AFAAS.core.workspace.simple import LocalFileWorkspace
 from ..base import BaseAgent, BaseLoopHook, PromptManager
 from .loop import UserContextLoop
 from .models import UserContextAgentConfiguration, UserContextAgentSystems
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG =  AFAASLogger(name=__name__)
 
 
 class UserContextAgent(BaseAgent):
@@ -36,7 +37,6 @@ class UserContextAgent(BaseAgent):
     def __init__(
         self,
         settings: UserContextAgent.SystemSettings,
-        logger: logging.Logger,
         memory: AbstractMemory,
         chat_model_provider: OpenAIProvider,
         workspace: LocalFileWorkspace,
@@ -47,7 +47,6 @@ class UserContextAgent(BaseAgent):
     ):
         super().__init__(
             settings=settings,
-            logger=logger,
             memory=memory,
             workspace=workspace,
             prompt_manager = prompt_manager,
@@ -130,7 +129,7 @@ class UserContextAgent(BaseAgent):
     #     return StrategiesSet.get_strategies()
 
     def load_prompt_settings(self) :
-        self._logger.warning("TODO : load prompts via a jinja file")
+        LOG.warning("TODO : load prompts via a jinja file")
 
 
     def __repr__(self):

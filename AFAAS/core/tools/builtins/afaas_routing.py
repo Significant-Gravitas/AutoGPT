@@ -5,7 +5,6 @@ from __future__ import annotations
 TOOL_CATEGORY = "framework"
 TOOL_CATEGORY_TITLE = "Framework"
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,7 +17,7 @@ from AFAAS.core.agents.routing.strategies.routing import \
     RoutingStrategyConfiguration
 from AFAAS.core.tools.command_decorator import tool
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 @tool(
@@ -61,7 +60,6 @@ async def afaas_routing(
 
         routing_agent: RoutingAgent = RoutingAgent.get_instance_from_settings(
             agent_settings=routing_settings,
-            logger=agent._logger,
         )
 
         routing_return: dict = await routing_agent.run(

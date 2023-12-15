@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from logging import Logger
+
 from typing import TYPE_CHECKING, Callable, Optional
 
 from AFAAS.core.agents.base.agent_directives import \
@@ -47,12 +47,10 @@ class SelectToolStrategy(PlanningPromptStrategy):
 
     def __init__(
         self,
-        logger: Logger,
         model_classification: LanguageModelClassification,
         **kwargs,
     ):
-        super().__init__(
-            logger=logger, model_classification=model_classification, **kwargs
+        super().__init__(model_classification=model_classification, **kwargs
         )
 
     @property
@@ -260,7 +258,7 @@ class SelectToolStrategy(PlanningPromptStrategy):
     #             ]
     #             for i, cycle in enumerate(agent.event_history, 1):
     #                 if not (cycle.action and cycle.result):
-    #                     agent._logger.warn(f"Incomplete action in history: {cycle}")
+    #                     LOG.warn(f"Incomplete action in history: {cycle}")
     #                     continue
 
     #                 plan_section.append(

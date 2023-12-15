@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from logging import Logger
+
 from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
@@ -73,7 +73,6 @@ class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
 class PlanningPromptStrategy(BasePromptStrategy):
     def __init__(
         self,
-        logger: Logger,
         model_classification: LanguageModelClassification,
         temperature: float,  # if coding 0.05
         top_p: Optional[float],
@@ -256,7 +255,7 @@ class PlanningPromptStrategy(BasePromptStrategy):
             var = [cmd.fmt_line() for cmd in tools]
             return to_numbered_list(var)
         except AttributeError:
-            self.logger.warn(f"Formatting tools failed. {tools}")
+            LOG.warn(f"Formatting tools failed. {tools}")
             raise
 
     def _generate_intro_prompt(

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import logging
 import os
 import uuid
 from abc import ABC, abstractmethod
@@ -20,7 +19,7 @@ from AFAAS.core.agents.base.models import \
     BaseAgentConfiguration
 from AFAAS.core.configuration import SystemSettings
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .main import BaseAgent
@@ -122,7 +121,6 @@ class AbstractAgent(ABC):
     def get_instance_from_settings(
         cls,
         agent_settings: BaseAgent.SystemSettings,
-        logger: logging.Logger,
     ) -> "AbstractAgent":
         """
         Abstract method to retrieve an agent instance using provided settings.

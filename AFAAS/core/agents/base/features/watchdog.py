@@ -11,7 +11,7 @@ from AFAAS.core.lib.sdk.logger import AFAASLogger
 
 from ...base import BaseAgent
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 class WatchdogMixin:
@@ -58,7 +58,7 @@ class WatchdogMixin:
                 rethink_reason = f"Repititive command detected ({command_name})"
 
             if rethink_reason:
-                logger.info(f"{rethink_reason}, re-thinking with SMART_LLM...")
+                LOG.info(f"{rethink_reason}, re-thinking with SMART_LLM...")
                 with ExitStack() as stack:
 
                     @stack.callback

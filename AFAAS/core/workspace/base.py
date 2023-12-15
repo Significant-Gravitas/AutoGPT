@@ -3,7 +3,6 @@ The AbstractFileWorkspace class provides an interface for interacting with a fil
 """
 from __future__ import annotations
 import inspect
-import logging
 from abc import ABC, abstractmethod
 from io import IOBase, TextIOBase
 from pathlib import Path
@@ -14,8 +13,8 @@ from AFAAS.core.configuration.schema import SystemConfiguration
 from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          UserConfigurable)
-
-logger = logging.getLogger(__name__)
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG =  AFAASLogger(name=__name__)
 
 
 class AbstractFileWorkspaceConfiguration(SystemConfiguration):
@@ -155,11 +154,11 @@ class AbstractFileWorkspace(Configurable, ABC):
         if root is None:
             return Path(relative_path).resolve()
 
-        logger.debug(f"Resolving path '{relative_path}' in workspace '{root}'")
+        LOG.debug(f"Resolving path '{relative_path}' in workspace '{root}'")
 
         root, relative_path = Path(root).resolve(), Path(relative_path)
 
-        logger.debug(f"Resolved root as '{root}'")
+        LOG.debug(f"Resolved root as '{root}'")
 
         # Allow absolute paths if they are contained in the workspace.
         if (
@@ -174,7 +173,7 @@ class AbstractFileWorkspace(Configurable, ABC):
 
         full_path = root.joinpath(relative_path).resolve()
 
-        logger.debug(f"Joined paths as '{full_path}'")
+        LOG.debug(f"Joined paths as '{full_path}'")
 
         if restrict_to_root and not full_path.is_relative_to(root):
             raise ValueError(

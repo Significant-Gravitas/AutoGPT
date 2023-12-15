@@ -1,6 +1,5 @@
 import enum
 import functools
-import logging
 import math
 import os
 import time
@@ -257,17 +256,16 @@ class OpenAIProvider(
     def __init__(
         self,
         settings: OpenAISettings,
-        logger: logging.Logger,
+        
     ):
         assert settings.credentials, "Cannot create OpenAIProvider without credentials"
         self._configuration = settings.configuration
         self._credentials = settings.credentials
         self._budget = settings.budget
 
-        self._logger = logger
 
         retry_handler = _OpenAIRetryHandler(
-            logger=self._logger,
+           ,
             num_retries=self._configuration.retries_per_request,
         )
 
@@ -319,7 +317,7 @@ class OpenAIProvider(
         try:
             encoding = tiktoken.encoding_for_model(encoding_model)
         except KeyError:
-            cls._logger.warning(
+            LOG.warning(
                 f"Model {model_name} not found. Defaulting to cl100k_base encoding."
             )
             encoding = tiktoken.get_encoding("cl100k_base")
@@ -550,25 +548,24 @@ class _OpenAIRetryHandler:
 
     def __init__(
         self,
-        logger: logging.Logger,
+        
         num_retries: int = 10,
         backoff_base: float = 2.0,
         warn_user: bool = True,
     ):
-        self._logger = logger
         self._num_retries = num_retries
         self._backoff_base = backoff_base
         self._warn_user = warn_user
 
     def _log_rate_limit_error(self) -> None:
-        self._logger.trace(self._retry_limit_msg)
+        LOG.trace(self._retry_limit_msg)
         if self._warn_user:
-            self._logger.warning(self._api_key_error_msg)
+            LOG.warning(self._api_key_error_msg)
             self._warn_user = False
 
     def _backoff(self, attempt: int) -> None:
         backoff = self._backoff_base ** (attempt + 2)
-        self._logger.trace(self._backoff_msg.format(backoff=backoff))
+        LOG.trace(self._backoff_msg.format(backoff=backoff))
         time.sleep(backoff)
 
     def __call__(self, func: Callable[_P, _T]) -> Callable[_P, _T]:

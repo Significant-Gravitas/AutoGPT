@@ -24,7 +24,7 @@ To initialize and use the `RefineUserContextStrategy`:
 """
 import enum
 import uuid
-from logging import Logger
+
 from typing import Optional
 
 from AFAAS.core.lib.message_agent_user import Questions
@@ -39,6 +39,9 @@ from AFAAS.core.resource.model_providers import (
     ChatPrompt, CompletionModelFunction)
 from AFAAS.core.utils.json_schema import JSONSchema
 
+
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG =  AFAASLogger(name=__name__)
 
 class RefineUserContextFunctionNames(str, enum.Enum):
     """
@@ -161,7 +164,6 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
 
     def __init__(
         self,
-        logger: Logger,
         model_classification: LanguageModelClassification,
         default_tool_choice: RefineUserContextFunctionNames,
         context_min_tokens: int,
@@ -201,7 +203,6 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         use_message: bool, optional (default = False)
             Flag to determine whether to use messages.
         """
-        self._logger = logger
         self._model_classification = model_classification
 
         # NOTE : Make a list of Questions ?
@@ -482,7 +483,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
         try:
             parsed_response = json_loads(response_content["tool_calls"][0]['function']["arguments"])
         except Exception:
-            self._logger.warning(parsed_response)
+            LOG.warning(parsed_response)
 
         #
         # Give id to questions
@@ -528,7 +529,7 @@ It's crucial to use the user's input, make no assumptions, align with COCE, and 
             self._last_questions_label = parsed_response["questions"]
 
         parsed_response["name"] = response_content["tool_calls"][0]['function']["name"]
-        self._logger.trace(parsed_response)
+        LOG.trace(parsed_response)
         self._count += 1
         return parsed_response
 

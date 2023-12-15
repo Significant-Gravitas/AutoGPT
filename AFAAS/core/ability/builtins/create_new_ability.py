@@ -17,10 +17,8 @@ class CreateNewAbility(Ability):
 
     def __init__(
         self,
-        logger: logging.Logger,
         configuration: AbilityConfiguration,
     ):
-        self._logger = logger
         self._configuration = configuration
 
     description: ClassVar[str] = "Create a new ability by writing python code."

@@ -2,7 +2,6 @@
 
 
 
-import logging
 import os
 import subprocess
 from pathlib import Path
@@ -22,7 +21,7 @@ from AFAAS.core.utils.json_schema import JSONSchema
 
 from .decorators import sanitize_path_arg
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 TOOL_CATEGORY = "execute_code"
 TOOL_CATEGORY_TITLE = "Execute Code"
 
@@ -105,7 +104,7 @@ def execute_python_file(
     Returns:
         str: The output of the file
     """
-    logger.info(
+    LOG.info(
         f"Executing python file '{filename}' "
         f"in working directory '{agent.workspace.root}'"
     )
@@ -125,7 +124,7 @@ def execute_python_file(
         )
 
     if we_are_running_in_a_docker_container():
-        logger.trace(
+        LOG.trace(
             "AutoGPT is running in a Docker container; "
             f"executing {file_path} directly..."
         )
@@ -140,7 +139,7 @@ def execute_python_file(
         else:
             raise CodeExecutionError(result.stderr)
 
-    logger.trace("AutoGPT is not running in a Docker container")
+    LOG.trace("AutoGPT is not running in a Docker container")
     try:
         assert agent.state.agent_id, "Need Agent ID to attach Docker container"
 
@@ -158,9 +157,9 @@ def execute_python_file(
         except NotFound:
             try:
                 client.images.get(image_name)
-                logger.trace(f"Image '{image_name}' found locally")
+                LOG.trace(f"Image '{image_name}' found locally")
             except ImageNotFound:
-                logger.info(
+                LOG.info(
                     f"Image '{image_name}' not found locally,"
                     " pulling from Docker Hub..."
                 )
@@ -171,11 +170,11 @@ def execute_python_file(
                     status = line.get("status")
                     progress = line.get("progress")
                     if status and progress:
-                        logger.info(f"{status}: {progress}")
+                        LOG.info(f"{status}: {progress}")
                     elif status:
-                        logger.info(status)
+                        LOG.info(status)
 
-            logger.trace(f"Creating new {image_name} container...")
+            LOG.trace(f"Creating new {image_name} container...")
             container: DockerContainer = client.containers.run(
                 image_name,
                 ["sleep", "60"],  # Max 60 seconds to prevent permanent hangs
@@ -198,7 +197,7 @@ def execute_python_file(
         elif not container_is_fresh:
             container.restart()
 
-        logger.trace(f"Running {file_path} in container {container.name}...")
+        LOG.trace(f"Running {file_path} in container {container.name}...")
         exec_result = container.exec_run(
             [
                 "python",
@@ -216,7 +215,7 @@ def execute_python_file(
         return exec_result.output.decode("utf-8")
 
     except DockerException as e:
-        logger.warning(
+        LOG.warning(
             "Could not run the script in a container. "
             "If you haven't already, please install Docker: "
             "https://docs.docker.com/get-docker/"
@@ -272,7 +271,7 @@ def execute_shell(command_line: str, task: Task, agent: BaseAgent) -> str:
     """
     # TODO IMPLEMENT OR NO SECURITY MECHANISM
     # if not validate_command(command_line, agent.legacy_config):
-    #     logger.info(f"Tool '{command_line}' not allowed")
+    #     LOG.info(f"Tool '{command_line}' not allowed")
     #     raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = Path.cwd()
@@ -280,7 +279,7 @@ def execute_shell(command_line: str, task: Task, agent: BaseAgent) -> str:
     if not current_dir.is_relative_to(agent.workspace.root):
         os.chdir(agent.workspace.root)
 
-    logger.info(
+    LOG.info(
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
     )
 
@@ -319,7 +318,7 @@ def execute_shell_popen(command_line: str, task: Task, agent: BaseAgent) -> str:
         str: Description of the fact that the process started and its id
     """
     # if not validate_command(command_line, agent.legacy_config):
-    #     logger.info(f"Tool '{command_line}' not allowed")
+    #     LOG.info(f"Tool '{command_line}' not allowed")
     #     raise OperationNotAllowedError("This shell command is not allowed.")
 
     current_dir = Path.cwd()
@@ -327,7 +326,7 @@ def execute_shell_popen(command_line: str, task: Task, agent: BaseAgent) -> str:
     if not current_dir.is_relative_to(agent.workspace.root):
         os.chdir(agent.workspace.root)
 
-    logger.info(
+    LOG.info(
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
     )
 

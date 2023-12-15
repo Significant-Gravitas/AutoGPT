@@ -76,7 +76,7 @@ class Strategies:
     @staticmethod
     def get_strategies(logger: Logger) -> list[PromptStrategy]:
         return [
-            MyStrategy(logger=logger, **MyStrategy.default_configuration.dict()),
+            MyStrategy(**MyStrategy.default_configuration.dict()),
             ...
         ]
 ```

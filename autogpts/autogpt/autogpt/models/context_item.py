@@ -4,10 +4,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
-from AFAAS.core.tools.builtins.file_operations_utils import read_textual_file
+from AFAAS.core.tools.builtins.file_operations_utils import read_textual_file, decode_textual_file
 from pydantic import BaseModel, Field
-
-from autogpt.commands.file_operations_utils import decode_textual_file
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +58,7 @@ class FileContextItem(BaseModel, ContextItem):
     def content(self) -> str:
         # TODO: use workspace.open_file()
         with open(self.file_path, "rb") as file:
-            return decode_textual_file(file, os.path.splitext(file.name)[1], logger)
+            return decode_textual_file(file, os.path.splitext(file.name)[1])
 
 
 class FolderContextItem(BaseModel, ContextItem):

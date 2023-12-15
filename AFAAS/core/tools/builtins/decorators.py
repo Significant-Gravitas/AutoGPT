@@ -1,5 +1,4 @@
 import functools
-import logging
 import re
 from pathlib import Path
 from typing import Callable, ParamSpec, TypeVar
@@ -7,7 +6,8 @@ from typing import Callable, ParamSpec, TypeVar
 P = ParamSpec("P")
 T = TypeVar("T")
 
-logger = logging.getLogger(__name__)
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG =  AFAASLogger(name=__name__)
 
 
 def sanitize_path_arg(
@@ -36,7 +36,7 @@ def sanitize_path_arg(
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            logger.trace(f"Sanitizing arg '{arg_name}' on function '{func.__name__}'")
+            LOG.trace(f"Sanitizing arg '{arg_name}' on function '{func.__name__}'")
 
             # Get Agent from the called function's arguments
             agent = kwargs.get(

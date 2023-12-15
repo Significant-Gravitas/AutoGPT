@@ -13,7 +13,7 @@ from AFAAS.core.lib.task import Task
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 from langchain.tools.base import BaseTool
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 ToolReturnValue = Any
 ToolOutput = ToolReturnValue | tuple[ToolReturnValue, ContextItem]

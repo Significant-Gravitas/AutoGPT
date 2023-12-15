@@ -109,7 +109,7 @@ class PlannerLoop(BaseLoop):
             )
 
             # Debugging :)
-            self._agent._logger.info(Plan.debug_info_parse_task(self._agent.plan))
+            LOG.info(Plan.debug_info_parse_task(self._agent.plan))
 
             ###
             ### Assign task
@@ -278,7 +278,7 @@ class PlannerLoop(BaseLoop):
         command_args = raw_response.parsed_result[1]
         assistant_reply_dict = raw_response.parsed_result[2]
 
-        self._agent._logger.info(
+        LOG.info(
             (
                 f"command_name : {command_name} \n\n"
                 + f"command_args : {str(command_args)}\n\n"
@@ -329,8 +329,8 @@ def execute_command(
         str: The result of the command
     """
     # Execute a native command with the same name or alias, if it exists
-    agent._logger.info(f"Executing command : {command_name}")
-    agent._logger.info(f"with arguments : {arguments}")
+    LOG.info(f"Executing command : {command_name}")
+    LOG.info(f"with arguments : {arguments}")
     if tool := agent._tool_registry.get_tool(tool_name=command_name):
         try:
             result = tool(**arguments, task=task, agent=agent)

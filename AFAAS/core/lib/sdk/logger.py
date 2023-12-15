@@ -147,7 +147,7 @@ class ConsoleFormatter(logging.Formatter):
 
 class AFAASLogger(logging.Logger):
     """
-    This adds extra logging functions such as logger.trade and also
+    This adds extra logging functions such as LOG.trade and also
     sets the logger to use the custom formatter
     """
 
@@ -185,7 +185,7 @@ class AFAASLogger(logging.Logger):
 
         # File Handler
         os.makedirs(log_folder, exist_ok=True)
-        log_file_path = os.path.join(log_folder, self.LOG_FILENAME)
+        log_file_path = os.path.join(log_folder, LOG_FILENAME)
         file_handler = logging.handlers.TimedRotatingFileHandler(
             log_file_path, when="midnight", interval=1, backupCount=7
         )
@@ -312,6 +312,6 @@ def setup_logger():
     logging.config.dictConfig(logging_config)
 
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 LOG.warning(f"Console log level is  : {logging.getLevelName(CONSOLE_LOG_LEVEL)}" )
 LOG.warning(f"File log level is  : {logging.getLevelName(FILE_LOG_LEVEL)}" )

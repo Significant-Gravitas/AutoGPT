@@ -14,7 +14,7 @@ DEFAULT_SETTINGS_FILE = str(Path("~/auto-gpt/default_agent_settings.yml").expand
 
 
 async def workspace_loader(
-    user_configuration: dict, client_logger: Logger, agent_workspace
+    user_configuration: dict, LOG: Logger, agent_workspace
 ):
     """Run the Auto-GPT CLI client."""
 
@@ -30,7 +30,7 @@ async def workspace_loader(
     name_and_goals = await PlannerAgent.determine_agent_name_and_goals(
         user_objective,
         agent_settings,
-        client_logger,
+        LOG,
     )
 
     # parsed_agent_goals = parse_agent_name_and_goals(name_and_goals)
@@ -39,19 +39,19 @@ async def workspace_loader(
     # agent_settings.update_agent_name_and_goals(name_and_goals)
 
     # Step 3. Provision the agent.
-    agent_workspace = PlannerAgent.provision_agent(agent_settings, client_logger)
+    agent_workspace = PlannerAgent.provision_agent(agent_settings, LOG)
     print("agent is provisioned")
     return agent_workspace
 
 
 def get_logger_and_workspace(user_configuration: dict):
-    client_logger = AFAASLogger(name=__name__)
-    client_logger.trace("Getting agent settings")
+    LOG = AFAASLogger(name=__name__)
+    LOG.trace("Getting agent settings")
 
     agent_workspace = (
         user_configuration.get("workspace", {}).get("configuration", {}).get("root", "")
     )
-    return client_logger, agent_workspace
+    return LOG, agent_workspace
 
 
 def get_settings_from_file():

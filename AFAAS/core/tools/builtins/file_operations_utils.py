@@ -1,5 +1,7 @@
 import json
-import logging
+import os
+from abc import ABC, abstractmethod
+from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import BinaryIO
 
@@ -12,7 +14,7 @@ from pylatexenc.latex2text import LatexNodes2Text
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 class ParserStrategy(ABC):
@@ -25,7 +27,7 @@ class ParserStrategy(ABC):
 class TXTParser(ParserStrategy):
     def read(self, file: BinaryIO) -> str:
         charset_match = charset_normalizer.from_bytes(file.read()).best()
-        logger.debug(
+        LOG.debug(
             f"Reading {getattr(file, 'name', 'file')} "
             f"with encoding '{charset_match.encoding}'"
         )
@@ -90,16 +92,16 @@ class LaTeXParser(ParserStrategy):
 
 
 class FileContext:
-    def __init__(self, parser: ParserStrategy, logger: logging.Logger):
+    def __init__(self, parser: ParserStrategy):
         self.parser = parser
-        self.logger = logger
+        
 
     def set_parser(self, parser: ParserStrategy) -> None:
-        self.logger.trace(f"Setting Context Parser to {parser}")
+        LOG.trace(f"Setting Context Parser to {parser}")
         self.parser = parser
 
     def decode_file(self, file: BinaryIO) -> str:
-        self.logger.debug(
+        LOG.debug(
             f"Reading {getattr(file, 'name', 'file')} with parser {self.parser}"
         )
         return self.parser.read(file)
@@ -122,7 +124,6 @@ extension_to_parser = {
     ".tex": LaTeXParser(),
 }
 
-
 def is_file_binary_fn(file: BinaryIO):
     """Given a file path load all its content and checks if the null bytes is present
 
@@ -139,7 +140,7 @@ def is_file_binary_fn(file: BinaryIO):
     return False
 
 
-def decode_textual_file(file: BinaryIO, ext: str, logger: logging.Logger) -> str:
+def decode_textual_file(file: BinaryIO, ext: str) -> str:
     if not file.readable():
         raise ValueError(f"{repr(file)} is not readable")
 
@@ -149,5 +150,5 @@ def decode_textual_file(file: BinaryIO, ext: str, logger: logging.Logger) -> str
             raise ValueError(f"Unsupported binary file format: {ext}")
         # fallback to txt file parser (to support script and code files loading)
         parser = TXTParser()
-    file_context = FileContext(parser, logger)
+    file_context = FileContext(parser)
     return file_context.decode_file(file)

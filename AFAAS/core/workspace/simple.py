@@ -4,7 +4,6 @@ The LocalFileWorkspace class implements a AbstractFileWorkspace that works with 
 from __future__ import annotations
 
 import inspect
-import logging
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -39,14 +38,14 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         self,
         settings: LocalFileWorkspace.SystemSettings,
         agent_systems: list[Configurable],
-        logger: logging.Logger,
+        
     ):
         # self._configuration = settings.configuration
-        # self._logger = logger
-        # self._logger = logger.getChild("workspace")
+        # LOG = logger
+        # LOG = LOG.getChild("workspace")
         self._root = self._sanitize_path(settings.configuration.root)
         self._restrict_to_root = settings.configuration.restrict_to_root
-        super().__init__(settings, logger.getChild("workspace"))
+        super().__init__(settings)
 
     @property
     def root(self) -> Path:
@@ -112,7 +111,7 @@ class LocalFileWorkspace(AbstractFileWorkspace):
         user_id: uuid.UUID,
         agent_id: uuid.UUID,
         settings : LocalFileWorkspace.SystemSettings,
-        logger: logging.Logger,
+        
     ) -> Path:
         workspace_parent = cls.SystemSettings().configuration.parent
         workspace_parent = Path(workspace_parent).expanduser().resolve()

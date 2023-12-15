@@ -16,7 +16,7 @@ from AFAAS.core.configuration.schema import UserConfigurable
 
 from .base import AbstractFileWorkspace, AbstractFileWorkspaceConfiguration
 
-logger = logging.getLogger(__name__)
+LOG =  AFAASLogger(name=__name__)
 
 
 class GCSFileWorkspaceConfiguration(AbstractFileWorkspaceConfiguration):

@@ -14,7 +14,7 @@ from .routes import (AgentMiddleware, UserIDMiddleware, afaas_agent_router,
                     afaas_artifact_router, afaas_user_router, agent_router,
                     app_router, artifact_router, user_router)
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 port = os.getenv("PORT", 8000)
 load_dotenv()

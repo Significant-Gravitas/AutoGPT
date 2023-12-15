@@ -29,11 +29,9 @@ class QueryLanguageModel(Ability):
 
     def __init__(
         self,
-        logger: logging.Logger,
         configuration: AbilityConfiguration,
         language_model_provider: ChatModelProvider,
     ):
-        self._logger = logger
         self._configuration = configuration
         self._language_model_provider = language_model_provider
 

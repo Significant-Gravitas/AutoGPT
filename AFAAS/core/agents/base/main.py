@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import logging
 import importlib
 import os
 import uuid
@@ -82,10 +81,10 @@ class BaseAgent(Configurable, AbstractAgent):
             Returns:
                 dict: A dictionary representation of the object.
             """
-            logging.Logger(__name__).warning(
+            LOG.warning(
                 "Warning : Recomended use json_api() or json_memory()"
             )
-            logging.Logger(__name__).warning("BaseAgent.SystemSettings.json()")
+            LOG.warning("BaseAgent.SystemSettings.json()")
             self.prepare_values_before_serialization()  # Call the custom treatment before .json()
             kwargs["exclude"] = self.Config.default_exclude
             return super().json(*args, **kwargs)
@@ -108,7 +107,6 @@ class BaseAgent(Configurable, AbstractAgent):
     def __init__(
         self,
         settings: BaseAgent.SystemSettings,
-        logger: logging.Logger,
         memory: AbstractMemory,
         workspace: LocalFileWorkspace,
         prompt_manager: PromptManager,
@@ -117,7 +115,6 @@ class BaseAgent(Configurable, AbstractAgent):
     ) -> Any:
         self._settings = settings
         self._configuration = settings.configuration
-        self._logger = logger
         self._memory = memory
         self._workspace = workspace
 
@@ -172,7 +169,7 @@ class BaseAgent(Configurable, AbstractAgent):
         user_input_handler: Callable[[str], Awaitable[str]],
         user_message_handler: Callable[[str], Awaitable[str]],
     ) -> None:
-        self._logger.trace(str(self.__class__.__name__) + ".start()")
+        LOG.trace(str(self.__class__.__name__) + ".start()")
         return_var = await self._loop.start(
             agent=self,
             user_input_handler=user_input_handler,
@@ -236,7 +233,7 @@ class BaseAgent(Configurable, AbstractAgent):
             agent = YourClass()
             await agent.run(input_handler, message_handler)
         """
-        self._logger.trace(
+        LOG.trace(
             str(self.__class__.__name__) + ".run() *kwarg : " + str(kwargs)
         )
         self._user_input_handler = user_input_handler
@@ -265,10 +262,9 @@ class BaseAgent(Configurable, AbstractAgent):
     def get_instance_from_settings(
         cls,
         agent_settings: BaseAgent.SystemSettings,
-        logger: logging.Logger,
     ) -> BaseAgent:
         """
-        Retrieve an agent instance based on the provided settings and logger.
+        Retrieve an agent instance based on the provided settings and LOG.
 
         Args:
             agent_settings (BaseAgent.SystemSettings): Configuration settings for the agent.
@@ -280,7 +276,7 @@ class BaseAgent(Configurable, AbstractAgent):
         Example:
             logger = logging.getLogger()
             settings = BaseAgent.SystemSettings(user_id="123", ...other_settings...)
-            agent = YourClass.get_agent_from_settings(settings, logger)
+            agent = YourClass.get_agent_from_settings(settings)
         """
         if not isinstance(agent_settings, cls.SystemSettings):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
@@ -296,11 +292,10 @@ class BaseAgent(Configurable, AbstractAgent):
 
         system_dict: dict[Configurable] = {}
         system_dict["settings"] = agent_settings
-        system_dict["logger"] = logger
         system_dict["user_id"] = agent_settings.user_id
         system_dict["strategies"] = cls.get_strategies()
         system_dict["memory"] = AbstractMemory.get_adapter(
-            memory_settings=agent_settings.memory, logger=logger
+            memory_settings=agent_settings.memory
         )
 
         for system, setting in items:
@@ -310,7 +305,6 @@ class BaseAgent(Configurable, AbstractAgent):
                 system_dict[system] = cls._get_system_instance(
                     new_system_name=system,
                     agent_settings=agent_settings,
-                    logger=logger,
                     existing_systems=system_dict,
                 )
 
@@ -327,7 +321,6 @@ class BaseAgent(Configurable, AbstractAgent):
         cls,
         new_system_name: str,
         agent_settings: BaseAgent.SystemSettings,
-        logger: logging.Logger,
         existing_systems: list,
         *args,
         **kwargs,
@@ -344,7 +337,6 @@ class BaseAgent(Configurable, AbstractAgent):
         system_instance = system_class(
             system_settings,
             *args,
-            logger=logger,
             agent_systems=existing_systems,
             **kwargs,
         )
@@ -377,10 +369,10 @@ class BaseAgent(Configurable, AbstractAgent):
         from .strategies.autocorrection import AutoCorrectionStrategy
         from AFAAS.core.lib.task.rag.afaas_smart_rag import AFAAS_SMART_RAG_Strategy
         common_strategies = [AutoCorrectionStrategy(
-                logger=LOG, **AutoCorrectionStrategy.default_configuration.dict()
+                **AutoCorrectionStrategy.default_configuration.dict()
             ),
         AFAAS_SMART_RAG_Strategy(
-                logger=LOG, **AFAAS_SMART_RAG_Strategy.default_configuration.dict()
+               **AFAAS_SMART_RAG_Strategy.default_configuration.dict()
         )]
 
         return  stategies + common_strategies
@@ -401,7 +393,7 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_settings: BaseAgent.SystemSettings
     ) -> AbstractAgent:
         """
-        Create and return a new agent based on the provided settings and logger.
+        Create and return a new agent based on the provided settings and LOG.
 
         Args:
             agent_settings (BaseAgent.SystemSettings): Configuration settings for the agent.
@@ -421,7 +413,7 @@ class BaseAgent(Configurable, AbstractAgent):
         if not isinstance(agent_settings, cls.SystemSettings):
             agent_settings = cls.SystemSettings.parse_obj(agent_settings)
 
-        agent_id = cls._create_in_db(agent_settings=agent_settings, logger=LOG)
+        agent_id = cls._create_in_db(agent_settings=agent_settings)
         LOG.info(
             f"{cls.__name__} id #{agent_id} created in memory. Now, finalizing creation..."
         )
@@ -435,7 +427,6 @@ class BaseAgent(Configurable, AbstractAgent):
 
         agent = cls.get_instance_from_settings(
             agent_settings=agent_settings,
-            logger=LOG,
         )
 
         return agent
@@ -455,7 +446,6 @@ class BaseAgent(Configurable, AbstractAgent):
     def _create_in_db(
         cls,
         agent_settings: BaseAgent.SystemSettings,
-        logger: logging.Logger,
     ) -> uuid.UUID:
         # TODO : Remove the user_id argument
         # NOTE : Monkey Patching
@@ -468,14 +458,14 @@ class BaseAgent(Configurable, AbstractAgent):
         memory_settings = agent_settings.memory
 
         memory = AbstractMemory.get_adapter(
-            memory_settings=memory_settings, logger=logger
+            memory_settings=memory_settings
         )
         agent_table = memory.get_table("agents")
         agent_id = agent_table.add(agent_settings, id=agent_settings.agent_id)
         return agent_id
 
     def save_agent_in_memory(self) -> uuid.UUID:
-        self._logger.trace(self._memory)
+        LOG.trace(self._memory)
         agent_table = self._memory.get_table("agents")
         agent_id = agent_table.update(
             agent_id=self.agent_id, user_id=self.user_id, value=self
@@ -502,7 +492,7 @@ class BaseAgent(Configurable, AbstractAgent):
         Example:
             logger = logging.getLogger()
             user_id = uuid.uuid4()
-            agent_settings_list = YourClass.get_agentsetting_list_from_memory(user_id, logger)
+            agent_settings_list = YourClass.get_agentsetting_list_from_memory(user_id)
             print(agent_settings_list)
         """
         LOG.trace(f"Entering : {cls.__name__}.list_users_agents_from_memory()")
@@ -513,7 +503,7 @@ class BaseAgent(Configurable, AbstractAgent):
         memory_settings = AbstractMemory.SystemSettings()
 
         memory = AbstractMemory.get_adapter(
-            memory_settings=memory_settings, logger=LOG
+            memory_settings=memory_settings
         )
         agent_table: AgentsTable = memory.get_table("agents")
 
@@ -548,7 +538,6 @@ class BaseAgent(Configurable, AbstractAgent):
         agent_settings: BaseAgent.SystemSettings,
         agent_id: uuid.UUID,
         user_id: uuid.UUID,
-        logger: logging.Logger,
     ) -> BaseAgent:
         from AFAAS.core.memory.base import AbstractMemory
         from AFAAS.core.memory.table import AgentsTable
@@ -557,7 +546,7 @@ class BaseAgent(Configurable, AbstractAgent):
         memory_settings = agent_settings.memory
 
         memory = AbstractMemory.get_adapter(
-            memory_settings=memory_settings, logger=logger
+            memory_settings=memory_settings
         )
         agent_table: AgentsTable = memory.get_table("agents")
         agent_dict_from_db = agent_table.get(
@@ -569,7 +558,6 @@ class BaseAgent(Configurable, AbstractAgent):
 
         agent = cls.get_instance_from_settings(
             agent_settings=agent_settings.copy(update=agent_dict_from_db),
-            logger=logger,
         )
         return agent
 

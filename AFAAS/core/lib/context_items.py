@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,7 +16,7 @@ from pydantic import Field
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.configuration import AFAASModel
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 class ContextItem(ABC):
@@ -66,7 +65,7 @@ class FileContextItem(AFAASModel, ContextItem):
 
     @property
     def content(self) -> str:
-        return read_textual_file(self.file_path, logger)
+        return read_textual_file(self.file_path)
 
 
 class FolderContextItem(AFAASModel, ContextItem):

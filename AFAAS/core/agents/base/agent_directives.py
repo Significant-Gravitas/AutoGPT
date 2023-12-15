@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
@@ -10,7 +9,7 @@ from pydantic import BaseModel
 
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 
-logger = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from .main import BaseAgent

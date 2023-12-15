@@ -17,7 +17,8 @@ from AFAAS.core.prompting.utils.utils import json_loads
 from AFAAS.core.resource.model_providers import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
     ChatPrompt, CompletionModelFunction)
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name = __name__)
 RESPONSE_SCHEMA = JSONSchema(
     type=JSONSchema.Type.OBJECT,
     properties={
@@ -212,7 +213,7 @@ class BasePromptStrategy(AbstractPromptStrategy):
             try:
                 command_args = json_loads(tool["function"]["arguments"])
             except Exception:
-                self._agent._logger.warning(command_args)
+                LOG.warning(command_args)
 
             ###
             ### NEW

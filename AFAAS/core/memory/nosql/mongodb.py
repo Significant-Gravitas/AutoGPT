@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from logging import Logger
+
 from typing import TYPE_CHECKING, List
 
 from pymongo import MongoClient
@@ -10,7 +10,8 @@ if TYPE_CHECKING:
 
 from AFAAS.core.memory.nosqlmemory import NoSQLMemory
 
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name=__name__)
 class MongoDBMemory(NoSQLMemory):
     """
     DO NOT USE : TEMPLATE UNDER DEVELOPMENT, WOULD HAPPILY TAKE HELP :-)
@@ -22,12 +23,10 @@ class MongoDBMemory(NoSQLMemory):
     def __init__(
         self,
         settings: AbstractMemory.SystemSettings,
-        logger: Logger,
     ):
-        super().__init__(settings, logger)
+        super().__init__(settings)
         self._client = None
         self._db = None
-        self._logger = logger
 
     def connect(self, mongo_uri=None, mongo_db_name=None):
         # Extracting values from arguments
@@ -43,11 +42,11 @@ class MongoDBMemory(NoSQLMemory):
             self._db.list_collection_names()
         except Exception as e:
             # Handling connection error
-            self._logger.error(f"Unable to connect to MongoDB: {e}")
+            LOG.error(f"Unable to connect to MongoDB: {e}")
             raise e
         else:
             # Connection successful
-            self._logger.info("Successfully connected to MongoDB.")
+            LOG.info("Successfully connected to MongoDB.")
 
     def get(self, key: dict, table_name: str):
         collection = self._db[table_name]

@@ -1,5 +1,5 @@
 import enum
-from logging import Logger
+
 from typing import Optional
 
 from AFAAS.core.lib.task import Task
@@ -61,7 +61,6 @@ class InitialPlanStrategy(BasePromptStrategy):
 
     def __init__(
         self,
-        logger: Logger,
         model_classification: LanguageModelClassification,
         default_tool_choice: InitialPlanFunctionNames,
         temperature: float,  # if coding 0.05
@@ -70,7 +69,6 @@ class InitialPlanStrategy(BasePromptStrategy):
         frequency_penalty: Optional[float],  # Avoid repeting oneselfif coding 0.3
         presence_penalty: Optional[float],  # Avoid certain subjects
     ):
-        self._logger = logger
         self._model_classification = model_classification
 
         self._system_prompt_template = self.FIRST_SYSTEM_PROMPT_TEMPLATE

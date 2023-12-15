@@ -1,4 +1,4 @@
-from logging import Logger
+
 
 from  AFAAS.core.lib.sdk.logger import AFAASLogger
 from AFAAS.core.agents.planner.strategies.initial_plan import (
@@ -8,7 +8,7 @@ from AFAAS.core.agents.planner.strategies.select_tool import (
 from AFAAS.core.prompting.base import \
     PromptStrategiesConfiguration
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 class StrategiesConfiguration(PromptStrategiesConfiguration):
@@ -21,14 +21,11 @@ class StrategiesSet:
         AbstractPromptStrategy, BasePromptStrategy)
 
     @staticmethod
-    def get_strategies(
-        logger: Logger = Logger(__name__),
-    ) -> list[BasePromptStrategy]:
+    def get_strategies() -> list[BasePromptStrategy]:
         return [
-            InitialPlanStrategy(
-                logger=logger, **InitialPlanStrategy.default_configuration.dict()
+            InitialPlanStrategy(**InitialPlanStrategy.default_configuration.dict()
             ),
             # SelectToolStrategy(
-            #     logger=logger, **SelectToolStrategy.default_configuration.dict()
+            #     **SelectToolStrategy.default_configuration.dict()
             # ),
         ]

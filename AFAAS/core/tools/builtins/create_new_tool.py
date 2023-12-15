@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 
 from AFAAS.core.plugin.simple import (PluginLocation,
                                                          PluginStorageFormat)
@@ -20,10 +19,9 @@ class CreateNewTool(BaseTool):
 
     def __init__(
         self,
-        logger: logging.Logger,
+        
         configuration: ToolConfiguration,
     ):
-        self._logger = logger
         self._configuration = configuration
 
     @classmethod

@@ -1,5 +1,4 @@
 """Text processing functions"""
-import logging
 import math
 import os
 from typing import Iterator, Optional, TypeVar
@@ -12,8 +11,8 @@ from AFAAS.core.resource.model_providers import (
 from AFAAS.core.resource.model_providers.chat_schema import \
     ChatPrompt
 
-logger = AFAASLogger(__name__)
-logger.notice(
+LOG = AFAASLogger(name=__name__)
+LOG.notice(
     f"Looking for volunteer to migrate {os.path.relpath(__file__)} library to Langchain."
 )
 
@@ -94,11 +93,11 @@ async def summarize_text(
     summarization_prompt = ChatPrompt(messages=[])
 
     text_tlength = llm_provider.count_tokens(text, model)
-    logger.info(f"Text length: {text_tlength} tokens")
+    LOG.info(f"Text length: {text_tlength} tokens")
 
     # reserve 50 tokens for summary prompt, 500 for the response
     max_chunk_length = llm_provider.get_token_limit(model) - 550
-    logger.info(f"Max chunk length: {max_chunk_length} tokens")
+    LOG.info(f"Max chunk length: {max_chunk_length} tokens")
 
     if text_tlength < max_chunk_length:
         # summarization_prompt.add("user", text)
@@ -122,7 +121,7 @@ async def summarize_text(
             )
         ).response["content"]
 
-        logger.trace(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
+        LOG.trace(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
         return summary.strip(), None
 
     summaries: list[str] = []
@@ -135,7 +134,7 @@ async def summarize_text(
     )
 
     for i, (chunk, chunk_length) in enumerate(chunks):
-        logger.info(
+        LOG.info(
             f"Summarizing chunk {i + 1} / {len(chunks)} of length {chunk_length} tokens"
         )
         summary, _ = await summarize_text(
@@ -145,7 +144,7 @@ async def summarize_text(
         )
         summaries.append(summary)
 
-    logger.info(f"Summarized {len(chunks)} chunks")
+    LOG.info(f"Summarized {len(chunks)} chunks")
 
     summary, _ = await summarize_text(
         "\n\n".join(summaries),

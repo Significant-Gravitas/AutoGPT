@@ -35,8 +35,8 @@ router = APIRouter()
 
 # def get_settings_logger_workspace():
 #     settings = get_settings_from_file()
-#     client_logger, agent_workspace = get_logger_and_workspace(settings)
-#     return settings, client_logger, agent_workspace
+#     LOG, agent_workspace = get_logger_and_workspace(settings)
+#     return settings, LOG, agent_workspace
 
 
 @router.get("/agents")
@@ -53,13 +53,13 @@ async def get_agents(request: Request):
     Comment: Ideally returns all client_facing, active and inactive agents.
     """
     settings = get_settings_from_file()
-    client_logger, agent_workspace = get_logger_and_workspace(settings)
-    # workspace =  workspace_loader(settings, client_logger, agent_workspace)
+    LOG, agent_workspace = get_logger_and_workspace(settings)
+    # workspace =  workspace_loader(settings, LOG, agent_workspace)
     agent = {}
     if agent_workspace:
         agent = PlannerAgent.from_workspace(
             agent_workspace,
-            client_logger,
+            LOG,
         )
         agent = agent.__dict__
         # TODO place holder for elements
@@ -93,14 +93,14 @@ async def get_agent_by_id(request: Request, agent_id: str):
     Get an agent from it's ID & return an agent
     """
     settings = get_settings_from_file()
-    client_logger, agent_workspace = get_logger_and_workspace(settings)
+    LOG, agent_workspace = get_logger_and_workspace(settings)
 
-    # workspace =  workspace_loader(settings, client_logger, agent_workspace)
+    # workspace =  workspace_loader(settings, LOG, agent_workspace)
     agent = {}
     if agent_workspace:
         agent = PlannerAgent.from_workspace(
             agent_workspace,
-            client_logger,
+            LOG,
         )
         agent = agent.__dict__
         # TODO place holder for elements
@@ -122,7 +122,7 @@ async def start_simple_agent_main_loop(request: Request, agent_id: str):
     # Get the logger and the workspace movec to a function
     # Because almost every API end-point will excecute this piece of code
     user_configuration = get_settings_from_file()
-    client_logger, agent_workspace = get_logger_and_workspace(user_configuration)
+    LOG, agent_workspace = get_logger_and_workspace(user_configuration)
 
     # Get the logger and the workspace moved to a function
     # Because API end-point will treat this as an error & break
@@ -132,7 +132,7 @@ async def start_simple_agent_main_loop(request: Request, agent_id: str):
     # launch agent interaction loop
     agent = PlannerAgent.from_workspace(
         agent_workspace,
-        client_logger,
+        LOG,
     )
 
     plan = await agent.build_initial_plan()
@@ -160,7 +160,7 @@ async def message_simple_agent(
     user_configuration = get_settings_from_file()
     # Get the logger and the workspace movec to a function
     # Because almost every API end-point will excecute this piece of code
-    client_logger, agent_workspace = get_logger_and_workspace(user_configuration)
+    LOG, agent_workspace = get_logger_and_workspace(user_configuration)
 
     # Get the logger and the workspace moved to a function
     # Because API end-point will treat this as an error & break
@@ -173,7 +173,7 @@ async def message_simple_agent(
     # launch agent interaction loop
     agent = PlannerAgent.from_workspace(
         agent_workspace,
-        client_logger,
+        LOG,
     )
 
     plan = await agent.build_initial_plan()

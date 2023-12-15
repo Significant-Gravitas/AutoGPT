@@ -8,7 +8,7 @@ from AFAAS.core.agents.planner.strategies.select_tool import (
 from AFAAS.core.prompting.base import \
     PromptStrategiesConfiguration
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 class StrategiesConfiguration(PromptStrategiesConfiguration):
@@ -26,9 +26,9 @@ class StrategiesSet:
     ) -> list[BasePromptStrategy]:
         return [
             InitialPlanStrategy(
-                logger=logger, **InitialPlanStrategy.default_configuration.dict()
+                **InitialPlanStrategy.default_configuration.dict()
             ),
             # SelectToolStrategy(
-            #     logger=logger, **SelectToolStrategy.default_configuration.dict()
+            #     **SelectToolStrategy.default_configuration.dict()
             # ),
         ]

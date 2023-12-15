@@ -12,7 +12,7 @@ from AFAAS.core.lib.sdk.schema import *
 from fastapi import APIRouter, FastAPI, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 from AFAAS.core.agents import PlannerAgent
 

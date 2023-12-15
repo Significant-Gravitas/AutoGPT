@@ -1,12 +1,13 @@
 import enum
 import json
-from logging import Logger
+
 from textwrap import indent
 from typing import Literal, Optional
 
 from jsonschema import Draft7Validator
 from pydantic import BaseModel
-
+from AFAAS.core.lib.sdk.logger import AFAASLogger
+LOG = AFAASLogger(name=__name__)
 
 class JSONSchema(BaseModel):
     class Type(str, enum.Enum):
@@ -86,7 +87,7 @@ class JSONSchema(BaseModel):
         return properties
 
     def validate_object(
-        self, object: object, logger: Logger
+        self, object: object
     ) -> tuple[Literal[True], None] | tuple[Literal[False], list]:
         """
         Validates a dictionary object against the JSONSchema.
@@ -104,16 +105,16 @@ class JSONSchema(BaseModel):
 
         if errors := sorted(validator.iter_errors(object), key=lambda e: e.path):
             for error in errors:
-                logger.trace(f"JSON Validation Error: {error}")
+                LOG.trace(f"JSON Validation Error: {error}")
 
-            logger.error(json.dumps(object, indent=4))
-            logger.error("The following issues were found:")
+            LOG.error(json.dumps(object, indent=4))
+            LOG.error("The following issues were found:")
 
             for error in errors:
-                logger.error(f"Error: {error.message}")
+                LOG.error(f"Error: {error.message}")
             return False, errors
 
-        logger.trace("The JSON object is valid.")
+        LOG.trace("The JSON object is valid.")
 
         return True, None
 

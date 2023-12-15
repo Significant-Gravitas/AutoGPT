@@ -72,7 +72,6 @@ async def run_cli_demo():
         )
         agent : PlannerAgent = PlannerAgent.get_instance_from_settings(
             agent_settings=agent_dict_list[selected_agent_index - 1],
-            logger=LOG,
         )
 
         # agent_from_memory = None
@@ -81,7 +80,7 @@ async def run_cli_demo():
         #     agent_settings=agent_settings,
         #     agent_id=agent_id,
         #     user_id=user_id,
-        #     logger=LOG,
+        #    ,
         #     )
 
     else :

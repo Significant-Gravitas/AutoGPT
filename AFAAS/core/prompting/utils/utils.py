@@ -4,7 +4,7 @@ import re
 
 from  AFAAS.core.lib.sdk.logger import AFAASLogger
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 
 def to_numbered_list(

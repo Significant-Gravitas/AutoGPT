@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
@@ -18,7 +17,7 @@ from .loop import PlannerLoop
 from .models import PlannerAgentConfiguration  # PlannerAgentSystemSettings,
 from .models import PlannerAgentSystems
 from AFAAS.core.lib.sdk.logger import AFAASLogger
-LOG =  AFAASLogger(__name__)
+LOG =  AFAASLogger(name=__name__)
 
 if TYPE_CHECKING:
     from AFAAS.core.workspace.simple import LocalFileWorkspace
@@ -60,7 +59,6 @@ class PlannerAgent(BaseAgent):
     def __init__(
         self,
         settings: PlannerAgent.SystemSettings,
-        logger: logging.Logger,
         memory: AbstractMemory,
         chat_model_provider: OpenAIProvider,
         workspace: LocalFileWorkspace,
@@ -71,7 +69,6 @@ class PlannerAgent(BaseAgent):
     ):
         super().__init__(
             settings=settings,
-            logger=logger,
             memory=memory,
             workspace=workspace,
             prompt_manager = prompt_manager,
@@ -107,7 +104,6 @@ class PlannerAgent(BaseAgent):
         self._tool_registry = SimpleToolRegistry.with_tool_modules(
             modules=TOOL_CATEGORIES,
             agent=self,
-            logger=self._logger,
             memory=memory,
             workspace=workspace,
             model_providers=chat_model_provider,
@@ -215,8 +211,7 @@ class PlannerAgent(BaseAgent):
         return LocalFileWorkspace.create_workspace(
             user_id=agent_settings.user_id,
             agent_id=agent_settings.agent_id,
-            settings=agent_settings,
-            logger=LOG,
+            settings=agent_settings
         )
 
     # @classmethod
@@ -235,22 +230,22 @@ class PlannerAgent(BaseAgent):
     #     cls,
     #     user_objective: str,
     #     agent_settings: PlannerAgent.SystemSettings,
-    #     logger: logging.Logger,
+    #     
     # ) -> dict:
-    #     logger.trace("Loading OpenAI provider.")
+    #     LOG.trace("Loading OpenAI provider.")
     #     provider: OpenAIProvider = cls._get_system_instance(
     #         "chat_model_provider",
     #         agent_settings,
     #         logger=logger,
     #     )
-    #     logger.trace("Loading agent planner.")
+    #     LOG.trace("Loading agent planner.")
     #     agent_planner: PromptManager = cls._get_system_instance(
     #         "prompt_manager",
     #         agent_settings,
     #         logger=logger,
     #         model_providers={"openai": provider},
     #     )
-    #     logger.trace("determining agent name and goals.")
+    #     LOG.trace("determining agent name and goals.")
     #     model_response = await agent_planner.decide_name_and_goals(
     #         user_objective,
     #     )
@@ -266,11 +261,10 @@ class PlannerAgent(BaseAgent):
 
 
 def test_hook(**kwargs):
-    logger: logging.Logger = kwargs["agent"]._logger
-    logger.notice("Entering test_hook Function")
-    logger.notice(
+    LOG.notice("Entering test_hook Function")
+    LOG.notice(
         "Hooks are an experimental plug-in system that may fade away as we are transiting from a Loop logic to a Pipeline logic."
     )
     test = "foo_bar"
     for key, value in kwargs.items():
-        logger.debug(f"{key}: {value}")
+        LOG.debug(f"{key}: {value}")

@@ -27,7 +27,7 @@ from AFAAS.core.resource.model_providers.schema import (
     ModelProviderName, ModelProviderService, ModelTokenizer)
 from AFAAS.core.utils.json_schema import JSONSchema
 
-LOG = AFAASLogger(__name__)
+LOG = AFAASLogger(name=__name__)
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
@@ -195,7 +195,7 @@ class OpenAIProvider(
     def __init__(
         self,
         settings: OpenAISettings,
-        logger: logging.Logger,
+        
         agent_systems: list[Configurable],
     ):
         """
@@ -204,12 +204,11 @@ class OpenAIProvider(
         Args:
             settings (OpenAISettings, optional): Specific settings for the OpenAI provider. Uses default settings if none provided.
         """
-        super().__init__(settings, logger)
+        super().__init__(settings)
         self._credentials = settings.credentials
         self._budget = settings.budget
 
         retry_handler = _OpenAIRetryHandler(
-            logger=self._logger,
             num_retries=self._configuration.retries_per_request,
         )
 
@@ -753,12 +752,11 @@ class _OpenAIRetryHandler:
 
     def __init__(
         self,
-        logger: logging.Logger,
+        
         num_retries: int = 10,
         backoff_base: float = 2.0,
         warn_user: bool = True,
     ):
-        self._logger = logger
         self._num_retries = num_retries
         self._backoff_base = backoff_base
         self._warn_user = warn_user
