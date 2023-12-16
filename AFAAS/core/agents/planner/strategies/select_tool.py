@@ -13,11 +13,11 @@ if TYPE_CHECKING:
 
 # prompting
 from AFAAS.core.lib.action_history import Episode
-from AFAAS.core.prompting.base import (
-    DefaultParsedResponse, LanguageModelClassification)
-from AFAAS.core.prompting.planningstrategies import (
+from AFAAS.interfaces.prompts.strategy import (
+    DefaultParsedResponse,  PromptStrategyLanguageModelClassification)
+from AFAAS.interfaces.prompts.strategy_planning import (
     PlanningPromptStrategiesConfiguration, PlanningPromptStrategy)
-from AFAAS.core.prompting.utils.utils import indent
+from AFAAS.interfaces.prompts.utils import indent
 from AFAAS.core.resource.model_providers import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 
@@ -30,8 +30,8 @@ class ThinkStrategyFunctionNames(str, enum.Enum):
 ### CONFIGURATION
 ####
 class SelectToolStrategyConfiguration(PlanningPromptStrategiesConfiguration):
-    model_classification: LanguageModelClassification = (
-        LanguageModelClassification.FAST_MODEL_16K
+    model_classification:  PromptStrategyLanguageModelClassification = (
+         PromptStrategyLanguageModelClassification.FAST_MODEL_16K
     )
     temperature: float = 0.5
 
@@ -47,14 +47,14 @@ class SelectToolStrategy(PlanningPromptStrategy):
 
     def __init__(
         self,
-        model_classification: LanguageModelClassification,
+        model_classification:  PromptStrategyLanguageModelClassification,
         **kwargs,
     ):
         super().__init__(model_classification=model_classification, **kwargs
         )
 
     @property
-    def model_classification(self) -> LanguageModelClassification:
+    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
         return self._model_classification
 
     def build_prompt(

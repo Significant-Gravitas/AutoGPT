@@ -1,5 +1,5 @@
 from AFAAS.core.lib.task import Task
-from AFAAS.core.prompting import BasePromptStrategy
+from AFAAS.interfaces.prompts import BasePromptStrategy
 
 
 from pydantic import BaseModel, Field

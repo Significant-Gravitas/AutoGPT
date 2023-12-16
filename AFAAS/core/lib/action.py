@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterator, Literal, Optional
 
-from AFAAS.core.prompting.utils.utils import (
+from AFAAS.interfaces.prompts.utils import (
     indent, to_numbered_list)
 
 

@@ -11,7 +11,7 @@ from pydantic import Field, validator
 if TYPE_CHECKING:
     from autogpt.config import Config
 <<<<<<< HEAD
-    from AFAAS.core.prompting.base import PromptStrategy
+    from AFAAS.interfaces.prompts.strategy import PromptStrategy
     from AFAAS.core.resource.model_providers.schema import (
 =======
     from autogpt.core.prompting.base import PromptStrategy
@@ -30,7 +30,7 @@ from autogpt.config.ai_directives import AIDirectives
 from autogpt.config.ai_profile import AIProfile
 from AFAAS.core.configuration import (Configurable, SystemConfiguration,
                                         SystemSettings, UserConfigurable)
-from AFAAS.core.prompting.schema import (ChatMessage, ChatPrompt,
+from AFAAS.interfaces.prompts.schema import (ChatMessage, ChatPrompt,
                                            CompletionModelFunction)
 from AFAAS.core.resource.model_providers.openai import (OPEN_AI_CHAT_MODELS,
                                                           OpenAIModelName)

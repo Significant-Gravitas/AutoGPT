@@ -344,14 +344,14 @@ class BaseAgent(Configurable, AbstractAgent):
         )
         return system_instance
 
-    from AFAAS.core.prompting.base import (BasePromptStrategy)
+    from AFAAS.interfaces.prompts.strategy import (BasePromptStrategy)
     @classmethod
     def get_strategies(cls) -> list[BasePromptStrategy]:
 
         module = cls.__module__.rsplit('.', 1)[0]
         LOG.trace(f"Entering : {module}.get_strategies()")
 
-        from AFAAS.core.prompting.base import (BasePromptStrategy)
+        from AFAAS.interfaces.prompts.strategy import (BasePromptStrategy)
         stategies : list[BasePromptStrategy] = []
 
         try:
@@ -379,7 +379,7 @@ class BaseAgent(Configurable, AbstractAgent):
 
         return  stategies + common_strategies
     
-    from AFAAS.core.prompting.base import (ChatModelResponse)
+    from AFAAS.interfaces.prompts.strategy import (ChatModelResponse)
     async def execute_strategy(self, strategy_name: str, **kwargs) -> ChatModelResponse :
         LOG.trace(f"Entering : {self.__class__}.execute_strategy({strategy_name})")
         return await self._prompt_manager._execute_strategy(strategy_name=strategy_name, **kwargs)

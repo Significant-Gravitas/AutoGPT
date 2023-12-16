@@ -11,9 +11,9 @@ if TYPE_CHECKING:
     pass
 
 from AFAAS.core.configuration import SystemConfiguration
-AFAAS.interfaces.prompts.schema import \
-    LanguageModelClassification
-AFAAS.interfaces.prompts.utils.utils import json_loads
+from AFAAS.interfaces.prompts.schema import \
+     PromptStrategyLanguageModelClassification
+from AFAAS.interfaces.prompts.utils.utils import json_loads
 from AFAAS.core.resource.model_providers import (
     AbstractLanguageModelProvider, AssistantChatMessageDict, ChatModelResponse,
     ChatPrompt, CompletionModelFunction)
@@ -102,7 +102,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
 
     @property
     @abc.abstractmethod
-    def model_classification(self) -> LanguageModelClassification:
+    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
         ...
 
     @abc.abstractmethod
@@ -120,7 +120,7 @@ class AbstractPromptStrategy(AgentMixin, abc.ABC):
 
 class BasePromptStrategy(AbstractPromptStrategy):
     @property
-    def model_classification(self) -> LanguageModelClassification:
+    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
         return self._model_classification
 
     # TODO : This implementation is shit :)

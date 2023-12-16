@@ -12,14 +12,14 @@ if TYPE_CHECKING:
 from AFAAS.core.lib.sdk import AFAASLogger
 from AFAAS.core.lib.task.plan import Plan
 from AFAAS.core.configuration import UserConfigurable
-AFAAS.interfaces.prompts.schema import \
-    LanguageModelClassification
-AFAAS.interfaces.prompts.utils.utils import \
+from AFAAS.interfaces.prompts.schema import \
+     PromptStrategyLanguageModelClassification
+from AFAAS.interfaces.prompts.utils import \
     to_numbered_list
 from AFAAS.core.resource.model_providers import (
     ChatMessage, CompletionModelFunction)
 
-from .base import (RESPONSE_SCHEMA, BasePromptStrategy,
+from AFAAS.interfaces.prompts.strategy import (RESPONSE_SCHEMA, BasePromptStrategy,
                    PromptStrategiesConfiguration)
 
 LOG = AFAASLogger(name=__name__)
@@ -73,7 +73,7 @@ class PlanningPromptStrategiesConfiguration(PromptStrategiesConfiguration):
 class PlanningPromptStrategy(BasePromptStrategy):
     def __init__(
         self,
-        model_classification: LanguageModelClassification,
+        model_classification:  PromptStrategyLanguageModelClassification,
         temperature: float,  # if coding 0.05
         top_p: Optional[float],
         max_tokens: Optional[int],

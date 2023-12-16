@@ -5,7 +5,7 @@ from AFAAS.core.agents.planner.strategies.initial_plan import (
     InitialPlanStrategy, InitialPlanStrategyConfiguration)
 from AFAAS.core.agents.planner.strategies.select_tool import (
     SelectToolStrategy, SelectToolStrategyConfiguration)
-from AFAAS.core.prompting.base import \
+from AFAAS.interfaces.prompts.strategy import \
     PromptStrategiesConfiguration
 
 LOG = AFAASLogger(name=__name__)
@@ -17,7 +17,7 @@ class StrategiesConfiguration(PromptStrategiesConfiguration):
 
 
 class StrategiesSet:
-    from AFAAS.core.prompting.base import (
+    from AFAAS.interfaces.prompts.strategy import (
         AbstractPromptStrategy, BasePromptStrategy)
 
     @staticmethod

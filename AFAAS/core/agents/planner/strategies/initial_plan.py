@@ -4,10 +4,10 @@ from typing import Optional
 
 from AFAAS.core.lib.task import Task
 from AFAAS.core.agents.planner.main import PlannerAgent
-from AFAAS.core.prompting.base import (
-    BasePromptStrategy, LanguageModelClassification,
+from AFAAS.interfaces.prompts.strategy import (
+    BasePromptStrategy,  PromptStrategyLanguageModelClassification,
     PromptStrategiesConfiguration)
-from AFAAS.core.prompting.utils.utils import (
+from AFAAS.interfaces.prompts.utils import (
     json_loads, to_numbered_list)
 from AFAAS.core.resource.model_providers import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
@@ -19,8 +19,8 @@ class InitialPlanFunctionNames(str, enum.Enum):
 
 
 class InitialPlanStrategyConfiguration(PromptStrategiesConfiguration):
-    model_classification: LanguageModelClassification = (
-        LanguageModelClassification.SMART_MODEL_8K
+    model_classification:  PromptStrategyLanguageModelClassification = (
+         PromptStrategyLanguageModelClassification.SMART_MODEL_8K
     )
     default_tool_choice: InitialPlanFunctionNames = (
         InitialPlanFunctionNames.INITIAL_PLAN
@@ -61,7 +61,7 @@ class InitialPlanStrategy(BasePromptStrategy):
 
     def __init__(
         self,
-        model_classification: LanguageModelClassification,
+        model_classification:  PromptStrategyLanguageModelClassification,
         default_tool_choice: InitialPlanFunctionNames,
         temperature: float,  # if coding 0.05
         top_p: Optional[float],
@@ -76,7 +76,7 @@ class InitialPlanStrategy(BasePromptStrategy):
         self._user_prompt_template = self.DEFAULT_USER_PROMPT_TEMPLATE
 
     @property
-    def model_classification(self) -> LanguageModelClassification:
+    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
         return self._model_classification
 
     def set_tools(self, **kwargs):

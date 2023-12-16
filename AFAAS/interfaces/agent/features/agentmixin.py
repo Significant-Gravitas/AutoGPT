@@ -10,7 +10,7 @@ if TYPE_CHECKING:
         CompletionModelFunction , ChatModelResponse
     from AFAAS.core.tools.base import BaseToolsRegistry
     from AFAAS.core.tools.tools import Tool
-    from AFAAS.core.prompting.base import BasePromptStrategy
+    from AFAAS.interfaces.prompts.strategy import BasePromptStrategy
 
     from ..main import BaseAgent
 from AFAAS.core.lib.sdk.logger import AFAASLogger

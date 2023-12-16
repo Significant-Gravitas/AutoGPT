@@ -16,10 +16,10 @@ from AFAAS.core.configuration import (Configurable,
                                                          SystemConfiguration,
                                                          SystemSettings,
                                                          UserConfigurable)
-from AFAAS.core.prompting.base import (
+from AFAAS.interfaces.prompts.strategy import (
     AbstractPromptStrategy, BasePromptStrategy)
-from AFAAS.core.prompting.schema import \
-    LanguageModelClassification
+from AFAAS.interfaces.prompts.schema import \
+     PromptStrategyLanguageModelClassification
 from AFAAS.core.resource.model_providers import (
     BaseChatModelProvider, ChatModelResponse, ModelProviderName,
     OpenAIModelName)
@@ -47,28 +47,28 @@ class LanguageModelConfiguration(SystemConfiguration):
 class PromptManagerConfiguration(SystemConfiguration):
     """Configuration for the PromptManager subsystem."""
 
-    models: dict[LanguageModelClassification, LanguageModelConfiguration] = {
-        LanguageModelClassification.FAST_MODEL_4K: LanguageModelConfiguration(
+    models: dict[ PromptStrategyLanguageModelClassification, LanguageModelConfiguration] = {
+         PromptStrategyLanguageModelClassification.FAST_MODEL_4K: LanguageModelConfiguration(
             model_name=OpenAIModelName.GPT3,
             provider_name=ModelProviderName.OPENAI,
             temperature=0.9,
         ),
-        LanguageModelClassification.FAST_MODEL_16K: LanguageModelConfiguration(
+         PromptStrategyLanguageModelClassification.FAST_MODEL_16K: LanguageModelConfiguration(
             model_name=OpenAIModelName.GPT3_16k,
             provider_name=ModelProviderName.OPENAI,
             temperature=0.9,
         ),
-        LanguageModelClassification.FAST_MODEL_FINE_TUNED_4K: LanguageModelConfiguration(
+         PromptStrategyLanguageModelClassification.FAST_MODEL_FINE_TUNED_4K: LanguageModelConfiguration(
             model_name=OpenAIModelName.GPT3_FINE_TUNED,
             provider_name=ModelProviderName.OPENAI,
             temperature=0.9,
         ),
-        LanguageModelClassification.SMART_MODEL_8K: LanguageModelConfiguration(
+         PromptStrategyLanguageModelClassification.SMART_MODEL_8K: LanguageModelConfiguration(
             model_name=OpenAIModelName.GPT4,
             provider_name=ModelProviderName.OPENAI,
             temperature=0.9,
         ),
-        LanguageModelClassification.SMART_MODEL_32K: LanguageModelConfiguration(
+         PromptStrategyLanguageModelClassification.SMART_MODEL_32K: LanguageModelConfiguration(
             model_name=OpenAIModelName.GPT4_32k,
             provider_name=ModelProviderName.OPENAI,
             temperature=0.9,
@@ -77,7 +77,7 @@ class PromptManagerConfiguration(SystemConfiguration):
 
     @validator("models")
     def validate_models(cls, models):
-        expected_keys = set(LanguageModelClassification)
+        expected_keys = set( PromptStrategyLanguageModelClassification)
         actual_keys = set(models.keys())
 
         if expected_keys != actual_keys:
@@ -106,7 +106,7 @@ class PromptManager(Configurable, AgentMixin):
         }
         strategies: dict[str, AbstractPromptStrategy] = agent_systems["strategies"]
 
-        self._providers: dict[LanguageModelClassification, BaseChatModelProvider] = {}
+        self._providers: dict[ PromptStrategyLanguageModelClassification, BaseChatModelProvider] = {}
         for model, model_config in self._configuration.models.items():
             self._providers[model] = model_providers[model_config.provider_name]
 

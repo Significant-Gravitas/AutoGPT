@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from typing_extensions import TypedDict
 
-from AFAAS.core.prompting.base import BasePromptStrategy
+from AFAAS.interfaces.prompts.strategy import BasePromptStrategy
 
 from .features.agentmixin import AgentMixin
 

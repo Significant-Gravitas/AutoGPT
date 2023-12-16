@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 <<<<<<< HEAD
 from AFAAS.core.configuration import Configurable
-from AFAAS.core.prompting import ChatPrompt
+from AFAAS.interfaces.prompts import ChatPrompt
 from AFAAS.core.resource.model_providers import (BaseChatModelProvider,
                                                    ChatMessage,
                                                    ChatModelResponse)

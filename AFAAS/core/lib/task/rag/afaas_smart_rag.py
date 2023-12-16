@@ -9,17 +9,17 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 if  TYPE_CHECKING: 
     from AFAAS.core.lib.task import Task
 
-from AFAAS.core.prompting.base import (
+from AFAAS.interfaces.prompts.strategy import (
     BasePromptStrategy, DefaultParsedResponse, PromptStrategiesConfiguration)
-from AFAAS.core.prompting.schema import \
-    LanguageModelClassification
+from AFAAS.interfaces.prompts.schema import \
+     PromptStrategyLanguageModelClassification
 from AFAAS.core.resource.model_providers import (
     AssistantChatMessageDict, ChatMessage, ChatPrompt, CompletionModelFunction)
 from AFAAS.core.utils.json_schema import JSONSchema
 from AFAAS.core.lib.sdk.logger import AFAASLogger
 LOG = AFAASLogger(name = __name__)
 
-from AFAAS.core.prompting.utils.utils import to_md_quotation        
+from AFAAS.interfaces.prompts.utils import to_md_quotation        
 class AFAAS_SMART_RAGStrategyFunctionNames(str, enum.Enum):
     MAKE_SMART_RAG: str = "afaas_smart_rag"
 
@@ -28,8 +28,8 @@ class AFAAS_SMART_RAGStrategyConfiguration(PromptStrategiesConfiguration):
     """
     A Pydantic model that represents the default configurations for the refine user context strategy.
     """
-    model_classification: LanguageModelClassification = (
-        LanguageModelClassification.FAST_MODEL_4K
+    model_classification:  PromptStrategyLanguageModelClassification = (
+         PromptStrategyLanguageModelClassification.FAST_MODEL_4K
     )
     default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames = (
         AFAAS_SMART_RAGStrategyFunctionNames.MAKE_SMART_RAG
@@ -44,7 +44,7 @@ class AFAAS_SMART_RAG_Strategy(BasePromptStrategy):
 
     def __init__(
         self,
-        model_classification: LanguageModelClassification,
+        model_classification:  PromptStrategyLanguageModelClassification,
         default_tool_choice: AFAAS_SMART_RAGStrategyFunctionNames,
         temperature : float , #if coding 0.05
         top_p: Optional[float] ,

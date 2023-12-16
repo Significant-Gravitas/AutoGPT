@@ -2,7 +2,7 @@
 from typing import Awaitable, Callable
 
 from AFAAS.interfaces.agent import BaseAgent, BaseLoop
-from AFAAS.core.prompting.base import (LoophooksDict,
+from AFAAS.interfaces.prompts.strategy import (LoophooksDict,
                                          PromptStrategiesConfiguration)
 
 

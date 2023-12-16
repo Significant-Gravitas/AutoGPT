@@ -3,7 +3,7 @@
 from AFAAS.core.agents.usercontext.strategies.refine_user_context import (
     RefineUserContextFunctionNames, RefineUserContextStrategy,
     RefineUserContextStrategyConfiguration)
-from AFAAS.core.prompting.base import (
+from AFAAS.interfaces.prompts.strategy import (
     BasePromptStrategy, PromptStrategiesConfiguration)
 
 
@@ -12,7 +12,7 @@ class StrategiesSetConfiguration(PromptStrategiesConfiguration):
 
 
 class StrategiesSet:
-    from AFAAS.core.prompting.base import (
+    from AFAAS.interfaces.prompts.strategy import (
         AbstractPromptStrategy, BasePromptStrategy)
 
     @staticmethod

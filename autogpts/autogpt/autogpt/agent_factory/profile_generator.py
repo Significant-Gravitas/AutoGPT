@@ -3,9 +3,9 @@ import logging
 
 from autogpt.config import AIDirectives, AIProfile, Config
 from AFAAS.core.configuration import SystemConfiguration, UserConfigurable
-from AFAAS.core.prompting import (ChatPrompt, LanguageModelClassification,
+from AFAAS.interfaces.prompts import (ChatPrompt,  PromptStrategyLanguageModelClassification,
                                     PromptStrategy)
-from AFAAS.core.prompting.utils import json_loads
+from AFAAS.interfaces.prompts.utils import json_loads
 from AFAAS.core.resource.model_providers.schema import (
     AssistantChatMessageDict, ChatMessage, ChatModelProvider,
     CompletionModelFunction)
@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class AgentProfileGeneratorConfiguration(SystemConfiguration):
-    model_classification: LanguageModelClassification = UserConfigurable(
-        default=LanguageModelClassification.SMART_MODEL
+    model_classification:  PromptStrategyLanguageModelClassification = UserConfigurable(
+        default= PromptStrategyLanguageModelClassification.SMART_MODEL
     )
     _example_call: object = [
         {
@@ -149,7 +149,7 @@ class AgentProfileGenerator(PromptStrategy):
 
     def __init__(
         self,
-        model_classification: LanguageModelClassification,
+        model_classification:  PromptStrategyLanguageModelClassification,
         system_prompt: str,
         user_prompt_template: str,
         create_agent_function: dict,
@@ -162,7 +162,7 @@ class AgentProfileGenerator(PromptStrategy):
         )
 
     @property
-    def model_classification(self) -> LanguageModelClassification:
+    def model_classification(self) ->  PromptStrategyLanguageModelClassification:
         return self._model_classification
 
     def build_prompt(self, user_objective: str = "", **kwargs) -> ChatPrompt:
